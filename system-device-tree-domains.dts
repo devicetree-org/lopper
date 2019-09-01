@@ -165,10 +165,10 @@
 			size = <0x0 0x40000000>;
 		};
 
-        rproc_0_dma: rproc@3ed400000 {
-			 compatible = "shared-dma-pool";
-			 reg = <0x0 0x3ed40000 0x0 0x100000>;
-		 };
+                rproc_0_dma: rproc@3ed400000 {
+                        compatible = "shared-dma-pool";
+			reg = <0x0 0x3ed40000 0x0 0x100000>;
+		};
 
 		rproc_0_reserved: rproc@3ed000000 {
 			  reg = <0x0 0x3ed00000 0x0 0x40000>;
@@ -249,7 +249,7 @@
 			#cpus-mask-cells = <0x1>;
 			cpus = <&cpus_a53 0xf 0x2>;
 
-			access = <&memory_a53 0x1>, <&tcm_bus 0x0>, <&resource_group_1 0x0>,
+			access = <&memory_a53 0x1>, <&tcm_bus 0x0>, <&resource_group_1 0x0>, <&ethernet 0x0>,
 			         <&rproc_0_dma 0x1>, <&rproc_0_reserved 0x1>, <&ipi_mailbox_rpu0 0x13>;
 
 			module@1a000000 {
