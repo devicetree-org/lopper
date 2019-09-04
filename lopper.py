@@ -31,7 +31,7 @@ def stdoutIO(stdout=None):
 class Lopper:
     @staticmethod
     # Finds a node by its prefix
-    def find_node( fdt, node_prefix ):
+    def node_find( fdt, node_prefix ):
         try:
             node = fdt.path_offset( node_prefix )
         except:
@@ -485,7 +485,7 @@ class SystemDeviceTree:
         self.FDT.del_node( target_node_offset, True )
 
     def apply_domain_spec(self, tgt_domain):
-        tgt_node = Lopper.find_node( self.FDT, tgt_domain )
+        tgt_node = Lopper.node_find( self.FDT, tgt_domain )
         if tgt_node != 0:
             if self.verbose:
                 print( "[INFO]: domain node found: %s for domain %s" % (tgt_node,tgt_domain) )
@@ -607,7 +607,7 @@ class SystemDeviceTree:
                             if modify_expr[2]:
                                 modify_expr[2] = modify_expr[2].replace( '/', '' )
                                 try:
-                                    tgt_node = Lopper.find_node( self.FDT, modify_expr[0] )
+                                    tgt_node = Lopper.node_find( self.FDT, modify_expr[0] )
                                     if tgt_node != 0:
                                         if self.verbose:
                                             print("[INFO]: renaming %s to %s" % (modify_expr[0], modify_expr[2]))
@@ -618,7 +618,7 @@ class SystemDeviceTree:
                                 print( "[INFO]: node delete detected, currently not implemented" )
 
     def property_remove( self, node_prefix = "/", propname = "", recursive = True ):
-        node = Lopper.find_node( self.FDT, node_prefix )
+        node = Lopper.node_find( self.FDT, node_prefix )
         node_list = []
         depth = 0
         while depth >= 0:

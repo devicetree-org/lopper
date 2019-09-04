@@ -27,7 +27,7 @@ def is_compat( compat_string_to_test ):
     return False
 
 def process_domain( tgt_domain, sdt, verbose=0 ):
-    tgt_node = Lopper.find_node( sdt.FDT, tgt_domain )
+    tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
     cpu_prop_values = Lopper.get_prop( sdt.FDT, tgt_node, "cpus", "compound" )
 
     if cpu_prop_values == "":
@@ -71,7 +71,7 @@ else:
 
     # we must re-find the domain node, since its numbering may have
     # changed due to the filter_node deleting things
-    tgt_node = Lopper.find_node( sdt.FDT, tgt_domain )
+    tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
 
     # "access" is a list of tuples: phandles + flags
     access_list = Lopper.get_prop( sdt.FDT, tgt_node, "access", "compound" )
@@ -104,11 +104,16 @@ else:
                 #print( "node name: %s node parent: %s" % (node_name, node_parent) )
                 if node_parent:
                     parent_node_type = Lopper.get_prop( sdt.FDT, node_parent, "compatible" )
-                    if not parent_node_type:
-                        # if there's no type, we need to bail
-                        continue
                     parent_node_name = sdt.FDT.get_name( node_parent )
                     node_grand_parent = sdt.FDT.parent_offset(node_parent,QUIET_NOTFOUND)
+                    if not parent_node_type:
+                        # is it a special name ?
+                        if re.search( "reserved-memory", parent_node_name ):
+                            parent_node_type = "reserved-memory"
+                        else:
+                            # if there's no type and no special name, we need to bail
+                            continue
+
                     if re.search( "simple-bus", parent_node_type ):
                         if verbose > 1:
                             print( "[INFO]: node parent is a simple-bus (%s), dropping sibling nodes" % parent_node_name)
@@ -126,11 +131,14 @@ else:
                                     tgt_node_id = 0
                                 if tgt_node_id:
                                     sdt.node_remove( tgt_node_id )
+                    elif re.search( "reserved-memory", parent_node_type ):
+                        print( "AAAAAAAAAA reserved memory!!: %s" % node_name)
+                        # delete all other memory nodes ?? ...nope. but at some point we need to delete the ones that we don't have access to. is it the flags ? should we refcount it ?
 
 
     # we must re-find the domain node, since its numbering may have
     # changed due to the filter_node deleting things
-    tgt_node = Lopper.find_node( sdt.FDT, tgt_domain )
+    tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
 
     memory_hex = Lopper.get_prop( sdt.FDT, tgt_node, "memory", "compound:hex" )
     memory_int = Lopper.get_prop( sdt.FDT, tgt_node, "memory", "compound" )
@@ -142,7 +150,7 @@ else:
         print( "[INFO]: memory property: %s" % memory_hex )
 
         # 1) find if there's a top level memory node
-        memory_node = Lopper.find_node( sdt.FDT, "/memory" )
+        memory_node = Lopper.node_find( sdt.FDT, "/memory" )
         if memory_node:
             if verbose:
                 print( "[INFO]: memory node found (%s), modifying to match domain memory" % memory_node )
