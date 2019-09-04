@@ -67,18 +67,21 @@ else:
         print( "[INFO]: filtering on:\n------%s-------\n" % code )
 
     # the action will be taken if the code block returns 'true'
-    Lopper.filter_node( sdt.FDT, xform_path, "delete", code, verbose )
+    Lopper.filter_node( sdt, xform_path, "delete", code, verbose )
 
     # we must re-find the domain node, since its numbering may have
     # changed due to the filter_node deleting things
     tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
 
+    # lets track any nodes that are referenced by access parameters. We use this
+    # for a second patch to drop any nodes that are not accessed, and hence should
+    # be removed
+    access_node_tracker = []
     # "access" is a list of tuples: phandles + flags
     access_list = Lopper.get_prop( sdt.FDT, tgt_node, "access", "compound" )
     if not access_list:
         if verbose:
             print( "[INFO]: no access list found, skipping ..." )
-
         pass
     else:
         #print( "[INFO]: converted access list: %s" % access_list )
@@ -99,15 +102,16 @@ else:
                 # The node is *not* a simple bus, so we must do more processing
 
                 # a) If the node parent is something other than zero, the node is nested, so
-                #    we have to do more processing. Note: this should be recursive eventually, but
-                #    for now, we keep it simple
+                #    we have to do more processing.
+                #    Note: this should be recursive eventually, but for now, we keep it simple
                 #print( "node name: %s node parent: %s" % (node_name, node_parent) )
                 if node_parent:
                     parent_node_type = Lopper.get_prop( sdt.FDT, node_parent, "compatible" )
                     parent_node_name = sdt.FDT.get_name( node_parent )
                     node_grand_parent = sdt.FDT.parent_offset(node_parent,QUIET_NOTFOUND)
                     if not parent_node_type:
-                        # is it a special name ?
+                        # is it a special name ? .. if it is, we'll give it a type to normalize the
+                        # code below
                         if re.search( "reserved-memory", parent_node_name ):
                             parent_node_type = "reserved-memory"
                         else:
@@ -132,9 +136,36 @@ else:
                                 if tgt_node_id:
                                     sdt.node_remove( tgt_node_id )
                     elif re.search( "reserved-memory", parent_node_type ):
-                        print( "AAAAAAAAAA reserved memory!!: %s" % node_name)
-                        # delete all other memory nodes ?? ...nope. but at some point we need to delete the ones that we don't have access to. is it the flags ? should we refcount it ?
+                        if verbose > 1:
+                            print( "[INFO]: reserved memory processing for: %s" % node_name)
+                        full_name = Lopper.node_abspath( sdt.FDT, node_parent )
+                        if not full_name in access_node_tracker:
+                            access_node_tracker.append( full_name )
 
+                        # Increment a reference to the current node, since we've added the parent node
+                        # to a list of nodes that we'll use to check for referenced children later. Anything
+                        # with no reference, will be removed.
+                        full_name = Lopper.node_abspath( sdt.FDT, anode )
+                        sdt.node_ref_inc( full_name )
+
+        for n in access_node_tracker:
+            xform_path = n
+            code = """
+p = refcount( %%SDT%%, %%NODENAME%% )
+if p <= 0:
+    %%TRUE%%
+else:
+    %%FALSE%%
+"""
+            if verbose:
+                print( "[INFO]: filtering on:\n------%s-------\n" % code )
+
+            # the action will be taken if the code block returns 'true'
+            Lopper.filter_node( sdt, n + "/", "delete", code, verbose )
+
+            # we must re-find the domain node, since its numbering may have
+            # changed due to the filter_node deleting things
+            tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
 
     # we must re-find the domain node, since its numbering may have
     # changed due to the filter_node deleting things

@@ -40,6 +40,20 @@ class Lopper:
 
         return node
 
+    @staticmethod
+    def node_abspath( fdt, nodeid ):
+        node_id_list = [nodeid]
+        p = fdt.parent_offset(nodeid,QUIET_NOTFOUND)
+        while p != 0:
+            node_id_list.insert( 0, p )
+            p = fdt.parent_offset(p,QUIET_NOTFOUND)
+
+        retname = ""
+        for id in node_id_list:
+            retname = retname + "/" + fdt.get_name( id )
+
+        return retname
+
     # This is just looking up if the property exists, it is NOT matching a
     # property value. Consider this finding a "type" of node
     @staticmethod
@@ -100,7 +114,8 @@ class Lopper:
     #  - test_op varies based on the action being taken
     #
     @staticmethod
-    def filter_node( fdt, node_prefix, action, test_cmd, verbose=0 ):
+    def filter_node( sdt, node_prefix, action, test_cmd, verbose=0 ):
+        fdt = sdt.FDT
         if verbose:
             print( "[NOTE]: filtering nodes root: %s" % node_prefix )
 
@@ -115,18 +130,21 @@ class Lopper:
                 print( "[WARN]: no nodes found that match prefix %s" % node_prefix )
 
         # make a list of safe functions
-        safe_list = ['Lopper.get_prop', 'Lopper.getphandle', 'Lopper.filter_node', 'verbose', 'print']
+        safe_list = ['Lopper.get_prop', 'Lopper.getphandle', 'Lopper.filter_node', 'Lopper.refcount', 'verbose', 'print']
 
-        # this should work, but isn't resolving the local vars
-        # https://stackoverflow.com/questions/701802/how-do-i-execute-a-string-containing-python-code-in-python
-        # http://code.activestate.com/recipes/52217-replace-embedded-python-code-in-a-string-with-the-/
+        # this should work, but isn't resolving the local vars, so we have to add them again in the
+        # loop below.
+        # references: https://stackoverflow.com/questions/701802/how-do-i-execute-a-string-containing-python-code-in-python
+        #             http://code.activestate.com/recipes/52217-replace-embedded-python-code-in-a-string-with-the-/
         safe_dict = dict([ (k, locals().get(k, None)) for k in safe_list ])
         safe_dict['len'] = len
         safe_dict['print'] = print
         safe_dict['get_prop'] = Lopper.get_prop
         safe_dict['getphandle'] = Lopper.getphandle
         safe_dict['filter_node'] = Lopper.filter_node
+        safe_dict['refcount'] = Lopper.refcount
         safe_dict['fdt'] = fdt
+        safe_dict['sdt'] = sdt
         safe_dict['verbose'] = verbose
 
         if verbose > 1:
@@ -143,17 +161,21 @@ class Lopper:
 
             # Add the current node (n) to the list of safe things
             # NOTE: might not be required
-            safe_list.append( 'n' )
+            # safe_list.append( 'n' )
+            # safe_list.append( 'node_name' )
 
             # add any needed builtins back in
             safe_dict['n'] = n
             safe_dict['node'] = node
+            safe_dict['node_name' ] = node_name
 
-            # search and replace any template options in the cmd yes, this is
+            # search and replace any template options in the cmd. yes, this is
             # only a proof of concept, you'd never do this like this in the end.
             tc = test_cmd
             tc = tc.replace( "%%FDT%%", "fdt" )
+            tc = tc.replace( "%%SDT%%", "sdt" )
             tc = tc.replace( "%%NODE%%", "node" )
+            tc = tc.replace( "%%NODENAME%%", "node_name" )
             tc = tc.replace( "%%TRUE%%", "print(\"true\")" )
             tc = tc.replace( "%%FALSE%%", "print(\"false\")" )
 
@@ -166,7 +188,8 @@ class Lopper:
                 except Exception as e:
                     print("Something wrong with the code: %s" % e)
 
-            #print( "stdout was: %s" % s.getvalue() )
+            if verbose > 2:
+                print( "stdout was: %s" % s.getvalue() )
             if "true" in s.getvalue():
                 if "delete" in action:
                     if verbose:
@@ -377,6 +400,10 @@ class Lopper:
             barray = barray + i.to_bytes(4,byteorder='big')
         return barray
 
+    @staticmethod
+    def refcount( sdt, nodename ):
+        return sdt.node_ref( nodename )
+
     #
     # Parameters:
     #   - Property object from libfdt
@@ -458,6 +485,7 @@ class SystemDeviceTree:
         self.xforms = []
         self.modules = []
         self.verbose = 0
+        self.node_access = {}
 
     def setup(self):
         if verbose:
@@ -506,9 +534,27 @@ class SystemDeviceTree:
             else:
                 print( "[ERROR]: target domain has no compatible string, cannot apply a specification" )
 
+    # we use the name, rather than the offset, since the offset can change if
+    # something is deleted from the tree. But we need to use the full path so
+    # we can find it later.
+    def node_ref_inc( self, node_name ):
+        if verbose > 1:
+            print( "[INFO]: tracking access to node %s" % node_name )
+        if node_name in self.node_access:
+            self.node_access[node_name] += 1
+        else:
+            self.node_access[node_name] = 1
+
+    # get the refcount for a node.
+    # node_name is the full path to a node
+    def node_ref( self, node_name ):
+        if node_name in self.node_access:
+            return self.node_access[node_name]
+        return -1
+
     def transform(self):
         if self.verbose:
-            print( "[NOTE]: \'%d\' transform input available" % len(self.xforms))
+            print( "[NOTE]: \'%d\' transform input(s) available" % len(self.xforms))
 
         # was --target passed on the command line ?
         if target_domain:
