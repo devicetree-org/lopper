@@ -665,7 +665,8 @@ class SystemDeviceTree:
                                     print( "[INFO]: node delete: %s" % modify_expr[0] )
 
                                 node_to_remove = Lopper.node_find( self.FDT, modify_expr[0] )
-                                self.node_remove( node_to_remove )
+                                if node_to_remove:
+                                    self.node_remove( node_to_remove )
 
     def property_remove( self, node_prefix = "/", propname = "", recursive = True ):
         node = Lopper.node_find( self.FDT, node_prefix )
