@@ -26,6 +26,9 @@ def is_compat( compat_string_to_test ):
         return True
     return False
 
+# all the logic for applying a openamp domain to a device tree.
+# this is a really long routine that will be broken up as more examples
+# are done and it can be propery factored out.
 def process_domain( tgt_domain, sdt, verbose=0 ):
     tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
     cpu_prop_values = Lopper.get_prop( sdt.FDT, tgt_node, "cpus", "compound" )
@@ -76,7 +79,11 @@ else:
     # lets track any nodes that are referenced by access parameters. We use this
     # for a second patch to drop any nodes that are not accessed, and hence should
     # be removed
-    access_node_tracker = []
+    node_access_tracker = {}
+    # we want to track child nodes of "/", if they are of type simple-bus AND they are
+    # referenced by a <access> value in the domain
+    node_access_tracker['/'] = [ "/", "simple-bus" ]
+
     # "access" is a list of tuples: phandles + flags
     access_list = Lopper.get_prop( sdt.FDT, tgt_node, "access", "compound" )
     if not access_list:
@@ -98,13 +105,16 @@ else:
             if re.search( "simple-bus", node_type ):
                 if verbose > 1:
                     print( "[INFO]: access is a simple-bus (%s), leaving all nodes" % node_name)
+                # refcount the bus
+                full_name = Lopper.node_abspath( sdt.FDT, anode )
+                sdt.node_ref_inc( full_name )
             else:
                 # The node is *not* a simple bus, so we must do more processing
 
                 # a) If the node parent is something other than zero, the node is nested, so
                 #    we have to do more processing.
                 #    Note: this should be recursive eventually, but for now, we keep it simple
-                #print( "node name: %s node parent: %s" % (node_name, node_parent) )
+                # print( "node name: %s node parent: %s" % (node_name, node_parent) )
                 if node_parent:
                     parent_node_type = Lopper.get_prop( sdt.FDT, node_parent, "compatible" )
                     parent_node_name = sdt.FDT.get_name( node_parent )
@@ -138,9 +148,10 @@ else:
                     elif re.search( "reserved-memory", parent_node_type ):
                         if verbose > 1:
                             print( "[INFO]: reserved memory processing for: %s" % node_name)
+
                         full_name = Lopper.node_abspath( sdt.FDT, node_parent )
-                        if not full_name in access_node_tracker:
-                            access_node_tracker.append( full_name )
+                        if not full_name in node_access_tracker:
+                            node_access_tracker[full_name] = [ full_name, "*" ]
 
                         # Increment a reference to the current node, since we've added the parent node
                         # to a list of nodes that we'll use to check for referenced children later. Anything
@@ -148,20 +159,43 @@ else:
                         full_name = Lopper.node_abspath( sdt.FDT, anode )
                         sdt.node_ref_inc( full_name )
 
-        for n in access_node_tracker:
+        for n, value in node_access_tracker.values():
+            # xform_path is the path to the node that was tracked, so this is a potential
+            # delete to any children of that node, that haven't been accessed. If you
+            # started from / .. you could delete a lot of nodes by mistake, so be careful!
+
             xform_path = n
-            code = """
+            if value == "*":
+                code = """
 p = refcount( %%SDT%%, %%NODENAME%% )
 if p <= 0:
     %%TRUE%%
 else:
     %%FALSE%%
 """
+            else:
+                prop = value
+                code = """
+p = get_prop( %%FDT%%, %%NODE%%, \"compatible\" )
+if p and "%%%prop%%%" in p:
+    p = refcount( %%SDT%%, %%NODENAME%% )
+    if p <= 0:
+        %%TRUE%%
+    else:
+        %%FALSE%%
+else:
+    %%FALSE%%
+"""
+                code = code.replace( "%%%prop%%%", prop )
+
             if verbose:
                 print( "[INFO]: filtering on:\n------%s-------\n" % code )
 
             # the action will be taken if the code block returns 'true'
-            Lopper.filter_node( sdt, n + "/", "delete", code, verbose )
+            if n == "/":
+                Lopper.filter_node( sdt, "/", "delete", code, verbose )
+            else:
+                Lopper.filter_node( sdt, n + "/", "delete", code, verbose )
 
             # we must re-find the domain node, since its numbering may have
             # changed due to the filter_node deleting things

@@ -35,7 +35,6 @@ class Lopper:
         try:
             node = fdt.path_offset( node_prefix )
         except:
-            print( "ERROR: cannot find node: %s" % node_prefix )
             node = 0
 
         return node
