@@ -83,12 +83,6 @@ class Lopper:
         sdt = SystemDeviceTree( sdt_file )
         # is the sdt a dts ?
         if re.search( ".dts*", sdt.dts ):
-            # TODO: this only really happens after the device tree bits are
-            #       concatenated. This is for testing purposes
-            #
-            # TODO: really, the input_files shouldn't be passed as a parameter here. They
-            #       should either be concatenations, or they should be individually
-            #       compiled and loaded later as xforms.
             sdt.dtb = Lopper.dt_compile( sdt.dts, input_files, include_paths )
 
         # Individually compile the input files. At some point these may be
@@ -105,8 +99,7 @@ class Lopper:
         return sdt
 
     #
-    # WIP
-    #  - a more generic way to delete nodes
+    #  - a more generic way to modify/filter nodes
     #
     #  - node_prefix can be "" and we start at the root
     #  - action can be "delete" "report" "whitelist" "blacklist" ... TBD
@@ -400,6 +393,17 @@ class Lopper:
         return barray
 
     @staticmethod
+    def encode_byte_array_from_strings( values ):
+        barray = b''
+        if len(values) > 1:
+            for i in values:
+                barray = barray + i.encode() + b'\x00'
+        else:
+            barray = barray + values[0].encode()
+
+        return barray
+
+    @staticmethod
     def refcount( sdt, nodename ):
         return sdt.node_ref( nodename )
 
@@ -614,6 +618,97 @@ class SystemDeviceTree:
                             print( "[INFO]: domain property found: %s" % prop )
 
                         self.apply_domain_spec(prop)
+
+                if re.search( ".*,xform,add$", val ):
+                    if verbose:
+                        print( "[INFO]: node add transform found" )
+
+                    prop = xform_fdt.getprop( n, "node_name" )
+                    new_node_name = Lopper.decode_property_value( prop, 0 )
+                    prop = xform_fdt.getprop( n, "node_path" )
+                    new_node_path = Lopper.decode_property_value( prop, 0 )
+
+                    if verbose:
+                        print( "[INFO]: node name: %s node path: %s" % (new_node_name, new_node_path) )
+
+                    if node_name:
+                        # iterate the subnodes of this xform, looking for one that has a matching
+                        # node_name fdt value
+
+                        # TODO: write a utility routine "get_node_with_name" to replace the loop below
+                        nn = n
+                        depth = 0
+                        new_node_to_add = 0
+                        while depth >= 0:
+                            nn_name = xform_fdt.get_name(nn)
+                            if re.search( nn_name, new_node_name ):
+                                new_node_to_add = nn
+                                depth = -1
+                            else:
+                                nn, depth = xform_fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
+
+                        # we have the node (nn), now add it to the tree at the specified path
+                        # TODO: move the add code to a lopper static method that copies a node
+                        if new_node_to_add:
+                            # TODO: check node_path to figure out the parent offset, setting to 0 for now
+                            old_depth = -1
+                            depth = 0
+                            nn = new_node_to_add
+                            newoff = 0
+                            while depth >= 0:
+                                nn_name = xform_fdt.get_name(nn)
+                                self.FDT.add_subnode( newoff, nn_name )
+
+                                prop_offset = self.FDT.subnode_offset( newoff, nn_name )
+
+                                prop_list = []
+                                poffset = xform_fdt.first_property_offset(nn, QUIET_NOTFOUND)
+                                while poffset > 0:
+                                    prop = xform_fdt.get_property_by_offset(poffset)
+                                    prop_list.append(prop.name)
+                                    if verbose > 2:
+                                        print( "" )
+                                        print( "properties for: %s" % xform_fdt.get_name(nn) )
+                                        print( "prop name: %s" % prop.name )
+                                        print( "prop raw: %s" % prop )
+
+                                    # this can't always be simple ...
+                                    prop_val = Lopper.decode_property_value( prop, 0 )
+                                    if not prop_val:
+                                        prop_val = Lopper.decode_property_value( prop, 0, "compound" )
+
+                                    if verbose > 2:
+                                        print( "prop decoded: %s" % prop_val )
+                                        print( "prop type: %s" % type(prop_val))
+
+                                    # we have to re-encode based on the type of what we just decoded.
+                                    if type(prop_val) == int:
+                                        if sys.getsizeof(prop_val) > 32:
+                                            self.FDT.setprop_u64( prop_offset, prop.name, prop_val )
+                                        else:
+                                            self.FDT.setprop_u32( prop_offset, prop.name, prop_val )
+                                    elif type(prop_val) == str:
+                                        self.FDT.setprop_str( prop_offset, prop.name, prop_val )
+                                    elif type(prop_val) == list:
+                                        # list is a compound value, or an empty one!
+                                        if len(prop_val) > 0:
+                                            try:
+                                                bval = Lopper.encode_byte_array_from_strings(prop_val)
+                                            except:
+                                                bval = Lopper.encode_byte_array(prop_val)
+
+                                            self.FDT.setprop( prop_offset, prop.name, bval)
+
+                                    poffset = xform_fdt.next_property_offset(poffset, QUIET_NOTFOUND)
+
+                                old_depth = depth
+                                nn, depth = xform_fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
+
+                                # we need a new offset fo the next time through this loop (but only if our depth
+                                # changed)
+                                if depth >= 0 and old_depth != depth:
+                                    newoff = self.FDT.subnode_offset( newoff, nn_name )
+
 
                 if re.search( ".*,xform,modify$", val ):
                     if self.verbose:
