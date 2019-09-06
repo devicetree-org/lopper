@@ -40,7 +40,7 @@
 		};
 	};
 
-    cpus_r5: cpus_r5 {
+        cpus_r5: cpus_r5 {
 		#size-cells = <0x0>;
 		#address-cells = <0x1>;
 		compatible = "cpus,cluster";
@@ -294,15 +294,15 @@
 			/* Generated arch-timer, add it here, or not? */
 
 			/* UART emulated device */
-		    serial@22000000 {
-		        compatible = "arm,pl011", "arm,primecell";
-		        reg = <0x0 0x22000000 0x0 0x1000>;
+		        serial@22000000 {
+		                compatible = "arm,pl011", "arm,primecell";
+		                reg = <0x0 0x22000000 0x0 0x1000>;
 				/*
 				 * Where the node is located in the output domain device
 				 * tree
 				 */
 				xen,path = "/amba/serial@22000000";
-		    };
+		        };
 
 			module@4a000000 {
 				compatible = "multiboot,kernel", "multiboot,module";
