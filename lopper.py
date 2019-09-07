@@ -40,6 +40,22 @@ class Lopper:
         return node
 
     @staticmethod
+    # Searches for a node by its name
+    def node_find_by_name( fdt, node_name, starting_node = 0 ):
+        nn = starting_node
+        depth = 0
+        matching_node = 0
+        while depth >= 0:
+            nn_name = fdt.get_name(nn)
+            if re.search( nn_name, node_name ):
+                matching_node = nn
+                depth = -1
+            else:
+                nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
+
+        return matching_node
+
+    @staticmethod
     def node_abspath( fdt, nodeid ):
         node_id_list = [nodeid]
         p = fdt.parent_offset(nodeid,QUIET_NOTFOUND)
@@ -634,18 +650,7 @@ class SystemDeviceTree:
                     if node_name:
                         # iterate the subnodes of this xform, looking for one that has a matching
                         # node_name fdt value
-
-                        # TODO: write a utility routine "get_node_with_name" to replace the loop below
-                        nn = n
-                        depth = 0
-                        new_node_to_add = 0
-                        while depth >= 0:
-                            nn_name = xform_fdt.get_name(nn)
-                            if re.search( nn_name, new_node_name ):
-                                new_node_to_add = nn
-                                depth = -1
-                            else:
-                                nn, depth = xform_fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
+                        new_node_to_add = Lopper.node_find_by_name( xform_fdt, new_node_name, n )
 
                         # we have the node (nn), now add it to the tree at the specified path
                         # TODO: move the add code to a lopper static method that copies a node
