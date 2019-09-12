@@ -24,14 +24,81 @@ def get_compatible_strings():
 def is_compat( compat_string_to_test ):
     if re.search( "openamp,domain-v1", compat_string_to_test):
         return True
+    if re.search( "openamp,xlnx-rpu", compat_string_to_test):
+        return True
     return False
+
+# tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
+def check_bit_set(n, k):
+    if n & (1 << (k)):
+        return True
+
+    return False
+
+# domain_node: is the openamp domain node
+# sdt: is the system device tree
+def xlnx_openamp_rpu( domain_node, sdt, verbose=0):
+    if verbose:
+        print( "[INFO]: cb: xlnx_openamp_rpu( %s, %s, %s )" % (domain_node, sdt, verbose))
+
+    # temp; PoC:
+    cpu_prop_values = Lopper.prop_get( sdt.FDT, domain_node, "cpus", "compound" )
+    if cpu_prop_values == "":
+        return False
+
+    # 1) we have to replace the cpus index in the rpu node
+    # the cpu handle is element 0
+    cpu_mask = cpu_prop_values[1]
+
+    if verbose:
+        print( "[INFO]: cb cpu mask: %s" % cpu_mask )
+
+    # find the added rpu node
+    rpu_node = Lopper.node_find( sdt.FDT, "/zynqmp-rpu/" )
+    if not rpu_node:
+        print( "[ERROR]: cannot find the target rpu node" )
+        return False
+
+    # Note: we may eventually just walk the tree and look for __<symbol>__ and
+    #       use that as a trigger for a replacement op. But for now, we will
+    #       run our list of things to change, and search them out specifically
+    # find the cpu node of the rpu node
+    rpu_cpu_node = Lopper.node_find( sdt.FDT, "/zynqmp-rpu/__cpu__" )
+    if not rpu_cpu_node:
+        print( "[ERROR]: cannot find the target rpu node" )
+        return False
+
+    # we have to turn the cpu mask into a name, and then apply it
+    # to the rpu node for later
+
+    # shift the mask right by one
+    nn = cpu_mask >> 1
+    new_rpu_name = "r5_{}".format(nn)
+    sdt.FDT.set_name( rpu_cpu_node, new_rpu_name )
+
+    # 2) we have to fix the core-conf mode
+    cpus_mod = cpu_prop_values[2]
+    if verbose > 2:
+        print( "[INFO]: cpus mod: %s" % hex(cpus_mod) )
+
+    # bit 30 is the cpu mod, device tree goes 31->0
+    if check_bit_set( cpus_mod, 30 ):
+        core_conf = "sync"
+    else:
+        core_conf = "split"
+
+    Lopper.prop_set( sdt.FDT, rpu_node, 'core_conf', core_conf )
+
+    return True
+
+
 
 # all the logic for applying a openamp domain to a device tree.
 # this is a really long routine that will be broken up as more examples
 # are done and it can be propery factored out.
 def process_domain( tgt_domain, sdt, verbose=0 ):
     tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
-    cpu_prop_values = Lopper.get_prop( sdt.FDT, tgt_node, "cpus", "compound" )
+    cpu_prop_values = Lopper.prop_get( sdt.FDT, tgt_node, "cpus", "compound" )
 
     if cpu_prop_values == "":
         sys.exit(1)
@@ -53,7 +120,7 @@ def process_domain( tgt_domain, sdt, verbose=0 ):
     xform_path = "/"
     prop = "cpus,cluster"
     code = """
-p = get_prop( %%FDT%%, %%NODE%%, \"compatible\" )
+p = prop_get( %%FDT%%, %%NODE%%, \"compatible\" )
 if p and "%%%prop%%%" in p:
     ph = getphandle( %%FDT%%, %%NODE%% )
     if ph != %%%phandle%%%:
@@ -85,7 +152,7 @@ else:
     node_access_tracker['/'] = [ "/", "simple-bus" ]
 
     # "access" is a list of tuples: phandles + flags
-    access_list = Lopper.get_prop( sdt.FDT, tgt_node, "access", "compound" )
+    access_list = Lopper.prop_get( sdt.FDT, tgt_node, "access", "compound" )
     if not access_list:
         if verbose:
             print( "[INFO]: no access list found, skipping ..." )
@@ -99,7 +166,7 @@ else:
             #ph = int(ph_hex, 16)
             #print( "processing %s" % ph )
             anode = sdt.FDT.node_offset_by_phandle( ph )
-            node_type = Lopper.get_prop( sdt.FDT, anode, "compatible" )
+            node_type = Lopper.prop_get( sdt.FDT, anode, "compatible" )
             node_name = sdt.FDT.get_name( anode )
             node_parent = sdt.FDT.parent_offset(anode,QUIET_NOTFOUND)
             if re.search( "simple-bus", node_type ):
@@ -116,7 +183,7 @@ else:
                 #    Note: this should be recursive eventually, but for now, we keep it simple
                 # print( "node name: %s node parent: %s" % (node_name, node_parent) )
                 if node_parent:
-                    parent_node_type = Lopper.get_prop( sdt.FDT, node_parent, "compatible" )
+                    parent_node_type = Lopper.prop_get( sdt.FDT, node_parent, "compatible" )
                     parent_node_name = sdt.FDT.get_name( node_parent )
                     node_grand_parent = sdt.FDT.parent_offset(node_parent,QUIET_NOTFOUND)
                     if not parent_node_type:
@@ -176,7 +243,7 @@ else:
             else:
                 prop = value
                 code = """
-p = get_prop( %%FDT%%, %%NODE%%, \"compatible\" )
+p = prop_get( %%FDT%%, %%NODE%%, \"compatible\" )
 if p and "%%%prop%%%" in p:
     p = refcount( %%SDT%%, %%NODENAME%% )
     if p <= 0:
@@ -205,8 +272,8 @@ else:
     # changed due to the filter_node deleting things
     tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
 
-    memory_hex = Lopper.get_prop( sdt.FDT, tgt_node, "memory", "compound:hex" )
-    memory_int = Lopper.get_prop( sdt.FDT, tgt_node, "memory", "compound" )
+    memory_hex = Lopper.prop_get( sdt.FDT, tgt_node, "memory", "compound:hex" )
+    memory_int = Lopper.prop_get( sdt.FDT, tgt_node, "memory", "compound" )
 
     # This may be moved to the top of the domain process and then
     # when we are processing cpus and bus nodes, we can apply the
@@ -230,3 +297,7 @@ else:
             # val = a.to_bytes(4,byteorder='big') + b.to_bytes(4,byteorder='big') + c.to_bytes(4,byteorder='big') + d.to_bytes(4,byteorder='big')
 
             sdt.FDT.setprop(memory_node, 'reg', Lopper.encode_byte_array(memory_int))
+
+
+
+

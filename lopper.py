@@ -87,6 +87,7 @@ class Lopper:
                     print( "prop decoded: %s" % prop_val )
                     print( "prop type: %s" % type(prop_val))
 
+                # TODO: there's a newly added static function that wraps this set checking, use it instead
                 # we have to re-encode based on the type of what we just decoded.
                 if type(prop_val) == int:
                     if sys.getsizeof(prop_val) > 32:
@@ -199,7 +200,7 @@ class Lopper:
                 print( "[WARN]: no nodes found that match prefix %s" % node_prefix )
 
         # make a list of safe functions
-        safe_list = ['Lopper.get_prop', 'Lopper.getphandle', 'Lopper.filter_node', 'Lopper.refcount', 'verbose', 'print']
+        safe_list = ['Lopper.prop_get', 'Lopper.getphandle', 'Lopper.filter_node', 'Lopper.refcount', 'verbose', 'print']
 
         # this should work, but isn't resolving the local vars, so we have to add them again in the
         # loop below.
@@ -208,7 +209,7 @@ class Lopper:
         safe_dict = dict([ (k, locals().get(k, None)) for k in safe_list ])
         safe_dict['len'] = len
         safe_dict['print'] = print
-        safe_dict['get_prop'] = Lopper.get_prop
+        safe_dict['prop_get'] = Lopper.prop_get
         safe_dict['getphandle'] = Lopper.getphandle
         safe_dict['filter_node'] = Lopper.filter_node
         safe_dict['refcount'] = Lopper.refcount
@@ -378,8 +379,9 @@ class Lopper:
     # utility command to get a property (as a string) from a node
     # type can be "simple" or "compound". A string is returned for
     # simple, and a list of properties for compound
+
     @staticmethod
-    def get_prop( fdt, node_number, property_name, type="simple" ):
+    def prop_get( fdt, node_number, property_name, type="simple" ):
         prop = fdt.getprop( node_number, property_name, QUIET_NOTFOUND )
         if type == "simple":
             val = Lopper.decode_property_value( prop, 0, type )
@@ -387,6 +389,29 @@ class Lopper:
             val = Lopper.decode_property_value( prop, 0, type )
 
         return val
+
+    @staticmethod
+    def prop_set( fdt_dest, node_number, prop_name, prop_val, ftype="simple" ):
+        # we have to re-encode based on the type of what we just decoded.
+        if type(prop_val) == int:
+             if sys.getsizeof(prop_val) > 32:
+                fdt_dest.setprop_u64( node_number, prop_name, prop_val )
+             else:
+                fdt_dest.setprop_u32( node_number, prop_name, prop_val )
+        elif type(prop_val) == str:
+            fdt_dest.setprop_str( node_number, prop_name, prop_val )
+        elif type(prop_val) == list:
+            # list is a compound value, or an empty one!
+            if len(prop_val) > 0:
+                try:
+                    bval = Lopper.encode_byte_array_from_strings(prop_val)
+                except:
+                    bval = Lopper.encode_byte_array(prop_val)
+
+                fdt_dest.setprop( node_number, prop_name, bval)
+        else:
+            print( "[WARNING]; uknown type was used" )
+
 
     @staticmethod
     def dt_compile( sdt, i_files, includes ):
@@ -600,7 +625,7 @@ class SystemDeviceTree:
 
             # we can hard code this for now, but it needs to be a seperate routine to look
             # up the domain compatibility properties and carry out actions
-            domain_compat = Lopper.get_prop( self.FDT, tgt_node, "compatible" )
+            domain_compat = Lopper.prop_get( self.FDT, tgt_node, "compatible" )
             if domain_compat:
                 if self.modules:
                     for m in self.modules:
@@ -657,6 +682,42 @@ class SystemDeviceTree:
                 if self.verbose > 2:
                     print( "[DEBUG]: prop: %s val: %s" % (prop.name, val ))
                     print( "[DEBUG]: node name: %s" % node_name )
+
+                # TODO: need a better way to search for the possible transform types, i.e. a dict
+                if re.search( ".*,callback-v1$", val ):
+                    # also note: this callback may change from being called as part of the
+                    # tranform loop, to something that is instead called by walking the
+                    # entire device tree, looking for matching nodes and making callbacks at
+                    # that moment.
+                    cb_tgt_node_name = xform_fdt.getprop( n, 'node' ).as_str()
+                    if not cb_tgt_node_name:
+                        print( "[ERROR]: cannot find target node for the callback" )
+                        sys.exit(1)
+
+                    cb = xform_fdt.getprop( n, 'callback' ).as_str()
+                    cb_module = xform_fdt.getprop( n, 'module' ).as_str()
+                    cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
+                    if not cb_node:
+                        print( "[ERROR]: cannot find callback target node in tree" )
+                        sys.exit(1)
+                    if self.verbose:
+                        print( "[INFO]: callback transform deteced" )
+                        print( "        cb: %s" % cb )
+                        print( "        module: %s" % cb_module )
+
+                    if self.modules:
+                        for m in self.modules:
+                            if m.is_compat( cb_module ):
+                                try:
+                                    func = getattr( m, cb )
+                                    try:
+                                        if not func( cb_node, self, self.verbose ):
+                                            print( "[WARNING]: the callback return false ..." )
+                                    except:
+                                        print( "[WARNING]: callback %s failed" % func )
+                                except:
+                                    print( "[ERROR] module %s has no function %s" % (m,cb))
+                                    sys.exit(1)
 
                 # TODO: need a better way to search for the possible transform types
                 if re.search( ".*,load,module$", val ):
