@@ -719,7 +719,6 @@ class SystemDeviceTree:
                                     print( "[ERROR] module %s has no function %s" % (m,cb))
                                     sys.exit(1)
 
-                # TODO: need a better way to search for the possible transform types
                 if re.search( ".*,load,module$", val ):
                     if self.verbose:
                         print( "--------------- [INFO]: node %s is a load module transform" % node_name )
@@ -802,10 +801,12 @@ class SystemDeviceTree:
                             if not modify_expr[2]:
                                 if verbose:
                                     print( "[INFO]: property remove operation detected: %s" % modify_expr[1])
+                                # TODO; make a special case of the property_modify_below
                                 self.property_remove( modify_expr[0], modify_expr[1], True )
                             else:
-                                print( "[INFO]: property modify operation detected ** currently not implemented **" )
-                                # TODO: generalize this to a 'modify' self.property_remove( modify_expr[0], modify_expr[1], True )
+                                if verbose:
+                                    print( "[INFO]: property modify operation detected" )
+                                self.property_modify( modify_expr[0], modify_expr[1], modify_expr[2], False )
                         else:
                             # node operation
                             # in case /<name>/ was passed as the new name, we need to drop them
@@ -828,6 +829,7 @@ class SystemDeviceTree:
                                 if node_to_remove:
                                     self.node_remove( node_to_remove )
 
+    # note; this operates on a node and all child nodes, unless you set recursive to False
     def property_remove( self, node_prefix = "/", propname = "", recursive = True ):
         node = Lopper.node_find( self.FDT, node_prefix )
         node_list = []
@@ -861,6 +863,42 @@ class SystemDeviceTree:
             else:
                 depth = -1
 
+    # note; this operates on a node and all child nodes, unless you set recursive to False
+    def property_modify( self, node_prefix = "/", propname = "", propval = "", recursive = True ):
+        node = Lopper.node_find( self.FDT, node_prefix )
+        node_list = []
+        depth = 0
+        while depth >= 0:
+            prop_list = []
+            poffset = self.FDT.first_property_offset(node, QUIET_NOTFOUND)
+            while poffset > 0:
+                # if we delete the only property of a node, all calls to the FDT
+                # will throw an except. So if we get an exception, we set our poffset
+                # to zero to escape the loop.
+                try:
+                    prop = self.FDT.get_property_by_offset(poffset)
+                except:
+                    poffset = 0
+                    continue
+
+                # print( "propname: %s" % prop.name )
+                prop_list.append(prop.name)
+                poffset = self.FDT.next_property_offset(poffset, QUIET_NOTFOUND)
+
+                if propname in prop_list:
+                    # node is an integer offset, propname is a string
+                    if self.verbose:
+                        print( "[INFO]: changing property %s to %s" % (propname, propval ))
+
+                    Lopper.prop_set( self.FDT, node, propname, propval )
+
+            if recursive:
+                node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
+            else:
+                depth = -1
+
+
+    # Note: this is no longer called. possibly delete
     def property_find( self, propname, remove = False ):
         node_list = []
         node = 0
