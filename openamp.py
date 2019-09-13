@@ -228,6 +228,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
         # list and then assign it to the property
         #
         mboxes_prop = []
+        mbox_names = ""
         if ipi_access:
             for ipi in ipi_access:
                 ph,flags = ipi
@@ -253,16 +254,21 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
                             if verbose > 1:
                                 print( "        channel is tx" )
                             mboxes_prop.append( 1 )
+                            mbox_names = mbox_names + "tx" + '\0'
                         else:
                             if verbose > 1:
                                 print( "        channel is rx" )
                             mboxes_prop.append( 0 )
+                            mbox_names = mbox_names + "rx" + '\0'
 
                     chan_enabled_bit = chan_enabled_bit + 4
                     chan_rx_tx_bit = chan_rx_tx_bit + 4
 
             if mboxes_prop:
+                # drop a trailing \0 if it was added above
+                mbox_names = mbox_names.rstrip('\0')
                 Lopper.prop_set( sdt.FDT, rpu_cpu_node, "mboxes", mboxes_prop )
+                Lopper.prop_set( sdt.FDT, rpu_cpu_node, "mbox-names", mbox_names )
 
     return True
 
