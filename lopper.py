@@ -56,6 +56,16 @@ class Lopper:
         return matching_node
 
     @staticmethod
+    def node_prop_check( fdt, node_name, property_name ):
+        node = Lopper.node_find_by_name( fdt, node_name )
+        try:
+            fdt.getprop( property_name )
+        except:
+            return False
+
+        return True
+
+    @staticmethod
     def node_copy( fdt_source, fdt_dest, node_source ):
         # TODO: check node_path to figure out the parent offset, setting to 0 for now
         old_depth = -1
@@ -133,6 +143,7 @@ class Lopper:
 
     # This is just looking up if the property exists, it is NOT matching a
     # property value. Consider this finding a "type" of node
+    # TODO: should take a starting node, and be recursive or not.
     @staticmethod
     def nodes_with_property( fdt_to_search, propname ):
         node_list = []
@@ -392,6 +403,17 @@ class Lopper:
     # TODO: make the "ftype" value an enumerated type
     @staticmethod
     def prop_set( fdt_dest, node_number, prop_name, prop_val, ftype="simple" ):
+        try:
+            prop_val_converted = int(prop_val,0)
+            # if it works, that's our new prop_val. This covers the case where
+            # a string is passed in, but it is really just a single number.
+            # note: we may need to consult "ftype" in the future so the caller
+            # can override this automatical conversion
+            prop_val = prop_val_converted
+        except:
+            # do nothing. let propval go through as whatever it was
+            pass
+
         # we have to re-encode based on the type of what we just decoded.
         if type(prop_val) == int:
             if sys.getsizeof(prop_val) > 32:
@@ -809,7 +831,11 @@ class SystemDeviceTree:
                             else:
                                 if verbose:
                                     print( "[INFO]: property modify operation detected" )
-                                self.property_modify( modify_expr[0], modify_expr[1], modify_expr[2], False )
+
+                                if Lopper.node_prop_check( self.FDT, modify_expr[0], modify_expr[1] ):
+                                    self.property_modify( modify_expr[0], modify_expr[1], modify_expr[2], False )
+                                else:
+                                    self.property_modify( modify_expr[0], modify_expr[1], modify_expr[2], False, True )
                         else:
                             # node operation
                             # in case /<name>/ was passed as the new name, we need to drop them
@@ -867,7 +893,7 @@ class SystemDeviceTree:
                 depth = -1
 
     # note; this operates on a node and all child nodes, unless you set recursive to False
-    def property_modify( self, node_prefix = "/", propname = "", propval = "", recursive = True ):
+    def property_modify( self, node_prefix = "/", propname = "", propval = "", recursive = True, add_if_missing = False ):
         node = Lopper.node_find( self.FDT, node_prefix )
         node_list = []
         depth = 0
@@ -894,6 +920,9 @@ class SystemDeviceTree:
                         print( "[INFO]: changing property %s to %s" % (propname, propval ))
 
                     Lopper.prop_set( self.FDT, node, propname, propval )
+                else:
+                    if add_if_missing:
+                        Lopper.prop_set( self.FDT, node, propname, propval )
 
             if recursive:
                 node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
