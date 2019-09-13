@@ -377,26 +377,26 @@ class Lopper:
         return prop
 
     # utility command to get a property (as a string) from a node
-    # type can be "simple" or "compound". A string is returned for
+    # ftype can be "simple" or "compound". A string is returned for
     # simple, and a list of properties for compound
-
     @staticmethod
-    def prop_get( fdt, node_number, property_name, type="simple" ):
+    def prop_get( fdt, node_number, property_name, ftype="simple" ):
         prop = fdt.getprop( node_number, property_name, QUIET_NOTFOUND )
-        if type == "simple":
-            val = Lopper.decode_property_value( prop, 0, type )
+        if ftype == "simple":
+            val = Lopper.decode_property_value( prop, 0, ftype )
         else:
-            val = Lopper.decode_property_value( prop, 0, type )
+            val = Lopper.decode_property_value( prop, 0, ftype )
 
         return val
 
+    # TODO: make the "ftype" value an enumerated type
     @staticmethod
     def prop_set( fdt_dest, node_number, prop_name, prop_val, ftype="simple" ):
         # we have to re-encode based on the type of what we just decoded.
         if type(prop_val) == int:
-             if sys.getsizeof(prop_val) > 32:
+            if sys.getsizeof(prop_val) > 32:
                 fdt_dest.setprop_u64( node_number, prop_name, prop_val )
-             else:
+            else:
                 fdt_dest.setprop_u32( node_number, prop_name, prop_val )
         elif type(prop_val) == str:
             fdt_dest.setprop_str( node_number, prop_name, prop_val )
@@ -713,8 +713,11 @@ class SystemDeviceTree:
                                     try:
                                         if not func( cb_node, self, self.verbose ):
                                             print( "[WARNING]: the callback return false ..." )
-                                    except:
+                                    except Exception as e:
                                         print( "[WARNING]: callback %s failed" % func )
+                                        exc_type, exc_obj, exc_tb = sys.exc_info()
+                                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                                        print(exc_type, fname, exc_tb.tb_lineno)
                                 except:
                                     print( "[ERROR] module %s has no function %s" % (m,cb))
                                     sys.exit(1)
