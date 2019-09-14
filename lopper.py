@@ -36,6 +36,7 @@ class LopperFmt(Enum):
     HEX = 3
     DEC = 4
     STRING = 5
+    MULTI_STRING = 5
 
 @contextlib.contextmanager
 def stdoutIO(stdout=None):
@@ -61,13 +62,20 @@ class Lopper:
     # Searches for a node by its name
     def node_find_by_name( fdt, node_name, starting_node = 0 ):
         nn = starting_node
-        depth = 0
+        # short circuit the search if they are looking for /
+        if node_name == "/":
+            depth = -1
+        else:
+            depth = 0
         matching_node = 0
         while depth >= 0:
             nn_name = fdt.get_name(nn)
-            if re.search( nn_name, node_name ):
-                matching_node = nn
-                depth = -1
+            if nn_name:
+                if re.search( nn_name, node_name ):
+                    matching_node = nn
+                    depth = -1
+                else:
+                    nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
             else:
                 nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
 
@@ -96,24 +104,27 @@ class Lopper:
 
             prop_offset = fdt_dest.subnode_offset( newoff, nn_name )
 
+            if verbose > 2:
+                print( "" )
+                print( "properties for: %s" % fdt_source.get_name(nn) )
+
             prop_list = []
             poffset = fdt_source.first_property_offset(nn, QUIET_NOTFOUND)
             while poffset > 0:
                 prop = fdt_source.get_property_by_offset(poffset)
                 prop_list.append(prop.name)
                 if verbose > 2:
-                    print( "" )
-                    print( "properties for: %s" % fdt_source.get_name(nn) )
-                    print( "prop name: %s" % prop.name )
-                    print( "prop raw: %s" % prop )
+                    print( "   prop name: %s" % prop.name )
+                    print( "   prop raw: %s" % prop )
 
                 prop_val = Lopper.property_value_decode( prop, 0 )
                 if not prop_val:
                     prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND )
 
                 if verbose > 2:
-                    print( "prop decoded: %s" % prop_val )
-                    print( "prop type: %s" % type(prop_val))
+                    print( "   prop decoded: %s" % prop_val )
+                    print( "   prop type: %s" % type(prop_val))
+                    print( "" )
 
                 # TODO: there's a newly added static function that wraps this set checking, use it instead
                 # we have to re-encode based on the type of what we just decoded.
@@ -126,7 +137,7 @@ class Lopper:
                     fdt_dest.setprop_str( prop_offset, prop.name, prop_val )
                 elif type(prop_val) == list:
                     # list is a compound value, or an empty one!
-                    if len(prop_val) > 0:
+                    if len(prop_val) >= 0:
                         try:
                             bval = Lopper.encode_byte_array_from_strings(prop_val)
                         except:
@@ -465,12 +476,12 @@ class Lopper:
     # "simple" or "compound". A string is returned for simple, and a list of
     # properties for compound
     @staticmethod
-    def prop_get( fdt, node_number, property_name, ftype=LopperFmt.SIMPLE ):
+    def prop_get( fdt, node_number, property_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
         prop = fdt.getprop( node_number, property_name, QUIET_NOTFOUND )
-        if ftype == "simple":
-            val = Lopper.property_value_decode( prop, 0, ftype )
+        if ftype == LopperFmt.SIMPLE:
+            val = Lopper.property_value_decode( prop, 0, ftype, encode )
         else:
-            val = Lopper.property_value_decode( prop, 0, ftype )
+            val = Lopper.property_value_decode( prop, 0, ftype, encode )
 
         return val
 
@@ -637,7 +648,7 @@ class Lopper:
                 try:
                     # this is getting us some false positives on multi-string. Need
                     # a better test
-                    # val = property[:-1].decode('utf-8').split('\x00')
+                    #val = property[:-1].decode('utf-8').split('\x00')
                     val = ""
                     decode_msg = "(multi-string): {0}".format(val)
                 except:
@@ -648,21 +659,30 @@ class Lopper:
         else:
             decode_msg = ""
 
-            num_bits = len(property)
-            num_nums = num_bits // 4
-            start_index = 0
-            end_index = 4
-            short_int_size = 4
-            val = []
-            while end_index <= (num_nums * short_int_size):
-                short_int = property[start_index:end_index]
-                if encode == LopperFmt.HEX:
-                    converted_int = hex(int.from_bytes(short_int,'big',signed=False))
-                else:
-                    converted_int = int.from_bytes(short_int,'big',signed=False)
-                start_index = start_index + short_int_size
-                end_index = end_index + short_int_size
-                val.append(converted_int)
+            if encode == LopperFmt.STRING:
+                try:
+                    val = property[:-1].decode('utf-8').split('\x00')
+                    decode_msg = "(multi-string): {0}".format(val)
+                except:
+                    decode_msg = "** unable to decode value **"
+
+            else:
+                decode_msg = "(multi number)"
+                num_bits = len(property)
+                num_nums = num_bits // 4
+                start_index = 0
+                end_index = 4
+                short_int_size = 4
+                val = []
+                while end_index <= (num_nums * short_int_size):
+                    short_int = property[start_index:end_index]
+                    if encode == LopperFmt.HEX:
+                        converted_int = hex(int.from_bytes(short_int,'big',signed=False))
+                    else:
+                        converted_int = int.from_bytes(short_int,'big',signed=False)
+                        start_index = start_index + short_int_size
+                        end_index = end_index + short_int_size
+                        val.append(converted_int)
 
         if verbose > 3:
             print( "[DEBUG+]: decoding property: \"%s\" (%s) [%s] --> %s" % (property, poffset, property, decode_msg ) )
@@ -775,6 +795,40 @@ class SystemDeviceTree:
                     print( "[DEBUG]: node name: %s" % node_name )
 
                 # TODO: need a better way to search for the possible transform types, i.e. a dict
+                if re.search( ".*,output$", val ):
+                    output_file_name = Lopper.prop_get( xform_fdt, n, 'outfile' )
+                    if not output_file_name:
+                        print( "[ERROR]: cannot get output file name from transform" )
+                        sys.exit(1)
+
+                    if verbose > 1:
+                        print( "[DEBUG]: outfile is: %s" % output_file_name )
+
+                    output_nodes = Lopper.prop_get( xform_fdt, n, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
+
+                    if verbose > 1:
+                        print( "[DEBUG]: output selected are: %s" % output_nodes )
+
+                    # TODO: allow regexes for nodes
+                    if "*" in output_nodes:
+                        ff = libfdt.Fdt(self.FDT.as_bytearray())
+                    else:
+                        # Note: we may want to switch this around, and copy the old tree and
+                        #       delete nodes. This will be important if we run into some
+                        #       strangely formatted ones that we can't copy.
+                        ff = libfdt.Fdt.create_empty_tree( self.FDT.totalsize() )
+                        for o_node in output_nodes:
+                            node_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0 )
+                            Lopper.node_copy( self.FDT, ff, node_to_copy )
+
+                    b_array = ff.as_bytearray()
+                    if b_array:
+                        # TODO: We may want to switch on the output type and be willing
+                        #       to write more than the dtb. Just like we do in the main
+                        #       routine. So we can then factor out the output backend code
+                        with open(output_file_name, 'wb') as w:
+                            w.write(b_array)
+
                 if re.search( ".*,callback-v1$", val ):
                     # also note: this callback may change from being called as part of the
                     # tranform loop, to something that is instead called by walking the
@@ -1207,6 +1261,8 @@ if __name__ == "__main__":
     device_tree.verbose = verbose
 
     device_tree.transform()
+
+    # TODO; this needs to be a Lopper static routine that we simply call.
 
     # switch on the output format. i.e. we may want to write commands/drivers
     # versus dtb .. and the logic to write them out should be loaded from
