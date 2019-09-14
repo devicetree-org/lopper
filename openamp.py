@@ -1,5 +1,14 @@
 #!/usr/bin/python3
 
+#/*
+# * Copyright (c) 2019,2020 Xilinx Inc. All rights reserved.
+# *
+# * Author:
+# *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+# *
+# * SPDX-License-Identifier: BSD-3-Clause
+# */
+
 import struct
 import sys
 import types
@@ -318,10 +327,10 @@ else:
         print( "[INFO]: filtering on:\n------%s-------\n" % code )
 
     # the action will be taken if the code block returns 'true'
-    Lopper.filter_node( sdt, xform_path, "delete", code, verbose )
+    Lopper.node_filter( sdt, xform_path, "delete", code, verbose )
 
     # we must re-find the domain node, since its numbering may have
-    # changed due to the filter_node deleting things
+    # changed due to the node_filter deleting things
     tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
 
     # lets track any nodes that are referenced by access parameters. We use this
@@ -441,16 +450,16 @@ else:
 
             # the action will be taken if the code block returns 'true'
             if n == "/":
-                Lopper.filter_node( sdt, "/", "delete", code, verbose )
+                Lopper.node_filter( sdt, "/", "delete", code, verbose )
             else:
-                Lopper.filter_node( sdt, n + "/", "delete", code, verbose )
+                Lopper.node_filter( sdt, n + "/", "delete", code, verbose )
 
             # we must re-find the domain node, since its numbering may have
-            # changed due to the filter_node deleting things
+            # changed due to the node_filter deleting things
             tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
 
     # we must re-find the domain node, since its numbering may have
-    # changed due to the filter_node deleting things
+    # changed due to the node_filter deleting things
     tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
 
     memory_hex = Lopper.prop_get( sdt.FDT, tgt_node, "memory", "compound:hex" )

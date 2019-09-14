@@ -1,5 +1,14 @@
 #!/usr/bin/python3
 
+#/*
+# * Copyright (c) 2019,2020 Xilinx Inc. All rights reserved.
+# *
+# * Author:
+# *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+# *
+# * SPDX-License-Identifier: BSD-3-Clause
+# */
+
 import struct
 import sys
 import types
@@ -18,6 +27,27 @@ import tempfile
 
 import libfdt
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
+
+
+# (NOTFOUND,
+#  EXISTS,
+#  NOSPACE,
+#  BADOFFSET,
+#  BADPATH,
+#  BADPHANDLE,
+#  BADSTATE,
+#  TRUNCATED,
+#  BADMAGIC,
+#  BADVERSION,
+#  BADSTRUCTURE,
+#  BADLAYOUT,
+#  INTERNAL,
+#  BADNCELLS,
+#  BADVALUE,
+#  BADOVERLAY,
+#  NOPHANDLES) = QUIET_ALL = range(1, 18)
+
+
 
 @contextlib.contextmanager
 def stdoutIO(stdout=None):
@@ -195,7 +225,7 @@ class Lopper:
     #  - test_op varies based on the action being taken
     #
     @staticmethod
-    def filter_node( sdt, node_prefix, action, test_cmd, verbose=0 ):
+    def node_filter( sdt, node_prefix, action, test_cmd, verbose=0 ):
         fdt = sdt.FDT
         if verbose:
             print( "[NOTE]: filtering nodes root: %s" % node_prefix )
@@ -211,7 +241,7 @@ class Lopper:
                 print( "[WARN]: no nodes found that match prefix %s" % node_prefix )
 
         # make a list of safe functions
-        safe_list = ['Lopper.prop_get', 'Lopper.getphandle', 'Lopper.filter_node', 'Lopper.refcount', 'verbose', 'print']
+        safe_list = ['Lopper.prop_get', 'Lopper.getphandle', 'Lopper.node_filter', 'Lopper.refcount', 'verbose', 'print']
 
         # this should work, but isn't resolving the local vars, so we have to add them again in the
         # loop below.
@@ -222,7 +252,7 @@ class Lopper:
         safe_dict['print'] = print
         safe_dict['prop_get'] = Lopper.prop_get
         safe_dict['getphandle'] = Lopper.getphandle
-        safe_dict['filter_node'] = Lopper.filter_node
+        safe_dict['node_filter'] = Lopper.node_filter
         safe_dict['refcount'] = Lopper.refcount
         safe_dict['fdt'] = fdt
         safe_dict['sdt'] = sdt
