@@ -63,7 +63,8 @@
                                   pnode-id = <0x7>;
                                   // mboxes = <&ipi_mailbox_rpu0 0>, <&ipi_mailbox_rpu0 1>;
                                   mboxes = <&__mailbox_ipi__>;
-                                  mbox-names = "tx", "rx";
+                                  // mbox-names = "tx", "rx";
+                                  mbox-names = "__mbox_names__";
                                   tcm_0_a: tcm_0@0 {
                                            reg = <0x0 0xFFE00000 0x0 0x10000>;
                                            pnode-id = <0xf>;
@@ -91,10 +92,17 @@
                           callback = "xlnx_openamp_rpu";
                   };
                   xform_11 {
-                        // node name modify
+                        // property value modify
                         compatible = "system-device-tree-v1,xform,modify";
                         // disabled for now: will be put in a test transforms .dts file
                         // modify = "/:model:this is a test";
+                 };
+                 xform_12 {
+                        // test: property add
+                        // example: add a special ID into various nodes
+                        compatible = "system-device-tree-v1,xform,modify";
+                        // disabled for now: will be put in a test transforms .dts file
+                        modify = "/:pnode-id:0x7";
                  };
         };
 };
