@@ -58,6 +58,30 @@ class Lopper:
 
         return node
 
+    # get the type of a node's parent. Either by its name, or by its offset #
+    # returns "" if we don't know the type
+    @staticmethod
+    def node_get_parent_type( fdt, node_name="", node_offset=0 ):
+        parent_node_type = ""
+        if node_offset:
+            # a node number was passed, use that as our first choice
+            node_parent = fdt.parent_offset( node_offset, QUIET_NOTFOUND)
+        else:
+            # a node name (path) was passed. Lookup the offset of it, and
+            # then find the parent.
+            try:
+                node_offset = fdt.path_offset( node_name )
+            except:
+                node_parent = 0
+
+            node_parent = fdt.parent_offset( node_offset, QUIET_NOTFOUND)
+
+        if node_parent:
+            parent_node_type = Lopper.prop_get( fdt, node_parent, "compatible" )
+            parent_node_name = fdt.get_name( node_parent )
+
+        return parent_node_type
+
     @staticmethod
     # Searches for a node by its name
     def node_find_by_name( fdt, node_name, starting_node = 0 ):
@@ -126,24 +150,7 @@ class Lopper:
                     print( "   prop type: %s" % type(prop_val))
                     print( "" )
 
-                # TODO: there's a newly added static function that wraps this set checking, use it instead
-                # we have to re-encode based on the type of what we just decoded.
-                if type(prop_val) == int:
-                    if sys.getsizeof(prop_val) > 32:
-                        fdt_dest.setprop_u64( prop_offset, prop.name, prop_val )
-                    else:
-                        fdt_dest.setprop_u32( prop_offset, prop.name, prop_val )
-                elif type(prop_val) == str:
-                    fdt_dest.setprop_str( prop_offset, prop.name, prop_val )
-                elif type(prop_val) == list:
-                    # list is a compound value, or an empty one!
-                    if len(prop_val) >= 0:
-                        try:
-                            bval = Lopper.encode_byte_array_from_strings(prop_val)
-                        except:
-                            bval = Lopper.encode_byte_array(prop_val)
-
-                        fdt_dest.setprop( prop_offset, prop.name, bval)
+                Lopper.prop_set( fdt_dest, prop_offset, prop.name, prop_val )
 
                 poffset = fdt_source.next_property_offset(poffset, QUIET_NOTFOUND)
 
@@ -555,7 +562,7 @@ class Lopper:
             fdt_dest.setprop_str( node_number, prop_name, prop_val )
         elif type(prop_val) == list:
             # list is a compound value, or an empty one!
-            if len(prop_val) > 0:
+            if len(prop_val) >= 0:
                 try:
                     bval = Lopper.encode_byte_array_from_strings(prop_val)
                 except:
