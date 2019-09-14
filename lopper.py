@@ -24,30 +24,18 @@ from io import StringIO
 import contextlib
 import importlib
 import tempfile
+from enum import Enum
 
 import libfdt
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
 
-
-# (NOTFOUND,
-#  EXISTS,
-#  NOSPACE,
-#  BADOFFSET,
-#  BADPATH,
-#  BADPHANDLE,
-#  BADSTATE,
-#  TRUNCATED,
-#  BADMAGIC,
-#  BADVERSION,
-#  BADSTRUCTURE,
-#  BADLAYOUT,
-#  INTERNAL,
-#  BADNCELLS,
-#  BADVALUE,
-#  BADOVERLAY,
-#  NOPHANDLES) = QUIET_ALL = range(1, 18)
-
-
+# For use in encode/decode routines
+class LopperFmt(Enum):
+    SIMPLE = 1
+    COMPOUND = 2
+    HEX = 3
+    DEC = 4
+    STRING = 5
 
 @contextlib.contextmanager
 def stdoutIO(stdout=None):
@@ -121,7 +109,7 @@ class Lopper:
 
                 prop_val = Lopper.decode_property_value( prop, 0 )
                 if not prop_val:
-                    prop_val = Lopper.decode_property_value( prop, 0, "compound" )
+                    prop_val = Lopper.decode_property_value( prop, 0, LopperFmt.COMPOUND )
 
                 if verbose > 2:
                     print( "prop decoded: %s" % prop_val )
@@ -421,7 +409,7 @@ class Lopper:
     # ftype can be "simple" or "compound". A string is returned for
     # simple, and a list of properties for compound
     @staticmethod
-    def prop_get( fdt, node_number, property_name, ftype="simple" ):
+    def prop_get( fdt, node_number, property_name, ftype=LopperFmt.SIMPLE ):
         prop = fdt.getprop( node_number, property_name, QUIET_NOTFOUND )
         if ftype == "simple":
             val = Lopper.decode_property_value( prop, 0, ftype )
@@ -432,7 +420,7 @@ class Lopper:
 
     # TODO: make the "ftype" value an enumerated type
     @staticmethod
-    def prop_set( fdt_dest, node_number, prop_name, prop_val, ftype="simple" ):
+    def prop_set( fdt_dest, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE ):
         try:
             prop_val_converted = int(prop_val,0)
             # if it works, that's our new prop_val. This covers the case where
@@ -565,14 +553,14 @@ class Lopper:
     # Parameters:
     #   - Property object from libfdt
     #   - poffset (property offset) [optional]
-    #   - type: simple or compound:<format>
-    #           <format> is optional, and can be: dec or hex. 'dec' is the default
+    #   - ftype: simple or compound
+    #   - encode: <format> is optional, and can be: dec or hex. 'dec' is the default
     @staticmethod
-    def decode_property_value( property, poffset, type="simple", verbose=0 ):
+    def decode_property_value( property, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC, verbose=0 ):
         # these could also be nested. Note: this is temporary since the decoding
         # is sometimes wrong. We need to look at libfdt and see how they are
         # stored so they can be unpacked better.
-        if re.search( "simple", type ):
+        if ftype == LopperFmt.SIMPLE:
             val = ""
             decode_msg = ""
             try:
@@ -603,11 +591,6 @@ class Lopper:
                 decode_msg = "** unable to decode value **"
         else:
             decode_msg = ""
-            compound = type.split(":")
-            format = "dec"
-            if len(compound) == 2:
-                if re.search( "hex", compound[1] ):
-                    format = "hex"
 
             num_bits = len(property)
             num_nums = num_bits // 4
@@ -617,7 +600,7 @@ class Lopper:
             val = []
             while end_index <= (num_nums * short_int_size):
                 short_int = property[start_index:end_index]
-                if format == "hex":
+                if encode == LopperFmt.HEX:
                     converted_int = hex(int.from_bytes(short_int,'big',signed=False))
                 else:
                     converted_int = int.from_bytes(short_int,'big',signed=False)
