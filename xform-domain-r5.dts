@@ -104,5 +104,15 @@
                         // disabled for now: will be put in a test transforms .dts file
                         modify = "/:pnode-id:0x7";
                  };
+                 xform_13 {
+                        compatible = "system-device-tree-v1,xform,output";
+                        outfile = "openamp-test.dtb";
+                        nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
+                 };
+                 xform_14 {
+                        compatible = "system-device-tree-v1,xform,output";
+                        outfile = "linux.dtb";
+                        nodes = "*";
+                 };
         };
 };
