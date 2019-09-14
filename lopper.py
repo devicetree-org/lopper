@@ -196,6 +196,53 @@ class Lopper:
 
         return ret_nodes
 
+    # a really thin wrapper to easily write a system device tree
+    @staticmethod
+    def write_sdt( sdt_to_write, output_filename, overwrite=True, verbose=0 ):
+        Lopper.write_fdt( sdt_to_write.FDT, output_filename, overwrite, verbose )
+
+    @staticmethod
+    def write_fdt( fdt_to_write, output_filename, overwrite=True, verbose=0 ):
+        pass
+        # switch on the output format. i.e. we may want to write commands/drivers
+        # versus dtb .. and the logic to write them out should be loaded from
+        # separate implementation files
+        if re.search( ".dtb", output_filename ):
+            if verbose:
+                print( "[INFO]: dtb output format detected, writing %s" % output_filename )
+
+            byte_array = fdt_to_write.as_bytearray()
+
+            if verbose:
+                print( "[INFO]: writing output dtb: %s" % output_filename )
+
+            with open(output_filename, 'wb') as w:
+                w.write(byte_array)
+
+        elif re.search( ".cdo", output_filename ):
+            # TODO: special backends for writing data will have to be registered
+            #       like the callback modules
+            print( "[INFO]: would write a CDO if I knew how" )
+        elif re.search( ".dts", output_filename ):
+            if verbose:
+                print( "[INFO]: dts format detected, writing %s" % output_filename )
+
+            # write the device tree to a temporary dtb
+            fp = tempfile.NamedTemporaryFile()
+            byte_array = fdt_to_write.as_bytearray()
+            with open(fp.name, 'wb') as w:
+                w.write(byte_array)
+
+            # dump the dtb to a dts
+            Lopper.dump_dtb( fp.name, output_filename )
+
+            # close the temp file so it is removed
+            fp.close()
+        else:
+            print( "[ERROR]: could not detect output format" )
+            sys.exit(1)
+
+
     @staticmethod
     def process_input( sdt_file, input_files, include_paths ):
         sdt = SystemDeviceTree( sdt_file )
@@ -1262,30 +1309,4 @@ if __name__ == "__main__":
 
     device_tree.transform()
 
-    # TODO; this needs to be a Lopper static routine that we simply call.
-
-    # switch on the output format. i.e. we may want to write commands/drivers
-    # versus dtb .. and the logic to write them out should be loaded from
-    # separate implementation files
-    if re.search( ".dtb", output ):
-        if verbose:
-            print( "[INFO]: dtb output format detected, writing %s" % output )
-        device_tree.write( output )
-    elif re.search( ".cdo", output ):
-        print( "[INFO]: would write a CDO if I knew how" )
-    elif re.search( ".dts", output ):
-        if verbose:
-            print( "[INFO]: dts format detected, writing %s" % output )
-
-        # write the device tree to a temporary dtb
-        fp = tempfile.NamedTemporaryFile()
-        device_tree.write( fp.name )
-
-        # dump the dtb to a dts
-        Lopper.dump_dtb( fp.name, output )
-
-        # close the temp file so it is removed
-        fp.close()
-    else:
-        print( "[ERROR]: could not detect output format" )
-        sys.exit(1)
+    Lopper.write_sdt( device_tree,  output, True, device_tree.verbose )
