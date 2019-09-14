@@ -107,9 +107,9 @@ class Lopper:
                     print( "prop name: %s" % prop.name )
                     print( "prop raw: %s" % prop )
 
-                prop_val = Lopper.decode_property_value( prop, 0 )
+                prop_val = Lopper.property_value_decode( prop, 0 )
                 if not prop_val:
-                    prop_val = Lopper.decode_property_value( prop, 0, LopperFmt.COMPOUND )
+                    prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND )
 
                 if verbose > 2:
                     print( "prop decoded: %s" % prop_val )
@@ -316,9 +316,9 @@ class Lopper:
                 prop = fdt.get_property_by_offset(poffset)
                 prop_list.append(prop.name)
 
-                prop_val = Lopper.decode_property_value( prop, 0 )
+                prop_val = Lopper.property_value_decode( prop, 0 )
                 if not prop_val:
-                    prop_val = Lopper.decode_property_value( prop, 0, LopperFmt.COMPOUND, LopperFmt.HEX )
+                    prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND, LopperFmt.HEX )
 
                 outstring = "{0} = {1}".format( prop.name, prop_val )
                 print( outstring.rjust(len(outstring)+indent+4," " ))
@@ -456,16 +456,16 @@ class Lopper:
         prop = fdt.get_phandle( node_number )
         return prop
 
-    # utility command to get a property (as a string) from a node
-    # ftype can be "simple" or "compound". A string is returned for
-    # simple, and a list of properties for compound
+    # utility command to get a property (as a string) from a node ftype can be
+    # "simple" or "compound". A string is returned for simple, and a list of
+    # properties for compound
     @staticmethod
     def prop_get( fdt, node_number, property_name, ftype=LopperFmt.SIMPLE ):
         prop = fdt.getprop( node_number, property_name, QUIET_NOTFOUND )
         if ftype == "simple":
-            val = Lopper.decode_property_value( prop, 0, ftype )
+            val = Lopper.property_value_decode( prop, 0, ftype )
         else:
-            val = Lopper.decode_property_value( prop, 0, ftype )
+            val = Lopper.property_value_decode( prop, 0, ftype )
 
         return val
 
@@ -607,7 +607,7 @@ class Lopper:
     #   - ftype: simple or compound
     #   - encode: <format> is optional, and can be: dec or hex. 'dec' is the default
     @staticmethod
-    def decode_property_value( property, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC, verbose=0 ):
+    def property_value_decode( property, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC, verbose=0 ):
         # these could also be nested. Note: this is temporary since the decoding
         # is sometimes wrong. We need to look at libfdt and see how they are
         # stored so they can be unpacked better.
@@ -763,7 +763,7 @@ class SystemDeviceTree:
 
             for n in xform_nodes:
                 prop = xform_fdt.getprop( n, "compatible" )
-                val = Lopper.decode_property_value( prop, 0 )
+                val = Lopper.property_value_decode( prop, 0 )
                 node_name = xform_fdt.get_name( n )
 
                 if self.verbose:
@@ -853,9 +853,9 @@ class SystemDeviceTree:
                         print( "[INFO]: node add transform found" )
 
                     prop = xform_fdt.getprop( n, "node_name" )
-                    new_node_name = Lopper.decode_property_value( prop, 0 )
+                    new_node_name = Lopper.property_value_decode( prop, 0 )
                     prop = xform_fdt.getprop( n, "node_path" )
-                    new_node_path = Lopper.decode_property_value( prop, 0 )
+                    new_node_path = Lopper.property_value_decode( prop, 0 )
 
                     if verbose:
                         print( "[INFO]: node name: %s node path: %s" % (new_node_name, new_node_path) )
@@ -1042,7 +1042,7 @@ class SystemDeviceTree:
             poffset = self.FDT.first_property_offset( node, QUIET_NOTFOUND )
             while poffset > 0:
                 prop = self.FDT.get_property_by_offset( poffset )
-                val = Lopper.decode_property_value( prop, poffset )
+                val = Lopper.property_value_decode( prop, poffset )
 
                 if propname == prop.name:
                     if propname == "inaccessible":
