@@ -633,7 +633,10 @@ class Lopper:
                     pass
             if not val and val != 0:
                 try:
-                    val = property[:-1].decode('utf-8').split('\x00')
+                    # this is getting us some false positives on multi-string. Need
+                    # a better test
+                    # val = property[:-1].decode('utf-8').split('\x00')
+                    val = ""
                     decode_msg = "(multi-string): {0}".format(val)
                 except:
                     pass
@@ -1202,8 +1205,6 @@ if __name__ == "__main__":
     device_tree.verbose = verbose
 
     device_tree.transform()
-
-    #Lopper.node_dump( device_tree.FDT, "/reserved-memory", True )
 
     # switch on the output format. i.e. we may want to write commands/drivers
     # versus dtb .. and the logic to write them out should be loaded from
