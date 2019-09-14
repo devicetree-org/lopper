@@ -298,8 +298,59 @@ class Lopper:
                 pass
 
     @staticmethod
-    def dump_node( node_offset ):
-        print( "if I was implemented, I'd dump a node, with more info when --verbose was passed" )
+    def node_dump( fdt, node_path, children=False ):
+        nn = fdt.path_offset( node_path )
+        old_depth = -1
+        depth = 0
+        newoff = 0
+        indent = 0
+        while depth >= 0:
+            nn_name = fdt.get_name(nn)
+
+            outstring = nn_name + " {"
+            print( outstring.rjust(len(outstring)+indent," " ))
+
+            prop_list = []
+            poffset = fdt.first_property_offset(nn, QUIET_NOTFOUND)
+            while poffset > 0:
+                prop = fdt.get_property_by_offset(poffset)
+                prop_list.append(prop.name)
+
+                prop_val = Lopper.decode_property_value( prop, 0 )
+                if not prop_val:
+                    prop_val = Lopper.decode_property_value( prop, 0, LopperFmt.COMPOUND, LopperFmt.HEX )
+
+                outstring = "{0} = {1}".format( prop.name, prop_val )
+                print( outstring.rjust(len(outstring)+indent+4," " ))
+
+                if verbose > 2:
+                    outstring = "prop type: {}".format(type(prop_val))
+                    print( outstring.rjust(len(outstring)+indent+12," " ))
+                    outstring = "prop name: {}".format( prop.name )
+                    print( outstring.rjust(len(outstring)+indent+12," " ))
+                    outstring = "prop raw: {}".format( prop )
+                    print( outstring.rjust(len(outstring)+indent+12," " ))
+
+                poffset = fdt.next_property_offset(poffset, QUIET_NOTFOUND)
+
+            if children:
+                old_depth = depth
+                nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
+
+                # we need a new offset fo the next time through this loop (but only if our depth
+                # changed)
+                if depth >= 0 and old_depth != depth:
+                    pass
+                else:
+                    outstring = "}"
+                    print( outstring.rjust(len(outstring)+indent," " ))
+
+                indent = depth + 3
+            else:
+                depth = -1
+
+        print( "}" )
+
 
     @staticmethod
     def remove_node_if_not_compatible( fdt, node_prefix, compat_string ):
@@ -1152,11 +1203,7 @@ if __name__ == "__main__":
 
     device_tree.transform()
 
-    #  When "no-access" is specified in a CPU node, everything not listed in "no-
-    #  access" is assumed to be accessible from the CPU.
-    #  TODO: this needs to be crosssed checked against "access" references
-    #        and resolved as a resource split/mapping.
-    inaccessible_nodes = device_tree.inaccessible_nodes( "no-access" )
+    #Lopper.node_dump( device_tree.FDT, "/reserved-memory", True )
 
     # switch on the output format. i.e. we may want to write commands/drivers
     # versus dtb .. and the logic to write them out should be loaded from
