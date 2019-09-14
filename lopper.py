@@ -189,18 +189,23 @@ class Lopper:
     def process_input( sdt_file, input_files, include_paths ):
         sdt = SystemDeviceTree( sdt_file )
         # is the sdt a dts ?
-        if re.search( ".dts*", sdt.dts ):
+        if re.search( ".dts$", sdt.dts ):
             sdt.dtb = Lopper.dt_compile( sdt.dts, input_files, include_paths )
 
         # Individually compile the input files. At some point these may be
         # concatenated with the main SDT if dtc is doing some of the work, but for
         # now, libfdt is doing the transforms so we compile them separately
         for ifile in input_files:
-            if re.search( ".dts*", ifile ):
+            if re.search( ".dts$", ifile ):
                 xform = Xform( ifile )
                 Lopper.dt_compile( xform.dts, "", include_paths )
                 # TODO: look for errors!
                 xform.dtb = "{0}.{1}".format(ifile, "dtb")
+                sdt.xforms.append( xform )
+            elif re.search( ".dtb$", ifile ):
+                xform = Xform( ifile )
+                xform.dts = ""
+                xform.dtb = ifile
                 sdt.xforms.append( xform )
 
         return sdt
@@ -469,7 +474,6 @@ class Lopper:
 
         return val
 
-    # TODO: make the "ftype" value an enumerated type
     @staticmethod
     def prop_set( fdt_dest, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE ):
         try:
@@ -531,8 +535,6 @@ class Lopper:
         if verbose:
             print( "[INFO]: preprocessing sdt: %s" % ppargs )
         subprocess.run( ppargs, check = True )
-
-        # step 1b: transforms ?
 
         # step 2: compile the dtb
         #         dtc -O dtb -o test_tree1.dtb test_tree1.dts
@@ -981,15 +983,15 @@ class SystemDeviceTree:
                 prop_list.append(prop.name)
                 poffset = self.FDT.next_property_offset(poffset, QUIET_NOTFOUND)
 
-                if propname in prop_list:
-                    # node is an integer offset, propname is a string
-                    if self.verbose:
-                        print( "[INFO]: changing property %s to %s" % (propname, propval ))
+            if propname in prop_list:
+                # node is an integer offset, propname is a string
+                if self.verbose:
+                    print( "[INFO]: changing property %s to %s" % (propname, propval ))
 
+                Lopper.prop_set( self.FDT, node, propname, propval )
+            else:
+                if add_if_missing:
                     Lopper.prop_set( self.FDT, node, propname, propval )
-                else:
-                    if add_if_missing:
-                        Lopper.prop_set( self.FDT, node, propname, propval )
 
             if recursive:
                 node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
