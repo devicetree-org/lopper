@@ -868,13 +868,7 @@ class SystemDeviceTree:
                             node_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0 )
                             Lopper.node_copy( self.FDT, ff, node_to_copy )
 
-                    b_array = ff.as_bytearray()
-                    if b_array:
-                        # TODO: We may want to switch on the output type and be willing
-                        #       to write more than the dtb. Just like we do in the main
-                        #       routine. So we can then factor out the output backend code
-                        with open(output_file_name, 'wb') as w:
-                            w.write(b_array)
+                    Lopper.write_fdt( ff, output_file_name, True, verbose )
 
                 if re.search( ".*,callback-v1$", val ):
                     # also note: this callback may change from being called as part of the
