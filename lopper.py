@@ -58,10 +58,20 @@ class Lopper:
 
         return node
 
+    # utility function to get the "type" of a node. It is just a small wrapper
+    # around the compatible property, but we can use this instead of directly
+    # getting compatible, since if we switch formats or if we want to infer
+    # anything based on the name of a node, we can hide it in this routine
+    @staticmethod
+    def node_type( fdt, node_offset, verbose=0 ):
+        rt = Lopper.prop_get( fdt, node_offset, "compatible" )
+
+        return rt
+
     # get the type of a node's parent. Either by its name, or by its offset #
     # returns "" if we don't know the type
     @staticmethod
-    def node_get_parent_type( fdt, node_name="", node_offset=0 ):
+    def node_parent_type( fdt, node_name="", node_offset=0 ):
         parent_node_type = ""
         if node_offset:
             # a node number was passed, use that as our first choice

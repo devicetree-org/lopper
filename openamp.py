@@ -373,7 +373,8 @@ else:
                 #    Note: this should be recursive eventually, but for now, we keep it simple
                 # print( "node name: %s node parent: %s" % (node_name, node_parent) )
                 if node_parent:
-                    parent_node_type = Lopper.prop_get( sdt.FDT, node_parent, "compatible" )
+                    parent_node_type = Lopper.node_type( sdt.FDT, node_parent )
+                    # TODO: could wrap the get_name call as well in a lopper static function
                     parent_node_name = sdt.FDT.get_name( node_parent )
                     node_grand_parent = sdt.FDT.parent_offset(node_parent,QUIET_NOTFOUND)
                     if not parent_node_type:
@@ -385,23 +386,22 @@ else:
                             # if there's no type and no special name, we need to bail
                             continue
 
+                    # if the parent is a simple bus, then something withing the bus had an
+                    # <access>. We need to refcount and delete anything that isn't accessed.
                     if re.search( "simple-bus", parent_node_type ):
+                        # refcount the bus
+                        full_name = Lopper.node_abspath( sdt.FDT, node_parent )
+                        sdt.node_ref_inc( full_name )
+
+                        if not full_name in node_access_tracker:
+                            node_access_tracker[full_name] = [ full_name, "*" ]
+
                         if verbose > 1:
                             print( "[INFO]: node parent is a simple-bus (%s), dropping sibling nodes" % parent_node_name)
-                        # TODO: this node path must be constructed better than this ...
-                        parent_subnodes = Lopper.get_subnodes( sdt.FDT, "/" + parent_node_name )
-                        for n in parent_subnodes:
-                            if re.search( node_name, n ):
-                                pass # do nothing for now
-                            else:
-                                # we must delete this node
-                                tgt_node_path = "/" + parent_node_name + "/" + n
-                                try:
-                                    tgt_node_id = sdt.FDT.path_offset( tgt_node_path )
-                                except:
-                                    tgt_node_id = 0
-                                if tgt_node_id:
-                                    sdt.node_remove( tgt_node_id )
+
+                        full_name = Lopper.node_abspath( sdt.FDT, anode )
+                        sdt.node_ref_inc( full_name )
+
                     elif re.search( "reserved-memory", parent_node_type ):
                         if verbose > 1:
                             print( "[INFO]: reserved memory processing for: %s" % node_name)
