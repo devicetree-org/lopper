@@ -31,12 +31,12 @@ import libfdt
 def get_compatible_strings():
     print( "openamp,domain-v1" )
 
-def is_compat( compat_string_to_test ):
+def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,domain-v1", compat_string_to_test):
-        return True
+        return process_domain
     if re.search( "openamp,xlnx-rpu", compat_string_to_test):
-        return True
-    return False
+        return xlnx_openamp_rpu
+    return ""
 
 # tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
 def check_bit_set(n, k):
@@ -286,8 +286,11 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
 # all the logic for applying a openamp domain to a device tree.
 # this is a really long routine that will be broken up as more examples
 # are done and it can be propery factored out.
-def process_domain( tgt_domain, sdt, verbose=0 ):
-    tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
+def process_domain( tgt_node, sdt, verbose=0 ):
+    if verbose:
+        print( "[INFO]: cb: process_domain( %s, %s, %s )" % (tgt_node, sdt, verbose))
+
+    tgt_domain = Lopper.node_abspath( sdt.FDT, tgt_node )
     cpu_prop_values = Lopper.prop_get( sdt.FDT, tgt_node, "cpus", "compound" )
 
     if cpu_prop_values == "":
@@ -489,6 +492,6 @@ else:
             # TODO: change this to a lopper wrapper call
             sdt.FDT.setprop(memory_node, 'reg', Lopper.encode_byte_array(memory_int))
 
-
+    return True
 
 

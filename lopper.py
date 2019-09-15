@@ -793,26 +793,29 @@ class SystemDeviceTree:
         self.FDT.del_node( target_node_offset, True )
 
     def apply_domain_spec(self, tgt_domain):
-        tgt_node = Lopper.node_find( self.FDT, tgt_domain )
-        if tgt_node != 0:
-            if self.verbose:
-                print( "[INFO]: domain node found: %s for domain %s" % (tgt_node,tgt_domain) )
+        # This is called from the command line. We need to generate a transform
+        # device tree with:
+        #
+        # xform_0 {
+        #     compatible = "system-device-tree-v1,xform,callback-v1";
+        #     node = "/chosen/openamp_r5";
+        #     id = "openamp,domain-v1";
+        # };
+        # and then inject it into self.xforms to run first
 
-            # we can hard code this for now, but it needs to be a seperate routine to look
-            # up the domain compatibility properties and carry out actions
-            domain_compat = Lopper.prop_get( self.FDT, tgt_node, "compatible" )
-            if domain_compat:
-                if self.modules:
-                    for m in self.modules:
-                        if m.is_compat( domain_compat ):
-                            m.process_domain( tgt_domain, self, self.verbose )
-                            return
-                else:
-                    if self.verbose:
-                        print( "[INFO]: no modules available for domain processing .. skipping" )
-                        sys.exit(1)
-            else:
-                print( "[ERROR]: target domain has no compatible string, cannot apply a specification" )
+        sw = libfdt.Fdt.create_empty_tree( 2048 )
+        sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
+        offset = sw.add_subnode( 0, 'xforms' )
+        offset = sw.add_subnode( offset, 'xform_0' )
+        sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,xform,callback-v1')
+        sw.setprop_str( offset, 'node', '/chosen/openamp_r5' )
+        sw.setprop_str( offset, 'id', 'openamp,domain-v1' )
+        xform = Xform( 'commandline' )
+        xform.dts = ""
+        xform.dtb = ""
+        xform.fdt = sw
+
+        self.xforms.insert( 0, xform )
 
     # we use the name, rather than the offset, since the offset can change if
     # something is deleted from the tree. But we need to use the full path so
@@ -833,211 +836,226 @@ class SystemDeviceTree:
         return -1
 
     def transform(self):
+        # was --target passed on the command line ?
+        if target_domain:
+            self.apply_domain_spec(target_domain)
+
         if self.verbose:
             print( "[NOTE]: \'%d\' transform input(s) available" % len(self.xforms))
 
-        # was --target passed on the command line ?
-        if target_domain:
-            # TODO: the application of the spec needs to be in a loaded file
-            self.apply_domain_spec(target_domain)
+        xform_runqueue = {}
+        for pri in range(1,10):
+            xform_runqueue[pri] = []
+
+        # iterate the transforms, look for priority. If we find those, we'll run then first
+        for x in self.xforms:
+            if not x.fdt:
+                xform_fdt = libfdt.Fdt(open(x.dtb, mode='rb').read())
+                x.fdt = xform_fdt
+            else:
+                xform_fdt = x.fdt
+
+            xform_file_priority = Lopper.prop_get( xform_fdt, 0, "priority" )
+            if not xform_file_priority:
+                xform_file_priority = 5
+
+            xform_runqueue[xform_file_priority].append(x)
+
+        if verbose > 2:
+            print( "[DEBUG+]: xform runqueue: %s" % xform_runqueue )
 
         # iterate over the transforms
-        for x in self.xforms:
-            xform_fdt = libfdt.Fdt(open(x.dtb, mode='rb').read())
-            # Get all the nodes with a xform property
-            xform_nodes = Lopper.nodes_with_property( xform_fdt, "compatible" )
+        for pri in range(1,10):
+            for x in xform_runqueue[pri]:
+                if not x.fdt:
+                    xform_fdt = libfdt.Fdt(open(x.dtb, mode='rb').read())
+                else:
+                    xform_fdt = x.fdt
 
-            for n in xform_nodes:
-                prop = xform_fdt.getprop( n, "compatible" )
-                val = Lopper.property_value_decode( prop, 0 )
-                node_name = xform_fdt.get_name( n )
+                # Get all the nodes with a xform property
+                xform_nodes = Lopper.nodes_with_property( xform_fdt, "compatible" )
 
-                if self.verbose:
-                    print( "[INFO]: ------> processing transform: %s" % val )
-                if self.verbose > 2:
-                    print( "[DEBUG]: prop: %s val: %s" % (prop.name, val ))
-                    print( "[DEBUG]: node name: %s" % node_name )
+                for n in xform_nodes:
+                    prop = xform_fdt.getprop( n, "compatible" )
+                    val = Lopper.property_value_decode( prop, 0 )
+                    node_name = xform_fdt.get_name( n )
 
-                # TODO: need a better way to search for the possible transform types, i.e. a dict
-                if re.search( ".*,output$", val ):
-                    output_file_name = Lopper.prop_get( xform_fdt, n, 'outfile' )
-                    if not output_file_name:
-                        print( "[ERROR]: cannot get output file name from transform" )
-                        sys.exit(1)
-
-                    if verbose > 1:
-                        print( "[DEBUG]: outfile is: %s" % output_file_name )
-
-                    output_nodes = Lopper.prop_get( xform_fdt, n, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
-
-                    if verbose > 1:
-                        print( "[DEBUG]: output selected are: %s" % output_nodes )
-
-                    # TODO: allow regexes for nodes
-                    if "*" in output_nodes:
-                        ff = libfdt.Fdt(self.FDT.as_bytearray())
-                    else:
-                        # Note: we may want to switch this around, and copy the old tree and
-                        #       delete nodes. This will be important if we run into some
-                        #       strangely formatted ones that we can't copy.
-                        ff = libfdt.Fdt.create_empty_tree( self.FDT.totalsize() )
-                        for o_node in output_nodes:
-                            node_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0 )
-                            Lopper.node_copy( self.FDT, ff, node_to_copy )
-
-                    Lopper.write_fdt( ff, output_file_name, True, verbose )
-
-                if re.search( ".*,callback-v1$", val ):
-                    # also note: this callback may change from being called as part of the
-                    # tranform loop, to something that is instead called by walking the
-                    # entire device tree, looking for matching nodes and making callbacks at
-                    # that moment.
-                    cb_tgt_node_name = xform_fdt.getprop( n, 'node' ).as_str()
-                    if not cb_tgt_node_name:
-                        print( "[ERROR]: cannot find target node for the callback" )
-                        sys.exit(1)
-
-                    cb = xform_fdt.getprop( n, 'callback' ).as_str()
-                    cb_module = xform_fdt.getprop( n, 'module' ).as_str()
-                    cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
-                    if not cb_node:
-                        print( "[ERROR]: cannot find callback target node in tree" )
-                        sys.exit(1)
                     if self.verbose:
-                        print( "[INFO]: callback transform deteced" )
-                        print( "        cb: %s" % cb )
-                        print( "        module: %s" % cb_module )
+                        print( "[INFO]: ------> processing transform: %s" % val )
+                    if self.verbose > 2:
+                        print( "[DEBUG]: prop: %s val: %s" % (prop.name, val ))
+                        print( "[DEBUG]: node name: %s" % node_name )
 
-                    if self.modules:
-                        for m in self.modules:
-                            if m.is_compat( cb_module ):
-                                try:
-                                    func = getattr( m, cb )
+                    # TODO: need a better way to search for the possible transform types, i.e. a dict
+                    if re.search( ".*,output$", val ):
+                        output_file_name = Lopper.prop_get( xform_fdt, n, 'outfile' )
+                        if not output_file_name:
+                            print( "[ERROR]: cannot get output file name from transform" )
+                            sys.exit(1)
+
+                        if verbose > 1:
+                            print( "[DEBUG]: outfile is: %s" % output_file_name )
+
+                        output_nodes = Lopper.prop_get( xform_fdt, n, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
+
+                        if verbose > 1:
+                            print( "[DEBUG]: output selected are: %s" % output_nodes )
+
+                        # TODO: allow regexes for nodes
+                        if "*" in output_nodes:
+                            ff = libfdt.Fdt(self.FDT.as_bytearray())
+                        else:
+                            # Note: we may want to switch this around, and copy the old tree and
+                            #       delete nodes. This will be important if we run into some
+                            #       strangely formatted ones that we can't copy.
+                            ff = libfdt.Fdt.create_empty_tree( self.FDT.totalsize() )
+                            for o_node in output_nodes:
+                                node_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0 )
+                                Lopper.node_copy( self.FDT, ff, node_to_copy )
+
+                        Lopper.write_fdt( ff, output_file_name, True, verbose )
+
+                    if re.search( ".*,callback-v1$", val ):
+                        # also note: this callback may change from being called as part of the
+                        # tranform loop, to something that is instead called by walking the
+                        # entire device tree, looking for matching nodes and making callbacks at
+                        # that moment.
+                        cb_tgt_node_name = Lopper.prop_get( xform_fdt, n, 'node' )
+                        if not cb_tgt_node_name:
+                            print( "[ERROR]: cannot find target node for the callback" )
+                            sys.exit(1)
+
+                        cb = Lopper.prop_get( xform_fdt, n, 'callback' )
+                        cb_id = Lopper.prop_get( xform_fdt, n, 'id' )
+                        cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
+                        if not cb_node:
+                            print( "[ERROR]: cannot find callback target node in tree" )
+                            sys.exit(1)
+                        if self.verbose:
+                            print( "[INFO]: callback transform detected" )
+                            if cb:
+                                print( "        cb: %s" % cb )
+                            print( "        id: %s" % cb_id )
+
+                        # TODO: factor this out. can be used for domains and this. this is
+                        #       the handshake to find a compatible module.
+                        if self.modules:
+                            for m in self.modules:
+                                cb_func = m.is_compat( cb_node, cb_id )
+                                # we could double check that the function exists with this call:
+                                #    func = getattr( m, cbname )
+                                # but for now, we don't
+                                if cb_func:
                                     try:
-                                        if not func( cb_node, self, self.verbose ):
+                                        if not cb_func( cb_node, self, self.verbose ):
                                             print( "[WARNING]: the callback return false ..." )
                                     except Exception as e:
-                                        print( "[WARNING]: callback %s failed" % func )
+                                        print( "[WARNING]: callback %s failed" % cb_func )
                                         exc_type, exc_obj, exc_tb = sys.exc_info()
                                         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                                         print(exc_type, fname, exc_tb.tb_lineno)
-                                except:
-                                    print( "[ERROR] module %s has no function %s" % (m,cb))
-                                    sys.exit(1)
-
-                if re.search( ".*,load,module$", val ):
-                    if self.verbose:
-                        print( "--------------- [INFO]: node %s is a load module transform" % node_name )
-                    try:
-                        prop = xform_fdt.getprop( n, 'load' ).as_str()
-                        module = xform_fdt.getprop( n, 'module' ).as_str()
-                    except:
-                        prop = ""
-
-                    if prop:
-                        if self.verbose:
-                            print( "[INFO]: loading module %s" % prop )
-                        mod_file = Path( prop )
-                        mod_file_wo_ext = mod_file.with_suffix('')
-                        try:
-                            mod_file_abs = mod_file.resolve()
-                        except FileNotFoundError:
-                            print( "[ERROR]: module file %s not found" % prop )
-                            sys.exit(1)
-
-                        imported_module = __import__(str(mod_file_wo_ext))
-                        self.modules.append( imported_module )
-
-                if re.search( ".*,xform,domain$", val ):
-                    if self.verbose:
-                        print( "[INFO]: node %s is a compatible domain transform" % node_name )
-                    try:
-                        prop = xform_fdt.getprop( n, 'domain' ).as_str()
-                    except:
-                        prop = ""
-
-                    if prop:
-                        if self.verbose:
-                            print( "[INFO]: domain property found: %s" % prop )
-
-                        self.apply_domain_spec(prop)
-
-                if re.search( ".*,xform,add$", val ):
-                    if verbose:
-                        print( "[INFO]: node add transform found" )
-
-                    prop = xform_fdt.getprop( n, "node_name" )
-                    new_node_name = Lopper.property_value_decode( prop, 0 )
-                    prop = xform_fdt.getprop( n, "node_path" )
-                    new_node_path = Lopper.property_value_decode( prop, 0 )
-
-                    if verbose:
-                        print( "[INFO]: node name: %s node path: %s" % (new_node_name, new_node_path) )
-
-                    # this check isn't useful .. it is the xform node name, remove it ..
-                    if node_name:
-                        # iterate the subnodes of this xform, looking for one that has a matching
-                        # node_name fdt value
-                        new_node_to_add = Lopper.node_find_by_name( xform_fdt, new_node_name, n )
-                        Lopper.node_copy( xform_fdt, self.FDT, new_node_to_add )
-
-                if re.search( ".*,xform,modify$", val ):
-                    if self.verbose:
-                        print( "[INFO]: node %s is a compatible property modify transform" % node_name )
-                    try:
-                        prop = xform_fdt.getprop( n, 'modify' ).as_str()
-                    except:
-                        prop = ""
-
-                    if prop:
-                        if self.verbose:
-                            print( "[INFO]: modify property found: %s" % prop )
-
-                        # format is: "path":"property":"replacement"
-                        #    - modify to "nothing", is a remove operation
-                        #    - modify with no property is node operation (rename or remove)
-                        modify_expr = prop.split(":")
-                        if self.verbose:
-                            print( "[INFO]: modify path: %s" % modify_expr[0] )
-                            print( "        modify prop: %s" % modify_expr[1] )
-                            print( "        modify repl: %s" % modify_expr[2] )
-
-                        if modify_expr[1]:
-                            # property operation
-                            if not modify_expr[2]:
-                                if verbose:
-                                    print( "[INFO]: property remove operation detected: %s" % modify_expr[1])
-                                # TODO; make a special case of the property_modify_below
-                                self.property_remove( modify_expr[0], modify_expr[1], True )
-                            else:
-                                if verbose:
-                                    print( "[INFO]: property modify operation detected" )
-
-                                if Lopper.node_prop_check( self.FDT, modify_expr[0], modify_expr[1] ):
-                                    self.property_modify( modify_expr[0], modify_expr[1], modify_expr[2], False )
-                                else:
-                                    self.property_modify( modify_expr[0], modify_expr[1], modify_expr[2], False, True )
                         else:
-                            # node operation
-                            # in case /<name>/ was passed as the new name, we need to drop them
-                            # since they aren't valid in set_name()
-                            if modify_expr[2]:
-                                modify_expr[2] = modify_expr[2].replace( '/', '' )
-                                try:
-                                    tgt_node = Lopper.node_find( self.FDT, modify_expr[0] )
-                                    if tgt_node != 0:
-                                        if self.verbose:
-                                            print("[INFO]: renaming %s to %s" % (modify_expr[0], modify_expr[2]))
-                                        self.FDT.set_name( tgt_node, modify_expr[2] )
-                                except:
-                                    pass
-                            else:
-                                if verbose:
-                                    print( "[INFO]: node delete: %s" % modify_expr[0] )
+                            print( "[WARNING]: no modules loaded, callback not processed" )
 
-                                node_to_remove = Lopper.node_find( self.FDT, modify_expr[0] )
-                                if node_to_remove:
-                                    self.node_remove( node_to_remove )
+                    if re.search( ".*,load,module$", val ):
+                        if self.verbose:
+                            print( "--------------- [INFO]: node %s is a load module transform" % node_name )
+                        try:
+                            prop = xform_fdt.getprop( n, 'load' ).as_str()
+                            module = xform_fdt.getprop( n, 'module' ).as_str()
+                        except:
+                            prop = ""
+
+                        if prop:
+                            if self.verbose:
+                                print( "[INFO]: loading module %s" % prop )
+                            mod_file = Path( prop )
+                            mod_file_wo_ext = mod_file.with_suffix('')
+                            try:
+                                mod_file_abs = mod_file.resolve()
+                            except FileNotFoundError:
+                                print( "[ERROR]: module file %s not found" % prop )
+                                sys.exit(1)
+
+                            imported_module = __import__(str(mod_file_wo_ext))
+                            self.modules.append( imported_module )
+
+                    if re.search( ".*,xform,add$", val ):
+                        if verbose:
+                            print( "[INFO]: node add transform found" )
+
+                        prop = xform_fdt.getprop( n, "node_name" )
+                        new_node_name = Lopper.property_value_decode( prop, 0 )
+                        prop = xform_fdt.getprop( n, "node_path" )
+                        new_node_path = Lopper.property_value_decode( prop, 0 )
+
+                        if verbose:
+                            print( "[INFO]: node name: %s node path: %s" % (new_node_name, new_node_path) )
+
+                        # this check isn't useful .. it is the xform node name, remove it ..
+                        if node_name:
+                            # iterate the subnodes of this xform, looking for one that has a matching
+                            # node_name fdt value
+                            new_node_to_add = Lopper.node_find_by_name( xform_fdt, new_node_name, n )
+                            Lopper.node_copy( xform_fdt, self.FDT, new_node_to_add )
+
+                    if re.search( ".*,xform,modify$", val ):
+                        if self.verbose:
+                            print( "[INFO]: node %s is a compatible property modify transform" % node_name )
+                        try:
+                            prop = xform_fdt.getprop( n, 'modify' ).as_str()
+                        except:
+                            prop = ""
+
+                        if prop:
+                            if self.verbose:
+                                print( "[INFO]: modify property found: %s" % prop )
+
+                            # format is: "path":"property":"replacement"
+                            #    - modify to "nothing", is a remove operation
+                            #    - modify with no property is node operation (rename or remove)
+                            modify_expr = prop.split(":")
+                            if self.verbose:
+                                print( "[INFO]: modify path: %s" % modify_expr[0] )
+                                print( "        modify prop: %s" % modify_expr[1] )
+                                print( "        modify repl: %s" % modify_expr[2] )
+
+                            if modify_expr[1]:
+                                # property operation
+                                if not modify_expr[2]:
+                                    if verbose:
+                                        print( "[INFO]: property remove operation detected: %s" % modify_expr[1])
+                                    # TODO; make a special case of the property_modify_below
+                                    self.property_remove( modify_expr[0], modify_expr[1], True )
+                                else:
+                                    if verbose:
+                                        print( "[INFO]: property modify operation detected" )
+
+                                    if Lopper.node_prop_check( self.FDT, modify_expr[0], modify_expr[1] ):
+                                        self.property_modify( modify_expr[0], modify_expr[1], modify_expr[2], False )
+                                    else:
+                                        self.property_modify( modify_expr[0], modify_expr[1], modify_expr[2], False, True )
+                            else:
+                                # node operation
+                                # in case /<name>/ was passed as the new name, we need to drop them
+                                # since they aren't valid in set_name()
+                                if modify_expr[2]:
+                                    modify_expr[2] = modify_expr[2].replace( '/', '' )
+                                    try:
+                                        tgt_node = Lopper.node_find( self.FDT, modify_expr[0] )
+                                        if tgt_node != 0:
+                                            if self.verbose:
+                                                print("[INFO]: renaming %s to %s" % (modify_expr[0], modify_expr[2]))
+                                            self.FDT.set_name( tgt_node, modify_expr[2] )
+                                    except:
+                                        pass
+                                else:
+                                    if verbose:
+                                        print( "[INFO]: node delete: %s" % modify_expr[0] )
+
+                                    node_to_remove = Lopper.node_find( self.FDT, modify_expr[0] )
+                                    if node_to_remove:
+                                        self.node_remove( node_to_remove )
 
     # note; this operates on a node and all child nodes, unless you set recursive to False
     def property_remove( self, node_prefix = "/", propname = "", recursive = True ):
@@ -1190,6 +1208,7 @@ class Xform:
     def __init__(self, xform_file):
         self.dts = xform_file
         self.dtb = ""
+        self.fdt = ""
 
 def usage():
     prog = os.path.basename(sys.argv[0])

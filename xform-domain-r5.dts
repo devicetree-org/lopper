@@ -5,8 +5,9 @@
         xforms {
                 // compatible = "system-device-tree-v1,xform";
                 xform_0 {
-                        compatible = "system-device-tree-v1,xform,domain";
-                        domain = "/chosen/openamp_r5";
+                        compatible = "system-device-tree-v1,xform,callback-v1";
+                        node = "/chosen/openamp_r5";
+                        id = "openamp,domain-v1";
                 };
                 xform_1 {
                         // node name modify
@@ -28,12 +29,14 @@
                 xform_4 {
                         // node delete
                         compatible = "system-device-tree-v1,xform,modify";
-                        modify = "/amba/::";
+                        // commented out. test purposes
+                        // modify = "/amba/::";
                 };
                 xform_5 {
                         // node name modify
                         compatible = "system-device-tree-v1,xform,modify";
-                        modify = "/amba/::";
+                        // commented out. test purposes
+                        // modify = "/amba/::";
                 };
                 xform_6 {
                         // temp, temp, temp .. just testing if we can delete
@@ -87,9 +90,10 @@
                           // couple these transforms and loaded modules
                           compatible = "system-device-tree-v1,xform,callback-v1";
                           // TODO: put a node compatible string here
-                          module = "openamp,xlnx-rpu";
+                          // module = "openamp,xlnx-rpu";
+                          id = "openamp,xlnx-rpu";
                           node = "/chosen/openamp_r5";
-                          callback = "xlnx_openamp_rpu";
+                          // callback = "xlnx_openamp_rpu";
                   };
                   xform_11 {
                         // property value modify
