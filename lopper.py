@@ -216,11 +216,29 @@ class Lopper:
     # a really thin wrapper to easily write a system device tree
     @staticmethod
     def write_sdt( sdt_to_write, output_filename, overwrite=True, verbose=0 ):
-        Lopper.write_fdt( sdt_to_write.FDT, output_filename, overwrite, verbose )
+        if re.search( ".cdo", output_filename ):
+            cb_funcs = sdt_to_write.find_module_compatible_func( 0, "xlnx,output,cdo" )
+            if cb_funcs:
+                for cb_func in cb_funcs:
+                    try:
+                        if not cb_func( 0, sdt_to_write, sdt_to_write.verbose ):
+                            print( "[WARNING]: the callback returned false, check for errors ..." )
+                    except Exception as e:
+                        print( "[WARNING]: callback %s failed" % cb_func )
+                        exc_type, exc_obj, exc_tb = sys.exc_info()
+                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                        print(exc_type, fname, exc_tb.tb_lineno)
+            else:
+                print( "[INFO]: no compatible callback found, skipping" )
+
+        elif re.search( ".dtb", output_filename ) or re.search( ".dts", output_filename ):
+            Lopper.write_fdt( sdt_to_write.FDT, output_filename, overwrite, verbose )
+        else:
+            print( "[ERROR]: could not detect output format" )
+            sys.exit(1)
 
     @staticmethod
     def write_fdt( fdt_to_write, output_filename, overwrite=True, verbose=0 ):
-        pass
         # switch on the output format. i.e. we may want to write commands/drivers
         # versus dtb .. and the logic to write them out should be loaded from
         # separate implementation files
@@ -236,10 +254,6 @@ class Lopper:
             with open(output_filename, 'wb') as w:
                 w.write(byte_array)
 
-        elif re.search( ".cdo", output_filename ):
-            # TODO: special backends for writing data will have to be registered
-            #       like the callback modules
-            print( "[INFO]: would write a CDO if I knew how" )
         elif re.search( ".dts", output_filename ):
             if verbose:
                 print( "[INFO]: dts format detected, writing %s" % output_filename )
@@ -835,6 +849,22 @@ class SystemDeviceTree:
             return self.node_access[node_name]
         return -1
 
+    # argument: node number, and an id string
+    def find_module_compatible_func( self, cb_node, cb_id ):
+        cb_func = []
+        if self.modules:
+            for m in self.modules:
+                cb_f = m.is_compat( cb_node, cb_id )
+                if cb_f:
+                    cb_func.append( cb_f )
+                # we could double check that the function exists with this call:
+                #    func = getattr( m, cbname )
+                # but for now, we don't
+        else:
+            print( "[WARNING]: no modules loaded, no compat search is possible" )
+
+        return cb_func
+
     def transform(self):
         # was --target passed on the command line ?
         if target_domain:
@@ -937,32 +967,25 @@ class SystemDeviceTree:
                                 print( "        cb: %s" % cb )
                             print( "        id: %s" % cb_id )
 
-                        # TODO: factor this out. can be used for domains and this. this is
-                        #       the handshake to find a compatible module.
-                        if self.modules:
-                            for m in self.modules:
-                                cb_func = m.is_compat( cb_node, cb_id )
-                                # we could double check that the function exists with this call:
-                                #    func = getattr( m, cbname )
-                                # but for now, we don't
-                                if cb_func:
-                                    try:
-                                        if not cb_func( cb_node, self, self.verbose ):
-                                            print( "[WARNING]: the callback return false ..." )
-                                    except Exception as e:
-                                        print( "[WARNING]: callback %s failed" % cb_func )
-                                        exc_type, exc_obj, exc_tb = sys.exc_info()
-                                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                                        print(exc_type, fname, exc_tb.tb_lineno)
+                        cb_funcs = self.find_module_compatible_func( cb_node, cb_id )
+                        if cb_funcs:
+                            for cb_func in cb_funcs:
+                                try:
+                                    if not cb_func( cb_node, self, self.verbose ):
+                                        print( "[WARNING]: the callback returned false, check for errors ..." )
+                                except Exception as e:
+                                    print( "[WARNING]: callback %s failed" % cb_func )
+                                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                                    print(exc_type, fname, exc_tb.tb_lineno)
                         else:
-                            print( "[WARNING]: no modules loaded, callback not processed" )
+                            print( "[INFO]: no compatible callback found, skipping" )
 
                     if re.search( ".*,load,module$", val ):
                         if self.verbose:
                             print( "--------------- [INFO]: node %s is a load module transform" % node_name )
                         try:
                             prop = xform_fdt.getprop( n, 'load' ).as_str()
-                            module = xform_fdt.getprop( n, 'module' ).as_str()
                         except:
                             prop = ""
 

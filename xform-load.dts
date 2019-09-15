@@ -7,8 +7,11 @@
         xforms {
                 xform_0 {
                         compatible = "system-device-tree-v1,load,module";
-                        module = "openamp,domain-v1";
                         load = "openamp.py";
+                };
+                xform_1 {
+                        compatible = "system-device-tree-v1,load,module";
+                        load = "cdo.py";
                 };
         };
 };

@@ -28,9 +28,6 @@ import lopper
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
 import libfdt
 
-def get_compatible_strings():
-    print( "openamp,domain-v1" )
-
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,domain-v1", compat_string_to_test):
         return process_domain
