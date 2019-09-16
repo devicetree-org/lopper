@@ -878,7 +878,7 @@ class SystemDeviceTree:
             offset = sw.add_subnode( 0, 'xforms' )
 
             assist_count = 0
-            for a in self.assists:
+            for a in set(self.assists):
                 xform_name = "xform_{}".format( assist_count )
                 offset = sw.add_subnode( offset, xform_name )
                 sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,load,module')
@@ -891,8 +891,9 @@ class SystemDeviceTree:
                 if self.verbose > 1:
                     print( "[INFO]: generated load xform for assist %s" % a )
 
-                self.xforms.insert( 0, xform )
                 assist_count = assist_count + 1
+
+            self.xforms.insert( 0, xform )
 
     def apply_domain_spec(self, tgt_domain):
         # This is called from the command line. We need to generate a transform
@@ -1073,6 +1074,8 @@ class SystemDeviceTree:
                                     exc_type, exc_obj, exc_tb = sys.exc_info()
                                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                                     print(exc_type, fname, exc_tb.tb_lineno)
+                                    # TODO: consider adding a -Werror type flag, and failing on this.
+                                    # sys.exit(1)
                         else:
                             print( "[INFO]: no compatible callback found, skipping" )
 
