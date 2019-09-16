@@ -126,7 +126,7 @@ class Lopper:
         return True
 
     @staticmethod
-    def node_copy( fdt_source, fdt_dest, node_source ):
+    def node_copy( fdt_source, fdt_dest, node_source, verbose=0 ):
         # TODO: check node_path to figure out the parent offset, setting to 0 for now
         old_depth = -1
         depth = 0
@@ -144,7 +144,7 @@ class Lopper:
 
             if verbose > 2:
                 print( "" )
-                print( "properties for: %s" % fdt_source.get_name(nn) )
+                print( "[DEBUG+]: properties for: %s" % fdt_source.get_name(nn) )
 
             prop_list = []
             poffset = fdt_source.first_property_offset(nn, QUIET_NOTFOUND)
@@ -154,15 +154,15 @@ class Lopper:
                 # discovering the properties
                 prop_list.insert( 0, prop )
                 if verbose > 2:
-                    print( "   prop name: %s" % prop.name )
-                    print( "   prop raw: %s" % prop )
+                    print( "            prop name: %s" % prop.name )
+                    print( "            prop raw: %s" % prop )
 
                 if verbose > 2:
                     prop_val = Lopper.property_value_decode( prop, 0 )
                     if not prop_val:
                         prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND )
-                    print( "   prop decoded: %s" % prop_val )
-                    print( "   prop type: %s" % type(prop_val))
+                    print( "            prop decoded: %s" % prop_val )
+                    print( "            prop type: %s" % type(prop_val))
                     print( "" )
 
                 poffset = fdt_source.next_property_offset(poffset, QUIET_NOTFOUND)
@@ -401,7 +401,7 @@ class Lopper:
             tc = tc.replace( "%%FALSE%%", "print(\"false\")" )
 
             if verbose > 2:
-                print( "[INFO]: filter node cmd: %s" % tc )
+                print( "[DEBUG+]: filter node cmd: %s" % tc )
 
             with stdoutIO() as s:
                 try:
@@ -410,7 +410,7 @@ class Lopper:
                     print("Something wrong with the code: %s" % e)
 
             if verbose > 2:
-                print( "stdout was: %s" % s.getvalue() )
+                print( "[DEBUG+] stdout was: %s" % s.getvalue() )
             if "true" in s.getvalue():
                 if "delete" in action:
                     if verbose:
@@ -949,10 +949,10 @@ class SystemDeviceTree:
 
             xform_runqueue[xform_file_priority].append(x)
 
-        if verbose > 2:
+        if self.verbose > 2:
             print( "[DEBUG+]: xform runqueue: %s" % xform_runqueue )
 
-        # iterate over the transforms
+        # iterate over the transforms (by transform priority)
         for pri in range(1,10):
             for x in xform_runqueue[pri]:
                 if not x.fdt:
@@ -971,8 +971,8 @@ class SystemDeviceTree:
                     if self.verbose:
                         print( "[INFO]: ------> processing transform: %s" % val )
                     if self.verbose > 2:
-                        print( "[DEBUG]: prop: %s val: %s" % (prop.name, val ))
-                        print( "[DEBUG]: node name: %s" % node_name )
+                        print( "[DEBUG+]: prop: %s val: %s" % (prop.name, val ))
+                        print( "[DEBUG+]: node name: %s" % node_name )
 
                     # TODO: need a better way to search for the possible transform types, i.e. a dict
                     if re.search( ".*,output$", val ):
@@ -999,7 +999,7 @@ class SystemDeviceTree:
                             ff = libfdt.Fdt.create_empty_tree( self.FDT.totalsize() )
                             for o_node in output_nodes:
                                 node_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0 )
-                                Lopper.node_copy( self.FDT, ff, node_to_copy )
+                                Lopper.node_copy( self.FDT, ff, node_to_copy, self.verbose )
 
                         if not self.dryrun:
                             Lopper.write_fdt( ff, output_file_name, True, verbose )
