@@ -1246,7 +1246,12 @@ class SystemDeviceTree:
                 Lopper.prop_set( self.FDT, node, propname, propval )
             else:
                 if add_if_missing:
-                    Lopper.prop_set( self.FDT, node, propname, propval )
+                    try:
+                        Lopper.prop_set( self.FDT, node, propname, propval )
+                    except:
+                        self.FDT.resize( self.FDT.totalsize() + 1024 )
+                        Lopper.prop_set( self.FDT, node, propname, propval )
+
 
             if recursive:
                 node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
