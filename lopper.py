@@ -923,7 +923,7 @@ class SystemDeviceTree:
     # something is deleted from the tree. But we need to use the full path so
     # we can find it later.
     def node_ref_inc( self, node_name ):
-        if verbose > 1:
+        if self.verbose > 1:
             print( "[INFO]: tracking access to node %s" % node_name )
         if node_name in self.node_access:
             self.node_access[node_name] += 1
@@ -1015,12 +1015,12 @@ class SystemDeviceTree:
                             print( "[ERROR]: cannot get output file name from transform" )
                             sys.exit(1)
 
-                        if verbose > 1:
+                        if self.verbose > 1:
                             print( "[DBG+]: outfile is: %s" % output_file_name )
 
                         output_nodes = Lopper.prop_get( xform_fdt, n, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
 
-                        if verbose > 1:
+                        if self.verbose > 1:
                             print( "[DBG+]: output selected are: %s" % output_nodes )
 
                         # TODO: allow regexes for nodes
@@ -1099,7 +1099,7 @@ class SystemDeviceTree:
                             self.modules.append( imported_module )
 
                     if re.search( ".*,xform,add$", val ):
-                        if verbose:
+                        if self.verbose:
                             print( "[INFO]: node add transform found" )
 
                         prop = xform_fdt.getprop( n, "node_name" )
@@ -1107,7 +1107,7 @@ class SystemDeviceTree:
                         prop = xform_fdt.getprop( n, "node_path" )
                         new_node_path = Lopper.property_value_decode( prop, 0 )
 
-                        if verbose:
+                        if self.verbose:
                             print( "[INFO]: node name: %s node path: %s" % (new_node_name, new_node_path) )
 
                         # this check isn't useful .. it is the xform node name, remove it ..
@@ -1141,12 +1141,12 @@ class SystemDeviceTree:
                             if modify_expr[1]:
                                 # property operation
                                 if not modify_expr[2]:
-                                    if verbose:
+                                    if self.verbose:
                                         print( "[INFO]: property remove operation detected: %s" % modify_expr[1])
                                     # TODO; make a special case of the property_modify_below
                                     self.property_remove( modify_expr[0], modify_expr[1], True )
                                 else:
-                                    if verbose:
+                                    if self.verbose:
                                         print( "[INFO]: property modify operation detected" )
 
                                     if Lopper.node_prop_check( self.FDT, modify_expr[0], modify_expr[1] ):
@@ -1168,7 +1168,7 @@ class SystemDeviceTree:
                                     except:
                                         pass
                                 else:
-                                    if verbose:
+                                    if self.verbose:
                                         print( "[INFO]: node delete: %s" % modify_expr[0] )
 
                                     node_to_remove = Lopper.node_find( self.FDT, modify_expr[0] )
