@@ -545,7 +545,17 @@ class Lopper:
         # print( "node list: %s" % node_list )
 
     @staticmethod
-    def dump_dtb( dtb, outfilename="", verbose=0 ):
+    def dtb_dts_export( dtb, outfilename="", verbose=0 ):
+        """writes a dtb to a file or to stdout as a dts
+
+        Args:
+        dtb: a compiled device tree
+        outfilename: the output filename (stdout is used if empty)
+        verbose: extra debug info
+
+        Returns:
+        The return value of executing dtc to dump the dtb to dts
+        """
         dtcargs = (os.environ.get('LOPPER_DTC') or shutil.which("dtc")).split()
         dtcargs += (os.environ.get("STD_DTC_FLAGS") or "").split()
         dtcargs += (os.environ.get("LOPPER_DTC_BFLAGS") or "").split()
@@ -557,6 +567,8 @@ class Lopper:
             print( "[INFO]: dumping dtb: %s" % dtcargs )
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
+
+        return result
 
     # utility command to get a phandle (as a number) from a node
     @staticmethod
@@ -1365,8 +1377,8 @@ if __name__ == "__main__":
         print ( "" )
 
     if dump_dtb:
-        Lopper.dump_dtb( sdt, verbose )
-        os.sys.exit(0)
+        Lopper.dtb_dts_export( sdt, verbose )
+        sys.exit(0)
 
     device_tree = Lopper.process_input( sdt, inputfiles, "" )
 
