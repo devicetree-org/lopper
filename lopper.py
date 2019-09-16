@@ -603,10 +603,13 @@ class Lopper:
     @staticmethod
     def prop_get( fdt, node_number, property_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
         prop = fdt.getprop( node_number, property_name, QUIET_NOTFOUND )
-        if ftype == LopperFmt.SIMPLE:
-            val = Lopper.property_value_decode( prop, 0, ftype, encode )
+        if prop:
+            if ftype == LopperFmt.SIMPLE:
+                val = Lopper.property_value_decode( prop, 0, ftype, encode )
+            else:
+                val = Lopper.property_value_decode( prop, 0, ftype, encode )
         else:
-            val = Lopper.property_value_decode( prop, 0, ftype, encode )
+            val = ""
 
         return val
 
@@ -816,9 +819,10 @@ class Lopper:
                         converted_int = hex(int.from_bytes(short_int,'big',signed=False))
                     else:
                         converted_int = int.from_bytes(short_int,'big',signed=False)
-                        start_index = start_index + short_int_size
-                        end_index = end_index + short_int_size
-                        val.append(converted_int)
+
+                    start_index = start_index + short_int_size
+                    end_index = end_index + short_int_size
+                    val.append(converted_int)
 
         if verbose > 3:
             print( "[DBG+]: decoding property: \"%s\" (%s) [%s] --> %s" % (property, poffset, property, decode_msg ) )

@@ -24,6 +24,7 @@ from io import StringIO
 import contextlib
 import importlib
 from lopper import Lopper
+from lopper import LopperFmt
 import lopper
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
 import libfdt
@@ -49,7 +50,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
         print( "[INFO]: cb: xlnx_openamp_rpu( %s, %s, %s )" % (domain_node, sdt, verbose))
 
     # temp; PoC:
-    cpu_prop_values = Lopper.prop_get( sdt.FDT, domain_node, "cpus", "compound" )
+    cpu_prop_values = Lopper.prop_get( sdt.FDT, domain_node, "cpus", LopperFmt.COMPOUND )
     if cpu_prop_values == "":
         return False
 
@@ -188,7 +189,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     #       to factor it out at some point.
 
     # "access" is a list of tuples: phandles + flags
-    access_list = Lopper.prop_get( sdt.FDT, domain_node, "access", "compound" )
+    access_list = Lopper.prop_get( sdt.FDT, domain_node, "access", LopperFmt.COMPOUND )
     if not access_list:
         if verbose:
             print( "[INFO]: xlnx_openamp_rpu: no access list found, skipping ..." )
@@ -288,8 +289,7 @@ def process_domain( tgt_node, sdt, verbose=0 ):
         print( "[INFO]: cb: process_domain( %s, %s, %s )" % (tgt_node, sdt, verbose))
 
     tgt_domain = Lopper.node_abspath( sdt.FDT, tgt_node )
-    cpu_prop_values = Lopper.prop_get( sdt.FDT, tgt_node, "cpus", "compound" )
-
+    cpu_prop_values = Lopper.prop_get( sdt.FDT, tgt_node, "cpus", LopperFmt.COMPOUND )
     if cpu_prop_values == "":
         sys.exit(1)
 
@@ -342,7 +342,7 @@ else:
     node_access_tracker['/'] = [ "/", "simple-bus" ]
 
     # "access" is a list of tuples: phandles + flags
-    access_list = Lopper.prop_get( sdt.FDT, tgt_node, "access", "compound" )
+    access_list = Lopper.prop_get( sdt.FDT, tgt_node, "access", LopperFmt.COMPOUND )
     if not access_list:
         if verbose:
             print( "[INFO]: no access list found, skipping ..." )
@@ -462,12 +462,12 @@ else:
     # changed due to the node_filter deleting things
     tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
 
-    memory_hex = Lopper.prop_get( sdt.FDT, tgt_node, "memory", "compound:hex" )
-    memory_int = Lopper.prop_get( sdt.FDT, tgt_node, "memory", "compound" )
+    memory_hex = Lopper.prop_get( sdt.FDT, tgt_node, "memory", LopperFmt.COMPOUND, LopperFmt.HEX )
+    memory_int = Lopper.prop_get( sdt.FDT, tgt_node, "memory", LopperFmt.COMPOUND )
 
-    # This may be moved to the top of the domain process and then
-    # when we are processing cpus and bus nodes, we can apply the
-    # memory to ranges <>, etc, and modify them accordingly.
+    # This may be moved to the top of the domain process and then when we are
+    # processing cpus and bus nodes, we can apply the memory to ranges <>, etc,
+    # and modify them accordingly.
     if verbose > 1:
         print( "[INFO]: memory property: %s" % memory_hex )
 
@@ -486,8 +486,12 @@ else:
             # d = 1
             # val = a.to_bytes(4,byteorder='big') + b.to_bytes(4,byteorder='big') + c.to_bytes(4,byteorder='big') + d.to_bytes(4,byteorder='big')
 
-            # TODO: change this to a lopper wrapper call
-            sdt.FDT.setprop(memory_node, 'reg', Lopper.encode_byte_array(memory_int))
+            # TODO: this seems to be shortening up the system memory node. Check to see
+            #       if the openamp node is being propery interpreted
+
+            Lopper.prop_set( sdt.FDT, memory_node, 'reg', memory_int )
+            # temp: keeping the raw call, in case the lopper utility has issues.
+            # sdt.FDT.setprop(memory_node, 'reg', Lopper.encode_byte_array(memory_int))
 
     return True
 
