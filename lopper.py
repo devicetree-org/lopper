@@ -134,7 +134,11 @@ class Lopper:
         newoff = 0
         while depth >= 0:
             nn_name = fdt_source.get_name(nn)
-            fdt_dest.add_subnode( newoff, nn_name )
+            try:
+                copy_added_node_offset = fdt_dest.add_subnode( newoff, nn_name )
+            except:
+                print( "[ERROR]: could not create subnode for node copy" )
+                sys.exit(1)
 
             prop_offset = fdt_dest.subnode_offset( newoff, nn_name )
 
@@ -146,23 +150,33 @@ class Lopper:
             poffset = fdt_source.first_property_offset(nn, QUIET_NOTFOUND)
             while poffset > 0:
                 prop = fdt_source.get_property_by_offset(poffset)
-                prop_list.append(prop.name)
+                # we insert, not append. So we can flip the order of way we are
+                # discovering the properties
+                prop_list.insert( 0, prop )
                 if verbose > 2:
                     print( "   prop name: %s" % prop.name )
                     print( "   prop raw: %s" % prop )
 
-                prop_val = Lopper.property_value_decode( prop, 0 )
-                if not prop_val:
-                    prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND )
-
                 if verbose > 2:
+                    prop_val = Lopper.property_value_decode( prop, 0 )
+                    if not prop_val:
+                        prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND )
                     print( "   prop decoded: %s" % prop_val )
                     print( "   prop type: %s" % type(prop_val))
                     print( "" )
 
-                Lopper.prop_set( fdt_dest, prop_offset, prop.name, prop_val )
-
                 poffset = fdt_source.next_property_offset(poffset, QUIET_NOTFOUND)
+
+            # loop through the gathered properties and copy them over. We are reversing
+            # the order of the way we iterated them, due to the way that setprop inserts
+            # at zero every time. If we don't flip the order the copied node will have
+            # them in the opposite order!
+            for prop in prop_list:
+                prop_val = Lopper.property_value_decode( prop, 0 )
+                if not prop_val:
+                    prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND )
+
+                Lopper.prop_set( fdt_dest, prop_offset, prop.name, prop_val )
 
             old_depth = depth
             nn, depth = fdt_source.next_node(nn, depth, (libfdt.BADOFFSET,))
