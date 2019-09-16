@@ -833,6 +833,7 @@ class SystemDeviceTree:
         self.modules = []
         self.verbose = 0
         self.node_access = {}
+        self.dry_run = False
 
     def setup(self):
         if verbose:
@@ -923,6 +924,10 @@ class SystemDeviceTree:
         if target_domain:
             self.apply_domain_spec(target_domain)
 
+        # force verbose output if --dryrun was passed
+        if self.dryrun:
+            self.verbose = 2
+
         if self.verbose:
             print( "[NOTE]: \'%d\' transform input(s) available" % len(self.xforms))
 
@@ -996,7 +1001,10 @@ class SystemDeviceTree:
                                 node_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0 )
                                 Lopper.node_copy( self.FDT, ff, node_to_copy )
 
-                        Lopper.write_fdt( ff, output_file_name, True, verbose )
+                        if not self.dryrun:
+                            Lopper.write_fdt( ff, output_file_name, True, verbose )
+                        else:
+                            print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
                     if re.search( ".*,callback-v1$", val ):
                         # also note: this callback may change from being called as part of the
@@ -1317,16 +1325,17 @@ def main():
     global force
     global dump_dtb
     global target_domain
+    global dryrun
 
     verbose = 0
     output = ""
     inputfiles = []
     force = False
     dump_dtb = False
+    dryrun = False
     target_domain = ""
-    # TODO: implement --dry-run (to show inputs, transforms, etc, but write no output files)
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:", ["target=", "dump", "force","verbose","help","input=","output="])
+        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:", ["target=", "dump", "force","verbose","help","input=","output=","dryrun"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -1352,6 +1361,9 @@ def main():
             target_domain = a
         elif o in ('-o', '--output'):
             output = a
+        elif o in ('--dryrun'):
+            dryrun=True
+
         else:
             assert False, "unhandled option"
 
@@ -1407,7 +1419,7 @@ if __name__ == "__main__":
         print( "   system device tree: %s" % sdt )
         print( "   transforms: %s" % inputfiles )
         print( "   output: %s" % output )
-        print ( "" )
+        print( "" )
 
     if dump_dtb:
         Lopper.dtb_dts_export( sdt, verbose )
@@ -1417,8 +1429,13 @@ if __name__ == "__main__":
 
     device_tree.setup()
 
+    # set some flags before we transform the tree.
+    device_tree.dryrun = dryrun
     device_tree.verbose = verbose
 
     device_tree.transform()
 
-    Lopper.write_sdt( device_tree,  output, True, device_tree.verbose )
+    if not dryrun:
+        Lopper.write_sdt( device_tree,  output, True, device_tree.verbose )
+    else:
+        print( "[INFO]: --dryrun was passed, output file %s not written" % output )
