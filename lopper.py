@@ -298,7 +298,7 @@ class Lopper:
 
 
     @staticmethod
-    def process_input( sdt_file, input_files, include_paths, force=False ):
+    def process_input( sdt_file, input_files, include_paths, assists=[], force=False ):
         sdt = SystemDeviceTree( sdt_file )
         # is the sdt a dts ?
         if re.search( ".dts$", sdt.dts ):
@@ -324,6 +324,13 @@ class Lopper:
                 xform.dts = ""
                 xform.dtb = ifile
                 sdt.xforms.append( xform )
+
+        for a in assists:
+            inf = Path(a)
+            if not inf.exists():
+                print( "[ERROR]: cannot find assist %s" % a )
+                sys.exit(2)
+            sdt.assists.append(a)
 
         return sdt
 
@@ -834,12 +841,15 @@ class SystemDeviceTree:
         self.verbose = 0
         self.node_access = {}
         self.dry_run = False
+        self.assists = []
 
     def setup(self):
-        if verbose:
+        if self.verbose:
             print( "[INFO]: loading dtb and using libfdt to transform tree" )
+
         self.use_libfdt = True
         self.FDT = libfdt.Fdt(open(self.dtb, mode='rb').read())
+        self.load_assists()
 
     def write( self, outfilename ):
         byte_array = self.FDT.as_bytearray()
@@ -859,6 +869,30 @@ class SystemDeviceTree:
             print( "[NOTE]: deleting node: %s" % target_node_name )
 
         self.FDT.del_node( target_node_offset, True )
+
+    def load_assists(self):
+        if self.assists:
+            sw = libfdt.Fdt.create_empty_tree( 2048 )
+            sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
+            sw.setprop_u32( 0, 'priority', 1)
+            offset = sw.add_subnode( 0, 'xforms' )
+
+            assist_count = 0
+            for a in self.assists:
+                xform_name = "xform_{}".format( assist_count )
+                offset = sw.add_subnode( offset, xform_name )
+                sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,load,module')
+                sw.setprop_str( offset, 'load', a )
+                xform = Xform( 'commandline' )
+                xform.dts = ""
+                xform.dtb = ""
+                xform.fdt = sw
+
+                if self.verbose > 1:
+                    print( "[INFO]: generated load xform for assist %s" % a )
+
+                self.xforms.insert( 0, xform )
+                assist_count = assist_count + 1
 
     def apply_domain_spec(self, tgt_domain):
         # This is called from the command line. We need to generate a transform
@@ -1299,8 +1333,10 @@ def usage():
     print('Usage: %s [OPTION] <system device tree> [<output file>]...' % prog)
     print('  -v, --verbose       enable verbose/debug processing (specify more than once for more verbosity)')
     print('  -t, --target        indicate the starting domain for processing (i.e. chosen node or domain label)' )
+    print('    , --dryrun        run all processing, but don\'t write any output files' )
     print('  -d, --dump          dump a dtb as dts source' )
-    print('  -i, --input         process supplied input device tree (or yaml) description')
+    print('  -i, --input         process supplied input device tree description')
+    print('  -a, --assist        load specified python assist (for callback or output processing)' )
     print('  -o, --output        output file')
     print('  -f, --force         force overwrite output file(s)')
     print('  -h, --help          display this help and exit')
@@ -1309,7 +1345,7 @@ def usage():
 ##
 ##
 ## Thoughts:
-##    - could take stdin as a transform tree
+##    - could take stdin as a transform tree (not very usful)
 ##    - add an option to take a sdt and convert it to yaml (aka pretty print)
 ##    - may need to take -I for the search paths when we run dtc as part of the processing
 ##
@@ -1326,6 +1362,7 @@ def main():
     global dump_dtb
     global target_domain
     global dryrun
+    global assists
 
     verbose = 0
     output = ""
@@ -1334,8 +1371,9 @@ def main():
     dump_dtb = False
     dryrun = False
     target_domain = ""
+    assists = []
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:", ["target=", "dump", "force","verbose","help","input=","output=","dryrun"])
+        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:", ["target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -1357,6 +1395,8 @@ def main():
             sys.exit(0)
         elif o in ('-i', '--input'):
             inputfiles.append(a)
+        elif o in ('-a', '--assist'):
+            assists.append(a)
         elif o in ('-t', '--target'):
             target_domain = a
         elif o in ('-o', '--output'):
@@ -1425,14 +1465,13 @@ if __name__ == "__main__":
         Lopper.dtb_dts_export( sdt, verbose )
         sys.exit(0)
 
-    device_tree = Lopper.process_input( sdt, inputfiles, "", force )
-
-    device_tree.setup()
+    device_tree = Lopper.process_input( sdt, inputfiles, "", assists, force )
 
     # set some flags before we transform the tree.
     device_tree.dryrun = dryrun
     device_tree.verbose = verbose
 
+    device_tree.setup()
     device_tree.transform()
 
     if not dryrun:
