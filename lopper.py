@@ -144,7 +144,7 @@ class Lopper:
 
             if verbose > 2:
                 print( "" )
-                print( "[DEBUG+]: properties for: %s" % fdt_source.get_name(nn) )
+                print( "[DBG+]: properties for: %s" % fdt_source.get_name(nn) )
 
             prop_list = []
             poffset = fdt_source.first_property_offset(nn, QUIET_NOTFOUND)
@@ -408,7 +408,7 @@ class Lopper:
             tc = tc.replace( "%%FALSE%%", "print(\"false\")" )
 
             if verbose > 2:
-                print( "[DEBUG+]: filter node cmd: %s" % tc )
+                print( "[DBG+]: filter node cmd: %s" % tc )
 
             with stdoutIO() as s:
                 try:
@@ -417,7 +417,7 @@ class Lopper:
                     print("Something wrong with the code: %s" % e)
 
             if verbose > 2:
-                print( "[DEBUG+] stdout was: %s" % s.getvalue() )
+                print( "[DBG+] stdout was: %s" % s.getvalue() )
             if "true" in s.getvalue():
                 if "delete" in action:
                     if verbose:
@@ -821,7 +821,7 @@ class Lopper:
                         val.append(converted_int)
 
         if verbose > 3:
-            print( "[DEBUG+]: decoding property: \"%s\" (%s) [%s] --> %s" % (property, poffset, property, decode_msg ) )
+            print( "[DBG+]: decoding property: \"%s\" (%s) [%s] --> %s" % (property, poffset, property, decode_msg ) )
 
         return val
 
@@ -984,7 +984,7 @@ class SystemDeviceTree:
             xform_runqueue[xform_file_priority].append(x)
 
         if self.verbose > 2:
-            print( "[DEBUG+]: xform runqueue: %s" % xform_runqueue )
+            print( "[DBG+]: xform runqueue: %s" % xform_runqueue )
 
         # iterate over the transforms (by transform priority)
         for pri in range(1,10):
@@ -1005,8 +1005,8 @@ class SystemDeviceTree:
                     if self.verbose:
                         print( "[INFO]: ------> processing transform: %s" % val )
                     if self.verbose > 2:
-                        print( "[DEBUG+]: prop: %s val: %s" % (prop.name, val ))
-                        print( "[DEBUG+]: node name: %s" % node_name )
+                        print( "[DBG+]: prop: %s val: %s" % (prop.name, val ))
+                        print( "[DBG+]: node name: %s" % node_name )
 
                     # TODO: need a better way to search for the possible transform types, i.e. a dict
                     if re.search( ".*,output$", val ):
@@ -1016,12 +1016,12 @@ class SystemDeviceTree:
                             sys.exit(1)
 
                         if verbose > 1:
-                            print( "[DEBUG]: outfile is: %s" % output_file_name )
+                            print( "[DBG+]: outfile is: %s" % output_file_name )
 
                         output_nodes = Lopper.prop_get( xform_fdt, n, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
 
                         if verbose > 1:
-                            print( "[DEBUG]: output selected are: %s" % output_nodes )
+                            print( "[DBG+]: output selected are: %s" % output_nodes )
 
                         # TODO: allow regexes for nodes
                         if "*" in output_nodes:
