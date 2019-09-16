@@ -265,6 +265,11 @@ class Lopper:
             if verbose:
                 print( "[INFO]: writing output dtb: %s" % output_filename )
 
+            o = Path(output_filename)
+            if o.exists() and not overwrite:
+                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                sys.exit(1)
+
             with open(output_filename, 'wb') as w:
                 w.write(byte_array)
 
@@ -272,13 +277,17 @@ class Lopper:
             if verbose:
                 print( "[INFO]: dts format detected, writing %s" % output_filename )
 
+            o = Path(output_filename)
+            if o.exists() and not overwrite:
+                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                sys.exit(1)
+
             # write the device tree to a temporary dtb
             fp = tempfile.NamedTemporaryFile()
             byte_array = fdt_to_write.as_bytearray()
             with open(fp.name, 'wb') as w:
                 w.write(byte_array)
 
-            # dump the dtb to a dts
             Lopper.dtb_dts_export( fp.name, output_filename )
 
             # close the temp file so it is removed
@@ -289,11 +298,14 @@ class Lopper:
 
 
     @staticmethod
-    def process_input( sdt_file, input_files, include_paths ):
+    def process_input( sdt_file, input_files, include_paths, force=False ):
         sdt = SystemDeviceTree( sdt_file )
         # is the sdt a dts ?
         if re.search( ".dts$", sdt.dts ):
-            sdt.dtb = Lopper.dt_compile( sdt.dts, input_files, include_paths )
+            sdt.dtb = Lopper.dt_compile( sdt.dts, input_files, include_paths, force )
+        else:
+            sdt.dtb = sdt_file
+            sdt.dts = ""
 
         # Individually compile the input files. At some point these may be
         # concatenated with the main SDT if dtc is doing some of the work, but for
@@ -301,8 +313,10 @@ class Lopper:
         for ifile in input_files:
             if re.search( ".dts$", ifile ):
                 xform = Xform( ifile )
-                Lopper.dt_compile( xform.dts, "", include_paths )
-                # TODO: look for errors!
+                compiled_file = Lopper.dt_compile( xform.dts, "", include_paths, force )
+                if not compiled_file:
+                    print( "[ERROR]: could not compile file %s" % ifile )
+                    sys.exit(1)
                 xform.dtb = "{0}.{1}".format(ifile, "dtb")
                 sdt.xforms.append( xform )
             elif re.search( ".dtb$", ifile ):
@@ -406,7 +420,7 @@ class Lopper:
                 pass
 
     @staticmethod
-    def node_dump( fdt, node_path, children=False ):
+    def node_dump( fdt, node_path, children=False, verbose=0 ):
         nn = fdt.path_offset( node_path )
         old_depth = -1
         depth = 0
@@ -624,7 +638,7 @@ class Lopper:
 
 
     @staticmethod
-    def dt_compile( sdt, i_files, includes ):
+    def dt_compile( sdt, i_files, includes, force_overwrite=False ):
         output_dtb = ""
 
         # TODO: might need to make 'sdt' absolute for the cpp call below
@@ -657,9 +671,12 @@ class Lopper:
         output_dtb = "{0}.{1}".format(sdtname, "dtbo" if isoverlay else "dtb")
 
         # make sure the dtb is not on disk, since it won't be overwritten by
-        # default. TODO: this could only be done on a -f invocation
+        # default.
         if os.path.exists( output_dtb ):
-            os.remove ( output_dtb )
+            if not force_overwrite:
+                print( "[ERROR]: output dtb (%s) exists and -f was not passed" % output_dtb )
+                sys.exit(1)
+            os.remove( output_dtb )
 
         dtcargs = (os.environ.get('LOPPER_DTC') or shutil.which("dtc")).split()
         dtcargs += (os.environ.get( 'LOPPER_DTC_FLAGS') or "").split()
@@ -688,6 +705,14 @@ class Lopper:
 
         # cleanup: remove the .pp file
         os.remove( preprocessed_name )
+
+        # if we got here, and for some reason the output_dtb does not exist, we should
+        # zero the name and return "" instead.
+        output_file = Path(output_dtb)
+        try:
+            output_file_path = output_file.resolve()
+        except FileNotFoundError:
+            output_dtb = ""
 
         return output_dtb
 
@@ -794,9 +819,11 @@ class Lopper:
         return val
 
 ##
+## SystemDeviceTree
 ##
-##
-##
+##  - wraps a dts/dtb/fdt containing a system description
+##  - manages and applies transforms to the tree
+##  - calls modules and assist functions for processing of that tree
 ##
 class SystemDeviceTree:
     def __init__(self, sdt_file):
@@ -1297,6 +1324,7 @@ def main():
     force = False
     dump_dtb = False
     target_domain = ""
+    # TODO: implement --dry-run (to show inputs, transforms, etc, but write no output files)
     try:
         opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:", ["target=", "dump", "force","verbose","help","input=","output="])
     except getopt.GetoptError as err:
@@ -1361,7 +1389,12 @@ def main():
         if not inf.exists():
             print( "Error: input file %s does not exist" % i )
             sys.exit(1)
-        Lopper.input_file_type(i)
+
+        valid_ifile_types = [ ".dtsi", ".dtb", ".dts" ]
+        itype = Lopper.input_file_type(i)
+        if not itype in valid_ifile_types:
+            print( "[ERROR]: unrecognized input file type passed" )
+            sys.exit(1)
 
 if __name__ == "__main__":
     # Main processes the command line, and sets some global variables we
@@ -1380,7 +1413,7 @@ if __name__ == "__main__":
         Lopper.dtb_dts_export( sdt, verbose )
         sys.exit(0)
 
-    device_tree = Lopper.process_input( sdt, inputfiles, "" )
+    device_tree = Lopper.process_input( sdt, inputfiles, "", force )
 
     device_tree.setup()
 
