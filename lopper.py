@@ -279,7 +279,7 @@ class Lopper:
                 w.write(byte_array)
 
             # dump the dtb to a dts
-            Lopper.dump_dtb( fp.name, output_filename )
+            Lopper.dtb_dts_export( fp.name, output_filename )
 
             # close the temp file so it is removed
             fp.close()
