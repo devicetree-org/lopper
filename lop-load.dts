@@ -13,5 +13,9 @@
                         compatible = "system-device-tree-v1,load,module";
                         load = "cdo.py";
                 };
+                lop_2 {
+                        compatible = "system-device-tree-v1,load,module";
+                        load = "openamp-xlnx.py";
+                };
         };
 };
