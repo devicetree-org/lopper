@@ -312,18 +312,18 @@ class Lopper:
         # now, libfdt is doing the transforms so we compile them separately
         for ifile in input_files:
             if re.search( ".dts$", ifile ):
-                xform = Xform( ifile )
-                compiled_file = Lopper.dt_compile( xform.dts, "", include_paths, force )
+                lop = Lop( ifile )
+                compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force )
                 if not compiled_file:
                     print( "[ERROR]: could not compile file %s" % ifile )
                     sys.exit(1)
-                xform.dtb = "{0}.{1}".format(ifile, "dtb")
-                sdt.xforms.append( xform )
+                lop.dtb = "{0}.{1}".format(ifile, "dtb")
+                sdt.lops.append( lop )
             elif re.search( ".dtb$", ifile ):
-                xform = Xform( ifile )
-                xform.dts = ""
-                xform.dtb = ifile
-                sdt.xforms.append( xform )
+                lop = Lop( ifile )
+                lop.dts = ""
+                lop.dtb = ifile
+                sdt.lops.append( lop )
 
         for a in assists:
             inf = Path(a)
@@ -660,7 +660,7 @@ class Lopper:
         #
         # Note: this is not processing the included files (i_files) at the
         #       moment .. it may have to, or maybe they are for the
-        #       transform block below.
+        #       lopper operation (lops) block below.
 
         preprocessed_name = "{0}.pp".format(sdtname)
 
@@ -833,14 +833,14 @@ class Lopper:
 ## SystemDeviceTree
 ##
 ##  - wraps a dts/dtb/fdt containing a system description
-##  - manages and applies transforms to the tree
+##  - manages and applies operations to the tree
 ##  - calls modules and assist functions for processing of that tree
 ##
 class SystemDeviceTree:
     def __init__(self, sdt_file):
         self.dts = sdt_file
         self.dtb = ""
-        self.xforms = []
+        self.lops = []
         self.modules = []
         self.verbose = 0
         self.node_access = {}
@@ -849,7 +849,7 @@ class SystemDeviceTree:
 
     def setup(self):
         if self.verbose:
-            print( "[INFO]: loading dtb and using libfdt to transform tree" )
+            print( "[INFO]: loading dtb and using libfdt to manipulate tree" )
 
         self.use_libfdt = True
         self.FDT = libfdt.Fdt(open(self.dtb, mode='rb').read())
@@ -879,50 +879,50 @@ class SystemDeviceTree:
             sw = libfdt.Fdt.create_empty_tree( 2048 )
             sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
             sw.setprop_u32( 0, 'priority', 1)
-            offset = sw.add_subnode( 0, 'xforms' )
+            offset = sw.add_subnode( 0, 'lops' )
 
             assist_count = 0
             for a in set(self.assists):
-                xform_name = "xform_{}".format( assist_count )
-                offset = sw.add_subnode( offset, xform_name )
+                lop_name = "lop_{}".format( assist_count )
+                offset = sw.add_subnode( offset, lop_name )
                 sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,load,module')
                 sw.setprop_str( offset, 'load', a )
-                xform = Xform( 'commandline' )
-                xform.dts = ""
-                xform.dtb = ""
-                xform.fdt = sw
+                lop = Lop( 'commandline' )
+                lop.dts = ""
+                lop.dtb = ""
+                lop.fdt = sw
 
                 if self.verbose > 1:
-                    print( "[INFO]: generated load xform for assist %s" % a )
+                    print( "[INFO]: generated load lop for assist %s" % a )
 
                 assist_count = assist_count + 1
 
-            self.xforms.insert( 0, xform )
+            self.lops.insert( 0, lop )
 
-    def apply_domain_spec(self, tgt_domain):
-        # This is called from the command line. We need to generate a transform
+    def domain_spec(self, tgt_domain):
+        # This is called from the command line. We need to generate a lop
         # device tree with:
         #
-        # xform_0 {
-        #     compatible = "system-device-tree-v1,xform,callback-v1";
+        # lop_0 {
+        #     compatible = "system-device-tree-v1,lop,callback-v1";
         #     node = "/chosen/openamp_r5";
         #     id = "openamp,domain-v1";
         # };
-        # and then inject it into self.xforms to run first
+        # and then inject it into self.lops to run first
 
         sw = libfdt.Fdt.create_empty_tree( 2048 )
         sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
-        offset = sw.add_subnode( 0, 'xforms' )
-        offset = sw.add_subnode( offset, 'xform_0' )
-        sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,xform,callback-v1')
+        offset = sw.add_subnode( 0, 'lops' )
+        offset = sw.add_subnode( offset, 'lop_0' )
+        sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,callback-v1')
         sw.setprop_str( offset, 'node', '/chosen/openamp_r5' )
         sw.setprop_str( offset, 'id', 'openamp,domain-v1' )
-        xform = Xform( 'commandline' )
-        xform.dts = ""
-        xform.dtb = ""
-        xform.fdt = sw
+        lop = Lop( 'commandline' )
+        lop.dts = ""
+        lop.dtb = ""
+        lop.fdt = sw
 
-        self.xforms.insert( 0, xform )
+        self.lops.insert( 0, lop )
 
     # we use the name, rather than the offset, since the offset can change if
     # something is deleted from the tree. But we need to use the full path so
@@ -958,72 +958,74 @@ class SystemDeviceTree:
 
         return cb_func
 
-    def transform(self):
+    def perform_lops(self):
         # was --target passed on the command line ?
         if target_domain:
-            self.apply_domain_spec(target_domain)
+            self.domain_spec(target_domain)
 
         # force verbose output if --dryrun was passed
         if self.dryrun:
             self.verbose = 2
 
         if self.verbose:
-            print( "[NOTE]: \'%d\' transform input(s) available" % len(self.xforms))
+            print( "[NOTE]: \'%d\' lopper operation input(s) available" % len(self.lops))
 
-        xform_runqueue = {}
+        lops_runqueue = {}
         for pri in range(1,10):
-            xform_runqueue[pri] = []
+            lops_runqueue[pri] = []
 
-        # iterate the transforms, look for priority. If we find those, we'll run then first
-        for x in self.xforms:
+        # iterate the lops, look for priority. If we find those, we'll run then first
+        for x in self.lops:
             if not x.fdt:
-                xform_fdt = libfdt.Fdt(open(x.dtb, mode='rb').read())
-                x.fdt = xform_fdt
+                lops_fdt = libfdt.Fdt(open(x.dtb, mode='rb').read())
+                x.fdt = lops_fdt
             else:
-                xform_fdt = x.fdt
+                lops_fdt = x.fdt
 
-            xform_file_priority = Lopper.prop_get( xform_fdt, 0, "priority" )
-            if not xform_file_priority:
-                xform_file_priority = 5
+            lops_file_priority = Lopper.prop_get( lops_fdt, 0, "priority" )
+            if not lops_file_priority:
+                lops_file_priority = 5
 
-            xform_runqueue[xform_file_priority].append(x)
+            lops_runqueue[lops_file_priority].append(x)
 
         if self.verbose > 2:
-            print( "[DBG+]: xform runqueue: %s" % xform_runqueue )
+            print( "[DBG+]: lops runqueue: %s" % lops_runqueue )
 
-        # iterate over the transforms (by transform priority)
+        # iterate over the lops (by lop-file priority)
         for pri in range(1,10):
-            for x in xform_runqueue[pri]:
+            for x in lops_runqueue[pri]:
                 if not x.fdt:
-                    xform_fdt = libfdt.Fdt(open(x.dtb, mode='rb').read())
+                    lops_fdt = libfdt.Fdt(open(x.dtb, mode='rb').read())
                 else:
-                    xform_fdt = x.fdt
+                    lops_fdt = x.fdt
 
-                # Get all the nodes with a xform property
-                xform_nodes = Lopper.nodes_with_property( xform_fdt, "compatible" )
+                # Get all the nodes with a lop property
+                # TODO: this is just getting nodes with "compatible", we should actually
+                #       fetch the property and check it.
+                lops_nodes = Lopper.nodes_with_property( lops_fdt, "compatible" )
 
-                for n in xform_nodes:
-                    prop = xform_fdt.getprop( n, "compatible" )
+                for n in lops_nodes:
+                    prop = lops_fdt.getprop( n, "compatible" )
                     val = Lopper.property_value_decode( prop, 0 )
-                    node_name = xform_fdt.get_name( n )
+                    node_name = lops_fdt.get_name( n )
 
                     if self.verbose:
-                        print( "[INFO]: ------> processing transform: %s" % val )
+                        print( "[INFO]: ------> processing lop: %s" % val )
                     if self.verbose > 2:
                         print( "[DBG+]: prop: %s val: %s" % (prop.name, val ))
                         print( "[DBG+]: node name: %s" % node_name )
 
-                    # TODO: need a better way to search for the possible transform types, i.e. a dict
+                    # TODO: need a better way to search for the possible lop types, i.e. a dict
                     if re.search( ".*,output$", val ):
-                        output_file_name = Lopper.prop_get( xform_fdt, n, 'outfile' )
+                        output_file_name = Lopper.prop_get( lops_fdt, n, 'outfile' )
                         if not output_file_name:
-                            print( "[ERROR]: cannot get output file name from transform" )
+                            print( "[ERROR]: cannot get output file name from lop" )
                             sys.exit(1)
 
                         if self.verbose > 1:
                             print( "[DBG+]: outfile is: %s" % output_file_name )
 
-                        output_nodes = Lopper.prop_get( xform_fdt, n, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
+                        output_nodes = Lopper.prop_get( lops_fdt, n, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
 
                         if self.verbose > 1:
                             print( "[DBG+]: output selected are: %s" % output_nodes )
@@ -1050,19 +1052,19 @@ class SystemDeviceTree:
                         # tranform loop, to something that is instead called by walking the
                         # entire device tree, looking for matching nodes and making callbacks at
                         # that moment.
-                        cb_tgt_node_name = Lopper.prop_get( xform_fdt, n, 'node' )
+                        cb_tgt_node_name = Lopper.prop_get( lops_fdt, n, 'node' )
                         if not cb_tgt_node_name:
                             print( "[ERROR]: cannot find target node for the callback" )
                             sys.exit(1)
 
-                        cb = Lopper.prop_get( xform_fdt, n, 'callback' )
-                        cb_id = Lopper.prop_get( xform_fdt, n, 'id' )
+                        cb = Lopper.prop_get( lops_fdt, n, 'callback' )
+                        cb_id = Lopper.prop_get( lops_fdt, n, 'id' )
                         cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
                         if not cb_node:
                             print( "[ERROR]: cannot find callback target node in tree" )
                             sys.exit(1)
                         if self.verbose:
-                            print( "[INFO]: callback transform detected" )
+                            print( "[INFO]: callback lop detected" )
                             if cb:
                                 print( "        cb: %s" % cb )
                             print( "        id: %s" % cb_id )
@@ -1085,9 +1087,9 @@ class SystemDeviceTree:
 
                     if re.search( ".*,load,module$", val ):
                         if self.verbose:
-                            print( "--------------- [INFO]: node %s is a load module transform" % node_name )
+                            print( "--------------- [INFO]: node %s is a load module lop" % node_name )
                         try:
-                            prop = xform_fdt.getprop( n, 'load' ).as_str()
+                            prop = lops_fdt.getprop( n, 'load' ).as_str()
                         except:
                             prop = ""
 
@@ -1105,30 +1107,30 @@ class SystemDeviceTree:
                             imported_module = __import__(str(mod_file_wo_ext))
                             self.modules.append( imported_module )
 
-                    if re.search( ".*,xform,add$", val ):
+                    if re.search( ".*,lop,add$", val ):
                         if self.verbose:
-                            print( "[INFO]: node add transform found" )
+                            print( "[INFO]: node add lop found" )
 
-                        prop = xform_fdt.getprop( n, "node_name" )
+                        prop = lops_fdt.getprop( n, "node_name" )
                         new_node_name = Lopper.property_value_decode( prop, 0 )
-                        prop = xform_fdt.getprop( n, "node_path" )
+                        prop = lops_fdt.getprop( n, "node_path" )
                         new_node_path = Lopper.property_value_decode( prop, 0 )
 
                         if self.verbose:
                             print( "[INFO]: node name: %s node path: %s" % (new_node_name, new_node_path) )
 
-                        # this check isn't useful .. it is the xform node name, remove it ..
+                        # this check isn't useful .. it is the lop node name, remove it ..
                         if node_name:
-                            # iterate the subnodes of this xform, looking for one that has a matching
+                            # iterate the subnodes of this lop, looking for one that has a matching
                             # node_name fdt value
-                            new_node_to_add = Lopper.node_find_by_name( xform_fdt, new_node_name, n )
-                            Lopper.node_copy( xform_fdt, self.FDT, new_node_to_add )
+                            new_node_to_add = Lopper.node_find_by_name( lops_fdt, new_node_name, n )
+                            Lopper.node_copy( lops_fdt, self.FDT, new_node_to_add )
 
-                    if re.search( ".*,xform,modify$", val ):
+                    if re.search( ".*,lop,modify$", val ):
                         if self.verbose:
-                            print( "[INFO]: node %s is a compatible property modify transform" % node_name )
+                            print( "[INFO]: node %s is a compatible property modify lop" % node_name )
                         try:
-                            prop = xform_fdt.getprop( n, 'modify' ).as_str()
+                            prop = lops_fdt.getprop( n, 'modify' ).as_str()
                         except:
                             prop = ""
 
@@ -1334,9 +1336,9 @@ class SystemDeviceTree:
                     #       had a proper label, so the phandle may not be valid
                     self.node_remove( tgt_node )
 
-class Xform:
-    def __init__(self, xform_file):
-        self.dts = xform_file
+class Lop:
+    def __init__(self, lop_file):
+        self.dts = lop_file
         self.dtb = ""
         self.fdt = ""
 
@@ -1357,7 +1359,7 @@ def usage():
 ##
 ##
 ## Thoughts:
-##    - could take stdin as a transform tree (not very usful)
+##    - could take stdin as a lop tree (not very usful)
 ##    - add an option to take a sdt and convert it to yaml (aka pretty print)
 ##    - may need to take -I for the search paths when we run dtc as part of the processing
 ##
@@ -1469,7 +1471,7 @@ if __name__ == "__main__":
         print( "" )
         print( "SDT summary:")
         print( "   system device tree: %s" % sdt )
-        print( "   transforms: %s" % inputfiles )
+        print( "   lops: %s" % inputfiles )
         print( "   output: %s" % output )
         print( "" )
 
@@ -1479,12 +1481,12 @@ if __name__ == "__main__":
 
     device_tree = Lopper.process_input( sdt, inputfiles, "", assists, force )
 
-    # set some flags before we transform the tree.
+    # set some flags before we process the tree.
     device_tree.dryrun = dryrun
     device_tree.verbose = verbose
 
     device_tree.setup()
-    device_tree.transform()
+    device_tree.perform_lops()
 
     if not dryrun:
         Lopper.write_sdt( device_tree,  output, True, device_tree.verbose )
