@@ -93,7 +93,7 @@ class Lopper:
         return parent_node_type
 
     @staticmethod
-    # Searches for a node by its name
+    # Searches for a node by its name, and returns the offset of that same node
     def node_find_by_name( fdt, node_name, starting_node = 0 ):
         nn = starting_node
         # short circuit the search if they are looking for /
@@ -101,7 +101,7 @@ class Lopper:
             depth = -1
         else:
             depth = 0
-        matching_node = 0
+        matching_node = -1
         while depth >= 0:
             nn_name = fdt.get_name(nn)
             if nn_name:
@@ -115,6 +115,9 @@ class Lopper:
 
         return matching_node
 
+    # checks to see if a node has a given property
+    # TODO: could actually *return* the property, but then, how is
+    #       that different than prop_get()
     @staticmethod
     def node_prop_check( fdt, node_name, property_name ):
         node = Lopper.node_find_by_name( fdt, node_name )
@@ -201,27 +204,26 @@ class Lopper:
 
         return retname
 
-    # This is just looking up if the property exists, it is NOT matching a
-    # property value. Consider this finding a "type" of node
-    # TODO: should take a starting node, and be recursive or not.
     @staticmethod
-    def nodes_with_property( fdt_to_search, propname ):
-        node_list = []
-        node = 0
+    def nodes_with_property( fdt_to_search, match_propname, match_regex="", start_path="/",  include_children=True ):
+        # node_list = []
         depth = 0
         ret_nodes = []
+        if start_path != "/":
+            node = Lopper.node_find_by_name( fdt_to_search, start_path )
+        else:
+            node = 0
+
         while depth >= 0:
-            node_list.append([depth, fdt_to_search.get_name(node)])
-
-            prop_list = []
-            poffset = fdt_to_search.first_property_offset(node, QUIET_NOTFOUND)
-            while poffset > 0:
-                prop = fdt_to_search.get_property_by_offset(poffset)
-                prop_list.append(prop.name)
-                poffset = fdt_to_search.next_property_offset(poffset, QUIET_NOTFOUND)
-
-            if propname in prop_list:
-                ret_nodes.append(node)
+            prop_val = Lopper.prop_get( fdt_to_search, node, match_propname )
+            if prop_val:
+                if match_regex:
+                    if re.search( match_regex, prop_val ):
+                        ret_nodes.append(node)
+                else:
+                    if match_propname == prop.name:
+                        if not node in ret_nodes:
+                            ret_nodes.append(node)
 
             node, depth = fdt_to_search.next_node(node, depth, (libfdt.BADOFFSET,))
 
@@ -885,7 +887,7 @@ class SystemDeviceTree:
             for a in set(self.assists):
                 lop_name = "lop_{}".format( assist_count )
                 offset = sw.add_subnode( offset, lop_name )
-                sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,load,module')
+                sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,load')
                 sw.setprop_str( offset, 'load', a )
                 lop = Lop( 'commandline' )
                 lop.dts = ""
@@ -1000,13 +1002,10 @@ class SystemDeviceTree:
                     lops_fdt = x.fdt
 
                 # Get all the nodes with a lop property
-                # TODO: this is just getting nodes with "compatible", we should actually
-                #       fetch the property and check it.
-                lops_nodes = Lopper.nodes_with_property( lops_fdt, "compatible" )
-
+                lops_nodes = Lopper.nodes_with_property( lops_fdt, "compatible", "system-device-tree-v1,lop.*", "/lops" )
                 for n in lops_nodes:
                     prop = lops_fdt.getprop( n, "compatible" )
-                    val = Lopper.property_value_decode( prop, 0 )
+                    val = Lopper.prop_get( lops_fdt, n, "compatible" )
                     node_name = lops_fdt.get_name( n )
 
                     if self.verbose:
@@ -1085,7 +1084,7 @@ class SystemDeviceTree:
                         else:
                             print( "[INFO]: no compatible callback found, skipping" )
 
-                    if re.search( ".*,load,module$", val ):
+                    if re.search( ".*,lop,load$", val ):
                         if self.verbose:
                             print( "--------------- [INFO]: node %s is a load module lop" % node_name )
                         try:

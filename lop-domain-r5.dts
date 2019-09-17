@@ -3,7 +3,7 @@
 / {
         compatible = "system-device-tree-v1";
         lops {
-                // compatible = "system-device-tree-v1,lop";
+                compatible = "system-device-tree-v1,lop";
                 lop_0 {
                         compatible = "system-device-tree-v1,lop,callback-v1";
                         node = "/chosen/openamp_r5";
