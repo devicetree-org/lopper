@@ -2,50 +2,33 @@
 
 / {
         compatible = "system-device-tree-v1";
-        xforms {
-                // compatible = "system-device-tree-v1,xform";
-                xform_0 {
-                        compatible = "system-device-tree-v1,xform,callback-v1";
+        lops {
+                // compatible = "system-device-tree-v1,lop";
+                lop_0 {
+                        compatible = "system-device-tree-v1,lop,callback-v1";
                         node = "/chosen/openamp_r5";
                         id = "openamp,domain-v1";
                 };
-                xform_1 {
+                lop_1 {
                         // node name modify
-                        compatible = "system-device-tree-v1,xform,modify";
+                        compatible = "system-device-tree-v1,lop,modify";
                         modify = "/cpus_r5/::/cpus/";
                 };
-                xform_2 {
-                        compatible = "system-device-tree-v1,xform,modify";
+                lop_2 {
+                        compatible = "system-device-tree-v1,lop,modify";
                         // format is: "path":"property":"replacement"
                         //    - modify to "nothing", is a remove operation
                         //    - modify with no property is node operation (rename or remove)
                         modify = "/cpus/:access:";
                 };
-                xform_3 {
+                lop_3 {
                         // modify to "nothing", is a remove operation
-                        compatible = "system-device-tree-v1,xform,modify";
+                        compatible = "system-device-tree-v1,lop,modify";
                         modify = "/cpus:no-access:";
                 };
-                xform_4 {
-                        // node delete
-                        compatible = "system-device-tree-v1,xform,modify";
-                        // commented out. test purposes
-                        // modify = "/amba/::";
-                };
-                xform_5 {
-                        // node name modify
-                        compatible = "system-device-tree-v1,xform,modify";
-                        // commented out. test purposes
-                        // modify = "/amba/::";
-                };
-                xform_6 {
-                        // temp, temp, temp .. just testing if we can delete
-                        // compatible = "system-device-tree-v1,xform,modify";
-                        modify = "/chosen::";
-                };
-                xform_7 {
+                lop_7 {
                         // node add
-                        compatible = "system-device-tree-v1,xform,add";
+                        compatible = "system-device-tree-v1,lop,add";
                         node_name = "zynqmp-rpu";
                         node_path = "/";
                         zynqmp-rpu {
@@ -79,44 +62,24 @@
                             };
                         };
                   };
-                  xform_9 {
-                          // temp temp temp, can we modify a recently added node ??
-                          compatible = "system-device-tree-v1,xform,modify-do-not-use";
-                          modify = "/zynqmp-rpu::";
-                  };
-                  xform_10 {
+                  lop_10 {
                           // optionally execute a routine in a loaded module. If the routine
                           // isn't found, this is NOT a failure. Since we don't want to tightly
                           // couple these transforms and loaded modules
-                          compatible = "system-device-tree-v1,xform,callback-v1";
-                          // TODO: put a node compatible string here
-                          // module = "openamp,xlnx-rpu";
+                          compatible = "system-device-tree-v1,lop,callback-v1";
                           id = "openamp,xlnx-rpu";
                           node = "/chosen/openamp_r5";
                           // callback = "xlnx_openamp_rpu";
                   };
-                  xform_11 {
-                        // property value modify
-                        compatible = "system-device-tree-v1,xform,modify";
-                        // disabled for now: will be put in a test transforms .dts file
-                        // modify = "/:model:this is a test";
-                 };
-                 xform_12 {
-                        // test: property add
-                        // example: add a special ID into various nodes
-                        compatible = "system-device-tree-v1,xform,modify";
-                        // disabled for now: will be put in a test transforms .dts file
-                        modify = "/:pnode-id:0x7";
-                 };
-                 xform_13 {
-                        compatible = "system-device-tree-v1,xform,output";
-                        outfile = "openamp-test.dtb";
-                        nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
-                 };
-                 xform_14 {
-                        compatible = "system-device-tree-v1,xform,output";
-                        outfile = "linux.dtb";
-                        nodes = "*";
-                 };
+                  lop_13 {
+                         compatible = "system-device-tree-v1,lop,output";
+                         outfile = "openamp-test.dtb";
+                         nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
+                  };
+                  lop_14 {
+                         compatible = "system-device-tree-v1,lop,output";
+                         outfile = "linux.dtb";
+                         nodes = "*";
+                  };
         };
 };

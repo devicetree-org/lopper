@@ -1,0 +1,11 @@
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1";
+        lops {
+                lop_1 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/chosen::";
+                };
+        };
+};
