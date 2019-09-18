@@ -47,6 +47,18 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     if verbose:
         print( "[INFO]: cb: xlnx_openamp_rpu( %s, %s, %s )" % (domain_node, sdt, verbose))
 
+    # temp. testing the debug of the exception .."
+    # sdt.FDT.resize( sdt.FDT.totalsize() + 4096 * 2)
+    # end temp
+
+    # debug block
+
+    a_cells = Lopper.prop_get( sdt.FDT, domain_node, "#address-cells" )
+    print( "aa: %s" % a_cells )
+    # sys.exit(1)
+    # end debug
+
+
     # temp; PoC:
     cpu_prop_values = Lopper.prop_get( sdt.FDT, domain_node, "cpus", LopperFmt.COMPOUND )
     if cpu_prop_values == "":
@@ -60,7 +72,9 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
         print( "[INFO]: cb cpu mask: %s" % cpu_mask )
 
     # find the added rpu node
-    rpu_node = Lopper.node_find( sdt.FDT, "/zynqmp-rpu/" )
+    # rpu_node = Lopper.node_find( sdt.FDT, "/zynqmp-rpu/" )
+    rpu_node = sdt.FDT.path_offset( "/zynqmp-rpu/" )
+    print( "DDDDDDDDFFFFFFFFFFFFFFFFFFFFFFFF rpu node: %s" % rpu_node )
     if not rpu_node:
         print( "[ERROR]: cannot find the target rpu node" )
         return False
@@ -70,6 +84,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     #       run our list of things to change, and search them out specifically
     # find the cpu node of the rpu node
     rpu_cpu_node = Lopper.node_find( sdt.FDT, "/zynqmp-rpu/__cpu__" )
+    print( "rpu cpu node is: %s" % rpu_cpu_node )
     if not rpu_cpu_node:
         print( "[ERROR]: cannot find the target rpu node" )
         return False
@@ -82,8 +97,30 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     new_rpu_name = "r5_{}".format(nn)
     sdt.FDT.set_name( rpu_cpu_node, new_rpu_name )
 
+    # debug block
+
+    a_cells = Lopper.prop_get( sdt.FDT, domain_node, "#address-cells" )
+    print( "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffghhhaa: %s" % a_cells )
+
+    #sdt.FDT.pack()
+    # this set fucks it.
+    Lopper.prop_set( sdt.FDT, rpu_node, 'compatible', "dick" )
+    #sdt.FDT.set_prop_str( rpu_node, "core_conf", "dick" )
+    a_cells = Lopper.prop_get( sdt.FDT, domain_node, "#address-cells" )
+    print( "ffghhhaa: %s" % a_cells )
+    sys.exit(1)
+    # end debug
+
+
     # double check by searching on the new name
     rpu_cpu_node = Lopper.node_find( sdt.FDT, "/zynqmp-rpu/" + new_rpu_name )
+
+    # debug block
+    a_cells = Lopper.prop_get( sdt.FDT, domain_node, "#address-cells" )
+    print( "aa: %s" % a_cells )
+    #sys.exit(1)
+    # end debug
+
 
     # 2) we have to fix the core-conf mode
     cpus_mod = cpu_prop_values[2]
@@ -96,7 +133,23 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     else:
         core_conf = "split"
 
+    # debug block
+    a_cells = Lopper.prop_get( sdt.FDT, domain_node, "#address-cells" )
+    print( "aa: %s" % a_cells )
+    #sys.exit(1)
+    # end debug
+
+# this prop set blows shit up. why ??????
     Lopper.prop_set( sdt.FDT, rpu_node, 'core_conf', core_conf )
+
+
+    # debug block
+    a_cells = Lopper.prop_get( sdt.FDT, domain_node, "#address-cells" )
+    print( "aa: %s" % a_cells )
+    #sys.exit(1)
+    # end debug
+
+
 
     # 3) handle the memory-region
 
@@ -162,22 +215,28 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
 
                 # TODO: the list of phandles is coming out as <a b c> versus <a>,<b>,<c>
                 #       this may or may not work at runtime and needs to be investigated.
+                print( "ff: %s" % rpu_cpu_node )
                 Lopper.prop_set( sdt.FDT, rpu_cpu_node, "memory-region", phandle_list )
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 print(exc_type, fname, exc_tb.tb_lineno)
 
+    print( "ddddddddddddd %s ddddddddddddddddddddddddddddddddddddd" % domain_node)
     # 4) fill in the #address-cells and #size-cells.
     #
     # We lookup the values in the domain node, and copy them to the zynqmp node
     a_cells = Lopper.prop_get( sdt.FDT, domain_node, "#address-cells" )
     s_cells = Lopper.prop_get( sdt.FDT, domain_node, "#size-cells" )
 
+    print( "blah" )
+    #sys.exit(1)
     # TODO: should check for an exception
     Lopper.prop_set( sdt.FDT, rpu_cpu_node, "#address-cells", a_cells )
     Lopper.prop_set( sdt.FDT, rpu_cpu_node, "#size-cells", s_cells )
 
+    print( "fffffffffffddddddddddddddddddddsssssssssssss" )
+    #sys.exit(1)
     # 5) mboxes
     #
     # Walk the access list of the domain node. If there are any ipi resources,
