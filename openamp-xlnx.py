@@ -60,16 +60,18 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
         print( "[INFO]: cb cpu mask: %s" % cpu_mask )
 
     # find the added rpu node
-    rpu_node = Lopper.node_find( sdt.FDT, "/zynqmp-rpu/" )
+    rpu_node = Lopper.node_find_by_name( sdt.FDT, "zynqmp-rpu" )
     if not rpu_node:
         print( "[ERROR]: cannot find the target rpu node" )
         return False
+
+    rpu_path = Lopper.node_abspath( sdt.FDT, rpu_node )
 
     # Note: we may eventually just walk the tree and look for __<symbol>__ and
     #       use that as a trigger for a replacement op. But for now, we will
     #       run our list of things to change, and search them out specifically
     # find the cpu node of the rpu node
-    rpu_cpu_node = Lopper.node_find( sdt.FDT, "/zynqmp-rpu/__cpu__" )
+    rpu_cpu_node = Lopper.node_find( sdt.FDT, rpu_path + "/__cpu__" )
     if not rpu_cpu_node:
         print( "[ERROR]: cannot find the target rpu node" )
         return False
@@ -83,7 +85,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     sdt.FDT.set_name( rpu_cpu_node, new_rpu_name )
 
     # double check by searching on the new name
-    rpu_cpu_node = Lopper.node_find( sdt.FDT, "/zynqmp-rpu/" + new_rpu_name )
+    rpu_cpu_node = Lopper.node_find( sdt.FDT, rpu_path + "/" + new_rpu_name )
 
     # 2) we have to fix the core-conf mode
     cpus_mod = cpu_prop_values[2]
@@ -158,7 +160,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
             if verbose:
                 print( "[INFO]: setting memory-region to: %s" % phandle_list )
             try:
-                rpu_cpu_node = Lopper.node_find( sdt.FDT, "/zynqmp-rpu/" + new_rpu_name )
+                rpu_cpu_node = Lopper.node_find( sdt.FDT, rpu_path + "/" + new_rpu_name )
 
                 # TODO: the list of phandles is coming out as <a b c> versus <a>,<b>,<c>
                 #       this may or may not work at runtime and needs to be investigated.
