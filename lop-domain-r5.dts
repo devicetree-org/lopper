@@ -29,12 +29,8 @@
                 lop_7 {
                         // node add
                         compatible = "system-device-tree-v1,lop,add";
-                        // temp old format
                         node_name = "zynqmp-rpu";
                         node_path = "/";
-                        // end temp
-                        node_src = "zynqmp-rpu";
-                        node_dest = "/zynqmp-rpu";
                         zynqmp-rpu {
                             compatible = "xlnx,zynqmp-r5-remoteproc-1.0";
                             #address-cells = <2>;
@@ -78,8 +74,7 @@
                   lop_13 {
                          compatible = "system-device-tree-v1,lop,output";
                          outfile = "openamp-test.dtb";
-                         // nodes = "/reserved-memory", "/zynqmp-rpu", "/zynqmp_ipi1", "/chosen/resource_group_1";
-                         nodes = "/reserved-memory", "/zynqmp-rpu", "/zynqmp_ipi1";
+                         nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
                   };
                   lop_14 {
                          compatible = "system-device-tree-v1,lop,output";
