@@ -54,7 +54,7 @@ class Lopper:
         try:
             node = fdt.path_offset( node_prefix )
         except:
-            node = 0
+            node = -1
 
         return node
 
@@ -94,6 +94,7 @@ class Lopper:
 
     @staticmethod
     # Searches for a node by its name, and returns the offset of that same node
+    # Note: use this when you don't know the full path of a node ....
     def node_find_by_name( fdt, node_name, starting_node = 0 ):
         nn = starting_node
         # short circuit the search if they are looking for /
@@ -129,12 +130,56 @@ class Lopper:
         return True
 
     @staticmethod
-    def node_copy( fdt_source, fdt_dest, node_source, verbose=0 ):
+    def node_add( fdt_dest, node_full_path, create_parents = True, verbose = 0 ):
+        prev = -1
+        for p in os.path.split( node_full_path ):
+            n = Lopper.node_find( fdt_dest, p )
+            if n < 0:
+                if create_parents:
+                    prev = fdt_dest.add_subnode( prev, p )
+            else:
+                prev = n
+
+        return prev
+
+    # TODO: write a utility routine that gets all the properties of a node and returns
+    #       them in a dictionary. One call, get all the properties you need!
+    @staticmethod
+    def node_properties_as_dict():
+        pass
+
+    @staticmethod
+    def node_copy_from_path( fdt_source, node_source_path, fdt_dest, node_full_dest, verbose=0 ):
+        if verbose > 1:
+            print( "[DBG ]: node_copy_from_path: %s -> %s" % (node_source_path, node_full_dest) )
+
+        node_to_copy = Lopper.node_find( fdt_source, node_source_path )
+        node_dest_path = os.path.dirname( node_full_dest )
+        node_dest_name = os.path.basename( node_full_dest )
+
+        if node_dest_path == "/":
+            node_dest_parent_offset = 0
+        else:
+            # non root dest
+            node_dest_parent_offset = Lopper.node_find( fdt_dest, node_dest_path )
+            if node_dest_parent_offset == -1:
+                node_dest_parent_offset = Lopper.node_add( fdt_dest, node_dest_path )
+                if node_dest_parent_offset <= 0:
+                    print( "[ERROR]: could not create new node" )
+                    sys.exit(1)
+
+        if node_to_copy:
+            return Lopper.node_copy( fdt_source, node_to_copy, fdt_dest, node_dest_parent_offset, verbose )
+
+        return False
+
+    @staticmethod
+    def node_copy( fdt_source, node_source_offset, fdt_dest, node_dest_parent_offset, verbose=0 ):
         # TODO: check node_path to figure out the parent offset, setting to 0 for now
         old_depth = -1
         depth = 0
-        nn = node_source
-        newoff = 0
+        nn = node_source_offset
+        newoff = node_dest_parent_offset
         while depth >= 0:
             nn_name = fdt_source.get_name(nn)
             try:
@@ -153,9 +198,11 @@ class Lopper:
             poffset = fdt_source.first_property_offset(nn, QUIET_NOTFOUND)
             while poffset > 0:
                 prop = fdt_source.get_property_by_offset(poffset)
+
                 # we insert, not append. So we can flip the order of way we are
                 # discovering the properties
                 prop_list.insert( 0, prop )
+
                 if verbose > 2:
                     print( "            prop name: %s" % prop.name )
                     print( "            prop raw: %s" % prop )
@@ -175,6 +222,7 @@ class Lopper:
             # at zero every time. If we don't flip the order the copied node will have
             # them in the opposite order!
             for prop in prop_list:
+                # TODO: should these be using the wrapper functions ?  we sometimes misidentify.
                 prop_val = Lopper.property_value_decode( prop, 0 )
                 if not prop_val:
                     prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND )
@@ -189,6 +237,7 @@ class Lopper:
             if depth >= 0 and old_depth != depth:
                 newoff = fdt_dest.subnode_offset( newoff, nn_name )
 
+        return True
 
     @staticmethod
     def node_abspath( fdt, nodeid ):
@@ -604,13 +653,16 @@ class Lopper:
     # properties for compound
     @staticmethod
     def prop_get( fdt, node_number, property_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
-        prop = fdt.getprop( node_number, property_name, QUIET_NOTFOUND )
-        if prop:
-            if ftype == LopperFmt.SIMPLE:
-                val = Lopper.property_value_decode( prop, 0, ftype, encode )
+        try:
+            prop = fdt.getprop( node_number, property_name )
+            if prop:
+                if ftype == LopperFmt.SIMPLE:
+                    val = Lopper.property_value_decode( prop, 0, ftype, encode )
+                else:
+                    val = Lopper.property_value_decode( prop, 0, ftype, encode )
             else:
-                val = Lopper.property_value_decode( prop, 0, ftype, encode )
-        else:
+                val = ""
+        except:
             val = ""
 
         return val
@@ -630,6 +682,9 @@ class Lopper:
 
         # we have to re-encode based on the type of what we just decoded.
         if type(prop_val) == int:
+            # this seems to break some operations, but a variant may be required
+            # to prevent overflow situations
+            # if sys.getsizeof(prop_val) >= 32:
             if sys.getsizeof(prop_val) > 32:
                 fdt_dest.setprop_u64( node_number, prop_name, prop_val )
             else:
@@ -762,6 +817,100 @@ class Lopper:
     #   - encode: <format> is optional, and can be: dec or hex. 'dec' is the default
     @staticmethod
     def property_value_decode( property, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC, verbose=0 ):
+        if verbose > 3:
+            print( "[DBG+]: property_value_decode start ------> %s %s" % (property,ftype))
+
+        # Note: these could also be nested.
+        # Note: this is temporary since the decoding
+        #       is sometimes wrong. We need to look at libfdt and see how they are
+        #       stored so they can be unpacked better.
+        if ftype == LopperFmt.SIMPLE:
+            val = ""
+            decode_msg = ""
+            try:
+                val = property.as_uint32()
+                decode_msg = "(uint32): {0}".format(val)
+            except:
+                pass
+            if not val and val != 0:
+                try:
+                    val = property.as_uint64()
+                    decode_msg = "(uint64): {0}".format(val)
+                except:
+                    pass
+            if not val and val != 0:
+                try:
+                    val = property.as_str()
+                    decode_msg = "(string): {0}".format(val)
+                except:
+                    pass
+            if not val and val != 0:
+                try:
+                    # this is getting us some false positives on multi-string. Need
+                    # a better test
+                    #val = property[:-1].decode('utf-8').split('\x00')
+                    val = ""
+                    decode_msg = "(multi-string): {0}".format(val)
+                except:
+                    pass
+
+            if not val and val != 0:
+                decode_msg = "** unable to decode value **"
+        else:
+            decode_msg = ""
+            encode_calculated = encode
+            val = []
+
+            # if we have b'' (and empty array), return an empty []
+            if not property:
+                return val
+
+            first_byte = property[0]
+            last_byte = property[-1]
+
+            # byte array encoded strings, start with a non '\x00' byte (i.e. a character), so
+            # we test on that for a hint. If it is not \x00, then we try it as a string.
+            # Note: we may also test on the last byte for a string terminator.
+            if first_byte != 0:
+                encode_calculated = LopperFmt.STRING
+
+            if encode_calculated == LopperFmt.STRING:
+                try:
+                    val = property[:-1].decode('utf-8').split('\x00')
+                    decode_msg = "(multi-string): {0}".format(val)
+                except:
+                    encode_calculated = LopperFmt.DEC
+
+            if encode_calculated == LopperFmt.DEC:
+                try:
+                    decode_msg = "(multi number)"
+                    num_bits = len(property)
+                    num_nums = num_bits // 4
+                    start_index = 0
+                    end_index = 4
+                    short_int_size = 4
+                    val = []
+                    while end_index <= (num_nums * short_int_size):
+                        short_int = property[start_index:end_index]
+                        if encode == LopperFmt.HEX:
+                            converted_int = hex(int.from_bytes(short_int,'big',signed=False))
+                        else:
+                            converted_int = int.from_bytes(short_int,'big',signed=False)
+
+                        start_index = start_index + short_int_size
+                        end_index = end_index + short_int_size
+                        val.append(converted_int)
+                except:
+                    decode_msg = "** unable to decode value **"
+
+
+        if verbose > 3:
+            print( "[DBG+]: decoding property: \"%s\" (%s) [%s] --> %s" % (property, poffset, property, decode_msg ) )
+
+        return val
+
+    @staticmethod
+    def property_value_decode_old( property, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC, verbose=0 ):
         # these could also be nested. Note: this is temporary since the decoding
         # is sometimes wrong. We need to look at libfdt and see how they are
         # stored so they can be unpacked better.
@@ -826,10 +975,11 @@ class Lopper:
                     end_index = end_index + short_int_size
                     val.append(converted_int)
 
-        if verbose > 3:
-            print( "[DBG+]: decoding property: \"%s\" (%s) [%s] --> %s" % (property, poffset, property, decode_msg ) )
+        #if verbose > 3:
+        print( "[DBG+]: decoding property: \"%s\" (%s) [%s] --> %s" % (property, poffset, property, decode_msg ) )
 
         return val
+
 
 ##
 ## SystemDeviceTree
@@ -1038,8 +1188,13 @@ class SystemDeviceTree:
                             #       strangely formatted ones that we can't copy.
                             ff = libfdt.Fdt.create_empty_tree( self.FDT.totalsize() )
                             for o_node in output_nodes:
+                                # TODO: this really should be using node_find() and we should make sure the
+                                #       output 'lop' has full paths.
                                 node_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0 )
-                                Lopper.node_copy( self.FDT, ff, node_to_copy, self.verbose )
+                                node_to_copy_path = Lopper.node_abspath( self.FDT, node_to_copy )
+                                new_node = Lopper.node_copy_from_path( self.FDT, node_to_copy_path, ff, node_to_copy_path, self.verbose )
+                                if not new_node:
+                                    print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
 
                         if not self.dryrun:
                             Lopper.write_fdt( ff, output_file_name, True, verbose )
@@ -1079,8 +1234,9 @@ class SystemDeviceTree:
                                     exc_type, exc_obj, exc_tb = sys.exc_info()
                                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                                     print(exc_type, fname, exc_tb.tb_lineno)
-                                    # TODO: consider adding a -Werror type flag, and failing on this.
-                                    # sys.exit(1)
+                                    # exit if warnings are treated as errors
+                                    if self.werror:
+                                        sys.exit(1)
                         else:
                             print( "[INFO]: no compatible callback found, skipping" )
 
@@ -1110,20 +1266,24 @@ class SystemDeviceTree:
                         if self.verbose:
                             print( "[INFO]: node add lop found" )
 
-                        prop = lops_fdt.getprop( n, "node_name" )
-                        new_node_name = Lopper.property_value_decode( prop, 0 )
-                        prop = lops_fdt.getprop( n, "node_path" )
-                        new_node_path = Lopper.property_value_decode( prop, 0 )
+                        src_node_name = Lopper.prop_get( lops_fdt, n, "node_src" )
+                        if not src_node_name:
+                            print( "[ERROR]: node add detected, but no node name found" )
+                            sys.exit(1)
+
+                        lops_node_path = Lopper.node_abspath( lops_fdt, n )
+                        src_node_path = lops_node_path + "/" + src_node_name
+
+                        dest_node_path = Lopper.prop_get( lops_fdt, n, "node_dest" )
+                        if not dest_node_path:
+                            dest_node_path = "/" + src_node_name
 
                         if self.verbose:
-                            print( "[INFO]: node name: %s node path: %s" % (new_node_name, new_node_path) )
+                            print( "[INFO]: node name: %s node path: %s" % (src_node_path, dest_node_path) )
 
-                        # this check isn't useful .. it is the lop node name, remove it ..
-                        if node_name:
-                            # iterate the subnodes of this lop, looking for one that has a matching
-                            # node_name fdt value
-                            new_node_to_add = Lopper.node_find_by_name( lops_fdt, new_node_name, n )
-                            Lopper.node_copy( lops_fdt, self.FDT, new_node_to_add )
+                        if not Lopper.node_copy_from_path( lops_fdt, src_node_path, self.FDT, dest_node_path, self.verbose ):
+                            print( "[ERROR]: unable to copy node: %s" % src_node_name )
+                            sys.exit(1)
 
                     if re.search( ".*,lop,modify$", val ):
                         if self.verbose:
@@ -1376,6 +1536,7 @@ def main():
     global target_domain
     global dryrun
     global assists
+    global werror
 
     verbose = 0
     output = ""
@@ -1385,8 +1546,9 @@ def main():
     dryrun = False
     target_domain = ""
     assists = []
+    werror = False
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:", ["target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
+        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:", ["werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -1416,6 +1578,8 @@ def main():
             output = a
         elif o in ('--dryrun'):
             dryrun=True
+        elif o in ('--werror'):
+            werror=True
 
         else:
             assert False, "unhandled option"
@@ -1483,6 +1647,7 @@ if __name__ == "__main__":
     # set some flags before we process the tree.
     device_tree.dryrun = dryrun
     device_tree.verbose = verbose
+    device_tree.werror = werror
 
     device_tree.setup()
     device_tree.perform_lops()
