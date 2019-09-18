@@ -1310,7 +1310,7 @@ class SystemDeviceTree:
                                 # property operation
                                 if not modify_expr[2]:
                                     if self.verbose:
-                                        print( "[INFO]: property remove operation detected: %s" % modify_expr[1])
+                                        print( "[INFO]: property remove operation detected: %s %s" % (modify_expr[0], modify_expr[1]))
                                     # TODO; make a special case of the property_modify_below
                                     self.property_remove( modify_expr[0], modify_expr[1], True )
                                 else:
@@ -1361,16 +1361,15 @@ class SystemDeviceTree:
                     poffset = 0
                     continue
 
-                # print( "propname: %s" % prop.name )
                 prop_list.append(prop.name)
                 poffset = self.FDT.next_property_offset(poffset, QUIET_NOTFOUND)
 
-                if propname in prop_list:
-                    # node is an integer offset, propname is a string
-                    if self.verbose:
-                        print( "[INFO]: removing property %s from %s" % (propname, self.FDT.get_name(node)) )
+            if propname in prop_list:
+                # node is an integer offset, propname is a string
+                if self.verbose:
+                    print( "[INFO]: removing property %s from %s" % (propname, self.FDT.get_name(node)) )
 
-                    self.FDT.delprop(node, propname)
+                self.FDT.delprop(node, propname)
 
             if recursive:
                 node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
