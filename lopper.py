@@ -1077,6 +1077,12 @@ class SystemDeviceTree:
         with open(outfilename, 'wb') as w:
             w.write(byte_array)
 
+    # Lopper wrapper functions, to avoid everyone looking into the SDT to get
+    # the FDT and then calling lopper. This way we can change how the device
+    # tree is held in memory, and know one is the wiser.
+    def node_abspath( self, tgt_node ):
+        return Lopper.node_abspath( self.FDT, tgt_node )
+
     # A thin wrapper + consistent logging and error handling around FDT's
     # node delete
     def node_remove( self, target_node_offset ):

@@ -48,7 +48,7 @@ def process_domain( tgt_node, sdt, verbose=0 ):
     if verbose:
         print( "[INFO]: cb: process_domain( %s, %s, %s )" % (tgt_node, sdt, verbose))
 
-    tgt_domain = Lopper.node_abspath( sdt.FDT, tgt_node )
+    tgt_domain = sdt.node_abspath( tgt_node )
     cpu_prop_values = Lopper.prop_get( sdt.FDT, tgt_node, "cpus", LopperFmt.COMPOUND )
     if cpu_prop_values == "":
         sys.exit(1)
@@ -123,7 +123,7 @@ else:
                 if verbose > 1:
                     print( "[INFO]: access is a simple-bus (%s), leaving all nodes" % node_name)
                 # refcount the bus
-                full_name = Lopper.node_abspath( sdt.FDT, anode )
+                full_name = sdt.node_abspath( anode )
                 sdt.node_ref_inc( full_name )
             else:
                 # The node is *not* a simple bus, so we must do more processing
@@ -150,7 +150,7 @@ else:
                     # <access>. We need to refcount and delete anything that isn't accessed.
                     if re.search( "simple-bus", parent_node_type ):
                         # refcount the bus
-                        full_name = Lopper.node_abspath( sdt.FDT, node_parent )
+                        full_name = sdt.node_abspath( node_parent )
                         sdt.node_ref_inc( full_name )
 
                         if not full_name in node_access_tracker:
@@ -159,21 +159,21 @@ else:
                         if verbose > 1:
                             print( "[INFO]: node parent is a simple-bus (%s), dropping sibling nodes" % parent_node_name)
 
-                        full_name = Lopper.node_abspath( sdt.FDT, anode )
+                        full_name = sdt.node_abspath( anode )
                         sdt.node_ref_inc( full_name )
 
                     elif re.search( "reserved-memory", parent_node_type ):
                         if verbose > 1:
                             print( "[INFO]: reserved memory processing for: %s" % node_name)
 
-                        full_name = Lopper.node_abspath( sdt.FDT, node_parent )
+                        full_name = sdt.node_abspath( node_parent )
                         if not full_name in node_access_tracker:
                             node_access_tracker[full_name] = [ full_name, "*" ]
 
                         # Increment a reference to the current node, since we've added the parent node
                         # to a list of nodes that we'll use to check for referenced children later. Anything
                         # with no reference, will be removed.
-                        full_name = Lopper.node_abspath( sdt.FDT, anode )
+                        full_name = sdt.node_abspath( anode )
                         sdt.node_ref_inc( full_name )
 
         for n, value in node_access_tracker.values():
