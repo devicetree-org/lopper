@@ -348,43 +348,6 @@ class Lopper:
             sys.exit(1)
 
 
-    @staticmethod
-    def process_input( sdt_file, input_files, include_paths, assists=[], force=False ):
-        sdt = SystemDeviceTree( sdt_file )
-        # is the sdt a dts ?
-        if re.search( ".dts$", sdt.dts ):
-            sdt.dtb = Lopper.dt_compile( sdt.dts, input_files, include_paths, force )
-        else:
-            sdt.dtb = sdt_file
-            sdt.dts = ""
-
-        # Individually compile the input files. At some point these may be
-        # concatenated with the main SDT if dtc is doing some of the work, but for
-        # now, libfdt is doing the transforms so we compile them separately
-        for ifile in input_files:
-            if re.search( ".dts$", ifile ):
-                lop = Lop( ifile )
-                compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force )
-                if not compiled_file:
-                    print( "[ERROR]: could not compile file %s" % ifile )
-                    sys.exit(1)
-                lop.dtb = "{0}.{1}".format(ifile, "dtb")
-                sdt.lops.append( lop )
-            elif re.search( ".dtb$", ifile ):
-                lop = Lop( ifile )
-                lop.dts = ""
-                lop.dtb = ifile
-                sdt.lops.append( lop )
-
-        for a in assists:
-            inf = Path(a)
-            if not inf.exists():
-                print( "[ERROR]: cannot find assist %s" % a )
-                sys.exit(2)
-            sdt.assists.append(a)
-
-        return sdt
-
     #
     #  - a more generic way to modify/filter nodes
     #
@@ -705,21 +668,20 @@ class Lopper:
 
 
     @staticmethod
-    def dt_compile( sdt, i_files, includes, force_overwrite=False ):
+    def dt_compile( dts_file, i_files, includes, force_overwrite=False ):
         output_dtb = ""
 
-        # TODO: might need to make 'sdt' absolute for the cpp call below
-        sdtname = os.path.basename( sdt )
-        sdtname_noext = os.path.splitext(sdtname)[0]
+        # TODO: might need to make 'dts_file' absolute for the cpp call below
+        dts_filename = os.path.basename( dts_file )
+        dts_filename_noext = os.path.splitext(dts_filename)[0]
 
         #
         # step 1: preprocess the file with CPP (if available)
         #
-        # Note: this is not processing the included files (i_files) at the
-        #       moment .. it may have to, or maybe they are for the
-        #       lopper operation (lops) block below.
 
-        preprocessed_name = "{0}.pp".format(sdtname)
+        # NOTE: we are putting the .pp file into the current working directory
+        #       if we add an O= type processing, this will have to respect that
+        preprocessed_name = "{0}.pp".format(dts_filename)
 
         ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp")).split()
         # Note: might drop the -I include later
@@ -727,15 +689,15 @@ class Lopper:
         ppargs += (os.environ.get('LOPPER_PPFLAGS') or "").split()
         for i in includes:
             ppargs.append("-I{0}".format(i))
-        ppargs += ["-o", preprocessed_name, sdt]
+        ppargs += ["-o", preprocessed_name, dts_file]
         if verbose:
-            print( "[INFO]: preprocessing sdt: %s" % ppargs )
+            print( "[INFO]: preprocessing dts_file: %s" % ppargs )
         subprocess.run( ppargs, check = True )
 
         # step 2: compile the dtb
         #         dtc -O dtb -o test_tree1.dtb test_tree1.dts
         isoverlay = False
-        output_dtb = "{0}.{1}".format(sdtname, "dtbo" if isoverlay else "dtb")
+        output_dtb = "{0}.{1}".format(dts_filename, "dtbo" if isoverlay else "dtb")
 
         # make sure the dtb is not on disk, since it won't be overwritten by
         # default.
@@ -754,7 +716,7 @@ class Lopper:
         for i in includes:
             dtcargs += ["-i", i]
         dtcargs += ["-o", "{0}".format(output_dtb)]
-        dtcargs += ["-I", "dts", "-O", "dtb", "{0}.pp".format(sdt)]
+        dtcargs += ["-I", "dts", "-O", "dtb", "{0}.pp".format(dts_filename)]
         if verbose:
             print( "[INFO]: compiling dtb: %s" % dtcargs )
 
@@ -988,6 +950,8 @@ class Lopper:
 ##  - manages and applies operations to the tree
 ##  - calls modules and assist functions for processing of that tree
 ##
+##   TODO: wrap more lopper static routines, to make manipulation easier
+##
 class SystemDeviceTree:
     def __init__(self, sdt_file):
         self.dts = sdt_file
@@ -998,14 +962,111 @@ class SystemDeviceTree:
         self.node_access = {}
         self.dry_run = False
         self.assists = []
+        self.output_file = ""
+        self.cleanup_flag = True
 
-    def setup(self):
+    def setup(self, sdt_file, input_files, include_paths, assists=[], force=False):
         if self.verbose:
             print( "[INFO]: loading dtb and using libfdt to manipulate tree" )
 
         self.use_libfdt = True
-        self.FDT = libfdt.Fdt(open(self.dtb, mode='rb').read())
+
+        # self.FDT = libfdt.Fdt(open(self.dtb, mode='rb').read())
+        current_dir = os.getcwd()
+
+        lop_files = []
+        sdt_files = []
+        for ifile in input_files:
+            if re.search( ".dts$", ifile ):
+                # an input file is either a lopper operation file, or part of the
+                # system device tree. We can check for compatibility to decide which
+                # it is.
+                with open(ifile) as f:
+                    datafile = f.readlines()
+                    found = False
+                    for line in datafile:
+                        if not found:
+                            if re.search( "system-device-tree-v1,lop", line ):
+                                lop_files.append( ifile )
+                                found = True
+
+                if not found:
+                    sdt_files.append( ifile )
+
+        # is the sdt a dts ?
+        if re.search( ".dts$", self.dts ):
+            # do we have any extra sdt files to concatenate first ?
+            fp = ""
+            fpp = tempfile.NamedTemporaryFile( delete=False )
+            if sdt_files:
+                sdt_files.insert( 0, self.dts )
+
+                # this block concatenates all the files into a single dts to
+                # compile
+                with open( fpp.name, 'wb') as wfd:
+                    for f in sdt_files:
+                        with open(f,'rb') as fd:
+                            shutil.copyfileobj(fd, wfd)
+
+                fp = fpp.name
+            else:
+                fp = sdt_file
+
+            self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force )
+            self.FDT = libfdt.Fdt(open(self.dtb, mode='rb').read())
+
+            fpp.close()
+        else:
+            self.dtb = sdt_file
+            self.dts = ""
+
+        if verbose:
+            print( "" )
+            print( "SDT summary:")
+            print( "   system device tree: %s" % sdt_files )
+            print( "   lops: %s" % lop_files )
+            print( "   output: %s" % self.output_file )
+            print( "" )
+
+        # Individually compile the input files. At some point these may be
+        # concatenated with the main SDT if dtc is doing some of the work, but for
+        # now, libfdt is doing the transforms so we compile them separately
+        for ifile in lop_files:
+            if re.search( ".dts$", ifile ):
+                lop = Lop( ifile )
+                compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force )
+                if not compiled_file:
+                    print( "[ERROR]: could not compile file %s" % ifile )
+                    sys.exit(1)
+                lop.dtb = "{0}.{1}".format(ifile, "dtb")
+                self.lops.append( lop )
+            elif re.search( ".dtb$", ifile ):
+                lop = Lop( ifile )
+                lop.dts = ""
+                lop.dtb = ifile
+                self.lops.append( lop )
+
+        for a in assists:
+            inf = Path(a)
+            if not inf.exists():
+                print( "[ERROR]: cannot find assist %s" % a )
+                sys.exit(2)
+            self.assists.append(a)
+
         self.load_assists()
+
+    def cleanup( self ):
+        # remove any .dtb and .pp files we created
+        if self.cleanup:
+            try:
+                os.remove( self.dtb )
+            except:
+                pass
+
+        # note: we are not deleting assists .db files, since they
+        #       can actually be binary blobs passed in. We are also
+        #       not cleaning up the concatenated compiled. pp file, since
+        #       it is created with mktmp()
 
     def write( self, outfilename ):
         byte_array = self.FDT.as_bytearray()
@@ -1629,29 +1690,25 @@ if __name__ == "__main__":
     # use below
     main()
 
-    if verbose:
-        print( "" )
-        print( "SDT summary:")
-        print( "   system device tree: %s" % sdt )
-        print( "   lops: %s" % inputfiles )
-        print( "   output: %s" % output )
-        print( "" )
-
     if dump_dtb:
         Lopper.dtb_dts_export( sdt, verbose )
         sys.exit(0)
 
-    device_tree = Lopper.process_input( sdt, inputfiles, "", assists, force )
+    device_tree = SystemDeviceTree( sdt )
 
     # set some flags before we process the tree.
     device_tree.dryrun = dryrun
     device_tree.verbose = verbose
     device_tree.werror = werror
+    device_tree.output_file = output
+    device_tree.cleanup_flag = True
 
-    device_tree.setup()
+    device_tree.setup( sdt, inputfiles, "", assists, force )
     device_tree.perform_lops()
 
     if not dryrun:
-        Lopper.write_sdt( device_tree,  output, True, device_tree.verbose )
+        Lopper.write_sdt( device_tree, output, True, device_tree.verbose )
     else:
         print( "[INFO]: --dryrun was passed, output file %s not written" % output )
+
+    device_tree.cleanup()
