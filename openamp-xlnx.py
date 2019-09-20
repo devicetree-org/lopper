@@ -48,7 +48,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
         print( "[INFO]: cb: xlnx_openamp_rpu( %s, %s, %s )" % (domain_node, sdt, verbose))
 
     # temp; PoC:
-    cpu_prop_values = Lopper.prop_get( sdt.FDT, domain_node, "cpus", LopperFmt.COMPOUND )
+    cpu_prop_values = sdt.property_get( domain_node, "cpus", LopperFmt.COMPOUND )
     if cpu_prop_values == "":
         return False
 
@@ -60,18 +60,18 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
         print( "[INFO]: cb cpu mask: %s" % cpu_mask )
 
     # find the added rpu node
-    rpu_node = Lopper.node_find_by_name( sdt.FDT, "zynqmp-rpu" )
+    rpu_node = sdt.node_find_by_name( "zynqmp-rpu" )
     if not rpu_node:
         print( "[ERROR]: cannot find the target rpu node" )
         return False
 
-    rpu_path = Lopper.node_abspath( sdt.FDT, rpu_node )
+    rpu_path = sdt.node_abspath( rpu_node )
 
     # Note: we may eventually just walk the tree and look for __<symbol>__ and
     #       use that as a trigger for a replacement op. But for now, we will
     #       run our list of things to change, and search them out specifically
     # find the cpu node of the rpu node
-    rpu_cpu_node = Lopper.node_find( sdt.FDT, rpu_path + "/__cpu__" )
+    rpu_cpu_node = sdt.node_find( rpu_path + "/__cpu__" )
     if not rpu_cpu_node:
         print( "[ERROR]: cannot find the target rpu node" )
         return False
@@ -85,7 +85,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     sdt.FDT.set_name( rpu_cpu_node, new_rpu_name )
 
     # double check by searching on the new name
-    rpu_cpu_node = Lopper.node_find( sdt.FDT, rpu_path + "/" + new_rpu_name )
+    rpu_cpu_node = sdt.node_find( rpu_path + "/" + new_rpu_name )
 
     # 2) we have to fix the core-conf mode
     cpus_mod = cpu_prop_values[2]
@@ -98,7 +98,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     else:
         core_conf = "split"
 
-    Lopper.prop_set( sdt.FDT, rpu_node, 'core_conf', core_conf )
+    sdt.property_set( rpu_node, 'core_conf', core_conf )
 
     # 3) handle the memory-region
 
@@ -113,7 +113,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     #       utility in lopper and use it here and in the openamp domain
     #       processing.
     #
-    memory_node = Lopper.node_find( sdt.FDT, "/reserved-memory" )
+    memory_node = sdt.node_find( "/reserved-memory" )
     if memory_node:
         if verbose:
             print( "[INFO]: memory node found, walking for memory regions" )
@@ -143,7 +143,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
                     # Note: the propery we found is equivalent to: sdt.FDT.get_phandle( node )
                     #       since we are processing the already pruned node, the phandles show
                     #       up as properties. If that changes, we may go to the raw call.
-                    pval = Lopper.prop_get( sdt.FDT, node, pname )
+                    pval = sdt.property_get( node, pname )
                     pval2 = sdt.FDT.get_phandle( node )
                     if pval == pval2:
                         phandle_list.append( pval )
@@ -160,11 +160,11 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
             if verbose:
                 print( "[INFO]: setting memory-region to: %s" % phandle_list )
             try:
-                rpu_cpu_node = Lopper.node_find( sdt.FDT, rpu_path + "/" + new_rpu_name )
+                rpu_cpu_node = sdt.node_find( rpu_path + "/" + new_rpu_name )
 
                 # TODO: the list of phandles is coming out as <a b c> versus <a>,<b>,<c>
                 #       this may or may not work at runtime and needs to be investigated.
-                Lopper.prop_set( sdt.FDT, rpu_cpu_node, "memory-region", phandle_list )
+                sdt.property_set( rpu_cpu_node, "memory-region", phandle_list )
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -173,12 +173,12 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     # 4) fill in the #address-cells and #size-cells.
     #
     # We lookup the values in the domain node, and copy them to the zynqmp node
-    a_cells = Lopper.prop_get( sdt.FDT, domain_node, "#address-cells" )
-    s_cells = Lopper.prop_get( sdt.FDT, domain_node, "#size-cells" )
+    a_cells = sdt.property_get( domain_node, "#address-cells" )
+    s_cells = sdt.property_get( domain_node, "#size-cells" )
 
     # TODO: should check for an exception
-    Lopper.prop_set( sdt.FDT, rpu_cpu_node, "#address-cells", a_cells )
-    Lopper.prop_set( sdt.FDT, rpu_cpu_node, "#size-cells", s_cells )
+    sdt.property_set( rpu_cpu_node, "#address-cells", a_cells )
+    sdt.property_set( rpu_cpu_node, "#size-cells", s_cells )
 
     # 5) mboxes
     #
@@ -189,7 +189,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     #       to factor it out at some point.
 
     # "access" is a list of tuples: phandles + flags
-    access_list = Lopper.prop_get( sdt.FDT, domain_node, "access", LopperFmt.COMPOUND )
+    access_list = sdt.property_get( domain_node, "access", LopperFmt.COMPOUND )
     if not access_list:
         if verbose:
             print( "[INFO]: xlnx_openamp_rpu: no access list found, skipping ..." )
@@ -206,7 +206,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
             anode = sdt.FDT.node_offset_by_phandle( ph )
             node_parent = sdt.FDT.parent_offset(anode,QUIET_NOTFOUND)
             if node_parent:
-                parent_node_type = Lopper.prop_get( sdt.FDT, node_parent, "compatible" )
+                parent_node_type = sdt.property_get( node_parent, "compatible" )
                 parent_node_name = sdt.FDT.get_name( node_parent )
                 node_grand_parent = sdt.FDT.parent_offset(node_parent,QUIET_NOTFOUND)
 
@@ -274,8 +274,8 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
             if mboxes_prop:
                 # drop a trailing \0 if it was added above
                 mbox_names = mbox_names.rstrip('\0')
-                Lopper.prop_set( sdt.FDT, rpu_cpu_node, "mboxes", mboxes_prop )
-                Lopper.prop_set( sdt.FDT, rpu_cpu_node, "mbox-names", mbox_names )
+                sdt.property_set( rpu_cpu_node, "mboxes", mboxes_prop )
+                sdt.property_set( rpu_cpu_node, "mbox-names", mbox_names )
 
     return True
 

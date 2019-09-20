@@ -1012,6 +1012,9 @@ class SystemDeviceTree:
     def node_abspath( self, tgt_node ):
         return Lopper.node_abspath( self.FDT, tgt_node )
 
+    def node_find_by_name( self, node_name, starting_node = 0 ):
+        return Lopper.node_find_by_name( self.FDT, node_name, starting_node )
+
     # A thin wrapper + consistent logging and error handling around FDT's
     # node delete
     def node_remove( self, target_node_offset ):
