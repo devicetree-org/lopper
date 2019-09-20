@@ -287,14 +287,14 @@ class Lopper:
                 for cb_func in cb_funcs:
                     try:
                         if not cb_func( 0, sdt_to_write, sdt_to_write.verbose ):
-                            print( "[WARNING]: the callback returned false, check for errors ..." )
+                            print( "[WARNING]: the assist returned false, check for errors ..." )
                     except Exception as e:
-                        print( "[WARNING]: callback %s failed" % cb_func )
+                        print( "[WARNING]: assist %s failed" % cb_func )
                         exc_type, exc_obj, exc_tb = sys.exc_info()
                         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                         print(exc_type, fname, exc_tb.tb_lineno)
             else:
-                print( "[INFO]: no compatible callback found, skipping" )
+                print( "[INFO]: no compatible assist found, skipping" )
 
         elif re.search( ".dtb", output_filename ) or re.search( ".dts", output_filename ):
             Lopper.write_fdt( sdt_to_write.FDT, output_filename, overwrite, verbose )
@@ -1117,7 +1117,7 @@ class SystemDeviceTree:
         # device tree with:
         #
         # lop_0 {
-        #     compatible = "system-device-tree-v1,lop,callback-v1";
+        #     compatible = "system-device-tree-v1,lop,assist-v1";
         #     node = "/chosen/openamp_r5";
         #     id = "openamp,domain-v1";
         # };
@@ -1127,7 +1127,7 @@ class SystemDeviceTree:
         sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
         offset = sw.add_subnode( 0, 'lops' )
         offset = sw.add_subnode( offset, 'lop_0' )
-        sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,callback-v1')
+        sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,assist-v1')
         sw.setprop_str( offset, 'node', '/chosen/openamp_r5' )
         sw.setprop_str( offset, 'id', 'openamp,domain-v1' )
         lop = Lop( 'commandline' )
@@ -1262,24 +1262,24 @@ class SystemDeviceTree:
                         else:
                             print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
-                    if re.search( ".*,callback-v1$", val ):
-                        # also note: this callback may change from being called as part of the
+                    if re.search( ".*,assist-v1$", val ):
+                        # also note: this assist may change from being called as part of the
                         # tranform loop, to something that is instead called by walking the
-                        # entire device tree, looking for matching nodes and making callbacks at
+                        # entire device tree, looking for matching nodes and making assists at
                         # that moment.
                         cb_tgt_node_name = Lopper.prop_get( lops_fdt, n, 'node' )
                         if not cb_tgt_node_name:
-                            print( "[ERROR]: cannot find target node for the callback" )
+                            print( "[ERROR]: cannot find target node for the assist" )
                             sys.exit(1)
 
-                        cb = Lopper.prop_get( lops_fdt, n, 'callback' )
+                        cb = Lopper.prop_get( lops_fdt, n, 'assist' )
                         cb_id = Lopper.prop_get( lops_fdt, n, 'id' )
                         cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
                         if cb_node < 0:
-                            print( "[ERROR]: cannot find callback target node in tree" )
+                            print( "[ERROR]: cannot find assist target node in tree" )
                             sys.exit(1)
                         if self.verbose:
-                            print( "[INFO]: callback lop detected" )
+                            print( "[INFO]: assist lop detected" )
                             if cb:
                                 print( "        cb: %s" % cb )
                             print( "        id: %s" % cb_id )
@@ -1289,9 +1289,9 @@ class SystemDeviceTree:
                             for cb_func in cb_funcs:
                                 try:
                                     if not cb_func( cb_node, self, self.verbose ):
-                                        print( "[WARNING]: the callback returned false, check for errors ..." )
+                                        print( "[WARNING]: the assist returned false, check for errors ..." )
                                 except Exception as e:
-                                    print( "[WARNING]: callback %s failed" % cb_func )
+                                    print( "[WARNING]: assist %s failed" % cb_func )
                                     exc_type, exc_obj, exc_tb = sys.exc_info()
                                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                                     print(exc_type, fname, exc_tb.tb_lineno)
@@ -1299,7 +1299,7 @@ class SystemDeviceTree:
                                     if self.werror:
                                         sys.exit(1)
                         else:
-                            print( "[INFO]: no compatible callback found, skipping" )
+                            print( "[INFO]: no compatible assist found, skipping" )
 
                     if re.search( ".*,lop,load$", val ):
                         if self.verbose:
@@ -1572,7 +1572,7 @@ def usage():
     print('    , --dryrun        run all processing, but don\'t write any output files' )
     print('  -d, --dump          dump a dtb as dts source' )
     print('  -i, --input         process supplied input device tree description')
-    print('  -a, --assist        load specified python assist (for callback or output processing)' )
+    print('  -a, --assist        load specified python assist (for node or output processing)' )
     print('  -o, --output        output file')
     print('  -f, --force         force overwrite output file(s)')
     print('  -h, --help          display this help and exit')

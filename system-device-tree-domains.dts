@@ -45,6 +45,7 @@
 		#address-cells = <0x1>;
 		compatible = "cpus,cluster";
 
+                access = <&cpu_that_does_exist>;
 		#ranges-size-cells = <0x1>;
 		#ranges-address-cells = <0x1>;
                       /* amba bus */
@@ -175,155 +176,155 @@
 		};
 	};
 
-	chosen {
-		#address-cells = <0x2>;
-		#size-cells = <0x2>;
+	// chosen {
+	// 	#address-cells = <0x2>;
+	// 	#size-cells = <0x2>;
 
-		resource_group_1: resource_group_1 {
-			compatible = "openamp,resource-group-v1";
+	// 	resource_group_1: resource_group_1 {
+	// 		compatible = "openamp,resource-group-v1";
 
-			access = <&ethernet 0x0>;
-		};
+	// 		access = <&ethernet 0x0>;
+	// 	};
 
-		openamp_r5 {
-			compatible = "openamp,domain-v1";
-			#address-cells = <0x2>;
-			#size-cells = <0x2>;
-			/* 1:1 map, could be omitted */
-			memory = <0x0 0x0 0x0 0x8000000>;
-			/*
-			 * Cluster | cpus-mask | execution-mode
-			 *
-			 * execution mode ARM-R CPUs:
-			 * bit 30: lockstep (lockstep enabled == 1)
-			 * bit 31: secure mode / normal mode (secure mode == 1)
-			 */
-			#cpus-mask-cells = <0x1>;
-			cpus = <&cpus_r5 0x2 0x80000000>;
-			/*
-			 * Flags field, mapping specific
-			 *
-			 * memory and reserved-memory:
-			 *   bit 0: 0/1: RO/RW
-			 *
-			 * xlnx,zynqmp-ipi-mailbox:
-			 *   4 bits for each IPI channel to pass special flags
-			 *   0-3   bits: channel 0
-			 *   4-7   bits: channel 1
-			 *   8-11  bits: channel 2
-			 *   12-15 bits: channel 3
-			 * each 4 bits:
-			 *   bit 0: enable/disable (enable==1)
-			 *   bit 1: TX/RX (TX==1)
-			 *   bit 2-3: unused
-			 *   
-			 * Other cases: unused 
-			 *
-			 */
-			access = <&memory_r5 0x1>, <&tcm_bus 0x0>,
-			         <&rproc_0_dma 0x1>, <&rproc_0_reserved 0x1>, <&ipi_mailbox_rpu0 0x31>;
+	// 	openamp_r5 {
+	// 		compatible = "openamp,domain-v1";
+	// 		#address-cells = <0x2>;
+	// 		#size-cells = <0x2>;
+	// 		/* 1:1 map, could be omitted */
+	// 		memory = <0x0 0x0 0x0 0x8000000>;
+	// 		/*
+	// 		 * Cluster | cpus-mask | execution-mode
+	// 		 *
+	// 		 * execution mode ARM-R CPUs:
+	// 		 * bit 30: lockstep (lockstep enabled == 1)
+	// 		 * bit 31: secure mode / normal mode (secure mode == 1)
+	// 		 */
+	// 		#cpus-mask-cells = <0x1>;
+	// 		cpus = <&cpus_r5 0x2 0x80000000>;
+	// 		/*
+	// 		 * Flags field, mapping specific
+	// 		 *
+	// 		 * memory and reserved-memory:
+	// 		 *   bit 0: 0/1: RO/RW
+	// 		 *
+	// 		 * xlnx,zynqmp-ipi-mailbox:
+	// 		 *   4 bits for each IPI channel to pass special flags
+	// 		 *   0-3   bits: channel 0
+	// 		 *   4-7   bits: channel 1
+	// 		 *   8-11  bits: channel 2
+	// 		 *   12-15 bits: channel 3
+	// 		 * each 4 bits:
+	// 		 *   bit 0: enable/disable (enable==1)
+	// 		 *   bit 1: TX/RX (TX==1)
+	// 		 *   bit 2-3: unused
+	// 		 *   
+	// 		 * Other cases: unused 
+	// 		 *
+	// 		 */
+	// 		access = <&memory_r5 0x1>, <&tcm_bus 0x0>,
+	// 		         <&rproc_0_dma 0x1>, <&rproc_0_reserved 0x1>, <&ipi_mailbox_rpu0 0x31>;
 
-			module@1000000 {
-				compatible = "multiboot,kernel", "multiboot,module";
-				reg = <0x0 0x1000000 0x0 0xffffff>;
-			};
-		};
+	// 		module@1000000 {
+	// 			compatible = "multiboot,kernel", "multiboot,module";
+	// 			reg = <0x0 0x1000000 0x0 0xffffff>;
+	// 		};
+	// 	};
 
-		openamp_a53 {
-			compatible = "openamp,domain-v1";
-			#address-cells = <0x2>;
-			#size-cells = <0x2>;
-			/* 1:1 map, could be omitted */
-			memory = <0x0 0x8000000 0x0 0x78000000 
-			          0x8 0x0 0x0 0x80000000>;
-			/*
-			 * Cluster | cpus-mask | execution-mode
-			 *
-			 * execution mode for ARM-A CPUs:
-			 * 0x0: EL0
-			 * 0x1: EL1
-			 * 0x2: EL2
-			 * 0x3: EL3
-			 * bit 31: secure mode / normal mode (secure mode == 1)
-			 */
-			#cpus-mask-cells = <0x1>;
-			cpus = <&cpus_a53 0xf 0x2>;
+	// 	openamp_a53 {
+	// 		compatible = "openamp,domain-v1";
+	// 		#address-cells = <0x2>;
+	// 		#size-cells = <0x2>;
+	// 		/* 1:1 map, could be omitted */
+	// 		memory = <0x0 0x8000000 0x0 0x78000000 
+	// 		          0x8 0x0 0x0 0x80000000>;
+	// 		/*
+	// 		 * Cluster | cpus-mask | execution-mode
+	// 		 *
+	// 		 * execution mode for ARM-A CPUs:
+	// 		 * 0x0: EL0
+	// 		 * 0x1: EL1
+	// 		 * 0x2: EL2
+	// 		 * 0x3: EL3
+	// 		 * bit 31: secure mode / normal mode (secure mode == 1)
+	// 		 */
+	// 		#cpus-mask-cells = <0x1>;
+	// 		cpus = <&cpus_a53 0xf 0x2>;
 
-			access = <&memory_a53 0x1>, <&tcm_bus 0x0>, <&resource_group_1 0x0>, <&ethernet 0x0>,
-			         <&rproc_0_dma 0x1>, <&rproc_0_reserved 0x1>, <&ipi_mailbox_rpu0 0x13>;
+	// 		access = <&memory_a53 0x1>, <&tcm_bus 0x0>, <&resource_group_1 0x0>, <&ethernet 0x0>,
+	// 		         <&rproc_0_dma 0x1>, <&rproc_0_reserved 0x1>, <&ipi_mailbox_rpu0 0x13>;
 
-			module@1a000000 {
-				compatible = "multiboot,kernel", "multiboot,module";
-				reg = <0x0 0x1a000000 0x0 0xffffff>;
-				bootargs = "serrors=forward vwfi=native sched=null";
-				stdout-path = "serial0:115200ns";
-			};
+	// 		module@1a000000 {
+	// 			compatible = "multiboot,kernel", "multiboot,module";
+	// 			reg = <0x0 0x1a000000 0x0 0xffffff>;
+	// 			bootargs = "serrors=forward vwfi=native sched=null";
+	// 			stdout-path = "serial0:115200ns";
+	// 		};
 
-			aliases {
-				serial0 = "/amba/serial@ff000000";
-			};
-		};
+	// 		aliases {
+	// 			serial0 = "/amba/serial@ff000000";
+	// 		};
+	// 	};
 
-		openamp_a53_vm1 {
-			compatible = "xen,domain-v2", "openamp,domain-v1";
-			#address-cells = <0x2>;
-			#size-cells = <0x2>;
-			/* Xen default VM address map, must be specified */
-			memory = <0x0 0x40000000 0x0 0x40000000>;
-			/*
-			 * Cluster | cpus-mask | execution-mode
-			 *
-			 * execution mode ARM-A CPUs:
-			 * 0x0: EL0
-			 * 0x1: EL1
-			 * 0x2: EL2
-			 * 0x3: EL3
-			 * bit 31: secure mode / normal mode (secure mode == 1)
-			 */
-			#cpus-mask-cells = <0x1>;
-			cpus = <&cpus_a53 0x3 0x1>;
-			/* how many vcpus */
-			vcpus = <4>;
-			access = <&memory_a53_vm1 0x1>, <&ethernet 0x1>;
+	// 	openamp_a53_vm1 {
+	// 		compatible = "xen,domain-v2", "openamp,domain-v1";
+	// 		#address-cells = <0x2>;
+	// 		#size-cells = <0x2>;
+	// 		/* Xen default VM address map, must be specified */
+	// 		memory = <0x0 0x40000000 0x0 0x40000000>;
+	// 		/*
+	// 		 * Cluster | cpus-mask | execution-mode
+	// 		 *
+	// 		 * execution mode ARM-A CPUs:
+	// 		 * 0x0: EL0
+	// 		 * 0x1: EL1
+	// 		 * 0x2: EL2
+	// 		 * 0x3: EL3
+	// 		 * bit 31: secure mode / normal mode (secure mode == 1)
+	// 		 */
+	// 		#cpus-mask-cells = <0x1>;
+	// 		cpus = <&cpus_a53 0x3 0x1>;
+	// 		/* how many vcpus */
+	// 		vcpus = <4>;
+	// 		access = <&memory_a53_vm1 0x1>, <&ethernet 0x1>;
 
-			/* 
-			 * Generated vgic, add it here, or not?
-			 * Emulated and assigned devices might have to reference to
-			 * it.
-			 */
-			/* Generated arch-timer, add it here, or not? */
+	// 		/* 
+	// 		 * Generated vgic, add it here, or not?
+	// 		 * Emulated and assigned devices might have to reference to
+	// 		 * it.
+	// 		 */
+	// 		/* Generated arch-timer, add it here, or not? */
 
-			/* UART emulated device */
-		        serial@22000000 {
-		                compatible = "arm,pl011", "arm,primecell";
-		                reg = <0x0 0x22000000 0x0 0x1000>;
-				/*
-				 * Where the node is located in the output domain device
-				 * tree
-				 */
-				xen,path = "/amba/serial@22000000";
-		        };
+	// 		/* UART emulated device */
+	// 	        serial@22000000 {
+	// 	                compatible = "arm,pl011", "arm,primecell";
+	// 	                reg = <0x0 0x22000000 0x0 0x1000>;
+	// 			/*
+	// 			 * Where the node is located in the output domain device
+	// 			 * tree
+	// 			 */
+	// 			xen,path = "/amba/serial@22000000";
+	// 	        };
 
-			module@4a000000 {
-				compatible = "multiboot,kernel", "multiboot,module";
-				reg = <0x0 0x4a000000 0x0 0xffffff>;
-				bootargs = "console=ttyAMA0";
-				stdout-path = "serial0:115200ns";
-			};
+	// 		module@4a000000 {
+	// 			compatible = "multiboot,kernel", "multiboot,module";
+	// 			reg = <0x0 0x4a000000 0x0 0xffffff>;
+	// 			bootargs = "console=ttyAMA0";
+	// 			stdout-path = "serial0:115200ns";
+	// 		};
 
-			module@4b000000 {
-				compatible = "multiboot,ramdisk", "multiboot,module";
-				reg = <0x0 0x4b000000 0x0 0xffffff>;
-			};
+	// 		module@4b000000 {
+	// 			compatible = "multiboot,ramdisk", "multiboot,module";
+	// 			reg = <0x0 0x4b000000 0x0 0xffffff>;
+	// 		};
 
-			aliases {
-				serial0 = "/amba/serial@22000000";
-			};
-		};
-	};
+	// 		aliases {
+	// 			serial0 = "/amba/serial@22000000";
+	// 		};
+	// 	};
+	// };
 
-	aliases {
-		xilinx,subsystem1 = "/chosen/openamp_r5";
-		xilinx,subsystem2 = "/chosen/openamp_a53";
-	};
+	// aliases {
+	// 	xilinx,subsystem1 = "/chosen/openamp_r5";
+	// 	xilinx,subsystem2 = "/chosen/openamp_a53";
+	// };
 };

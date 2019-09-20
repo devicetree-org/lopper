@@ -5,7 +5,7 @@
         lops {
                 // compatible = "system-device-tree-v1,lop";
                 lop_0 {
-                        compatible = "system-device-tree-v1,lop,callback-v1";
+                        compatible = "system-device-tree-v1,lop,assist-v1";
                         node = "/chosen/openamp_a53";
                         id = "openamp,domain-v1";
                 };

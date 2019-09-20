@@ -5,7 +5,7 @@
         lops {
                 compatible = "system-device-tree-v1,lop";
                 lop_0 {
-                        compatible = "system-device-tree-v1,lop,callback-v1";
+                        compatible = "system-device-tree-v1,lop,assist-v1";
                         node = "/chosen/openamp_r5";
                         id = "openamp,domain-v1";
                 };
@@ -66,10 +66,9 @@
                           // optionally execute a routine in a loaded module. If the routine
                           // isn't found, this is NOT a failure. Since we don't want to tightly
                           // couple these transforms and loaded modules
-                          compatible = "system-device-tree-v1,lop,callback-v1";
+                          compatible = "system-device-tree-v1,lop,assist-v1";
                           id = "openamp,xlnx-rpu";
                           node = "/chosen/openamp_r5";
-                          // callback = "xlnx_openamp_rpu";
                   };
                   lop_13 {
                          compatible = "system-device-tree-v1,lop,output";
