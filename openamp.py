@@ -133,7 +133,7 @@ else:
                 #    Note: this should be recursive eventually, but for now, we keep it simple
                 # print( "node name: %s node parent: %s" % (node_name, node_parent) )
                 if node_parent:
-                    parent_node_type = Lopper.node_type( sdt.FDT, node_parent )
+                    parent_node_type = sdt.node_type( node_parent )
                     # TODO: could wrap the get_name call as well in a lopper static function
                     parent_node_name = sdt.FDT.get_name( node_parent )
                     node_grand_parent = sdt.FDT.parent_offset(node_parent,QUIET_NOTFOUND)
