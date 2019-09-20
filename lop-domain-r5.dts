@@ -1,7 +1,7 @@
 /dts-v1/;
 
 / {
-        compatible = "system-device-tree-v1";
+        compatible = "system-device-tree-v1,lop";
         lops {
                 compatible = "system-device-tree-v1,lop";
                 lop_0 {
