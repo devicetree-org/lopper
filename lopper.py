@@ -1275,7 +1275,7 @@ class SystemDeviceTree:
                         cb = Lopper.prop_get( lops_fdt, n, 'callback' )
                         cb_id = Lopper.prop_get( lops_fdt, n, 'id' )
                         cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
-                        if not cb_node:
+                        if cb_node < 0:
                             print( "[ERROR]: cannot find callback target node in tree" )
                             sys.exit(1)
                         if self.verbose:
@@ -1390,19 +1390,22 @@ class SystemDeviceTree:
                                     modify_expr[2] = modify_expr[2].replace( '/', '' )
                                     try:
                                         tgt_node = Lopper.node_find( self.FDT, modify_expr[0] )
-                                        if tgt_node != 0:
+                                        if tgt_node > 0:
                                             if self.verbose:
                                                 print("[INFO]: renaming %s to %s" % (modify_expr[0], modify_expr[2]))
                                             self.FDT.set_name( tgt_node, modify_expr[2] )
                                     except:
-                                        pass
+                                        print( "[ERROR]:cannot rename node: %s %s" %(modify_expr[0], modify_expr[2]))
                                 else:
                                     if self.verbose:
                                         print( "[INFO]: node delete: %s" % modify_expr[0] )
 
                                     node_to_remove = Lopper.node_find( self.FDT, modify_expr[0] )
-                                    if node_to_remove:
+                                    if node_to_remove > 0:
                                         self.node_remove( node_to_remove )
+                                    else:
+                                        print( "[ERROR]: cannot find node to remove: %s" % modify_expr[0] )
+                                        sys.exit(1)
 
     # note; this operates on a node and all child nodes, unless you set recursive to False
     def property_remove( self, node_prefix = "/", propname = "", recursive = True ):
