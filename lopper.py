@@ -1090,6 +1090,10 @@ class SystemDeviceTree:
             return self.node_access[node_name]
         return -1
 
+    # wrapper
+    def node_find( self, node_prefix ):
+        return Lopper.node_find( self.FDT, node_prefix )
+
     # argument: node number, and an id string
     def find_module_compatible_func( self, cb_node, cb_id ):
         cb_func = []

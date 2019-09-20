@@ -91,7 +91,7 @@ else:
 
     # we must re-find the domain node, since its numbering may have
     # changed due to the node_filter deleting things
-    tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
+    tgt_node = sdt.node_find( tgt_domain )
 
     # lets track any nodes that are referenced by access parameters. We use this
     # for a second patch to drop any nodes that are not accessed, and hence should
@@ -216,11 +216,11 @@ else:
 
             # we must re-find the domain node, since its numbering may have
             # changed due to the node_filter deleting things
-            tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
+            tgt_node = sdt.node_find( tgt_domain )
 
     # we must re-find the domain node, since its numbering may have
     # changed due to the node_filter deleting things
-    tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
+    tgt_node = sdt.node_find( tgt_domain )
 
     memory_hex = sdt.property_get( tgt_node, "memory", LopperFmt.COMPOUND, LopperFmt.HEX )
     memory_int = sdt.property_get( tgt_node, "memory", LopperFmt.COMPOUND )
@@ -232,7 +232,7 @@ else:
         print( "[INFO]: memory property: %s" % memory_hex )
 
         # 1) find if there's a top level memory node
-        memory_node = Lopper.node_find( sdt.FDT, "/memory" )
+        memory_node = sdt.node_find( "/memory" )
         if memory_node:
             if verbose:
                 print( "[INFO]: memory node found (%s), modifying to match domain memory" % memory_node )
