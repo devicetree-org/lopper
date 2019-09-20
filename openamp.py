@@ -249,7 +249,7 @@ else:
             # TODO: this seems to be shortening up the system memory node. Check to see
             #       if the openamp node is being propery interpreted
 
-            Lopper.prop_set( sdt.FDT, memory_node, 'reg', memory_int )
+            sdt.property_set( memory_node, 'reg', memory_int )
             # temp: keeping the raw call, in case the lopper utility has issues.
             # sdt.FDT.setprop(memory_node, 'reg', Lopper.encode_byte_array(memory_int))
 

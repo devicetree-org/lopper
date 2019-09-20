@@ -1424,6 +1424,8 @@ class SystemDeviceTree:
             else:
                 depth = -1
 
+    def property_set( self, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE ):
+        return Lopper.prop_set( self.FDT, node_number, prop_name, prop_val, ftype )
 
     # Note: this is no longer called. possibly delete
     def property_find( self, propname, remove = False ):
