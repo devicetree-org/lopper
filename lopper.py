@@ -175,7 +175,6 @@ class Lopper:
 
     @staticmethod
     def node_copy( fdt_source, node_source_offset, fdt_dest, node_dest_parent_offset, verbose=0 ):
-        # TODO: check node_path to figure out the parent offset, setting to 0 for now
         old_depth = -1
         depth = 0
         nn = node_source_offset
@@ -879,7 +878,6 @@ class Lopper:
 ##  - manages and applies operations to the tree
 ##  - calls modules and assist functions for processing of that tree
 ##
-##   TODO: wrap more lopper static routines, to make manipulation easier
 ##
 class SystemDeviceTree:
     def __init__(self, sdt_file):
