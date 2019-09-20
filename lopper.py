@@ -871,77 +871,6 @@ class Lopper:
 
         return val
 
-    @staticmethod
-    def property_value_decode_old( property, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC, verbose=0 ):
-        # these could also be nested. Note: this is temporary since the decoding
-        # is sometimes wrong. We need to look at libfdt and see how they are
-        # stored so they can be unpacked better.
-        if ftype == LopperFmt.SIMPLE:
-            val = ""
-            decode_msg = ""
-            try:
-                val = property.as_uint32()
-                decode_msg = "(uint32): {0}".format(val)
-            except:
-                pass
-            if not val and val != 0:
-                try:
-                    val = property.as_uint64()
-                    decode_msg = "(uint64): {0}".format(val)
-                except:
-                    pass
-            if not val and val != 0:
-                try:
-                    val = property.as_str()
-                    decode_msg = "(string): {0}".format(val)
-                except:
-                    pass
-            if not val and val != 0:
-                try:
-                    # this is getting us some false positives on multi-string. Need
-                    # a better test
-                    #val = property[:-1].decode('utf-8').split('\x00')
-                    val = ""
-                    decode_msg = "(multi-string): {0}".format(val)
-                except:
-                    pass
-
-            if not val and val != 0:
-                decode_msg = "** unable to decode value **"
-        else:
-            decode_msg = ""
-
-            if encode == LopperFmt.STRING:
-                try:
-                    val = property[:-1].decode('utf-8').split('\x00')
-                    decode_msg = "(multi-string): {0}".format(val)
-                except:
-                    decode_msg = "** unable to decode value **"
-
-            else:
-                decode_msg = "(multi number)"
-                num_bits = len(property)
-                num_nums = num_bits // 4
-                start_index = 0
-                end_index = 4
-                short_int_size = 4
-                val = []
-                while end_index <= (num_nums * short_int_size):
-                    short_int = property[start_index:end_index]
-                    if encode == LopperFmt.HEX:
-                        converted_int = hex(int.from_bytes(short_int,'big',signed=False))
-                    else:
-                        converted_int = int.from_bytes(short_int,'big',signed=False)
-
-                    start_index = start_index + short_int_size
-                    end_index = end_index + short_int_size
-                    val.append(converted_int)
-
-        #if verbose > 3:
-        print( "[DBG+]: decoding property: \"%s\" (%s) [%s] --> %s" % (property, poffset, property, decode_msg ) )
-
-        return val
-
 
 ##
 ## SystemDeviceTree
@@ -1524,6 +1453,10 @@ class SystemDeviceTree:
                         self.FDT.delprop(node, propname)
 
             node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
+
+    def property_get( self, node_number, property_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
+        # just a wrapper routine ..
+        return Lopper.prop_get( self.FDT, node_number, property_name, ftype, encode )
 
     def inaccessible_nodes( self, propname ):
         node_list = []

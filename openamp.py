@@ -49,7 +49,7 @@ def process_domain( tgt_node, sdt, verbose=0 ):
         print( "[INFO]: cb: process_domain( %s, %s, %s )" % (tgt_node, sdt, verbose))
 
     tgt_domain = sdt.node_abspath( tgt_node )
-    cpu_prop_values = Lopper.prop_get( sdt.FDT, tgt_node, "cpus", LopperFmt.COMPOUND )
+    cpu_prop_values = sdt.property_get( tgt_node, "cpus", LopperFmt.COMPOUND )
     if cpu_prop_values == "":
         sys.exit(1)
 
@@ -102,7 +102,7 @@ else:
     node_access_tracker['/'] = [ "/", "simple-bus" ]
 
     # "access" is a list of tuples: phandles + flags
-    access_list = Lopper.prop_get( sdt.FDT, tgt_node, "access", LopperFmt.COMPOUND )
+    access_list = sdt.property_get( tgt_node, "access", LopperFmt.COMPOUND )
     if not access_list:
         if verbose:
             print( "[INFO]: no access list found, skipping ..." )
@@ -116,7 +116,7 @@ else:
             #ph = int(ph_hex, 16)
             #print( "processing %s" % ph )
             anode = sdt.FDT.node_offset_by_phandle( ph )
-            node_type = Lopper.prop_get( sdt.FDT, anode, "compatible" )
+            node_type = sdt.property_get( anode, "compatible" )
             node_name = sdt.FDT.get_name( anode )
             node_parent = sdt.FDT.parent_offset(anode,QUIET_NOTFOUND)
             if re.search( "simple-bus", node_type ):
@@ -222,8 +222,8 @@ else:
     # changed due to the node_filter deleting things
     tgt_node = Lopper.node_find( sdt.FDT, tgt_domain )
 
-    memory_hex = Lopper.prop_get( sdt.FDT, tgt_node, "memory", LopperFmt.COMPOUND, LopperFmt.HEX )
-    memory_int = Lopper.prop_get( sdt.FDT, tgt_node, "memory", LopperFmt.COMPOUND )
+    memory_hex = sdt.property_get( tgt_node, "memory", LopperFmt.COMPOUND, LopperFmt.HEX )
+    memory_int = sdt.property_get( tgt_node, "memory", LopperFmt.COMPOUND )
 
     # This may be moved to the top of the domain process and then when we are
     # processing cpus and bus nodes, we can apply the memory to ranges <>, etc,
