@@ -640,6 +640,7 @@ class Lopper:
         try:
             prop = fdt.getprop( node_number, property_name )
             if prop:
+                # TODO: both these conditions are the same .. either one goes, or one changes
                 if ftype == LopperFmt.SIMPLE:
                     val = Lopper.property_value_decode( prop, 0, ftype, encode )
                 else:
@@ -857,14 +858,17 @@ class Lopper:
             if first_byte != 0:
                 encode_calculated = LopperFmt.STRING
 
-            if encode_calculated == LopperFmt.STRING:
+            # TODO: we shouldn't need these repr() wrappers around the enums, but yet
+            #       it doesn't seem to work on the calculated variable without them
+            if repr(encode_calculated) == repr(LopperFmt.STRING):
                 try:
                     val = property[:-1].decode('utf-8').split('\x00')
                     decode_msg = "(multi-string): {0}".format(val)
                 except:
-                    encode_calculated = LopperFmt.DEC
+                    encode_calculated = encode
 
-            if encode_calculated == LopperFmt.DEC:
+            if ( repr(encode_calculated) == repr(LopperFmt.DEC)) or \
+                   (repr(encode_calculated) == repr(LopperFmt.HEX)):
                 try:
                     decode_msg = "(multi number)"
                     num_bits = len(property)
@@ -875,7 +879,7 @@ class Lopper:
                     val = []
                     while end_index <= (num_nums * short_int_size):
                         short_int = property[start_index:end_index]
-                        if encode == LopperFmt.HEX:
+                        if repr(encode) == repr(LopperFmt.HEX):
                             converted_int = hex(int.from_bytes(short_int,'big',signed=False))
                         else:
                             converted_int = int.from_bytes(short_int,'big',signed=False)
@@ -1034,6 +1038,9 @@ class SystemDeviceTree:
 
     def node_find_by_name( self, node_name, starting_node = 0 ):
         return Lopper.node_find_by_name( self.FDT, node_name, starting_node )
+
+    def node_properties_as_dict( self, node, verbose=0 ):
+        return Lopper.node_properties_as_dict( self.FDT, node, verbose )
 
     # A thin wrapper + consistent logging and error handling around FDT's
     # node delete
