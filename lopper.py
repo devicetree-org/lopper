@@ -142,11 +142,33 @@ class Lopper:
 
         return prev
 
-    # TODO: write a utility routine that gets all the properties of a node and returns
-    #       them in a dictionary. One call, get all the properties you need!
     @staticmethod
-    def node_properties_as_dict():
-        pass
+    def node_properties_as_dict( fdt_source, node, verbose=0 ):
+        prop_dict = {}
+
+        # is the node a number ? or do we need to look it up ?
+        node_number = -1
+        node_path = ""
+        try:
+            node_number = int(node)
+            node_path = Lopper.node_abspath( fdt_source, node )
+        except ValueError:
+            node_number = Lopper.node_find( fdt_source, node )
+            node_path = node
+
+        if node_number == -1:
+            print( "[ERROR]: could not find node %s" % node_path )
+            return prop_dict
+
+        prop_list = Lopper.property_list( fdt_source, node_path )
+        for p in prop_list:
+            property_val = Lopper.prop_get( fdt_source, node_number, p )
+            if not property_val:
+                property_val = Lopper.prop_get( fdt_source, node_number, p, LopperFmt.COMPOUND )
+
+            prop_dict[p] = property_val
+
+        return prop_dict
 
     @staticmethod
     def node_copy_from_path( fdt_source, node_source_path, fdt_dest, node_full_dest, verbose=0 ):
@@ -397,7 +419,7 @@ class Lopper:
             node_name = node_prefix + n
             node = fdt.path_offset(node_name)
             #print( "---------------------------------- node name: %s" % fdt.get_name( node ) )
-            prop_list = Lopper.get_property_list( fdt, node_name )
+            prop_list = Lopper.property_list( fdt, node_name )
             #print( "---------------------------------- node props name: %s" % prop_list )
 
             # Add the current node (n) to the list of safe things
@@ -507,7 +529,7 @@ class Lopper:
             node_name = node_prefix + n
             node = fdt.path_offset(node_name)
             # print( "node name: %s" % fdt.get_name( node ) )
-            prop_list = Lopper.get_property_list( fdt, node_name )
+            prop_list = Lopper.property_list( fdt, node_name )
             # print( "prop list: %s" % prop_list )
             if "compatible" in prop_list:
                 # print( "This node has a compatible string!!!" )
@@ -544,7 +566,7 @@ class Lopper:
 
     # source: libfdt tests
     @staticmethod
-    def get_property_list( fdt, node_path ):
+    def property_list( fdt, node_path ):
         """Read a list of properties from a node
 
         Args:
