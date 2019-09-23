@@ -25,9 +25,11 @@ import contextlib
 import importlib
 import tempfile
 from enum import Enum
+import atexit
 
 import libfdt
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
+
 
 # For use in encode/decode routines
 class LopperFmt(Enum):
@@ -46,6 +48,12 @@ def stdoutIO(stdout=None):
         sys.stdout = stdout
         yield stdout
         sys.stdout = old
+
+def at_exit_cleanup():
+    if device_tree:
+        device_tree.cleanup()
+    else:
+        pass
 
 class Lopper:
     @staticmethod
@@ -1666,7 +1674,9 @@ def main():
             print( "[ERROR]: unrecognized input file type passed" )
             sys.exit(1)
 
+
 if __name__ == "__main__":
+
     # Main processes the command line, and sets some global variables we
     # use below
     main()
@@ -1676,6 +1686,8 @@ if __name__ == "__main__":
         sys.exit(0)
 
     device_tree = SystemDeviceTree( sdt )
+
+    atexit.register(at_exit_cleanup)
 
     # set some flags before we process the tree.
     device_tree.dryrun = dryrun
