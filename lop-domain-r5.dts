@@ -30,7 +30,7 @@
                         // node add
                         compatible = "system-device-tree-v1,lop,add";
                         node_src = "zynqmp-rpu";
-                        node_dest = "/wrapper/zynqmp-rpu";
+                        node_dest = "/zynqmp-rpu";
                         zynqmp-rpu {
                             compatible = "xlnx,zynqmp-r5-remoteproc-1.0";
                             #address-cells = <2>;
