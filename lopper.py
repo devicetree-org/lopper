@@ -703,6 +703,7 @@ class Lopper:
 
         # TODO: might need to make 'dts_file' absolute for the cpp call below
         dts_filename = os.path.basename( dts_file )
+        dts_dirname = os.path.dirname( dts_file )
         dts_filename_noext = os.path.splitext(dts_filename)[0]
 
         #
@@ -713,11 +714,15 @@ class Lopper:
         #       if we add an O= type processing, this will have to respect that
         preprocessed_name = "{0}.pp".format(dts_filename)
 
+        includes += dts_dirname
+        includes += " "
+        includes += os.getcwd()
+
         ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp")).split()
         # Note: might drop the -I include later
         ppargs += "-nostdinc -I include -undef -x assembler-with-cpp ".split()
         ppargs += (os.environ.get('LOPPER_PPFLAGS') or "").split()
-        for i in includes:
+        for i in includes.split():
             ppargs.append("-I{0}".format(i))
         ppargs += ["-o", preprocessed_name, dts_file]
         if verbose:
@@ -743,7 +748,7 @@ class Lopper:
             dtcargs += (os.environ.get("LOPPER_DTC_OFLAGS") or "").split()
         else:
             dtcargs += (os.environ.get("LOPPER_DTC_BFLAGS") or "").split()
-        for i in includes:
+        for i in includes.split():
             dtcargs += ["-i", i]
         dtcargs += ["-o", "{0}".format(output_dtb)]
         dtcargs += ["-I", "dts", "-O", "dtb", "{0}.pp".format(dts_filename)]
@@ -959,6 +964,7 @@ class SystemDeviceTree:
             # do we have any extra sdt files to concatenate first ?
             fp = ""
             fpp = tempfile.NamedTemporaryFile( delete=False )
+            # TODO: if the count is one, we shouldn't be doing the tmp file processing.
             if sdt_files:
                 sdt_files.insert( 0, self.dts )
 
@@ -1646,7 +1652,7 @@ def main():
                 print( "Error: system device tree %s does not exist" % sdt )
                 sys.exit(1)
 
-        # the second input is the output file. It can't already exist, unless
+        # the last input is the output file. It can't already exist, unless
         # --force was passed
         if idx == 1:
             if output:
