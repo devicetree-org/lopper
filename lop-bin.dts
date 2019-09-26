@@ -3,10 +3,9 @@
 / {
         compatible = "system-device-tree-v1";
         lops {
-                // compatible = "system-device-tree-v1,lop";
+                compatible = "system-device-tree-v1,lop";
                 lop_0 {
                         compatible = "system-device-tree-v1,lop,modify";
-                        // disabled for now: will be put in a test transforms .dts file
                         modify = "/:pnode-id:0x3";
                 };
         };

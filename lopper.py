@@ -727,6 +727,7 @@ class Lopper:
         ppargs += ["-o", preprocessed_name, dts_file]
         if verbose:
             print( "[INFO]: preprocessing dts_file: %s" % ppargs )
+        # TODO: could grab the output and dump it on error
         subprocess.run( ppargs, check = True )
 
         # step 2: compile the dtb
@@ -958,6 +959,8 @@ class SystemDeviceTree:
 
                 if not found:
                     sdt_files.append( ifile )
+            elif re.search( ".dtb$", ifile ):
+                lop_files.append( ifile )
 
         # is the sdt a dts ?
         if re.search( ".dts$", self.dts ):
