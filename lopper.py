@@ -1584,6 +1584,7 @@ def usage():
     print('  -a, --assist        load specified python assist (for node or output processing)' )
     print('  -o, --output        output file')
     print('  -f, --force         force overwrite output file(s)')
+    print('    , --werror        treat warnings as errors' )
     print('  -h, --help          display this help and exit')
     print('')
 
