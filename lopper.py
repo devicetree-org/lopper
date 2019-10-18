@@ -30,6 +30,7 @@ import atexit
 import libfdt
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
 
+lopper_directory = os.path.dirname(os.path.realpath(__file__))
 
 # For use in encode/decode routines
 class LopperFmt(Enum):
@@ -1306,8 +1307,21 @@ class SystemDeviceTree:
                             try:
                                 mod_file_abs = mod_file.resolve()
                             except FileNotFoundError:
-                                print( "[ERROR]: module file %s not found" % prop )
-                                sys.exit(1)
+                                # check the path from which lopper is running
+                                mod_file = Path( lopper_directory + "/" + mod_file.name )
+                                try:
+                                    mod_file_abs = mod_file.resolve()
+                                except FileNotFoundError:
+                                    # And finally, try a "assists" subdirectory underneath where
+                                    # lopper is running
+                                    # TODO: we could read an environment variable to find alternate
+                                    #       locations to search for modules.
+                                    mod_file = Path( lopper_directory + "/assists/" + mod_file.name )
+                                    try:
+                                        mod_file_abs = mod_file.resolve()
+                                    except FileNotFoundError:
+                                        print( "[ERROR]: module file %s not found" % prop )
+                                        sys.exit(1)
 
                             imported_module = __import__(str(mod_file_wo_ext))
                             self.modules.append( imported_module )
