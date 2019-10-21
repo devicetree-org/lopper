@@ -1625,6 +1625,7 @@ def main():
     global assists
     global werror
 
+    sdt = None
     verbose = 0
     output = ""
     inputfiles = []
@@ -1698,6 +1699,11 @@ def main():
                     if not force:
                         print( "Error: output file %s exists, and -f was not passed" % output )
                         sys.exit(1)
+
+    if not sdt:
+        print( "[ERROR]: no system device tree was supplied\n" )
+        usage()
+        sys.exit(1)
 
     # check that the input files (passed via -i) exist
     for i in inputfiles:
