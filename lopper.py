@@ -385,6 +385,8 @@ class Lopper:
     #  - action can be "delete" "report" "whitelist" "blacklist" ... TBD
     #  - test_op varies based on the action being taken
     #
+    # TODO: replace action with an enumerated type, not the current
+    #       free form string.
     @staticmethod
     def node_filter( sdt, node_prefix, action, test_cmd, verbose=0 ):
         fdt = sdt.FDT
@@ -454,6 +456,8 @@ class Lopper:
             if verbose > 2:
                 print( "[DBG+]: filter node cmd: %s" % tc )
 
+            # TODO: return values need to replace the stdout format of
+            #       true and false
             with stdoutIO() as s:
                 try:
                     exec(tc, {"__builtins__" : None }, safe_dict)
@@ -463,6 +467,7 @@ class Lopper:
             if verbose > 2:
                 print( "[DBG+] stdout was: %s" % s.getvalue() )
             if "true" in s.getvalue():
+                # TODO: add more actions
                 if "delete" in action:
                     if verbose:
                         print( "[INFO]: deleting node %s" % node_name )
@@ -936,6 +941,15 @@ class SystemDeviceTree:
     def setup(self, sdt_file, input_files, include_paths, assists=[], force=False):
         if self.verbose:
             print( "[INFO]: loading dtb and using libfdt to manipulate tree" )
+
+        # check for required support applications
+        support_bins = ["dtc", "cpp" ]
+        for s in support_bins:
+            if verbose:
+                print( "[INFO]: checking for support binary: %s" % s )
+            if not shutil.which(s):
+                print( "[ERROR]: support application '%s' not found, exiting" % s )
+                sys.exit(2)
 
         self.use_libfdt = True
 
