@@ -922,6 +922,8 @@ class Lopper:
         #       writeable, then we'll have to either copy everything or look
         #       into why dtc can't handle the split directories and include
         #       files.
+        if not dts_dirname:
+            dts_dirname = "./"
         preprocessed_name = "{0}/{1}.pp".format(dts_dirname,dts_filename)
 
         includes += dts_dirname
