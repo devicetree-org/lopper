@@ -58,8 +58,16 @@ def at_exit_cleanup():
 
 class Lopper:
     @staticmethod
-    # Finds a node by its prefix
     def node_find( fdt, node_prefix ):
+        """Finds a node by its prefix
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_prefix (string): device tree path
+
+        Returns:
+            int: node number if successful, otherwise -1
+        """
         try:
             node = fdt.path_offset( node_prefix )
         except:
@@ -67,20 +75,45 @@ class Lopper:
 
         return node
 
-    # utility function to get the "type" of a node. It is just a small wrapper
-    # around the compatible property, but we can use this instead of directly
-    # getting compatible, since if we switch formats or if we want to infer
-    # anything based on the name of a node, we can hide it in this routine
     @staticmethod
     def node_type( fdt, node_offset, verbose=0 ):
+        """Utility function to get the "type" of a node
+
+	A small wrapper around the compatible property, but we can use this
+        instead of directly getting compatible, since if we switch formats or if
+        we want to infer anything based on the name of a node, we can hide it in
+        this routine
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_offset (int): node number
+            verbose (int): verbose output level
+
+        Returns:
+            string: compatible string of the node if successful, otherwise ''
+        """
         rt = Lopper.prop_get( fdt, node_offset, "compatible" )
 
         return rt
 
-    # get the type of a node's parent. Either by its name, or by its offset #
-    # returns "" if we don't know the type
     @staticmethod
     def node_parent_type( fdt, node_name="", node_offset=0 ):
+        """Get the type of a node's parent
+
+	Uses either the node_name or node_offset to find the type of a
+        parent node. This is used to discover if node's parent is of a
+        particular type (i.e. simple_bus) and use it as a trigger for
+        special processing. 
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_name (string): name of the node
+            node_offset (int): node number / offset
+
+        Returns:
+            string: type of the parent node if successful, otherwise ''
+        """
+
         parent_node_type = ""
         if node_offset:
             # a node number was passed, use that as our first choice
@@ -102,9 +135,21 @@ class Lopper:
         return parent_node_type
 
     @staticmethod
-    # Searches for a node by its name, and returns the offset of that same node
-    # Note: use this when you don't know the full path of a node ....
     def node_find_by_name( fdt, node_name, starting_node = 0 ):
+        """Finds a node by its name (not path)
+
+        Searches for a node by its name, and returns the offset of that same node
+        Note: use this when you don't know the full path of a node
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_name (string): name of the node
+            starting_node (int): node to use as the search starting point
+
+        Returns:
+            int: offset of the node if successful, otherwise -1
+	"""
+
         nn = starting_node
         # short circuit the search if they are looking for /
         if node_name == "/":
@@ -125,11 +170,25 @@ class Lopper:
 
         return matching_node
 
-    # checks to see if a node has a given property
-    # TODO: could actually *return* the property, but then, how is
-    #       that different than prop_get()
     @staticmethod
     def node_prop_check( fdt, node_name, property_name ):
+        """Check if a node contains a property
+
+        Boolean check to see if a node contains a property.
+
+        The node name does not need to be a full path or path prefix, since
+        the node will be searched starting at the root node, which means that
+        a non-unique node name could match multiple nodes.
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_name (string): name of the node
+            property_name (string): name of the property to check
+
+        Returns:
+            bool: True if the node has the property, otherwise False
+        """
+
         node = Lopper.node_find_by_name( fdt, node_name )
         try:
             fdt.getprop( property_name )
@@ -140,6 +199,23 @@ class Lopper:
 
     @staticmethod
     def node_add( fdt_dest, node_full_path, create_parents = True, verbose = 0 ):
+        """Add an empty node to a flattended device tree
+
+        Creates a new node in a flattened devide tree at a given path. If
+        desired a node structure (aka parents) will be created as part of
+        adding the node at the specified path.
+
+        Args:
+            fdt_dest (fdt): flattened device tree object
+            node_full_path (string): fully specified path (and name) of the node to create
+            create_parents (bool,optional): Should parent nodes be created. Default is True.
+                True: create parents as required, False: error if parents are missing
+	    verbose (int,optional): verbosity level. default is 0.
+
+        Returns:
+            int: The node offset of the created node, if successfull, otherwise -1
+        """
+
         prev = -1
         for p in os.path.split( node_full_path ):
             n = Lopper.node_find( fdt_dest, p )
@@ -152,7 +228,23 @@ class Lopper:
         return prev
 
     @staticmethod
-    def node_properties_as_dict( fdt_source, node, verbose=0 ):
+    def node_properties_as_dict( fdt, node, verbose=0 ):
+        """Create a dictionary populated with the nodes properties.
+
+        Builds a dictionary that is propulated with a node's properties as
+        the keys, and their values. Used as a utility routine to avoid
+        multiple calls to check if a property exists, and then to fetch its
+        value.
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node (int or string): either a node number or node path
+	    verbose (int,optional): verbosity level. default is 0.
+
+        Returns:
+            dict: dictionary of the properties, if successfull, otherwise and empty dict
+        """
+    
         prop_dict = {}
 
         # is the node a number ? or do we need to look it up ?
@@ -160,20 +252,20 @@ class Lopper:
         node_path = ""
         try:
             node_number = int(node)
-            node_path = Lopper.node_abspath( fdt_source, node )
+            node_path = Lopper.node_abspath( fdt, node )
         except ValueError:
-            node_number = Lopper.node_find( fdt_source, node )
+            node_number = Lopper.node_find( fdt, node )
             node_path = node
 
         if node_number == -1:
             print( "[ERROR]: could not find node %s" % node_path )
             return prop_dict
 
-        prop_list = Lopper.property_list( fdt_source, node_path )
+        prop_list = Lopper.property_list( fdt, node_path )
         for p in prop_list:
-            property_val = Lopper.prop_get( fdt_source, node_number, p )
+            property_val = Lopper.prop_get( fdt, node_number, p )
             if not property_val:
-                property_val = Lopper.prop_get( fdt_source, node_number, p, LopperFmt.COMPOUND )
+                property_val = Lopper.prop_get( fdt, node_number, p, LopperFmt.COMPOUND )
 
             prop_dict[p] = property_val
 
@@ -181,6 +273,27 @@ class Lopper:
 
     @staticmethod
     def node_copy_from_path( fdt_source, node_source_path, fdt_dest, node_full_dest, verbose=0 ):
+        """Copies a node from one FDT to another
+
+        Copies a node between flattened device trees. The node (and
+        properties) will be copied to the specified target device tree and
+        path (ensure that a node does not already exist at the destination
+        path).
+
+        This routine is a wrapper around node_copy(), and will create a
+        parent node structure in the destination fdt as required.
+
+        Args:
+            fdt_source (fdt): source flattened device tree object
+            node_source_path: source device tree node path (fully specified)
+            fdt_dest (fdt): destination flattened device tree object
+            node_full_dest: destination device tree path for copied node (fully specified)
+	    verbose (int,optional): verbosity level. default is 0.
+
+        Returns:
+            bool: True if the node was copied, otherise, False
+        """
+
         if verbose > 1:
             print( "[DBG ]: node_copy_from_path: %s -> %s" % (node_source_path, node_full_dest) )
 
@@ -206,6 +319,31 @@ class Lopper:
 
     @staticmethod
     def node_copy( fdt_source, node_source_offset, fdt_dest, node_dest_parent_offset, verbose=0 ):
+        """Copies a node from one FDT to another
+
+        Copies a node between flattened device trees. The node (and
+        properties) will be copied to the specified target device tree and
+        path (ensure that a node does not already exist at the destination
+        path).
+
+	Note: the destination node parent must exist before calling this routine
+
+        Properties are iterated, decoded and then copied (encoded) to the
+        destination node. As such, the copies are limited by the
+        decode/encode capabilities. If properties do not look correct in the
+        copy, the decode/encode routines need to be checked.
+
+        Args:
+            fdt_source (fdt): source flattened device tree object
+            node_source_offset: source device tree node offset
+            fdt_dest (fdt): destination flattened device tree object
+            node_dest_parent_offset: destination device parent node
+	    verbose (int,optional): verbosity level. default is 0.
+
+        Returns:
+            bool: True if the node was copied, otherise, False
+        """
+    
         old_depth = -1
         depth = 0
         nn = node_source_offset
@@ -216,6 +354,7 @@ class Lopper:
                 copy_added_node_offset = fdt_dest.add_subnode( newoff, nn_name )
             except:
                 print( "[ERROR]: could not create subnode for node copy" )
+		# TODO: could return False and make this only exit on --werror
                 sys.exit(1)
 
             prop_offset = fdt_dest.subnode_offset( newoff, nn_name )
@@ -271,6 +410,16 @@ class Lopper:
 
     @staticmethod
     def node_abspath( fdt, nodeid ):
+        """Get the absolute (fully specified) path of a node
+
+        Args:
+            fdt (fdt): flattened device tree object
+            nodeid: device tree node offset
+
+        Returns:
+            string: node path, if successful, otherwise ""
+        """
+
         node_id_list = [nodeid]
         p = fdt.parent_offset(nodeid,QUIET_NOTFOUND)
         while p != 0:
@@ -284,17 +433,40 @@ class Lopper:
         return retname
 
     @staticmethod
-    def nodes_with_property( fdt_to_search, match_propname, match_regex="", start_path="/",  include_children=True ):
+    def nodes_with_property( fdt, match_propname, match_regex="",
+                             start_path="/", include_children=True ):
+        """Get a list of nodes with a particular property
+
+        Searches a device tree and returns a list of nodes that contain
+        a given property.
+
+        Matching is done by the existence of a property name in a node.
+
+        If a match_regex is passed, then the value of the property is
+        tested against the regex. If there's a match, then the node is
+        added to the list.
+
+        Args:
+            fdt (fdt): source flattened device tree to search
+            match_propname (string): target property name
+            match_regex (string,optional): property value match regex. Default is ""
+            start_path (string,optional): starting path in the device tree. Default is "/"
+            include_children (bool,optional): should child nodes be searched. Default is True.
+
+        Returns:
+            list: list of matching nodes if successful, otherwise an empty list
+        """
+
         # node_list = []
         depth = 0
         ret_nodes = []
         if start_path != "/":
-            node = Lopper.node_find_by_name( fdt_to_search, start_path )
+            node = Lopper.node_find_by_name( fdt, start_path )
         else:
             node = 0
 
         while depth >= 0:
-            prop_val = Lopper.prop_get( fdt_to_search, node, match_propname )
+            prop_val = Lopper.prop_get( fdt, node, match_propname )
             if prop_val:
                 if match_regex:
                     if re.search( match_regex, prop_val ):
@@ -304,18 +476,42 @@ class Lopper:
                         if not node in ret_nodes:
                             ret_nodes.append(node)
 
-            node, depth = fdt_to_search.next_node(node, depth, (libfdt.BADOFFSET,))
+            node, depth = fdt.next_node(node, depth, (libfdt.BADOFFSET,))
 
         return ret_nodes
 
-    # a really thin wrapper to easily write a system device tree
     @staticmethod
     def write_sdt( sdt_to_write, output_filename, overwrite=True, verbose=0 ):
+        """Write a system device tree to a file
+
+        A wrapper to easily write a system device tree that uses the output
+        filename to determine if a module should be used to write the output.
+
+        If the output format is .dts or .dtb, Lopper takes care of writing
+        the output.  If it is an unrecognized output type, the available
+        assist modules are queried for compatibility. If there is a
+        compatible assist, it is called to write the file, otherwise, and
+        error is raised.
+
+        Args:
+            fdt (fdt): source flattened device tree to search
+            match_propname (string): target property name
+            match_regex (string,optional): property value match regex. Default is ""
+            start_path (string,optional): starting path in the device tree. Default is "/"
+	    include_children (bool,optional): should child nodes be searched. Default is True.
+
+        Returns:
+            list: list of matching nodes if successful, otherwise an empty list
+        """
+
+	# TODO: the search for output modules can't be hardcoded like this, it
+	#       should be based on a data input via a 'lop'
         if re.search( ".cdo", output_filename ):
             cb_funcs = sdt_to_write.find_module_compatible_func( 0, "xlnx,output,cdo" )
             if cb_funcs:
                 for cb_func in cb_funcs:
                     try:
+			# TODO: the first parameter 'node', shouldn't always be the root (0)
                         if not cb_func( 0, sdt_to_write, sdt_to_write.verbose ):
                             print( "[WARNING]: the assist returned false, check for errors ..." )
                     except Exception as e:
@@ -337,6 +533,9 @@ class Lopper:
         # switch on the output format. i.e. we may want to write commands/drivers
         # versus dtb .. and the logic to write them out should be loaded from
         # separate implementation files
+
+	# TODO: add / generalize the output assist loading to allow this to
+	#       call assists
         if re.search( ".dtb", output_filename ):
             if verbose:
                 print( "[INFO]: dtb output format detected, writing %s" % output_filename )

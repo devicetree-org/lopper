@@ -193,7 +193,7 @@ Finally, a set of lops are passed. The lops are identified by lop_<number>
 and have a compatible string that identifies the type of operation, followed
 by any lop specific properties.
 
-TODO: write bindings for the lopper operations.
+NOTE/TODO: bindings will be written for the lopper operations.
 
 The following types of lops are currently valid:
 
@@ -369,6 +369,11 @@ catches it and reports the error to the user.
 
 Note: the exact details of all exceptions cannot always be displayed so
       unit tested or stepping through the code may be required.
+
+output assists:
+---------------
+
+XXX: you are here. document how these work.
 
 
 execution samples:
