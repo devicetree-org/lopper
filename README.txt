@@ -52,6 +52,13 @@ comments, symbolic phandles, formatting of strings, etc. To maintain this
 information, changes to dtc are required, and while that work is planned, there
 is no estimated completion date.
 
+Lopper puts the preprocessed file (.pp) into the same directory as the system
+device tree. Without doing this, dtc cannot resolve labels from include files,
+and will throw an error. If we get into a mode where the system device tree's
+directory is not writeable, then we'll have to either copy everything or look
+into why dtc can't handle the split directories and include files.
+
+
 Lopper processing flow:
 -----------------------
 

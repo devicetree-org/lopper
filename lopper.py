@@ -915,9 +915,14 @@ class Lopper:
         # step 1: preprocess the file with CPP (if available)
         #
 
-        # NOTE: we are putting the .pp file into the current working directory
-        #       if we add an O= type processing, this will have to respect that
-        preprocessed_name = "{0}.pp".format(dts_filename)
+        # NOTE: we are putting the .pp file into the same directory as the
+        #       system device tree. Without doing this, dtc cannot resolve
+        #       labels from include files, and will throw an error. If we get
+        #       into a mode where the system device tree's directory is not
+        #       writeable, then we'll have to either copy everything or look
+        #       into why dtc can't handle the split directories and include
+        #       files.
+        preprocessed_name = "{0}/{1}.pp".format(dts_dirname,dts_filename)
 
         includes += dts_dirname
         includes += " "
@@ -957,7 +962,7 @@ class Lopper:
         for i in includes.split():
             dtcargs += ["-i", i]
         dtcargs += ["-o", "{0}".format(output_dtb)]
-        dtcargs += ["-I", "dts", "-O", "dtb", "{0}.pp".format(dts_filename)]
+        dtcargs += ["-I", "dts", "-O", "dtb", preprocessed_name ]
         if verbose:
             print( "[INFO]: compiling dtb: %s" % dtcargs )
 
@@ -973,8 +978,11 @@ class Lopper:
                 print( "[ERROR]: unable to (force) compile %s" % dtcargs )
                 sys.exit(1)
 
+
+
         # cleanup: remove the .pp file
-        os.remove( preprocessed_name )
+        if not save_temps:
+            os.remove( preprocessed_name )
 
         # if we got here, and for some reason the output_dtb does not exist, we should
         # zero the name and return "" instead.
@@ -1136,6 +1144,7 @@ class SystemDeviceTree:
         self.assists = []
         self.output_file = ""
         self.cleanup_flag = True
+        self.save_temps = False
 
     def setup(self, sdt_file, input_files, include_paths, assists=[], force=False):
         if self.verbose:
@@ -1194,6 +1203,7 @@ class SystemDeviceTree:
 
                 fp = fpp.name
             else:
+                sdt_files.append( sdt_file )
                 fp = sdt_file
 
             self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force )
@@ -1241,10 +1251,12 @@ class SystemDeviceTree:
 
     def cleanup( self ):
         # remove any .dtb and .pp files we created
-        if self.cleanup:
+        if self.cleanup and not self.save_temps:
             try:
                 os.remove( self.dtb )
             except:
+                # doesn't matter if the remove failed, it means it is
+                # most likely gone
                 pass
 
         # note: we are not deleting assists .db files, since they
@@ -1798,6 +1810,7 @@ def usage():
     print('  -o, --output        output file')
     print('  -f, --force         force overwrite output file(s)')
     print('    , --werror        treat warnings as errors' )
+    print('  -S, --save-temps    don\'t remove temporary files' )
     print('  -h, --help          display this help and exit')
     print('')
 
@@ -1823,6 +1836,7 @@ def main():
     global dryrun
     global assists
     global werror
+    global save_temps
 
     sdt = None
     verbose = 0
@@ -1834,8 +1848,9 @@ def main():
     target_domain = ""
     assists = []
     werror = False
+    save_temps = False
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:", ["werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
+        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:S", [ "save-temps", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -1867,7 +1882,8 @@ def main():
             dryrun=True
         elif o in ('--werror'):
             werror=True
-
+        elif o in ('-S', '--save-temps' ):
+            save_temps=True
         else:
             assert False, "unhandled option"
 
@@ -1938,6 +1954,7 @@ if __name__ == "__main__":
     device_tree.werror = werror
     device_tree.output_file = output
     device_tree.cleanup_flag = True
+    device_tree.save_temps = save_temps
 
     device_tree.setup( sdt, inputfiles, "", assists, force )
     device_tree.perform_lops()
