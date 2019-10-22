@@ -31,8 +31,10 @@ lopper.py --help
      -a, --assist        load specified python assist (for node or output processing)
      -o, --output        output file
      -f, --force         force overwrite output file(s)
+       , --werror        treat warnings as errors
+     -S, --save-temps    don't remove temporary files
      -h, --help          display this help and exit
-                    
+
 Fundamentally, lopper takes an  input device tree (normally a system device tree),
 applies operations to that tree, and outputs a modified/processed tree.
 
@@ -137,25 +139,26 @@ tree:
   - Lopper
   - SystemDeviceTree
   - Lop (internal use only)
+  - LopAssist (internal use only)
 
 Lopper provides utility routines and wrappers around libfdt functions to operate
 on flattened device trees. More robust encode, decode of properties, node copy,
 etc. These utilities routines will work on any FDT object as returned by libfdt,
-and hence can work on both the fdt embedded in a SystemDeviceTree object, or
-on loaded lopper operation files.
+and hence can work on both the fdt embedded in a SystemDeviceTree object, or on
+loaded lopper operation files.
 
 The SystemDeviceTree object is an abstraction around the loaded system device
-tree, and is the main target of lopper operations. It provides 1:1 wrappers around
-Loppper static methods (passing its internal flattened device tree to lopper by
-default) and also provides routines to read/write device trees, tree filtering
-routines, etc.
+tree, and is the main target of lopper operations. It provides 1:1 wrappers
+around Loppper static methods (passing its internal flattened device tree to
+lopper by default) and also provides routines to read/write device trees, tree
+filtering routines, etc.
 
-The SystemDeviceTree object is responsible for the setup of the FDT (using
-dtc, cpp, etc, to compile it to a dtb), loading operations and assists,
-running operations, writing the default output and cleaning up any temporary
-files.
+The SystemDeviceTree object is responsible for the setup of the FDT (using dtc,
+cpp, etc, to compile it to a dtb), loading operations and assists, running
+operations, writing the default output and cleaning up any temporary files.
 
 TODO: property document all the routines and which ones are used from assists, etc
+      This will be via pydoc strings
 
 Lopper operations
 -----------------
@@ -210,6 +213,19 @@ The following types of lops are currently valid:
                         compatible = "system-device-tree-v1,lop,load";
                         // load: name of the module to load
                         load = "<python module name>.py";
+                };
+
+                lop_1 {
+                        compatible = "system-device-tree-v1,lop,load";
+                        load = "cdo.py";
+                        // props describes the extra properties of this assist,
+                        // so they can be loaded and stored with the module
+                        props = "id", "file_ext";
+                        // the extension of the output file that this is
+                        // compatible with.
+                        file_ext = ".cdo";
+                        // the id that this module is compatible with
+                        id = "xlnx,output,cdo";
                 };
 
 # assist: call an assist function that is compatible with the id
@@ -313,12 +329,13 @@ The following types of lops are currently valid:
                 lop_13 {
                        compatible = "system-device-tree-v1,lop,output";
                        outfile = "openamp-test.dtb";
-                       // nodes = "/reserved-memory", "/zynqmp-rpu", "/zynqmp_ipi1", "/chosen/resource_group_1";
+                       // list of nodes to select and output
                        nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
                 };
                 lop_14 {
                        compatible = "system-device-tree-v1,lop,output";
                        outfile = "linux.dtb";
+                       // * is "all nodes"
                        nodes = "*";
                 };
 
@@ -326,16 +343,16 @@ The following types of lops are currently valid:
 Lopper Assists
 --------------
 
-Assists can be used to perform operations on the tree (using libfdt or Lopper utility
-routines) or to generate output from a tree.
+Assists can be used to perform operations on the tree (using libfdt or Lopper
+utility routines) or to generate output from a tree.
 
-Note: assists are capable of modifying any part of the tree, so must be fully tested
-      and debugged before release.
+Note: assists are capable of modifying any part of the tree, so must be fully
+      tested and debugged before release.
 
-Assists are written in python and are loaded by Lopper as instructed by either the
-command line --assist or by a lopper operation (lop) input file. Assist are not full
-python modules as defined by the python specification, but are normal scripts that
-are loaded by Lopper and executed in its name space.
+Assists are written in python and are loaded by Lopper as instructed by either
+the command line --assist or by a lopper operation (lop) input file. Assist are
+not full python modules as defined by the python specification, but are normal
+scripts that are loaded by Lopper and executed in its name space.
 
 Modules must implement a function of the following type:
 
@@ -367,9 +384,9 @@ If compatible, lopper calls the assist routine with the arguments set to:
 
 Once called the function can use the node number and the system device tree
 (with its embedded FDT) to discover more information about the tree and
-manipulate the tree itself (and hence used by future lopper operations or
-assist calls). Lopper utility routines, SDT object calls or raw libfdt
-routines can be used to modify the tree.
+manipulate the tree itself (and hence used by future lopper operations or assist
+calls). Lopper utility routines, SDT object calls or raw libfdt routines can be
+used to modify the tree.
 
 If the module has invalid code, or otherwise generates and exception, Lopper
 catches it and reports the error to the user.
@@ -380,8 +397,18 @@ Note: the exact details of all exceptions cannot always be displayed so
 output assists:
 ---------------
 
-XXX: you are here. document how these work.
+Output assists are similar to standard (node) assists, except they are called
+when an output file extension is not recognized. Each loaded assist is queried
+with either an id that was provided when the output assist lop was loaded (see
+example above), or one that is associated with an output node in a lop file.
 
+If compatible, and output assist should return a function of the same
+format as a standard assist:
+
+   def assist_write( node, sdt, outfile, verbose=0 ):
+
+The routine can write the appropriate parts of the system device tree to the
+passed output filename.
 
 execution samples:
 ------------------
