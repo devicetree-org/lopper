@@ -17,9 +17,6 @@ location, make sure it is on PYTHONPATH:
 
      export PYTHONPATH=<path to pylibfdt>:$PYTHONPATH
 
-TODO: Write a setup/config script to check that required support applications
-      are available.
-
 Lopper overview:
 ----------------
 
@@ -48,6 +45,12 @@ A few command line notes:
 
  <output> file: The default output file for the modified system device tree. lopper
                 operations can output more variants as required
+
+Note that since lopper manipulates dtb's (as compiled by dtc) some information
+that is in the source dts is lost on the output of the final dts. This includes
+comments, symbolic phandles, formatting of strings, etc. To maintain this
+information, changes to dtc are required, and while that work is planned, there
+is no estimated completion date.
 
 Lopper processing flow:
 -----------------------
@@ -146,7 +149,6 @@ running operations, writing the default output and cleaning up any temporary
 files.
 
 TODO: property document all the routines and which ones are used from assists, etc
-
 
 Lopper operations
 -----------------
@@ -389,5 +391,5 @@ lopper.py -f -v -v -i xform-load.dts -i xform-domain-r5.dts -i xform-bin.dtb sys
 lopper.py -f --werror -v -v -v -v -i lop-load.dts -i lop-domain-r5.dts -i lop-bin.dtb -i system-device-tree-chosen.dts system-device-tree-domains.dts foo.dts 
 lopper.py -f --werror -v -v -v -v -i lop-load.dts -i lop-domain-a53.dts -i lop-bin.dtb -i system-device-tree-chosen.dts system-device-tree-domains.dts foo.dts
 
-# dump a dtb to console dst
+# dump a dtb to console as a "dts"
 lopper.py --dump linux.dtb
