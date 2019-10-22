@@ -33,8 +33,8 @@ def is_compat( node, compat_string_to_test ):
         return cdo_write
     return ""
 
-def cdo_write( domain_node, sdt, verbose=0 ):
-    print( "[INFO]: I'd print some CDO" )
+def cdo_write( node, sdt, outfile, verbose=0 ):
+    print( "[INFO]: I'd print some CDO to %s" % outfile )
     return True
 
 

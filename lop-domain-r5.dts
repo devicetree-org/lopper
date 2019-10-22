@@ -74,12 +74,21 @@
                          compatible = "system-device-tree-v1,lop,output";
                          outfile = "openamp-test.dtb";
                          // nodes = "/reserved-memory", "/zynqmp-rpu", "/zynqmp_ipi1", "/chosen/resource_group_1";
+                         // list of nodes to select and output
                          nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
                   };
                   lop_14 {
                          compatible = "system-device-tree-v1,lop,output";
                          outfile = "linux.dtb";
+                         // * is "all nodes"
                          nodes = "*";
+                  };
+                  lop_15 {
+                         compatible = "system-device-tree-v1,lop,output";
+                         outfile = "subsystem.cdo";
+                         // * is "all nodes"
+                         nodes = "*";
+                         id = "xlnx,output,cdo";
                   };
         };
 };

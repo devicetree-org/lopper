@@ -482,55 +482,31 @@ class Lopper:
         return ret_nodes
 
     @staticmethod
-    def write_sdt( sdt_to_write, output_filename, overwrite=True, verbose=0 ):
+    def write_fdt( fdt_to_write, output_filename, sdt=None, overwrite=True, verbose=0 ):
         """Write a system device tree to a file
 
-        A wrapper to easily write a system device tree that uses the output
-        filename to determine if a module should be used to write the output.
+        Write a fdt (or system device tree) to an output file. This routine uses
+        the output filename to determine if a module should be used to write the
+        output.
 
-        If the output format is .dts or .dtb, Lopper takes care of writing
-        the output.  If it is an unrecognized output type, the available
-        assist modules are queried for compatibility. If there is a
-        compatible assist, it is called to write the file, otherwise, and
-        error is raised.
+        If the output format is .dts or .dtb, Lopper takes care of writing the
+        output. If it is an unrecognized output type, the available assist
+        modules are queried for compatibility. If there is a compatible assist,
+        it is called to write the file, otherwise, a warning or error is raised.
 
         Args:
-            fdt (fdt): source flattened device tree to search
-            match_propname (string): target property name
-            match_regex (string,optional): property value match regex. Default is ""
-            start_path (string,optional): starting path in the device tree. Default is "/"
-	    include_children (bool,optional): should child nodes be searched. Default is True.
+            fdt_to_write (fdt): source flattened device tree to write
+            output_filename (string): name of the output file to create
+            sdt (SystemDeviceTree,optional): system device tree to use for output modules.
+                   None means don't use a system device tree for module loading.
+            overwrite (bool,optional): Should existing files be overwritten. Default is True.
+            verbose (int,optional): verbosity level to use.
 
         Returns:
-            list: list of matching nodes if successful, otherwise an empty list
+            Nothing
+
         """
 
-	# TODO: the search for output modules can't be hardcoded like this, it
-	#       should be based on a data input via a 'lop'
-        if re.search( ".cdo", output_filename ):
-            cb_funcs = sdt_to_write.find_module_compatible_func( 0, "xlnx,output,cdo" )
-            if cb_funcs:
-                for cb_func in cb_funcs:
-                    try:
-			# TODO: the first parameter 'node', shouldn't always be the root (0)
-                        if not cb_func( 0, sdt_to_write, sdt_to_write.verbose ):
-                            print( "[WARNING]: the assist returned false, check for errors ..." )
-                    except Exception as e:
-                        print( "[WARNING]: assist %s failed" % cb_func )
-                        exc_type, exc_obj, exc_tb = sys.exc_info()
-                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                        print(exc_type, fname, exc_tb.tb_lineno)
-            else:
-                print( "[INFO]: no compatible assist found, skipping" )
-
-        elif re.search( ".dtb", output_filename ) or re.search( ".dts", output_filename ):
-            Lopper.write_fdt( sdt_to_write.FDT, output_filename, overwrite, verbose )
-        else:
-            print( "[ERROR]: could not detect output format" )
-            sys.exit(1)
-
-    @staticmethod
-    def write_fdt( fdt_to_write, output_filename, overwrite=True, verbose=0 ):
         # switch on the output format. i.e. we may want to write commands/drivers
         # versus dtb .. and the logic to write them out should be loaded from
         # separate implementation files
@@ -574,8 +550,26 @@ class Lopper:
             # close the temp file so it is removed
             fp.close()
         else:
-            print( "[ERROR]: could not detect output format" )
-            sys.exit(1)
+            cb_funcs = ""
+            if sdt:
+                # we use the outfile extension as a mask
+                (out_name, out_ext) = os.path.splitext(output_filename)
+                cb_funcs = sdt.find_module_compatible_func( 0, "", out_ext )
+            if cb_funcs:
+                for cb_func in cb_funcs:
+                    try:
+			# TODO: the first parameter 'node', shouldn't always be the root (0)
+                        if not cb_func( 0, sdt, output_filename, sdt.verbose ):
+                            print( "[WARNING]: the assist returned false, check for errors ..." )
+                    except Exception as e:
+                        print( "[WARNING]: assist %s failed" % cb_func )
+                        exc_type, exc_obj, exc_tb = sys.exc_info()
+                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                        print(exc_type, fname, exc_tb.tb_lineno)
+            else:
+                print( "[INFO]: no compatible assist found, skipping" )
+                if sdt.werror:
+                    sys.exit(2)
 
 
     #
@@ -1098,6 +1092,7 @@ class Lopper:
 
             # TODO: we shouldn't need these repr() wrappers around the enums, but yet
             #       it doesn't seem to work on the calculated variable without them
+            # It could be that 'property' is a special decorator. Change to another variable name
             if repr(encode_calculated) == repr(LopperFmt.STRING):
                 try:
                     val = property[:-1].decode('utf-8').split('\x00')
@@ -1134,6 +1129,15 @@ class Lopper:
 
         return val
 
+class LopAssist:
+    def __init__(self, lop_file, module = "", mask="", mod_id="" ):
+        self.module = module
+        self.file = lop_file
+        # mask and id are not used by all assists, subclasses may clean this
+        # up in the future. But for now, mask is a way to check whether or not
+        # an assist, with a latched "mod_id" should even be considered.
+        self.mask = mask
+        self.id = mod_id
 
 ##
 ## SystemDeviceTree
@@ -1148,7 +1152,6 @@ class SystemDeviceTree:
         self.dts = sdt_file
         self.dtb = ""
         self.lops = []
-        self.modules = []
         self.verbose = 0
         self.node_access = {}
         self.dry_run = False
@@ -1256,7 +1259,7 @@ class SystemDeviceTree:
             if not inf.exists():
                 print( "[ERROR]: cannot find assist %s" % a )
                 sys.exit(2)
-            self.assists.append(a)
+            self.assists.append( LopAssist( a ) )
 
         self.load_assists()
 
@@ -1318,7 +1321,7 @@ class SystemDeviceTree:
                 lop_name = "lop_{}".format( assist_count )
                 offset = sw.add_subnode( offset, lop_name )
                 sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,load')
-                sw.setprop_str( offset, 'load', a )
+                sw.setprop_str( offset, 'load', a.file )
                 lop = Lop( 'commandline' )
                 lop.dts = ""
                 lop.dtb = ""
@@ -1382,16 +1385,34 @@ class SystemDeviceTree:
         return Lopper.node_type( self.FDT, node_offset, verbose )
 
     # argument: node number, and an id string
-    def find_module_compatible_func( self, cb_node, cb_id ):
+    # default for cb_node is "start at root (0)"
+    def find_module_compatible_func( self, cb_node = 0, cb_id = "", mask = "" ):
         cb_func = []
-        if self.modules:
-            for m in self.modules:
-                cb_f = m.is_compat( cb_node, cb_id )
-                if cb_f:
-                    cb_func.append( cb_f )
-                # we could double check that the function exists with this call:
-                #    func = getattr( m, cbname )
-                # but for now, we don't
+        if self.assists:
+            for a in self.assists:
+                if a.module:
+                    # if the passed id is empty, check to see if the assist has
+                    # one as part of its data
+                    if not cb_id:
+                        cb_id = a.id
+
+                    # if a non zero mask was passed, and the module has a mask, make
+                    # sure they match before even considering it.
+                    mask_ok = True
+                    if mask and a.mask:
+                        mask_ok = False
+                        # TODO: could be a regex
+                        if mask == a.mask:
+                            mask_ok = True
+                    if mask_ok:
+                        cb_f = a.module.is_compat( cb_node, cb_id )
+                    if cb_f:
+                        cb_func.append( cb_f )
+                        # we could double check that the function exists with this call:
+                        #    func = getattr( m, cbname )
+                        # but for now, we don't
+                else:
+                    print( "[WARNING]: a configured assist has no module loaded" )
         else:
             print( "[WARNING]: no modules loaded, no compat search is possible" )
 
@@ -1478,13 +1499,16 @@ class SystemDeviceTree:
                                 # TODO: this really should be using node_find() and we should make sure the
                                 #       output 'lop' has full paths.
                                 node_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0 )
-                                node_to_copy_path = Lopper.node_abspath( self.FDT, node_to_copy )
-                                new_node = Lopper.node_copy_from_path( self.FDT, node_to_copy_path, ff, node_to_copy_path, self.verbose )
-                                if not new_node:
-                                    print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
+                                if node_to_copy == -1:
+                                    print( "[WARNING]: could not find node to copy: %s" % o_node )
+                                else:
+                                    node_to_copy_path = Lopper.node_abspath( self.FDT, node_to_copy )
+                                    new_node = Lopper.node_copy_from_path( self.FDT, node_to_copy_path, ff, node_to_copy_path, self.verbose )
+                                    if not new_node:
+                                        print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
 
                         if not self.dryrun:
-                            Lopper.write_fdt( ff, output_file_name, True, verbose )
+                            Lopper.write_fdt( ff, output_file_name, self, True, verbose )
                         else:
                             print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
@@ -1528,17 +1552,37 @@ class SystemDeviceTree:
                             print( "[INFO]: no compatible assist found, skipping" )
 
                     if re.search( ".*,lop,load$", val ):
+                        prop_id = ""
+                        prop_extension = ""
+
                         if self.verbose:
                             print( "--------------- [INFO]: node %s is a load module lop" % node_name )
                         try:
-                            prop = lops_fdt.getprop( n, 'load' ).as_str()
+                            load_prop = lops_fdt.getprop( n, 'load' ).as_str()
                         except:
-                            prop = ""
+                            load_prop = ""
 
-                        if prop:
+                        try:
+                            props = lops_fdt.getprop( n, 'props' )
+                            if props:
+                                props = Lopper.property_value_decode( props, 0, LopperFmt.COMPOUND )
+
+                            for p in props:
+                                if p == "file_ext":
+                                    prop_extension = lops_fdt.getprop( n, 'file_ext' ).as_str()
+                                    # TODO: debug why the call below can't figure out that this is a
+                                    #       string property.
+                                    # Lopper.prop_get( lops_fdt, n, "file_ext" )
+                                if p == "id":
+                                    prop_id = lops_fdt.getprop( n, 'id' ).as_str()
+
+                        except:
+                            props = ""
+
+                        if load_prop:
                             if self.verbose:
-                                print( "[INFO]: loading module %s" % prop )
-                            mod_file = Path( prop )
+                                print( "[INFO]: loading module %s" % load_prop )
+                            mod_file = Path( load_prop )
                             mod_file_wo_ext = mod_file.with_suffix('')
                             try:
                                 mod_file_abs = mod_file.resolve()
@@ -1548,19 +1592,35 @@ class SystemDeviceTree:
                                 try:
                                     mod_file_abs = mod_file.resolve()
                                 except FileNotFoundError:
+                                    #
                                     # And finally, try a "assists" subdirectory underneath where
                                     # lopper is running
+                                    #
                                     # TODO: we could read an environment variable to find alternate
                                     #       locations to search for modules.
+                                    #
                                     mod_file = Path( lopper_directory + "/assists/" + mod_file.name )
                                     try:
                                         mod_file_abs = mod_file.resolve()
                                     except FileNotFoundError:
-                                        print( "[ERROR]: module file %s not found" % prop )
+                                        print( "[ERROR]: module file %s not found" % load_prop )
                                         sys.exit(1)
 
                             imported_module = __import__(str(mod_file_wo_ext))
-                            self.modules.append( imported_module )
+
+                            # TODO: move this "already assist available" check into a routine
+                            already_loaded = False
+                            if self.assists:
+                                for a in self.assists:
+                                    if a.file == mod_file.name:
+                                        already_loaded = True
+                                        a.module = imported_module
+                            if not already_loaded:
+                                if verbose > 1:
+                                    if prop_extension:
+                                        print( "[INFO]: loading assist with properties (%s,%s)" % (prop_extension, prop_id) )
+
+                                self.assists.append( LopAssist( mod_file.name, imported_module, prop_extension, prop_id ) )
 
                     if re.search( ".*,lop,add$", val ):
                         if self.verbose:
@@ -1971,7 +2031,7 @@ if __name__ == "__main__":
     device_tree.perform_lops()
 
     if not dryrun:
-        Lopper.write_sdt( device_tree, output, True, device_tree.verbose )
+        Lopper.write_fdt( device_tree.FDT, output, device_tree, True, device_tree.verbose )
     else:
         print( "[INFO]: --dryrun was passed, output file %s not written" % output )
 
