@@ -26,6 +26,7 @@ import importlib
 import tempfile
 from enum import Enum
 import atexit
+import textwrap
 
 import libfdt
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
@@ -836,6 +837,9 @@ class Lopper:
             print( "[INFO]: dumping dtb: %s" % dtcargs )
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
+        if result.returncode is not 0:
+            print( "[ERROR]: unable to export a dts" )
+            print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
 
         return result
 
@@ -939,8 +943,12 @@ class Lopper:
         ppargs += ["-o", preprocessed_name, dts_file]
         if verbose:
             print( "[INFO]: preprocessing dts_file: %s" % ppargs )
-        # TODO: could grab the output and dump it on error
-        subprocess.run( ppargs, check = True )
+
+        result = subprocess.run( ppargs, check = True )
+        if result.returncode is not 0:
+            print( "[ERROR]: unable to preprocess dts file: %s" % ppargs )
+            print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
+            sys.exit(result.returncode)
 
         # step 2: compile the dtb
         #         dtc -O dtb -o test_tree1.dtb test_tree1.dts
@@ -978,6 +986,7 @@ class Lopper:
             result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
             if result.returncode is not 0:
                 print( "[ERROR]: unable to (force) compile %s" % dtcargs )
+                print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
                 sys.exit(1)
 
 
