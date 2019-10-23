@@ -28,8 +28,17 @@ import lopper
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
 import libfdt
 
-def is_compat( node, compat_string_to_test ):
-    if re.search( "xlnx,output,cdo", compat_string_to_test):
+def props():
+    return ["id", "file_ext"]
+
+def id():
+    return "xlnx,output,cdo"
+
+def file_ext():
+    return ".cdo"
+
+def is_compat( node, compat_id ):
+    if re.search( "xlnx,output,cdo", compat_id):
         return cdo_write
     return ""
 

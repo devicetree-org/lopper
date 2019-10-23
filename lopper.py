@@ -511,8 +511,6 @@ class Lopper:
         # versus dtb .. and the logic to write them out should be loaded from
         # separate implementation files
 
-	# TODO: add / generalize the output assist loading to allow this to
-	#       call assists
         if re.search( ".dtb", output_filename ):
             if verbose:
                 print( "[INFO]: dtb output format detected, writing %s" % output_filename )
@@ -1130,14 +1128,11 @@ class Lopper:
         return val
 
 class LopAssist:
-    def __init__(self, lop_file, module = "", mask="", mod_id="" ):
+    def __init__(self, lop_file, module = "", properties_dict = {}):
         self.module = module
         self.file = lop_file
-        # mask and id are not used by all assists, subclasses may clean this
-        # up in the future. But for now, mask is a way to check whether or not
-        # an assist, with a latched "mod_id" should even be considered.
-        self.mask = mask
-        self.id = mod_id
+        # holds specific key,value properties
+        self.properties = properties_dict
 
 ##
 ## SystemDeviceTree
@@ -1394,18 +1389,28 @@ class SystemDeviceTree:
                     # if the passed id is empty, check to see if the assist has
                     # one as part of its data
                     if not cb_id:
-                        cb_id = a.id
+                        try:
+                            cb_id = a.properties['id']
+                        except:
+                            cb_id = ""
 
                     # if a non zero mask was passed, and the module has a mask, make
                     # sure they match before even considering it.
                     mask_ok = True
-                    if mask and a.mask:
+                    try:
+                        assist_mask = a.properties['mask']
+                    except:
+                        assist_mask = ""
+
+                    if mask and assist_mask:
                         mask_ok = False
                         # TODO: could be a regex
-                        if mask == a.mask:
+                        if mask == assist_mask:
                             mask_ok = True
+
                     if mask_ok:
                         cb_f = a.module.is_compat( cb_node, cb_id )
+
                     if cb_f:
                         cb_func.append( cb_f )
                         # we could double check that the function exists with this call:
@@ -1562,23 +1567,6 @@ class SystemDeviceTree:
                         except:
                             load_prop = ""
 
-                        try:
-                            props = lops_fdt.getprop( n, 'props' )
-                            if props:
-                                props = Lopper.property_value_decode( props, 0, LopperFmt.COMPOUND )
-
-                            for p in props:
-                                if p == "file_ext":
-                                    prop_extension = lops_fdt.getprop( n, 'file_ext' ).as_str()
-                                    # TODO: debug why the call below can't figure out that this is a
-                                    #       string property.
-                                    # Lopper.prop_get( lops_fdt, n, "file_ext" )
-                                if p == "id":
-                                    prop_id = lops_fdt.getprop( n, 'id' ).as_str()
-
-                        except:
-                            props = ""
-
                         if load_prop:
                             if self.verbose:
                                 print( "[INFO]: loading module %s" % load_prop )
@@ -1606,21 +1594,63 @@ class SystemDeviceTree:
                                         print( "[ERROR]: module file %s not found" % load_prop )
                                         sys.exit(1)
 
+                            # can this error at this point ? We should probably check for it ..
                             imported_module = __import__(str(mod_file_wo_ext))
 
-                            # TODO: move this "already assist available" check into a routine
+                            assist_properties = {}
+                            try:
+                                props = lops_fdt.getprop( n, 'props' )
+                                if props:
+                                    props = Lopper.property_value_decode( props, 0, LopperFmt.COMPOUND )
+                            except:
+                                # does the module have a "props" routine for extra querying ?
+                                try:
+                                    props = imported_module.props()
+                                except:
+                                    props = []
+
+                            for p in props:
+                                # TODO: we can generate and evaluate these generically, right now, this
+                                #       is ok as a proof of concept only
+                                if p == "file_ext":
+                                    try:
+                                        prop_extension = lops_fdt.getprop( n, 'file_ext' ).as_str()
+                                        # TODO: debug why the call below can't figure out that this is a
+                                        #       string property.
+                                        # Lopper.prop_get( lops_fdt, n, "file_ext" )
+                                    except:
+                                        try:
+                                            prop_extension = imported_module.file_ext()
+                                        except:
+                                            prop_extension = ""
+
+                                    assist_properties['mask'] = prop_extension
+
+                                if p == "id":
+                                    try:
+                                        prop_id = lops_fdt.getprop( n, 'id' ).as_str()
+                                    except:
+                                        try:
+                                            prop_id = imported_module.id()
+                                        except:
+                                            prop_id = ""
+
+                                    assist_properties['id'] = prop_id
+
+                            # TODO: move this "assist already available" check into a function
                             already_loaded = False
                             if self.assists:
                                 for a in self.assists:
                                     if a.file == mod_file.name:
                                         already_loaded = True
                                         a.module = imported_module
+                                        a.properties = assist_properties
                             if not already_loaded:
                                 if verbose > 1:
                                     if prop_extension:
                                         print( "[INFO]: loading assist with properties (%s,%s)" % (prop_extension, prop_id) )
 
-                                self.assists.append( LopAssist( mod_file.name, imported_module, prop_extension, prop_id ) )
+                                self.assists.append( LopAssist( mod_file.name, imported_module, assist_properties ) )
 
                     if re.search( ".*,lop,add$", val ):
                         if self.verbose:
