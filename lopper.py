@@ -554,7 +554,7 @@ class Lopper:
             if sdt:
                 # we use the outfile extension as a mask
                 (out_name, out_ext) = os.path.splitext(output_filename)
-                cb_funcs = sdt.find_module_compatible_func( 0, "", out_ext )
+                cb_funcs = sdt.find_compatible_assist( 0, "", out_ext )
             if cb_funcs:
                 for cb_func in cb_funcs:
                     try:
@@ -1386,7 +1386,7 @@ class SystemDeviceTree:
 
     # argument: node number, and an id string
     # default for cb_node is "start at root (0)"
-    def find_module_compatible_func( self, cb_node = 0, cb_id = "", mask = "" ):
+    def find_compatible_assist( self, cb_node = 0, cb_id = "", mask = "" ):
         cb_func = []
         if self.assists:
             for a in self.assists:
@@ -1534,7 +1534,7 @@ class SystemDeviceTree:
                                 print( "        cb: %s" % cb )
                             print( "        id: %s" % cb_id )
 
-                        cb_funcs = self.find_module_compatible_func( cb_node, cb_id )
+                        cb_funcs = self.find_compatible_assist( cb_node, cb_id )
                         if cb_funcs:
                             for cb_func in cb_funcs:
                                 try:
