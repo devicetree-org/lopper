@@ -818,7 +818,22 @@ class Lopper:
 
 
     @staticmethod
-    def remove_node_if_not_compatible( fdt, node_prefix, compat_string ):
+    def node_remove_if_not_compatible( fdt, node_prefix, compat_string ):
+        """Remove a node if incompatible with passed string
+
+        Utility/cleanup function to remove all nodues under a node_prefix
+        that are not compatible with a given string.
+
+        Args:
+            fdt (FDT): flattened device tree
+            node_prefix (string): starting node path
+            compat_strin (string): string for compat property comparison
+
+        Returns:
+            Nothing
+
+        """
+
         if verbose:
             print( "[NOTE]: removing incompatible nodes: %s %s" % (node_prefix, compat_string) )
 
@@ -850,10 +865,10 @@ class Lopper:
         """Read a list of subnodes from a node
 
         Args:
-        node_path: Full path to node, e.g. '/subnode@1/subsubnode'
+           node_path: Full path to node, e.g. '/subnode@1/subsubnode'
 
         Returns:
-        List of subnode names for that node, e.g. ['subsubnode', 'ss1']
+           List of subnode names for that node, e.g. ['subsubnode', 'ss1']
         """
         subnode_list = []
         node = fdt.path_offset(node_path)
@@ -871,10 +886,10 @@ class Lopper:
         """Read a list of properties from a node
 
         Args:
-        node_path: Full path to node, e.g. '/subnode@1/subsubnode'
+           node_path: Full path to node, e.g. '/subnode@1/subsubnode'
 
         Returns:
-        List of property names for that node, e.g. ['compatible', 'reg']
+           List of property names for that node, e.g. ['compatible', 'reg']
         """
         prop_list = []
         node = fdt.path_offset(node_path)
@@ -891,27 +906,43 @@ class Lopper:
     # the tree.
     #
     @staticmethod
-    def walk_nodes( FDT ):
+    def node_walk( fdt, verbose=0 ):
+        """Walk nodes and gather a list
+
+        Utility / reference routine for gathering a list of nodes.
+        Always starts at node 0.
+
+        Args:
+            fdt (FDT): flattened device tree
+            verbose (int,optional): verbosity level, default 0.
+
+        Returns:
+            List of nodes
+
+        """
         node_list = []
         node = 0
         depth = 0
         while depth >= 0:
-            node_list.append([depth, FDT.get_name(node)])
-            node, depth = FDT.next_node(node, depth, (libfdt.BADOFFSET,))
+            node_list.append([depth, fdt.get_name(node)])
+            node, depth = fdt.next_node(node, depth, (libfdt.BADOFFSET,))
 
-        # print( "node list: %s" % node_list )
+        if verbose:
+            print( "node list: %s" % node_list )
+
+        return node_list
 
     @staticmethod
     def dtb_dts_export( dtb, outfilename="", verbose=0 ):
         """writes a dtb to a file or to stdout as a dts
 
         Args:
-        dtb: a compiled device tree
-        outfilename: the output filename (stdout is used if empty)
-        verbose: extra debug info
+           dtb: a compiled device tree
+           outfilename (string): the output filename (stdout is used if empty)
+           verbose (int,optional): extra debug info. default 0.
 
         Returns:
-        The return value of executing dtc to dump the dtb to dts
+           The return value of executing dtc to dump the dtb to dts
         """
         dtcargs = (os.environ.get('LOPPER_DTC') or shutil.which("dtc")).split()
         dtcargs += (os.environ.get("STD_DTC_FLAGS") or "").split()
@@ -930,9 +961,17 @@ class Lopper:
 
         return result
 
-    # utility command to get a phandle (as a number) from a node
     @staticmethod
     def getphandle( fdt, node_number ):
+        """utility command to get a phandle (as a number) from a node
+
+        Args:
+           fdt (FDT): flattened device tree
+           node_number (int): node number in the fdt
+
+        Returns:
+           int: the phandle of the node number, if successful, -1 if not
+        """
         prop = fdt.get_phandle( node_number )
         return prop
 
@@ -940,9 +979,37 @@ class Lopper:
     # "simple" or "compound". A string is returned for simple, and a list of
     # properties for compound
     @staticmethod
-    def prop_get( fdt, node_number, property_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
+    def prop_get( fdt, node_number, prop_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
+        """utility command to get a property (as a string) from a node
+
+        A more robust way to get the value of a property in a node, when
+        you aren't sure of the format of that property. This routine takes
+        hints when getting the property in the form of a "format type" and
+        an encoding.
+
+        The format and encoding options are in the following enum type:
+
+           class LopperFmt(Enum):
+              SIMPLE = 1 (format)
+              COMPOUND = 2 (format)
+              HEX = 3 (encoding)
+              DEC = 4 (encoding)
+              STRING = 5 (encoding)
+              MULTI_STRING = 5 (encoding)
+
+        Args:
+           fdt (FDT): flattened device tree
+           node_number (int): node number in the fdt
+           property (string): property name whose value to get
+           ftype (LopperFmt,optional): format of the property. Default SIMPLE.
+           encode (LopperFmt,optional); encoding of the property. Default DEC
+
+        Returns:
+           string: if format is SIMPLE: string value of the property, or "" if not found
+           list: if format is COMPOUND: list of property values as strings, [] if not found
+        """
         try:
-            prop = fdt.getprop( node_number, property_name )
+            prop = fdt.getprop( node_number, prop_name )
             if prop:
                 # TODO: both these conditions are the same .. either one goes, or one changes
                 if ftype == LopperFmt.SIMPLE:
@@ -957,7 +1024,31 @@ class Lopper:
         return val
 
     @staticmethod
-    def prop_set( fdt_dest, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE ):
+    def prop_set( fdt, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE ):
+        """utility command to set a property in a node
+
+        A more robust way to set the value of a property in a node, This routine
+        takes hints when getting the property in the form of a "format type"
+
+        The format options are in the following enum type:
+
+           class LopperFmt(Enum):
+              SIMPLE = 1 (format)
+              COMPOUND = 2 (format)
+
+        Based on the format hint, and the passed value, the property is encoded
+        into a byte array and stored into the flattened device tree node.
+
+        Args:
+           fdt_dst (FDT): flattened device tree
+           node_number (int): node number in the fdt
+           prop_name (string): property name whose value to set
+           ftype (LopperFmt,optional): format of the property. Default SIMPLE.
+
+        Returns:
+           Nothing
+
+        """
         try:
             prop_val_converted = int(prop_val,0)
             # if it works, that's our new prop_val. This covers the case where
@@ -975,11 +1066,11 @@ class Lopper:
             # to prevent overflow situations
             # if sys.getsizeof(prop_val) >= 32:
             if sys.getsizeof(prop_val) > 32:
-                fdt_dest.setprop_u64( node_number, prop_name, prop_val )
+                fdt.setprop_u64( node_number, prop_name, prop_val )
             else:
-                fdt_dest.setprop_u32( node_number, prop_name, prop_val )
+                fdt.setprop_u32( node_number, prop_name, prop_val )
         elif type(prop_val) == str:
-            fdt_dest.setprop_str( node_number, prop_name, prop_val )
+            fdt.setprop_str( node_number, prop_name, prop_val )
         elif type(prop_val) == list:
             # list is a compound value, or an empty one!
             if len(prop_val) >= 0:
@@ -988,7 +1079,7 @@ class Lopper:
                 except:
                     bval = Lopper.encode_byte_array(prop_val)
 
-                fdt_dest.setprop( node_number, prop_name, bval)
+                fdt.setprop( node_number, prop_name, bval)
         else:
             print( "[WARNING]; uknown type was used" )
 
@@ -1832,7 +1923,7 @@ class SystemDeviceTree:
                                         sys.exit(1)
 
     # note; this operates on a node and all child nodes, unless you set recursive to False
-    def property_remove( self, node_prefix = "/", propname = "", recursive = True ):
+    def property_remove( self, node_prefix = "/", prop_name = "", recursive = True ):
         node = Lopper.node_find( self.FDT, node_prefix )
         node_list = []
         depth = 0
@@ -1852,12 +1943,12 @@ class SystemDeviceTree:
                 prop_list.append(prop.name)
                 poffset = self.FDT.next_property_offset(poffset, QUIET_NOTFOUND)
 
-            if propname in prop_list:
-                # node is an integer offset, propname is a string
+            if prop_name in prop_list:
+                # node is an integer offset, prop_name is a string
                 if self.verbose:
-                    print( "[INFO]: removing property %s from %s" % (propname, self.FDT.get_name(node)) )
+                    print( "[INFO]: removing property %s from %s" % (prop_name, self.FDT.get_name(node)) )
 
-                self.FDT.delprop(node, propname)
+                self.FDT.delprop(node, prop_name)
 
             if recursive:
                 node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
@@ -1865,7 +1956,7 @@ class SystemDeviceTree:
                 depth = -1
 
     # note; this operates on a node and all child nodes, unless you set recursive to False
-    def property_modify( self, node_prefix = "/", propname = "", propval = "", recursive = True, add_if_missing = False ):
+    def property_modify( self, node_prefix = "/", prop_name = "", propval = "", recursive = True, add_if_missing = False ):
         node = Lopper.node_find( self.FDT, node_prefix )
         node_list = []
         depth = 0
@@ -1882,23 +1973,23 @@ class SystemDeviceTree:
                     poffset = 0
                     continue
 
-                # print( "propname: %s" % prop.name )
+                # print( "prop_name: %s" % prop.name )
                 prop_list.append(prop.name)
                 poffset = self.FDT.next_property_offset(poffset, QUIET_NOTFOUND)
 
-            if propname in prop_list:
-                # node is an integer offset, propname is a string
+            if prop_name in prop_list:
+                # node is an integer offset, prop_name is a string
                 if self.verbose:
-                    print( "[INFO]: changing property %s to %s" % (propname, propval ))
+                    print( "[INFO]: changing property %s to %s" % (prop_name, propval ))
 
-                Lopper.prop_set( self.FDT, node, propname, propval )
+                Lopper.prop_set( self.FDT, node, prop_name, propval )
             else:
                 if add_if_missing:
                     try:
-                        Lopper.prop_set( self.FDT, node, propname, propval )
+                        Lopper.prop_set( self.FDT, node, prop_name, propval )
                     except:
                         self.FDT.resize( self.FDT.totalsize() + 1024 )
-                        Lopper.prop_set( self.FDT, node, propname, propval )
+                        Lopper.prop_set( self.FDT, node, prop_name, propval )
 
 
             if recursive:
@@ -1910,7 +2001,7 @@ class SystemDeviceTree:
         return Lopper.prop_set( self.FDT, node_number, prop_name, prop_val, ftype )
 
     # Note: this is no longer called. possibly delete
-    def property_find( self, propname, remove = False ):
+    def property_find( self, prop_name, remove = False ):
         node_list = []
         node = 0
         depth = 0
@@ -1931,23 +2022,23 @@ class SystemDeviceTree:
                     poffset = 0
                     continue
 
-                #print( "propname: %s" % prop.name )
+                #print( "prop_name: %s" % prop.name )
                 prop_list.append(prop.name)
                 poffset = self.FDT.next_property_offset(poffset, QUIET_NOTFOUND)
 
-                if propname in prop_list:
-                    # node is an integer offset, propname is a string
+                if prop_name in prop_list:
+                    # node is an integer offset, prop_name is a string
                     if self.verbose:
-                        print( "[INFO]: removing property %s from %s" % (propname, self.FDT.get_name(node)) )
+                        print( "[INFO]: removing property %s from %s" % (prop_name, self.FDT.get_name(node)) )
 
                     if remove:
-                        self.FDT.delprop(node, propname)
+                        self.FDT.delprop(node, prop_name)
 
             node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
 
-    def property_get( self, node_number, property_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
+    def property_get( self, node_number, prop_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
         # just a wrapper routine ..
-        return Lopper.prop_get( self.FDT, node_number, property_name, ftype, encode )
+        return Lopper.prop_get( self.FDT, node_number, prop_name, ftype, encode )
 
     def inaccessible_nodes( self, propname ):
         node_list = []
