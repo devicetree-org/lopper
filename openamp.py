@@ -25,6 +25,7 @@ import contextlib
 import importlib
 from lopper import Lopper
 from lopper import LopperFmt
+from lopper import LopperAction
 import lopper
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
 import libfdt
@@ -74,24 +75,22 @@ def process_domain( tgt_node, sdt, verbose=0 ):
     xform_path = "/"
     prop = "cpus,cluster"
     code = """
-p = prop_get( %%FDT%%, %%NODE%%, \"compatible\" )
-if p and "%%%prop%%%" in p:
-    ph = getphandle( %%FDT%%, %%NODE%% )
-    if ph != %%%phandle%%%:
-        %%TRUE%%
+p = Lopper.prop_get( fdt, node, 'compatible' )
+if p and "{0}" in p:
+    ph = Lopper.getphandle( fdt, node )
+    if ph != {1}:
+        return True
     else:
-        %%FALSE%%
+        return False
 else:
-    %%FALSE%%
-"""
-    code = code.replace( "%%%prop%%%", prop )
-    code = code.replace( "%%%phandle%%%", str( cpu_prop ) )
+    return False
+""".format( prop, str(cpu_prop) )
 
     if verbose:
         print( "[INFO]: filtering on:\n------%s-------\n" % code )
 
     # the action will be taken if the code block returns 'true'
-    Lopper.node_filter( sdt, xform_path, "delete", code, verbose )
+    Lopper.node_filter( sdt, xform_path, LopperAction.DELETE, code, verbose )
 
     # we must re-find the domain node, since its numbering may have
     # changed due to the node_filter deleting things
@@ -190,35 +189,34 @@ else:
             xform_path = n
             if value == "*":
                 code = """
-p = refcount( %%SDT%%, %%NODENAME%% )
+p = Lopper.refcount( sdt, node_name )
 if p <= 0:
-    %%TRUE%%
+    return True
 else:
-    %%FALSE%%
+    return False
 """
             else:
                 prop = value
                 code = """
-p = prop_get( %%FDT%%, %%NODE%%, \"compatible\" )
-if p and "%%%prop%%%" in p:
-    p = refcount( %%SDT%%, %%NODENAME%% )
+p = Lopper.prop_get( fdt, node, "compatible" )
+if p and "{0}" in p:
+    p = Lopper.refcount( sdt, node_name )
     if p <= 0:
-        %%TRUE%%
+        return True
     else:
-        %%FALSE%%
+        return False
 else:
-    %%FALSE%%
-"""
-            code = code.replace( "%%%prop%%%", prop )
+    return False
+""".format( prop )
 
             if verbose:
                 print( "[INFO]: filtering on:\n------%s-------\n" % code )
 
             # the action will be taken if the code block returns 'true'
             if n == "/":
-                Lopper.node_filter( sdt, "/", "delete", code, verbose )
+                Lopper.node_filter( sdt, "/", LopperAction.DELETE, code, verbose )
             else:
-                Lopper.node_filter( sdt, n + "/", "delete", code, verbose )
+                Lopper.node_filter( sdt, n + "/", LopperAction.DELETE, code, verbose )
 
             # we must re-find the domain node, since its numbering may have
             # changed due to the node_filter deleting things

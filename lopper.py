@@ -33,7 +33,7 @@ from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
 
 lopper_directory = os.path.dirname(os.path.realpath(__file__))
 
-# For use in encode/decode routines
+# used in encode/decode routines
 class LopperFmt(Enum):
     SIMPLE = 1
     COMPOUND = 2
@@ -41,6 +41,13 @@ class LopperFmt(Enum):
     DEC = 4
     STRING = 5
     MULTI_STRING = 5
+
+# used in node_filter
+class LopperAction(Enum):
+    DELETE = 1
+    REPORT = 2
+    WHITELIST = 3
+    BLACKLIST = 3
 
 @contextlib.contextmanager
 def stdoutIO(stdout=None):
@@ -507,10 +514,6 @@ class Lopper:
 
         """
 
-        # switch on the output format. i.e. we may want to write commands/drivers
-        # versus dtb .. and the logic to write them out should be loaded from
-        # separate implementation files
-
         if re.search( ".dtb", output_filename ):
             if verbose:
                 print( "[INFO]: dtb output format detected, writing %s" % output_filename )
@@ -581,6 +584,62 @@ class Lopper:
     #       free form string.
     @staticmethod
     def node_filter( sdt, node_prefix, action, test_cmd, verbose=0 ):
+        """Filter nodes and perform an action
+
+        Starting from the supplied path (node_prefix), this function walks
+        the device tree and executes a block of python code to test each
+        node.
+
+        If the block of code (test_cmd) returns True, then the action is
+        taken. If false, nothing is done.
+
+        Currently defined actions:
+
+           - delete: delete the node
+           - report: (not currently implemented)
+           - whitelist: (not currently implemented)
+           - blacklist: (not currently implemented)
+
+        The "test_cmd" python code, runs in a constructed/safe environment to
+        ensure that the code won't cause harmful sideffects to the execution
+        environment.
+
+        The following functions and variables are currently available in the
+        safe_dict:
+
+            len
+            print
+            Lopper.prop_get
+            Lopper.getphandle
+            Lopper.node_filter
+            Lopper.refcount
+            fdt
+            sdt
+            verbose
+
+        When executing in the filter context (aka node walking), the following
+        variables are available to the python code block.
+
+            fdt  : the flattened device tree being processed
+            sdt  : the system device tree
+            node : the node number
+            node_name : the name of the node (as defined by the dts/dtb)
+
+        A standard python "return True" and "return False" should be used to
+        indicate the result of the test.
+
+        Args:
+            sdt (SystemDeviceTree): system device tree to filter
+            node_prefix (string): starting node path
+            action (LopperAction): action to take in the True condition
+            test_cmd (string): block of python code to test against each node
+            verbose (int,optional): verbosity level to use.
+
+        Returns:
+            Nothing
+
+        """
+
         fdt = sdt.FDT
         if verbose:
             print( "[NOTE]: filtering nodes root: %s" % node_prefix )
@@ -638,29 +697,49 @@ class Lopper:
             # search and replace any template options in the cmd. yes, this is
             # only a proof of concept, you'd never do this like this in the end.
             tc = test_cmd
-            tc = tc.replace( "%%FDT%%", "fdt" )
-            tc = tc.replace( "%%SDT%%", "sdt" )
-            tc = tc.replace( "%%NODE%%", "node" )
-            tc = tc.replace( "%%NODENAME%%", "node_name" )
-            tc = tc.replace( "%%TRUE%%", "print(\"true\")" )
-            tc = tc.replace( "%%FALSE%%", "print(\"false\")" )
+
+            # we wrap the test command to control the ins and outs
+            __nret = False
+            # indent everything, its going in a function
+            tc_indented = textwrap.indent( tc, '    ' )
+            # define the function, add the body, call the function and grab the return value
+            tc_full_block = "def __node_test_block():" + tc_indented + "__nret = __node_test_block()"
 
             if verbose > 2:
-                print( "[DBG+]: filter node cmd: %s" % tc )
+               print( "[DBG+]: filter node cmd: %s" % tc_full_block )
 
-            # TODO: return values need to replace the stdout format of
-            #       true and false
-            with stdoutIO() as s:
-                try:
-                    exec(tc, {"__builtins__" : None }, safe_dict)
-                except Exception as e:
-                    print("Something wrong with the code: %s" % e)
+            # compile the block, so we can evaluate it later
+            b = compile( tc_full_block, '<string>', 'exec' )
+
+            x = locals()
+            y = globals()
+
+            # we merge the locals and globals into a single dictionary, so that
+            # the local variables of *this* function (i.e. node, node_name) that
+            # change each loop, will be availble when calling the code block as
+            # globals in that context.
+            m = {**x, **y}
+
+            # TODO: we could restrict the locals and globals a bit more, but
+            #       in this function context, the side effects are limited to
+            #       the dictionary 'm'.
+            #
+            #       BUT we should ensure that modules like 'os' aren't available
+            #       to be mis-used
+            #          x = eval( b, {"__builtins__" : None }, locals() )
+            #       or
+            #          x = eval( b, {"__builtins__" : None }, safe_dict )
+            try:
+                eval( b, m, m )
+            except Exception as e:
+                print("[WARNING]: Something wrong with the filter code: %s" % e)
 
             if verbose > 2:
-                print( "[DBG+] stdout was: %s" % s.getvalue() )
-            if "true" in s.getvalue():
-                # TODO: add more actions
-                if "delete" in action:
+                print( "[DBG+] return code was: %s" % m['__nret'] )
+
+            # did the block set the return variable to True ?
+            if m['__nret']:
+                if action == LopperAction.DELETE:
                     if verbose:
                         print( "[INFO]: deleting node %s" % node_name )
                     fdt.del_node( node, True )
@@ -669,6 +748,22 @@ class Lopper:
 
     @staticmethod
     def node_dump( fdt, node_path, children=False, verbose=0 ):
+        """Dump (pretty print) the details of a node
+
+        print the contents of a node.
+
+        Args:
+            fdt (FDT): flattened device tree
+            node_path (string): starting node path
+            children (bool,optional): True if children should be printed, False if just the node
+                 default is False
+            verbose (int,optional): verbosity level to use.
+
+        Returns:
+            Nothing
+
+        """
+
         nn = fdt.path_offset( node_path )
         old_depth = -1
         depth = 0
