@@ -1086,6 +1086,35 @@ class Lopper:
 
     @staticmethod
     def dt_compile( dts_file, i_files, includes, force_overwrite=False ):
+	"""Compile a dts file to a dtb
+
+	This routine takes a dts input file, other dts include files,
+	include search path and then uses standard tools (cpp, dtc, etc).
+
+	Environment variables can be used tweak the execution of the various
+	tools and stages:
+
+	   LOPPER_CPP: set if a different cpp than the standard one should
+		       be used, or if cpp is not on the path
+	   LOPPER_PPFLAGS: flags to be used when calling cpp
+	   LOPPER_DTC: set if a non standard dtc should be used, or if dtc
+		       is not on the path
+	   LOPPER_DTC_FLAGS: flags to use when calling dtc
+	   LOPPER_DTC_OFLAGS: extra dtc flags if an overlay is being compiled
+	   LOPPER_DTC_BFLAGS: extra dtc args/flags
+
+	Args:
+	   dts_file (string): path to the dts file to be compiled
+	   i_files (list): files to be included
+	   includes (list): list of include directories (translated into -i <foo>
+			    for dtc calls)
+	   force_overwrite (bool,optional): should files be overwritten.
+					    Default is False
+
+	Returns:
+	   Nothing
+
+	"""
         output_dtb = ""
 
         # TODO: might need to make 'dts_file' absolute for the cpp call below
@@ -1185,10 +1214,28 @@ class Lopper:
 
     @staticmethod
     def input_file_type(infile):
+	"""utility to return the "type" of a file, aka the extension
+
+	Args:
+	   infile (string): path of the file
+
+	Returns:
+	   string: the extension of the file
+
+	"""
         return PurePath(infile).suffix
 
     @staticmethod
     def encode_byte_array( values ):
+	"""utility to encode a list of values into a bytearray
+
+	Args:
+	   values (list): integer (numeric) values to encode
+
+	Returns:
+	   byte array: the encoded byte array
+
+	"""
         barray = b''
         for i in values:
             barray = barray + i.to_bytes(4,byteorder='big')
@@ -1196,6 +1243,15 @@ class Lopper:
 
     @staticmethod
     def encode_byte_array_from_strings( values ):
+	"""utility to encode a list of strings into a bytearray
+
+	Args:
+	   values (list): string values to encode
+
+	Returns:
+	   byte array: the encoded byte array
+
+	"""
         barray = b''
         if len(values) > 1:
             for i in values:
@@ -1207,6 +1263,22 @@ class Lopper:
 
     @staticmethod
     def refcount( sdt, nodename ):
+	"""return the refcount for a given node
+
+        When refcounting is enabled, this routine returns how many references
+        there have been to a given nodename.
+
+        This is a wrapper around the SystemDeviceTree function of the same
+        name.
+
+	Args:
+	   sdt (SystemDeviceTree): sdt that is refcounting
+           nodename (sring): name of the node
+
+	Returns:
+	   (int): the reference count >= 0
+
+	"""
         return sdt.node_ref( nodename )
 
     #
@@ -1217,6 +1289,40 @@ class Lopper:
     #   - encode: <format> is optional, and can be: dec or hex. 'dec' is the default
     @staticmethod
     def property_value_decode( property, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC, verbose=0 ):
+	"""Decodes a property
+
+        Decode a property into a common data type (string, integer, list of
+        strings, etc).
+
+        This is a robust wrapper around the decode facilities provided via
+        libfdt. This routine tries multiple encode formats and uses
+        heuristics to determine the best format for the decoded property.
+
+        The format type (ftype) and encod arguments can be used to help
+        decode properly when the type of a property is known.
+
+        The format and encoding options are in the following enum type:
+
+           class LopperFmt(Enum):
+              SIMPLE = 1 (format)
+              COMPOUND = 2 (format)
+              HEX = 3 (encoding)
+              DEC = 4 (encoding)
+              STRING = 5 (encoding)
+              MULTI_STRING = 5 (encoding)
+
+	Args:
+	   property (libfdt property): property to decode
+           poffset (int): offset of the property in the node (unused)
+           ftype (LopperFmt,optional): format hint for the property. default is SIMPLE
+           encode (LopperFmt,optional): encoding hint. default is DEC
+           verbose (int,optional): verbosity level, default is 0
+
+	Returns:
+	   (string): if SIMPLE. The property as a string
+           (list): if COMPOUND. The property as a list of strings / values
+
+	"""
         if verbose > 3:
             print( "[DBG+]: property_value_decode start ------> %s %s" % (property,ftype))
 
