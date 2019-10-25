@@ -35,6 +35,8 @@ lopper_directory = os.path.dirname(os.path.realpath(__file__))
 
 # used in encode/decode routines
 class LopperFmt(Enum):
+    """Enum class to define the types and encodings of Lopper format routines
+    """
     SIMPLE = 1
     COMPOUND = 2
     HEX = 3
@@ -44,6 +46,8 @@ class LopperFmt(Enum):
 
 # used in node_filter
 class LopperAction(Enum):
+    """Enum class to define the actions available in Lopper's node_filter function
+    """
     DELETE = 1
     REPORT = 2
     WHITELIST = 3
@@ -65,6 +69,12 @@ def at_exit_cleanup():
         pass
 
 class Lopper:
+    """The Lopper Class contains static methods for manipulating device trees
+
+    Use the lopper methods when manipulating device trees (in particular
+    libfdt FDT objects) or SystemDeviceTree classes.
+
+    """
     @staticmethod
     def node_find( fdt, node_prefix ):
         """Finds a node by its prefix
@@ -1086,35 +1096,35 @@ class Lopper:
 
     @staticmethod
     def dt_compile( dts_file, i_files, includes, force_overwrite=False ):
-	"""Compile a dts file to a dtb
+        """Compile a dts file to a dtb
 
-	This routine takes a dts input file, other dts include files,
-	include search path and then uses standard tools (cpp, dtc, etc).
+        This routine takes a dts input file, other dts include files,
+        include search path and then uses standard tools (cpp, dtc, etc).
 
-	Environment variables can be used tweak the execution of the various
-	tools and stages:
+        Environment variables can be used tweak the execution of the various
+        tools and stages:
 
-	   LOPPER_CPP: set if a different cpp than the standard one should
-		       be used, or if cpp is not on the path
-	   LOPPER_PPFLAGS: flags to be used when calling cpp
-	   LOPPER_DTC: set if a non standard dtc should be used, or if dtc
-		       is not on the path
-	   LOPPER_DTC_FLAGS: flags to use when calling dtc
-	   LOPPER_DTC_OFLAGS: extra dtc flags if an overlay is being compiled
-	   LOPPER_DTC_BFLAGS: extra dtc args/flags
+           LOPPER_CPP: set if a different cpp than the standard one should
+                       be used, or if cpp is not on the path
+           LOPPER_PPFLAGS: flags to be used when calling cpp
+           LOPPER_DTC: set if a non standard dtc should be used, or if dtc
+                       is not on the path
+           LOPPER_DTC_FLAGS: flags to use when calling dtc
+           LOPPER_DTC_OFLAGS: extra dtc flags if an overlay is being compiled
+           LOPPER_DTC_BFLAGS: extra dtc args/flags
 
-	Args:
-	   dts_file (string): path to the dts file to be compiled
-	   i_files (list): files to be included
-	   includes (list): list of include directories (translated into -i <foo>
-			    for dtc calls)
-	   force_overwrite (bool,optional): should files be overwritten.
-					    Default is False
+        Args:
+           dts_file (string): path to the dts file to be compiled
+           i_files (list): files to be included
+           includes (list): list of include directories (translated into -i <foo>
+                            for dtc calls)
+           force_overwrite (bool,optional): should files be overwritten.
+                                            Default is False
 
-	Returns:
-	   Nothing
+        Returns:
+           Nothing
 
-	"""
+        """
         output_dtb = ""
 
         # TODO: might need to make 'dts_file' absolute for the cpp call below
@@ -1214,28 +1224,28 @@ class Lopper:
 
     @staticmethod
     def input_file_type(infile):
-	"""utility to return the "type" of a file, aka the extension
+        """utility to return the "type" of a file, aka the extension
 
-	Args:
-	   infile (string): path of the file
+        Args:
+           infile (string): path of the file
 
-	Returns:
-	   string: the extension of the file
+        Returns:
+           string: the extension of the file
 
-	"""
+        """
         return PurePath(infile).suffix
 
     @staticmethod
     def encode_byte_array( values ):
-	"""utility to encode a list of values into a bytearray
+        """utility to encode a list of values into a bytearray
 
-	Args:
-	   values (list): integer (numeric) values to encode
+        Args:
+           values (list): integer (numeric) values to encode
 
-	Returns:
-	   byte array: the encoded byte array
+        Returns:
+           byte array: the encoded byte array
 
-	"""
+        """
         barray = b''
         for i in values:
             barray = barray + i.to_bytes(4,byteorder='big')
@@ -1243,15 +1253,15 @@ class Lopper:
 
     @staticmethod
     def encode_byte_array_from_strings( values ):
-	"""utility to encode a list of strings into a bytearray
+        """utility to encode a list of strings into a bytearray
 
-	Args:
-	   values (list): string values to encode
+        Args:
+           values (list): string values to encode
 
-	Returns:
-	   byte array: the encoded byte array
+        Returns:
+           byte array: the encoded byte array
 
-	"""
+        """
         barray = b''
         if len(values) > 1:
             for i in values:
@@ -1263,7 +1273,7 @@ class Lopper:
 
     @staticmethod
     def refcount( sdt, nodename ):
-	"""return the refcount for a given node
+        """return the refcount for a given node
 
         When refcounting is enabled, this routine returns how many references
         there have been to a given nodename.
@@ -1271,14 +1281,14 @@ class Lopper:
         This is a wrapper around the SystemDeviceTree function of the same
         name.
 
-	Args:
-	   sdt (SystemDeviceTree): sdt that is refcounting
+        Args:
+           sdt (SystemDeviceTree): sdt that is refcounting
            nodename (sring): name of the node
 
-	Returns:
-	   (int): the reference count >= 0
+        Returns:
+           (int): the reference count >= 0
 
-	"""
+        """
         return sdt.node_ref( nodename )
 
     #
@@ -1289,7 +1299,7 @@ class Lopper:
     #   - encode: <format> is optional, and can be: dec or hex. 'dec' is the default
     @staticmethod
     def property_value_decode( property, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC, verbose=0 ):
-	"""Decodes a property
+        """Decodes a property
 
         Decode a property into a common data type (string, integer, list of
         strings, etc).
@@ -1311,18 +1321,18 @@ class Lopper:
               STRING = 5 (encoding)
               MULTI_STRING = 5 (encoding)
 
-	Args:
-	   property (libfdt property): property to decode
+        Args:
+           property (libfdt property): property to decode
            poffset (int): offset of the property in the node (unused)
            ftype (LopperFmt,optional): format hint for the property. default is SIMPLE
            encode (LopperFmt,optional): encoding hint. default is DEC
            verbose (int,optional): verbosity level, default is 0
 
-	Returns:
-	   (string): if SIMPLE. The property as a string
+        Returns:
+           (string): if SIMPLE. The property as a string
            (list): if COMPOUND. The property as a list of strings / values
 
-	"""
+        """
         if verbose > 3:
             print( "[DBG+]: property_value_decode start ------> %s %s" % (property,ftype))
 
@@ -1420,21 +1430,34 @@ class Lopper:
         return val
 
 class LopAssist:
+    """Internal class to contain the details of a lopper assist
+
+    """
     def __init__(self, lop_file, module = "", properties_dict = {}):
         self.module = module
         self.file = lop_file
         # holds specific key,value properties
         self.properties = properties_dict
 
-##
-## SystemDeviceTree
-##
-##  - wraps a dts/dtb/fdt containing a system description
-##  - manages and applies operations to the tree
-##  - calls modules and assist functions for processing of that tree
-##
-##
 class SystemDeviceTree:
+    """The SystemDeviceTree Class represents and manages the full system DTS file
+
+    In particular this class:
+      - wraps a dts/dtb/fdt containing a system description
+      - manages and applies operations to the tree
+      - calls modules and assist functions for processing of that tree
+
+    Attributes:
+      - dts (string): the source device tree file
+      - dtb (blob): the compiled dts
+      - FDT (fdt): the primary flattened device tree represention of the dts
+      - lops (list): list of loaded lopper operations
+      - verbose (int): the verbosity level of operations
+      - node_access (dict): ref count / tracker of device tree nodes
+      - dry_run (bool): whether or not changes should be written to disk
+      - output_file (string): default output file for writing
+
+    """
     def __init__(self, sdt_file):
         self.dts = sdt_file
         self.dtb = ""
@@ -1446,6 +1469,7 @@ class SystemDeviceTree:
         self.output_file = ""
         self.cleanup_flag = True
         self.save_temps = False
+        self.FDT = ""
 
     def setup(self, sdt_file, input_files, include_paths, assists=[], force=False):
         if self.verbose:
