@@ -75,19 +75,19 @@ def process_domain( tgt_node, sdt, verbose=0 ):
     xform_path = "/"
     prop = "cpus,cluster"
     code = """
-p = Lopper.prop_get( fdt, node, 'compatible' )
-if p and "{0}" in p:
-    ph = Lopper.getphandle( fdt, node )
-    if ph != {1}:
-        return True
-    else:
-        return False
-else:
-    return False
-""".format( prop, str(cpu_prop) )
+           p = Lopper.prop_get( fdt, node, 'compatible' )
+           if p and "{0}" in p:
+               ph = Lopper.getphandle( fdt, node )
+               if ph != {1}:
+                   return True
+               else:
+                   return False
+           else:
+               return False
+           """.format( prop, str(cpu_prop) )
 
     if verbose:
-        print( "[INFO]: filtering on:\n------%s-------\n" % code )
+        print( "[INFO]: filtering on:\n------%s\n-------\n" % code )
 
     # the action will be taken if the code block returns 'true'
     Lopper.node_filter( sdt, xform_path, LopperAction.DELETE, code, verbose )
@@ -189,28 +189,28 @@ else:
             xform_path = n
             if value == "*":
                 code = """
-p = Lopper.refcount( sdt, node_name )
-if p <= 0:
-    return True
-else:
-    return False
-"""
+                       p = Lopper.refcount( sdt, node_name )
+                       if p <= 0:
+                           return True
+                       else:
+                           return False
+                       """
             else:
                 prop = value
                 code = """
-p = Lopper.prop_get( fdt, node, "compatible" )
-if p and "{0}" in p:
-    p = Lopper.refcount( sdt, node_name )
-    if p <= 0:
-        return True
-    else:
-        return False
-else:
-    return False
-""".format( prop )
+                       p = Lopper.prop_get( fdt, node, "compatible" )
+                       if p and "{0}" in p:
+                           p = Lopper.refcount( sdt, node_name )
+                           if p <= 0:
+                               return True
+                           else:
+                               return False
+                       else:
+                           return False
+                       """.format( prop )
 
             if verbose:
-                print( "[INFO]: filtering on:\n------%s-------\n" % code )
+                print( "[INFO]: filtering on:\n------%s\n-------\n" % code )
 
             # the action will be taken if the code block returns 'true'
             if n == "/":

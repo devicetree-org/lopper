@@ -582,16 +582,6 @@ class Lopper:
                 if sdt.werror:
                     sys.exit(2)
 
-
-    #
-    #  - a more generic way to modify/filter nodes
-    #
-    #  - node_prefix can be "" and we start at the root
-    #  - action can be "delete" "report" "whitelist" "blacklist" ... TBD
-    #  - test_op varies based on the action being taken
-    #
-    # TODO: replace action with an enumerated type, not the current
-    #       free form string.
     @staticmethod
     def node_filter( sdt, node_prefix, action, test_cmd, verbose=0 ):
         """Filter nodes and perform an action
@@ -713,10 +703,10 @@ class Lopper:
             # indent everything, its going in a function
             tc_indented = textwrap.indent( tc, '    ' )
             # define the function, add the body, call the function and grab the return value
-            tc_full_block = "def __node_test_block():" + tc_indented + "__nret = __node_test_block()"
+            tc_full_block = "def __node_test_block():" + tc_indented + "\n__nret = __node_test_block()"
 
             if verbose > 2:
-               print( "[DBG+]: filter node cmd: %s" % tc_full_block )
+               print( "[DBG+]: filter node cmd:\n%s" % tc_full_block )
 
             # compile the block, so we can evaluate it later
             b = compile( tc_full_block, '<string>', 'exec' )
