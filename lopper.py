@@ -428,7 +428,7 @@ class Lopper:
 
     @staticmethod
     def node_abspath( fdt, nodeid ):
-        """Get the absolute (fully specified) path of a node
+        """Get the absolute (fully specified) path of a nodes
 
         Args:
             fdt (fdt): flattened device tree object
@@ -901,10 +901,6 @@ class Lopper:
 
         return prop_list
 
-    #
-    # reference routine to walk (and gather) a list of all nodes in
-    # the tree.
-    #
     @staticmethod
     def node_walk( fdt, verbose=0 ):
         """Walk nodes and gather a list
@@ -975,9 +971,6 @@ class Lopper:
         prop = fdt.get_phandle( node_number )
         return prop
 
-    # utility command to get a property (as a string) from a node ftype can be
-    # "simple" or "compound". A string is returned for simple, and a list of
-    # properties for compound
     @staticmethod
     def prop_get( fdt, node_number, prop_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
         """utility command to get a property (as a string) from a node
@@ -1281,12 +1274,6 @@ class Lopper:
         """
         return sdt.node_ref( nodename )
 
-    #
-    # Parameters:
-    #   - Property object from libfdt
-    #   - poffset (property offset) [optional]
-    #   - ftype: simple or compound
-    #   - encode: <format> is optional, and can be: dec or hex. 'dec' is the default
     @staticmethod
     def property_value_decode( property, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC, verbose=0 ):
         """Decodes a property
@@ -1462,6 +1449,23 @@ class SystemDeviceTree:
         self.FDT = ""
 
     def setup(self, sdt_file, input_files, include_paths, assists=[], force=False):
+        """executes setup and initialization tasks for a system device tree
+
+        setup validates the inputs, and calls the appropriate routines to
+        preprocess and compile passed input files (.dts).
+
+        Args:
+           sdt_file (String): system device tree path/file
+           input_files (list): list of input files (.dts, or .dtb) in addition to the sdt_file
+           include_paths (list): list of paths to search for files
+           assists (list,optional): list of python assist modules to load. Default is []
+           force (bool,optional): flag indicating if files should be overwritten and compilation
+                                  forced. Default is False.
+
+        Returns:
+           Nothing
+
+        """
         if self.verbose:
             print( "[INFO]: loading dtb and using libfdt to manipulate tree" )
 
@@ -1529,7 +1533,7 @@ class SystemDeviceTree:
             self.dtb = sdt_file
             self.dts = ""
 
-        if verbose:
+        if self.verbose:
             print( "" )
             print( "SDT summary:")
             print( "   system device tree: %s" % sdt_files )
@@ -1565,6 +1569,19 @@ class SystemDeviceTree:
         self.load_assists()
 
     def cleanup( self ):
+        """cleanup any temporary or copied files
+
+        Either called directly, or registered as an atexit handler. Any
+        temporary or copied files are removed, as well as other relevant
+        cleanup.
+
+        Args:
+           None
+
+        Returns:
+           Nothing
+
+        """
         # remove any .dtb and .pp files we created
         if self.cleanup and not self.save_temps:
             try:
@@ -1580,6 +1597,18 @@ class SystemDeviceTree:
         #       it is created with mktmp()
 
     def write( self, outfilename ):
+        """write the system device tree to a file
+
+        Writes the system device tree (modified or not) to the passed
+        output file name
+
+        Args:
+           outfilename (string): output file name
+
+        Returns:
+           Nothing
+
+        """
         byte_array = self.FDT.as_bytearray()
 
         if self.verbose:
@@ -1592,17 +1621,43 @@ class SystemDeviceTree:
     # the FDT and then calling lopper. This way we can change how the device
     # tree is held in memory, and know one is the wiser.
     def node_abspath( self, tgt_node ):
+        """Get the absolute (fully specified) path of a node
+
+        Wrapper around the Lopper routine of the same name, to abstract the
+        FDT that is part of the SystemDeviceTree class.
+        """
         return Lopper.node_abspath( self.FDT, tgt_node )
 
     def node_find_by_name( self, node_name, starting_node = 0 ):
+        """Finds a node by its name (not path)
+
+        Wrapper around the Lopper routine of the same name, to abstract the
+        FDT that is part of the SystemDeviceTree class.
+        """
         return Lopper.node_find_by_name( self.FDT, node_name, starting_node )
 
     def node_properties_as_dict( self, node, verbose=0 ):
+        """Create a dictionary populated with the nodes properties.
+
+        Wrapper around the Lopper routine of the same name, to abstract the
+        FDT that is part of the SystemDeviceTree class.
+        """
         return Lopper.node_properties_as_dict( self.FDT, node, verbose )
 
     # A thin wrapper + consistent logging and error handling around FDT's
     # node delete
     def node_remove( self, target_node_offset ):
+        """remove a node from the device tree
+
+        Thin wrapper and consistent logging around libfdt's node delete.
+
+        Args:
+           target_node_offset (int): offset of the node to be deleted
+
+        Returns:
+           Nothing
+
+        """
         target_node_name = self.FDT.get_name( target_node_offset )
 
         if self.verbose > 1:
@@ -1611,6 +1666,22 @@ class SystemDeviceTree:
         self.FDT.del_node( target_node_offset, True )
 
     def load_assists(self):
+        """load assists that have been added to the device tree
+
+        Wraps any command line assists that have been added to the system
+        device tree. A standard lop format dtb is generated for any found
+        assists, such that they will be loaded in the same manner as
+        assists passed directly in lop files.
+
+        Note: this is for internal use only
+
+        Args:
+           None
+
+        Returns:
+           Nothing
+
+        """
         if self.assists:
             sw = libfdt.Fdt.create_empty_tree( 2048 )
             sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
@@ -1636,6 +1707,19 @@ class SystemDeviceTree:
             self.lops.insert( 0, lop )
 
     def domain_spec(self, tgt_domain):
+        """generate a lop for a command line passed domain
+
+        When a target domain is passed on the command line, we must generate
+        a lop dtb for it, so that it can be processed along with other
+        operations
+
+        Args:
+           tgt_domain (string): path to the node to use as the domain
+
+        Returns:
+           Nothing
+
+        """
         # This is called from the command line. We need to generate a lop
         # device tree with:
         #
@@ -1660,10 +1744,23 @@ class SystemDeviceTree:
 
         self.lops.insert( 0, lop )
 
-    # we use the name, rather than the offset, since the offset can change if
-    # something is deleted from the tree. But we need to use the full path so
-    # we can find it later.
     def node_ref_inc( self, node_name ):
+        """increment the refcount for a node
+
+        When refcounting is enabled, this routine increments the count for
+        a given node name.
+
+        We use the name, rather than the offset, since the offset can change if
+        something is deleted from the tree. But we need to use the full path so
+        we can find it later.
+
+        Args:
+           node_name (string): path to the node to refcount
+
+        Returns:
+           Nothing
+
+        """
         if self.verbose > 1:
             print( "[INFO]: tracking access to node %s" % node_name )
         if node_name in self.node_access:
@@ -1674,12 +1771,32 @@ class SystemDeviceTree:
     # get the refcount for a node.
     # node_name is the full path to a node
     def node_ref( self, node_name ):
+        """get the refcount for a node
+
+        When refcounting is enabled, this routine returns the count for a given
+        node
+
+        We use the name, rather than the offset, since the offset can change if
+        something is deleted from the tree. But we need to use the full path so
+        we can find it later.
+
+        Args:
+           node_name (string): full path to the node to refcount
+
+        Returns:
+           int: refcount if a node is being tracked, otherwise, -1
+
+        """
         if node_name in self.node_access:
             return self.node_access[node_name]
         return -1
 
-    # wrapper
     def node_find( self, node_prefix ):
+        """Finds a node by its prefix
+
+        Wrapper around the Lopper routine of the same name, to abstract the
+        FDT that is part of the SystemDeviceTree class.
+        """
         return Lopper.node_find( self.FDT, node_prefix )
 
     def node_type( self, node_offset, verbose=0 ):
@@ -1688,6 +1805,29 @@ class SystemDeviceTree:
     # argument: node number, and an id string
     # default for cb_node is "start at root (0)"
     def find_compatible_assist( self, cb_node = 0, cb_id = "", mask = "" ):
+        """Finds a registered assist that is compatible with a given ID
+
+        Searches the registered assists for one that is compatible with an ID.
+
+        The is_compat() routine is called for each registered module. If an
+        assist is capabable of handling a given ID, it returns True and
+        associated actions can then be taken.
+
+        I addition to an ID string, a mask can optionally be provided to this
+        routine. Any assists that have registered a mask, will have that
+        checked, before calling the is_compat() routine. This allows assists to
+        be generically registered, but filtered by the caller rather than only
+        their is_compat() routines.
+
+        Args:
+            cb_node (int,optional): node offset to be tested. Default is 0 (root)
+            cb_id (string,optional): ID to be tested for compatibility. Default is ""
+            mask (string,optional): caller mask for filtering nodes. Default is ""
+
+        Returns:
+            function reference: the callback routine, or "", if no compatible routine found
+
+        """
         cb_func = []
         if self.assists:
             for a in self.assists:
@@ -1730,6 +1870,24 @@ class SystemDeviceTree:
         return cb_func
 
     def perform_lops(self):
+        """Execute all loaded lops
+
+        Iterates and executes all the loaded lopper operations (lops) for the
+        System Device tree.
+
+        The lops are processed in priority order (priority specified at the file
+        level), and the rules processed in order as they appear in the lop file.
+
+        lopper operations can immediately process the output of the previous
+        operation and hence can be stacked to perform complex operations.
+
+        Args:
+            None
+
+        Returns:
+            Nothing
+
+        """
         # was --target passed on the command line ?
         if target_domain:
             self.domain_spec(target_domain)
@@ -2044,6 +2202,19 @@ class SystemDeviceTree:
 
     # note; this operates on a node and all child nodes, unless you set recursive to False
     def property_remove( self, node_prefix = "/", prop_name = "", recursive = True ):
+        """removes a property from a node
+
+        Removes a property (if it exists) from a node (and optionally its children).
+
+        Args:
+            node_prefix (string,optional): starting node prefix. Default is "/"
+            prop_name (string,optional): name of property to remove. Default is ""
+            recursive (bool,optional): flag to indicate if children should be processed. Default is True
+
+        Returns:
+            Nothing
+
+        """
         node = Lopper.node_find( self.FDT, node_prefix )
         node_list = []
         depth = 0
@@ -2077,6 +2248,22 @@ class SystemDeviceTree:
 
     # note; this operates on a node and all child nodes, unless you set recursive to False
     def property_modify( self, node_prefix = "/", prop_name = "", propval = "", recursive = True, add_if_missing = False ):
+        """modifies a property in a node
+
+        Modifies a property (if it exists) in a node (and optionally its children).
+
+        Args:
+            node_prefix (string,optional): starting node prefix. Default is "/"
+            prop_name (string,optional): name of property to remove. Default is ""
+            prop_val (string,optional): new value of the property. Default is ""
+            recursive (bool,optional): flag to indicate if children should be processed. Default is True
+            add_if_missing (bool,optional): create the property if it is missing (i.e. a property add).
+                                            Default is False.
+
+        Returns:
+            Nothing
+
+        """
         node = Lopper.node_find( self.FDT, node_prefix )
         node_list = []
         depth = 0
@@ -2118,10 +2305,28 @@ class SystemDeviceTree:
                 depth = -1
 
     def property_set( self, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE ):
+        """utility command to set a property in a node
+
+        Wrapper around the Lopper static method of the same name.
+
+        """
         return Lopper.prop_set( self.FDT, node_number, prop_name, prop_val, ftype )
 
-    # Note: this is no longer called. possibly delete
     def property_find( self, prop_name, remove = False ):
+        """searches for a property, and optionally removes it
+
+        Treewide operation to find and possibly delete a property.
+
+        Note: not currently called, and is depreciated. Will be removed in the future
+
+        Args:
+            prop_name (string): name of the property to find
+            remove (bool,optional): flag to indicate whether or not the property should be removed.
+                                    Default is False
+        Returns:
+            Nothing
+
+        """
         node_list = []
         node = 0
         depth = 0
@@ -2157,10 +2362,28 @@ class SystemDeviceTree:
             node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
 
     def property_get( self, node_number, prop_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
+        """utility command to get a property (as a string) from a node
+
+        Wrapper around the Lopper static routine of the same name.
+
+        """
         # just a wrapper routine ..
         return Lopper.prop_get( self.FDT, node_number, prop_name, ftype, encode )
 
     def inaccessible_nodes( self, propname ):
+        """searches for a property, and optionally removes it
+
+        Treewide operation to locate and remove inaccessible nodes
+
+        Note: not currently called, and is depreciated. Will be removed in the future.
+
+        Args:
+            propname (string): name of the property to find
+
+        Returns:
+            Nothing
+
+        """
         node_list = []
         node = 0
         depth = 0
@@ -2190,16 +2413,24 @@ class SystemDeviceTree:
 
             node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
 
-        if self.verbose:
-            if node_list:
+        if node_list:
+            if self.verbose:
                 print( "[INFO]: removing inaccessible nodes: %s" % node_list )
 
-                for tgt_node in node_list:
-                    # TODO: catch the errors here, since the target node may not have
-                    #       had a proper label, so the phandle may not be valid
-                    self.node_remove( tgt_node )
+            for tgt_node in node_list:
+                # TODO: catch the errors here, since the target node may not have
+                #       had a proper label, so the phandle may not be valid
+                self.node_remove( tgt_node )
 
 class Lop:
+    """Internal class to contain the details of a lopper file
+
+    Attributes:
+       - dts: the dts source file path for a lop
+       - dtb: the compiled dtb file path for a lop
+       - fdt: the loaded FDT representation of the dtb
+
+    """
     def __init__(self, lop_file):
         self.dts = lop_file
         self.dtb = ""
