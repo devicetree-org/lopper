@@ -1,0 +1,30 @@
+Overview:
+---------
+
+See the README-architecture.txt for details on how lopper works. This README file
+has practical information, known limitations and TODO items.
+
+Sample run:
+-----------
+
+  % lopper.py -f --werror -v -v -v -v -i lop-load.dts -i lop-domain-r5.dts -i system-device-tree-chosen.dts system-device-tree-domains.dts foo.dts
+
+Limitations:
+-----------
+
+ - Currently only works for the input files included in this repo
+ - Do not base work on this RFC lopper, alpha and beta versions will stablize interfaces
+
+TODO:
+----
+
+ - Sanity and comprehensive tests (automated)
+ - Output device tree boot testing (output trees may currently be invalid)
+ - Output device tree sanity checking / validation
+ - TODO items in code base (grep for TODO in code)
+ - CDO output assist implementation
+ - Update to versal system device tree
+ - Lopper update to latest System Device Tree bindings
+ - Lopper update to latest OpenAMP chosen node format
+ - New/Additional looper operations
+ - Robustness changes for untested input files
