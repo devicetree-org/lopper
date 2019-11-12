@@ -43,9 +43,12 @@ def check_bit_set(n, k):
 
 # domain_node: is the openamp domain node
 # sdt: is the system device tree
+# TODO: this routine needs to be factored and made smaller
 def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     if verbose:
         print( "[INFO]: cb: xlnx_openamp_rpu( %s, %s, %s )" % (domain_node, sdt, verbose))
+
+    tgt_domain_name = sdt.node_abspath( domain_node )
 
     # temp; PoC:
     cpu_prop_values = sdt.property_get( domain_node, "cpus", LopperFmt.COMPOUND )
@@ -114,7 +117,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     #       processing.
     #
     memory_node = sdt.node_find( "/reserved-memory" )
-    if memory_node:
+    if memory_node >= 0:
         if verbose:
             print( "[INFO]: memory node found, walking for memory regions" )
 
@@ -169,10 +172,17 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 print(exc_type, fname, exc_tb.tb_lineno)
+    else:
+        print( "[WARNING]: /reserved-memory node not found" )
 
     # 4) fill in the #address-cells and #size-cells.
     #
     # We lookup the values in the domain node, and copy them to the zynqmp node
+
+    # get the domain node number, in case it was re-packed or changed
+    domain_node = sdt.node_find( tgt_domain_name )
+    rpu_cpu_node = sdt.node_find( rpu_path + "/" + new_rpu_name )
+
     a_cells = sdt.property_get( domain_node, "#address-cells" )
     s_cells = sdt.property_get( domain_node, "#size-cells" )
 
@@ -190,6 +200,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
 
     # "access" is a list of tuples: phandles + flags
     access_list = sdt.property_get( domain_node, "access", LopperFmt.COMPOUND )
+
     if not access_list:
         if verbose:
             print( "[INFO]: xlnx_openamp_rpu: no access list found, skipping ..." )
@@ -203,8 +214,13 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
             flags = access_list[flag_idx]
             flag_idx = flag_idx + 2
 
-            anode = sdt.FDT.node_offset_by_phandle( ph )
-            node_parent = sdt.FDT.parent_offset(anode,QUIET_NOTFOUND)
+            anode = Lopper.node_by_phandle( sdt.FDT, ph )
+            if anode > 0:
+                node_parent = sdt.FDT.parent_offset(anode,QUIET_NOTFOUND)
+            else:
+                # set this to skip the node_parent processing below
+                node_parent = 0
+
             if node_parent:
                 parent_node_type = sdt.property_get( node_parent, "compatible" )
                 parent_node_name = sdt.FDT.get_name( node_parent )

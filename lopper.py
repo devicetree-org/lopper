@@ -115,6 +115,29 @@ class Lopper:
         return rt
 
     @staticmethod
+    def node_by_phandle( fdt, phandle, verbose=0 ):
+        """Get a node offset by a phandle
+
+        Thin wrapper around the libfdt routine. The wrapper provides
+        consistent exception handling and verbosity level handling.
+
+        Args:
+            fdt (fdt): flattened device tree object
+            phandle(int): phandle to use as lookup key
+            verbose(bool,optional): verbosity level. Deafult is 0.
+
+        Returns:
+            int: if > 0, the node that was found. -1 if node was not found.
+        """
+        anode = -1
+        try:
+            anode = fdt.node_offset_by_phandle( phandle )
+        except:
+            pass
+
+        return anode
+
+    @staticmethod
     def node_parent_type( fdt, node_name="", node_offset=0 ):
         """Get the type of a node's parent
 
@@ -733,6 +756,7 @@ class Lopper:
                 eval( b, m, m )
             except Exception as e:
                 print("[WARNING]: Something wrong with the filter code: %s" % e)
+                sys.exit(1)
 
             if verbose > 2:
                 print( "[DBG+] return code was: %s" % m['__nret'] )
@@ -1004,11 +1028,8 @@ class Lopper:
         try:
             prop = fdt.getprop( node_number, prop_name )
             if prop:
-                # TODO: both these conditions are the same .. either one goes, or one changes
-                if ftype == LopperFmt.SIMPLE:
-                    val = Lopper.property_value_decode( prop, 0, ftype, encode )
-                else:
-                    val = Lopper.property_value_decode( prop, 0, ftype, encode )
+                val = Lopper.property_value_decode( prop, 0, ftype, encode )
+                print( "decoded: %s" % val )
             else:
                 val = ""
         except:
@@ -1318,34 +1339,53 @@ class Lopper:
         #       is sometimes wrong. We need to look at libfdt and see how they are
         #       stored so they can be unpacked better.
         if ftype == LopperFmt.SIMPLE:
+            encode_calculated = encode
+            if len(property) > 0:
+                encode_calculated = encode
+                first_byte = property[0]
+                last_byte = property[-1]
+            else:
+                first_byte = ''
+                last_byte = ''
+
+            # byte array encoded strings, start with a non '\x00' byte (i.e. a character), so
+            # we test on that for a hint. If it is not \x00, then we try it as a string.
+            # Note: we may also test on the last byte for a string terminator.
+            if first_byte != 0:
+                encode_calculated = LopperFmt.STRING
+
             val = ""
-            decode_msg = ""
-            try:
-                val = property.as_uint32()
-                decode_msg = "(uint32): {0}".format(val)
-            except:
-                pass
-            if not val and val != 0:
+            if encode_calculated == LopperFmt.STRING:
+                if not val:
+                    try:
+                        val = property.as_str()
+                        decode_msg = "(string): {0}".format(val)
+                    except:
+                        pass
+
+                if not val:
+                    try:
+                        # this is getting us some false positives on multi-string. Need
+                        # a better test
+                        val = property[:-1].decode('utf-8').split('\x00')
+                        #val = ""
+                        decode_msg = "(multi-string): {0}".format(val)
+                    except:
+                        pass
+            else:
+                val = ""
+                decode_msg = ""
                 try:
-                    val = property.as_uint64()
-                    decode_msg = "(uint64): {0}".format(val)
+                    val = property.as_uint32()
+                    decode_msg = "(uint32): {0}".format(val)
                 except:
                     pass
-            if not val and val != 0:
-                try:
-                    val = property.as_str()
-                    decode_msg = "(string): {0}".format(val)
-                except:
-                    pass
-            if not val and val != 0:
-                try:
-                    # this is getting us some false positives on multi-string. Need
-                    # a better test
-                    #val = property[:-1].decode('utf-8').split('\x00')
-                    val = ""
-                    decode_msg = "(multi-string): {0}".format(val)
-                except:
-                    pass
+                if not val and val != 0:
+                    try:
+                        val = property.as_uint64()
+                        decode_msg = "(uint64): {0}".format(val)
+                    except:
+                        pass
 
             if not val and val != 0:
                 decode_msg = "** unable to decode value **"

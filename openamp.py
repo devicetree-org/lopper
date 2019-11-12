@@ -120,10 +120,19 @@ def process_domain( tgt_node, sdt, verbose=0 ):
         for ph in access_list[::2]:
             #ph = int(ph_hex, 16)
             #print( "processing %s" % ph )
-            anode = sdt.FDT.node_offset_by_phandle( ph )
-            node_type = sdt.property_get( anode, "compatible" )
-            node_name = sdt.FDT.get_name( anode )
-            node_parent = sdt.FDT.parent_offset(anode,QUIET_NOTFOUND)
+            anode = Lopper.node_by_phandle( sdt.FDT, ph )
+            if anode > 0:
+                # the phandle wasn't found
+                node_type = sdt.property_get( anode, "compatible" )
+                node_name = sdt.FDT.get_name( anode )
+                node_parent = sdt.FDT.parent_offset(anode,QUIET_NOTFOUND)
+            else:
+                # the phandle wasn't valid. Skip to the next access list item
+                if verbose > 0:
+                    print( "[DBG+]: WARNING: access item not found by phandle" )
+
+                continue
+
             if re.search( "simple-bus", node_type ):
                 if verbose > 1:
                     print( "[INFO]: access is a simple-bus (%s), leaving all nodes" % node_name)
