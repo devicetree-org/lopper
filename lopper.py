@@ -1029,7 +1029,6 @@ class Lopper:
             prop = fdt.getprop( node_number, prop_name )
             if prop:
                 val = Lopper.property_value_decode( prop, 0, ftype, encode )
-                print( "decoded: %s" % val )
             else:
                 val = ""
         except:
