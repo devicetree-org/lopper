@@ -522,7 +522,71 @@ class Lopper:
         return ret_nodes
 
     @staticmethod
-    def write_fdt( fdt_to_write, output_filename, sdt=None, overwrite=True, verbose=0 ):
+    def read_phandle_map( phandle_file, verbose=0 ):
+        """read an exported phandle map into memory
+
+        reads a CSV formatted file of "phandle number" , "symbolic_name" into a
+        dictionary
+
+        Args:
+            phandle_file (string): path to the phandle file
+            verbose(bool,optional): whether or not verbose logging should be done
+
+        Returns:
+            dict: keys are the numeric phandle, values are the symbolic equivalent
+        """
+
+        import csv
+        pmap = Path(phandle_file )
+        pmap_data={}
+        if pmap.exists():
+            with open(pmap.name) as fin:
+                reader = csv.reader(fin, skipinitialspace=True, quotechar="'")
+                for row in reader:
+                    pmap_data[row[0]]=row[1:]
+
+        return pmap_data
+
+    @staticmethod
+    def write_phandle_map( fdt_to_write, output_filename, verbose=0 ):
+        """write a phandle map file
+
+        creates a CSV formatted file of "phandle number" , "symbolic_name". This
+        can be later used to match hex values to symbolic phandles
+
+        Args:
+            fdt_to_write (FDT): the flattened device tree to process
+            output_filename (string): path to the phandle file
+            verbose(bool,optional): whether or not verbose logging should be done
+
+        Returns:
+            dict: keys are the numeric phandle, values are the symbolic equivalent
+        """
+        overwrite = True
+
+        # walk all the nodes in the tree, find their name and phandle.
+        nodes = Lopper.node_walk( fdt_to_write, verbose )
+
+        o = Path(output_filename)
+        if o.exists() and not overwrite:
+            print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+            sys.exit(1)
+
+        w = open(output_filename, 'wb')
+
+        # write the mapping to a phandle file
+        for n, name, phandle, d in nodes:
+            if phandle > 0:
+                if verbose > 3:
+                    print( "[DBG+]: node: %s phandle: %s" % (name, hex(phandle)))
+
+                o = "'{0}','&{1}'\n".format(hex(phandle),name)
+                w.write( o.encode() )
+
+        w.close()
+
+    @staticmethod
+    def write_fdt( fdt_to_write, output_filename, sdt=None, overwrite=True, verbose=0, pretty=False ):
         """Write a system device tree to a file
 
         Write a fdt (or system device tree) to an output file. This routine uses
@@ -541,6 +605,7 @@ class Lopper:
                    None means don't use a system device tree for module loading.
             overwrite (bool,optional): Should existing files be overwritten. Default is True.
             verbose (int,optional): verbosity level to use.
+            pretty(bool,optional): whether pretty printing should be performed. Default is False
 
         Returns:
             Nothing
@@ -579,7 +644,12 @@ class Lopper:
             with open(fp.name, 'wb') as w:
                 w.write(byte_array)
 
-            Lopper.dtb_dts_export( fp.name, output_filename )
+            if pretty:
+                pm = Lopper.read_phandle_map( output_filename + ".phandle" )
+                Lopper.node_print( fdt_to_write, "/", True, pm, 0, output_filename )
+                pass
+            else:
+                Lopper.dtb_dts_export( fp.name, output_filename )
 
             # close the temp file so it is removed
             fp.close()
@@ -771,8 +841,8 @@ class Lopper:
                 pass
 
     @staticmethod
-    def node_dump( fdt, node_path, children=False, verbose=0 ):
-        """Dump (pretty print) the details of a node
+    def node_print( fdt, node_path, children=False, phandle_map = {}, verbose=0, output=sys.stdout ):
+        """Pretty print the details of a node
 
         print the contents of a node.
 
@@ -781,6 +851,7 @@ class Lopper:
             node_path (string): starting node path
             children (bool,optional): True if children should be printed, False if just the node
                  default is False
+            phandle_map (dict,optional): dictionary of phandles -> symbols
             verbose (int,optional): verbosity level to use.
 
         Returns:
@@ -788,19 +859,59 @@ class Lopper:
 
         """
 
-        nn = fdt.path_offset( node_path )
-        old_depth = -1
+        node_list = []
+        node = fdt.path_offset( node_path )
         depth = 0
-        newoff = 0
-        indent = 0
         while depth >= 0:
-            nn_name = fdt.get_name(nn)
+           node_list.append([depth, node, fdt.get_name(node)])
+           if children:
+               node, depth = fdt.next_node(node, depth, (libfdt.BADOFFSET,))
+           else:
+               depth = 0
 
-            outstring = nn_name + " {"
-            print( outstring.rjust(len(outstring)+indent," " ))
+        if verbose > 4:
+            print( "[DBG++]: node list: %s" % node_list )
 
+        if output != sys.stdout:
+            output = open( output, "w")
+
+        indent = 0
+        depth_prev = 0
+        for depth, nodeoffset, nodename in node_list:
+            if depth == 0:
+                # this is the root node
+                print( "/dts-v1/;\n/ {", file=output )
+            else:
+                if depth > depth_prev:
+                    indent = depth * 8
+                elif depth < depth_prev:
+                    # we have to close the braces for each depth level as
+                    # we unwind.
+                    for i in range( depth_prev, depth - 1, -1 ):
+                        indent = i * 8
+                        outstring = "};"
+                        print(outstring.rjust(len(outstring)+indent," " ), file=output)
+
+                    # set our new indent
+                    indent = depth * 8
+                else:
+                    # the depth is the same, but we still need to close the
+                    # node
+                    outstring = "};"
+                    print(outstring.rjust(len(outstring)+indent," " ), file=output)
+
+            # latch the depth
+            depth_prev = depth
+
+            if depth != 0:
+                # print the node name
+                outstring = nodename + " {"
+                print(outstring.rjust(len(outstring)+indent," " ), file=output)
+
+            # print the properties of the node
+            # TODO: we aren't using prop_list .. it can be removed.
             prop_list = []
-            poffset = fdt.first_property_offset(nn, QUIET_NOTFOUND)
+            poffset = fdt.first_property_offset(nodeoffset, QUIET_NOTFOUND)
             while poffset > 0:
                 prop = fdt.get_property_by_offset(poffset)
                 prop_list.append(prop.name)
@@ -809,8 +920,79 @@ class Lopper:
                 if not prop_val:
                     prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND, LopperFmt.HEX )
 
-                outstring = "{0} = {1}".format( prop.name, prop_val )
-                print( outstring.rjust(len(outstring)+indent+4," " ))
+                if type(prop_val) == int:
+                    outstring = "{0} = <{1}>;".format( prop.name, hex(prop_val) )
+                elif type(prop_val) == list:
+                    # if the lenght is one, and the only element is empty '', then
+                    # we just put out the name
+                    if len(prop_val) == 1 and prop_val[0] == '':
+                        outstring = outstring = "{0};".format( prop.name )
+                    else:
+                        # otherwise, we need to iterate and output the elements
+                        # as a comma separated list, except for the last item which
+                        # ends with a ;
+                        outstring = outstring = "{0} = ".format( prop.name )
+
+                        # is this a list of ints, or string ? Test the first
+                        # item to know.
+                        list_of_nums = False
+                        if type(prop_val[0]) == str:
+                            # is it really a number, hiding as a string ?
+                            base = 10
+                            if re.search( "0x", prop_val[0] ):
+                                base = 16
+                                try:
+                                    i = int(prop_val[0],base)
+                                    list_of_nums = True
+                                except:
+                                    pass
+                        else:
+                            list_of_nums = True
+
+                        if list_of_nums:
+                            # we have to open with a '<', if this is a list of numbers
+                            outstring += "<"
+
+                        element_count = 1
+                        element_total = len(prop_val)
+                        for i in prop_val:
+                            if list_of_nums:
+                                base = 10
+                                if re.search( "0x", i ):
+                                    base = 16
+                                try:
+                                    i_as_int = int(i,base)
+                                    i = i_as_int
+                                except:
+                                    pass
+
+                            # is this the last item ?
+                            if element_count == element_total:
+                                # last item, semicolon to close
+                                if list_of_nums:
+                                    outstring += "{0}>;".format( hex(i) )
+                                else:
+                                    outstring += "\"{0}\";".format( i )
+                            else:
+                                # not the last item ..
+                                if list_of_nums:
+                                    outstring += "{0} ".format( hex(i) )
+                                else:
+                                    outstring += "\"{0}\",".format( i )
+
+                            element_count = element_count + 1
+                else:
+                    outstring = "{0} = \"{1}\";".format( prop.name, prop_val )
+
+                # do phandle replacement to symbolic names (if possible)
+                phandle_possible_properties = [ "interrupt-parent", "access", "address-map" ]
+                if prop.name in phandle_possible_properties:
+                    for ph in phandle_map.keys():
+                        outstring = re.sub( ph + " ", phandle_map[ph][0] + " ", outstring )
+                        outstring = re.sub( '@.*? ', ' ', outstring )
+
+
+                print( outstring.rjust(len(outstring)+indent+8," " ), file=output)
 
                 if verbose > 2:
                     outstring = "prop type: {}".format(type(prop_val))
@@ -822,23 +1004,14 @@ class Lopper:
 
                 poffset = fdt.next_property_offset(poffset, QUIET_NOTFOUND)
 
-            if children:
-                old_depth = depth
-                nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
+        # unwind the last few nodes
+        for i in range( depth_prev, -1, -1 ):
+            indent = i * 8
+            outstring = "};"
+            print( outstring.rjust(len(outstring)+indent," " ), file=output)
 
-                # we need a new offset fo the next time through this loop (but only if our depth
-                # changed)
-                if depth >= 0 and old_depth != depth:
-                    pass
-                else:
-                    outstring = "}"
-                    print( outstring.rjust(len(outstring)+indent," " ))
-
-                indent = depth + 3
-            else:
-                depth = -1
-
-        print( "}" )
+        if output != sys.stdout:
+            output.close()
 
 
     @staticmethod
@@ -937,18 +1110,15 @@ class Lopper:
             verbose (int,optional): verbosity level, default 0.
 
         Returns:
-            List of nodes
+            List of nodes. Each containg the [node number, name, phandle, depth]
 
         """
         node_list = []
         node = 0
         depth = 0
         while depth >= 0:
-            node_list.append([depth, fdt.get_name(node)])
+            node_list.append([node, fdt.get_name(node), Lopper.getphandle(fdt,node), depth])
             node, depth = fdt.next_node(node, depth, (libfdt.BADOFFSET,))
-
-        if verbose:
-            print( "node list: %s" % node_list )
 
         return node_list
 
@@ -2514,6 +2684,7 @@ def main():
     global assists
     global werror
     global save_temps
+    global pretty_print
 
     sdt = None
     verbose = 0
@@ -2526,8 +2697,9 @@ def main():
     assists = []
     werror = False
     save_temps = False
+    pretty_print = False
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:S", [ "save-temps", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
+        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:S", [ "pretty", "save-temps", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2561,6 +2733,8 @@ def main():
             werror=True
         elif o in ('-S', '--save-temps' ):
             save_temps=True
+        elif o in ('--pretty' ):
+            pretty_print = True
         else:
             assert False, "unhandled option"
 
@@ -2637,7 +2811,8 @@ if __name__ == "__main__":
     device_tree.perform_lops()
 
     if not dryrun:
-        Lopper.write_fdt( device_tree.FDT, output, device_tree, True, device_tree.verbose )
+        Lopper.write_phandle_map( device_tree.FDT, output + ".phandle", device_tree.verbose )
+        Lopper.write_fdt( device_tree.FDT, output, device_tree, True, device_tree.verbose, pretty_print )
     else:
         print( "[INFO]: --dryrun was passed, output file %s not written" % output )
 
