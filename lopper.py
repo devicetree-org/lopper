@@ -916,14 +916,16 @@ class Lopper:
                 prop = fdt.get_property_by_offset(poffset)
                 prop_list.append(prop.name)
 
-                prop_val = Lopper.property_value_decode( prop, 0 )
+                prop_val = Lopper.prop_get( fdt, nodeoffset, prop.name, LopperFmt.COMPOUND, LopperFmt.HEX )
                 if not prop_val:
-                    prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND, LopperFmt.HEX )
+                    print( "[WARNING]: prop %s could not be decoded, skipping" % prop.name )
+                    poffset = fdt.next_property_offset(poffset, QUIET_NOTFOUND)
+                    continue
 
                 if type(prop_val) == int:
                     outstring = "{0} = <{1}>;".format( prop.name, hex(prop_val) )
                 elif type(prop_val) == list:
-                    # if the lenght is one, and the only element is empty '', then
+                    # if the length is one, and the only element is empty '', then
                     # we just put out the name
                     if len(prop_val) == 1 and prop_val[0] == '':
                         outstring = outstring = "{0};".format( prop.name )
@@ -988,10 +990,16 @@ class Lopper:
                 phandle_possible_properties = [ "interrupt-parent", "access", "address-map" ]
                 if prop.name in phandle_possible_properties:
                     for ph in phandle_map.keys():
-                        outstring = re.sub( ph + " ", phandle_map[ph][0] + " ", outstring )
-                        outstring = re.sub( '@.*? ', ' ', outstring )
+                        # special case. This is ugly, need a better way. but for now any low
+                        # assigned phandles are not our interest, since they collide with the
+                        # flags that are part of the access tuple
+                        if prop.name == "access" and (ph == "0x1" or ph == "0x0"):
+                            pass
+                        else:
+                            outstring = re.sub( ph + " ", phandle_map[ph][0] + " ", outstring )
+                            outstring = re.sub( '@.*? ', ' ', outstring )
 
-
+                # finally. output the formatted and possibly phandle replaced output line
                 print( outstring.rjust(len(outstring)+indent+8," " ), file=output)
 
                 if verbose > 2:
@@ -1197,10 +1205,7 @@ class Lopper:
         """
         try:
             prop = fdt.getprop( node_number, prop_name )
-            if prop:
-                val = Lopper.property_value_decode( prop, 0, ftype, encode )
-            else:
-                val = ""
+            val = Lopper.property_value_decode( prop, 0, ftype, encode )
         except:
             val = ""
 
@@ -1561,9 +1566,9 @@ class Lopper:
         else:
             decode_msg = ""
             encode_calculated = encode
-            val = []
+            val = ['']
 
-            # if we have b'' (and empty array), return an empty []
+            # if we have b'' (and empty array), return ['']
             if not property:
                 return val
 
