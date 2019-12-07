@@ -42,7 +42,7 @@ class LopperFmt(Enum):
     HEX = 3
     DEC = 4
     STRING = 5
-    MULTI_STRING = 5
+    MULTI_STRING = 6
 
 # used in node_filter
 class LopperAction(Enum):
@@ -51,7 +51,7 @@ class LopperAction(Enum):
     DELETE = 1
     REPORT = 2
     WHITELIST = 3
-    BLACKLIST = 3
+    BLACKLIST = 4
 
 @contextlib.contextmanager
 def stdoutIO(stdout=None):
@@ -176,7 +176,57 @@ class Lopper:
         return parent_node_type
 
     @staticmethod
-    def node_find_by_name( fdt, node_name, starting_node = 0 ):
+    def node_find_by_name( fdt, node_name, starting_node = 0, multi_match=False ):
+        """Finds a node by its name (not path)
+
+        Searches for a node by its name, and returns the offset of that same node
+        Note: use this when you don't know the full path of a node
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_name (string): name of the node
+            starting_node (int): node number to use as the search starting point
+            multi_match (bool,optional): flag to indicate if more than one matching
+                                         node should be found, default is False
+
+        Returns:
+            tuple: first matching node, list of matching nodes. -1 and [] if no match is found
+	"""
+
+        nn = starting_node
+        matching_nodes = []
+        matching_node = -1
+        # short circuit the search if they are looking for /
+        if node_name == "/":
+            depth = -1
+        else:
+            depth = 0
+
+        while depth >= 0:
+            nn_name = fdt.get_name(nn)
+            if nn_name:
+                if re.search( node_name, nn_name ):
+                    matching_nodes.append(nn)
+                    if matching_node == -1:
+                        # this is the first match, so we capture the number
+                        matching_node = nn
+
+                    if not multi_match:
+                        depth = -1
+                    else:
+                        # match, but mult-match is on .. get the next node
+                        nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
+                else:
+                    # no match, get the next node
+                    nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
+            else:
+                # no name, get the next node
+                nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
+
+        return matching_node, matching_nodes
+
+    @staticmethod
+    def node_find_by_name_old( fdt, node_name, starting_node = 0 ):
         """Finds a node by its name (not path)
 
         Searches for a node by its name, and returns the offset of that same node
@@ -190,7 +240,6 @@ class Lopper:
         Returns:
             int: offset of the node if successful, otherwise -1
 	"""
-
         nn = starting_node
         # short circuit the search if they are looking for /
         if node_name == "/":
@@ -230,7 +279,9 @@ class Lopper:
             bool: True if the node has the property, otherwise False
         """
 
-        node = Lopper.node_find_by_name( fdt, node_name )
+        # TODO: this is wrong .. we have the node, we need to call the
+        #       lopper routine to get the property, not fdt.getprop()
+        node,nodes = Lopper.node_find_by_name( fdt, node_name )
         try:
             fdt.getprop( property_name )
         except:
@@ -404,6 +455,9 @@ class Lopper:
                 print( "" )
                 print( "[DBG+]: properties for: %s" % fdt_source.get_name(nn) )
 
+            # TODO: Investigate whether or not we can just copy the properties
+            #       byte array directly. Versus decode -> encode, which could
+            #       introduce issues.
             prop_list = []
             poffset = fdt_source.first_property_offset(nn, QUIET_NOTFOUND)
             while poffset > 0:
@@ -411,7 +465,7 @@ class Lopper:
 
                 # we insert, not append. So we can flip the order of way we are
                 # discovering the properties
-                prop_list.insert( 0, prop )
+                prop_list.insert( 0, [ poffset, prop ] )
 
                 if verbose > 2:
                     print( "            prop name: %s" % prop.name )
@@ -431,13 +485,11 @@ class Lopper:
             # the order of the way we iterated them, due to the way that setprop inserts
             # at zero every time. If we don't flip the order the copied node will have
             # them in the opposite order!
-            for prop in prop_list:
-                # TODO: should these be using the wrapper functions ?  we sometimes misidentify.
-                prop_val = Lopper.property_value_decode( prop, 0 )
-                if not prop_val:
-                    prop_val = Lopper.property_value_decode( prop, 0, LopperFmt.COMPOUND )
 
+            for poffset, prop in prop_list:
+                prop_val = Lopper.prop_get( fdt_source, nn, prop.name, LopperFmt.COMPOUND )
                 Lopper.prop_set( fdt_dest, prop_offset, prop.name, prop_val )
+
 
             old_depth = depth
             nn, depth = fdt_source.next_node(nn, depth, (libfdt.BADOFFSET,))
@@ -502,9 +554,15 @@ class Lopper:
         depth = 0
         ret_nodes = []
         if start_path != "/":
-            node = Lopper.node_find_by_name( fdt, start_path )
+            print("a")
+            node, nodes = Lopper.node_find_by_name( fdt, start_path )
+            print("b: %s %s" % (node,nodes))
         else:
             node = 0
+
+        if node < 0:
+            print( "[WARNING]: could not find starting node: %s" % start_path )
+            sys.exit(1)
 
         while depth >= 0:
             prop_val = Lopper.prop_get( fdt, node, match_propname )
@@ -1237,6 +1295,17 @@ class Lopper:
            Nothing
 
         """
+
+        # if it's a list, we dig in a bit to see if it is a single item list.
+        # if so, we grab the value so it can be propery encoded. We also have
+        # a special case if the '' string is the only element .. we explicity
+        # set the empty list, so it will encode properly.
+        if type(prop_val) == list:
+            if len(prop_val) == 1 and prop_val[0] != '':
+                prop_val = prop_val[0]
+            elif len(prop_val) == 1 and prop_val[0] == '':
+                pass
+
         try:
             prop_val_converted = int(prop_val,0)
             # if it works, that's our new prop_val. This covers the case where
@@ -1958,6 +2027,37 @@ class SystemDeviceTree:
 
         self.lops.insert( 0, lop )
 
+    def node_ref_reset( self, node_name, verbose=0 ):
+        """reset the refcount for a node
+
+        When refcounting is enabled, this routine resets the refcount for a
+        given node.
+
+        We use the name, rather than the offset, since the offset can change if
+        something is deleted from the tree. But we need to use the full path so
+        we can find it later.
+
+        if no name is passed, all refcounts are reset
+
+        Args:
+           node_name (string): path to the node to refcount
+           verbose (bool): flag indicating verbosity. default is 0
+
+        Returns:
+           Nothing
+
+        """
+        if node_name:
+            if self.verbose > 1:
+                print( "[INFO]: resetting refcount for node %s" % node_name )
+
+            self.node_access[node_name] = 0
+        else:
+            if self.verbose > 1:
+                print( "[INFO]: resetting all refcounts" )
+
+            self.node_access.clear()
+
     def node_ref_inc( self, node_name ):
         """increment the refcount for a node
 
@@ -2143,7 +2243,7 @@ class SystemDeviceTree:
                     lops_fdt = x.fdt
 
                 # Get all the nodes with a lop property
-                lops_nodes = Lopper.nodes_with_property( lops_fdt, "compatible", "system-device-tree-v1,lop.*", "/lops" )
+                lops_nodes = Lopper.nodes_with_property( lops_fdt, "compatible", "system-device-tree-v1,lop.*", "lops" )
                 for n in lops_nodes:
                     prop = lops_fdt.getprop( n, "compatible" )
                     val = Lopper.prop_get( lops_fdt, n, "compatible" )
@@ -2181,14 +2281,15 @@ class SystemDeviceTree:
                             for o_node in output_nodes:
                                 # TODO: this really should be using node_find() and we should make sure the
                                 #       output 'lop' has full paths.
-                                node_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0 )
+                                node_to_copy, nodes_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0, True )
                                 if node_to_copy == -1:
                                     print( "[WARNING]: could not find node to copy: %s" % o_node )
                                 else:
-                                    node_to_copy_path = Lopper.node_abspath( self.FDT, node_to_copy )
-                                    new_node = Lopper.node_copy_from_path( self.FDT, node_to_copy_path, ff, node_to_copy_path, self.verbose )
-                                    if not new_node:
-                                        print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
+                                    for n in nodes_to_copy:
+                                        node_to_copy_path = Lopper.node_abspath( self.FDT, n )
+                                        new_node = Lopper.node_copy_from_path( self.FDT, node_to_copy_path, ff, node_to_copy_path, self.verbose )
+                                        if not new_node:
+                                            print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
 
                         if not self.dryrun:
                             Lopper.write_fdt( ff, output_file_name, self, True, verbose )
