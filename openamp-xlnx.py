@@ -63,7 +63,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
         print( "[INFO]: cb cpu mask: %s" % cpu_mask )
 
     # find the added rpu node
-    rpu_node = sdt.node_find_by_name( "zynqmp-rpu" )
+    rpu_node,rps = sdt.node_find_by_name( "zynqmp-rpu" )
     if not rpu_node:
         print( "[ERROR]: cannot find the target rpu node" )
         return False
