@@ -85,6 +85,12 @@
                   };
                   lop_15 {
                          compatible = "system-device-tree-v1,lop,output";
+                         outfile = "linux-partial.dtb";
+                         // * is "all nodes"
+                         nodes = "amba.*";
+                  };
+                  lop_16 {
+                         compatible = "system-device-tree-v1,lop,output";
                          outfile = "subsystem.cdo";
                          // * is "all nodes"
                          nodes = "*";
