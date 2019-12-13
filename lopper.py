@@ -554,9 +554,7 @@ class Lopper:
         depth = 0
         ret_nodes = []
         if start_path != "/":
-            print("a")
             node, nodes = Lopper.node_find_by_name( fdt, start_path )
-            print("b: %s %s" % (node,nodes))
         else:
             node = 0
 
@@ -980,9 +978,29 @@ class Lopper:
                     poffset = fdt.next_property_offset(poffset, QUIET_NOTFOUND)
                     continue
 
-                if type(prop_val) == int:
+                if re.search( "lopper-comment.*", prop.name ):
+                    prop_type = "comment"
+                else:
+                    prop_type = type(prop_val)
+
+                if prop_type == "comment":
+                    outstring = ""
+                    for s in prop_val:
+                        outstring += s
+
+                    # if the comment is multiline, we need to replace line returns
+                    # with line return + indentation, or subsequent lines won't
+                    # be lined up
+                    dstring = ""
+                    # the "5" is a bit of a magic number, since we use "8" in the
+                    # main rjust below, but this lines up comments nicely, so we
+                    # are rolling with it for now.
+                    dstring = dstring.rjust(len(dstring) + indent + 5, " " )
+                    outstring = re.sub( '\n', '\n' + dstring, outstring )
+
+                elif prop_type == int:
                     outstring = "{0} = <{1}>;".format( prop.name, hex(prop_val) )
-                elif type(prop_val) == list:
+                elif prop_type == list:
                     # if the length is one, and the only element is empty '', then
                     # we just put out the name
                     if len(prop_val) == 1 and prop_val[0] == '':
@@ -1729,7 +1747,30 @@ class SystemDeviceTree:
         self.output_file = ""
         self.cleanup_flag = True
         self.save_temps = False
+        self.pretty = False
         self.FDT = ""
+
+    def __comment_replacer(self,match):
+        """private function to translate comments to device tree attributes"""
+        s = match.group(0)
+        if s.startswith('/'):
+            global count
+            count = count + 1
+            r1 = re.sub( '\"', '\\"', s )
+            r2 = "lopper-comment-{0} = \"{1}\";".format(count, r1)
+            return r2
+        else:
+            return s
+
+    def __comment_translate(self,text):
+        """private function used to match (and replace) comments in DTS files"""
+        global count
+        count = 0
+        pattern = re.compile(
+                r'//.*?$|/\*.*?\*/|\'(?:\\.|[^\\\'])*\'|"(?:\\.|[^\\"])*"',
+                re.DOTALL | re.MULTILINE
+            )
+        return re.sub(pattern, self.__comment_replacer, text)
 
     def setup(self, sdt_file, input_files, include_paths, assists=[], force=False):
         """executes setup and initialization tasks for a system device tree
@@ -1808,6 +1849,22 @@ class SystemDeviceTree:
                 sdt_files.append( sdt_file )
                 fp = sdt_file
 
+            if self.pretty:
+                # we need to ensure comments are maintained by converting them
+                # into DTS attributes
+                fp_pretty = fp + ".pretty"
+                shutil.copyfile( fp, fp_pretty )
+                fp = fp_pretty
+
+                with open(fp_pretty) as f:
+                    fp_comments_as_attributes = self.__comment_translate(f.read())
+
+                f = open( fp_pretty, 'w' )
+                f.write( fp_comments_as_attributes )
+                f.close()
+
+                fp = fp_pretty
+
             self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force )
             self.FDT = libfdt.Fdt(open(self.dtb, mode='rb').read())
 
@@ -1869,6 +1926,8 @@ class SystemDeviceTree:
         if self.cleanup and not self.save_temps:
             try:
                 os.remove( self.dtb )
+                if self.pretty:
+                    os.remove( self.dts + ".pretty" )
             except:
                 # doesn't matter if the remove failed, it means it is
                 # most likely gone
@@ -2292,7 +2351,7 @@ class SystemDeviceTree:
                                             print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
 
                         if not self.dryrun:
-                            Lopper.write_fdt( ff, output_file_name, self, True, verbose )
+                            Lopper.write_fdt( ff, output_file_name, self, True, verbose, pretty_print )
                         else:
                             print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
@@ -2912,6 +2971,7 @@ if __name__ == "__main__":
     device_tree.output_file = output
     device_tree.cleanup_flag = True
     device_tree.save_temps = save_temps
+    device_tree.pretty = pretty_print
 
     device_tree.setup( sdt, inputfiles, "", assists, force )
     device_tree.perform_lops()
