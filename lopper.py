@@ -563,11 +563,12 @@ class Lopper:
             sys.exit(1)
 
         while depth >= 0:
-            prop_val = Lopper.prop_get( fdt, node, match_propname )
+            prop_val = Lopper.prop_get( fdt, node, match_propname, LopperFmt.COMPOUND )
             if prop_val:
                 if match_regex:
-                    if re.search( match_regex, prop_val ):
-                        ret_nodes.append(node)
+                    for p in prop_val:
+                        if re.search( match_regex, p ):
+                            ret_nodes.append(node)
                 else:
                     if match_propname == prop.name:
                         if not node in ret_nodes:
