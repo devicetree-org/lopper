@@ -2645,6 +2645,7 @@ class SystemDeviceTree:
             Nothing
 
         """
+        recursive = False
         if node_regex:
             recursive = True
 
