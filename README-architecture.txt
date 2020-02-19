@@ -239,7 +239,7 @@ The following types of lops are currently valid:
                         id = "openamp,domain-v1";
                 };
 
-# modify: a general purpose node and property modify/delete operation
+# modify: a general purpose node and property modify/delete/add operation
 #
 #         format is: "path":"property":"replacement"
 #                     - modify to "nothing", is a remove operation
@@ -272,6 +272,14 @@ The following types of lops are currently valid:
                        // example: add a special ID into various nodes
                        modify = "/:pnode-id:0x7";
                 };
+                lop_15 {
+                       compatible = "system-device-tree-v1,lop,modify";
+                       // property add to node + matching child nodes
+                       modify = "/amba/:testprop:testvalue";
+                       // nodes that match this regex will have the operation applied
+                       nodes = "/amba/.*ethernet.*phy.*";
+                };
+
 
 
 # node add: copies the compiled node to the target device tree
@@ -338,7 +346,26 @@ The following types of lops are currently valid:
                        // * is "all nodes"
                        nodes = "*";
                 };
-
+		lop_16 {
+		       compatible = "system-device-tree-v1,lop,output";
+		       outfile = "linux-partial.dts";
+		       // * is "all nodes"
+		       nodes = "amba.*";
+	        };
+		lop_17 {
+                       compatible = "system-device-tree-v1,lop,output";
+		       outfile = "plm.cdo";
+		       // * is "all nodes"
+		       nodes = "*";
+                       // lopper output assist will kick in
+		       id = "xlnx,output,cdo";
+	        };
+		lop_18 {
+		       compatible = "system-device-tree-v1,lop,output";
+		       outfile = "linux-special-props.dts";
+		       // nodes (regex), with a property that must be set
+		       nodes = "amba.*:testprop:testvalue";
+		};
 
 Lopper Assists
 --------------

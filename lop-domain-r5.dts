@@ -32,7 +32,7 @@
                         node_src = "zynqmp-rpu";
                         node_dest = "/zynqmp-rpu";
                         zynqmp-rpu {
-                            compatible = "xlnx,zynqmp-r5-remoteproc-1.0";
+                            compatible = "xlnx,zynqmp-r5-remoteproc-1.0","test2ndtype";
                             #address-cells = <2>;
                             #size-cells = <2>;
                             ranges;
@@ -84,17 +84,30 @@
                          nodes = "*";
                   };
                   lop_15 {
-                         compatible = "system-device-tree-v1,lop,output";
-                         outfile = "linux-partial.dts";
-                         // * is "all nodes"
-                         nodes = "amba.*";
+                         compatible = "system-device-tree-v1,lop,modify";
+                         modify = "/amba/:testprop:testvalue";
+                         // todo: the "nodes", should really just move into the modify
+			 //       property, where we can detected the regex.
+                         nodes = "/amba/.*ethernet.*phy.*";
                   };
-                  lop_16 {
-                         compatible = "system-device-tree-v1,lop,output";
-                         outfile = "plm.cdo";
-                         // * is "all nodes"
-                         nodes = "*";
-                         id = "xlnx,output,cdo";
-                  };
+		  lop_16 {
+			 compatible = "system-device-tree-v1,lop,output";
+			 outfile = "linux-partial.dts";
+			 // * is "all nodes"
+			 nodes = "amba.*";
+		  };
+		  lop_17 {
+			 compatible = "system-device-tree-v1,lop,output";
+			 outfile = "plm.cdo";
+			 // * is "all nodes"
+			 nodes = "*";
+			 id = "xlnx,output,cdo";
+		  };
+		  lop_18 {
+			 compatible = "system-device-tree-v1,lop,output";
+			 outfile = "linux-special-props.dts";
+			 // nodes (regex), with a property that must be set
+			 nodes = "amba.*:testprop:testvalue";
+		  };
         };
 };
