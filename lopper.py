@@ -2650,6 +2650,11 @@ class SystemDeviceTree:
             recursive = True
 
         node = Lopper.node_find( self.FDT, node_prefix )
+        if node == -1:
+            print( "[WARNING]: cannot find node %s for modify operation" % node_prefix )
+            if self.werror:
+                sys.exit(1)
+
         node_list = []
         depth = 0
         while depth >= 0:
@@ -2660,7 +2665,6 @@ class SystemDeviceTree:
                 node_name = self.FDT.get_name( node )
                 if node_regex:
                     node_path = Lopper.node_abspath( self.FDT, node )
-                    print( "bbb %s" % node_path )
                     if re.search( node_regex, node_path ):
                         # match. we process (even though this is the default, lets
                         # set it again for clarity)
