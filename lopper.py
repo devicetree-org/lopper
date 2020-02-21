@@ -227,39 +227,59 @@ class Lopper:
         return matching_node, matching_nodes
 
     @staticmethod
-    def node_find_by_name_old( fdt, node_name, starting_node = 0 ):
-        """Finds a node by its name (not path)
+    def node_find_by_regex( fdt, node_regex, starting_node = 0, multi_match=False ):
+        """Finds a node by a regex /path/<regex>/<name>
 
-        Searches for a node by its name, and returns the offset of that same node
-        Note: use this when you don't know the full path of a node
+        Searches for nodes that match a regex (path + name).
+
+        Note: if you pass the name of a node as the regex, you'll get a list of
+              that node + children
+        Note: if you pass no regex, you'll get all nodes from the starting point
+              to the end of the tree.
 
         Args:
             fdt (fdt): flattened device tree object
-            node_name (string): name of the node
-            starting_node (int): node to use as the search starting point
+            node_regex (string): regex to use for comparision
+            starting_node (int): node number to use as the search starting point
+            multi_match (bool,optional): flag to indicate if more than one matching
+                                         node should be found, default is False
 
         Returns:
-            int: offset of the node if successful, otherwise -1
+            tuple: first matching node, list of matching nodes. -1 and [] if no match is found
 	"""
+
         nn = starting_node
-        # short circuit the search if they are looking for /
-        if node_name == "/":
-            depth = -1
-        else:
-            depth = 0
+        matching_nodes = []
         matching_node = -1
+        depth = 0
+
         while depth >= 0:
             nn_name = fdt.get_name(nn)
+            node_path = ""
+            if nn > 0:
+                node_path = Lopper.node_abspath( fdt, nn )
+
             if nn_name:
-                if re.search( nn_name, node_name ):
-                    matching_node = nn
-                    depth = -1
+                # we search to support regex matching
+                if re.search( node_regex, node_path ):
+                    matching_nodes.append(nn)
+                    if matching_node == -1:
+                        # this is the first match, so we capture the number
+                        matching_node = nn
+
+                    if not multi_match:
+                        depth = -1
+                    else:
+                        # match, but mult-match is on .. get the next node
+                        nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
                 else:
+                    # no match, get the next node
                     nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
             else:
+                # no name, get the next node
                 nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
 
-        return matching_node
+        return matching_node, matching_nodes
 
     @staticmethod
     def node_prop_check( fdt, node_name, property_name ):
@@ -2567,6 +2587,7 @@ class SystemDeviceTree:
                                 if nodes:
                                     print( "        modify regex: %s" % nodes )
 
+                            #sys.exit(1)
                             if modify_expr[1]:
                                 # property operation
                                 if not modify_expr[2]:
@@ -2581,8 +2602,7 @@ class SystemDeviceTree:
                                     if Lopper.node_prop_check( self.FDT, modify_expr[0], modify_expr[1] ):
                                         self.property_modify( modify_expr[0], modify_expr[1], modify_expr[2], nodes )
                                     else:
-                                        # add operation
-                                        # false: not recursive, true: add if missing
+                                        # true: add if missing
                                         self.property_modify( modify_expr[0], modify_expr[1], modify_expr[2], nodes, True )
                             else:
                                 # node operation
@@ -2655,7 +2675,7 @@ class SystemDeviceTree:
             else:
                 depth = -1
 
-    # note; this operates on a node and all child nodes, unless you set recursive to False
+    # note: this operates on a node and any child nodes that match the node_regex
     def property_modify( self, node_prefix = "/", prop_name = "", propval = "", node_regex = "", add_if_missing = False ):
         """modifies a property in a node
 
@@ -2665,7 +2685,7 @@ class SystemDeviceTree:
             node_prefix (string,optional): starting node prefix. Default is "/"
             prop_name (string,optional): name of property to modify. Default is ""
             prop_val (string,optional): new value of the property. Default is ""
-            node_regex (string,optional): if non-zero, the node regex indicates if child nodes should be check. Default is ""
+            node_regex (string,optional): if non-zero, the node regex indicates if child nodes should be checked. Default is ""
             add_if_missing (bool,optional): create the property if it is missing (i.e. a property add).
                                             Default is False.
 
@@ -2673,69 +2693,67 @@ class SystemDeviceTree:
             Nothing
 
         """
-        recursive = False
+        process_child_nodes = False
+        # we process_child_nodes if a regex is passed
         if node_regex:
-            recursive = True
-
-        node = Lopper.node_find( self.FDT, node_prefix )
-        if node == -1:
-            print( "[WARNING]: cannot find node %s for modify operation" % node_prefix )
-            if self.werror:
-                sys.exit(1)
+            process_child_nodes = True
 
         node_list = []
-        depth = 0
-        while depth >= 0:
-
-            # apply the regex test to any child nodes.
-            process_node = True
-            if depth > 0:
-                node_name = self.FDT.get_name( node )
-                if node_regex:
-                    node_path = Lopper.node_abspath( self.FDT, node )
-                    if re.search( node_regex, node_path ):
-                        # match. we process (even though this is the default, lets
-                        # set it again for clarity)
-                        process_node = True
-                    else:
-                        # skip. no match
-                        process_node = False
-
-            if process_node:
-                prop_list = []
-                poffset = self.FDT.first_property_offset(node, QUIET_NOTFOUND)
-                while poffset > 0:
-                    # if we delete the only property of a node, all calls to the FDT
-                    # will throw an except. So if we get an exception, we set our poffset
-                    # to zero to escape the loop.
-                    try:
-                        prop = self.FDT.get_property_by_offset(poffset)
-                    except:
-                        poffset = 0
-                        continue
-
-                    # print( "prop_name: %s" % prop.name )
-                    prop_list.append(prop.name)
-                    poffset = self.FDT.next_property_offset(poffset, QUIET_NOTFOUND)
-
-                if prop_name in prop_list:
-                    # node is an integer offset, prop_name is a string
-                    if self.verbose:
-                        print( "[INFO]: changing property %s to %s" % (prop_name, propval ))
-
-                    Lopper.prop_set( self.FDT, node, prop_name, propval )
-                else:
-                    if add_if_missing:
-                        try:
-                            Lopper.prop_set( self.FDT, node, prop_name, propval )
-                        except:
-                            self.FDT.resize( self.FDT.totalsize() + 1024 )
-                            Lopper.prop_set( self.FDT, node, prop_name, propval )
-
-            if recursive:
-                node, depth = self.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
+        # first we see if the node prefix is an exact match
+        node = Lopper.node_find( self.FDT, node_prefix )
+        # if that fails, check to see if it is a regex
+        if node == -1:
+            first_node, node_list = Lopper.node_find_by_regex( self.FDT, node_prefix, 0, True )
+            if not node_list:
+                print( "[WARNING]: cannot find node %s for modify operation" % node_prefix )
+                if self.werror:
+                    sys.exit(1)
+        else:
+            # we found the node on our lookup. We add it to the list, and then check to see
+            # if there's a regex for child nodes
+            if process_child_nodes:
+                first_node, node_list = Lopper.node_find_by_regex( self.FDT, node_regex, 0, True )
             else:
-                depth = -1
+                node_list = [node]
+
+        # convert the node numbers to paths, since the property adding below can
+        # jiggle our node numbers, and with paths, we can look them up again
+        node_names = []
+        for node in node_list:
+            np = Lopper.node_abspath( self.FDT, node )
+            node_names.append(np)
+
+        for nm in node_names:
+            node = self.FDT.path_offset( nm )
+            prop_list = []
+            poffset = self.FDT.first_property_offset(node, QUIET_NOTFOUND)
+            while poffset > 0:
+                # if we delete the only property of a node, all calls to the FDT
+                # will throw an except. So if we get an exception, we set our poffset
+                # to zero to escape the loop.
+                try:
+                    prop = self.FDT.get_property_by_offset(poffset)
+                except:
+                    poffset = 0
+                    continue
+
+                # print( "prop_name: %s" % prop.name )
+                prop_list.append(prop.name)
+                poffset = self.FDT.next_property_offset(poffset, QUIET_NOTFOUND)
+
+            if prop_name in prop_list:
+                # node is an integer offset, prop_name is a string
+                if self.verbose:
+                    print( "[INFO]: changing property %s to %s" % (prop_name, propval ))
+
+                Lopper.prop_set( self.FDT, node, prop_name, propval )
+            else:
+                if add_if_missing:
+                    try:
+                        Lopper.prop_set( self.FDT, node, prop_name, propval )
+                    except:
+                        self.FDT.resize( self.FDT.totalsize() + 1024 )
+                        Lopper.prop_set( self.FDT, node, prop_name, propval )
 
     def property_set( self, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE ):
         """utility command to set a property in a node
