@@ -1,0 +1,14 @@
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1,lop";
+        lops {
+                compatible = "system-device-tree-v1,lop";
+                lop_1 {
+                        compatible = "system-device-tree-v1,lop,assist-v1";
+                        node = "/chosen/domains";
+                        id = "access-domain,domain-v1";
+                        //noexec;
+                };
+        };
+};

@@ -1,0 +1,10 @@
+/ {
+        compatible = "system-device-tree-v1";
+        chosen {
+               compatible = "foo";
+               domains {
+                       compatible = "domainspec,v1";
+                       access = <&tcm 0x1>, <&ethernet0 0x0>;
+               };
+        };
+};
