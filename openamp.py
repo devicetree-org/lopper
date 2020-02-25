@@ -99,6 +99,7 @@ def process_domain( tgt_node, sdt, verbose=0 ):
     # lets track any nodes that are referenced by access parameters. We use this
     # for a second patch to drop any nodes that are not accessed, and hence should
     # be removed
+    # TODO: remove this for the new systemdevicetree internal tracking (node_refd)
     node_access_tracker = {}
     # we want to track child nodes of "/", if they are of type simple-bus AND they are
     # referenced by a <access> value in the domain
@@ -114,6 +115,8 @@ def process_domain( tgt_node, sdt, verbose=0 ):
             print( "[INFO]: no access list found, skipping ..." )
     else:
         #print( "[INFO]: converted access list: %s" % access_list )
+
+        sdt.node_ref_reset( "", 2 )
 
         # although the access list is decoded as a list, it is actually tuples, so we need
         # to get every other entry as a phandle, not every one.
