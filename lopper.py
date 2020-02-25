@@ -53,6 +53,9 @@ class LopperAction(Enum):
     WHITELIST = 3
     BLACKLIST = 4
 
+# general retry count
+MAX_RETRIES = 3
+
 @contextlib.contextmanager
 def stdoutIO(stdout=None):
     old = sys.stdout
@@ -300,11 +303,15 @@ class Lopper:
             bool: True if the node has the property, otherwise False
         """
 
-        # TODO: this is wrong .. we have the node, we need to call the
-        #       lopper routine to get the property, not fdt.getprop()
-        node,nodes = Lopper.node_find_by_name( fdt, node_name )
+        node = Lopper.node_find( fdt, node_name )
+        if node == -1:
+            node, nodes = Lopper.node_find_by_name( fdt, node_name )
+
+        if node == -1:
+            return False
+
         try:
-            fdt.getprop( property_name )
+            fdt.getprop( node, property_name )
         except:
             return False
 
@@ -1362,12 +1369,32 @@ class Lopper:
             # this seems to break some operations, but a variant may be required
             # to prevent overflow situations
             # if sys.getsizeof(prop_val) >= 32:
-            if sys.getsizeof(prop_val) > 32:
-                fdt.setprop_u64( node_number, prop_name, prop_val )
+            for _ in range(MAX_RETRIES):
+                try:
+                    if sys.getsizeof(prop_val) > 32:
+                        fdt.setprop_u64( node_number, prop_name, prop_val )
+                    else:
+                        fdt.setprop_u32( node_number, prop_name, prop_val )
+                except:
+                    fdt.resize( fdt.totalsize() + 1024 )
+                    continue
+                else:
+                    break
             else:
-                fdt.setprop_u32( node_number, prop_name, prop_val )
+                # it wasn't set all all, we could thrown an error
+                pass
         elif type(prop_val) == str:
-            fdt.setprop_str( node_number, prop_name, prop_val )
+            for _ in range(MAX_RETRIES):
+                try:
+                    fdt.setprop_str( node_number, prop_name, prop_val )
+                except:
+                    fdt.resize( fdt.totalsize() + 1024 )
+                    continue
+                else:
+                    break
+            else:
+                # we totally failed!
+                pass
         elif type(prop_val) == list:
             # list is a compound value, or an empty one!
             if len(prop_val) >= 0:
@@ -1376,7 +1403,17 @@ class Lopper:
                 except:
                     bval = Lopper.encode_byte_array(prop_val)
 
-                fdt.setprop( node_number, prop_name, bval)
+                for _ in range(MAX_RETRIES):
+                    try:
+                        fdt.setprop( node_number, prop_name, bval)
+                    except:
+                        fdt.resize( fdt.totalsize() + 1024 )
+                        continue
+                    else:
+                        break
+                else:
+                    # fail!
+                    pass
         else:
             print( "[WARNING]; uknown type was used" )
 
@@ -2640,7 +2677,6 @@ class SystemDeviceTree:
                                 if nodes:
                                     print( "        modify regex: %s" % nodes )
 
-                            #sys.exit(1)
                             if modify_expr[1]:
                                 # property operation
                                 if not modify_expr[2]:
