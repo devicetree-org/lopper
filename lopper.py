@@ -2139,7 +2139,7 @@ class SystemDeviceTree:
 
             self.node_access.clear()
 
-    def node_ref_inc( self, node_name ):
+    def node_ref_inc( self, node_name, parent=False ):
         """increment the refcount for a node
 
         When refcounting is enabled, this routine increments the count for
@@ -2151,6 +2151,7 @@ class SystemDeviceTree:
 
         Args:
            node_name (string): path to the node to refcount
+           parent (bool): wether parent references should be incremented. Default False.
 
         Returns:
            Nothing
@@ -2158,10 +2159,29 @@ class SystemDeviceTree:
         """
         if self.verbose > 1:
             print( "[INFO]: tracking access to node %s" % node_name )
-        if node_name in self.node_access:
-            self.node_access[node_name] += 1
-        else:
-            self.node_access[node_name] = 1
+
+        nodes_to_increment = [ node_name ]
+        if parent:
+            node_number = self.node_find( node_name )
+            if node_number != -1:
+                node_parent = node_number
+                while node_parent != 0:
+                    node_parent = self.FDT.parent_offset(node_number,QUIET_NOTFOUND)
+                    if not node_parent in nodes_to_increment:
+                        if node_parent != 0:
+                            pname = self.node_abspath(node_parent)
+                        else:
+                            pname = "/"
+
+                        nodes_to_increment.append( pname )
+
+                    node_number = node_parent
+
+        for n in nodes_to_increment:
+            if n in self.node_access:
+                self.node_access[n] += 1
+            else:
+                self.node_access[n] = 1
 
     # get the refcount for a node.
     # node_name is the full path to a node
@@ -2184,7 +2204,27 @@ class SystemDeviceTree:
         """
         if node_name in self.node_access:
             return self.node_access[node_name]
+
         return -1
+
+    def nodes_refd( self ):
+        """Get a list of refererenced nodes
+
+        When refcounting is enabled, this routine returns the list of nodes
+        that have been referenced.
+
+        We use the name, rather than the offset, since the offset can change if
+        something is deleted from the tree. But we need to use the full path so
+        we can find it later.
+
+        Args:
+           None
+
+        Returns:
+           list (strings): list of referenced nodes, or [] if there are no referenced nodes
+
+        """
+        return self.node_access.keys()
 
     def node_find( self, node_prefix ):
         """Finds a node by its prefix
@@ -2330,6 +2370,12 @@ class SystemDeviceTree:
                     val = Lopper.prop_get( lops_fdt, n, "compatible" )
                     node_name = lops_fdt.get_name( n )
 
+                    noexec = Lopper.prop_get( lops_fdt, n, "noexec" )
+                    if noexec:
+                        if self.verbose > 1:
+                            print( "[DBG+]: noexec flag found, skipping lop" )
+                        continue
+
                     if self.verbose:
                         print( "[INFO]: ------> processing lop: %s" % val )
                     if self.verbose > 2:
@@ -2351,7 +2397,6 @@ class SystemDeviceTree:
                         if self.verbose > 1:
                             print( "[DBG+]: output selected are: %s" % output_nodes )
 
-                        # TODO: allow regexes for nodes
                         if "*" in output_nodes:
                             ff = libfdt.Fdt(self.FDT.as_bytearray())
                         else:
@@ -2409,6 +2454,11 @@ class SystemDeviceTree:
                         # tranform loop, to something that is instead called by walking the
                         # entire device tree, looking for matching nodes and making assists at
                         # that moment.
+                        #
+                        # but that sort of node walking, will invoke the assists out of order
+                        # with other lopper operations, so it isn't particularly feasible or
+                        # desireable.
+                        #
                         cb_tgt_node_name = Lopper.prop_get( lops_fdt, n, 'node' )
                         if not cb_tgt_node_name:
                             print( "[ERROR]: cannot find target node for the assist" )
@@ -2418,8 +2468,11 @@ class SystemDeviceTree:
                         cb_id = Lopper.prop_get( lops_fdt, n, 'id' )
                         cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
                         if cb_node < 0:
-                            print( "[ERROR]: cannot find assist target node in tree" )
-                            sys.exit(1)
+                            if self.werror:
+                                print( "[ERROR]: cannot find assist target node in tree" )
+                                sys.exit(1)
+                            else:
+                                continue
                         if self.verbose:
                             print( "[INFO]: assist lop detected" )
                             if cb:
