@@ -1241,7 +1241,7 @@ class Lopper:
            The return value of executing dtc to dump the dtb to dts
         """
         dtcargs = (os.environ.get('LOPPER_DTC') or shutil.which("dtc")).split()
-        dtcargs += (os.environ.get("STD_DTC_FLAGS") or "").split()
+        dtcargs += (os.environ.get("LOPPER_DTC_FLAGS") or "").split()
         dtcargs += (os.environ.get("LOPPER_DTC_BFLAGS") or "").split()
         if outfilename:
             dtcargs += ["-o", "{0}".format(outfilename)]
