@@ -12,8 +12,8 @@ Sample run:
 Limitations:
 -----------
 
- - Currently only works for the input files included in this repo
- - Do not base work on this RFC lopper, alpha and beta versions will stablize interfaces
+ - This is an alpha version, interfaces are still subject to change
+ - Not all errors are gracefully handled
 
 TODO:
 ----
@@ -22,9 +22,6 @@ TODO:
  - Output device tree boot testing (output trees may currently be invalid)
  - Output device tree sanity checking / validation
  - TODO items in code base (grep for TODO in code)
- - CDO output assist implementation
- - Update to versal system device tree
  - Lopper update to latest System Device Tree bindings
  - Lopper update to latest OpenAMP chosen node format
- - New/Additional looper operations
  - Robustness changes for untested input files
