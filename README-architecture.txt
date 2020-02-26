@@ -23,17 +23,18 @@ Lopper overview:
 lopper.py --help
 
    Usage: lopper.py [OPTION] <system device tree> [<output file>]...
-     -v, --verbose       enable verbose/debug processing (specify more than once for more verbosity)
-     -t, --target        indicate the starting domain for processing (i.e. chosen node or domain label)
-       , --dryrun        run all processing, but don't write any output files
-     -d, --dump          dump a dtb as dts source
-     -i, --input         process supplied input device tree description
-     -a, --assist        load specified python assist (for node or output processing)
-     -o, --output        output file
-     -f, --force         force overwrite output file(s)
-       , --werror        treat warnings as errors
-     -S, --save-temps    don't remove temporary files
-     -h, --help          display this help and exit
+      -v, --verbose	  enable verbose/debug processing (specify more than once for more verbosity)
+      -t, --target	  indicate the starting domain for processing (i.e. chosen node or domain label)
+	, --dryrun	  run all processing, but don't write any output files
+      -d, --dump	  dump a dtb as dts source
+      -i, --input	  process supplied input device tree description
+      -a, --assist	  load specified python assist (for node or output processing)
+      -o, --output	  output file
+      -f, --force	  force overwrite output file(s)
+        , --werror	  treat warnings as errors
+      -S, --save-temps	  don't remove temporary files
+      -h, --help	  display this help and exit
+       , --version	  output the version and exit
 
 Fundamentally, lopper takes an  input device tree (normally a system device tree),
 applies operations to that tree, and outputs a modified/processed tree.
