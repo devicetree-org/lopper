@@ -31,6 +31,8 @@ import textwrap
 import libfdt
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
 
+LOPPER_VERSION = "2020.2-alpha"
+
 lopper_directory = os.path.dirname(os.path.realpath(__file__))
 
 # used in encode/decode routines
@@ -2990,6 +2992,7 @@ def usage():
     print('    , --werror        treat warnings as errors' )
     print('  -S, --save-temps    don\'t remove temporary files' )
     print('  -h, --help          display this help and exit')
+    print('    , --version       output the version and exit')
     print('')
 
 ##
@@ -3030,7 +3033,7 @@ def main():
     save_temps = False
     pretty_print = False
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:S", [ "pretty", "save-temps", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
+        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:S", [ "pretty", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -3066,6 +3069,9 @@ def main():
             save_temps=True
         elif o in ('--pretty' ):
             pretty_print = True
+        elif o in ('--version'):
+            print( "%s" % LOPPER_VERSION )
+            sys.exit(0)
         else:
             assert False, "unhandled option"
 
