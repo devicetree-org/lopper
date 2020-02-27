@@ -23,6 +23,7 @@ from pathlib import PurePath
 from io import StringIO
 import contextlib
 import importlib
+from importlib.machinery import SourceFileLoader
 import tempfile
 from enum import Enum
 import atexit
@@ -2549,6 +2550,7 @@ class SystemDeviceTree:
                         if load_prop:
                             if self.verbose:
                                 print( "[INFO]: loading module %s" % load_prop )
+
                             mod_file = Path( load_prop )
                             mod_file_wo_ext = mod_file.with_suffix('')
                             try:
@@ -2573,8 +2575,11 @@ class SystemDeviceTree:
                                         print( "[ERROR]: module file %s not found" % load_prop )
                                         sys.exit(1)
 
-                            # can this error at this point ? We should probably check for it ..
-                            imported_module = __import__(str(mod_file_wo_ext))
+                            try:
+                                imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
+                            except:
+                                print( "[ERROR]: could not load assist: %s" % mod_file_abs )
+                                sys.exit(1)
 
                             assist_properties = {}
                             try:

@@ -7,11 +7,11 @@
         lops {
                 lop_0 {
                         compatible = "system-device-tree-v1,lop,load";
-                        load = "openamp.py";
+                        load = "assists/openamp.py";
                 };
                 lop_1 {
                         compatible = "system-device-tree-v1,lop,load";
-                        load = "cdo.py";
+                        load = "assists/cdo.py";
                         // props describes the extra properties of this assist,
                         // so they can be loaded and stored with the module
                         props = "id", "file_ext";
@@ -23,7 +23,7 @@
                 };
                 lop_2 {
                         compatible = "system-device-tree-v1,lop,load";
-                        load = "openamp-xlnx.py";
+                        load = "assists/openamp-xlnx.py";
                 };
         };
 };

@@ -28,7 +28,7 @@ import lopper
 from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
 import libfdt
 
-import cdotypes
+import assists.cdotypes
 
 def props():
     return ["id", "file_ext"]
