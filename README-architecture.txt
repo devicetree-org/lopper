@@ -50,17 +50,21 @@ A few command line notes:
  <output> file: The default output file for the modified system device tree. lopper
                 operations can output more variants as required
 
-Note that since lopper manipulates dtb's (as compiled by dtc) some information
+Note that since lopper manipulates dtb's (as compiled by dtc), some information
 that is in the source dts is lost on the output of the final dts. This includes
-comments, symbolic phandles, formatting of strings, etc. To maintain this
-information, changes to dtc are required, and while that work is planned, there
-is no estimated completion date.
+comments, symbolic phandles, formatting of strings, etc. If you are transforming
+to dts files and want to maintain this information, use the --pretty flag. This
+flag performs pre-processing and output phandle mapping to restore both
+comments and symbolic phandles to the final output.
 
-Lopper puts the preprocessed file (.pp) into the same directory as the system
-device tree. Without doing this, dtc cannot resolve labels from include files,
-and will throw an error. If we get into a mode where the system device tree's
-directory is not writeable, then we'll have to either copy everything or look
-into why dtc can't handle the split directories and include files.
+By default Lopper puts the preprocessed file (.pp) into the same directory as
+the system device tree. Since in some cases, dtc cannot resolve labels from
+include files, and will throw an error. That being said, if the -O option is
+used to specify an output directory, the preprocessed file will be placed there.
+If we get into a mode where the system device tree's directory is not writeable,
+or the -O option is breaking symbol resolution, then we'll have to either copy
+everything to the output directory, or look into why dtc can't handle the split
+directories and include files.
 
 
 Lopper processing flow:
@@ -159,8 +163,10 @@ The SystemDeviceTree object is responsible for the setup of the FDT (using dtc,
 cpp, etc, to compile it to a dtb), loading operations and assists, running
 operations, writing the default output and cleaning up any temporary files.
 
-TODO: property document all the routines and which ones are used from assists, etc
-      This will be via pydoc strings
+A snapshot of pydoc information for lopper is maintained in README.pydoc. For
+the latest detailed information on lopper, execute the following:
+
+  % pydoc3 ./lopper.py
 
 Lopper operations
 -----------------
@@ -277,11 +283,11 @@ The following types of lops are currently valid:
                 lop_15 {
                        compatible = "system-device-tree-v1,lop,modify";
                        // property add to node + matching child nodes
-                       modify = "/amba/:testprop:testvalue";
                        // nodes that match this regex will have the operation applied
-                       nodes = "/amba/.*ethernet.*phy.*";
+                       modify = "/amba/.*ethernet.*phy.*:testprop:testvalue";
+                       // note: nodes is legacy now. Just put the regex into the modify parameter
+                       // nodes = "/amba/.*ethernet.*phy.*";
                 };
-
 
 
 # node add: copies the compiled node to the target device tree
@@ -387,7 +393,7 @@ Modules must implement a function of the following type:
 
    is_compat( node, compat_string_to_test )
 
-Lopper will call that function when processing an lopper assist operation for a
+Lopper will call that function when processing a lopper assist operation for a
 specified node. The node in question and the lopper operation defined ID string
 are arguments to the function call. If the module is compatible with the passed
 ID string, it returns the function name to call for further processing and empty
