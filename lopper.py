@@ -625,10 +625,10 @@ class Lopper:
         """
 
         import csv
-        pmap = Path(phandle_file )
+        pmap = Path(phandle_file)
         pmap_data={}
         if pmap.exists():
-            with open(pmap.name) as fin:
+            with open(str(pmap)) as fin:
                 reader = csv.reader(fin, skipinitialspace=True, quotechar="'")
                 for row in reader:
                     pmap_data[row[0]]=row[1:]
@@ -1422,7 +1422,7 @@ class Lopper:
 
 
     @staticmethod
-    def dt_compile( dts_file, i_files, includes, force_overwrite=False ):
+    def dt_compile( dts_file, i_files, includes, force_overwrite=False, outdir="./" ):
         """Compile a dts file to a dtb
 
         This routine takes a dts input file, other dts include files,
@@ -1515,7 +1515,8 @@ class Lopper:
             dtcargs += (os.environ.get("LOPPER_DTC_BFLAGS") or "").split()
         for i in includes.split():
             dtcargs += ["-i", i]
-        dtcargs += ["-o", "{0}".format(output_dtb)]
+
+        dtcargs += ["-o", "{0}/{1}".format(outdir,output_dtb)]
         dtcargs += ["-I", "dts", "-O", "dtb", preprocessed_name ]
         if verbose:
             print( "[INFO]: compiling dtb: %s" % dtcargs )
@@ -1539,13 +1540,13 @@ class Lopper:
 
         # if we got here, and for some reason the output_dtb does not exist, we should
         # zero the name and return "" instead.
-        output_file = Path(output_dtb)
+        output_file = Path(outdir + "/" + output_dtb)
         try:
             output_file_path = output_file.resolve()
         except FileNotFoundError:
             output_dtb = ""
 
-        return output_dtb
+        return str(output_file)
 
     @staticmethod
     def input_file_type(infile):
@@ -1809,6 +1810,7 @@ class SystemDeviceTree:
         self.save_temps = False
         self.pretty = False
         self.FDT = ""
+        self.outdir = "./"
 
     def __comment_replacer(self,match):
         """private function to translate comments to device tree attributes"""
@@ -1925,7 +1927,7 @@ class SystemDeviceTree:
 
                 fp = fp_pretty
 
-            self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force )
+            self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir )
             self.FDT = libfdt.Fdt(open(self.dtb, mode='rb').read())
 
             fpp.close()
@@ -1950,11 +1952,11 @@ class SystemDeviceTree:
                 # TODO: this may need an output directory option, right now it drops
                 #       it where lopper is called from (which may not be writeable.
                 #       hence why our output_dir is set to "./"
-                compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force )
+                compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force, self.outdir )
                 if not compiled_file:
                     print( "[ERROR]: could not compile file %s" % ifile )
                     sys.exit(1)
-                lop.dtb = "{0}.{1}".format( Path(ifile).name, "dtb")
+                lop.dtb = compiled_file
                 self.lops.append( lop )
             elif re.search( ".dtb$", ifile ):
                 lop = Lop( ifile )
@@ -2486,7 +2488,8 @@ class SystemDeviceTree:
                                                 print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
 
                         if not self.dryrun:
-                            Lopper.write_fdt( ff, output_file_name, self, True, verbose, pretty_print )
+                            output_file_full = self.outdir + "/" + output_file_name
+                            Lopper.write_fdt( ff, output_file_full, self, True, verbose, pretty_print )
                         else:
                             print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
@@ -2998,6 +3001,7 @@ def usage():
     print('    , --werror        treat warnings as errors' )
     print('  -S, --save-temps    don\'t remove temporary files' )
     print('  -h, --help          display this help and exit')
+    print('  -O, --outdir        directory to use for output files')
     print('    , --version       output the version and exit')
     print('')
 
@@ -3025,6 +3029,7 @@ def main():
     global werror
     global save_temps
     global pretty_print
+    global outdir
 
     sdt = None
     verbose = 0
@@ -3038,8 +3043,9 @@ def main():
     werror = False
     save_temps = False
     pretty_print = False
+    outdir="./"
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:S", [ "pretty", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
+        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:SO:", [ "outdir", "pretty", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -3063,6 +3069,8 @@ def main():
             inputfiles.append(a)
         elif o in ('-a', '--assist'):
             assists.append(a)
+        elif o in ('-O', '--outdir'):
+            outdir = a
         elif o in ('-t', '--target'):
             target_domain = a
         elif o in ('-o', '--output'):
@@ -3114,6 +3122,14 @@ def main():
         usage()
         sys.exit(1)
 
+    if outdir != "./":
+        op = Path( outdir )
+        try:
+            op.resolve()
+        except:
+            print( "[ERROR]: output directory \"%s\" does not exist" % outdir )
+            sys.exit(1)
+
     # check that the input files (passed via -i) exist
     for i in inputfiles:
         inf = Path(i)
@@ -3150,6 +3166,7 @@ if __name__ == "__main__":
     device_tree.cleanup_flag = True
     device_tree.save_temps = save_temps
     device_tree.pretty = pretty_print
+    device_tree.outdir = outdir
 
     device_tree.setup( sdt, inputfiles, "", assists, force )
     device_tree.perform_lops()
