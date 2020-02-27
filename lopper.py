@@ -1533,8 +1533,6 @@ class Lopper:
                 print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
                 sys.exit(1)
 
-
-
         # cleanup: remove the .pp file
         if not save_temps:
             os.remove( preprocessed_name )
@@ -1949,11 +1947,14 @@ class SystemDeviceTree:
         for ifile in lop_files:
             if re.search( ".dts$", ifile ):
                 lop = Lop( ifile )
+                # TODO: this may need an output directory option, right now it drops
+                #       it where lopper is called from (which may not be writeable.
+                #       hence why our output_dir is set to "./"
                 compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force )
                 if not compiled_file:
                     print( "[ERROR]: could not compile file %s" % ifile )
                     sys.exit(1)
-                lop.dtb = "{0}.{1}".format(ifile, "dtb")
+                lop.dtb = "{0}.{1}".format( Path(ifile).name, "dtb")
                 self.lops.append( lop )
             elif re.search( ".dtb$", ifile ):
                 lop = Lop( ifile )
