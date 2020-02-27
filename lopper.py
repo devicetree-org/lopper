@@ -1456,7 +1456,6 @@ class Lopper:
 
         # TODO: might need to make 'dts_file' absolute for the cpp call below
         dts_filename = os.path.basename( dts_file )
-        dts_dirname = os.path.dirname( dts_file )
         dts_filename_noext = os.path.splitext(dts_filename)[0]
 
         #
@@ -1470,8 +1469,16 @@ class Lopper:
         #       writeable, then we'll have to either copy everything or look
         #       into why dtc can't handle the split directories and include
         #       files.
-        if not dts_dirname:
-            dts_dirname = "./"
+
+        # if outdir is left as the default (current dir), then we can respect
+        # the dts directory. Otherwise, we need to follow where outdir has been
+        # pointed. This may trigger the issue mentioned in the prvious comment,
+        # but we'll cross that bridge when we get to it
+        dts_dirname = outdir
+        if outdir == "./":
+            dts_file_dir = os.path.dirname( dts_file )
+            if dts_file_dir:
+                dts_dirname = dts_file_dir
         preprocessed_name = "{0}/{1}.pp".format(dts_dirname,dts_filename)
 
         includes += dts_dirname

@@ -34,6 +34,7 @@ lopper.py --help
         , --werror	  treat warnings as errors
       -S, --save-temps	  don't remove temporary files
       -h, --help	  display this help and exit
+      -O, --outdir	  directory to use for output files
        , --version	  output the version and exit
 
 Fundamentally, lopper takes an  input device tree (normally a system device tree),
