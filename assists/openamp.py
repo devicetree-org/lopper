@@ -42,6 +42,12 @@ def check_bit_set(n, k):
 
     return False
 
+def chunks(l, n):
+    # For item i in a range that is a length of l,
+    for i in range(0, len(l), n):
+        # Create an index range for l of n items:
+        yield l[i:i+n]
+
 # all the logic for applying a openamp domain to a device tree.
 # this is a really long routine that will be broken up as more examples
 # are done and it can be propery factored out.
@@ -58,33 +64,36 @@ def process_domain( tgt_node, sdt, verbose=0 ):
         print( "[ERROR]: domain node does not have a cpu link" )
         sys.exit(1)
 
-    # the cpu handle is element 0
-    cpu_prop = cpu_prop_values[0]
-    cpu_node = sdt.FDT.node_offset_by_phandle( cpu_prop )
+    sdt.node_ref_reset( "", verbose )
 
-    if verbose:
-        print( "[INFO]: cpu prop phandle: %s" % cpu_prop )
-        print( "[INFO]: cpu node: %s" % cpu_node )
+    cpu_prop_list = list( chunks(cpu_prop_values,3) )
+    # phandle, mask, mode
+    for cpu_phandle, mask, mode in cpu_prop_list:
+        # the cpu handle is element 0
+        cpu_node = sdt.FDT.node_offset_by_phandle( cpu_phandle )
 
-    ## We  need to delete any other nodes that have "compatible = cpus,cluster"
-    ## and are Not the ones we just found in the chosen node. All we have is a phandle
-    ##  so we need to:
-    ##   1) find the nodes that are compatible with the cpus,cluster
-    ##   2) check their phandle
-    ##   3) delete if it isn't the one we just got
+        if verbose:
+            print( "[INFO]: cpu prop phandle: %s" % cpu_phandle )
+            print( "[INFO]: cpu node: %s" % cpu_node )
+
+        if cpu_node > 0:
+            full_name = sdt.node_abspath( cpu_node )
+            sdt.node_ref_inc( full_name )
+
+    # The following filter code will check for nodes that are copatible to
+    # cpus,cluster and if they haven't been referenced, delete them.
     xform_path = "/"
     prop = "cpus,cluster"
     code = """
            p = Lopper.prop_get( fdt, node, 'compatible' )
            if p and "{0}" in p:
-               ph = Lopper.getphandle( fdt, node )
-               if ph != {1}:
+               refc = Lopper.refcount( sdt, node_name )
+               if refc <= 0:
+                   print( "deleting %s" % node_name )
                    return True
-               else:
-                   return False
-           else:
-               return False
-           """.format( prop, str(cpu_prop) )
+
+           return False
+           """.format( prop )
 
     if verbose:
         print( "[INFO]: filtering on:\n------%s\n-------\n" % code )
@@ -106,7 +115,7 @@ def process_domain( tgt_node, sdt, verbose=0 ):
     node_access_tracker['/'] = [ "/", "simple-bus" ]
 
     # "access" is a list of tuples: phandles + flags
-    accesss_list = []
+    access_list = []
     if 'access' in domain_properties.keys():
         access_list = domain_properties['access']
 
