@@ -381,15 +381,12 @@ class Lopper:
             node_path = node
 
         if node_number == -1:
-            print( "[ERROR]: could not find node %s" % node_path )
+            print( "[WARNING]: could not find node %s" % node_path )
             return prop_dict
 
         prop_list = Lopper.property_list( fdt, node_path )
         for p in prop_list:
-            property_val = Lopper.prop_get( fdt, node_number, p )
-            if not property_val:
-                property_val = Lopper.prop_get( fdt, node_number, p, LopperFmt.COMPOUND )
-
+            property_val = Lopper.prop_get( fdt, node_number, p, LopperFmt.COMPOUND )
             prop_dict[p] = property_val
 
         return prop_dict
