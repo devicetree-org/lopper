@@ -7,7 +7,7 @@
 	model = "Xilinx Versal A2197 Processor board revA";
 
         /* will this work ? */
-	cpus {
+        cpus: cpus {
 		#address-cells = <0x1>;
 		#size-cells = <0x0>;
 		#cpus-mask-cells = <0x1>;
@@ -781,7 +781,8 @@
 			 * bit 30: lockstep (lockstep enabled == 1)
 			 * bit 31: secure mode / normal mode (secure mode == 1)
 			 */
-			cpus = <&cpus_r5 0x2 0x80000000>;
+			/* cpus = <&cpus_r5 0x2 0x80000000>, <&cpus 0x3 0x80000000>; */
+                        cpus = <&cpus_r5 0x2 0x80000000>;
 			/*
 			 * Access specifies which resources this domain
 			 * has access to.
@@ -801,6 +802,7 @@
 			 * - ethernet card at 0xff0c0000
 			 */
 			access = <&memory_r5 0x1>, <&tcm 0x1>, <&ethernet0 0x0>;
+                        /*access = <&tcm 0x1>;*/
 		};
 	};
 
