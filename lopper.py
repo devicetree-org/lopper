@@ -2734,15 +2734,26 @@ class SystemDeviceTree:
                                     except:
                                         print( "[ERROR]:cannot rename node: %s %s" %(modify_expr[0], modify_expr[2]))
                                 else:
-                                    if self.verbose:
-                                        print( "[INFO]: node delete: %s" % modify_expr[0] )
 
+                                    node_list = []
+                                    # first we see if the node prefix is an exact match
                                     node_to_remove = Lopper.node_find( self.FDT, modify_expr[0] )
-                                    if node_to_remove > 0:
-                                        self.node_remove( node_to_remove )
+                                    # if that fails, check to see if it is a regex
+                                    if node_to_remove == -1:
+                                        first_node, node_list = Lopper.node_find_by_regex( self.FDT, modify_expr[0] , 0, True )
+                                        if not node_list:
+                                            print( "[WARNING]: Cannot find node %s for delete operation" % modify_expr[0] )
+                                            if self.werror:
+                                                sys.exit(1)
+                                        else:
+                                            if self.verbose:
+                                                print( "[INFO]: Node list found to delete %s" % node_list )
+                                            for node_to_remove in reversed(node_list):
+                                                self.node_remove( node_to_remove )
                                     else:
-                                        print( "[ERROR]: cannot find node to remove: %s" % modify_expr[0] )
-                                        sys.exit(1)
+                                        if self.verbose:
+                                            print( "[INFO]: Direct node %s match to delete " % node_to_remove )
+                                        self.node_remove( node_to_remove )
 
     # note; this operates on a node and all child nodes, unless you set recursive to False
     def property_remove( self, node_prefix = "/", prop_name = "", recursive = True ):
