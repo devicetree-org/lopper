@@ -2254,7 +2254,7 @@ class SystemDeviceTree:
 
         return -1
 
-    def nodes_refd( self ):
+    def nodes_refd( self, node_regex="" ):
         """Get a list of refererenced nodes
 
         When refcounting is enabled, this routine returns the list of nodes
@@ -2265,13 +2265,24 @@ class SystemDeviceTree:
         we can find it later.
 
         Args:
-           None
+           node_regex: limit returned nodes to those that match the regex, which
+                       is applied to the path of the nodes.
 
         Returns:
            list (strings): list of referenced nodes, or [] if there are no referenced nodes
 
         """
-        return self.node_access.keys()
+
+        nodes = self.node_access.keys()
+        if node_regex:
+            ret_nodes = []
+            for n in nodes:
+                if re.search( node_regex, n ):
+                    ret_nodes.append( n )
+
+            return ret_nodes
+        else:
+            return nodes
 
     def node_find( self, node_prefix ):
         """Finds a node by its prefix
