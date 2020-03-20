@@ -731,7 +731,7 @@ class Lopper:
 
             if pretty:
                 pm = Lopper.read_phandle_map( output_filename + ".phandle" )
-                Lopper.node_print( fdt_to_write, "/", True, pm, 0, output_filename )
+                Lopper.node_print( fdt_to_write, "/", True, pm, verbose, output_filename )
                 pass
             else:
                 Lopper.dtb_dts_export( fp.name, output_filename )
@@ -960,6 +960,18 @@ class Lopper:
         if output != sys.stdout:
             output = open( output, "w")
 
+        # a list of the possible properties that can have phandles
+        # the each name indexes to a list of: the phandle element
+        # number, the number of elements in a "record".
+        phandle_possible_properties = {
+            "interrupt-parent" : [ 1, 1 ],
+            "access" : [ 1, 2 ],
+            "address-map" : [ 2, 4 ],
+            "cpus" : [ 1, 3 ],
+            "interrupt-map" : [ 4, 7 ],
+            "iommus" : [ 1, 2 ]
+        }
+
         indent = 0
         depth_prev = 0
         for depth, nodeoffset, nodename in node_list:
@@ -989,8 +1001,18 @@ class Lopper:
             depth_prev = depth
 
             if depth != 0:
-                # print the node name
-                outstring = nodename + " {"
+                ph = Lopper.getphandle(fdt,nodeoffset)
+                # if the phandle is non-zero, lets generate a label for the
+                # node. This is just the name repeated, since unless we
+                # preprocess the file, we can't save any original label names.
+                # We could consider that in the future, but for now, this is
+                # enough to make things more readable.
+                if ph != 0:
+                    outstring = nodename + " : " + nodename + " {"
+                else:
+                    # print the node name
+                    outstring = nodename + " {"
+
                 print(outstring.rjust(len(outstring)+indent," " ), file=output)
 
             # print the properties of the node
@@ -1011,6 +1033,15 @@ class Lopper:
                     prop_type = "comment"
                 else:
                     prop_type = type(prop_val)
+
+
+                # will we look for any phandle re-writes ?
+                if prop.name in phandle_possible_properties.keys():
+                    phandle_idx, phandle_field_count = phandle_possible_properties[prop.name]
+                else:
+                    phandle_idx = 0
+                    phandle_field_count = 0
+
 
                 if prop_type == "comment":
                     outstring = ""
@@ -1073,36 +1104,42 @@ class Lopper:
                                 except:
                                     pass
 
+                            phandle_tgt_name = ""
+                            if phandle_idx != 0:
+                                # if we we are on the phandle field, within the number of fields
+                                # per element, then we need to look for a phandle replacement
+                                if element_count % phandle_field_count == phandle_idx:
+                                    try:
+                                        tgn = fdt.node_offset_by_phandle( i )
+                                        phandle_tgt_name = fdt.get_name( tgn )
+                                        if verbose > 1:
+                                            print( "[DBG+]: phandle replacement of: %s with %s" % (hex(i), phandle_tgt_name))
+                                    except:
+                                        pass
+
                             # is this the last item ?
                             if element_count == element_total:
                                 # last item, semicolon to close
                                 if list_of_nums:
-                                    outstring += "{0}>;".format( hex(i) )
+                                    if phandle_tgt_name:
+                                        outstring += "&{0}>;".format( phandle_tgt_name )
+                                    else:
+                                        outstring += "{0}>;".format( hex(i) )
                                 else:
                                     outstring += "\"{0}\";".format( i )
                             else:
                                 # not the last item ..
                                 if list_of_nums:
-                                    outstring += "{0} ".format( hex(i) )
+                                    if phandle_tgt_name:
+                                        outstring += "&{0} ".format( phandle_tgt_name )
+                                    else:
+                                        outstring += "{0} ".format( hex(i) )
                                 else:
                                     outstring += "\"{0}\",".format( i )
 
                             element_count = element_count + 1
                 else:
                     outstring = "{0} = \"{1}\";".format( prop.name, prop_val )
-
-                # do phandle replacement to symbolic names (if possible)
-                phandle_possible_properties = [ "interrupt-parent", "access", "address-map" ]
-                if prop.name in phandle_possible_properties:
-                    for ph in phandle_map.keys():
-                        # special case. This is ugly, need a better way. but for now any low
-                        # assigned phandles are not our interest, since they collide with the
-                        # flags that are part of the access tuple
-                        if prop.name == "access" and (ph == "0x1" or ph == "0x0"):
-                            pass
-                        else:
-                            outstring = re.sub( ph + " ", phandle_map[ph][0] + " ", outstring )
-                            outstring = re.sub( '@.*? ', ' ', outstring )
 
                 # finally. output the formatted and possibly phandle replaced output line
                 print( outstring.rjust(len(outstring)+indent+8," " ), file=output)
@@ -1149,7 +1186,6 @@ class Lopper:
 
         node_list = []
         node_list = Lopper.get_subnodes( fdt, node_prefix )
-        #print( "node list: %s" % node_list )
         for n in node_list:
             # build up the device tree node path
             node_name = node_prefix + n
@@ -1158,12 +1194,10 @@ class Lopper:
             prop_list = Lopper.property_list( fdt, node_name )
             # print( "prop list: %s" % prop_list )
             if "compatible" in prop_list:
-                # print( "This node has a compatible string!!!" )
                 prop_value = fdt.getprop( node, 'compatible' )
                 # split on null, since if there are multiple strings in the compat, we
                 # need them to be separate
                 vv = prop_value[:-1].decode('utf-8').split('\x00')
-                # print( "prop_value as strings: %s" % vv )
                 if not compat_string in vv:
                     if verbose:
                         print( "[INFO]: deleting node %s" % node_name )
@@ -2977,7 +3011,7 @@ class SystemDeviceTree:
                         # - and there is an associated node with phandle = <0x03>
                         # - so we need to take the phandle, and find the node that has that value
 
-                        tgt_node = self.FDT.node_offset_by_phandle( val )
+                        tgt_node = self.FDT.node_offset_by_phandle( hex(val) )
                         if not tgt_node in node_list:
                             node_list.append(tgt_node)
                             #node_list.append([depth, self.FDT.get_name(node)])
