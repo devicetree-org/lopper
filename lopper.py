@@ -986,7 +986,7 @@ class Lopper:
                     # we unwind.
                     for i in range( depth_prev, depth - 1, -1 ):
                         indent = i * 8
-                        outstring = "};"
+                        outstring = "};\n"
                         print(outstring.rjust(len(outstring)+indent," " ), file=output)
 
                     # set our new indent
@@ -994,7 +994,7 @@ class Lopper:
                 else:
                     # the depth is the same, but we still need to close the
                     # node
-                    outstring = "};"
+                    outstring = "};\n"
                     print(outstring.rjust(len(outstring)+indent," " ), file=output)
 
             # latch the depth
@@ -1087,12 +1087,15 @@ class Lopper:
                         else:
                             list_of_nums = True
 
+                        outstring_list = ""
                         if list_of_nums:
                             # we have to open with a '<', if this is a list of numbers
-                            outstring += "<"
+                            outstring_list = "<"
 
                         element_count = 1
                         element_total = len(prop_val)
+                        outstring_record = ""
+                        drop_record = False
                         for i in prop_val:
                             if list_of_nums:
                                 base = 10
@@ -1113,31 +1116,47 @@ class Lopper:
                                         tgn = fdt.node_offset_by_phandle( i )
                                         phandle_tgt_name = fdt.get_name( tgn )
                                         if verbose > 1:
-                                            print( "[DBG+]: phandle replacement of: %s with %s" % (hex(i), phandle_tgt_name))
+                                            print( "[DBG+]: [%s] phandle replacement of: %s with %s" % ( prop.name, hex(i), phandle_tgt_name))
                                     except:
-                                        pass
+                                        # we need to drop the entire record from the output, the phandle wasn't found
+                                        if verbose > 1:
+                                            print( "[DBG+]: [%s] phandle: %s not found, dropping fields" % ( prop.name, hex(i)))
+                                        drop_record = True
+
+                                # if we are on a "record" boundry, latch what we have (unless the drop
+                                # flag is set) and start gathering more
+                                if element_count % phandle_field_count == 0 and element_count != 0:
+                                    if not drop_record:
+                                        outstring_list += outstring_record
+                                    outstring_record = ""
+                                    drop_record = False
 
                             # is this the last item ?
                             if element_count == element_total:
                                 # last item, semicolon to close
                                 if list_of_nums:
                                     if phandle_tgt_name:
-                                        outstring += "&{0}>;".format( phandle_tgt_name )
+                                        outstring_record += "&{0}>;".format( phandle_tgt_name )
                                     else:
-                                        outstring += "{0}>;".format( hex(i) )
+                                        outstring_record += "{0}>;".format( hex(i) )
                                 else:
-                                    outstring += "\"{0}\";".format( i )
+                                    outstring_record += "\"{0}\";".format( i )
                             else:
                                 # not the last item ..
                                 if list_of_nums:
                                     if phandle_tgt_name:
-                                        outstring += "&{0} ".format( phandle_tgt_name )
+                                        outstring_record += "&{0} ".format( phandle_tgt_name )
                                     else:
-                                        outstring += "{0} ".format( hex(i) )
+                                        outstring_record += "{0} ".format( hex(i) )
                                 else:
-                                    outstring += "\"{0}\",".format( i )
+                                    outstring_record += "\"{0}\",".format( i )
 
                             element_count = element_count + 1
+
+                        # gather the last record
+                        outstring_list += outstring_record
+                        # add the lists string output to the overall output string
+                        outstring += outstring_list
                 else:
                     outstring = "{0} = \"{1}\";".format( prop.name, prop_val )
 
