@@ -59,6 +59,7 @@
 		address-map = <0xf1000000 &amba 0xf1000000 0xeb00000>,
 		              <0xf9000000 &amba_rpu 0xf9000000 0x10000>,
 		              <0x0 &memory 0x0 0x80000000>,
+		              <0x0 &memory_a53 0x0 0x80000000>,
 		              <0x0 &tcm 0xFFE90000 0x10000>;
 
 		cpu@0 {
@@ -750,6 +751,9 @@
 		#size-cells = <0x2>;
 		ranges;
 
+                memory_a53: memory_a53@0 {
+			reg = <0x1 0x0 0x0 0x8000000>;
+		};
 		memory_r5: memory_r5@0 {
 			reg = <0x0 0x0 0x0 0x8000000>;
 		};

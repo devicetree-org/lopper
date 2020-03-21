@@ -925,6 +925,23 @@ class Lopper:
             else:
                 pass
 
+
+    @staticmethod
+    def phandle_safe_name( phandle_name ):
+        """Make the passed name safe to use as a phandle label/reference
+
+        Args:
+            phandle_name (string): the name to use for a phandle
+
+        Returns:
+            The modified phandle safe string
+        """
+
+        safe_name = phandle_name.replace( '@', '' )
+        safe_name = safe_name.replace( '-', "_" )
+
+        return safe_name
+
     @staticmethod
     def node_print( fdt, node_path, children=False, phandle_map = {}, verbose=0, output=sys.stdout ):
         """Pretty print the details of a node
@@ -960,16 +977,27 @@ class Lopper:
         if output != sys.stdout:
             output = open( output, "w")
 
-        # a list of the possible properties that can have phandles
-        # the each name indexes to a list of: the phandle element
-        # number, the number of elements in a "record".
+        # dictionary of possible properties that can have phandles.
+        # To do the replacement, we map out the properties so we can locate any
+        # handles and do replacement on them with symbolic values. This format is
+        # internal only, and yes, could be the schema for the fields, but for now,
+        # this is easier.
+        #
+        # Each key (property name) maps to a list of: 'format', 'flag'
+        # flag is currently unused, and format is the following:
+        #
+        #    - field starting with #: is a size value, we'll look it up and add 'x'
+        #      number of fields based on it. If we can't find it, we'll just use '1'
+        #    - phandle: this is the location of a phandle, size is '1'
+        #    - anything else: is just a field we can ignore, size is '1'
+        #
         phandle_possible_properties = {
-            "interrupt-parent" : [ 1, 1 ],
-            "access" : [ 1, 2 ],
-            "address-map" : [ 2, 4 ],
-            "cpus" : [ 1, 3 ],
-            "interrupt-map" : [ 4, 7 ],
-            "iommus" : [ 1, 2 ]
+            "address-map" : [ '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells', 0 ],
+            "interrupt-parent" : [ 'phandle', 0 ],
+            "iommus" : [ 'phandle field' ],
+            "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
+            "access" : [ 'phandle flags' ],
+            "cpus" : [ 'phandle mask mode' ],
         }
 
         indent = 0
@@ -1008,7 +1036,7 @@ class Lopper:
                 # We could consider that in the future, but for now, this is
                 # enough to make things more readable.
                 if ph != 0:
-                    outstring = nodename + " : " + nodename + " {"
+                    outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
                 else:
                     # print the node name
                     outstring = nodename + " {"
@@ -1037,7 +1065,25 @@ class Lopper:
 
                 # will we look for any phandle re-writes ?
                 if prop.name in phandle_possible_properties.keys():
-                    phandle_idx, phandle_field_count = phandle_possible_properties[prop.name]
+                    property_description = phandle_possible_properties[prop.name]
+
+                    # TODO: this belongs in a function i.e. get_phandle_position()
+                    #
+                    property_fields = property_description[0].split()
+                    phandle_idx = 0
+                    phandle_field_count = 0
+                    for f in property_fields:
+                        if re.search( '#.*', f ):
+                            field_val = Lopper.prop_get( fdt, nodeoffset, f, LopperFmt.SIMPLE )
+                            if not field_val:
+                                field_val = 1
+                            phandle_field_count = phandle_field_count + field_val
+                        elif re.search( 'phandle', f ):
+                            phandle_field_count = phandle_field_count + 1
+                            phandle_idx = phandle_field_count
+                        else:
+                            # it's a placeholder field, count it as one
+                            phandle_field_count = phandle_field_count + 1
                 else:
                     phandle_idx = 0
                     phandle_field_count = 0
@@ -1064,12 +1110,30 @@ class Lopper:
                     # if the length is one, and the only element is empty '', then
                     # we just put out the name
                     if len(prop_val) == 1 and prop_val[0] == '':
-                        outstring = outstring = "{0};".format( prop.name )
+                        outstring = "{0};".format( prop.name )
                     else:
                         # otherwise, we need to iterate and output the elements
                         # as a comma separated list, except for the last item which
                         # ends with a ;
-                        outstring = outstring = "{0} = ".format( prop.name )
+                        outstring = ""
+                        outstring_list = "{0} = ".format( prop.name )
+
+                        # if the attribute was detected as potentially having a
+                        # phandle, phandle_idx will be non zero.
+                        #
+                        # To more easily pick out the elements that we should
+                        # check for phandle replacement, we generate a list of
+                        # element numbers that are potential phandles.
+                        #
+                        # We generate that list by generating all indexes from 1
+                        # to the number of elments in our list (+1), and then we
+                        # slice the list. The slice starts at the phandle index
+                        # - 1 (since our list starts at position 0), and grabs
+                        # every "nth" item, where "n" is the number of fields in
+                        # the element block (number of fields).
+                        if phandle_idx != 0:
+                            phandle_idxs = list(range(1,len(prop_val) + 1))
+                            phandle_idxs = phandle_idxs[phandle_idx - 1::phandle_field_count]
 
                         # is this a list of ints, or string ? Test the first
                         # item to know.
@@ -1087,15 +1151,15 @@ class Lopper:
                         else:
                             list_of_nums = True
 
-                        outstring_list = ""
                         if list_of_nums:
                             # we have to open with a '<', if this is a list of numbers
-                            outstring_list = "<"
+                            outstring_list += " <"
 
                         element_count = 1
                         element_total = len(prop_val)
                         outstring_record = ""
                         drop_record = False
+                        drop_all = False
                         for i in prop_val:
                             if list_of_nums:
                                 base = 10
@@ -1107,27 +1171,34 @@ class Lopper:
                                 except:
                                     pass
 
+
                             phandle_tgt_name = ""
                             if phandle_idx != 0:
                                 # if we we are on the phandle field, within the number of fields
                                 # per element, then we need to look for a phandle replacement
-                                if element_count % phandle_field_count == phandle_idx:
+                                if element_count in phandle_idxs:
                                     try:
                                         tgn = fdt.node_offset_by_phandle( i )
-                                        phandle_tgt_name = fdt.get_name( tgn )
+                                        phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
+
                                         if verbose > 1:
                                             print( "[DBG+]: [%s] phandle replacement of: %s with %s" % ( prop.name, hex(i), phandle_tgt_name))
                                     except:
                                         # we need to drop the entire record from the output, the phandle wasn't found
                                         if verbose > 1:
-                                            print( "[DBG+]: [%s] phandle: %s not found, dropping fields" % ( prop.name, hex(i)))
+                                            print( "[DBG+]: [%s] phandle: %s not found, dropping %s fields" % ( prop.name, hex(i), phandle_field_count))
+
                                         drop_record = True
+                                        if len(prop_val) == phandle_field_count:
+                                            drop_all = True
 
                                 # if we are on a "record" boundry, latch what we have (unless the drop
                                 # flag is set) and start gathering more
                                 if element_count % phandle_field_count == 0 and element_count != 0:
                                     if not drop_record:
                                         outstring_list += outstring_record
+
+                                    # reset for the next set of fields
                                     outstring_record = ""
                                     drop_record = False
 
@@ -1154,9 +1225,10 @@ class Lopper:
                             element_count = element_count + 1
 
                         # gather the last record
-                        outstring_list += outstring_record
-                        # add the lists string output to the overall output string
-                        outstring += outstring_list
+                        if not drop_all:
+                            outstring_list += outstring_record
+                            # add the lists string output to the overall output string
+                            outstring += outstring_list
                 else:
                     outstring = "{0} = \"{1}\";".format( prop.name, prop_val )
 
