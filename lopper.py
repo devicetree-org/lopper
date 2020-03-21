@@ -1182,11 +1182,11 @@ class Lopper:
                                         phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
 
                                         if verbose > 1:
-                                            print( "[DBG+]: [%s] phandle replacement of: %s with %s" % ( prop.name, hex(i), phandle_tgt_name))
+                                            print( "[DBG+]: [%s:%s] phandle replacement of: %s with %s" % ( nodename, prop.name, hex(i), phandle_tgt_name))
                                     except:
                                         # we need to drop the entire record from the output, the phandle wasn't found
                                         if verbose > 1:
-                                            print( "[DBG+]: [%s] phandle: %s not found, dropping %s fields" % ( prop.name, hex(i), phandle_field_count))
+                                            print( "[DBG+]: [%s:%s] phandle: %s not found, dropping %s fields" % ( nodename, prop.name, hex(i), phandle_field_count))
 
                                         drop_record = True
                                         if len(prop_val) == phandle_field_count:
