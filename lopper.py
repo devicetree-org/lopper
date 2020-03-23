@@ -1307,14 +1307,12 @@ class Lopper:
                                 except:
                                     pass
 
-
                             phandle_tgt_name = ""
                             if phandle_idx != 0:
                                 # if we we are on the phandle field, within the number of fields
                                 # per element, then we need to look for a phandle replacement
                                 if element_count in phandle_idxs:
                                     try:
-                                        # TODO: replace this with property_resolve_phandles()
                                         tgn = fdt.node_offset_by_phandle( i )
                                         phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
 
@@ -2449,7 +2447,7 @@ class SystemDeviceTree:
             self.node_access.clear()
 
 
-    def node_ref_all( self, node ):
+    def node_get_all_refs( self, node, property_mask="" ):
         """Return all references in a node
 
         Finds all the references starting from a given node. This includes:
@@ -2460,6 +2458,8 @@ class SystemDeviceTree:
 
         Args:
            node_name (string or int): The path to a node, or the node number
+           property_mask (list of regex): Any properties to exclude from reference
+                                          tracking
 
         Returns:
            A list of referenced nodes, or [] if no references are found
@@ -2486,6 +2486,15 @@ class SystemDeviceTree:
 
             family_tree_node = node_parent
 
+        # drop masked properties from the dictionary
+        # make a list, since we can't change the dictionary if the default
+        # iterator is used. Also, yes we could do this in the loop below, but
+        # pre-processing for this makes the logic cleaner.
+        for p in list(prop_dict.keys()):
+            for m in property_mask:
+                if re.search( m, p ):
+                    del prop_dict[p]
+
         # loop through the properties, looking for phandles, we'll chase them
         # and get references if they are valid
         for p in prop_dict.keys():
@@ -2493,7 +2502,7 @@ class SystemDeviceTree:
             for ph in phandle_nodes:
                 # don't call in for our own node, or we'll recurse forever
                 if ph != node_number:
-                    refs = self.node_ref_all( ph )
+                    refs = self.node_get_all_refs( ph, property_mask )
                     if refs:
                         reference_list.append( refs )
 
@@ -2801,7 +2810,6 @@ class SystemDeviceTree:
                                 if o_prop_name:
                                     if self.verbose > 1:
                                         print( "[DBG+]: output prop: %s val: %s" % (o_prop_name, o_prop_val))
-
 
                                 # TODO: this really should be using node_find() and we should make sure the
                                 #       output 'lop' has full paths.

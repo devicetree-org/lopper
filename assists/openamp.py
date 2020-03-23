@@ -176,7 +176,8 @@ def process_domain( tgt_node, sdt, verbose=0 ):
 
     sdt.node_ref_reset( "", 2 )
 
-    all_refs = sdt.node_ref_all( tgt_node )
+    # do not consider address-map phandles as references
+    all_refs = sdt.node_get_all_refs( tgt_node, [ ".*address-map.*" ] )
     for n in all_refs:
         abs_path = Lopper.node_abspath( sdt.FDT, n )
         sdt.node_ref_inc( abs_path )
