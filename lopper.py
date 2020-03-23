@@ -81,6 +81,7 @@ class Lopper:
     libfdt FDT objects) or SystemDeviceTree classes.
 
     """
+
     @staticmethod
     def node_find( fdt, node_prefix ):
         """Finds a node by its prefix
@@ -554,6 +555,36 @@ class Lopper:
         return retname
 
     @staticmethod
+    def node_number( fdt, node ):
+        """Get the number for the passed node
+
+        Return the node number of a node by its path, or just return
+        its number if it is already a number. This is a normalization
+        routine for node references
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node (string or ing): the name or node number to check
+
+        Returns:
+            string: node number, or -1 if the node doesn't exist
+        """
+        # is the node a number ? or do we need to look it up ?
+        node_number = -1
+
+        try:
+            node_number = int(node)
+        except ValueError:
+            node_number = Lopper.node_find( fdt, node )
+            if node_number == -1:
+                node_number, matching_nodes = Lopper.node_find_by_name( fdt, node )
+
+        if node_number == -1:
+            print( "[WARNING]: could not find node %s" % node )
+
+        return node_number
+
+    @staticmethod
     def nodes_with_property( fdt, match_propname, match_regex="",
                              start_path="/", include_children=True ):
         """Get a list of nodes with a particular property
@@ -942,6 +973,143 @@ class Lopper:
 
         return safe_name
 
+    # TODO: we'll need a way to make this more flexible, and extendible
+    @staticmethod
+    def phandle_possible_properties():
+        """Get the diectionary of properties that can contain phandles
+
+        dictionary of possible properties that can have phandles.
+        To do the replacement, we map out the properties so we can locate any
+        handles and do replacement on them with symbolic values. This format is
+        internal only, and yes, could be the schema for the fields, but for now,
+        this is easier.
+
+        Each key (property name) maps to a list of: 'format', 'flag'
+        flag is currently unused, and format is the following:
+
+           - field starting with #: is a size value, we'll look it up and add 'x'
+             number of fields based on it. If we can't find it, we'll just use '1'
+           - phandle: this is the location of a phandle, size is '1'
+           - anything else: is just a field we can ignore, size is '1'
+
+        Args:
+            None
+
+        Returns:
+            The phandle property dictionary
+        """
+
+        phandle_possible_properties = {
+            "address-map" : [ '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells', 0 ],
+            "interrupt-parent" : [ 'phandle', 0 ],
+            "iommus" : [ 'phandle field' ],
+            "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
+            "access" : [ 'phandle flags' ],
+            "cpus" : [ 'phandle mask mode' ],
+        }
+
+        return phandle_possible_properties
+
+    @staticmethod
+    def property_phandle_params( fdt, nodeoffset, property_name ):
+        """Determines the phandle elements/params of a property
+
+        Takes a property name and returns where to find a phandle in
+        that property.
+
+        Both the index of the phandle, and the number of fields in
+        the property are returned.
+
+        Args:
+            fdt (FDT): flattened device tree
+            nodeoffset (int): node number of the property
+            property_name (string): the name of the property to fetch
+
+        Returns:
+            The the phandle index and number of fields, if the node can't
+            be found 0, 0 are returned.
+        """
+        phandle_props = Lopper.phandle_possible_properties()
+        if property_name in phandle_props.keys():
+            property_description = phandle_props[property_name]
+            property_fields = property_description[0].split()
+
+            phandle_idx = 0
+            phandle_field_count = 0
+            for f in property_fields:
+                if re.search( '#.*', f ):
+                    field_val = Lopper.prop_get( fdt, nodeoffset, f, LopperFmt.SIMPLE )
+                    if not field_val:
+                        field_val = 1
+
+                    phandle_field_count = phandle_field_count + field_val
+                elif re.search( 'phandle', f ):
+                    phandle_field_count = phandle_field_count + 1
+                    phandle_idx = phandle_field_count
+                else:
+                    # it's a placeholder field, count it as one
+                    phandle_field_count = phandle_field_count + 1
+        else:
+            phandle_idx = 0
+            phandle_field_count = 0
+
+        return phandle_idx, phandle_field_count
+
+    @staticmethod
+    def property_resolve_phandles( fdt, nodeoffset, property_name ):
+        """Resolve the targets of any phandles in a property
+
+        Args:
+            fdt (FDT): flattened device tree
+            nodeoffset (int): node number of the property
+            property_name (string): the name of the property to resolve
+
+        Returns:
+            A list of all resolved phandle nodes, [] if no phandles are present
+        """
+
+        phandle_targets = []
+
+        idx, pfields = Lopper.property_phandle_params( fdt, nodeoffset, property_name )
+        if idx == 0:
+            return phandle_targets
+
+        prop_val = Lopper.prop_get( fdt, nodeoffset, property_name, LopperFmt.COMPOUND, LopperFmt.HEX )
+        if not prop_val:
+            return phandle_targets
+
+        prop_type = type(prop_val)
+        if prop_type == list:
+            phandle_idxs = list(range(1,len(prop_val) + 1))
+            phandle_idxs = phandle_idxs[idx - 1::pfields]
+
+            element_count = 1
+            element_total = len(prop_val)
+            for i in prop_val:
+                base = 10
+                if re.search( "0x", i ):
+                    base = 16
+                try:
+                    i_as_int = int(i,base)
+                    i = i_as_int
+                except:
+                    pass
+
+                if element_count in phandle_idxs:
+                    try:
+                        tgn = fdt.node_offset_by_phandle( i )
+                        phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
+                        phandle_targets.append( tgn )
+                    except:
+                        pass
+
+                element_count = element_count + 1
+        else:
+            return phandle_targets
+
+        return phandle_targets
+
+
     @staticmethod
     def node_print( fdt, node_path, children=False, phandle_map = {}, verbose=0, output=sys.stdout ):
         """Pretty print the details of a node
@@ -991,14 +1159,7 @@ class Lopper:
         #    - phandle: this is the location of a phandle, size is '1'
         #    - anything else: is just a field we can ignore, size is '1'
         #
-        phandle_possible_properties = {
-            "address-map" : [ '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells', 0 ],
-            "interrupt-parent" : [ 'phandle', 0 ],
-            "iommus" : [ 'phandle field' ],
-            "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
-            "access" : [ 'phandle flags' ],
-            "cpus" : [ 'phandle mask mode' ],
-        }
+        phandle_possible_properties = Lopper.phandle_possible_properties()
 
         indent = 0
         depth_prev = 0
@@ -1062,32 +1223,7 @@ class Lopper:
                 else:
                     prop_type = type(prop_val)
 
-
-                # will we look for any phandle re-writes ?
-                if prop.name in phandle_possible_properties.keys():
-                    property_description = phandle_possible_properties[prop.name]
-
-                    # TODO: this belongs in a function i.e. get_phandle_position()
-                    #
-                    property_fields = property_description[0].split()
-                    phandle_idx = 0
-                    phandle_field_count = 0
-                    for f in property_fields:
-                        if re.search( '#.*', f ):
-                            field_val = Lopper.prop_get( fdt, nodeoffset, f, LopperFmt.SIMPLE )
-                            if not field_val:
-                                field_val = 1
-                            phandle_field_count = phandle_field_count + field_val
-                        elif re.search( 'phandle', f ):
-                            phandle_field_count = phandle_field_count + 1
-                            phandle_idx = phandle_field_count
-                        else:
-                            # it's a placeholder field, count it as one
-                            phandle_field_count = phandle_field_count + 1
-                else:
-                    phandle_idx = 0
-                    phandle_field_count = 0
-
+                phandle_idx, phandle_field_count = Lopper.property_phandle_params(fdt, nodeoffset, prop.name)
 
                 if prop_type == "comment":
                     outstring = ""
@@ -1178,6 +1314,7 @@ class Lopper:
                                 # per element, then we need to look for a phandle replacement
                                 if element_count in phandle_idxs:
                                     try:
+                                        # TODO: replace this with property_resolve_phandles()
                                         tgn = fdt.node_offset_by_phandle( i )
                                         phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
 
@@ -2311,7 +2448,70 @@ class SystemDeviceTree:
 
             self.node_access.clear()
 
-    def node_ref_inc( self, node_name, parent=False ):
+
+    def node_ref_all( self, node ):
+        """Return all references in a node
+
+        Finds all the references starting from a given node. This includes:
+
+           - The node itself
+           - The parent nodes
+           - Any phandle referenced nodes, and any nodes they reference, etc
+
+        Args:
+           node_name (string or int): The path to a node, or the node number
+
+        Returns:
+           A list of referenced nodes, or [] if no references are found
+
+        """
+        # find all references in the tree, starting from node_name
+        reference_list = []
+
+        # is 'node' a name, or number ? Call this to make sure it is just a number
+        node_number = Lopper.node_number( self.FDT, node )
+        prop_dict = self.node_properties_as_dict( node_number )
+
+        # always add ourself!
+        reference_list.append( node_number )
+
+        # and our parents, but we don't chase all of their links, just their
+        # node numbers
+        node_parent = node_number
+        family_tree_node = node_number
+        while node_parent != 0:
+            node_parent = self.FDT.parent_offset( family_tree_node,QUIET_NOTFOUND )
+            if node_parent != 0:
+                reference_list.append( node_parent )
+
+            family_tree_node = node_parent
+
+        # loop through the properties, looking for phandles, we'll chase them
+        # and get references if they are valid
+        for p in prop_dict.keys():
+            phandle_nodes = Lopper.property_resolve_phandles( self.FDT, node_number, p )
+            for ph in phandle_nodes:
+                # don't call in for our own node, or we'll recurse forever
+                if ph != node_number:
+                    refs = self.node_ref_all( ph )
+                    if refs:
+                        reference_list.append( refs )
+
+        # flatten the list
+        flat_list = []
+        for sublist in reference_list:
+            if type(sublist) == list:
+                for i in sublist:
+                    # drop duplicates while we are at it
+                    if i not in flat_list:
+                        flat_list.append(i)
+            else:
+                if sublist not in flat_list:
+                    flat_list.append(sublist)
+
+        return flat_list
+    
+    def node_ref_inc( self, node_name, parent=False, indirect=True ):
         """increment the refcount for a node
 
         When refcounting is enabled, this routine increments the count for

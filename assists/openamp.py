@@ -174,6 +174,13 @@ def process_domain( tgt_node, sdt, verbose=0 ):
     # referenced by a <access> value in the domain
     node_access_tracker['/'] = [ "/", "simple-bus" ]
 
+    sdt.node_ref_reset( "", 2 )
+
+    all_refs = sdt.node_ref_all( tgt_node )
+    for n in all_refs:
+        abs_path = Lopper.node_abspath( sdt.FDT, n )
+        sdt.node_ref_inc( abs_path )
+
     # "access" is a list of tuples: phandles + flags
     access_list = []
     if 'access' in domain_properties.keys():
@@ -183,18 +190,15 @@ def process_domain( tgt_node, sdt, verbose=0 ):
         if verbose:
             print( "[INFO]: no access list found, skipping ..." )
     else:
-        #print( "[INFO]: converted access list: %s" % access_list )
-
-        sdt.node_ref_reset( "", 2 )
-
         # although the access list is decoded as a list, it is actually tuples, so we need
         # to get every other entry as a phandle, not every one.
+        # TODO: replace this with the new lopper routines that can resolve phandles
         for ph in access_list[::2]:
             #ph = int(ph_hex, 16)
             #print( "processing %s" % ph )
             anode = Lopper.node_by_phandle( sdt.FDT, ph )
             if anode > 0:
-                # the phandle wasn't found
+                # the phandle was found
                 node_type = sdt.property_get( anode, "compatible" )
                 node_name = sdt.FDT.get_name( anode )
                 node_parent = sdt.FDT.parent_offset(anode,QUIET_NOTFOUND)
