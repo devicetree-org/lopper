@@ -2627,6 +2627,11 @@ class SystemDeviceTree:
         return Lopper.node_find( self.FDT, node_prefix )
 
     def node_type( self, node_offset, verbose=0 ):
+        """Returns the 'type' of a node
+
+        Wrapper around the Lopper routine of the same name, to abstract the
+        FDT that is part of the SystemDeviceTree class.
+        """
         return Lopper.node_type( self.FDT, node_offset, verbose )
 
     # argument: node number, and an id string
