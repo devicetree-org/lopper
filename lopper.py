@@ -787,7 +787,7 @@ class Lopper:
                         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                         print(exc_type, fname, exc_tb.tb_lineno)
             else:
-                print( "[INFO]: no compatible assist found, skipping" )
+                print( "[INFO]: no compatible output assist found, skipping" )
                 if sdt.werror:
                     sys.exit(2)
 
@@ -2977,7 +2977,7 @@ class SystemDeviceTree:
                             already_loaded = False
                             if self.assists:
                                 for a in self.assists:
-                                    if a.file == mod_file.name:
+                                    if Path(a.file).resolve() == mod_file.resolve():
                                         already_loaded = True
                                         a.module = imported_module
                                         a.properties = assist_properties
