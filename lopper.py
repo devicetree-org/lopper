@@ -1166,7 +1166,20 @@ class Lopper:
         for depth, nodeoffset, nodename in node_list:
             if depth == 0:
                 # this is the root node
-                print( "/dts-v1/;\n/ {", file=output )
+                # peek ahead to see if there was a preamble
+                pre = Lopper.prop_get( fdt, nodeoffset, "lopper-preamble", LopperFmt.COMPOUND )
+                if pre:
+                    print( "/*", file=output )
+                    # print everything but the last element, we'll print it with no newline
+                    for p in pre[:-1]:
+                        print( "%s" % p, file=output )
+
+                    # print the last element, with no newline
+                    print( "%s" % pre[-1], file=output, end="")
+                    print( "*/\n", file=output )
+
+                # now print the opening dts info
+                print( "/dts-v1/;\n\n/ {", file=output )
             else:
                 if depth > depth_prev:
                     indent = depth * 8
@@ -1220,6 +1233,8 @@ class Lopper:
 
                 if re.search( "lopper-comment.*", prop.name ):
                     prop_type = "comment"
+                elif re.search( "lopper-preamble", prop.name ):
+                    prop_type = "preamble"
                 else:
                     prop_type = type(prop_val)
 
@@ -1240,6 +1255,9 @@ class Lopper:
                     dstring = dstring.rjust(len(dstring) + indent + 5, " " )
                     outstring = re.sub( '\n', '\n' + dstring, outstring )
 
+                elif prop_type == "preamble":
+                    # this is handled above
+                    outstring = ""
                 elif prop_type == int:
                     outstring = "{0} = <{1}>;".format( prop.name, hex(prop_val) )
                 elif prop_type == list:
@@ -2182,8 +2200,49 @@ class SystemDeviceTree:
                 shutil.copyfile( fp, fp_pretty )
                 fp = fp_pretty
 
+                with open(fp_pretty, 'r') as file:
+                    data = file.read()
+
+                # drop /dts-v1/; from the file, we'll add it back at the top first. but
+                # for now, we need it out of te way to look for any preamble to the main
+                # device tree nodes
+
+                # delete the dts opening, since we are going to capture everything
+                # from the start of the file, to the opening of the device tree
+                # nodes.
+                data = re.sub( '\/dts-v1/;', '', data )
+
+                # This captures everything at the start of the file (i.e. a comment block)
+                # and puts it into a special pre-mble property in the root node. If we don't
+                # do this, and let the comment substituion find it below, we have an invalid
+                # device tree.
+                #
+                # When printing the tree layer, we'll pop it out and put it back as an
+                # opening comment.
+                #
+                preamble_regex = re.compile( '(^.*?)(/ {)', re.MULTILINE | re.DOTALL )
+                preamble = re.search( preamble_regex, data )
+                if preamble:
+
+                    # is it a comment block ? if so, we want to mark it specially so
+                    # it can be put back at the header later.
+                    comment_regex = re.compile( '(/\*)(.*?)(\*/)', re.MULTILINE | re.DOTALL )
+                    comment = re.search( comment_regex, preamble.group(1) )
+                    if comment:
+                        comment = comment.group(2)
+                        if comment:
+                            comment = re.sub( "^\n", '', comment )
+                            comment = re.sub( "\n$", '', comment )
+                            comment = "    lopper-preamble = \"{0}\";".format( comment )
+
+                    data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data )
+
+                # put the dts start info back in
+                data = re.sub( '^', '/dts-v1/;\n\n', data )
+
+                # finally, do comment substitution
                 with open(fp_pretty) as f:
-                    fp_comments_as_attributes = self.__comment_translate(f.read())
+                    fp_comments_as_attributes = self.__comment_translate(data)
 
                 f = open( fp_pretty, 'w' )
                 f.write( fp_comments_as_attributes )
@@ -2982,10 +3041,13 @@ class SystemDeviceTree:
                             already_loaded = False
                             if self.assists:
                                 for a in self.assists:
-                                    if Path(a.file).resolve() == mod_file.resolve():
-                                        already_loaded = True
-                                        a.module = imported_module
-                                        a.properties = assist_properties
+                                    try:
+                                        if Path(a.file).resolve() == mod_file.resolve():
+                                            already_loaded = True
+                                            a.module = imported_module
+                                            a.properties = assist_properties
+                                    except:
+                                        pass
                             if not already_loaded:
                                 if verbose > 1:
                                     if prop_extension:
