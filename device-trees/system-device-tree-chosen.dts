@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2019,2020 Xilinx Inc. All rights reserved.
+ *
+ * Author:
+ *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+
 / {
          chosen {
                 #address-cells = <0x2>;

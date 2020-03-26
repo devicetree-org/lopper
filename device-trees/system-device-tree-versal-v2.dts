@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) 2019,2020 Xilinx Inc. All rights reserved.
+ *
+ * Author:
+ *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 /dts-v1/;
 
 / {
@@ -6,7 +15,7 @@
 	#size-cells = <0x2>;
 	model = "Xilinx Versal A2197 Processor board revA";
 
-        /* will this work ? */
+        /* test comment */
         cpus: cpus {
 		#address-cells = <0x1>;
 		#size-cells = <0x0>;
@@ -883,3 +892,4 @@
 		reg = <0x0 0x0 0x0 0x80000000>;
 	};
 };
+
