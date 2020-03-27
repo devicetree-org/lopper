@@ -67,8 +67,7 @@ def openamp_process_cpus( sdt, domain_path, domain_properties, verbose = 0 ):
     for cpu_phandle, mask, mode in cpu_prop_list:
         # 1) we have to replace the cpus index in the rpu node
         # the cpu handle is element 0
-        cpu_mask = cpu_prop_values[1]
-
+        cpu_mask = mask
         if verbose:
             print( "[INFO]: cb cpu mask: %s" % hex(cpu_mask))
 
