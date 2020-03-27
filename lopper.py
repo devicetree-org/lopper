@@ -234,7 +234,7 @@ class Lopper:
         return matching_node, matching_nodes
 
     @staticmethod
-    def node_find_by_regex( fdt, node_regex, starting_node = 0, multi_match=False ):
+    def node_find_by_regex( fdt, node_regex, starting_node = 0, multi_match=False, paths_not_numbers=False ):
         """Finds a node by a regex /path/<regex>/<name>
 
         Searches for nodes that match a regex (path + name).
@@ -250,6 +250,8 @@ class Lopper:
             starting_node (int): node number to use as the search starting point
             multi_match (bool,optional): flag to indicate if more than one matching
                                          node should be found, default is False
+            paths_not_numbers (bool,optional): flag to request paths, not node numbers
+                                               be returned
 
         Returns:
             tuple: first matching node, list of matching nodes. -1 and [] if no match is found
@@ -285,6 +287,15 @@ class Lopper:
             else:
                 # no name, get the next node
                 nn, depth = fdt.next_node(nn, depth, (libfdt.BADOFFSET,))
+
+        # convert everything to paths if requested. This could have been in the
+        # loop, but let's keep it simple :D
+        if paths_not_numbers:
+            matching_node = Lopper.node_abspath( fdt, matching_node )
+            matching_node_list = matching_nodes
+            matching_nodes = []
+            for m in matching_node_list:
+                matching_nodes.append( Lopper.node_abspath( fdt, m ) )
 
         return matching_node, matching_nodes
 
