@@ -2207,10 +2207,12 @@ class SystemDeviceTree:
                 # for now, we need it out of te way to look for any preamble to the main
                 # device tree nodes
 
-                # delete the dts opening, since we are going to capture everything
-                # from the start of the file, to the opening of the device tree
-                # nodes.
-                data = re.sub( '\/dts-v1/;', '', data )
+                dts_regex = re.compile( '\/dts-v1/;' )
+                if re.search( dts_regex, data ):
+                    # delete the dts opening, since we are going to capture everything
+                    # from the start of the file, to the opening of the device tree
+                    # nodes.
+                    data = re.sub( dts_regex, '', data )
 
                 # This captures everything at the start of the file (i.e. a comment block)
                 # and puts it into a special pre-mble property in the root node. If we don't
@@ -2223,7 +2225,6 @@ class SystemDeviceTree:
                 preamble_regex = re.compile( '(^.*?)(/ {)', re.MULTILINE | re.DOTALL )
                 preamble = re.search( preamble_regex, data )
                 if preamble:
-
                     # is it a comment block ? if so, we want to mark it specially so
                     # it can be put back at the header later.
                     comment_regex = re.compile( '(/\*)(.*?)(\*/)', re.MULTILINE | re.DOTALL )
@@ -2235,7 +2236,7 @@ class SystemDeviceTree:
                             comment = re.sub( "\n$", '', comment )
                             comment = "    lopper-preamble = \"{0}\";".format( comment )
 
-                    data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data )
+                        data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data )
 
                 # put the dts start info back in
                 data = re.sub( '^', '/dts-v1/;\n\n', data )
