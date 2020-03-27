@@ -60,7 +60,7 @@ def openamp_process_cpus( sdt, domain_path, domain_properties, verbose = 0 ):
         sys.exit(1)
 
     cpu_prop_list = list( chunks(cpu_prop_values,3) )
-    sub_cpus_to_delete = []
+    sub_cpus_all = []
 
     # loop through the nodes, we want to refcount the sub-cpu nodes
     # and their parents, we'll delete anything that isn't used later.
@@ -76,7 +76,8 @@ def openamp_process_cpus( sdt, domain_path, domain_properties, verbose = 0 ):
             # couldn't find the node, skip
             continue
 
-        first_cpu, sub_cpus = Lopper.node_find_by_regex( sdt.FDT, "cpu@.*", cpu_node, True )
+        first_cpu, sub_cpus = Lopper.node_find_by_regex( sdt.FDT, "cpu@.*", cpu_node, True, True )
+        sub_cpus_all = list(set( sub_cpus + sub_cpus_all ))
 
         if verbose:
             print( "[INFO]: cpu prop phandle: %s" % cpu_phandle )
@@ -93,20 +94,7 @@ def openamp_process_cpus( sdt, domain_path, domain_properties, verbose = 0 ):
                 try:
                     sub_cpu_node = sub_cpus[idx]
                     # refcount it AND the parent
-                    full_sub_path = Lopper.node_abspath( sdt.FDT, sub_cpu_node )
-                    sdt.node_ref_inc( full_sub_path, True )
-                except:
-                    pass
-            else:
-                # TODO: maybe a way to queue actions generically for this ?
-                #
-                # the bit isn't set, but if the cpu actually exists, we
-                # should mark it for deletion
-                #
-                # we log the full path, since the node number may change due to
-                # other deletions.
-                try:
-                    sub_cpus_to_delete.append( Lopper.node_abspath( sdt.FDT, sub_cpus[idx] ) )
+                    sdt.node_ref_inc( sub_cpu_node, True )
                 except:
                     pass
 
@@ -137,13 +125,16 @@ def openamp_process_cpus( sdt, domain_path, domain_properties, verbose = 0 ):
     # the action will be taken if the code block returns 'true'
     Lopper.node_filter( sdt, xform_path, LopperAction.DELETE, code, verbose )
 
-    # ref count delete #2. on the sub cpu fields, if they are on our list from above
-    # we remove them.
-    for s in sub_cpus_to_delete:
-        node_num = sdt.FDT.path_offset( s )
-        if node_num > 0:
-            sdt.FDT.del_node( node_num, True )
-
+    for s in sub_cpus_all:
+        if s not in ref_nodes:
+            node_num = Lopper.node_number( sdt.FDT, s )
+            if node_num > 0:
+                try:
+                    sdt.FDT.del_node( node_num, True )
+                except:
+                    pass
+            else:
+                pass
 
 
 # all the logic for applying a openamp domain to a device tree.
