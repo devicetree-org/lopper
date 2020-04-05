@@ -26,8 +26,6 @@ import importlib
 from lopper import Lopper
 from lopper import LopperFmt
 import lopper
-from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
-import libfdt
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,xlnx-rpu", compat_string_to_test):
@@ -41,18 +39,18 @@ def check_bit_set(n, k):
 
     return False
 
-# domain_node: is the openamp domain node
+# tgt_node: is the openamp domain node number
 # sdt: is the system device tree
 # TODO: this routine needs to be factored and made smaller
-def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
+def xlnx_openamp_rpu( tgt_node, sdt, verbose=0 ):
     if verbose:
-        print( "[INFO]: cb: xlnx_openamp_rpu( %s, %s, %s )" % (domain_node, sdt, verbose))
+        print( "[INFO]: cb: xlnx_openamp_rpu( %s, %s, %s )" % (tgt_node, sdt, verbose))
 
-    tgt_domain_name = sdt.node_abspath( domain_node )
+    domain_node = sdt.tree[tgt_node]
 
-    # temp; PoC:
-    cpu_prop_values = sdt.property_get( domain_node, "cpus", LopperFmt.COMPOUND )
-    if cpu_prop_values == "":
+    try:
+        cpu_prop_values = domain_node['cpus'].value
+    except:
         return False
 
     # 1) we have to replace the cpus index in the rpu node
@@ -63,19 +61,21 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
         print( "[INFO]: cb cpu mask: %s" % cpu_mask )
 
     # find the added rpu node
-    rpu_node,rps = sdt.node_find_by_name( "zynqmp-rpu" )
-    if not rpu_node:
+    try:
+        rpu_node = sdt.tree[".*zynqmp-rpu" ]
+    except:
         print( "[ERROR]: cannot find the target rpu node" )
         return False
 
-    rpu_path = sdt.node_abspath( rpu_node )
+    rpu_path = rpu_node.abs_path
 
     # Note: we may eventually just walk the tree and look for __<symbol>__ and
     #       use that as a trigger for a replacement op. But for now, we will
     #       run our list of things to change, and search them out specifically
     # find the cpu node of the rpu node
-    rpu_cpu_node = sdt.node_find( rpu_path + "/__cpu__" )
-    if not rpu_cpu_node:
+    try:
+        rpu_cpu_node = sdt.tree[ rpu_path + "/__cpu__" ]
+    except:
         print( "[ERROR]: cannot find the target rpu node" )
         return False
 
@@ -85,10 +85,12 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     # shift the mask right by one
     nn = cpu_mask >> 1
     new_rpu_name = "r5_{}".format(nn)
-    sdt.FDT.set_name( rpu_cpu_node, new_rpu_name )
 
-    # double check by searching on the new name
-    rpu_cpu_node = sdt.node_find( rpu_path + "/" + new_rpu_name )
+    ## TODO: can we force a tree sync on this assignment ???
+    rpu_cpu_node.name = new_rpu_name
+
+    # we need to pickup the modified named node
+    sdt.tree.sync()
 
     # 2) we have to fix the core-conf mode
     cpus_mod = cpu_prop_values[2]
@@ -101,7 +103,11 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     else:
         core_conf = "split"
 
-    sdt.property_set( rpu_node, 'core_conf', core_conf )
+    try:
+        rpu_node['core_conf'].value = core_conf
+        rpu_node.sync( sdt.FDT )
+    except Exception as e:
+        print( "[WARNING]: exception: %s" % e )
 
     # 3) handle the memory-region
 
@@ -116,46 +122,22 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     #       utility in lopper and use it here and in the openamp domain
     #       processing.
     #
-    memory_node = sdt.node_find( "/reserved-memory" )
-    if memory_node >= 0:
+    try:
+        memory_node = sdt.tree[ "/reserved-memory" ]
+    except:
+        memory_node = None
+
+    if memory_node:
         if verbose:
             print( "[INFO]: memory node found, walking for memory regions" )
 
-        depth = 0
-        node = memory_node
+
         phandle_list = []
-        while depth >= 0:
-            if node and verbose > 2:
-                print( "   --> node name: %s" % sdt.FDT.get_name(node) )
-
-            poffset = sdt.FDT.first_property_offset(node, QUIET_NOTFOUND)
-            while poffset > 0:
-                # if we delete the only property of a node, all calls to the FDT
-                # will throw an except. So if we get an exception, we set our poffset
-                # to zero to escape the loop.
-                try:
-                    prop = sdt.FDT.get_property_by_offset(poffset)
-                except:
-                    poffset = 0
-                    continue
-
-                pname = prop.name
-                if verbose > 2:
-                    print( "       propname: %s" % prop.name )
-                if re.search( pname, "phandle" ):
-                    # Note: the propery we found is equivalent to: sdt.FDT.get_phandle( node )
-                    #       since we are processing the already pruned node, the phandles show
-                    #       up as properties. If that changes, we may go to the raw call.
-                    pval = sdt.property_get( node, pname )
-                    pval2 = sdt.FDT.get_phandle( node )
-                    if pval == pval2:
-                        phandle_list.append( pval )
-
-                poffset = sdt.FDT.next_property_offset(poffset, QUIET_NOTFOUND)
-
-            if verbose > 2:
-                print( "" )
-            node, depth = sdt.FDT.next_node(node, depth, (libfdt.BADOFFSET,))
+        sub_mem_nodes = memory_node.subnodes()
+        for n in sub_mem_nodes:
+            for p in n:
+                if p.name == "phandle":
+                    phandle_list = phandle_list + p.value
 
         if phandle_list:
             # we found some phandles, these need to go into the "memory-region" property of
@@ -163,11 +145,13 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
             if verbose:
                 print( "[INFO]: setting memory-region to: %s" % phandle_list )
             try:
-                rpu_cpu_node = sdt.node_find( rpu_path + "/" + new_rpu_name )
+                rpu_cpu_node = sdt.tree[ rpu_path + "/" + new_rpu_name ]
 
                 # TODO: the list of phandles is coming out as <a b c> versus <a>,<b>,<c>
                 #       this may or may not work at runtime and needs to be investigated.
-                sdt.property_set( rpu_cpu_node, "memory-region", phandle_list )
+                rpu_cpu_node["memory-region"].value = phandle_list
+                rpu_cpu_node.sync( sdt.FDT )
+
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -179,16 +163,11 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     #
     # We lookup the values in the domain node, and copy them to the zynqmp node
 
-    # get the domain node number, in case it was re-packed or changed
-    domain_node = sdt.node_find( tgt_domain_name )
-    rpu_cpu_node = sdt.node_find( rpu_path + "/" + new_rpu_name )
+    a_cells = domain_node[ "#address-cells" ].value
+    s_cells = domain_node[ "#size-cells" ].value
 
-    a_cells = sdt.property_get( domain_node, "#address-cells" )
-    s_cells = sdt.property_get( domain_node, "#size-cells" )
-
-    # TODO: should check for an exception
-    sdt.property_set( rpu_cpu_node, "#address-cells", a_cells )
-    sdt.property_set( rpu_cpu_node, "#size-cells", s_cells )
+    rpu_cpu_node["#address-cells"].value = a_cells
+    rpu_cpu_node["#size-cells"].value = s_cells
 
     # 5) mboxes
     #
@@ -199,7 +178,7 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     #       to factor it out at some point.
 
     # "access" is a list of tuples: phandles + flags
-    access_list = sdt.property_get( domain_node, "access", LopperFmt.COMPOUND )
+    access_list = domain_node["access"].value
 
     if not access_list:
         if verbose:
@@ -207,26 +186,26 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
     else:
         ipi_access = []
         flag_idx = 1
+
         # although the access list is decoded as a list, it is actually pairs, so we need
         # to get every other entry as a phandle, not every one.
-        # TODO: yah, there's a more python way to do this iterator.
         for ph in access_list[::2]:
             flags = access_list[flag_idx]
             flag_idx = flag_idx + 2
 
-            anode = Lopper.node_by_phandle( sdt.FDT, ph )
-            if anode > 0:
-                node_parent = sdt.FDT.parent_offset(anode,QUIET_NOTFOUND)
+            anode = sdt.tree.pnode(ph)
+            if anode:
+                node_parent = anode.parent
             else:
                 # set this to skip the node_parent processing below
                 node_parent = 0
 
             if node_parent:
-                parent_node_type = sdt.property_get( node_parent, "compatible" )
-                parent_node_name = sdt.FDT.get_name( node_parent )
-                node_grand_parent = sdt.FDT.parent_offset(node_parent,QUIET_NOTFOUND)
+                parent_node_type = node_parent.type
+                parent_node_name = node_parent.name
+                node_grand_parent = node_parent.parent
 
-                if re.search( "xlnx,zynqmp-ipi-mailbox", parent_node_type ):
+                if "xlnx,zynqmp-ipi-mailbox" in parent_node_type:
                     if verbose > 1:
                         print( "[INFO]: node parent is an ipi (%s)" % parent_node_name)
 
@@ -290,8 +269,10 @@ def xlnx_openamp_rpu( domain_node, sdt, verbose=0 ):
             if mboxes_prop:
                 # drop a trailing \0 if it was added above
                 mbox_names = mbox_names.rstrip('\0')
-                sdt.property_set( rpu_cpu_node, "mboxes", mboxes_prop )
-                sdt.property_set( rpu_cpu_node, "mbox-names", mbox_names )
+                rpu_cpu_node["mboxes"].value = mboxes_prop
+                rpu_cpu_node["mbox-names"].value = mbox_names
+                rpu_cpu_node.sync( sdt.FDT )
+
 
     return True
 

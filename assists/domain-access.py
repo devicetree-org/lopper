@@ -27,8 +27,6 @@ from lopper import Lopper
 from lopper import LopperFmt
 from lopper import LopperAction
 import lopper
-from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
-import libfdt
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "access-domain,domain-v1", compat_string_to_test):
@@ -42,33 +40,34 @@ def check_bit_set(n, k):
 
     return False
 
-# domain_node: is the openamp domain node
+# tgt_node: is the openamp domain node number
 # sdt: is the system device tree
-def core_domain_access( domain_node, sdt, verbose=0 ):
+def core_domain_access( tgt_node, sdt, verbose=0 ):
     if verbose:
         print( "[INFO]: cb: core_domain_access( %s, %s, %s )" % (domain_node, sdt, verbose))
 
-    sdt.node_ref_reset( "", 2 )
+    # reset the treewide ref counting
+    sdt.tree.ref = 0
 
-    tgt_domain_name = sdt.node_abspath( domain_node )
-    access_list = sdt.property_get( domain_node, "access", LopperFmt.COMPOUND )
+    domain_node = sdt.tree[tgt_node]
+
+    access_list = domain_node["access"].value
     if access_list:
         for ph in access_list[::2]:
-            anode = Lopper.node_by_phandle( sdt.FDT, ph )
-            if anode > 0:
-                full_name = sdt.node_abspath( anode )
-                sdt.node_ref_inc( full_name, True )
+            anode = sdt.tree.pnode( ph )
+            if anode:
+                anode.ref = 1
 
-        refd_nodes = sdt.nodes_refd()
+        refd_nodes = sdt.tree.refd()
 
         code = """
-                p = Lopper.refcount( sdt, node_name )
+                p = node.ref
                 if p <= 0:
                     return True
                 else:
                     return False
                 """
         # delete any unreferenced nodes
-        Lopper.node_filter( sdt, "/", LopperAction.DELETE, code, verbose )
+        sdt.tree.filter( "/", LopperAction.DELETE, code, verbose )
 
     return True

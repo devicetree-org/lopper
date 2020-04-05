@@ -30,7 +30,9 @@
                 lop_2 {
                         // node name modify
                         compatible = "system-device-tree-v1,lop,modify";
+                        //modify = "/cpus_r5::";
                         modify = "/cpus_r5/::/cpus/";
+                        //noexec;
                 };
                 lop_3 {
                         compatible = "system-device-tree-v1,lop,modify";

@@ -25,10 +25,8 @@ import contextlib
 import importlib
 from lopper import Lopper
 from lopper import LopperFmt
-from lopper import LopperAction
+from lopper_tree import LopperAction
 import lopper
-from libfdt import Fdt, FdtSw, FdtException, QUIET_NOTFOUND, QUIET_ALL
-import libfdt
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,domain-v1", compat_string_to_test):
@@ -49,13 +47,13 @@ def chunks(l, n):
         yield l[i:i+n]
 
 
-def openamp_process_cpus( sdt, domain_path, domain_properties, verbose = 0 ):
+def openamp_process_cpus( sdt, domain_node, verbose = 0 ):
     if verbose > 1:
         print( "[DBG+]: openamp_process_cpus" )
 
-    if 'cpus' in domain_properties.keys():
-        cpu_prop_values = domain_properties['cpus']
-    else:
+    try:
+        cpu_prop_values = domain_node['cpus'].value
+    except:
         print( "[ERROR]: domain node does not have a cpu link" )
         sys.exit(1)
 
@@ -65,19 +63,18 @@ def openamp_process_cpus( sdt, domain_path, domain_properties, verbose = 0 ):
     # loop through the nodes, we want to refcount the sub-cpu nodes
     # and their parents, we'll delete anything that isn't used later.
     for cpu_phandle, mask, mode in cpu_prop_list:
-        # 1) we have to replace the cpus index in the rpu node
-        # the cpu handle is element 0
         cpu_mask = mask
         if verbose:
             print( "[INFO]: cb cpu mask: %s" % hex(cpu_mask))
 
-        cpu_node = sdt.FDT.node_offset_by_phandle( cpu_phandle )
-        if cpu_node <= 0:
+        try:
+            cpu_node = sdt.tree.pnode(cpu_phandle)
+        except:
             # couldn't find the node, skip
             continue
 
-        first_cpu, sub_cpus = Lopper.node_find_by_regex( sdt.FDT, "cpu@.*", cpu_node, True, True )
-        sub_cpus_all = list(set( sub_cpus + sub_cpus_all ))
+        sub_cpus = sdt.tree.subnodes( cpu_node, "cpu@.*" )
+        sub_cpus_all = sub_cpus + sub_cpus_all
 
         if verbose:
             print( "[INFO]: cpu prop phandle: %s" % cpu_phandle )
@@ -94,14 +91,14 @@ def openamp_process_cpus( sdt, domain_path, domain_properties, verbose = 0 ):
                 try:
                     sub_cpu_node = sub_cpus[idx]
                     # refcount it AND the parent
-                    sdt.node_ref_inc( sub_cpu_node, True )
+                    sdt.tree.ref_all( sub_cpu_node, True )
                 except:
                     pass
 
     # now we do two types of refcount delete
     #   - on the cpu clusters
     #   - on the cpus within a cluster
-    ref_nodes = sdt.nodes_refd( "/cpus.*/cpu.*" )
+    ref_nodes = sdt.tree.refd( "/cpus.*/cpu.*" )
     if verbose:
         print( "[INFO]: openamp: referenced cpus are: %s" % ref_nodes )
 
@@ -110,10 +107,9 @@ def openamp_process_cpus( sdt, domain_path, domain_properties, verbose = 0 ):
     xform_path = "/"
     prop = "cpus,cluster"
     code = """
-             p = Lopper.prop_get( fdt, node, 'compatible' )
+             p = node.propval('compatible')
              if p and "{0}" in p:
-                 refc = Lopper.refcount( sdt, node_name )
-                 if refc <= 0:
+                 if node.ref <= 0:
                      return True
 
              return False
@@ -123,19 +119,15 @@ def openamp_process_cpus( sdt, domain_path, domain_properties, verbose = 0 ):
         print( "[INFO]: filtering on:\n------%s\n-------\n" % code )
 
     # the action will be taken if the code block returns 'true'
-    Lopper.node_filter( sdt, xform_path, LopperAction.DELETE, code, verbose )
+    # Lopper.node_filter( sdt, xform_path, LopperAction.DELETE, code, verbose )
+    sdt.tree.filter( xform_path, LopperAction.DELETE, code, None, verbose )
 
     for s in sub_cpus_all:
         if s not in ref_nodes:
-            node_num = Lopper.node_number( sdt.FDT, s )
-            if node_num > 0:
-                try:
-                    sdt.FDT.del_node( node_num, True )
-                except:
-                    pass
-            else:
-                pass
-
+            try:
+                sdt.tree.delete( s )
+            except Exception as e:
+                print( "[WARNING]: %s" % e )
 
 # all the logic for applying a openamp domain to a device tree.
 # this is a really long routine that will be broken up as more examples
@@ -144,38 +136,33 @@ def process_domain( tgt_node, sdt, verbose=0 ):
     if verbose:
         print( "[INFO]: cb: process_domain( %s, %s, %s )" % (tgt_node, sdt, verbose))
 
-    tgt_domain = sdt.node_abspath( tgt_node )
-    domain_properties = sdt.node_properties_as_dict( tgt_domain, verbose )
+    domain_node = sdt.tree[tgt_node]
 
-    sdt.node_ref_reset( "", verbose )
+    sdt.tree.ref( 0 )
 
-    openamp_process_cpus( sdt, tgt_domain, domain_properties, verbose )
-
-    # we must re-find the domain node, since its numbering may have
-    # changed due to the node_filter deleting things
-    tgt_node = sdt.node_find( tgt_domain )
+    openamp_process_cpus( sdt, domain_node, verbose )
 
     # lets track any nodes that are referenced by access parameters. We use this
     # for a second patch to drop any nodes that are not accessed, and hence should
     # be removed
-    # TODO: remove this for the new systemdevicetree internal tracking (node_refd)
     node_access_tracker = {}
     # we want to track child nodes of "/", if they are of type simple-bus AND they are
     # referenced by a <access> value in the domain
     node_access_tracker['/'] = [ "/", "simple-bus" ]
 
-    sdt.node_ref_reset( "", 2 )
+    sdt.tree.ref( 0 )
 
     # do not consider address-map phandles as references
-    all_refs = sdt.node_get_all_refs( tgt_node, [ ".*address-map.*" ] )
+    all_refs = domain_node.resolve_all_refs( None, [ ".*address-map.*" ] )
     for n in all_refs:
-        abs_path = Lopper.node_abspath( sdt.FDT, n )
-        sdt.node_ref_inc( abs_path )
+        n.ref = 1
 
     # "access" is a list of tuples: phandles + flags
     access_list = []
-    if 'access' in domain_properties.keys():
-        access_list = domain_properties['access']
+    try:
+        access_list = domain_node['access'].value
+    except:
+        pass
 
     if not access_list:
         if verbose:
@@ -183,18 +170,15 @@ def process_domain( tgt_node, sdt, verbose=0 ):
     else:
         # although the access list is decoded as a list, it is actually tuples, so we need
         # to get every other entry as a phandle, not every one.
-        # TODO: replace this with the new lopper routines that can resolve phandles
         for ph in access_list[::2]:
-            #ph = int(ph_hex, 16)
-            #print( "processing %s" % ph )
-            anode = Lopper.node_by_phandle( sdt.FDT, ph )
-            if anode > 0:
+            anode = sdt.tree.pnode( ph )
+            if anode:
                 # the phandle was found
-                node_type = sdt.property_get( anode, "compatible" )
-                node_name = sdt.FDT.get_name( anode )
-                node_parent = sdt.FDT.parent_offset(anode,QUIET_NOTFOUND)
+                node_type = anode.type[0]
+                node_name = anode.name
+                node_parent = anode.parent
             else:
-                # the phandle wasn't valid. Skip to the next access list item
+                 # the phandle wasn't valid. Skip to the next access list item
                 if verbose > 0:
                     print( "[DBG+]: WARNING: access item not found by phandle" )
 
@@ -203,21 +187,18 @@ def process_domain( tgt_node, sdt, verbose=0 ):
             if re.search( "simple-bus", node_type ):
                 if verbose > 1:
                     print( "[INFO]: access is a simple-bus (%s), leaving all nodes" % node_name)
-                # refcount the bus
-                full_name = sdt.node_abspath( anode )
-                sdt.node_ref_inc( full_name )
+                # refcount the bus (this node)
+                anode.ref = 1
             else:
                 # The node is *not* a simple bus, so we must do more processing
-
                 # a) If the node parent is something other than zero, the node is nested, so
                 #    we have to do more processing.
                 #    Note: this should be recursive eventually, but for now, we keep it simple
                 # print( "node name: %s node parent: %s" % (node_name, node_parent) )
                 if node_parent:
-                    parent_node_type = sdt.node_type( node_parent )
-                    # TODO: could wrap the get_name call as well in a lopper static function
-                    parent_node_name = sdt.FDT.get_name( node_parent )
-                    node_grand_parent = sdt.FDT.parent_offset(node_parent,QUIET_NOTFOUND)
+                    parent_node_type = node_parent.type[0]
+                    parent_node_name = node_parent.name
+                    node_grand_parent = node_parent.parent
                     if not parent_node_type:
                         # is it a special name ? .. if it is, we'll give it a type to normalize the
                         # code below
@@ -227,35 +208,41 @@ def process_domain( tgt_node, sdt, verbose=0 ):
                             # if there's no type and no special name, we need to bail
                             continue
 
-                    # if the parent is a simple bus, then something withing the bus had an
+                    # if the parent is a simple bus, then something within the bus had an
                     # <access>. We need to refcount and delete anything that isn't accessed.
                     if re.search( "simple-bus", parent_node_type ):
                         # refcount the bus
-                        full_name = sdt.node_abspath( node_parent )
-                        sdt.node_ref_inc( full_name )
-
-                        if not full_name in node_access_tracker:
-                            node_access_tracker[full_name] = [ full_name, "*" ]
+                        if not node_parent.abs_path in node_access_tracker:
+                            node_access_tracker[node_parent.abs_path] = [ node_parent.abs_path, "*" ]
 
                         if verbose > 1:
-                            print( "[INFO]: node parent is a simple-bus (%s), dropping sibling nodes" % parent_node_name)
+                            print( "[INFO]: node's (%s)  parent is a simple-bus (%s), dropping sibling nodes" % (anode.abs_path, parent_node_name))
 
-                        full_name = sdt.node_abspath( anode )
-                        sdt.node_ref_inc( full_name )
-
+                        sdt.tree.ref_all( anode, True )
                     elif re.search( "reserved-memory", parent_node_type ):
                         if verbose > 1:
                             print( "[INFO]: reserved memory processing for: %s" % node_name)
 
-                        full_name = sdt.node_abspath( node_parent )
-                        if not full_name in node_access_tracker:
-                            node_access_tracker[full_name] = [ full_name, "*" ]
+                        if not node_parent.abs_path in node_access_tracker:
+                            node_access_tracker[node_parent.abs_path] = [ node_parent.abs_path, "*" ]
 
                         # Increment a reference to the current node, since we've added the parent node
                         # to a list of nodes that we'll use to check for referenced children later. Anything
                         # with no reference, will be removed.
-                        full_name = sdt.node_abspath( anode )
-                        sdt.node_ref_inc( full_name )
+                        anode.ref = 1
+
+        # filter #1:
+        #    - starting at /
+        #    - drop any unreferenced nodes that are of type simple-bus
+
+        # filter #2:
+        #    - starting at simple-bus nodes
+        #    - drop any unreferenced elements
+
+        # filter #3:
+        #    - starting at reserved memory parent
+        #    - drop any unreferenced elements
+
 
         for n, value in node_access_tracker.values():
             # xform_path is the path to the node that was tracked, so this is a potential
@@ -265,7 +252,7 @@ def process_domain( tgt_node, sdt, verbose=0 ):
             xform_path = n
             if value == "*":
                 code = """
-                       p = Lopper.refcount( sdt, node_name )
+                       p = node.ref
                        if p <= 0:
                            return True
                        else:
@@ -274,10 +261,10 @@ def process_domain( tgt_node, sdt, verbose=0 ):
             else:
                 prop = value
                 code = """
-                       p = Lopper.prop_get( fdt, node, "compatible" )
+                       p = node.propval( 'compatible' )
                        if p and "{0}" in p:
-                           p = Lopper.refcount( sdt, node_name )
-                           if p <= 0:
+                           r = node.ref
+                           if r <= 0:
                                return True
                            else:
                                return False
@@ -290,22 +277,21 @@ def process_domain( tgt_node, sdt, verbose=0 ):
 
             # the action will be taken if the code block returns 'true'
             if n == "/":
-                Lopper.node_filter( sdt, "/", LopperAction.DELETE, code, verbose )
+                sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
             else:
-                Lopper.node_filter( sdt, n + "/", LopperAction.DELETE, code, verbose )
+                sdt.tree.filter( n + "/", LopperAction.DELETE, code, None, verbose )
 
-            # we must re-find the domain node, since its numbering may have
-            # changed due to the node_filter deleting things
-            tgt_node = sdt.node_find( tgt_domain )
 
-    # we must re-find the domain node, since its numbering may have
-    # changed due to the node_filter deleting things
-    tgt_node = sdt.node_find( tgt_domain )
-    # TODO: we might need to refresh our property dict here, but for now, we don't.
+    # we must sync the tree, since its numbering may have changed due to the
+    # node_filter deleting things
+    sdt.tree.sync()
 
-    if 'memory' in domain_properties.keys():
-        memory_hex = sdt.property_get( tgt_node, "memory", LopperFmt.COMPOUND, LopperFmt.HEX )
-        memory_int = domain_properties["memory"]
+    try:
+        memory_int = domain_node['memory'].int()
+        memory_hex = domain_node['memory'].hex()
+    except Exception as e:
+        memory_hex = 0x0
+        memory_int = 0
 
     # This may be moved to the top of the domain process and then when we are
     # processing cpus and bus nodes, we can apply the memory to ranges <>, etc,
@@ -314,7 +300,11 @@ def process_domain( tgt_node, sdt, verbose=0 ):
         print( "[INFO]: memory property: %s" % memory_hex )
 
     # 1) find if there's a top level memory node
-    memory_node = sdt.node_find( "/memory" )
+    try:
+        memory_node = sdt.tree["/memory@.*"]
+    except:
+        memory_node = None
+
     if memory_node:
         if verbose:
             print( "[INFO]: memory node found (%s), modifying to match domain memory" % memory_node )
@@ -331,9 +321,10 @@ def process_domain( tgt_node, sdt, verbose=0 ):
         # TODO: this seems to be shortening up the system memory node. Check to see
         #       if the openamp node is being propery interpreted
 
-        sdt.property_set( memory_node, 'reg', memory_int )
-        # temp: keeping the raw call, in case the lopper utility has issues.
-        # sdt.FDT.setprop(memory_node, 'reg', Lopper.encode_byte_array(memory_int))
+        try:
+            memory_node['reg'].value = memory_int
+        except:
+            pass
 
     return True
 
