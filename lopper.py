@@ -2976,6 +2976,11 @@ class SystemDeviceTree:
                             load_prop = ""
 
                         if load_prop:
+                            # for submodule loading
+                            for p in load_paths:
+                                if p not in sys.path:
+                                    sys.path.append( p )
+
                             if self.verbose:
                                 print( "[INFO]: loading module %s" % load_prop )
 
@@ -2984,24 +2989,20 @@ class SystemDeviceTree:
                             try:
                                 mod_file_abs = mod_file.resolve()
                             except FileNotFoundError:
-                                # check the path from which lopper is running
-                                mod_file = Path( lopper_directory + "/" + mod_file.name )
-                                try:
-                                    mod_file_abs = mod_file.resolve()
-                                except FileNotFoundError:
-                                    #
-                                    # And finally, try a "assists" subdirectory underneath where
-                                    # lopper is running
-                                    #
-                                    # TODO: we could read an environment variable to find alternate
-                                    #       locations to search for modules.
-                                    #
-                                    mod_file = Path( lopper_directory + "/assists/" + mod_file.name )
+                                # check the path from which lopper is running, that directory + assists, and paths
+                                # specified on the command line
+                                search_paths =  [ lopper_directory ] + [ lopper_directory + "/assists/" ] + load_paths
+                                for s in search_paths:
+                                    mod_file = Path( s + "/" + mod_file.name )
                                     try:
                                         mod_file_abs = mod_file.resolve()
+                                        break
                                     except FileNotFoundError:
-                                        print( "[ERROR]: module file %s not found" % load_prop )
-                                        sys.exit(1)
+                                        mod_file_abs = ""
+
+                                if not mod_file_abs:
+                                    print( "[ERROR]: module file %s not found" % load_prop )
+                                    sys.exit(1)
 
                             try:
                                 imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
@@ -3434,6 +3435,7 @@ def usage():
     print('  -d, --dump          dump a dtb as dts source' )
     print('  -i, --input         process supplied input device tree description')
     print('  -a, --assist        load specified python assist (for node or output processing)' )
+    print('  -A, --assist-paths  colon separated lists of paths to search for assist loading' )
     print('  -o, --output        output file')
     print('  -f, --force         force overwrite output file(s)')
     print('    , --werror        treat warnings as errors' )
@@ -3468,6 +3470,7 @@ def main():
     global save_temps
     global pretty_print
     global outdir
+    global load_paths
 
     sdt = None
     verbose = 0
@@ -3482,8 +3485,9 @@ def main():
     save_temps = False
     pretty_print = False
     outdir="./"
+    load_paths = []
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:dfvdhi:o:a:SO:", [ "outdir", "pretty", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
+        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:", [ "assist-paths=", "outdir", "pretty", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -3507,6 +3511,8 @@ def main():
             inputfiles.append(a)
         elif o in ('-a', '--assist'):
             assists.append(a)
+        elif o in ('-A', '--assist-path'):
+            load_paths += a.split(":")
         elif o in ('-O', '--outdir'):
             outdir = a
         elif o in ('-t', '--target'):
