@@ -3005,8 +3005,8 @@ class SystemDeviceTree:
 
                             try:
                                 imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
-                            except:
-                                print( "[ERROR]: could not load assist: %s" % mod_file_abs )
+                            except Exception as e:
+                                print( "[ERROR]: could not load assist: %s: %s" % (mod_file_abs,e) )
                                 sys.exit(1)
 
                             assist_properties = {}
