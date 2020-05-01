@@ -7,7 +7,7 @@ has practical information, known limitations and TODO items.
 Sample run:
 -----------
 
-  % ./lopper.py -f --pretty --werror -v -v -v -v -i lops/lop-load.dts -i lops/lop-domain-r5.dts device-trees/system-device-tree-versal-v2.dts sdt.dts
+  % ./lopper.py -f --pretty --werror -v -v -i lops/lop-load.dts  -i lops/lop-domain-r5.dts device-trees/system-device-tree.dts sdt.dts
 
 Limitations:
 -----------
@@ -19,9 +19,7 @@ TODO:
 ----
 
  - Sanity and comprehensive tests (automated)
- - Output device tree boot testing (output trees may currently be invalid)
  - Output device tree sanity checking / validation
  - TODO items in code base (grep for TODO in code)
  - Lopper update to latest System Device Tree bindings
- - Lopper update to latest OpenAMP chosen node format
  - Robustness changes for untested input files

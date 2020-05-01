@@ -15,8 +15,7 @@
 	#size-cells = <0x2>;
 	model = "Xilinx Versal A2197 Processor board revA";
 
-        /* test comment */
-        cpus: cpus {
+	cpus {
 		#address-cells = <0x1>;
 		#size-cells = <0x0>;
 		#cpus-mask-cells = <0x1>;
@@ -56,7 +55,7 @@
 		};
 	};
 
-	cpus_r5: cpus_r5 {
+	cpus_r5: cpus-cluster@0 {
 		#address-cells = <0x1>;
 		#size-cells = <0x0>;
 		#cpus-mask-cells = <0x1>;
@@ -68,7 +67,6 @@
 		address-map = <0xf1000000 &amba 0xf1000000 0xeb00000>,
 		              <0xf9000000 &amba_rpu 0xf9000000 0x10000>,
 		              <0x0 &memory 0x0 0x80000000>,
-		              <0x0 &memory_a53 0x0 0x80000000>,
 		              <0x0 &tcm 0xFFE90000 0x10000>;
 
 		cpu@0 {
@@ -131,7 +129,7 @@
 		phandle = <0x4>;
 	};
 
-	amba_apu: amba_apu {
+	amba_apu: bus@f9000000 {
 		compatible = "simple-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -178,7 +176,7 @@
 		};
 	};
 
-	amba_rpu: amba_rpu {
+	amba_rpu: indirect-bus@0 {
 		compatible = "indirect-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -191,32 +189,26 @@
 		};
 	};
 
-	amba: amba {
+	amba: bus@f1000000 {
 		compatible = "simple-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
 		ranges;
 
-		/* Proxy Interrupt Controller */
-		imux: interrupt-multiplex {
-			compatible = "interrupt-multiplex";
-			#address-cells = <0x0>;
-			#interrupt-cells = <3>;
-			/* copy all attributes from child to parent */
-			interrupt-map-pass-thru = <0xffffffff 0xffffffff 0xffffffff>;
-			/* mask all child bits to always match the first 0x0 entries */
-			interrupt-map-mask = <0x0 0x0 0x0>;
-			/* 1:1 mapping of all interrupts to gic_a72 and gic_r5 */
-			/* child address cells, child interrupt cells, parent, parent interrupt cells */
-			interrupt-map = <0x0 0x0 0x0 &gic_a72 0x0 0x0 0x0>,
-					<0x0 0x0 0x0 &gic_r5 0x0 0x0 0x0>;
-		};
+		#interrupt-cells = <3>;
+		/* copy all attributes from child to parent */
+		interrupt-map-pass-thru = <0xffffffff 0xffffffff 0xffffffff>;
+		/* mask all child bits to always match the first 0x0 entries */
+		interrupt-map-mask = <0x0 0x0 0x0>;
+		/* 1:1 mapping of all interrupts to gic_a72 and gic_r5 */
+		/* child address cells, child interrupt cells, parent, parent interrupt cells */
+		interrupt-map = <0x0 0x0 0x0 &gic_a72 0x0 0x0 0x0>,
+			<0x0 0x0 0x0 &gic_r5 0x0 0x0 0x0>;
 
 		can@ff060000 {
 			compatible = "xlnx,canfd-2.0";
 			status = "okay";
 			reg = <0x0 0xff060000 0x0 0x6000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x14 0x1>;
 			clock-names = "can_clk", "s_axi_aclk";
 			rx-fifo-depth = <0x40>;
@@ -229,7 +221,6 @@
 			compatible = "xlnx,canfd-2.0";
 			status = "okay";
 			reg = <0x0 0xff070000 0x0 0x6000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x15 0x1>;
 			clock-names = "can_clk", "s_axi_aclk";
 			rx-fifo-depth = <0x40>;
@@ -249,7 +240,6 @@
 			pmu@10000 {
 				compatible = "arm,cci-500-pmu,r0";
 				reg = <0x10000 0x90000>;
-				interrupt-parent = <&imux>;
 				interrupts = <0x0 0x6a 0x4 0x0 0x6a 0x4 0x0 0x6a 0x4 0x0 0x6a 0x4 0x0 0x6a 0x4 0x0 0x6a 0x4 0x0 0x6a 0x4 0x0 0x6a 0x4 0x0 0x6a 0x4>;
 			};
 		};
@@ -258,7 +248,6 @@
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "okay";
 			reg = <0x0 0xffa80000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x3c 0x4>;
 			clock-names = "clk_main", "clk_apb";
 			#stream-id-cells = <0x1>;
@@ -273,7 +262,6 @@
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "okay";
 			reg = <0x0 0xffa90000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x3d 0x4>;
 			clock-names = "clk_main", "clk_apb";
 			#stream-id-cells = <0x1>;
@@ -288,7 +276,6 @@
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "okay";
 			reg = <0x0 0xffaa0000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x3e 0x4>;
 			clock-names = "clk_main", "clk_apb";
 			#stream-id-cells = <0x1>;
@@ -303,7 +290,6 @@
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "okay";
 			reg = <0x0 0xffab0000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x3f 0x4>;
 			clock-names = "clk_main", "clk_apb";
 			#stream-id-cells = <0x1>;
@@ -318,7 +304,6 @@
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "okay";
 			reg = <0x0 0xffac0000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x40 0x4>;
 			clock-names = "clk_main", "clk_apb";
 			#stream-id-cells = <0x1>;
@@ -333,7 +318,6 @@
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "okay";
 			reg = <0x0 0xffad0000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x41 0x4>;
 			clock-names = "clk_main", "clk_apb";
 			#stream-id-cells = <0x1>;
@@ -348,7 +332,6 @@
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "okay";
 			reg = <0x0 0xffae0000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x42 0x4>;
 			clock-names = "clk_main", "clk_apb";
 			#stream-id-cells = <0x1>;
@@ -363,7 +346,6 @@
 			compatible = "xlnx,zynqmp-dma-1.0";
 			status = "okay";
 			reg = <0x0 0xffaf0000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x43 0x4>;
 			clock-names = "clk_main", "clk_apb";
 			#stream-id-cells = <0x1>;
@@ -378,7 +360,6 @@
 			compatible = "cdns,versal-gem";
 			status = "okay";
 			reg = <0x0 0xff0c0000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x38 0x4 0x0 0x38 0x4>;
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk", "tsu_clk";
 			#stream-id-cells = <0x1>;
@@ -414,7 +395,6 @@
 			compatible = "cdns,versal-gem";
 			status = "okay";
 			reg = <0x0 0xff0d0000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x3a 0x4 0x0 0x3a 0x4>;
 			clock-names = "pclk", "hclk", "tx_clk", "rx_clk", "tsu_clk";
 			#stream-id-cells = <0x1>;
@@ -432,7 +412,6 @@
 			compatible = "xlnx,versal-gpio-1.0";
 			status = "okay";
 			reg = <0x0 0xff0b0000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0xd 0x4>;
 			#gpio-cells = <0x2>;
 			gpio-controller;
@@ -446,7 +425,6 @@
 			compatible = "xlnx,versal-gpio-1.0";
 			status = "okay";
 			reg = <0x0 0xf1020000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x7a 0x4>;
 			#gpio-cells = <0x2>;
 			gpio-controller;
@@ -461,7 +439,6 @@
 			compatible = "cdns,i2c-r1p14", "cdns,i2c-r1p10";
 			status = "disabled";
 			reg = <0x0 0xff020000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0xe 0x4>;
 			clock-frequency = <0x61a80>;
 			#address-cells = <0x1>;
@@ -474,7 +451,6 @@
 			compatible = "cdns,i2c-r1p14", "cdns,i2c-r1p10";
 			status = "okay";
 			reg = <0x0 0xff030000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0xf 0x4>;
 			clock-frequency = <0x61a80>;
 			#address-cells = <0x1>;
@@ -493,7 +469,6 @@
 			status = "okay";
 			reg = <0x0 0xf12a0000 0x0 0x100>;
 			interrupt-names = "alarm", "sec";
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x8e 0x4 0x0 0x8f 0x4>;
 			calibration = <0x8000>;
 			power-domains = <0x7 0x18224034>;
@@ -503,7 +478,6 @@
 			compatible = "xlnx,versal-8.9a", "arasan,sdhci-8.9a";
 			status = "disabled";
 			reg = <0x0 0xf1040000 0x0 0x10000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x7e 0x4 0x0 0x7e 0x4>;
 			clock-names = "clk_xin", "clk_ahb";
 			xlnx,device_id = <0x0>;
@@ -518,7 +492,6 @@
 			compatible = "xlnx,versal-8.9a", "arasan,sdhci-8.9a";
 			status = "okay";
 			reg = <0x0 0xf1050000 0x0 0x10000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x80 0x4 0x0 0x80 0x4>;
 			clock-names = "clk_xin", "clk_ahb";
 			xlnx,device_id = <0x1>;
@@ -536,7 +509,6 @@
 			compatible = "arm,pl011", "arm,sbsa-uart";
 			status = "okay";
 			reg = <0x0 0xff000000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x12 0x4>;
 			clock-names = "uart_clk", "apb_clk";
 			current-speed = <0x1c200>;
@@ -551,7 +523,6 @@
 			compatible = "arm,pl011", "arm,sbsa-uart";
 			status = "disabled";
 			reg = <0x0 0xff010000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x13 0x4>;
 			clock-names = "uart_clk", "apb_clk";
 			current-speed = <0x1c200>;
@@ -563,7 +534,6 @@
 			compatible = "xlnx,versal-ospi-1.0", "cadence,qspi", "cdns,qspi-nor";
 			status = "okay";
 			reg = <0x0 0xf1010000 0x0 0x10000 0x0 0xc0000000 0x0 0x20000000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x7c 0x4 0x0 0x7c 0x4>;
 			clock-names = "ref_clk", "pclk";
 			cdns,fifo-depth = <0x100>;
@@ -626,7 +596,6 @@
 			compatible = "xlnx,versal-qspi-1.0";
 			status = "disabled";
 			reg = <0x0 0xf1030000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x7d 0x4 0x0 0x7d 0x4>;
 			clock-names = "ref_clk", "pclk";
 			#stream-id-cells = <0x1>;
@@ -641,7 +610,6 @@
 			compatible = "cdns,spi-r1p6";
 			status = "disabled";
 			reg = <0x0 0xff040000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x10 0x4>;
 			clock-names = "ref_clk", "pclk";
 			#address-cells = <0x1>;
@@ -654,7 +622,6 @@
 			compatible = "cdns,spi-r1p6";
 			status = "disabled";
 			reg = <0x0 0xff050000 0x0 0x1000>;
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x11 0x4>;
 			clock-names = "ref_clk", "pclk";
 			#address-cells = <0x1>;
@@ -683,7 +650,6 @@
 				status = "okay";
 				reg = <0x0 0xfe200000 0x0 0x10000>;
 				interrupt-names = "dwc_usb3", "otg", "usb-wakeup";
-				interrupt-parent = <&imux>;
 				interrupts = <0x0 0x16 0x4 0x0 0x1a 0x4 0x0 0x4a 0x4>;
 				#stream-id-cells = <0x1>;
 				snps,dis_u2_susphy_quirk;
@@ -706,7 +672,6 @@
 			status = "disabled";
 			interrupt-map = <0x0 0x0 0x0 0x1 0x1a 0x1 0x0 0x0 0x0 0x2 0x1a 0x2 0x0 0x0 0x0 0x3 0x1a 0x3 0x0 0x0 0x0 0x4 0x1a 0x4>;
 			interrupt-map-mask = <0x0 0x0 0x0 0x7>;
-			interrupt-parent = <&imux>;
 			interrupt-names = "misc";
 			interrupts = <0x0 0x48 0x4>;
 			ranges = <0x2000000 0x0 0xe0000000 0x0 0xe0000000 0x0 0x10000000 0x43000000 0x80 0x0 0x80 0x0 0x0 0x80000000>;
@@ -733,7 +698,6 @@
 
 		zynqmp_ipi: zynqmp_ipi {
 			compatible = "xlnx,zynqmp-ipi-mailbox";
-			interrupt-parent = <&imux>;
 			interrupts = <0x0 0x1e 0x4>;
 			xlnx,ipi-id = <0x2>;
 			#address-cells = <0x2>;
@@ -753,6 +717,15 @@
 			compatible = "mmio-sram";
 			reg = <0x0 0xffe90000 0x0 0x10000>;
 		};
+
+		zynqmp-power {
+			compatible = "xlnx,zynqmp-power";
+			interrupts = <0x0 0x1e 0x4>;
+			mboxes = <0x1f 0x0 0x1f 0x1>;
+			mbox-names = "tx", "rx";
+			phandle = <0x7>;
+			#power-domain-cells = <0x1>;
+		};
 	};
 
 	reserved-memory {
@@ -760,15 +733,14 @@
 		#size-cells = <0x2>;
 		ranges;
 
-                memory_a53: memory_a53@0 {
-			reg = <0x1 0x0 0x0 0x8000000>;
-		};
-		memory_r5: memory_r5@0 {
+		/* For compatibility with default the cpus cluster */
+		memory_r5@0 {
+			compatible = "openamp,domain-memory-v1";
 			reg = <0x0 0x0 0x0 0x8000000>;
 		};
 	};
 
-	chosen {
+	domains {
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
 
@@ -794,8 +766,7 @@
 			 * bit 30: lockstep (lockstep enabled == 1)
 			 * bit 31: secure mode / normal mode (secure mode == 1)
 			 */
-			/* cpus = <&cpus_r5 0x2 0x80000000>, <&cpus 0x3 0x80000000>; */
-                        cpus = <&cpus_r5 0x2 0x80000000>;
+			cpus = <&cpus_r5 0x2 0x80000000>;
 			/*
 			 * Access specifies which resources this domain
 			 * has access to.
@@ -814,8 +785,11 @@
 			 * - tcm RW
 			 * - ethernet card at 0xff0c0000
 			 */
-			access = <&memory_r5 0x1>, <&tcm 0x1>, <&ethernet0 0x0>;
-                        /*access = <&tcm 0x1>;*/
+			access = <&tcm 0x1>, <&ethernet0 0x0>;
+
+			chosen {
+				bootargs = "console=ttyAMA0";
+			};
 		};
 	};
 
@@ -877,19 +851,8 @@
 		phandle = <0x3>;
 	};
 
-	zynqmp-power {
-		compatible = "xlnx,zynqmp-power";
-		interrupt-parent = <&imux>;
-		interrupts = <0x0 0x1e 0x4>;
-		mboxes = <0x1f 0x0 0x1f 0x1>;
-		mbox-names = "tx", "rx";
-		phandle = <0x7>;
-		#power-domain-cells = <0x1>;
-	};
-
 	memory: memory@00000000 {
 		device_type = "memory";
 		reg = <0x0 0x0 0x0 0x80000000>;
 	};
 };
-

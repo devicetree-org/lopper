@@ -39,7 +39,28 @@ class LopperAction(Enum):
 
 
 class LopperProp():
-    """Holds the state of a device tree property
+    """Class representing a device tree property
+
+    This class implements:
+       - resolve(): to update information / state against a device tree
+       - sync(): to write changes back to the device tree
+       - utility routines for easy access and iteration of the values
+
+    Attributes:
+       - __modified__: Flag to indicate if the property has been changed
+       - __pstate__: The state of the property. For internal use only.
+                     Values can be: "init", "resolved", "syncd" or "deleted"
+       - __dbg__: The debug/verbosity level of property operations. 0 is no
+                  debug, and levels increase from there.
+
+       - name: The property name
+       - value: The property value (always as a list of values)
+       - node: The node that contains this property
+       - number: The property offset within the containing node (rarely used)
+       - string_val: The pretty printed string representation of a property
+       - type: The type of a property, "comment", "preamble" or "list"
+       - abs_path: The absolute device tree path to this property
+
     """
     def __init__(self, name, number, node, value = None, debug_lvl = 0 ):
         self.__modified__ = True
@@ -61,9 +82,31 @@ class LopperProp():
         self.abs_path = ""
 
     def __str__( self ):
+        """The string representation of the property
+
+        Returns the pretty printed property when str() is used to access
+        an object.
+
+        The string_val is composed in the resolv() function, and takes the
+        format of:  <property name> = <property value>;
+
+        Args:
+           None
+
+        Returns:
+           string
+        """
         return self.string_val
 
     def int(self):
+        """Get the property value as a list of integers
+
+        Args:
+           None
+
+        Returns:
+           list: integer formatted property value
+        """
         ret_val = []
         for p in self.value:
             ret_val.append( p )
@@ -71,14 +114,35 @@ class LopperProp():
         return ret_val
 
     def hex(self):
+        """Get the property value as a list of hex formatted numbers
+
+        Args:
+           None
+
+        Returns:
+           list: hex formatted property value
+        """
         ret_val = []
         for p in self.value:
             ret_val.append( hex(p) )
 
         return ret_val
 
-    # prop
     def __setattr__(self, name, value):
+        """magic method to check the setting of a LopperProp attribute
+
+        If the attribute being set is "value" (i.e. LopperProp.value), this
+        method makes sure that it is stored as a list, that the property is
+        marked as modified (for future write backs) and triggers a resolve()
+        of the property value.
+
+        Args:
+           name: attribute name
+           value: attribute value
+
+        Returns:
+           Nothing
+        """
         # a little helper to make sure that we keep up our list-ness!
         if name == "value":
 
@@ -93,7 +157,6 @@ class LopperProp():
                 self.__dict__[name] = value
 
             if Counter(old_value) != Counter(self.__dict__[name]):
-                # print( "property value changed!!!!!!!!!!!!!!!!!!!!!!!!!!!!" )
                 self.__modified__ = True
 
             # NOTE: this will not update phandle references, you need to
@@ -101,7 +164,6 @@ class LopperProp():
             self.resolve( None )
         else:
             self.__dict__[name] = value
-
 
     def phandle_params( self ):
         """Determines the phandle elements/params of a property
@@ -113,9 +175,7 @@ class LopperProp():
         the property are returned.
 
         Args:
-            fdt (FDT): flattened device tree
-            nodeoffset (int): node number of the property
-            property_name (string): the name of the property to fetch
+            None
 
         Returns:
             The the phandle index and number of fields, if the node can't
@@ -153,18 +213,25 @@ class LopperProp():
 
         return phandle_idx, phandle_field_count
 
-    # property
-    # return true if something has changed / been written, we'll have to loop and
-    # check before we know that.
     def sync( self, fdt ):
+        """sync the property to a backing FDT
+
+        Writes the property value to the backing flattended device tree. After
+        write, the state is set to  "syncd" and the modified flat is cleared.
+
+        Args:
+           fdt (FDT): flattened device tree to sync to
+
+        Returns:
+           boolean: True if the property was sync'd, otherwise False
+        """
         # we could do a read-and-set-if-different
         Lopper.prop_set( fdt, self.node.number, self.name, self.value, LopperFmt.COMPOUND )
         self.__modified__ = False
         self.__pstate__ = "syncd"
 
-        return False
+        return True
 
-    # lopper prop
     def resolve_phandles( self, fdt ):
         """Resolve the targets of any phandles in a property
 
@@ -222,8 +289,29 @@ class LopperProp():
 
         return phandle_targets
 
-    # LopperProp
     def resolve( self, fdt ):
+        """resolve (calculate) property details against a FDT
+
+        Some attributes of a property are not known at initialization
+        time, or may change due to tree operations.
+
+        This method calculates those values using information in the
+        property and in the passed FDT. If no FDT is passed only
+        partial resolution is done.
+
+        Fields resolved:
+           - abs_path
+           - type
+           - string_val (with phandles resolved)
+           - __pstate__
+
+        Args:
+           fdt (FDT): flattened device tree to sync to or None if no
+                      tree is available
+
+        Returns:
+           Nothing
+        """
         outstring = "{0} = {1};".format( self.name, self.value )
 
         prop_val = self.value
@@ -322,8 +410,6 @@ class LopperProp():
                 drop_record = False
                 drop_all = False
 
-                # print( "prop: %s prop val!!: %s" % (self.name, prop_val ))
-
                 for i in prop_val:
                     if list_of_nums:
                         base = 10
@@ -346,11 +432,13 @@ class LopperProp():
                                     phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
 
                                     if self.__dbg__ > 1:
-                                        print( "[DBG+]: [%s:%s] phandle replacement of: %s with %s" % ( self.node.name, self.name, hex(i), phandle_tgt_name))
+                                        print( "[DBG+]: [%s:%s] phandle replacement of: %s with %s" %
+                                               ( self.node.name, self.name, hex(i), phandle_tgt_name))
                                 except:
                                     # we need to drop the entire record from the output, the phandle wasn't found
                                     if self.__dbg__ > 1:
-                                        print( "[DBG+]: [%s:%s] phandle: %s not found, dropping %s fields" % ( self.node.name, self.name, hex(i), phandle_field_count))
+                                        print( "[DBG+]: [%s:%s] phandle: %s not found, dropping %s fields" %
+                                               ( self.node.name, self.name, hex(i), phandle_field_count))
 
                                     drop_record = True
                                     if len(prop_val) == phandle_field_count:
@@ -396,12 +484,40 @@ class LopperProp():
         else:
             outstring = "{0} = \"{1}\";".format( self.name, prop_val )
 
-
         self.string_val = outstring
         self.__pstate__ = "resolved"
 
 class LopperNode(object):
-    """Holds the state of a device tree node
+    """Class representing a device tree node
+
+    This class implements:
+       - a property iterator
+       - dictionary access to properties
+       - str(): string cast
+       - equality check (==): for comparison
+       - ref counting: set, get, clear
+       - property add, modify, delete (via methods and '-', '+')
+       - resolve(): to update/calculate properties against a FDT
+       - sync(): sync modified node elements (and properties) to a FDT
+       - deep node copy via LopperNode()
+
+     Attributes:
+       - number: the node number in the backing FDT
+       - name: the node name in the backing FDT (this is not the node path)
+       - parent: a link to the parent LopperNode object
+       - tree: the tree which contains this node
+       - depth: the nodes depth in the backing FDT (0 is root, 1 for first level children)
+       - children: the list of child LopperNodes
+       - phandle: the phandle in the backing FDT (optional)
+       - type: the type of the node (based on 'compatible' property)
+       - abs_path: the full/absolute path to this node in the backing FDT
+       - _ref: the refcount for this node
+       - __props__: ordered dictionary of LopperProp
+       - __current_property__: place holder for property iterator
+       - __dbg__: debug level for the node
+       - __nstate__: the state of the node ("init", "resolved" )
+       - __modified__: flag indicating if the node has been modified
+
     """
     def __init__(self, number = -1, abspath="", tree = None, phandle = -1, name = "", children = None, debug=0 ):
         self.number = number
@@ -437,6 +553,30 @@ class LopperNode(object):
 
     # supports NodeA( NodeB ) to copy state
     def __call__( self, othernode=None ):
+        """Callable implementation for the node class
+
+        When used, this creates a deep copy of the current node, versus
+        a reference. This allows a node to be cloned and used in a secondary
+        tree, free from changes to the original node.
+
+        Two modes are supported:
+           A) <LopperNode Object>()
+           B) <LopperNode Object>( <other node> )
+
+        When no other node is passed (mode A) a copy of the existing node is
+        made, including properties with the state is set to "init", this node
+        should then be resolved to fill in missing information.
+
+        When mode B is used, the current node is updated using copies of the
+        values from the other node. This is used on a newly created node, to
+        initalize it with values from an existing node.
+
+        Args:
+           othernode (LopperNode,optional): node to use for initalization values
+
+        Returns:
+           The copied node, or self (if updating).
+        """
         if othernode == None:
             nn = copy.deepcopy( self )
 
@@ -466,6 +606,21 @@ class LopperNode(object):
             return self
 
     def __setattr__(self, name, value):
+        """magic method to check the setting of a LopperNode attribute
+
+        If the attribute being set is the debug level (__dbg__), this wrapper
+        chains the setting to any LopperProps of the node.
+
+        If the attribute is any other, we set the value and tag the node as
+        modified, so it can be sync'd later.
+
+        Args:
+           name: attribute name
+           value: attribute value
+
+        Returns:
+           Nothing
+        """
         if name == "__dbg__":
             self.__dict__[name] = value
             for p in self.__props__.values():
@@ -473,35 +628,105 @@ class LopperNode(object):
         else:
             # we do it this way, otherwise the property "ref" breaks
             super().__setattr__(name, value)
+            # we could restrict this to only some attributes in the future
             self.__dict__["__modified__"] = True
 
-    # access a property like a structure member
     def __getattribute__(self, name):
+        """magic method around object attribute access
+
+        This method first attempts to access the objects inherent attributes and
+        returns the value if one exists matching the passed name.
+
+        If one is not found, then the properties dictionary is checked, and that
+        value returned.
+
+        This allows access like:
+
+            <LopperNode Object>.compatible
+
+        To get the compatible LopperProperty value.
+
+        In practice, this is only of limited use, since many property names are
+        not valid python attribute names.
+
+        Args:
+           name: attribute name
+
+        Returns:
+           The attribute value, or AttributeError if it doesn't exist.
+        """
+        # this is needed to ensure that deep copy works, the exception is expected
+        # by that process.
         if name == "__setstate__" or name == "__deepcopy__" or name == "__getstate__":
             raise AttributeError(name)
 
         try:
             return object.__getattribute__(self, name)
         except:
-            return self.__props__[name].value
+            try:
+                return self.__props__[name].value
+            except:
+                raise AttributeError(name)
 
-    # when casting to an int, return our node number
+
     def __int__(self):
+        """magic method for int type conversion of LopperNode
+
+        If a LopperNode is converted to an int, we use the node number
+
+        Args:
+            None
+
+        Returns:
+           int: the node number
+        """
+        # when casting to an int, return our node number
         return self.number
 
-    # todo: how to dump the raw object at times ...
     def __str__(self):
+        """magic method for string type conversion of LopperNode
+
+        If a LopperNode is converted to a string, we use the absolute (full) path
+
+        Args:
+            None
+
+        Returns:
+           string: the abs path
+        """
         if self.__dbg__ > 1:
             # this will be a raw object print, useful for debug
             return super().__str__()
         else:
             return self.abs_path
 
-    # we are the iterator
     def __iter__(self):
+        """magic method to support iteration
+
+        For iterating the properties of a LopperNode, we are the iterator.
+        This is required by the iterator protocol.
+
+        Args:
+            None
+
+        Returns:
+           LopperNode object: self
+        """
         return self
 
     def __eq__(self,other):
+        """magic method for node comparision
+
+        Support LopperNode comparisons: nodea == nodeb
+
+        If the node numbers of two nodes match, we consider them equal.
+
+        Args:
+            other: LopperNode
+
+        Returns:
+           LopperNode object: self
+        """
         if not isinstance( other, LopperNode ):
             return False
         else:
@@ -510,13 +735,28 @@ class LopperNode(object):
 
             return False
 
-    # node
-    # when iterating a node, we iterate the properties
     def __next__(self):
+        """magic method for iteration on a node
+
+        This routine uses the __current_property__ attribute to move
+        through the properties of a node.
+
+        If there are no properties, or we have iterated all properties,
+        StopIteration is raised (as is required by the iterator protocol).
+
+        Args:
+            None
+
+        Returns:
+           LopperProp object or StopIteration exception
+        """
         if not self.__props__:
             raise StopIteration
 
-        # there's probably a better way to do this ..
+        # Ther are other ways to do this .., since we are making a list and just
+        # indexing it. The __props__ is an ordered dictionary, so we could just
+        # iterate the values() of it as well, but for now, we keep the control
+        # of the indexing.
         self.__current_property__ = self.__current_property__ + 1
         prop_list = list(self.__props__)
 
@@ -526,20 +766,65 @@ class LopperNode(object):
         else:
             return self.__props__[prop_list[self.__current_property__]]
 
-    # node: access like a dictionary
     def __getitem__(self, key):
-        # let the KeyError exception from an invalid key bubble back to
-        # the user.
+        """magic method for accessing LopperNode properties like a dictionary
+
+        Allow accessing of properties as a dictionary:
+
+            <Lopper Node Object>[<property name>]
+
+        This abstracts the storage of the properties and allows direct access
+        by name. Either the string name of the property may be used, or a
+        LopperProp object itself.
+
+        The standard KeyError exception is raised if the property is not valid for
+        a node.
+
+        For an exception free way of checking for a property, see the propval()
+        method.
+
+        Args:
+            key: string or LopperProp
+
+        Returns:
+           LopperProp object or KeyError exception
+        """
+        # let the KeyError exception from an invalid key bubble back to the
+        # user.
         if type(key) == str:
             return self.__props__[key]
 
         if isinstance( key, LopperProp ):
             return self.__props__[key.name]
 
-        return None
+        raise KeyError(key)
 
-    # node
     def __setitem__(self, key, val):
+        """magic method for setting LopperNode properties like a dictionary
+
+        Allow setting of properties as a dictionary:
+
+            <Lopper Node Object>[<property name>] = <LopperProperty Object>
+
+               or
+
+            <Lopper Node Object>[<property name>] = [list of property values]
+
+
+        This abstracts the storage of the properties and allows direct access
+        by name.
+
+        If a LopperProp is passed as 'val', it is directly assigned. If a list
+        of values is passed, a LopperProp object is created, the values assigned
+        and then placed in the property dictionary.
+
+        Args:
+            key: string
+            val: LopperProp or string
+
+        Returns:
+           Nothing
+        """
         if isinstance(val, LopperProp ):
             # we can try to assign
             self.__props__[key] = val
@@ -548,25 +833,39 @@ class LopperNode(object):
             self.__props__[key] = np
             self.__props__[key].resolve( self.tree.fdt )
 
-            # thrown an exception, since this is not a valid
+            # throw an exception, since this is not a valid
             # thing to assign.
-            #raise TypeError( "LopperProp was not passed as value" )
+            # raise TypeError( "LopperProp was not passed as value" )
 
     @property
     def ref(self):
+        """Node reference count getter
+
+        Args:
+           None
+
+        Returns:
+           int: The node refcount
+        """
         return self._ref
 
     @ref.setter
     def ref(self,ref):
+        """Node reference count setter
+
+        Args:
+           ref (int): > 0: the refcount increment, 0 to clear the refcount
+
+        Returns:
+           int: The node refcount
+        """
         if ref > 0:
             self._ref += ref
         else:
             self._ref = 0
 
-    # node
-    # pass property_mask = "*" to mask them all
     def resolve_all_refs( self, fdt=None, property_mask=[] ):
-        """Return all references in a node
+        """Resolve and Return all references in a node
 
         Finds all the references starting from a given node. This includes:
 
@@ -575,9 +874,9 @@ class LopperNode(object):
            - Any phandle referenced nodes, and any nodes they reference, etc
 
         Args:
-           node_name (string or int): The path to a node, or the node number
+           fdt (FDT,optional): The flattended device tree to use for resolution
            property_mask (list of regex): Any properties to exclude from reference
-                                          tracking
+                                          tracking, "*" to exclude all properties
 
         Returns:
            A list of referenced nodes, or [] if no references are found
@@ -593,10 +892,6 @@ class LopperNode(object):
 
         # find all references in the tree, starting from node_name
         reference_list = []
-
-        # is 'node' a name, or number ? Call this to make sure it is just a number
-        #node_number = Lopper.node_number( self.RESOLVE_FDT, node )
-        #prop_dict = self.node_properties_as_dict( node_number )
 
         # always add ourself!
         reference_list.append( self )
@@ -647,9 +942,19 @@ class LopperNode(object):
 
         return flat_list
 
-    # node
     def subnodes( self ):
-        # gets you a list of all looper nodes under starting node
+        """Return all the subnodes of this node
+
+        Gathers and returns all the reachable subnodes of the current node
+        (this includes nodes of children, etc).
+
+        Args:
+           None
+
+        Returns:
+           A list of child LopperNodes
+
+        """
         all_kids = [ self ]
         for n in self.children:
             child_node = self.tree[n]
@@ -657,9 +962,30 @@ class LopperNode(object):
 
         return all_kids
 
-    # node
-    # return True if a change was made
     def sync( self, fdt ):
+        """sync a LopperNode to a backing FDT
+
+        This routine looks for changes to the LopperNode and writes them back
+        to the passed FDT.
+
+        For the node itself, this is primarily a write back of a changed name.
+
+        As part of the sync process, the node's number in the backing FDT is
+        checked and the stored number changed to match as appropriate.
+
+        We also check fo modified properties and sync them to the FDT.
+
+        Removed properties are deleted from the FDT.
+
+        And finally, the __modified__ flag is set to False.
+
+        Args:
+           fdt (FDT): device tree to sync against
+
+        Returns:
+           boolean: True if the node was sync'd, False otherwise
+
+        """
         retval = False
 
         # is the node resolved ? if not, it may have been added since we read the
@@ -674,7 +1000,8 @@ class LopperNode(object):
             nn = Lopper.node_find( fdt, self.abs_path )
             if nn != self.number:
                 if self.__dbg__ > 2:
-                    print( "[DBG++]: node sync: fdt and node number differ, updating node '%s' from %s to %s" % (self.abs_path,self.number,nn) )
+                    print( "[DBG++]: node sync: fdt and node number differ, updating node '%s' from %s to %s" %
+                           (self.abs_path,self.number,nn) )
                 self.number = nn
 
             fdt_name = fdt.get_name( self.number )
@@ -693,7 +1020,8 @@ class LopperNode(object):
                     retval = True
                 if p.__pstate__ == "init":
                     if self.__dbg__ > 2:
-                        print( "[DBG++]:    node sync: property %s is new, creating with value: %s" % (p.name,p.value) )
+                        print( "[DBG++]:    node sync: property %s is new, creating with value: %s" %
+                               (p.name,p.value) )
                     p.sync( fdt )
                     retval = True
 
@@ -710,8 +1038,23 @@ class LopperNode(object):
 
         return retval
 
-    # node
     def delete( self, prop ):
+        """delete a property from a node
+
+        Queues a property for deletion on the next sync of a node.
+
+        Takes a property name or LopperProp object as the parameter, and if
+        it is a valid property, queues it for deletion.
+
+        The node is marked as modified, so on the next sync, it will be remove.
+
+        Args:
+           prop (string or LopperProp): the property to delete
+
+        Returns:
+           Nothing. KeyError if property is not found
+
+        """
         if self.__dbg__ > 1:
             print( "[DBG+]: deleting property %s from node %s" % (prop, self))
 
@@ -729,12 +1072,22 @@ class LopperNode(object):
             prop_to_delete.__pstate__ = "deleted"
             self.__props__pending__[prop_to_delete.name] = prop_to_delete
             del self.__props__[prop_to_delete.name]
-        except Excption as e:
+        except Exception as e:
             raise e
 
-    # A direct way to get a LopperProp (versus going at the
-    # member, or iterating )
     def props( self, name ):
+        """Access a property or list of properties described by a name/regex
+
+        Looks through the properties of a node and returns any that match
+        the name or regex passed to the routine.
+
+        Args:
+           name (string): property name or property regex
+
+        Returns:
+           list: list of LopperProp objects that match the name/regex, or [] if none match
+
+        """
         pmatches = []
         try:
             pmatches = [self.__props__[name]]
@@ -748,6 +1101,18 @@ class LopperNode(object):
 
     # a safe (i.e. no exception) way to fetch a propery value
     def propval( self, pname ):
+        """Access the value of a property
+
+        This is a safe (no Exception) way to access the value of a named property,
+        versus access it through the dictionary accessors.
+
+        Args:
+           name (string): property name
+
+        Returns:
+           list: list of values for the property, or [""] if the property name is invalid
+
+        """
         try:
             prop = self.__props__[pname]
             return prop.value
@@ -755,19 +1120,54 @@ class LopperNode(object):
             return [""]
 
     def reset(self):
+        """reset the iterator of the node
+
+        Sets the node iteration index to the starting value.
+
+        Args:
+           None
+
+        Returns:
+           None
+
+        """
         self.__current_property__ = -1
 
-    # in case someone wants to use "node" + "prop"
     def __add__( self, other ):
+        """magic method for adding a property to a node
+
+        Supports adding a property to a node through "+"
+
+            node + <LopperProp object>
+
+        Args:
+           other (LopperProp): property to add
+
+        Returns:
+           LopperNode: returns self, Exception on invalid input
+
+        """
         if not isinstance( other, LopperProp ):
-            return self
+            raise Exception( "LopperProp was not passed" )
 
         self.add( other )
 
         return self
 
-    # node. for "node" - "prop"
     def __sub__( self, other ):
+        """magic method for removing a property from a node
+
+        Supports removing a property from a node through "-"
+
+            node - <LopperProp object>
+
+        Args:
+           other (LopperProp): property to remove
+
+        Returns:
+           LopperNode: returns self
+
+        """
         if not isinstance( other, LopperProp ):
             return self
 
@@ -775,27 +1175,88 @@ class LopperNode(object):
 
         return self
 
-    # node: for "del <node>[prop]"
     def __delitem__(self, key):
+        """magic method for removing a property from a node dictionary style
+
+        ** Not currently implemented **, overridden to prevent use
+
+        Supports removing a property from a node through "del"
+
+            del <node>[prop]
+
+        Args:
+           key (LopperProp): property/index to remove
+
+        Returns:
+           Nothing
+
+        """
         pass
 
-    # node. this is adding a property
-    def add( self, p ):
+    def add( self, prop ):
+        """Add a property to a node
+
+        Supports adding a property to a node through
+
+            node.add( prop )
+
+        After adding the property, the node is tagged as modified to it
+        can be sync'd in the future.
+
+        Args:
+           prop (LopperProp): property to add
+
+        Returns:
+           LopperNode: returns self, raises Exception on invalid parameter
+
+        """
+        if not isinstance( prop, LopperProp ):
+            raise Exception( "LopperProp was not passed" )
+
         if self.__dbg__ > 2:
-            print( "[DBG++]: node %s adding property: %s" % (self.abs_path,p.name) )
+            print( "[DBG++]: node %s adding property: %s" % (self.abs_path,prop.name) )
 
-        self.__props__[p.name] = p
+        self.__props__[prop.name] = prop
 
-        # indicates that we should be sync'd before being written
+        # indicates that we should be sync'd
         self.__modified__ = True
 
         return self
 
-    # node
     def resolve( self, fdt ):
+        """resolve (calculate) node details against a FDT
+
+        Some attributes of a node are not known at initialization time, or may
+        change due to tree operations.
+
+        This method calculates those values using information in the node and in
+        the passed FDT. If no FDT is passed only partial resolution is done.
+
+        The only value that must be set in the node before resolve() is called
+        is the node number. Which simply means it should have been added to the
+        FDT first (see LopperTree.add()) and then resolved.
+
+        Fields resolved (see class for descriptions)
+           - name
+           - abs_path
+           - phandle
+           - depth
+           - children
+           - type
+           - __props__
+           - __nstate__
+           - __modified__
+
+        Args:
+           fdt (FDT): flattened device tree to sync to or None if no
+                      tree is available
+
+        Returns:
+           Nothing
+
+        """
         # resolve the rest of the references based on the passed device tree
         # self.number must be set before calling this routine.
-
         if self.__dbg__ > 2:
             print( "[DBG++]: node resolution start [%s]: %s" % (self,self.abs_path))
 
@@ -850,7 +1311,9 @@ class LopperNode(object):
                         self.type += prop_val
 
                     ## TODO: simlar to the tree resolve() we might not want to throw these
-                    ##       away if the exist, and instead sync + update
+                    ##       away if the exist, and instead sync + update, or at a minumum
+                    ##       we should check to see if they are modified, before chucking them
+                    ##       in the bin
                     # create property objects, and resolve them
                     self.__props__[prop.name] = LopperProp( prop.name, poffset, self, prop_val, self.__dbg__ )
                     self.__props__[prop.name].resolve( fdt )
@@ -869,6 +1332,49 @@ class LopperNode(object):
 
 class LopperTree:
     """Class for walking a device tree, and providing callbacks at defined points
+
+    This class implements:
+       - a node iterator
+       - dictionary access to nodes by path or node number
+       - a tree walker / exec() that has callbacks for: tree start, node start,
+                                                        property start, node end, tree end
+       - debug level
+       - tree wide reference tracking control: clear, get
+       - sync(): to sync changes to a backing FDT
+       - node manipulatins: add, delete, filter, subnodes
+       - phandle access to nodes
+       - node search by regex
+
+    A LopperTree object is instantiated for an easier/structure interface to a backing
+    device tree store (currently only a flattended device tree from libfdt). It provides
+    the ability to add/delete/manipulate nodes on a tree wide basis and can sync those
+    changes to the backing store.
+
+    When initialized the tree is created as a snapshot or reference to a FDT. If the
+    changes made by the object are to be indepdendent, then a snapshot is used. If the
+    original FDT is to be updated, then a reference should be used. reference is the
+    default mode.
+
+    During the walking of a tree via exec(), callbacks are made (if set) at defined
+    points in the process. This makes it easy to implement structured output of a
+    tree, without the need to have deep encoding/understanding of the underlying
+    structure.
+
+    Callbacks are functions of the form: <fn>( <node or property>, FDT )
+
+    Attributes:
+       - __nodes__: The nodes of the tree, ordered by absolute path indexing
+       - __nnodes__: The nodes of the tree, ordered by node number
+       - __pnodes__: The nodes of the tree, ordered by phandle
+       - __dbg__: treewide debug level
+       - __must_sync__: flag, true when the tree must be syncd to the FDT
+       - __current_node__: The current node in an iteration
+       - __start_node__: The starting node for an iteration
+       - __new_iteration__: Flag set to start a new iteration
+       - __node_iter__: The current iterator
+       - start_tree_cb, start_node_cb, end_node_cb, property_cb, end_tree_cb: callbacks
+       - depth_first: not currently implemented
+
     """
     def __init__(self, fdt, snapshot = False, depth_first=True ):
         # copy the tree, so we'll remain valid if operations happen
@@ -887,6 +1393,7 @@ class LopperTree:
 
         # callbacks
         # these can even be lambdas. i.e lambda n, fdt: print( "start the tree!: %s" % n )
+        # TODO: the callbacks could return False if we want to abort the tree walk
         self.start_tree_cb = ""
         self.start_node_cb = ""
         self.end_node_cb = ""
@@ -898,10 +1405,8 @@ class LopperTree:
         self.__must_sync__ = False
         self.__current_node__ = 0
         self.__start_node__ = 0
-        self.__current_depth__ = 0
-        self.__current_property__ = 0
         self.__new_iteration__ = True
-        self.node_iter = None
+        self.__node_iter__ = None
 
         # type
         self.depth_first = depth_first
@@ -909,20 +1414,62 @@ class LopperTree:
         # resolve against the fdt
         self.resolve()
 
-    # we are the iterator
     def __iter__(self):
+        """magic method to support iteration
+
+        For iterating the nodes of a LopperTree, we are the iterator.
+        This is required by the iterator protocol.
+
+        Args:
+            None
+
+        Returns:
+           LopperTree object: self
+        """
         return self
 
-    # tree
     def __next__(self):
+        """magic method for iteration on a tree
+
+        This routine uses the next() method to move through the nodes of a
+        tree.
+
+        If there are no nodes, or we have iterated all nodes, StopIteration is
+        raised (as is required by the iterator protocol).
+
+        Args:
+            None
+
+        Returns:
+           LopperNode object or StopIteration exception
+
+        """
         n = self.next()
         if n.number == -1:
             raise StopIteration
 
         return n
 
-    # tree
     def __setattr__(self, name, value):
+        """magic method to check the setting of a LopperTree attribute
+
+        If the attribute being set is __current_node__ or __start_node__
+        then the new iteration flag is set to trigger the start of a new
+        iteration. When setting these attributes, value can either be a
+        node number or a node name. When it is a name, it is internally
+        converted to a number on behalf of the caller.
+
+        If the attribute is __dbg__, then the debug setting is chained
+        to contained nodes.
+
+        Args:
+           name: attribute name
+           value: attribute value
+
+        Returns:
+           Nothing
+        """
+        # TODO: we could detect if fdt is assigned/writen and re-run a resolve()
         if name == "__current_node__" or name == "__start_node__":
             if type(value) == int:
                 self.__dict__[name] = value
@@ -939,27 +1486,72 @@ class LopperTree:
         else:
             self.__dict__[name] = value
 
-        # TODO: we could detect if fdt is assigned/writen and re-run a resolve()
-
     # tree
     def __getattribute__(self, name):
-        # try first as an attribute of the object, then, as an
-        # index into the nodes by name (but since most names are
-        # not valid python member names, it isn't all that useful.
-        # more useful are the __*item*__ routines.
+        """magic method around object attribute access
+
+        This method first attempts to access the objects inherent attributes and
+        returns the value if one exists matching the passed name.
+
+        If one is not found, then the node dictionary is checked, and that
+        value returned.
+
+        This allows access like:
+
+            <LopperTree Object>.path_to_node
+
+        To get the LopperNode at that path
+
+        In practice, this is only of limited use, since many node paths are
+        not valid python attribute names.
+
+        Args:
+           name: attribute name
+
+        Returns:
+           The attribute value, or AttributeError if it doesn't exist.
+        """
+        # try first as an attribute of the object, then, as an index into the
+        # nodes by name (but since most names are not valid python member names,
+        # it isn't all that useful. more useful are the __*item*__ routines.
         try:
             return object.__getattribute__(self, name)
         except:
             try:
                 # a common mistake is to leave a trailing / on a node
                 # path. Drop it to make life easier.
-                access_name = name.rstrip( self.__nodes__[access_name] )
+                access_name = name.rstrip('/')
+                return self.__nodes__[access_name]
             except:
-                return None
+                raise AttributeError(name)
 
     def __getitem__(self, key):
-        # let the KeyError exception from an invalid key bubble back to the
-        # user.
+        """magic method for accessing LopperTree nodes like a dictionary
+
+        Allow accessing of nodes as a dictionary:
+
+            <Lopper Tree Object>[<node path>]
+
+        This abstracts the storage of nodesand allows direct access by name,
+        by number or by node regex.
+
+        Either the string name of the node path, the node number, a LopperNode
+        object, or a node path with a regex can be used to access a node.
+
+        Note that on a regex search, the first match is returned. For multiple
+        node returns, use the nodes() method.
+
+        The standard KeyError exception is raised if the node is not valid for
+        a tree
+
+        Args:
+            key: string, int or LopperNode
+
+        Returns:
+           LopperNode object or KeyError exception
+
+        """
+        # let the KeyError exception from an invalid key bubble back to the user.
         if type(key) == int:
             return self.__nnodes__[key]
 
@@ -983,6 +1575,27 @@ class LopperTree:
             raise e
 
     def __setitem__(self, key, val):
+        """magic method for setting LopperTree nodes like a dictionary
+
+        Allow setting of properties as a dictionary:
+
+            <Lopper Tree Object>[<node name>] = <LopperNode Object>
+
+               or
+
+            <Lopper Tree Object>[<node number>] =  <LopperNode Object>
+
+        During assignment of the node, access is created by name, number and
+        phandle as appropriate
+
+        Args:
+            key: string or int
+            val: LopperNode
+
+        Returns:
+;           Nothing, raises TypeError on invalid parameters
+        """
+
         if isinstance(val, LopperNode ):
             # we can try to assign
             if type(key) == int:
@@ -1000,18 +1613,44 @@ class LopperTree:
             # thing to assign.
             raise TypeError( "LopperNode was not passed as value" )
 
-    # tree
-    # deleting a dictionary key
     def __delitem__(self, key):
+        """magic method for removing a property from a tree dictionary style
+
+        ** Not currently implemented **, overridden to prevent use
+
+        Supports removing a node from a tree through "del"
+
+            del <tree>[node]
+
+        Args:
+           key (LopperNode): node/index to remove
+
+        Returns:
+           Nothing
+
+        """
         # not currently supported
         pass
 
-    # tree
     def ref_all( self, starting_node, parent_nodes=False ):
+        """Increment the refcount for a node and its subnodes (and optionally parents)
+
+        Creates a reference to a node and its subnodes.
+
+        If parent_nodes is set to True, parent nodes will be also referenced.
+
+        Args:
+           starting_node (LopperNode): node to reference
+           parent_nodes (boolean,optional): flag to indicate if parent nodes
+                                            should be referenced
+
+        Returns:
+           Nothing
+
+        """
         if parent_nodes:
             refd_nodes = starting_node.resolve_all_refs( self.fdt, [".*"] )
 
-        # reference the starting node and all subnodes, we could extend
         subnodes_to_ref = starting_node.subnodes()
 
         nodes_to_ref = []
@@ -1023,8 +1662,25 @@ class LopperTree:
             n.ref = 1
 
 
-    # tree wide ref set / clear
     def ref( self, value, node_regex = None ):
+        """Tree wide setting of a refcount
+
+        Sets a refcount for all nodes in the tree, or a regex contained set
+        of nodes.
+
+        Calling this routine with zero, is a treewide reset of all refcounts.
+
+        If a regex is passed, only matching nodes will be set/cleared.
+
+        Args:
+           value (int): refcount value by which to increment
+           node_regex (string,optional): node path regex to restrict scope of
+                                         refcount operations
+
+        Returns:
+           Nothing
+
+        """
         if node_regex:
             nodes = self.nodes( node_regex )
         else:
@@ -1033,9 +1689,8 @@ class LopperTree:
         for n in nodes:
             n.ref = value
 
-    # tree
     def refd( self, node_regex="" ):
-        """Get a list of refererenced nodes
+        """Get a list of referenced nodes
 
         When refcounting is enabled, this routine returns the list of nodes
         that have been referenced.
@@ -1052,7 +1707,6 @@ class LopperTree:
            list (strings): list of referenced nodes, or [] if there are no referenced nodes
 
         """
-
         rnodes = []
         for n in self:
             if n.ref > 0:
@@ -1068,8 +1722,23 @@ class LopperTree:
 
         return ret_nodes
 
-    # tree
     def sync( self, fdt = None ):
+        """Sync a tree to a backing FDT
+
+        This routine walks the FDT, and sync's changes from any LopperTree nodes
+        into the backing store.
+
+        Once complete, all nodes are resolved() to ensure their attributes reflect
+        the FDT status.
+
+        Args:
+           fdt (FDT,optional): the flattended device tree to sync to. If it isn't
+                               passed, the stored FDT is use for sync.
+
+        Returns:
+           Nothing
+
+        """
         sync_fdt = fdt
         if sync_fdt == None:
             sync_fdt = self.fdt
@@ -1097,12 +1766,11 @@ class LopperTree:
 
             nn, depth = sync_fdt.next_node( nn, depth, (libfdt.BADOFFSET,) )
 
-        # technique a)
+        # technique a), left for reference
         # sync any modified properties to a device tree
         # for n in self.__nodes__.values():
         #     if self.__dbg__ > 2:
         #         print( "[DBG++][%s]: tree sync node: %s" % (sync_fdt,n.name) )
-
         #     n.sync( sync_fdt )
 
         if self.__dbg__ > 2:
@@ -1114,6 +1782,19 @@ class LopperTree:
 
     # in case someone wants to do "tree" - "node"
     def __sub__( self, other ):
+        """magic method for removing a node from a tree
+
+        Supports removing a node from a tree through "-"
+
+            tree - <LopperNode object>
+
+        Args:
+           other (LopperNode): Node to remove
+
+        Returns:
+           LopperTree: returns self
+
+        """
         if not isinstance( other, LopperNode ):
             return self
 
@@ -1121,8 +1802,19 @@ class LopperTree:
 
         return self
 
-    # tree
     def delete( self, node ):
+        """delete a node from a tree
+
+        If a node is resolved and syncd to the FDT, this routine deletes it
+        from the FDT and the LopperTree structure.
+
+        Args:
+           node (int or LopperNode): the node to delete
+
+        Returns:
+           Boolean: True if deleted, False otherwise. KeyError if node is not found
+
+        """
         n = node
         # not a great idea to delete by number, but we support it as
         # a transitional step
@@ -1140,17 +1832,44 @@ class LopperTree:
 
         return False
 
-    # in case someone wants to use "tree" + "node"
     def __add__( self, other ):
+        """magic method for adding a node to a tree
+
+        Supports adding a node to a tree through "+"
+
+            tree + <LopperNode object>
+
+        Args:
+           other (LopperNode): node to add
+
+        Returns:
+           LopperTree: returns self, Exception on invalid input
+
+        """
         if not isinstance( other, LopperNode ):
-            return self
+            raise Excepton( "LopperNode was not passed" )
 
         self.add( other )
 
         return self
 
-    # tree
     def add( self, node ):
+        """Add a node to a tree
+
+        Supports adding a node to a tree through:
+
+            tree.add( <node> )
+
+        The node is added to the FDT, resolved and syncd. It is then available
+        for use in any tree operations.
+
+        Args:
+           node (LopperNode): node to add
+
+        Returns:
+           LopperTree: returns self, raises Exception on invalid parameter
+
+        """
         # do we already have a node at this path ?
         try:
             existing_node = self.__nodes__[node.abs_path]
@@ -1185,9 +1904,22 @@ class LopperTree:
 
         return self
 
-    # tree
     def subnodes( self, start_node, node_regex = None ):
-        # start_node is a LopperNode
+        """return the subnodes of a node
+
+        Returns a list of all subnodes from a given starting node.
+
+        If a node regex is passed, those nodes that do not match the
+        regex are removed from the returned value.
+
+        Args:
+           start_node (LopperNode): the starting node
+           node_regex (string,optional): node mask
+
+        Returns:
+           list: returns a list of all subnodes (or matching subnodes)
+
+        """
         # gets you a list of all looper nodes under starting node
         all_kids = [ start_node ]
         for n in start_node.children:
@@ -1204,9 +1936,19 @@ class LopperTree:
 
         return all_matching_kids
 
-    # tree
-    # nodename can be a regex
+
     def nodes( self, nodename ):
+        """Get nodes that match a given name or regex
+
+        Looks for a node at a name/path, or nodes that match a regex.
+
+        Args:
+           nodename (string): node name or regex
+
+        Returns:
+           list: a list all nodes that match the name or regex
+
+        """
         matches = []
         try:
             matches = [self.__nodes__[nodename]]
@@ -1218,18 +1960,26 @@ class LopperTree:
 
         return matches
 
-    # tree
-    # node by phandle!
     def pnode( self, phandle ):
+        """Find a node in a tree by phandle
+
+        Safely (no exception raised) returns the node that can be found
+        at a given phandle value.
+
+        Args:
+           phandle (int): node phandle to check
+
+        Returns:
+           LopperNode: the matching node if found, None otherwise
+
+        """
         try:
             return self.__pnodes__[phandle]
         except:
             return None
 
-
-    # tree
     def filter( self, node_prefix, action, test_cmd, fdt=None, verbose=0 ):
-        """Filter nodes and perform an action
+        """Filter tree nodes and perform an action
 
         Starting from the supplied path (node_prefix), this function walks
         the device tree and executes a block of python code to test each
@@ -1393,6 +2143,24 @@ class LopperTree:
                 pass
 
     def exec(self):
+        """Start a tree walk execution, with callbacks executed as required
+
+        Starts walking the tree, beginning at the preamble, and then through a depth
+        first walking of the nodes.
+
+        If the tree has registered callbacks, they are executed before the walk
+        starts, at the start/end of each node, at each property and at the end of
+        the tree.
+
+        See the class description for details on the callbacks
+
+        Args:
+           None
+
+        Returns:
+           Nothing
+
+        """
         if self.__dbg__ > 4:
             print( "[DBG++++]: LopperTree exec start" )
 
@@ -1473,13 +2241,39 @@ class LopperTree:
             self.end_tree_cb( -1, self.fdt )
 
     def reset(self):
+        """reset a tree
+
+        Resets certain parts of the tree to their initial values. Specifically
+        it resets the tree for a new iteration.
+
+        Args:
+           None
+
+        Returns:
+           Nothing
+
+        """
         self.__current_node__ = 0
-        self.__current_depth__ = 0
-        self.__current_property__ = 0
         self.__new_iteration__ = True
 
-    # tree
     def resolve(self):
+        """resolve a tree
+
+        Resolves the details around the nodes of a tree, and completes values
+        that are not possible at initialization time.
+
+        In particular, it updates the path, node and phandle ordered dictionaries
+        to reflect the backing FDT. This is often done after a node is added to
+        ensure that iterations will see the new node in tree order, versus added
+        order.
+
+        Args:
+           None
+
+        Returns:
+           Nothing
+
+        """
         if self.depth_first:
             nodes_saved = dict(self.__nodes__)
 
@@ -1507,13 +2301,6 @@ class LopperTree:
                     # we try and re-use the node if possible, since that keeps
                     # old references valid for adding more properties, etc
                     node = nodes_saved[abs_path]
-
-                    # fix any numbering changes, etc.
-                    # This should already have been done, it is commented out, since
-                    # fundamentally it is a re-sync/re-resolve if anything changed
-                    # after this node during a full tree sync, but the sync needs to
-                    # take care of that, so we are leaving this out.
-                    # node.sync( self.fdt )
                 except:
                     # node didn't exist before, create it as something new
                     node = LopperNode( nn, "", self )
@@ -1545,8 +2332,27 @@ class LopperTree:
             # breadth first. not currently implemented
             pass
 
-
     def next(self):
+        """Returns the next node in a tree iteration
+
+        This method maintains the iteration state of a tree and returns
+        the next LopperNode in the iteration.
+
+        Three types of iterations are common:
+
+          - full iteration: a depth first walk of every node in the tree
+          - subnode iteration: a depth first walk of all nodes under a given
+                               starting point
+          - startnode iteration: A depth first walk starting at a given node
+                                 and continuing to the end of the tree
+
+        Args:
+           None
+
+        Returns:
+           LopperNode
+
+        """
         node = None
 
         if self.__new_iteration__:
@@ -1554,27 +2360,27 @@ class LopperTree:
 
             # by default, we'll just iterate the nodes as they went
             # into our dictionary
-            self.node_iter = iter( self.__nodes__.values() )
+            self.__node_iter__ = iter( self.__nodes__.values() )
 
             if self.__current_node__ == 0 and self.__start_node__ == 0:
                 # just get the first node out of the default iterator
-                node = next(self.node_iter)
+                node = next(self.__node_iter__)
             elif self.__start_node__ != 0:
                 # this is a starting node, so we fast forward and then use
                 # the default iterator
-                node = next(self.node_iter)
+                node = next(self.__node_iter__)
                 while node.number != self.__start_node__:
-                    node = next(self.node_iter)
+                    node = next(self.__node_iter__)
             else:
                 # non-zero current_node, that means we'll do a custom iteration
                 # of only the nodes that are underneath of the set current_node
                 child_nodes = self.subnodes( self.__nnodes__[self.__current_node__] )
-                self.node_iter = iter( child_nodes )
-                node = next(self.node_iter)
+                self.__node_iter__ = iter( child_nodes )
+                node = next(self.__node_iter__)
         else:
             if self.depth_first:
                 try:
-                    node = next(self.node_iter)
+                    node = next(self.__node_iter__)
                 except StopIteration:
                     # reset for the next call
                     self.reset()
@@ -1587,7 +2393,19 @@ class LopperTree:
         return node
 
 class LopperTreePrinter( LopperTree ):
+    """SubClass for pretty printing a lopper tree
 
+    This class implements:
+       - routines to print the start of a tree, nodes, properties and end of a tree
+         to DTS format.
+
+    Pretty printing is done by implementing callbacks that the base LopperTree
+    class will call during a tree walk.
+
+    Attributes:
+       - output: output file name, if not passed stdout is used
+
+    """
     def __init__( self, fdt, snapshot = False, output=sys.stdout, debug=0 ):
         # init the base walker.
         super().__init__( fdt, snapshot )
@@ -1605,7 +2423,18 @@ class LopperTreePrinter( LopperTree ):
         self.__dbg__ = debug
 
     def start(self, n, fdt ):
-        # peek ahead to handle the pre-amble
+        """LopperTreePrinter start
+
+        Prints the start / opening of a tree and handles the preamble.
+
+        Args:
+            n (LopperNode): the opening node of the tree
+            fdt (FDT): the FDT backing the tree
+
+        Returns:
+            Nothing
+        """
+        # peek ahead to handle the preamble
         for p in n:
             if p.type == "preamble":
                 print( "%s" % p, file=self.output )
@@ -1613,6 +2442,17 @@ class LopperTreePrinter( LopperTree ):
         print( "/dts-v1/;\n\n/ {", file=self.output )
 
     def start_node(self, n, fdt ):
+        """LopperTreePrinter node start
+
+        Prints the start / opening of a node
+
+        Args:
+            n (LopperNode): the node being opened
+            fdt (FDT): the FDT backing the tree
+
+        Returns:
+            Nothing
+        """
         indent = n.depth * 8
         nodename = n.name
         if n.number != 0:
@@ -1624,11 +2464,33 @@ class LopperTreePrinter( LopperTree ):
             print(outstring.rjust(len(outstring)+indent," " ), file=self.output )
 
     def end_node(self, n, fdt):
+        """LopperTreePrinter node end
+
+        Prints the end / closing of a node
+
+        Args:
+            n (LopperNode): the node being closed
+            fdt (FDT): the FDT backing the tree
+
+        Returns:
+            Nothing
+        """
         indent = n.depth * 8
         outstring = "};\n"
         print(outstring.rjust(len(outstring)+indent," " ), file=self.output)
 
     def start_property(self, p, fdt):
+        """LopperTreePrinter property print
+
+        Prints a property
+
+        Args:
+            p (LopperProperty): the property to print
+            fdt (FDT): the FDT backing the tree
+
+        Returns:
+            Nothing
+        """
         # do we really need this resolve here ? We are already tracking if they
         # are modified/dirty, and we have a global resync/resolve now. I think it
         # can go
@@ -1652,6 +2514,18 @@ class LopperTreePrinter( LopperTree ):
             print(outstring.rjust(len(outstring)+indent," " ), file=self.output)
 
     def end(self, n,fdt):
+        """LopperTreePrinter tree end
+
+        Ends the walking of a tree
+
+        Args:
+            n (LopperNode): -1
+            fdt (FDT): the FDT backing the tree
+
+        Returns:
+            Nothing
+        """
+
         if self.output != sys.stdout:
             self.output.close()
 

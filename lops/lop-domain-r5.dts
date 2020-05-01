@@ -15,17 +15,11 @@
                 compatible = "system-device-tree-v1,lop";
                 lop_0 {
                         compatible = "system-device-tree-v1,lop,assist-v1";
-                        node = "/chosen/openamp_r5";
+                        node = "/domains/openamp_r5";
                         id = "openamp,domain-v1";
 			// if uncommented the noexec property means the lop can be
 			// present but skipped. useful for debug
 			//noexec;
-                };
-                lop_1 {
-                        compatible = "system-device-tree-v1,lop,assist-v1";
-                        node = "/chosen/domains";
-                        id = "access-domain,domain-v1";
-                        noexec;
                 };
                 lop_2 {
                         // node name modify
@@ -88,7 +82,7 @@
                           // couple these transforms and loaded modules
                           compatible = "system-device-tree-v1,lop,assist-v1";
                           id = "openamp,xlnx-rpu";
-                          node = "/chosen/openamp_r5";
+                          node = "/domains/openamp_r5";
                   };
                   lop_13 {
                          compatible = "system-device-tree-v1,lop,output";
@@ -103,33 +97,38 @@
                          // * is "all nodes"
                          nodes = "*";
                   };
-                  lop_15 {
+                  lop_16 {
+                         compatible = "system-device-tree-v1,lop,modify";
+                         modify = "/amba/.*ethernet.*phy.*:testprop:testvalue";
+                         // noexec;
+                  };
+                  lop_17 {
                          compatible = "system-device-tree-v1,lop,modify";
                          //modify = "/amba/:testprop:testvalue";
-                         modify = "/amba/.*ethernet.*phy.*:testprop:testvalue";
+                         modify = "/bus@f1000000/.*ethernet.*phy.*:testprop:testvaluenew";
                          //modify = "/amba.*:testprop:testvalue";
                          // note: nodes is legacy now. Just put the regex into the modify
                          // parameter
                          // nodes = "/amba/.*ethernet.*phy.*";
                   };
-                  lop_16 {
+                  lop_18 {
                          compatible = "system-device-tree-v1,lop,modify";
-                         modify = "/amba:testprop:testvalue";
+                         modify = "/bus@f1000000:testprop:testvalue";
                   };
-		  lop_17 {
+		  lop_19 {
 			 compatible = "system-device-tree-v1,lop,output";
 			 outfile = "linux-partial.dts";
 			 // * is "all nodes"
-			 nodes = "amba.*";
+			 nodes = "bus@f1000000.*";
 		  };
-		  lop_18 {
+		  lop_20 {
 			 compatible = "system-device-tree-v1,lop,output";
 			 outfile = "plm.cdo";
 			 // * is "all nodes"
 			 nodes = "*";
 			 id = "xlnx,output,cdo";
 		  };
-		  lop_19 {
+		  lop_21 {
 			 compatible = "system-device-tree-v1,lop,output";
 			 outfile = "linux-special-props.dts";
 			 // nodes (regex), with a property that must be set

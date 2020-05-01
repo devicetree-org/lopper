@@ -22,20 +22,21 @@ Lopper overview:
 
 lopper.py --help
 
-   Usage: lopper.py [OPTION] <system device tree> [<output file>]...
-      -v, --verbose	  enable verbose/debug processing (specify more than once for more verbosity)
-      -t, --target	  indicate the starting domain for processing (i.e. chosen node or domain label)
-	, --dryrun	  run all processing, but don't write any output files
-      -d, --dump	  dump a dtb as dts source
-      -i, --input	  process supplied input device tree description
-      -a, --assist	  load specified python assist (for node or output processing)
-      -o, --output	  output file
-      -f, --force	  force overwrite output file(s)
-        , --werror	  treat warnings as errors
-      -S, --save-temps	  don't remove temporary files
-      -h, --help	  display this help and exit
-      -O, --outdir	  directory to use for output files
-       , --version	  output the version and exit
+    Usage: lopper.py [OPTION] <system device tree> [<output file>]...
+      -v, --verbose       enable verbose/debug processing (specify more than once for more verbosity)
+      -t, --target        indicate the starting domain for processing (i.e. chosen node or domain label)
+        , --dryrun        run all processing, but don't write any output files
+      -d, --dump          dump a dtb as dts source
+      -i, --input         process supplied input device tree description
+      -a, --assist        load specified python assist (for node or output processing)
+      -A, --assist-paths  colon separated lists of paths to search for assist loading
+      -o, --output        output file
+      -f, --force         force overwrite output file(s)
+        , --werror        treat warnings as errors
+      -S, --save-temps    don't remove temporary files
+      -h, --help          display this help and exit
+      -O, --outdir        directory to use for output files
+        , --version       output the version and exit
 
 Fundamentally, lopper takes an  input device tree (normally a system device tree),
 applies operations to that tree, and outputs a modified/processed tree.
@@ -167,6 +168,8 @@ A snapshot of pydoc information for lopper is maintained in README.pydoc. For
 the latest detailed information on lopper, execute the following:
 
   % pydoc3 ./lopper.py
+  % pydoc3 ./lopper_tree.py
+  % pydoc3 ./lopper_sdt.py
 
 Lopper operations
 -----------------
