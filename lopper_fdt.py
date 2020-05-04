@@ -57,6 +57,70 @@ class Lopper:
     """
 
     @staticmethod
+    def node_getname( fdt, node_number_or_path ):
+        """Gets the FDT name of a node
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_number_or_path: node number or path
+
+        Returns:
+            string: name of the node, or "" if node wasn't found
+        """
+        node_number = -1
+        node_path = ""
+        try:
+            node_number = int(node_number_or_path)
+            node_path = Lopper.node_abspath( fdt, node_number_or_path )
+        except ValueError:
+            node_number = Lopper.node_find( fdt, node_number_or_path )
+            node_path = node_number_or_path
+        try:
+            name = fdt.get_name( node_number )
+        except:
+            name = ""
+
+        return name
+
+    @staticmethod
+    def node_setname( fdt, node_number_or_path, newname ):
+        """Sets the FDT name of a node
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_number_or_path: node number or path
+            newname (string): name of the node
+
+        Returns:
+            boolean: True if the name was set, False otherwise
+        """
+        node_number = -1
+        node_path = ""
+        try:
+            node_number = int(node_number_or_path)
+            node_path = Lopper.node_abspath( fdt, node_number_or_path )
+        except ValueError:
+            node_number = Lopper.node_find( fdt, node_number_or_path )
+            node_path = node_number_or_path
+
+        retval = False
+        if node_number == -1:
+            return retval
+
+        for _ in range(MAX_RETRIES):
+            try:
+                fdt.set_name( node_number, newname )
+                retval = True
+            except:
+                fdt.resize( fdt.totalsize() + 1024 )
+                continue
+            else:
+                break
+
+        return retval
+
+
+    @staticmethod
     def node_find( fdt, node_prefix ):
         """Finds a node by its prefix
 

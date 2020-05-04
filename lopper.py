@@ -101,6 +101,7 @@ class LopperSDT:
         self.tree = None
         self.outdir = "./"
         self.target_domain = ""
+        self.load_paths = []
 
     def __comment_replacer(self,match):
         """private function to translate comments to device tree attributes"""
@@ -304,13 +305,10 @@ class LopperSDT:
                 self.lops.append( lop )
 
         for a in assists:
-            inf = Path(a)
-            if not inf.exists():
-                print( "[ERROR]: cannot find assist %s" % a )
-                sys.exit(2)
-            self.assists.append( LopAssist( a ) )
+            a_file = self.find_assist( a )
+            self.assists.append( LopAssist( str(a_file.resolve()) ) )
 
-        self.load_assists()
+        self.wrap_assists()
 
     def cleanup( self ):
         """cleanup any temporary or copied files
@@ -337,7 +335,7 @@ class LopperSDT:
                 # most likely gone
                 pass
 
-        # note: we are not deleting assists .db files, since they
+        # note: we are not deleting assists .dtb files, since they
         #       can actually be binary blobs passed in. We are also
         #       not cleaning up the concatenated compiled. pp file, since
         #       it is created with mktmp()
@@ -363,8 +361,50 @@ class LopperSDT:
         with open(outfilename, 'wb') as w:
             w.write(byte_array)
 
-    def load_assists(self):
-        """load assists that have been added to the device tree
+    def find_assist(self, assist_name, local_load_paths = []):
+        """Locates a python module that matches assist_name
+
+        This routine searches both system (lopper_directory, lopper_directory +
+        "assists", and passed paths (local_load_paths) to locate a matching
+        python implementation.
+
+        Args:
+           assist_name (string): name of the assist to locate
+           local_load_paths (list of strings, optional): list of directories to search
+                                                         in addition to system dirs
+
+        Returns:
+           Path: Path object to the located python module, None on failure
+
+        """
+        mod_file = Path( assist_name )
+        mod_file_wo_ext = mod_file.with_suffix('')
+
+        if self.verbose > 1:
+            print( "find_assist: %s local search: %s" % (assist_name,local_load_paths) )
+
+        try:
+            mod_file_abs = mod_file.resolve()
+        except FileNotFoundError:
+            # check the path from which lopper is running, that directory + assists, and paths
+            # specified on the command line
+            search_paths =  [ lopper_directory ] + [ lopper_directory + "/assists/" ] + local_load_paths
+            for s in search_paths:
+                mod_file = Path( s + "/" + mod_file.name )
+                try:
+                    mod_file_abs = mod_file.resolve()
+                    break
+                except FileNotFoundError:
+                    mod_file_abs = ""
+
+            if not mod_file_abs:
+                print( "[ERROR]: module file %s not found" % load_prop )
+                return None
+
+        return mod_file
+
+    def wrap_assists(self):
+        """wrap assists that have been added to the device tree
 
         Wraps any command line assists that have been added to the system
         device tree. A standard lop format dtb is generated for any found
@@ -450,8 +490,6 @@ class LopperSDT:
         """
         return Lopper.node_find( self.FDT, node_prefix )
 
-    # argument: node number, and an id string
-    # default for cb_node is "start at root (0)"
     def find_compatible_assist( self, cb_node = 0, cb_id = "", mask = "" ):
         """Finds a registered assist that is compatible with a given ID
 
@@ -476,6 +514,7 @@ class LopperSDT:
             function reference: the callback routine, or "", if no compatible routine found
 
         """
+        # default for cb_node is "start at root (0)"
         cb_func = []
         if self.assists:
             for a in self.assists:
@@ -727,32 +766,19 @@ class LopperSDT:
 
                         if load_prop:
                             # for submodule loading
-                            for p in load_paths:
+                            for p in self.load_paths:
                                 if p not in sys.path:
                                     sys.path.append( p )
 
                             if self.verbose:
                                 print( "[INFO]: loading module %s" % load_prop )
 
-                            mod_file = Path( load_prop )
-                            mod_file_wo_ext = mod_file.with_suffix('')
-                            try:
-                                mod_file_abs = mod_file.resolve()
-                            except FileNotFoundError:
-                                # check the path from which lopper is running, that directory + assists, and paths
-                                # specified on the command line
-                                search_paths =  [ lopper_directory ] + [ lopper_directory + "/assists/" ] + load_paths
-                                for s in search_paths:
-                                    mod_file = Path( s + "/" + mod_file.name )
-                                    try:
-                                        mod_file_abs = mod_file.resolve()
-                                        break
-                                    except FileNotFoundError:
-                                        mod_file_abs = ""
+                            mod_file = self.find_assist( load_prop, self.load_paths )
+                            if not mod_file:
+                                print( "[ERROR]: unable to find assist (%s)" % load_prop )
+                                sys.exit(1)
 
-                                if not mod_file_abs:
-                                    print( "[ERROR]: module file %s not found" % load_prop )
-                                    sys.exit(1)
+                            mod_file_abs = mod_file.resolve()
 
                             try:
                                 imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
@@ -1128,6 +1154,7 @@ if __name__ == "__main__":
     device_tree.pretty = pretty_print
     device_tree.outdir = outdir
     device_tree.target_domain = target_domain
+    device_tree.load_paths = load_paths
 
     device_tree.setup( sdt, inputfiles, "", assists, force )
     

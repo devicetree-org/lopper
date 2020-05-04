@@ -25,7 +25,7 @@ import contextlib
 import importlib
 from lopper import Lopper
 from lopper import LopperFmt
-from lopper import LopperAction
+from lopper_tree import LopperAction
 import lopper
 
 def is_compat( node, compat_string_to_test ):
@@ -54,11 +54,16 @@ def core_domain_access( tgt_node, sdt, verbose=0 ):
     access_list = domain_node["access"].value
     if access_list:
         for ph in access_list[::2]:
+
             anode = sdt.tree.pnode( ph )
             if anode:
-                anode.ref = 1
+                sdt.tree.ref_all( anode, True )
 
         refd_nodes = sdt.tree.refd()
+
+        if verbose:
+            for p in refd_nodes:
+                print( "node ref: %s" % p )
 
         code = """
                 p = node.ref
@@ -68,6 +73,6 @@ def core_domain_access( tgt_node, sdt, verbose=0 ):
                     return False
                 """
         # delete any unreferenced nodes
-        sdt.tree.filter( "/", LopperAction.DELETE, code, verbose )
+        sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
 
     return True

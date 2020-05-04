@@ -1004,9 +1004,12 @@ class LopperNode(object):
                            (self.abs_path,self.number,nn) )
                 self.number = nn
 
-            fdt_name = fdt.get_name( self.number )
+            fdt_name = Lopper.node_getname( fdt, self.number )
             if fdt_name != self.name:
-                fdt.set_name( self.number, self.name )
+                try:
+                    Lopper.node_setname( fdt, self.number, self.name )
+                except Exception as e:
+                    print( "[WARNING]: could not set node name to %s (%s)" % (self.name,e))
 
             # sync any modified properties to a device tree
             for p in self.__props__.values():
@@ -2028,7 +2031,9 @@ class LopperTree:
             Nothing
 
         """
-        fdt = self.fdt
+        if fdt == None:
+            fdt = self.fdt
+
         if verbose:
             print( "[NOTE]: filtering nodes root: %s" % node_prefix )
 
@@ -2293,9 +2298,6 @@ class LopperTree:
             nn = 0
             depth = 0
             while depth >= 0:
-                # create the node
-                # node = LopperNode( nn )
-
                 abs_path = Lopper.node_abspath( self.fdt, nn )
                 try:
                     # we try and re-use the node if possible, since that keeps
@@ -2421,6 +2423,26 @@ class LopperTreePrinter( LopperTree ):
             self.output = open( output, "w")
 
         self.__dbg__ = debug
+
+    def reset(self, output=sys.stdout ):
+        """reset the output of a printer
+
+        closes the existing output (if not stdout) and opens a new
+        output (if not stdout)
+
+        Args:
+            output (string,optional): name of file to open for output, default is stdout
+
+        Returns:
+            Nothing
+        """
+        super().reset()
+
+        if self.output != sys.stdout:
+            self.output.close()
+
+        if output != sys.stdout:
+            self.output = open( output, "w")
 
     def start(self, n, fdt ):
         """LopperTreePrinter start
