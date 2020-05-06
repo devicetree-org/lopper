@@ -37,7 +37,7 @@ from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
 from lopper_tree import *
 from lopper_fdt import *
 
-LOPPER_VERSION = "2020.2-alpha"
+LOPPER_VERSION = "2020.4-beta"
 
 lopper_directory = os.path.dirname(os.path.realpath(__file__))
 
