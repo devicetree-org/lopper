@@ -1438,6 +1438,8 @@ class LopperTree:
         self.__nnodes__ = OrderedDict()
         # nodes, indexed by phandle
         self.__pnodes__ = OrderedDict()
+        # nodes, indexed by label
+        self.__lnodes__ = OrderedDict()
 
         # callbacks
         # these can even be lambdas. i.e lambda n, fdt: print( "start the tree!: %s" % n )
@@ -1612,15 +1614,19 @@ class LopperTree:
             access_name = key.rstrip('/')
             return self.__nodes__[access_name]
         except Exception as e:
-            # is it a regex ?
-            # we tweak the key a bit, to make sure the regex is bounded.
-            m = self.nodes( "^" + key + "$" )
-            if m:
-                # we get the first match, if you want multiple matches
-                # call the "nodes()" method
-                return m[0]
+            # is it a label :
+            try:
+                return self.__lnodes__[access_name]
+            except Exception as e:
+                # is it a regex ?
+                # we tweak the key a bit, to make sure the regex is bounded.
+                m = self.nodes( "^" + key + "$" )
+                if m:
+                    # we get the first match, if you want multiple matches
+                    # call the "nodes()" method
+                    return m[0]
 
-            raise e
+                raise e
 
     def __setitem__(self, key, val):
         """magic method for setting LopperTree nodes like a dictionary
@@ -1651,11 +1657,15 @@ class LopperTree:
                 self.__nodes__[val.abspath] = val
                 if val.phandle != 0:
                     self.__pnodes__[val.phandle] = val
+                if val.label:
+                    self.__lnodes__[val.label] = val
             else:
                 self.__nodes__[key] = val
                 self.__nnodes__[val.number] = val
                 if val.phandle != 0:
                     self.__pnodes__[val.phandle] = val
+                if val.label:
+                    self.__lnodes__[val.label] = val
         else:
             # thrown an exception, since this is not a valid
             # thing to assign.
@@ -2338,6 +2348,8 @@ class LopperTree:
             self.__nnodes__ = OrderedDict()
             # nodes, indexed by phandle
             self.__pnodes__ = OrderedDict()
+            # nodes, indexed by label
+            self.__lnodes__ = OrderedDict()
 
             if self.__dbg__ > 2:
                 print( "[DGB+]: tree resolution start: %s" % self )
@@ -2366,6 +2378,8 @@ class LopperTree:
                 self.__nnodes__[node.number] = node
                 if node.phandle > 0:
                     self.__pnodes__[node.phandle] = node
+                if node.label:
+                    self.__lnodes__[node.label] = node
 
                 nn, depth = self.fdt.next_node( nn, depth, (libfdt.BADOFFSET,) )
 
