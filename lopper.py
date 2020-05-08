@@ -125,6 +125,37 @@ class LopperSDT:
             )
         return re.sub(pattern, self.__comment_replacer, text)
 
+    def __label_replacer(self,match):
+        """private function to translate labels to device tree attributes"""
+        s = match.group(0)
+        s1 = match.group(1)
+        s2 = match.group(2)
+        #print( "   label group 0: %s" % s )
+        #print( "   label group 1: %s" % s1 )
+        #print( "   label group 2: %s" % s2 )
+        if s1 and s2:
+            #print( "      label match" )
+            global lcount
+            lcount = lcount + 1
+            r1 = s1.lstrip()
+            r1 = re.sub( ':', '', r1 )
+            r2 = "{0}\nlopper-label-{1} = \"{2}\";".format(s, lcount, r1)
+            return r2
+        else:
+            return s
+
+    def __label_translate(self,text):
+        """private function used to match (and replace) labels in DTS files"""
+        global lcount
+        lcount = 0
+        pattern2 = re.compile(
+            r'^\s*?\w*?\s*?\:', re.DOTALL
+        )
+        pattern = re.compile(
+            r'^\s*?(\w*?)\s*?\:(.*?)$', re.DOTALL | re.MULTILINE
+        )
+        return re.sub(pattern, self.__label_replacer, text)
+
     def setup(self, sdt_file, input_files, include_paths, assists=[], force=False):
         """executes setup and initialization tasks for a system device tree
 
@@ -253,9 +284,10 @@ class LopperSDT:
                 # finally, do comment substitution
                 with open(fp_pretty) as f:
                     fp_comments_as_attributes = self.__comment_translate(data)
+                    fp_comments_and_labels_as_attributes = self.__label_translate(fp_comments_as_attributes)
 
                 f = open( fp_pretty, 'w' )
-                f.write( fp_comments_as_attributes )
+                f.write( fp_comments_and_labels_as_attributes )
                 f.close()
 
                 fp = fp_pretty

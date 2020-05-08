@@ -465,7 +465,7 @@ def setup_system_device_tree( outdir ):
                 };
         };
 
-        amba: amba {
+        amba_foo: amba {
                 compatible = "simple-bus";
                 #address-cells = <0x2>;
                 #size-cells = <0x2>;
@@ -625,7 +625,7 @@ def setup_system_device_tree( outdir ):
                          * bit 31: secure mode / normal mode (secure mode == 1)
                          */
                         /* cpus = <&cpus_r5 0x2 0x80000000>, <&cpus 0x3 0x80000000>; */
-                        cpus = <&cpus_r5 0x2 0x80000000>;
+                        cpus = <&cpus 0x3 0x80000000>;
                         /*
                          * Access specifies which resources this domain
                          * has access to.
@@ -1152,7 +1152,6 @@ def tree_sanity_test( fdt, verbose=0 ):
     if verbose:
         for n in print2:
             print( "2node: %s" % n )
-
         print( "\n" )
 
     fpp2 = tempfile.NamedTemporaryFile( delete=False )
@@ -1162,7 +1161,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     if filecmp.cmp( fpp.name, fpp2.name ):
         test_passed( "two tree print" )
     else:
-        test_failed( "two tree print" )
+        test_failed( "two tree print (%s does not equal %s)" % (fpp.name,fpp2.name))
 
     print( "[TEST]: end: second tree test\n" )
 

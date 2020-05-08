@@ -276,9 +276,10 @@ class LopperProp():
 
                 if element_count in phandle_idxs:
                     try:
+                        # TODO: this should be a list of LopperNodes, not offsets
                         tgn = fdt.node_offset_by_phandle( i )
                         phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
-                        # name isn't used, we could probably drop the call.
+                        # TODO: name isn't used, we could probably drop the call.
                         phandle_targets.append( tgn )
                     except:
                         pass
@@ -332,6 +333,8 @@ class LopperProp():
             prop_type = "comment"
         elif re.search( "lopper-preamble", self.name ):
             prop_type = "preamble"
+        elif re.search( "lopper-label.*", self.name ):
+            prop_type = "label"
         else:
             prop_type = type(prop_val)
 
@@ -343,6 +346,9 @@ class LopperProp():
             outstring = ""
             for s in prop_val:
                 outstring += s
+
+        elif prop_type == "label":
+            outstring = ""
 
         elif prop_type == "preamble":
             outstring = "/*\n"
@@ -428,8 +434,20 @@ class LopperProp():
                         if element_count in phandle_idxs:
                             if fdt != None:
                                 try:
-                                    tgn = fdt.node_offset_by_phandle( i )
-                                    phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
+                                    # TODO: these could be lookups in our Nodes, not the FDT (to abstract
+                                    #       FDT out of _tree
+                                    try:
+                                        tgn = fdt.node_offset_by_phandle( i )
+                                    except Exception as e:
+                                        tgn = 0
+
+                                    try:
+                                        phandle_tgt_name = self.node.tree[tgn].label
+                                    except:
+                                        phandle_tgt_name = ""
+
+                                    if not phandle_tgt_name:
+                                        phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
 
                                     if self.__dbg__ > 1:
                                         print( "[DBG+]: [%s:%s] phandle replacement of: %s with %s" %
@@ -532,6 +550,8 @@ class LopperNode(object):
 
         self.phandle = phandle
 
+        self.label = ""
+
         # 'type' is roughly equivalent to a compatible property in
         # the node if it exists.
         self.type = []
@@ -547,6 +567,7 @@ class LopperNode(object):
         self.__props__pending__ = OrderedDict()
 
         self.__dbg__ = debug
+
         # states could be enumerated types
         self.__nstate__ = "init"
         self.__modified__ = False
@@ -792,10 +813,22 @@ class LopperNode(object):
         # let the KeyError exception from an invalid key bubble back to the
         # user.
         if type(key) == str:
-            return self.__props__[key]
+            access_key = key
+        elif isinstance( key, LopperProp ):
+            access_key = key.name
+        else:
+            raise KeyError(key)
 
-        if isinstance( key, LopperProp ):
-            return self.__props__[key.name]
+        try:
+            return self.__props__[access_key]
+        except:
+            # is it a regex ?
+            # we tweak the key a bit, to make sure the regex is bounded.
+            m = self.props( "^" + key + "$" )
+            if m:
+                # we get the first match, if you want multiple matches
+                # call the "nodes()" method
+                return m[0]
 
         raise KeyError(key)
 
@@ -1014,16 +1047,16 @@ class LopperNode(object):
             # sync any modified properties to a device tree
             for p in self.__props__.values():
                 if self.__dbg__ > 2:
-                    print( "[DBG++]:    node sync: syncing property: %s %s" % (p.name,p.__pstate__) )
+                    print( "[DBG++]:    node sync: syncing property: %s (state:%s)" % (p.name,p.__pstate__) )
 
                 if p.__modified__:
                     if self.__dbg__ > 2:
                         print( "[DBG++]:    node sync: property %s is modified, writing back" % p.name )
                     p.sync( fdt )
                     retval = True
-                if p.__pstate__ == "init":
+                if not p.__pstate__ == "syncd":
                     if self.__dbg__ > 2:
-                        print( "[DBG++]:    node sync: property %s is new, creating with value: %s" %
+                        print( "[DBG++]:    node sync: property %s is not syncd, creating with value: %s" %
                                (p.name,p.value) )
                     p.sync( fdt )
                     retval = True
@@ -1261,7 +1294,7 @@ class LopperNode(object):
         # resolve the rest of the references based on the passed device tree
         # self.number must be set before calling this routine.
         if self.__dbg__ > 2:
-            print( "[DBG++]: node resolution start [%s]: %s" % (self,self.abs_path))
+            print( "[DBG++]: node resolution start [fdt:%s][%s]: %s" % (fdt,self,self.abs_path))
 
         if fdt:
             if self.number >= 0:
@@ -1274,7 +1307,8 @@ class LopperNode(object):
                     self.abs_path = "/"
 
                 if self.__dbg__ > 2:
-                    print( "[DBG++]:    resolved: number: %s name: %s path: %s" % ( self.number, self.name, self.abs_path ) )
+                    print( "[DBG++]:    resolved: number: %s name: %s path: %s [fdt:%s]" %
+                           ( self.number, self.name, self.abs_path, fdt ) )
 
                 # parent and depth
                 if self.number > 0:
@@ -1322,7 +1356,18 @@ class LopperNode(object):
                     self.__props__[prop.name].resolve( fdt )
                     self.__props__[prop.name].__modified__ = False
 
+                    # if our node has a property of type label, we bubble it up to the node
+                    # for future use when replacing phandles, etc.
+                    if self.__props__[prop.name].type == "label":
+                        self.label = self.__props__[prop.name].value[0]
+
                     poffset = fdt.next_property_offset(poffset, QUIET_NOTFOUND)
+
+                # pass 2: resolve() below may use the label, hence why it is a separate pass from
+                #         above, where the label is filled in.
+                for p in self.__props__.values():
+                    self.__props__[p.name].resolve( fdt )
+                    self.__props__[p.name].__modified__ = False
 
             if not self.type:
                 self.type = [ "" ]
@@ -1900,8 +1945,10 @@ class LopperTree:
             print( "[DBG+][%s] node added: %s" % (self.fdt,node.abs_path) )
             if self.__dbg__ > 2:
                 for p in node:
-                    print( "[DBG++]      property: %s %s" % (p.name,p.value) )
+                    print( "[DBG++]      property: %s %s (state:%s)" % (p.name,p.value,p.__pstate__) )
 
+        # we can probably drop this by making the individual node sync's smarter and
+        # more efficient when something doesn't need to be written
         self.__must_sync__ = True
         self.sync()
 
@@ -2479,7 +2526,17 @@ class LopperTreePrinter( LopperTree ):
         nodename = n.name
         if n.number != 0:
             if n.phandle != 0:
-                outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
+                plabel = ""
+                try:
+                    if n['lopper-label.*']:
+                        plabel = n['lopper-label.*'].value[0]
+                except:
+                    pass
+
+                if plabel:
+                    outstring = plabel + ": " + nodename + " {"
+                else:
+                    outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
             else:
                 outstring = nodename + " {"
 
