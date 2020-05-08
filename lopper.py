@@ -973,7 +973,8 @@ class LopperSDT:
                                         self.tree[modify_expr[0]].name = modify_expr[2]
                                         self.tree.sync( self.FDT )
                                     except Exception as e:
-                                        print( "[ERROR]:cannot rename node: %s %s (%s)" %(modify_expr[0], modify_expr[2], e))
+                                        print( "[ERROR]:cannot rename node '%s' to '%s' (%s)" %(modify_expr[0], modify_expr[2], e))
+                                        sys.exit(1)
                                 else:
                                     # first we see if the node prefix is an exact match
                                     # node_to_remove = Lopper.node_find( self.FDT, modify_expr[0] )
