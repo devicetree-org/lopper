@@ -2582,8 +2582,8 @@ class LopperTreePrinter( LopperTree ):
             # we have to substitute \n for better indentation, since comments
             # are multiline
             dstring = ""
-            dstring = dstring.rjust(len(dstring) + indent - 3, " " )
-            outstring = re.sub( '\n', '\n' + dstring, outstring )
+            dstring = dstring.rjust(len(dstring) + indent + 1, " " )
+            outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
         if p.type == "preamble":
             # start tree peeked at this, so we do nothing
