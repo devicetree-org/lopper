@@ -434,20 +434,18 @@ class LopperProp():
                         if element_count in phandle_idxs:
                             if fdt != None:
                                 try:
-                                    # TODO: these could be lookups in our Nodes, not the FDT (to abstract
-                                    #       FDT out of _tree
                                     try:
-                                        tgn = fdt.node_offset_by_phandle( i )
+                                        tgn = self.node.tree.pnode( i )
                                     except Exception as e:
                                         tgn = 0
 
                                     try:
-                                        phandle_tgt_name = self.node.tree[tgn].label
+                                        phandle_tgt_name = tgn.label
                                     except:
                                         phandle_tgt_name = ""
 
                                     if not phandle_tgt_name:
-                                        phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
+                                        phandle_tgt_name = Lopper.phandle_safe_name( tgn.name )
 
                                     if self.__dbg__ > 1:
                                         print( "[DBG+]: [%s:%s] phandle replacement of: %s with %s" %
