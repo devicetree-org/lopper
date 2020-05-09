@@ -835,7 +835,7 @@ CLASSES
      |      Returns:
      |         List of subnode names for that node, e.g. ['subsubnode', 'ss1']
      |  
-     |  write_fdt(fdt_to_write, output_filename, sdt=None, overwrite=True, verbose=0, pretty=False)
+     |  write_fdt(fdt_to_write, output_filename, sdt=None, overwrite=True, verbose=0, enhanced=False)
      |      Write a system device tree to a file
      |      
      |      Write a fdt (or system device tree) to an output file. This routine uses
@@ -854,7 +854,7 @@ CLASSES
      |                 None means don't use a system device tree for module loading.
      |          overwrite (bool,optional): Should existing files be overwritten. Default is True.
      |          verbose (int,optional): verbosity level to use.
-     |          pretty(bool,optional): whether pretty printing should be performed. Default is False
+     |          enhanced(bool,optional): whether enhanced printing should be performed. Default is False
      |      
      |      Returns:
      |          Nothing
@@ -1436,7 +1436,7 @@ CLASSES
      |     - value: The property value (always as a list of values)
      |     - node: The node that contains this property
      |     - number: The property offset within the containing node (rarely used)
-     |     - string_val: The pretty printed string representation of a property
+     |     - string_val: The enhanced printed string representation of a property
      |     - type: The type of a property, "comment", "preamble" or "list"
      |     - abs_path: The absolute device tree path to this property
      |  
@@ -1463,7 +1463,7 @@ CLASSES
      |  __str__(self)
      |      The string representation of the property
      |      
-     |      Returns the pretty printed property when str() is used to access
+     |      Returns the enhanced printed property when str() is used to access
      |      an object.
      |      
      |      The string_val is composed in the resolv() function, and takes the
@@ -2027,13 +2027,13 @@ CLASSES
      |      list of weak references to the object (if defined)
     
     class LopperTreePrinter(LopperTree)
-     |  SubClass for pretty printing a lopper tree
+     |  SubClass for enhanced printing a lopper tree
      |  
      |  This class implements:
      |     - routines to print the start of a tree, nodes, properties and end of a tree
      |       to DTS format.
      |  
-     |  Pretty printing is done by implementing callbacks that the base LopperTree
+     |  Enhanced printing is done by implementing callbacks that the base LopperTree
      |  class will call during a tree walk.
      |  
      |  Attributes:

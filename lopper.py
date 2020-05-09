@@ -96,7 +96,7 @@ class LopperSDT:
         self.output_file = ""
         self.cleanup_flag = True
         self.save_temps = False
-        self.pretty = False
+        self.enhanced = False
         self.FDT = None
         self.tree = None
         self.outdir = "./"
@@ -233,14 +233,14 @@ class LopperSDT:
                 sdt_files.append( sdt_file )
                 fp = sdt_file
 
-            if self.pretty:
+            if self.enhanced:
                 # we need to ensure comments are maintained by converting them
                 # into DTS attributes
-                fp_pretty = fp + ".pretty"
-                shutil.copyfile( fp, fp_pretty )
-                fp = fp_pretty
+                fp_enhanced = fp + ".enhanced"
+                shutil.copyfile( fp, fp_enhanced )
+                fp = fp_enhanced
 
-                with open(fp_pretty, 'r') as file:
+                with open(fp_enhanced, 'r') as file:
                     data = file.read()
 
                 # drop /dts-v1/; from the file, we'll add it back at the top first. but
@@ -282,15 +282,15 @@ class LopperSDT:
                 data = re.sub( '^', '/dts-v1/;\n\n', data )
 
                 # finally, do comment substitution
-                with open(fp_pretty) as f:
+                with open(fp_enhanced) as f:
                     fp_comments_as_attributes = self.__comment_translate(data)
                     fp_comments_and_labels_as_attributes = self.__label_translate(fp_comments_as_attributes)
 
-                f = open( fp_pretty, 'w' )
+                f = open( fp_enhanced, 'w' )
                 f.write( fp_comments_and_labels_as_attributes )
                 f.close()
 
-                fp = fp_pretty
+                fp = fp_enhanced
 
             self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
                                           self.save_temps, self.verbose )
@@ -360,8 +360,8 @@ class LopperSDT:
         if self.cleanup and not self.save_temps:
             try:
                 os.remove( self.dtb )
-                if self.pretty:
-                    os.remove( self.dts + ".pretty" )
+                if self.enhanced:
+                    os.remove( self.dts + ".enhanced" )
             except:
                 # doesn't matter if the remove failed, it means it is
                 # most likely gone
@@ -734,7 +734,7 @@ class LopperSDT:
 
                         if not self.dryrun:
                             output_file_full = self.outdir + "/" + output_file_name
-                            Lopper.write_fdt( ff, output_file_full, self, True, self.verbose, self.pretty )
+                            Lopper.write_fdt( ff, output_file_full, self, True, self.verbose, self.enhanced )
                         else:
                             print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
@@ -1042,7 +1042,7 @@ def main():
     global assists
     global werror
     global save_temps
-    global pretty_print
+    global enhanced_print
     global outdir
     global load_paths
 
@@ -1057,11 +1057,11 @@ def main():
     assists = []
     werror = False
     save_temps = False
-    pretty_print = False
+    enhanced_print = False
     outdir="./"
     load_paths = []
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:", [ "assist-paths=", "outdir", "pretty", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
+        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:", [ "assist-paths=", "outdir", "enhanced", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -1099,8 +1099,8 @@ def main():
             werror=True
         elif o in ('-S', '--save-temps' ):
             save_temps=True
-        elif o in ('--pretty' ):
-            pretty_print = True
+        elif o in ('--enhanced' ):
+            enhanced_print = True
         elif o in ('--version'):
             print( "%s" % LOPPER_VERSION )
             sys.exit(0)
@@ -1184,7 +1184,7 @@ if __name__ == "__main__":
     device_tree.output_file = output
     device_tree.cleanup_flag = True
     device_tree.save_temps = save_temps
-    device_tree.pretty = pretty_print
+    device_tree.enhanced = enhanced_print
     device_tree.outdir = outdir
     device_tree.target_domain = target_domain
     device_tree.load_paths = load_paths
@@ -1195,7 +1195,7 @@ if __name__ == "__main__":
 
     if not dryrun:
         Lopper.write_phandle_map( device_tree.FDT, output + ".phandle", device_tree.verbose )
-        Lopper.write_fdt( device_tree.FDT, output, device_tree, True, device_tree.verbose, pretty_print )
+        Lopper.write_fdt( device_tree.FDT, output, device_tree, True, device_tree.verbose, enhanced_print )
     else:
         print( "[INFO]: --dryrun was passed, output file %s not written" % output )
 

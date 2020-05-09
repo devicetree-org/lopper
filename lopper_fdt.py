@@ -758,7 +758,7 @@ class Lopper:
         w.close()
 
     @staticmethod
-    def write_fdt( fdt_to_write, output_filename, sdt=None, overwrite=True, verbose=0, pretty=False ):
+    def write_fdt( fdt_to_write, output_filename, sdt=None, overwrite=True, verbose=0, enhanced=False ):
         """Write a system device tree to a file
 
         Write a fdt (or system device tree) to an output file. This routine uses
@@ -777,7 +777,7 @@ class Lopper:
                    None means don't use a system device tree for module loading.
             overwrite (bool,optional): Should existing files be overwritten. Default is True.
             verbose (int,optional): verbosity level to use.
-            pretty(bool,optional): whether pretty printing should be performed. Default is False
+            enhanced(bool,optional): whether enhanced printing should be performed. Default is False
 
         Returns:
             Nothing
@@ -816,7 +816,7 @@ class Lopper:
             with open(fp.name, 'wb') as w:
                 w.write(byte_array)
 
-            if pretty:
+            if enhanced:
                 printer = lt.LopperTreePrinter( fdt_to_write, True, output_filename, verbose )
                 printer.exec()
             else:

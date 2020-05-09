@@ -57,7 +57,7 @@ class LopperProp():
        - value: The property value (always as a list of values)
        - node: The node that contains this property
        - number: The property offset within the containing node (rarely used)
-       - string_val: The pretty printed string representation of a property
+       - string_val: The enhanced printed string representation of a property
        - type: The type of a property, "comment", "preamble" or "list"
        - abs_path: The absolute device tree path to this property
 
@@ -84,7 +84,7 @@ class LopperProp():
     def __str__( self ):
         """The string representation of the property
 
-        Returns the pretty printed property when str() is used to access
+        Returns the enhanced printed property when str() is used to access
         an object.
 
         The string_val is composed in the resolv() function, and takes the
@@ -2456,13 +2456,13 @@ class LopperTree:
         return node
 
 class LopperTreePrinter( LopperTree ):
-    """SubClass for pretty printing a lopper tree
+    """SubClass for enhanced printing a lopper tree
 
     This class implements:
        - routines to print the start of a tree, nodes, properties and end of a tree
          to DTS format.
 
-    Pretty printing is done by implementing callbacks that the base LopperTree
+    Enhanced printing is done by implementing callbacks that the base LopperTree
     class will call during a tree walk.
 
     Attributes:

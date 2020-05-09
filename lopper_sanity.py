@@ -1274,7 +1274,7 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
     device_tree.perform_lops()
 
     print( "[TEST]: writing to %s" % (device_tree.output_file))
-    Lopper.write_fdt( device_tree.FDT, device_tree.output_file, device_tree, True, device_tree.verbose, device_tree.pretty )
+    Lopper.write_fdt( device_tree.FDT, device_tree.output_file, device_tree, True, device_tree.verbose, device_tree.enhanced )
 
     print( "\n[TEST]: check lopper operations on: %s" % (device_tree.output_file))
     c = test_pattern_count( device_tree.output_file, "anode_to_delete" )
@@ -1356,7 +1356,7 @@ def assists_sanity_test( device_tree, lop_file, verbose ):
     device_tree.perform_lops()
 
     print( "[TEST]: writing resulting FDT to %s" % device_tree.output_file )
-    Lopper.write_fdt( device_tree.FDT, device_tree.output_file, device_tree, True, device_tree.verbose, device_tree.pretty )
+    Lopper.write_fdt( device_tree.FDT, device_tree.output_file, device_tree, True, device_tree.verbose, device_tree.enhanced )
 
     device_tree.cleanup()
 
@@ -1444,7 +1444,7 @@ if __name__ == "__main__":
         device_tree.output_file = outdir + "/sdt-output.dts"
         device_tree.cleanup_flag = True
         device_tree.save_temps = False
-        device_tree.pretty = True
+        device_tree.enhanced = True
         device_tree.outdir = outdir
 
         lops_sanity_test( device_tree, lop_file, verbose )
@@ -1461,7 +1461,7 @@ if __name__ == "__main__":
         device_tree.output_file = outdir + "/assist-output.dts"
         device_tree.cleanup_flag = True
         device_tree.save_temps = False
-        device_tree.pretty = True
+        device_tree.enhanced = True
         device_tree.outdir = outdir
 
         assists_sanity_test( device_tree, lop_file, verbose )

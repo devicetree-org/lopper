@@ -54,7 +54,7 @@ A few command line notes:
 Note that since lopper manipulates dtb's (as compiled by dtc), some information
 that is in the source dts is lost on the output of the final dts. This includes
 comments, symbolic phandles, formatting of strings, etc. If you are transforming
-to dts files and want to maintain this information, use the --pretty flag. This
+to dts files and want to maintain this information, use the --enhanced flag. This
 flag performs pre-processing and output phandle mapping to restore both
 comments and symbolic phandles to the final output.
 

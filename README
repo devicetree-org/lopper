@@ -7,7 +7,7 @@ has practical information, known limitations and TODO items.
 Sample run:
 -----------
 
-  % ./lopper.py -f --pretty --werror -v -v -i lops/lop-load.dts  -i lops/lop-domain-r5.dts device-trees/system-device-tree.dts sdt.dts
+  % ./lopper.py -f --enhanced --werror -v -v -i lops/lop-load.dts  -i lops/lop-domain-r5.dts device-trees/system-device-tree.dts sdt.dts
 
 Limitations:
 -----------
