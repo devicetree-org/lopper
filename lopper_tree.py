@@ -408,7 +408,7 @@ class LopperProp():
 
                 if list_of_nums:
                     # we have to open with a '<', if this is a list of numbers
-                    outstring_list += " <"
+                    outstring_list += "<"
 
                 element_count = 1
                 element_total = len(prop_val)
