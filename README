@@ -12,14 +12,12 @@ Sample run:
 Limitations:
 -----------
 
- - This is an alpha version, interfaces are still subject to change
+ - This is beta version, internal interfaces are still subject to change
  - Not all errors are gracefully handled
 
 TODO:
 ----
 
- - Sanity and comprehensive tests (automated)
  - Output device tree sanity checking / validation
  - TODO items in code base (grep for TODO in code)
- - Lopper update to latest System Device Tree bindings
  - Robustness changes for untested input files
