@@ -3,10 +3,12 @@ config/setup:
 
 Lopper is in a single repository:
 
-  % git clone git://<location to lopper repo/
+  % git clone git://github.com/devicetree-org/lopper
 
 Ensure that the prerequisite tools are installed on your host. Lopper is written
-in python3, and requires that standard support libraries are installed.
+in python3, and requires that standard support libraries are installed. Current
+testing has been against python3.5.x, but no issues are expected on newer 3.x
+releases.
 
 In addition to the standard libraries, Lopper uses: cpp, dtc and libfdt for
 processing and manipulating device trees. These tools must be installed and
@@ -38,7 +40,7 @@ lopper.py --help
       -O, --outdir        directory to use for output files
         , --version       output the version and exit
 
-Fundamentally, lopper takes an  input device tree (normally a system device tree),
+Fundamentally, lopper takes an input device tree (normally a system device tree),
 applies operations to that tree, and outputs a modified/processed tree.
 
 A few command line notes:
@@ -51,19 +53,21 @@ A few command line notes:
  <output> file: The default output file for the modified system device tree. lopper
                 operations can output more variants as required
 
-Note that since lopper manipulates dtb's (as compiled by dtc), some information
+Note: that since lopper manipulates dtb's (as compiled by dtc), some information
 that is in the source dts is lost on the output of the final dts. This includes
 comments, symbolic phandles, formatting of strings, etc. If you are transforming
-to dts files and want to maintain this information, use the --enhanced flag. This
-flag performs pre-processing and output phandle mapping to restore both
-comments and symbolic phandles to the final output.
+to dts files and want to maintain this information, use the --enhanced flag.
+This flag indicates that lopper should perform pre-processing and output phandle
+mapping to restore both comments, labels and symbolic phandles to the final
+output.
 
-By default Lopper puts the preprocessed file (.pp) into the same directory as
-the system device tree. Since in some cases, dtc cannot resolve labels from
-include files, and will throw an error. That being said, if the -O option is
-used to specify an output directory, the preprocessed file will be placed there.
-If we get into a mode where the system device tree's directory is not writeable,
-or the -O option is breaking symbol resolution, then we'll have to either copy
+Note: By default Lopper puts preprocessed files (.pp) into the same directory as
+the system device tree. This is required, since in some cases when the .pp files
+and device tree are not in the same directory, dtc cannot resolve labels from
+include files, and will error. That being said, if the -O option is used to
+specify an output directory, the preprocessed file will be placed there. If we
+get into a mode where the system device tree's directory is not writeable, or
+the -O option is breaking symbol resolution, then we'll have to either copy
 everything to the output directory, or look into why dtc can't handle the split
 directories and include files.
 
@@ -71,15 +75,16 @@ directories and include files.
 Lopper processing flow:
 -----------------------
 
-Lopper is completely data driven and only performs operations or invokes assist
-routines as passed into it via command line files and options. It does not have
-codified understanding of a system device tree, and doesn't infer or trigger
-operations based on the content of the tree.
+Lopper is data driven and only performs operations or invokes assist routines as
+specified by its inputs (command line or operation files). This means that
+Lopper does not have codified understanding of a system device tree, and doesn't
+infer or trigger operations based on the content of the tree.
 
-Complex logic can be performed in assist routines, or multiple core operations
-can be stacked to modify and transform the tree. Depending on how the inputs to
-the tool are produced, lop files can be large and complex, or small and simple
-with logic resting in the assist modules. The choice is up to the user.
+Complex logic can be performed in assist routines, and/or multiple core
+operations can be stacked to modify and transform the tree. Depending on how the
+inputs to the tool are produced, lop files can be large and complex, or small
+and simple with more complex logic resting in the assist modules. The choice is
+up to the user.
 
 Lopper abstracts the libraries and internal formats used to manipulate the
 device tree. As long as Lopper routines and abstractions are used, the internal
@@ -87,15 +92,17 @@ format of the files, and libraries to manipulate the tree can change in the
 future without the inputs and outputs differing.
 
 Currently, Lopper operates on dtb files. It does not parse or otherwise
-manipulate source dts files. It currently uses libfdt for operations on these
-files, and uses the standard dtc tools to prepare the files for manipulation.
+manipulate source dts files (except for preprocessing). Lopper uses libfdt for
+operations on these files, and uses the standard dtc tools to prepare the files
+for manipulation.
 
 The flow of lopper processing is broken into the following broad categories:
 
   - setup
 
-    The inputs are validated and the base SystemDeviceTree object created to
-    manage the provided system device tree.
+    The inputs are validated and the base LopperSDT object created to manage the
+    provided system device tree. This object abstracts the libraries and tree
+    structure whenever possible.
 
   - input file normalization with standard tools
 
@@ -126,7 +133,7 @@ The flow of lopper processing is broken into the following broad categories:
 
   - finalization / output
 
-    Once all operations have been exected against a tree, some common
+    Once all operations have been executed against a tree, some common
     finalization / resize and other sanity checks are executed against the tree.
     If inconsistencies or other errors are detected, the user is notified and
     lopper exits.
@@ -144,25 +151,30 @@ Lopper contains the following classes for use when manipulating a system device
 tree:
 
   - Lopper
-  - SystemDeviceTree
-  - Lop (internal use only)
-  - LopAssist (internal use only)
+  - LopperSDT
+  - LopperTree
+       - LopperNode
+       - LopperProp
+       - LopperTreePrinter
+  - LopperFile (internal use only)
+  - LopperAssist (internal use only)
 
-Lopper provides utility routines and wrappers around libfdt functions to operate
-on flattened device trees. More robust encode, decode of properties, node copy,
-etc. These utilities routines will work on any FDT object as returned by libfdt,
-and hence can work on both the fdt embedded in a SystemDeviceTree object, or on
-loaded lopper operation files.
+The Lopper class is a container class (with static methods) of utility routines
+and wrappers around libfdt functions for flattened device trees. More robust
+encode, decode of properties, node copy, etc. These utilities routines will work
+on any FDT object as returned by libfdt, and hence can work on both the fdt
+embedded in LopperSDT/LopperTree objects, or on loaded lopper operation files.
 
-The SystemDeviceTree object is an abstraction around the loaded system device
-tree, and is the main target of lopper operations. It provides 1:1 wrappers
-around Loppper static methods (passing its internal flattened device tree to
-lopper by default) and also provides routines to read/write device trees, tree
-filtering routines, etc.
+The LopperSDT class is an abstraction around the loaded system device tree, and
+is the primary target of lopper operations. This class is responsible for the
+setup of the FDT (using dtc, cpp, etc, to compile it to a dtb), loading
+operations and assists, running operations, writing the default output and
+cleaning up any temporary files.
 
-The SystemDeviceTree object is responsible for the setup of the FDT (using dtc,
-cpp, etc, to compile it to a dtb), loading operations and assists, running
-operations, writing the default output and cleaning up any temporary files.
+LopperSDT uses the LopperTree + LopperNode + LopperProp classes to manipulate
+the underlying FDT without the details of those manipulations being throughout
+the classes. These classes provide python ways to iterate, access and write tree
+based logic around the underlying device tree.
 
 A snapshot of pydoc information for lopper is maintained in README.pydoc. For
 the latest detailed information on lopper, execute the following:
@@ -210,9 +222,11 @@ priority and <10> being the lowest. This is used to broadly order operations
 such that preparation lops (such as loading a module) can be run before
 dependent operations.
 
-Finally, a set of lops are passed. The lops are identified by lop_<number>
-and have a compatible string that identifies the type of operation, followed
-by any lop specific properties.
+Finally, a set of lops are passed. The lops are identified by lop_<number> and
+have a compatible string that identifies the type of operation, followed by any
+lop specific properties. The <number> in a lop node is a convention for easier
+reading, but is not used by lopper to order operations. The order lops appear in
+the file is the order they are applied.
 
 NOTE/TODO: bindings will be written for the lopper operations.
 
@@ -232,8 +246,8 @@ The following types of lops are currently valid:
                         // props describes the extra properties of this assist,
                         // so they can be loaded and stored with the module
                         props = "id", "file_ext";
-                        // the extension of the output file that this is
-                        // compatible with.
+                        // the extension of the output file with which this is
+                        // compatible.
                         file_ext = ".cdo";
                         // the id that this module is compatible with
                         id = "xlnx,output,cdo";
@@ -244,7 +258,7 @@ The following types of lops are currently valid:
                 lop_0 {
                         compatible = "system-device-tree-v1,lop,assist-v1";
                         // node: path to the device tree node to search for an assist
-                        node = "/chosen/openamp_r5";
+                        node = "/domains/openamp_r5";
                         // id: string to pass to assist modules to identify compatible
                         //     assists
                         id = "openamp,domain-v1";
@@ -378,6 +392,9 @@ The following types of lops are currently valid:
 		       nodes = "amba.*:testprop:testvalue";
 		};
 
+Note: the lopper_sanity.py utility has an embedded lops file that can be
+      used as a reference, as well as embedded LopperTree sanity tests.
+
 Lopper Assists
 --------------
 
@@ -412,25 +429,22 @@ For example, the openamp's function is as follows:
 The returned function must be of the following format (the name of the function
 doesn't matter):
 
-   def assist_routine( tgt_node, sdt, verbose=0 )
+   def assist_routine( target_node, sdt, verbose=0 )
 
 If compatible, lopper calls the assist routine with the arguments set to:
 
   - the target node number
-  - the system device tree object
+  - the lopper system device tree object
   - the verbose flag
 
-Once called the function can use the node number and the system device tree
+Once called, the function can use the node number and the system device tree
 (with its embedded FDT) to discover more information about the tree and
 manipulate the tree itself (and hence used by future lopper operations or assist
-calls). Lopper utility routines, SDT object calls or raw libfdt routines can be
-used to modify the tree.
+calls). Lopper utility routines, SDT object calls or LopperTree / LopperNode /
+LopperProp routines can be used to modify the tree.
 
 If the module has invalid code, or otherwise generates and exception, Lopper
 catches it and reports the error to the user.
-
-Note: the exact details of all exceptions cannot always be displayed so
-      unit tested or stepping through the code may be required.
 
 output assists:
 ---------------

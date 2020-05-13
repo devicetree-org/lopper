@@ -239,7 +239,7 @@ class LopperProp():
             fdt (FDT): flattened device tree
 
         Returns:
-            A list of all resolved phandle nodes, [] if no phandles are present
+            A list of all resolved phandle node numbers, [] if no phandles are present
         """
 
         phandle_targets = []

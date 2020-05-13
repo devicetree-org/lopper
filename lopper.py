@@ -56,7 +56,7 @@ def at_exit_cleanup():
     else:
         pass
 
-class LopAssist:
+class LopperAssist:
     """Internal class to contain the details of a lopper assist
 
     """
@@ -319,7 +319,7 @@ class LopperSDT:
         # now, libfdt is doing the transforms so we compile them separately
         for ifile in lop_files:
             if re.search( ".dts$", ifile ):
-                lop = Lop( ifile )
+                lop = LopperFile( ifile )
                 # TODO: this may need an output directory option, right now it drops
                 #       it where lopper is called from (which may not be writeable.
                 #       hence why our output_dir is set to "./"
@@ -331,14 +331,14 @@ class LopperSDT:
                 lop.dtb = compiled_file
                 self.lops.append( lop )
             elif re.search( ".dtb$", ifile ):
-                lop = Lop( ifile )
+                lop = LopperFile( ifile )
                 lop.dts = ""
                 lop.dtb = ifile
                 self.lops.append( lop )
 
         for a in assists:
             a_file = self.find_assist( a )
-            self.assists.append( LopAssist( str(a_file.resolve()) ) )
+            self.assists.append( LopperAssist( str(a_file.resolve()) ) )
 
         self.wrap_assists()
 
@@ -464,7 +464,7 @@ class LopperSDT:
                 offset = sw.add_subnode( offset, lop_name )
                 sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,load')
                 sw.setprop_str( offset, 'load', a.file )
-                lop = Lop( 'commandline' )
+                lop = LopperFile( 'commandline' )
                 lop.dts = ""
                 lop.dtb = ""
                 lop.fdt = sw
@@ -507,7 +507,7 @@ class LopperSDT:
         sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,assist-v1')
         sw.setprop_str( offset, 'node', '/chosen/openamp_r5' )
         sw.setprop_str( offset, 'id', 'openamp,domain-v1' )
-        lop = Lop( 'commandline' )
+        lop = LopperFile( 'commandline' )
         lop.dts = ""
         lop.dtb = ""
         lop.fdt = sw
@@ -874,7 +874,7 @@ class LopperSDT:
                                     if prop_extension:
                                         print( "[INFO]: loading assist with properties (%s,%s)" % (prop_extension, prop_id) )
 
-                                self.assists.append( LopAssist( mod_file.name, imported_module, assist_properties ) )
+                                self.assists.append( LopperAssist( mod_file.name, imported_module, assist_properties ) )
 
                     if re.search( ".*,lop,add$", val ):
                         if self.verbose:
@@ -995,7 +995,7 @@ class LopperSDT:
                                             print( "[WARNING]: could not remove node number: %s" % node_to_remove )
 
 
-class Lop:
+class LopperFile:
     """Internal class to contain the details of a lopper file
 
     Attributes:
