@@ -338,7 +338,8 @@ class LopperSDT:
 
         for a in assists:
             a_file = self.find_assist( a )
-            self.assists.append( LopperAssist( str(a_file.resolve()) ) )
+            if a_file:
+                self.assists.append( LopperAssist( str(a_file.resolve()) ) )
 
         self.wrap_assists()
 
@@ -430,7 +431,7 @@ class LopperSDT:
                     mod_file_abs = ""
 
             if not mod_file_abs:
-                print( "[ERROR]: module file %s not found" % load_prop )
+                print( "[ERROR]: module file %s not found" % assist_name )
                 return None
 
         return mod_file
