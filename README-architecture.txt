@@ -429,13 +429,17 @@ For example, the openamp's function is as follows:
 The returned function must be of the following format (the name of the function
 doesn't matter):
 
-   def assist_routine( target_node, sdt, verbose=0 )
+   def assist_routine( target_node, sdt, options )
 
 If compatible, lopper calls the assist routine with the arguments set to:
 
   - the target node number
   - the lopper system device tree object
-  - the verbose flag
+  - the assist options dictionary
+
+The options dictionary minimally contains the 'verbose' key, which indicates the
+level of verbosity that lopper is using. Additional options (such as command
+line inputs) will be added in the future.
 
 Once called, the function can use the node number and the system device tree
 (with its embedded FDT) to discover more information about the tree and
@@ -457,7 +461,7 @@ example above), or one that is associated with an output node in a lop file.
 If compatible, and output assist should return a function of the same
 format as a standard assist:
 
-   def assist_write( node, sdt, outfile, verbose=0 ):
+   def assist_write( node, sdt, outfile, options ):
 
 The routine can write the appropriate parts of the system device tree to the
 passed output filename.

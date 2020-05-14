@@ -834,7 +834,7 @@ class Lopper:
                 for cb_func in cb_funcs:
                     try:
                         # TODO: the first parameter 'node', shouldn't always be the root (0)
-                        if not cb_func( 0, sdt, output_filename, sdt.verbose ):
+                        if not cb_func( 0, sdt, output_filename, { 'verbose' : sdt.verbose } ):
                             print( "[WARNING]: the assist returned false, check for errors ..." )
                     except Exception as e:
                         print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )

@@ -105,7 +105,12 @@ def cdo_type( device_tree_type ):
                 x = x[1]
     return x
 
-def cdo_write( node, sdt, outfile, verbose=0 ):
+def cdo_write( node, sdt, outfile, options ):
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
+
     # todo: we could have a force flag and not overwrite this if it exists
     if outfile != sys.stdout:
         output = open( outfile, "w")

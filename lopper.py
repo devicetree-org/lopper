@@ -740,14 +740,14 @@ class LopperSDT:
                             print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
                     if re.search( ".*,assist-v1$", val ):
-                        # also note: this assist may change from being called as part of the
-                        # tranform loop, to something that is instead called by walking the
-                        # entire device tree, looking for matching nodes and making assists at
-                        # that moment.
+                        # also note: this assist may change from being called as
+                        # part of the lop loop, to something that is instead
+                        # called by walking the entire device tree, looking for
+                        # matching nodes and making assists at that moment.
                         #
-                        # but that sort of node walking, will invoke the assists out of order
-                        # with other lopper operations, so it isn't particularly feasible or
-                        # desireable.
+                        # but that sort of node walking, will invoke the assists
+                        # out of order with other lopper operations, so it isn't
+                        # particularly feasible or desireable.
                         #
                         cb_tgt_node_name = Lopper.prop_get( lops_fdt, n, 'node' )
                         if not cb_tgt_node_name:
@@ -773,7 +773,7 @@ class LopperSDT:
                         if cb_funcs:
                             for cb_func in cb_funcs:
                                 try:
-                                    if not cb_func( cb_node, self, self.verbose ):
+                                    if not cb_func( cb_node, self, { 'verbose' : self.verbose } ):
                                         print( "[WARNING]: the assist returned false, check for errors ..." )
                                 except Exception as e:
                                     print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )

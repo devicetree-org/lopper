@@ -132,7 +132,12 @@ def openamp_process_cpus( sdt, domain_node, verbose = 0 ):
 # all the logic for applying a openamp domain to a device tree.
 # this is a really long routine that will be broken up as more examples
 # are done and it can be propery factored out.
-def process_domain( tgt_node, sdt, verbose=0 ):
+def process_domain( tgt_node, sdt, options ):
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
+
     if verbose:
         print( "[INFO]: cb: process_domain( %s, %s, %s )" % (tgt_node, sdt, verbose))
 
@@ -243,7 +248,6 @@ def process_domain( tgt_node, sdt, verbose=0 ):
         #    - starting at reserved memory parent
         #    - drop any unreferenced elements
 
-
         for n, value in node_access_tracker.values():
             # xform_path is the path to the node that was tracked, so this is a potential
             # delete to any children of that node, that haven't been accessed. If you
@@ -280,7 +284,6 @@ def process_domain( tgt_node, sdt, verbose=0 ):
                 sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
             else:
                 sdt.tree.filter( n + "/", LopperAction.DELETE, code, None, verbose )
-
 
     # we must sync the tree, since its numbering may have changed due to the
     # node_filter deleting things

@@ -42,7 +42,12 @@ def check_bit_set(n, k):
 # tgt_node: is the openamp domain node number
 # sdt: is the system device tree
 # TODO: this routine needs to be factored and made smaller
-def xlnx_openamp_rpu( tgt_node, sdt, verbose=0 ):
+def xlnx_openamp_rpu( tgt_node, sdt, options ):
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
+
     if verbose:
         print( "[INFO]: cb: xlnx_openamp_rpu( %s, %s, %s )" % (tgt_node, sdt, verbose))
 

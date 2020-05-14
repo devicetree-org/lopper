@@ -42,7 +42,12 @@ def check_bit_set(n, k):
 
 # tgt_node: is the openamp domain node number
 # sdt: is the system device tree
-def core_domain_access( tgt_node, sdt, verbose=0 ):
+def core_domain_access( tgt_node, sdt, options ):
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
+
     if verbose:
         print( "[INFO]: cb: core_domain_access( %s, %s, %s )" % (domain_node, sdt, verbose))
 
