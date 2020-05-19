@@ -783,6 +783,8 @@ class Lopper:
             Nothing
 
         """
+        if not output_filename:
+            return
 
         if re.search( ".dtb", output_filename ):
             if verbose:
@@ -844,8 +846,9 @@ class Lopper:
                         if sdt and sdt.werror:
                             sys.exit(1)
             else:
-                print( "[INFO]: no compatible output assist found, skipping" )
-                if sdt.werror:
+                if sdt and sdt.verbose:
+                    print( "[INFO]: no compatible output assist found, skipping" )
+                if sdt and sdt.werror:
                     sys.exit(2)
 
     @staticmethod

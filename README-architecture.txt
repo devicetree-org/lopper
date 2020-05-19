@@ -450,6 +450,39 @@ LopperProp routines can be used to modify the tree.
 If the module has invalid code, or otherwise generates and exception, Lopper
 catches it and reports the error to the user.
 
+Command line assists:
+--------------------
+
+Commonly we want to run a assist against the loaded system device tree and exit.
+
+That assist doesn't need to be run in order with other lopper operations or is
+the only action to be taken.
+
+Lopper can find an assist/module on the command line, and to pass arguments to
+that assist (or any assist). Assists will be passed the id: "module,<their
+name>" and must return True when their is_compat() function is called with that
+id, or they will not be executed.
+
+An example is a simple "grep" assist:
+
+ % lopper.py device-trees/system-device-tree.dts -- grep compatible "/bus.*"
+
+Everything after the "--" is of the format: <module> <arguments>
+
+In this case, the grep.py assist is located, loaded and passed the system device
+tree. It can then process the arguments as it sees fit:
+
+ % lopper.py device-trees/system-device-tree.dts -- grep compatible "/bus.*"
+   /bus@f1000000/spi@ff040000: compatible = "cdns,spi-r1p6";
+   /bus@f1000000/pci@fca10000: compatible = "xlnx,versal-cpm-host-1.00";
+   /bus@f1000000/dma@ffac0000: compatible = "xlnx,zynqmp-dma-1.0";
+   /bus@f1000000/serial@ff010000: compatible = "arm,pl011","arm,sbsa-uart";
+   /bus@f1000000/spi@f1030000: compatible = "xlnx,versal-qspi-1.0";
+   /bus@f1000000/zynqmp_ipi: compatible = "xlnx,zynqmp-ipi-mailbox";
+   /bus@f1000000/cci@fd000000/pmu@10000: compatible = "arm,cci-500-pmu,r0";
+   /bus@f1000000/dma@ffae0000: compatible = "xlnx,zynqmp-dma-1.0";
+   /bus@f1000000/dma@ffa90000: compatible = "xlnx,zynqmp-dma-1.0";
+
 output assists:
 ---------------
 

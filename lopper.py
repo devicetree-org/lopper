@@ -156,7 +156,7 @@ class LopperSDT:
         )
         return re.sub(pattern, self.__label_replacer, text)
 
-    def setup(self, sdt_file, input_files, include_paths, assists=[], force=False):
+    def setup(self, sdt_file, input_files, include_paths, force=False):
         """executes setup and initialization tasks for a system device tree
 
         setup validates the inputs, and calls the appropriate routines to
@@ -166,7 +166,6 @@ class LopperSDT:
            sdt_file (String): system device tree path/file
            input_files (list): list of input files (.dts, or .dtb) in addition to the sdt_file
            include_paths (list): list of paths to search for files
-           assists (list,optional): list of python assist modules to load. Default is []
            force (bool,optional): flag indicating if files should be overwritten and compilation
                                   forced. Default is False.
 
@@ -336,12 +335,45 @@ class LopperSDT:
                 lop.dtb = ifile
                 self.lops.append( lop )
 
+    def assists_setup( self, assists = []):
+        """
+                   assists (list,optional): list of python assist modules to load. Default is []
+        """
         for a in assists:
-            a_file = self.find_assist( a )
+            a_file = self.assist_find( a )
             if a_file:
                 self.assists.append( LopperAssist( str(a_file.resolve()) ) )
 
-        self.wrap_assists()
+        self.assists_wrap()
+
+    def module_setup( self, module_name, module_args = [] ):
+        sw = libfdt.Fdt.create_empty_tree( 2048 )
+        sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
+        sw.setprop_u32( 0, 'priority', 3)
+        offset = sw.add_subnode( 0, 'lops' )
+
+        mod_count = 0
+        lop_name = "lop_{}".format( mod_count )
+        offset = sw.add_subnode( offset, lop_name )
+        sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,assist-v1')
+        sw.setprop_str( offset, 'node', '/' )
+
+        if module_args:
+            module_arg_string = ""
+            for m in module_args:
+                module_arg_string = module_arg_string + " " + m
+                sw.setprop_str( offset, 'options', module_arg_string )
+
+        sw.setprop_str( offset, 'id', "module," + module_name )
+        lop = LopperFile( 'commandline' )
+        lop.dts = ""
+        lop.dtb = ""
+        lop.fdt = sw
+
+        if self.verbose > 1:
+            print( "[INFO]: generated assist run for %s" % module_name )
+
+        self.lops.insert( 0, lop )
 
     def cleanup( self ):
         """cleanup any temporary or copied files
@@ -394,7 +426,7 @@ class LopperSDT:
         with open(outfilename, 'wb') as w:
             w.write(byte_array)
 
-    def find_assist(self, assist_name, local_load_paths = []):
+    def assist_find(self, assist_name, local_load_paths = []):
         """Locates a python module that matches assist_name
 
         This routine searches both system (lopper_directory, lopper_directory +
@@ -414,7 +446,7 @@ class LopperSDT:
         mod_file_wo_ext = mod_file.with_suffix('')
 
         if self.verbose > 1:
-            print( "find_assist: %s local search: %s" % (assist_name,local_load_paths) )
+            print( "assist_find: %s local search: %s" % (assist_name,local_load_paths) )
 
         try:
             mod_file_abs = mod_file.resolve()
@@ -430,13 +462,23 @@ class LopperSDT:
                 except FileNotFoundError:
                     mod_file_abs = ""
 
+                if not mod_file_abs and not mod_file.name.endswith( ".py"):
+                    # try it with a .py
+                    mod_file = Path( s + "/" + mod_file.name + ".py" )
+                    try:
+                        mod_file_abs = mod_file.resolve()
+                        break
+                    except FileNotFoundError:
+                        mod_file_abs = ""
+
+
             if not mod_file_abs:
                 print( "[ERROR]: module file %s not found" % assist_name )
                 return None
 
         return mod_file
 
-    def wrap_assists(self):
+    def assists_wrap(self):
         """wrap assists that have been added to the device tree
 
         Wraps any command line assists that have been added to the system
@@ -756,6 +798,12 @@ class LopperSDT:
 
                         cb = Lopper.prop_get( lops_fdt, n, 'assist' )
                         cb_id = Lopper.prop_get( lops_fdt, n, 'id' )
+                        cb_opts = Lopper.prop_get( lops_fdt, n, 'options' )
+                        cb_opts = cb_opts.lstrip()
+                        if cb_opts:
+                            cb_opts = cb_opts.split( ' ' )
+                        else:
+                            cb_opts = []
                         cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
                         if cb_node < 0:
                             if self.werror:
@@ -767,13 +815,13 @@ class LopperSDT:
                             print( "[INFO]: assist lop detected" )
                             if cb:
                                 print( "        cb: %s" % cb )
-                            print( "        id: %s" % cb_id )
+                            print( "        id: %s opts: %s" % (cb_id,cb_opts) )
 
                         cb_funcs = self.find_compatible_assist( cb_node, cb_id )
                         if cb_funcs:
                             for cb_func in cb_funcs:
                                 try:
-                                    if not cb_func( cb_node, self, { 'verbose' : self.verbose } ):
+                                    if not cb_func( cb_node, self, { 'verbose' : self.verbose, 'args': cb_opts } ):
                                         print( "[WARNING]: the assist returned false, check for errors ..." )
                                 except Exception as e:
                                     print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )
@@ -806,7 +854,7 @@ class LopperSDT:
                             if self.verbose:
                                 print( "[INFO]: loading module %s" % load_prop )
 
-                            mod_file = self.find_assist( load_prop, self.load_paths )
+                            mod_file = self.assist_find( load_prop, self.load_paths )
                             if not mod_file:
                                 print( "[ERROR]: unable to find assist (%s)" % load_prop )
                                 sys.exit(1)
@@ -1040,12 +1088,14 @@ def main():
     global dump_dtb
     global target_domain
     global dryrun
-    global assists
+    global cmdline_assists
     global werror
     global save_temps
     global enhanced_print
     global outdir
     global load_paths
+    global module_name
+    global module_args
 
     sdt = None
     verbose = 0
@@ -1055,7 +1105,7 @@ def main():
     dump_dtb = False
     dryrun = False
     target_domain = ""
-    assists = []
+    cmdline_assists = []
     werror = False
     save_temps = False
     enhanced_print = False
@@ -1085,7 +1135,7 @@ def main():
         elif o in ('-i', '--input'):
             inputfiles.append(a)
         elif o in ('-a', '--assist'):
-            assists.append(a)
+            cmdline_assists.append(a)
         elif o in ('-A', '--assist-path'):
             load_paths += a.split(":")
         elif o in ('-O', '--outdir'):
@@ -1109,6 +1159,9 @@ def main():
             assert False, "unhandled option"
 
     # any args should be <system device tree> <output file>
+    module_name = ""
+    module_args= []
+    module_args_found = False
     for idx, item in enumerate(args):
         # validate that the system device tree file exists
         if idx == 0:
@@ -1121,20 +1174,37 @@ def main():
                 print( "Error: system device tree %s does not exist" % sdt )
                 sys.exit(1)
 
-        # the last input is the output file. It can't already exist, unless
-        # --force was passed
-        if idx == 1:
-            if output:
-                print( "Error: output was already provided via -o\n")
-                usage()
-                sys.exit(1)
-            else:
-                output = item
-                output_file = Path(output)
-                if output_file.exists():
-                    if not force:
-                        print( "Error: output file %s exists, and -f was not passed" % output )
+        else:
+            if item == "--":
+                module_args_found = True
+
+            # the last input is the output file. It can't already exist, unless
+            # --force was passed
+            if not module_args_found:
+                if idx == 1:
+                    if output:
+                        print( "Error: output was already provided via -o\n")
+                        usage()
                         sys.exit(1)
+                    else:
+                        output = item
+                        output_file = Path(output)
+                        if output_file.exists():
+                            if not force:
+                                print( "Error: output file %s exists, and -f was not passed" % output )
+                                sys.exit(1)
+            else:
+                # module arguments
+                if not item == "--":
+                    if not module_name:
+                        module_name = item
+                        cmdline_assists.append( item )
+                    else:
+                        module_args.append( item )
+
+    if module_name and verbose:
+        print( "module found: %s" % module_name )
+        print( "    args: %s" % module_args )
 
     if not sdt:
         print( "[ERROR]: no system device tree was supplied\n" )
@@ -1190,8 +1260,12 @@ if __name__ == "__main__":
     device_tree.target_domain = target_domain
     device_tree.load_paths = load_paths
 
-    device_tree.setup( sdt, inputfiles, "", assists, force )
-    
+    device_tree.setup( sdt, inputfiles, "", force )
+    device_tree.assists_setup( cmdline_assists )
+
+    if module_name:
+        device_tree.module_setup( module_name, module_args )
+
     device_tree.perform_lops()
 
     if not dryrun:

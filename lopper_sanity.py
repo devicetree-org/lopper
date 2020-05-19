@@ -1270,7 +1270,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
 
 def lops_sanity_test( device_tree, lop_file, verbose ):
-    device_tree.setup( dt, [lop_file], "", "", True )
+    device_tree.setup( dt, [lop_file], "", True )
     device_tree.perform_lops()
 
     print( "[TEST]: writing to %s" % (device_tree.output_file))
@@ -1350,7 +1350,8 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
     device_tree.cleanup()
 
 def assists_sanity_test( device_tree, lop_file, verbose ):
-    device_tree.setup( dt, [lop_file], "", [ "domain-access.py" ], True )
+    device_tree.setup( dt, [lop_file], "", True )
+    device_tree.assists_setup( [ "domain-access.py" ] )
 
     print( "[TEST]: running assist against tree" )
     device_tree.perform_lops()
