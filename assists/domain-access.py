@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 #/*
 # * Copyright (c) 2019,2020 Xilinx Inc. All rights reserved.
 # *
