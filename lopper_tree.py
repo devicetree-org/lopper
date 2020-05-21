@@ -78,6 +78,7 @@ class LopperProp():
 
         self.string_val = "**unresolved**"
         self.type = ""
+        self.binary = False
 
         self.abs_path = ""
 
@@ -336,6 +337,7 @@ class LopperProp():
         elif re.search( "lopper-label.*", self.name ):
             prop_type = "label"
         else:
+            # we could make this smarter, and use the Lopper Guessed type
             prop_type = type(prop_val)
 
         self.type = prop_type
@@ -364,7 +366,9 @@ class LopperProp():
         elif prop_type == list:
             # if the length is one, and the only element is empty '', then
             # we just put out the name
-            if len(prop_val) == 1 and prop_val[0] == '':
+            if len(prop_val) == 0:
+                outstring = ""
+            elif len(prop_val) == 1 and prop_val[0] == '':
                 outstring = "{0};".format( self.name )
             else:
                 # otherwise, we need to iterate and output the elements
@@ -407,8 +411,11 @@ class LopperProp():
                     list_of_nums = True
 
                 if list_of_nums:
-                    # we have to open with a '<', if this is a list of numbers
-                    outstring_list += "<"
+                    if self.binary:
+                        outstring_list += "["
+                    else:
+                        # we have to open with a '<', if this is a list of numbers
+                        outstring_list += "<"
 
                 element_count = 1
                 element_total = len(prop_val)
@@ -477,7 +484,10 @@ class LopperProp():
                             if phandle_tgt_name:
                                 outstring_record += "&{0}>;".format( phandle_tgt_name )
                             else:
-                                outstring_record += "{0}>;".format( hex(i) )
+                                if self.binary:
+                                    outstring_record += "{0:02X}];".format( i )
+                                else:
+                                    outstring_record += "{0}>;".format( hex(i) )
                         else:
                             outstring_record += "\"{0}\";".format( i )
                     else:
@@ -486,7 +496,10 @@ class LopperProp():
                             if phandle_tgt_name:
                                 outstring_record += "&{0} ".format( phandle_tgt_name )
                             else:
-                                outstring_record += "{0} ".format( hex(i) )
+                                if self.binary:
+                                    outstring_record += "{0:02X} ".format( i )
+                                else:
+                                    outstring_record += "{0} ".format( hex(i) )
                         else:
                             outstring_record += "\"{0}\",".format( i )
 
@@ -1340,6 +1353,7 @@ class LopperNode(object):
                 while poffset > 0:
                     prop = fdt.get_property_by_offset(poffset)
                     prop_val = Lopper.prop_get( fdt, self.number, prop.name, LopperFmt.COMPOUND )
+                    dtype = Lopper.property_type_guess( prop )
 
                     # special handling for 'compatible', we bubble it up as the node "type"
                     if prop.name == "compatible":
@@ -1351,6 +1365,9 @@ class LopperNode(object):
                     ##       in the bin
                     # create property objects, and resolve them
                     self.__props__[prop.name] = LopperProp( prop.name, poffset, self, prop_val, self.__dbg__ )
+                    if dtype == LopperFmt.UINT8:
+                        self.__props__[prop.name].binary = True
+
                     self.__props__[prop.name].resolve( fdt )
                     self.__props__[prop.name].__modified__ = False
 

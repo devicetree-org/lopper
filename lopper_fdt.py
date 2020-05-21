@@ -44,6 +44,11 @@ class LopperFmt(Enum):
     DEC = 4
     STRING = 5
     MULTI_STRING = 6
+    UINT8 = 7
+    UINT32 = 8
+    UINT64 = 9
+    EMPTY = 10
+    UNKNOWN = 11
 
 # general retry count
 MAX_RETRIES = 3
@@ -1390,7 +1395,7 @@ class Lopper:
            verbose (bool,optional): verbosity level
 
         Returns:
-           Nothing
+           string: Name of the compiled dtb
 
         """
         output_dtb = ""
@@ -1546,7 +1551,66 @@ class Lopper:
         return barray
 
     @staticmethod
-    def property_value_decode( property, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC, verbose=0 ):
+    def property_type_guess( prop ):
+        """utility routine to guess the type of a property
+
+        Often the type of a property is not know, in particular if there isn't
+        access to markers via libfdt.
+
+        This routine looks at the data of a libFDT property and returns the best
+        guess for the type. The logic behind the guesses is documented in the code
+        itself
+
+        Args:
+           prop (libfdt property): the property to process
+
+        Returns:
+           LopperFmt description of the property. Default is UINT8 (binary)
+                       LopperFmt.STRING: string
+                       LopperFmt.UINT32 1: uint32
+                       LopperFmt.UINT64 2: uint64
+                       LopperFmt.UINT8 3: uint8 (binary)
+                       LopperFmt.EMPTY 4: empty (just a name)
+        """
+        type_guess = LopperFmt.UINT8
+
+        if len(prop) == 0:
+            return LopperFmt.EMPTY
+
+        first_byte = prop[0]
+        last_byte = prop[-1]
+
+        # byte array encoded strings, start with a non '\x00' byte (i.e. a character), so
+        # we test on that for a hint. If it is not \x00, then we try it as a string.
+        # Note: we may also test on the last byte for a string terminator.
+        if first_byte != 0 and len(prop) > 1:
+            if last_byte == 0:
+                type_guess = LopperFmt.STRING
+                try:
+                    val = prop[:-1].decode('utf-8').split('\x00')
+                except Exception as e:
+                    # it didn't decode, fall back to numbers ..
+                    type_guess = LopperFmt.UINT8
+            else:
+                type_guess = LopperFmt.UINT8
+
+        if type_guess == LopperFmt.UINT8:
+            num_bits = len(prop)
+            num_divisible = num_bits % 4
+            if num_divisible != 0:
+                # If it isn't a string and isn't divisible by a uint32 size, then it
+                # is binary formatted data. So we return uint8
+                type_guess = LopperFmt.UINT8
+            else:
+                # we can't easily guess the difference between a uint64 and uint32
+                # until we get access to the marker data. So we default to the smaller
+                # sized number. We could possibly
+                type_guess = LopperFmt.UINT32
+
+        return type_guess
+
+    @staticmethod
+    def property_value_decode( prop, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.UNKNOWN, verbose=0 ):
         """Decodes a property
 
         Decode a property into a common data type (string, integer, list of
@@ -1570,7 +1634,7 @@ class Lopper:
               MULTI_STRING = 5 (encoding)
 
         Args:
-           property (libfdt property): property to decode
+           prop (libfdt property): property to decode
            poffset (int): offset of the property in the node (unused)
            ftype (LopperFmt,optional): format hint for the property. default is SIMPLE
            encode (LopperFmt,optional): encoding hint. default is DEC
@@ -1582,33 +1646,21 @@ class Lopper:
 
         """
         if verbose > 3:
-            print( "[DBG+]: property_value_decode start ------> %s %s" % (property,ftype))
+            print( "[DBG+]: property_value_decode start ------> %s %s" % (prop,ftype))
 
         # Note: these could also be nested.
         # Note: this is temporary since the decoding
         #       is sometimes wrong. We need to look at libfdt and see how they are
         #       stored so they can be unpacked better.
         if ftype == LopperFmt.SIMPLE:
-            encode_calculated = encode
-            if len(property) > 0:
-                encode_calculated = encode
-                first_byte = property[0]
-                last_byte = property[-1]
-            else:
-                first_byte = ''
-                last_byte = ''
-
-            # byte array encoded strings, start with a non '\x00' byte (i.e. a character), so
-            # we test on that for a hint. If it is not \x00, then we try it as a string.
-            # Note: we may also test on the last byte for a string terminator.
-            if first_byte != 0:
-                encode_calculated = LopperFmt.STRING
+            encode_calculated = Lopper.property_type_guess( prop )
 
             val = ""
-            if encode_calculated == LopperFmt.STRING:
+            if repr(encode_calculated) == repr(LopperFmt.STRING) or \
+               repr(encode_calculated) == repr(LopperFmt.EMPTY ):
                 if not val:
                     try:
-                        val = property.as_str()
+                        val = prop.as_str()
                         decode_msg = "(string): {0}".format(val)
                     except:
                         pass
@@ -1617,7 +1669,7 @@ class Lopper:
                     try:
                         # this is getting us some false positives on multi-string. Need
                         # a better test
-                        val = property[:-1].decode('utf-8').split('\x00')
+                        val = prop[:-1].decode('utf-8').split('\x00')
                         #val = ""
                         decode_msg = "(multi-string): {0}".format(val)
                     except:
@@ -1626,13 +1678,13 @@ class Lopper:
                 val = ""
                 decode_msg = ""
                 try:
-                    val = property.as_uint32()
+                    val = prop.as_uint32()
                     decode_msg = "(uint32): {0}".format(val)
                 except:
                     pass
                 if not val and val != 0:
                     try:
-                        val = property.as_uint64()
+                        val = prop.as_uint64()
                         decode_msg = "(uint64): {0}".format(val)
                     except:
                         pass
@@ -1640,45 +1692,48 @@ class Lopper:
             if not val and val != 0:
                 decode_msg = "** unable to decode value **"
         else:
+            # compound format
             decode_msg = ""
-            encode_calculated = encode
             val = ['']
+            encode_calculated = Lopper.property_type_guess( prop )
 
-            # if we have b'' (and empty array), return ['']
-            if not property:
+            if repr(encode_calculated) == repr(LopperFmt.EMPTY):
                 return val
 
-            first_byte = property[0]
-            last_byte = property[-1]
-
-            # byte array encoded strings, start with a non '\x00' byte (i.e. a character), so
-            # we test on that for a hint. If it is not \x00, then we try it as a string.
-            # Note: we may also test on the last byte for a string terminator.
-            if first_byte != 0:
-                encode_calculated = LopperFmt.STRING
+            first_byte = prop[0]
+            last_byte = prop[-1]
 
             # TODO: we shouldn't need these repr() wrappers around the enums, but yet
             #       it doesn't seem to work on the calculated variable without them
-            # It could be that 'property' is a special decorator. Change to another variable name
             if repr(encode_calculated) == repr(LopperFmt.STRING):
                 try:
-                    val = property[:-1].decode('utf-8').split('\x00')
+                    val = prop[:-1].decode('utf-8').split('\x00')
                     decode_msg = "(multi-string): {0}".format(val)
                 except:
                     encode_calculated = encode
 
-            if ( repr(encode_calculated) == repr(LopperFmt.DEC)) or \
-                   (repr(encode_calculated) == repr(LopperFmt.HEX)):
+            if repr(encode_calculated) == repr(LopperFmt.UINT32) or \
+               repr(encode_calculated) == repr(LopperFmt.UINT64) or \
+               repr(encode_calculated) == repr(LopperFmt.UINT8) :
                 try:
                     decode_msg = "(multi number)"
-                    num_bits = len(property)
-                    num_nums = num_bits // 4
-                    start_index = 0
-                    end_index = 4
-                    short_int_size = 4
+                    num_bits = len(prop)
+                    if encode_calculated == LopperFmt.UINT8:
+                        binary_data = True
+                        start_index = 0
+                        end_index = 1
+                        short_int_size = 1
+                        num_nums = num_bits
+                    else:
+                        binary_data = False
+                        num_nums = num_bits // 4
+                        start_index = 0
+                        end_index = 4
+                        short_int_size = 4
+
                     val = []
                     while end_index <= (num_nums * short_int_size):
-                        short_int = property[start_index:end_index]
+                        short_int = prop[start_index:end_index]
                         if repr(encode) == repr(LopperFmt.HEX):
                             converted_int = hex(int.from_bytes(short_int,'big',signed=False))
                         else:
@@ -1687,11 +1742,12 @@ class Lopper:
                         start_index = start_index + short_int_size
                         end_index = end_index + short_int_size
                         val.append(converted_int)
-                except:
+
+                except Exception as e:
                     decode_msg = "** unable to decode value **"
 
 
         if verbose > 3:
-            print( "[DBG+]: decoding property: \"%s\" (%s) [%s] --> %s" % (property, poffset, property, decode_msg ) )
+            print( "[DBG+]: decoding prop: \"%s\" (%s) [%s] --> %s" % (prop, poffset, prop, decode_msg ) )
 
         return val

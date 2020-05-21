@@ -959,7 +959,7 @@ class LopperSDT:
 
                     if re.search( ".*,lop,modify$", val ):
                         if self.verbose:
-                            print( "[INFO]: node %s is a compatible property modify lop" % node_name )
+                            print( "[INFO]: node %s is a compatible modify lop" % node_name )
                         try:
                             prop = lops_fdt.getprop( n, 'modify' ).as_str()
                         except:
