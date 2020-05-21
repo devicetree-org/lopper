@@ -1440,7 +1440,7 @@ if __name__ == "__main__":
         device_tree = LopperSDT( dt )
 
         device_tree.dryrun = False
-        device_tree.verbose = 0
+        device_tree.verbose = verbose
         device_tree.werror = werror
         device_tree.output_file = outdir + "/sdt-output.dts"
         device_tree.cleanup_flag = True
@@ -1457,7 +1457,7 @@ if __name__ == "__main__":
         device_tree = LopperSDT( dt )
 
         device_tree.dryrun = False
-        device_tree.verbose = 0
+        device_tree.verbose = verbose
         device_tree.werror = werror
         device_tree.output_file = outdir + "/assist-output.dts"
         device_tree.cleanup_flag = True
