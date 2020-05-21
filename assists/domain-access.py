@@ -46,18 +46,16 @@ def core_domain_access( tgt_node, sdt, options ):
     except:
         verbose = 0
 
-    if verbose:
-        print( "[INFO]: cb: core_domain_access( %s, %s, %s )" % (domain_node, sdt, verbose))
-
     # reset the treewide ref counting
     sdt.tree.ref = 0
-
     domain_node = sdt.tree[tgt_node]
+
+    if verbose:
+        print( "[INFO]: cb: core_domain_access( %s, %s, %s )" % (domain_node, sdt, verbose))
 
     access_list = domain_node["access"].value
     if access_list:
         for ph in access_list[::2]:
-
             anode = sdt.tree.pnode( ph )
             if anode:
                 sdt.tree.ref_all( anode, True )
