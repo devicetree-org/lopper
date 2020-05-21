@@ -302,8 +302,11 @@ class LopperSDT:
 
             fpp.close()
         else:
+            # the system device tree is a dtb
             self.dtb = sdt_file
-            self.dts = ""
+            self.dts = sdt_file
+            self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
+            self.tree = lt.LopperTree( self.FDT )
 
         if self.verbose:
             print( "" )
@@ -392,9 +395,11 @@ class LopperSDT:
         # remove any .dtb and .pp files we created
         if self.cleanup and not self.save_temps:
             try:
-                os.remove( self.dtb )
+                if self.dtb != self.dts:
+                    os.remove( self.dtb )
                 if self.enhanced:
                     os.remove( self.dts + ".enhanced" )
+                    os.remove( self.dts + ".phandle" )
             except:
                 # doesn't matter if the remove failed, it means it is
                 # most likely gone
