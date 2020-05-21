@@ -82,6 +82,40 @@ CLASSES
      |  __init__(self, sdt_file)
      |      Initialize self.  See help(type(self)) for accurate signature.
      |  
+     |  assist_find(self, assist_name, local_load_paths=[])
+     |      Locates a python module that matches assist_name
+     |      
+     |      This routine searches both system (lopper_directory, lopper_directory +
+     |      "assists", and passed paths (local_load_paths) to locate a matching
+     |      python implementation.
+     |      
+     |      Args:
+     |         assist_name (string): name of the assist to locate
+     |         local_load_paths (list of strings, optional): list of directories to search
+     |                                                       in addition to system dirs
+     |      
+     |      Returns:
+     |         Path: Path object to the located python module, None on failure
+     |  
+     |  assists_setup(self, assists=[])
+     |      assists (list,optional): list of python assist modules to load. Default is []
+     |  
+     |  assists_wrap(self)
+     |      wrap assists that have been added to the device tree
+     |      
+     |      Wraps any command line assists that have been added to the system
+     |      device tree. A standard lop format dtb is generated for any found
+     |      assists, such that they will be loaded in the same manner as
+     |      assists passed directly in lop files.
+     |      
+     |      Note: this is for internal use only
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         Nothing
+     |  
      |  cleanup(self)
      |      cleanup any temporary or copied files
      |      
@@ -108,21 +142,6 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
-     |  find_assist(self, assist_name, local_load_paths=[])
-     |      Locates a python module that matches assist_name
-     |      
-     |      This routine searches both system (lopper_directory, lopper_directory +
-     |      "assists", and passed paths (local_load_paths) to locate a matching
-     |      python implementation.
-     |      
-     |      Args:
-     |         assist_name (string): name of the assist to locate
-     |         local_load_paths (list of strings, optional): list of directories to search
-     |                                                       in addition to system dirs
-     |      
-     |      Returns:
-     |         Path: Path object to the located python module, None on failure
-     |  
      |  find_compatible_assist(self, cb_node=0, cb_id='', mask='')
      |      Finds a registered assist that is compatible with a given ID
      |      
@@ -145,6 +164,8 @@ CLASSES
      |      
      |      Returns:
      |          function reference: the callback routine, or "", if no compatible routine found
+     |  
+     |  module_setup(self, module_name, module_args=[])
      |  
      |  node_find(self, node_prefix)
      |      Finds a node by its prefix
@@ -170,7 +191,7 @@ CLASSES
      |      Returns:
      |          Nothing
      |  
-     |  setup(self, sdt_file, input_files, include_paths, assists=[], force=False)
+     |  setup(self, sdt_file, input_files, include_paths, force=False)
      |      executes setup and initialization tasks for a system device tree
      |      
      |      setup validates the inputs, and calls the appropriate routines to
@@ -180,25 +201,8 @@ CLASSES
      |         sdt_file (String): system device tree path/file
      |         input_files (list): list of input files (.dts, or .dtb) in addition to the sdt_file
      |         include_paths (list): list of paths to search for files
-     |         assists (list,optional): list of python assist modules to load. Default is []
      |         force (bool,optional): flag indicating if files should be overwritten and compilation
      |                                forced. Default is False.
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  wrap_assists(self)
-     |      wrap assists that have been added to the device tree
-     |      
-     |      Wraps any command line assists that have been added to the system
-     |      device tree. A standard lop format dtb is generated for any found
-     |      assists, such that they will be loaded in the same manner as
-     |      assists passed directly in lop files.
-     |      
-     |      Note: this is for internal use only
-     |      
-     |      Args:
-     |         None
      |      
      |      Returns:
      |         Nothing
@@ -302,7 +306,7 @@ CLASSES
      |         verbose (bool,optional): verbosity level
      |      
      |      Returns:
-     |         Nothing
+     |         string: Name of the compiled dtb
      |  
      |  dt_to_fdt(dtb, rmode='rb')
      |      takes a dtb and returns a flattened device tree object
@@ -675,7 +679,7 @@ CLASSES
      |      Returns:
      |          The modified phandle safe string
      |  
-     |  prop_get(fdt, node_number, prop_name, ftype=<LopperFmt.SIMPLE: 1>, encode=<LopperFmt.DEC: 4>)
+     |  property_get(fdt, node_number, prop_name, ftype=<LopperFmt.SIMPLE: 1>, encode=<LopperFmt.DEC: 4>)
      |      utility command to get a property (as a string) from a node
      |      
      |      A more robust way to get the value of a property in a node, when
@@ -704,43 +708,6 @@ CLASSES
      |         string: if format is SIMPLE: string value of the property, or "" if not found
      |         list: if format is COMPOUND: list of property values as strings, [] if not found
      |  
-     |  prop_remove(fdt, node_name, prop_name, verbose=0)
-     |      removes a property from a fdt
-     |      
-     |      Removes a property (if it exists) from a node (and optionally its children).
-     |      
-     |      Args:
-     |          fdt (FDT): flattened device tree to modify
-     |          node_name (int or string): the node number or name to process
-     |          prop_name (string): name of property to remove
-     |      
-     |      Returns:
-     |          Boolean: True if the property was deleted, False if it wasn't
-     |  
-     |  prop_set(fdt, node_number, prop_name, prop_val, ftype=<LopperFmt.SIMPLE: 1>, verbose=False)
-     |      utility command to set a property in a node
-     |      
-     |      A more robust way to set the value of a property in a node, This routine
-     |      takes hints when getting the property in the form of a "format type"
-     |      
-     |      The format options are in the following enum type:
-     |      
-     |         class LopperFmt(Enum):
-     |            SIMPLE = 1 (format)
-     |            COMPOUND = 2 (format)
-     |      
-     |      Based on the format hint, and the passed value, the property is encoded
-     |      into a byte array and stored into the flattened device tree node.
-     |      
-     |      Args:
-     |         fdt_dst (FDT): flattened device tree
-     |         node_number (int): node number in the fdt
-     |         prop_name (string): property name whose value to set
-     |         ftype (LopperFmt,optional): format of the property. Default SIMPLE.
-     |      
-     |      Returns:
-     |         Nothing
-     |  
      |  property_list(fdt, node_path)
      |      Read a list of properties from a node
      |      
@@ -768,6 +735,19 @@ CLASSES
      |          The the phandle index and number of fields, if the node can't
      |          be found 0, 0 are returned.
      |  
+     |  property_remove(fdt, node_name, prop_name, verbose=0)
+     |      removes a property from a fdt
+     |      
+     |      Removes a property (if it exists) from a node (and optionally its children).
+     |      
+     |      Args:
+     |          fdt (FDT): flattened device tree to modify
+     |          node_name (int or string): the node number or name to process
+     |          prop_name (string): name of property to remove
+     |      
+     |      Returns:
+     |          Boolean: True if the property was deleted, False if it wasn't
+     |  
      |  property_resolve_phandles(fdt, nodeoffset, property_name)
      |      Resolve the targets of any phandles in a property
      |      
@@ -779,7 +759,52 @@ CLASSES
      |      Returns:
      |          A list of all resolved phandle nodes, [] if no phandles are present
      |  
-     |  property_value_decode(property, poffset, ftype=<LopperFmt.SIMPLE: 1>, encode=<LopperFmt.DEC: 4>, verbose=0)
+     |  property_set(fdt, node_number, prop_name, prop_val, ftype=<LopperFmt.SIMPLE: 1>, verbose=False)
+     |      utility command to set a property in a node
+     |      
+     |      A more robust way to set the value of a property in a node, This routine
+     |      takes hints when getting the property in the form of a "format type"
+     |      
+     |      The format options are in the following enum type:
+     |      
+     |         class LopperFmt(Enum):
+     |            SIMPLE = 1 (format)
+     |            COMPOUND = 2 (format)
+     |      
+     |      Based on the format hint, and the passed value, the property is encoded
+     |      into a byte array and stored into the flattened device tree node.
+     |      
+     |      Args:
+     |         fdt_dst (FDT): flattened device tree
+     |         node_number (int): node number in the fdt
+     |         prop_name (string): property name whose value to set
+     |         ftype (LopperFmt,optional): format of the property. Default SIMPLE.
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  property_type_guess(prop)
+     |      utility routine to guess the type of a property
+     |      
+     |      Often the type of a property is not know, in particular if there isn't
+     |      access to markers via libfdt.
+     |      
+     |      This routine looks at the data of a libFDT property and returns the best
+     |      guess for the type. The logic behind the guesses is documented in the code
+     |      itself
+     |      
+     |      Args:
+     |         prop (libfdt property): the property to process
+     |      
+     |      Returns:
+     |         LopperFmt description of the property. Default is UINT8 (binary)
+     |                     LopperFmt.STRING: string
+     |                     LopperFmt.UINT32 1: uint32
+     |                     LopperFmt.UINT64 2: uint64
+     |                     LopperFmt.UINT8 3: uint8 (binary)
+     |                     LopperFmt.EMPTY 4: empty (just a name)
+     |  
+     |  property_value_decode(prop, poffset, ftype=<LopperFmt.SIMPLE: 1>, encode=<LopperFmt.UNKNOWN: 11>, verbose=0)
      |      Decodes a property
      |      
      |      Decode a property into a common data type (string, integer, list of
@@ -803,7 +828,7 @@ CLASSES
      |            MULTI_STRING = 5 (encoding)
      |      
      |      Args:
-     |         property (libfdt property): property to decode
+     |         prop (libfdt property): property to decode
      |         poffset (int): offset of the property in the node (unused)
      |         ftype (LopperFmt,optional): format hint for the property. default is SIMPLE
      |         encode (LopperFmt,optional): encoding hint. default is DEC
@@ -896,6 +921,8 @@ CLASSES
      |  
      |  DEC = <LopperFmt.DEC: 4>
      |  
+     |  EMPTY = <LopperFmt.EMPTY: 10>
+     |  
      |  HEX = <LopperFmt.HEX: 3>
      |  
      |  MULTI_STRING = <LopperFmt.MULTI_STRING: 6>
@@ -903,6 +930,14 @@ CLASSES
      |  SIMPLE = <LopperFmt.SIMPLE: 1>
      |  
      |  STRING = <LopperFmt.STRING: 5>
+     |  
+     |  UINT32 = <LopperFmt.UINT32: 8>
+     |  
+     |  UINT64 = <LopperFmt.UINT64: 9>
+     |  
+     |  UINT8 = <LopperFmt.UINT8: 7>
+     |  
+     |  UNKNOWN = <LopperFmt.UNKNOWN: 11>
      |  
      |  ----------------------------------------------------------------------
      |  Data descriptors inherited from enum.Enum:

@@ -235,7 +235,7 @@ def cdo_write( node, sdt, outfile, options ):
                 pm_add_word_one = cdo_parent_word( parent_count, width, shift )
                 print( "pm_add_node {0} <control reg addr> <flags> <power domain ID> ".format( hex(nodeid)), file=output )
 
-                # sub_clocks = Lopper.prop_get( fdt, nodeoffset, "clock-names" )
+                # sub_clocks = Lopper.property_get( fdt, nodeoffset, "clock-names" )
                 sub_clocks = n["clock-names"].value
                 for c in sub_clocks:
                     cn = sdt.tree["/.*" + c]

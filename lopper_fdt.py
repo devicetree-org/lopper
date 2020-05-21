@@ -160,7 +160,7 @@ class Lopper:
         Returns:
             string: compatible string of the node if successful, otherwise ''
         """
-        rt = Lopper.prop_get( fdt, node_offset, "compatible" )
+        rt = Lopper.property_get( fdt, node_offset, "compatible" )
 
         return rt
 
@@ -440,7 +440,7 @@ class Lopper:
 
         prop_list = Lopper.property_list( fdt, node_path )
         for p in prop_list:
-            property_val = Lopper.prop_get( fdt, node_number, p, LopperFmt.COMPOUND )
+            property_val = Lopper.property_get( fdt, node_number, p, LopperFmt.COMPOUND )
             prop_dict[p] = property_val
 
         return prop_dict
@@ -574,8 +574,8 @@ class Lopper:
             # them in the opposite order!
 
             for poffset, prop in prop_list:
-                prop_val = Lopper.prop_get( fdt_source, nn, prop.name, LopperFmt.COMPOUND )
-                Lopper.prop_set( fdt_dest, prop_offset, prop.name, prop_val )
+                prop_val = Lopper.property_get( fdt_source, nn, prop.name, LopperFmt.COMPOUND )
+                Lopper.property_set( fdt_dest, prop_offset, prop.name, prop_val )
 
 
             old_depth = depth
@@ -683,7 +683,7 @@ class Lopper:
             sys.exit(1)
 
         while depth >= 0:
-            prop_val = Lopper.prop_get( fdt, node, match_propname, LopperFmt.COMPOUND )
+            prop_val = Lopper.property_get( fdt, node, match_propname, LopperFmt.COMPOUND )
             if prop_val:
                 if match_regex:
                     for p in prop_val:
@@ -937,7 +937,7 @@ class Lopper:
             phandle_field_count = 0
             for f in property_fields:
                 if re.search( '#.*', f ):
-                    field_val = Lopper.prop_get( fdt, nodeoffset, f, LopperFmt.SIMPLE )
+                    field_val = Lopper.property_get( fdt, nodeoffset, f, LopperFmt.SIMPLE )
                     if not field_val:
                         field_val = 1
 
@@ -973,7 +973,7 @@ class Lopper:
         if idx == 0:
             return phandle_targets
 
-        prop_val = Lopper.prop_get( fdt, nodeoffset, property_name, LopperFmt.COMPOUND, LopperFmt.HEX )
+        prop_val = Lopper.property_get( fdt, nodeoffset, property_name, LopperFmt.COMPOUND, LopperFmt.HEX )
         if not prop_val:
             return phandle_targets
 
@@ -1172,7 +1172,7 @@ class Lopper:
         return prop
 
     @staticmethod
-    def prop_get( fdt, node_number, prop_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
+    def property_get( fdt, node_number, prop_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
         """utility command to get a property (as a string) from a node
 
         A more robust way to get the value of a property in a node, when
@@ -1210,7 +1210,7 @@ class Lopper:
         return val
 
     @staticmethod
-    def prop_set( fdt, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE, verbose=False ):
+    def property_set( fdt, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE, verbose=False ):
         """utility command to set a property in a node
 
         A more robust way to set the value of a property in a node, This routine
@@ -1317,7 +1317,7 @@ class Lopper:
             print( "[WARNING]; uknown type was used" )
 
     @staticmethod
-    def prop_remove( fdt, node_name, prop_name, verbose=0 ):
+    def property_remove( fdt, node_name, prop_name, verbose=0 ):
         """removes a property from a fdt
 
         Removes a property (if it exists) from a node (and optionally its children).

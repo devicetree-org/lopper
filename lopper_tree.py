@@ -193,7 +193,7 @@ class LopperProp():
                 if re.search( '#.*', f ):
                     try:
                         # Looking into the node, is the same as:
-                        #      field_val = Lopper.prop_get( fdt, nodeoffset, f, LopperFmt.SIMPLE )
+                        #      field_val = Lopper.property_get( fdt, nodeoffset, f, LopperFmt.SIMPLE )
                         field_val = self.node.__props__[f].value[0]
                     except:
                         field_val = 0
@@ -227,7 +227,7 @@ class LopperProp():
            boolean: True if the property was sync'd, otherwise False
         """
         # we could do a read-and-set-if-different
-        Lopper.prop_set( fdt, self.node.number, self.name, self.value, LopperFmt.COMPOUND )
+        Lopper.property_set( fdt, self.node.number, self.name, self.value, LopperFmt.COMPOUND )
         self.__modified__ = False
         self.__pstate__ = "syncd"
 
@@ -1077,7 +1077,7 @@ class LopperNode(object):
                     if self.__dbg__ > 2:
                         print( "[DBG++]:    node sync: pending property %s is delete, writing back" % p.name )
 
-                    Lopper.prop_remove( fdt, self.name, p.name )
+                    Lopper.property_remove( fdt, self.name, p.name )
                     del self.__props__pending__[p.name]
                     retval = True
 
@@ -1352,7 +1352,7 @@ class LopperNode(object):
                 poffset = fdt.first_property_offset(self.number, QUIET_NOTFOUND)
                 while poffset > 0:
                     prop = fdt.get_property_by_offset(poffset)
-                    prop_val = Lopper.prop_get( fdt, self.number, prop.name, LopperFmt.COMPOUND )
+                    prop_val = Lopper.property_get( fdt, self.number, prop.name, LopperFmt.COMPOUND )
                     dtype = Lopper.property_type_guess( prop )
 
                     # special handling for 'compatible', we bubble it up as the node "type"
@@ -2124,7 +2124,7 @@ class LopperTree:
 
 
         # make a list of safe functions
-        safe_list = ['Lopper.prop_get', 'Lopper.node_getphandle', 'verbose', 'print']
+        safe_list = ['Lopper.property_get', 'Lopper.node_getphandle', 'verbose', 'print']
 
         # this should work, but isn't resolving the local vars, so we have to add them again in the
         # loop below.
@@ -2133,7 +2133,7 @@ class LopperTree:
         safe_dict = dict([ (k, locals().get(k, None)) for k in safe_list ])
         safe_dict['len'] = len
         safe_dict['print'] = print
-        safe_dict['prop_get'] = Lopper.prop_get
+        safe_dict['prop_get'] = Lopper.property_get
         safe_dict['getphandle'] = Lopper.node_getphandle
         safe_dict['fdt'] = fdt
         safe_dict['verbose'] = verbose

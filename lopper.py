@@ -678,7 +678,7 @@ class LopperSDT:
             else:
                 lops_fdt = x.fdt
 
-            lops_file_priority = Lopper.prop_get( lops_fdt, 0, "priority" )
+            lops_file_priority = Lopper.property_get( lops_fdt, 0, "priority" )
             if not lops_file_priority:
                 lops_file_priority = 5
 
@@ -699,10 +699,10 @@ class LopperSDT:
                 lops_nodes = Lopper.nodes_with_property( lops_fdt, "compatible", "system-device-tree-v1,lop.*", "lops" )
                 for n in lops_nodes:
                     prop = lops_fdt.getprop( n, "compatible" )
-                    val = Lopper.prop_get( lops_fdt, n, "compatible" )
+                    val = Lopper.property_get( lops_fdt, n, "compatible" )
                     node_name = lops_fdt.get_name( n )
 
-                    noexec = Lopper.prop_get( lops_fdt, n, "noexec" )
+                    noexec = Lopper.property_get( lops_fdt, n, "noexec" )
                     if noexec:
                         if self.verbose > 1:
                             print( "[DBG+]: noexec flag found, skipping lop" )
@@ -716,7 +716,7 @@ class LopperSDT:
 
                     # TODO: need a better way to search for the possible lop types, i.e. a dict
                     if re.search( ".*,output$", val ):
-                        output_file_name = Lopper.prop_get( lops_fdt, n, 'outfile' )
+                        output_file_name = Lopper.property_get( lops_fdt, n, 'outfile' )
                         if not output_file_name:
                             print( "[ERROR]: cannot get output file name from lop" )
                             sys.exit(1)
@@ -724,7 +724,7 @@ class LopperSDT:
                         if self.verbose > 1:
                             print( "[DBG+]: outfile is: %s" % output_file_name )
 
-                        output_nodes = Lopper.prop_get( lops_fdt, n, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
+                        output_nodes = Lopper.property_get( lops_fdt, n, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
 
                         if self.verbose > 1:
                             print( "[DBG+]: output selected are: %s" % output_nodes )
@@ -796,14 +796,14 @@ class LopperSDT:
                         # out of order with other lopper operations, so it isn't
                         # particularly feasible or desireable.
                         #
-                        cb_tgt_node_name = Lopper.prop_get( lops_fdt, n, 'node' )
+                        cb_tgt_node_name = Lopper.property_get( lops_fdt, n, 'node' )
                         if not cb_tgt_node_name:
                             print( "[ERROR]: cannot find target node for the assist" )
                             sys.exit(1)
 
-                        cb = Lopper.prop_get( lops_fdt, n, 'assist' )
-                        cb_id = Lopper.prop_get( lops_fdt, n, 'id' )
-                        cb_opts = Lopper.prop_get( lops_fdt, n, 'options' )
+                        cb = Lopper.property_get( lops_fdt, n, 'assist' )
+                        cb_id = Lopper.property_get( lops_fdt, n, 'id' )
+                        cb_opts = Lopper.property_get( lops_fdt, n, 'options' )
                         cb_opts = cb_opts.lstrip()
                         if cb_opts:
                             cb_opts = cb_opts.split( ' ' )
@@ -892,7 +892,7 @@ class LopperSDT:
                                         prop_extension = lops_fdt.getprop( n, 'file_ext' ).as_str()
                                         # TODO: debug why the call below can't figure out that this is a
                                         #       string property.
-                                        # Lopper.prop_get( lops_fdt, n, "file_ext" )
+                                        # Lopper.property_get( lops_fdt, n, "file_ext" )
                                     except:
                                         try:
                                             prop_extension = imported_module.file_ext()
@@ -934,7 +934,7 @@ class LopperSDT:
                         if self.verbose:
                             print( "[INFO]: node add lop found" )
 
-                        src_node_name = Lopper.prop_get( lops_fdt, n, "node_src" )
+                        src_node_name = Lopper.property_get( lops_fdt, n, "node_src" )
                         if not src_node_name:
                             print( "[ERROR]: node add detected, but no node name found" )
                             sys.exit(1)
@@ -942,7 +942,7 @@ class LopperSDT:
                         lops_node_path = Lopper.node_abspath( lops_fdt, n )
                         src_node_path = lops_node_path + "/" + src_node_name
 
-                        dest_node_path = Lopper.prop_get( lops_fdt, n, "node_dest" )
+                        dest_node_path = Lopper.property_get( lops_fdt, n, "node_dest" )
                         if not dest_node_path:
                             dest_node_path = "/" + src_node_name
 
@@ -966,7 +966,7 @@ class LopperSDT:
                             prop = ""
 
                         # was there a regex passed for node matching ?
-                        nodes = Lopper.prop_get( lops_fdt, n, "nodes" )
+                        nodes = Lopper.property_get( lops_fdt, n, "nodes" )
                         if prop:
                             if self.verbose:
                                 print( "[INFO]: modify property found: %s" % prop )
