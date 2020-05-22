@@ -205,7 +205,7 @@ def setup_assist_lops( outdir ):
 };
             """)
 
-    return "/tmp/lops-assists.dts"
+    return outdir + "/lops-assists.dts"
 
 
 def setup_device_tree( outdir ):
@@ -400,7 +400,7 @@ def setup_device_tree( outdir ):
 };
 """)
 
-    return "/tmp/tester.dts"
+    return outdir + "/tester.dts"
 
 def setup_system_device_tree( outdir ):
     with open( outdir + "/sdt-tester.dts", "w") as w:
@@ -656,9 +656,41 @@ def setup_system_device_tree( outdir ):
 };
 """)
 
-    return "/tmp/sdt-tester.dts"
+    return outdir + "/sdt-tester.dts"
 
+def setup_format_tree( outdir ):
+    with open( outdir + "/format-tester.dts", "w") as w:
+            w.write("""\
+/dts-v1/;
 
+/ {
+        compatible = "xlnx,versal-vc-p-a2197-00-revA","lnx,versal-vc-p-a2197-00\0xlnx,versal-vc-p-a2197\0xlnx,versal";
+        #address-cells = <0x02>;
+        #size-cells = <0x02>;
+        model = "Xilinx Versal A2197 Processor board revA";
+
+        cpus {
+
+                cpu@0 {
+                        compatible = "arm,cortex-a72","arm,armv8";
+                        compatibleshort = [20 00];
+                        device_type = "cpu";
+                        operating-points-v2 = <0x01>;
+                        num-of-clocks;
+                        clocks = <0x03 0x4d>;
+                        width = [20];
+                        width-2 = [FF];
+                        mac = [ 01 02 03 04 05 06 07 08];
+                        mac-2 = <0x00 0x01>;
+                        mac-3 = <0x10203 0x4050607>;
+                        queues = [00 01];
+                        queues-2 = <0x00 0x01>;
+                };
+        };
+};
+""")
+
+    return outdir + "/format-tester.dts"
 
 def setup_fdt( device_tree, outdir ):
     Lopper.dt_compile( device_tree, "", "", True, outdir )
@@ -1361,6 +1393,13 @@ def assists_sanity_test( device_tree, lop_file, verbose ):
 
     device_tree.cleanup()
 
+def format_sanity_test( device_tree, verbose ):
+    device_tree.setup( dt, [], "", True )
+
+    print( "[TEST]: writing to %s" % (device_tree.output_file))
+    Lopper.write_fdt( device_tree.FDT, device_tree.output_file, device_tree, True, device_tree.verbose, device_tree.enhanced )
+
+
 def usage():
     prog = os.path.basename(sys.argv[0])
     print('Usage: %s [OPTION] ...' % prog)
@@ -1380,6 +1419,7 @@ def main():
     global lops
     global tree
     global assists
+    global format
 
     verbose = 0
     force = False
@@ -1388,8 +1428,9 @@ def main():
     tree = False
     lops = False
     assists = False
+    format = False
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlh", [ "assists", "tree", "lops", "werror","verbose", "help"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlh", [ "format", "assists", "tree", "lops", "werror","verbose", "help"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -1417,6 +1458,8 @@ def main():
             tree=True
         elif o in ( '-a','--assists'):
             assists=True
+        elif o in ( '--format'):
+            format=True
         elif o in ('--version'):
             print( "%s" % LOPPER_VERSION )
             sys.exit(0)
@@ -1466,3 +1509,18 @@ if __name__ == "__main__":
         device_tree.outdir = outdir
 
         assists_sanity_test( device_tree, lop_file, verbose )
+
+    if format:
+        dt = setup_format_tree( outdir )
+        device_tree = LopperSDT( dt )
+
+        device_tree.dryrun = False
+        device_tree.verbose = verbose
+        device_tree.werror = werror
+        device_tree.output_file = outdir + "/format-test-output.dts"
+        device_tree.cleanup_flag = True
+        device_tree.save_temps = False
+        device_tree.enhanced = True
+        device_tree.outdir = outdir
+
+        format_sanity_test( device_tree, verbose )
