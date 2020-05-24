@@ -647,7 +647,7 @@ class Lopper:
 
     @staticmethod
     def nodes_with_property( fdt, match_propname, match_regex="",
-                             start_path="/", include_children=True ):
+                             start_path="/", include_children=True, match_depth=0 ):
         """Get a list of nodes with a particular property
 
         Searches a device tree and returns a list of nodes that contain
@@ -665,6 +665,7 @@ class Lopper:
             match_regex (string,optional): property value match regex. Default is ""
             start_path (string,optional): starting path in the device tree. Default is "/"
             include_children (bool,optional): should child nodes be searched. Default is True.
+            match_depth (int): depth of the node, relative to the start path. Default is 0 (all nodes)
 
         Returns:
             list: list of matching nodes if successful, otherwise an empty list
@@ -684,6 +685,10 @@ class Lopper:
 
         while depth >= 0:
             prop_val = Lopper.property_get( fdt, node, match_propname, LopperFmt.COMPOUND )
+            if match_depth > 0:
+                if match_depth != depth:
+                    prop_val = None
+
             if prop_val:
                 if match_regex:
                     for p in prop_val:
@@ -840,8 +845,8 @@ class Lopper:
             if cb_funcs:
                 for cb_func in cb_funcs:
                     try:
-                        # TODO: the first parameter 'node', shouldn't always be the root (0)
-                        if not cb_func( 0, sdt, output_filename, { 'verbose' : sdt.verbose } ):
+                        out_tree = lt.LopperTreePrinter(  fdt_to_write, True, output_filename, verbose )
+                        if not cb_func( 0, out_tree, output_filename, { 'verbose' : sdt.verbose } ):
                             print( "[WARNING]: the assist returned false, check for errors ..." )
                     except Exception as e:
                         print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )

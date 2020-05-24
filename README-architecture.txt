@@ -491,13 +491,13 @@ when an output file extension is not recognized. Each loaded assist is queried
 with either an id that was provided when the output assist lop was loaded (see
 example above), or one that is associated with an output node in a lop file.
 
-If compatible, and output assist should return a function of the same
-format as a standard assist:
+If compatible, and output assist should return a function of the following
+format:
 
-   def assist_write( node, sdt, outfile, options ):
+   def assist_write( node, lt, outfile, options ):
 
-The routine can write the appropriate parts of the system device tree to the
-passed output filename.
+The routine can write the appropriate parts of the passed LopperTreePrinter (lt
+above) to the passed output filename.
 
 execution samples:
 ------------------

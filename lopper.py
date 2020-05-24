@@ -636,6 +636,531 @@ class LopperSDT:
 
         return cb_func
 
+    def exec_lop( self, lops_fdt, lop_node_number, options = None ):
+        """Executes a a lopper operation (lop)
+
+        Runs a lopper operation against the system device tree.
+
+        Details of the lop are in the lops_fdt, with extra parameters and lop
+        specific information from the caller being passed in the options
+        variable.
+
+        Args:
+            lops_fdt (FDT): lopper operation flattened device tree
+            lop_node_number (int): node number for the operation in lops_fdt
+            options (dictionary,optional): lop specific options passed from the caller
+
+        Returns:
+            boolean
+
+        """
+
+        lop_type = Lopper.property_get( lops_fdt, lop_node_number, "compatible" )
+
+        if self.verbose > 2:
+            print( "[DBG++]: executing lop: %s" % lop_type )
+
+        if re.search( ".*,output$", lop_type ):
+            output_file_name = Lopper.property_get( lops_fdt, lop_node_number, 'outfile' )
+            if not output_file_name:
+                print( "[ERROR]: cannot get output file name from lop" )
+                sys.exit(1)
+
+            if self.verbose > 1:
+                print( "[DBG+]: outfile is: %s" % output_file_name )
+
+            output_nodes = Lopper.property_get( lops_fdt, lop_node_number, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
+
+            if self.verbose > 1:
+                print( "[DBG+]: output selected are: %s" % output_nodes )
+
+            if "*" in output_nodes:
+                ff = libfdt.Fdt(self.FDT.as_bytearray())
+            else:
+                # Note: we may want to switch this around, and copy the old tree and
+                #       delete nodes. This will be important if we run into some
+                #       strangely formatted ones that we can't copy.
+                ff = libfdt.Fdt.create_empty_tree( self.FDT.totalsize() )
+                for o_node in output_nodes:
+
+                    split_node = o_node.split(":")
+                    o_node = split_node[0]
+                    o_prop_name = ""
+                    o_prop_val = ""
+                    if len(split_node) > 1:
+                        o_prop_name = split_node[1]
+                        if len(split_node) > 2:
+                            o_prop_val = split_node[2]
+
+                    if o_prop_name:
+                        if self.verbose > 1:
+                            print( "[DBG+]: output prop: %s val: %s" % (o_prop_name, o_prop_val))
+
+                    # TODO: this really should be using node_find() and we should make sure the
+                    #       output 'lop' has full paths.
+
+                    # regex capability in the output, comes from this call, where o_node can be a regex
+                    # and return multiple matches
+
+                    # TODO: convert this to use the tree routines for find and copy
+                    node_to_copy, nodes_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0, True )
+                    if node_to_copy == -1:
+                        print( "[WARNING]: could not find node to copy: %s" % o_node )
+                    else:
+                        for n in nodes_to_copy:
+                            copy_node_flag = True
+
+                            # we test for a property in the node if it was defined
+                            if o_prop_name:
+                                copy_node_flag = False
+                                p = self.tree[n].propval(o_prop_name)
+                                if o_prop_val:
+                                    if p:
+                                        if o_prop_val in p:
+                                            copy_node_flag = True
+
+                            if copy_node_flag:
+                                node_to_copy_path = Lopper.node_abspath( self.FDT, n )
+                                new_node = Lopper.node_copy_from_path( self.FDT, node_to_copy_path, ff, node_to_copy_path, self.verbose )
+                                if not new_node:
+                                    print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
+
+            if not self.dryrun:
+                output_file_full = self.outdir + "/" + output_file_name
+                Lopper.write_fdt( ff, output_file_full, self, True, self.verbose, self.enhanced )
+            else:
+                print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
+
+        if re.search( ".*,assist-v1$", lop_type ):
+            # also note: this assist may change from being called as
+            # part of the lop loop, to something that is instead
+            # called by walking the entire device tree, looking for
+            # matching nodes and making assists at that moment.
+            #
+            # but that sort of node walking, will invoke the assists
+            # out of order with other lopper operations, so it isn't
+            # particularly feasible or desireable.
+            #
+            cb_tgt_node_name = Lopper.property_get( lops_fdt, lop_node_number, 'node' )
+            if not cb_tgt_node_name:
+                print( "[ERROR]: cannot find target node for the assist" )
+                sys.exit(1)
+
+            cb = Lopper.property_get( lops_fdt, lop_node_number, 'assist' )
+            cb_id = Lopper.property_get( lops_fdt, lop_node_number, 'id' )
+            cb_opts = Lopper.property_get( lops_fdt, lop_node_number, 'options' )
+            cb_opts = cb_opts.lstrip()
+            if cb_opts:
+                cb_opts = cb_opts.split( ' ' )
+            else:
+                cb_opts = []
+            cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
+            if cb_node < 0:
+                if self.werror:
+                    print( "[ERROR]: cannot find assist target node in tree" )
+                    sys.exit(1)
+                else:
+                    return
+            if self.verbose:
+                print( "[INFO]: assist lop detected" )
+                if cb:
+                    print( "        cb: %s" % cb )
+                print( "        id: %s opts: %s" % (cb_id,cb_opts) )
+
+            cb_funcs = self.find_compatible_assist( cb_node, cb_id )
+            if cb_funcs:
+                for cb_func in cb_funcs:
+                    try:
+                        if not cb_func( cb_node, self, { 'verbose' : self.verbose, 'args': cb_opts } ):
+                            print( "[WARNING]: the assist returned false, check for errors ..." )
+                    except Exception as e:
+                        print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )
+                        exc_type, exc_obj, exc_tb = sys.exc_info()
+                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                        print(exc_type, fname, exc_tb.tb_lineno)
+                        # exit if warnings are treated as errors
+                        if self.werror:
+                            sys.exit(1)
+            else:
+                print( "[INFO]: no compatible assist found, skipping" )
+
+        if re.search( ".*,lop,load$", lop_type ):
+            prop_id = ""
+            prop_extension = ""
+            node_name = lops_fdt.get_name( lop_node_number )
+
+            if self.verbose:
+                print( "--------------- [INFO]: node %s is a load module lop" % node_name )
+            try:
+                load_prop = lops_fdt.getprop( lop_node_number, 'load' ).as_str()
+            except:
+                load_prop = ""
+
+            if load_prop:
+                # for submodule loading
+                for p in self.load_paths:
+                    if p not in sys.path:
+                        sys.path.append( p )
+
+                if self.verbose:
+                    print( "[INFO]: loading module %s" % load_prop )
+
+                mod_file = self.assist_find( load_prop, self.load_paths )
+                if not mod_file:
+                    print( "[ERROR]: unable to find assist (%s)" % load_prop )
+                    sys.exit(1)
+
+                mod_file_abs = mod_file.resolve()
+
+                try:
+                    imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
+                except Exception as e:
+                    print( "[ERROR]: could not load assist: %s: %s" % (mod_file_abs,e) )
+                    sys.exit(1)
+
+                assist_properties = {}
+                try:
+                    props = lops_fdt.getprop( lop_node_number, 'props' )
+                    if props:
+                        props = Lopper.property_value_decode( props, 0, LopperFmt.COMPOUND )
+                except:
+                    # does the module have a "props" routine for extra querying ?
+                    try:
+                        props = imported_module.props()
+                    except:
+                        props = []
+
+                for p in props:
+                    # TODO: we can generate and evaluate these generically, right now, this
+                    #       is ok as a proof of concept only
+                    if p == "file_ext":
+                        try:
+                            prop_extension = lops_fdt.getprop( lop_node_number, 'file_ext' ).as_str()
+                            # TODO: debug why the call below can't figure out that this is a
+                            #       string property.
+                            # Lopper.property_get( lops_fdt, lop_node_number, "file_ext" )
+                        except:
+                            try:
+                                prop_extension = imported_module.file_ext()
+                            except:
+                                prop_extension = ""
+
+                        assist_properties['mask'] = prop_extension
+
+                    if p == "id":
+                        try:
+                            prop_id = lops_fdt.getprop( lop_node_number, 'id' ).as_str()
+                        except:
+                            try:
+                                prop_id = imported_module.id()
+                            except:
+                                prop_id = ""
+
+                        assist_properties['id'] = prop_id
+
+                # TODO: move this "assist already available" check into a function
+                already_loaded = False
+                if self.assists:
+                    for a in self.assists:
+                        try:
+                            if Path(a.file).resolve() == mod_file.resolve():
+                                already_loaded = True
+                                a.module = imported_module
+                                a.properties = assist_properties
+                        except:
+                            pass
+                if not already_loaded:
+                    if verbose > 1:
+                        if prop_extension:
+                            print( "[INFO]: loading assist with properties (%s,%s)" % (prop_extension, prop_id) )
+
+                    self.assists.append( LopperAssist( mod_file.name, imported_module, assist_properties ) )
+
+        if re.search( ".*,lop,add$", lop_type ):
+            if self.verbose:
+                print( "[INFO]: node add lop" )
+
+            src_node_name = Lopper.property_get( lops_fdt, lop_node_number, "node_src" )
+            if not src_node_name:
+                print( "[ERROR]: node add detected, but no node name found" )
+                sys.exit(1)
+
+            lops_node_path = Lopper.node_abspath( lops_fdt, lop_node_number )
+            src_node_path = lops_node_path + "/" + src_node_name
+
+            dest_node_path = Lopper.property_get( lops_fdt, lop_node_number, "node_dest" )
+            if not dest_node_path:
+                dest_node_path = "/" + src_node_name
+
+            if self.verbose:
+                print( "[INFO]: node name: %s node path: %s" % (src_node_path, dest_node_path) )
+
+            # TODO: replace this copy with a sdt.tree node to node copy.
+            if not Lopper.node_copy_from_path( lops_fdt, src_node_path, self.FDT, dest_node_path, self.verbose ):
+                print( "[ERROR]: unable to copy node: %s" % src_node_name )
+                sys.exit(1)
+            else:
+                # self.FDT is backs the tree object, so we need to sync
+                self.tree.sync()
+
+        if re.search( ".*,lop,conditional.*$", lop_type ):
+            if self.verbose:
+                print( "[INFO]: conditional lop found" )
+
+            lop_tree = lt.LopperTree( lops_fdt )
+            this_lop = lop_tree[lop_node_number]
+
+            this_lop_subnodes = this_lop.subnodes()
+            # the "cond_root" property of the lop node is the name of a node
+            # under the same lop node that is the start of the conditional node
+            # chain. If one wasn't provided, we start at '/'
+            try:
+                root = this_lop["cond_root"]
+            except:
+                root = "/"
+
+            try:
+                conditional_start = lop_tree[this_lop.abs_path + "/" + root.value[0]]
+            except:
+                print( "[INFO]: conditional node %s not found, returning" % this_lop.abs_path + "/" + root.value[0] )
+                return False
+
+            # the subnodes of the conditional lop represent the set of conditions
+            # to use. The deepest node is what we'll be comparing
+            cond_nodes = conditional_start.subnodes()
+            # get the last node
+            cond_last_node = cond_nodes[-1]
+            # drop the path to the this conditional lop from the full path of
+            # the last node in the chain. That's the path we'll look for in the
+            # system device tree.
+            cond_path = re.sub( this_lop.abs_path, "", cond_last_node.abs_path)
+
+            sdt_tgt_nodes = self.tree.nodes(cond_path)
+            if not sdt_tgt_nodes:
+                if self.verbose > 1:
+                    print( "[DBG++]: no target nodes found at: %s, returning" % cond_path )
+                return False
+
+            tgt_matches = []
+            tgt_false_matches = []
+            # iterate the properties in the final node of the conditional tree,
+            # these are the conditions that we are checking.
+            for cond_prop in cond_last_node:
+                cond_prop_name = cond_prop.name
+                invert_check = ""
+                # remove __not__ from the end of a property name, that is an
+                # indication for us only, and won't be in the SDT node
+                if cond_prop.name.endswith( "__not__" ):
+                    cond_prop_name = re.sub( "__not__$", "", cond_prop.name )
+                    invert_check = "not"
+                if self.verbose > 1:
+                    print( "[DBG++]: conditional property:  %s" % cond_prop_name )
+
+                for tgt_node in sdt_tgt_nodes:
+                    # is the property present in the target node ?
+                    try:
+                        tgt_node_prop = tgt_node[cond_prop_name]
+                    except:
+                        tgt_node_prop = None
+
+                    # no need to compare if the target node doesn't have the property
+                    if tgt_node_prop:
+                        check_val = cond_prop.compare( tgt_node_prop )
+
+                        # if there was an inversion in the name, flip the result
+                        check_val_final = eval( "{0} {1}".format(invert_check, check_val ))
+                        if self.verbose > 1:
+                            print ( "[DBG++]   condition check final value: {0} {1} was {2}".format(invert_check, check_val, check_val_final ))
+                        if check_val_final:
+                            # if not already in the list, we need to add the target node
+                            if not tgt_node in tgt_matches:
+                                tgt_matches.append(tgt_node)
+                        else:
+                            # if subsequent props are not True, then we need to yank out
+                            # the node from our match list
+                            if tgt_node in tgt_matches:
+                                tgt_matches.remove(tgt_node)
+                            # and add it to the false matches list
+                            if not tgt_node in tgt_false_matches:
+                                tgt_false_matches.append(tgt_node)
+                    else:
+                        # if it doesn't have it, that has to be a false!
+                        if self.verbose:
+                            print( "[DBG]: system device tree node '%s' does not have property '%s'" %
+                                   (tgt_node,cond_prop_name))
+
+                        # if subsequent props are not True, then we need to yank out
+                        # the node from our match list
+                        if tgt_node in tgt_matches:
+                            tgt_matches.remove(tgt_node)
+                        # and add it to the false matches list
+                        if not tgt_node in tgt_false_matches:
+                            tgt_false_matches.append(tgt_node)
+
+
+            # loop over the true matches, executing their operations, if one of them returns
+            # false, we stop the loop
+            for tgt_match in tgt_matches:
+                try:
+                    # we look through all the subnodes of this lopper operation. If any of them
+                    # start with "true", it is a nested lop that we will execute
+                    for n in this_lop_subnodes:
+                        if n.name.startswith( "true" ):
+                            if self.verbose > 1:
+                                print( "[DBG++]: true subnode found with lop: %s" % (n['compatible'].value[0] ) )
+                            try:
+                                # run the lop, passing the target node as an option (the lop may
+                                # or may not use it)
+                                ret = self.exec_lop( lops_fdt, n.number, { 'start_node' : tgt_match.abs_path } )
+                            except Exception as e:
+                                print( "[WARNING]: true block had an exception: %s" % e )
+                                ret = False
+
+                            # no more looping if the called lop return False
+                            if ret == False:
+                                if self.verbose > 1:
+                                    print( "[DBG++]: code block returned false, stop executing true blocks" )
+                                break
+                except Exception as e:
+                    print( "[WARNING]: conditional had exception: %s" % e )
+
+            # just like the target matches, we iterate any failed matches to see
+            # if false blocks were defined.
+            for tgt_match in tgt_false_matches:
+                # no match, is there a false block ?
+                try:
+                    for n in this_lop_subnodes:
+                        if n.name.startswith( "false" ):
+                            if self.verbose > 1:
+                                print( "[DBG++]: false subnode found with lop: %s" % (n['compatible'].value[0] ) )
+
+                            try:
+                                ret = self.exec_lop( lops_fdt, n.number, { 'start_node' : tgt_match.abs_path } )
+                            except Exception as e:
+                                print( "[WARNING]: false block had an exception: %s" % e )
+                                ret = False
+
+                            # if any of the blocks return False, we are done
+                            if ret == False:
+                                if self.verbose > 1:
+                                    print( "[DBG++]: code block returned false, stop executing true blocks" )
+                                break
+                except Exception as e:
+                    print( "[WARNING]: conditional false block had exception: %s" % e )
+
+        if re.search( ".*,lop,code.*$", lop_type ):
+            # execute a block of python code against a specified start_node
+            code = Lopper.property_get( lops_fdt, lop_node_number, "code" )
+            try:
+                start_node = options['start_node']
+            except:
+                start_node = "/"
+
+            if self.verbose:
+                print ( "[DBG]: code lop found, node context: %s" % start_node )
+
+            ret = self.tree.exec_cmd( start_node, code )
+
+            # who knows what the command did, better sync!
+            self.tree.sync()
+
+            return ret
+
+        if re.search( ".*,lop,modify$", lop_type ):
+            node_name = lops_fdt.get_name( lop_node_number )
+            if self.verbose:
+                print( "[INFO]: node %s is a compatible modify lop" % node_name )
+            try:
+                prop = lops_fdt.getprop( lop_node_number, 'modify' ).as_str()
+            except:
+                prop = ""
+
+            # was there a regex passed for node matching ?
+            nodes = Lopper.property_get( lops_fdt, lop_node_number, "nodes" )
+            if prop:
+                if self.verbose:
+                    print( "[INFO]: modify property found: %s" % prop )
+
+                # format is: "path":"property":"replacement"
+                #    - modify to "nothing", is a remove operation
+                #    - modify with no property is node operation (rename or remove)
+                modify_expr = prop.split(":")
+                if self.verbose:
+                    print( "[INFO]: modify path: %s" % modify_expr[0] )
+                    print( "        modify prop: %s" % modify_expr[1] )
+                    print( "        modify repl: %s" % modify_expr[2] )
+                    if nodes:
+                        print( "        modify regex: %s" % nodes )
+
+                if modify_expr[1]:
+                    # property operation
+                    if not modify_expr[2]:
+                        if self.verbose:
+                            print( "[INFO]: property remove operation detected: %s %s" % (modify_expr[0], modify_expr[1]))
+
+                        try:
+                            # TODO: make a special case of the property_modify_below
+
+                            # just to be sure that any other pending changes have been
+                            # written, since we need accurate node IDs
+                            self.tree.sync()
+                            nodes = self.tree.subnodes( self.tree[modify_expr[0]] )
+                            for n in nodes:
+                                try:
+                                    n.delete( modify_expr[1] )
+                                except:
+                                    # no big deal if it doesn't have the property
+                                    pass
+                                self.tree.sync()
+                        except Exception as e:
+                            print( "[WARNING]: unable to remove property %s (%s)" % (modify_expr[0],e))
+                    else:
+                        if self.verbose:
+                            print( "[INFO]: property modify operation detected" )
+
+                        # just to be sure that any other pending changes have been
+                        # written, since we need accurate node IDs
+                        self.tree.sync()
+                        nodes = self.tree.nodes( modify_expr[0] )
+                        for n in nodes:
+                            n[modify_expr[1]] = [ modify_expr[2] ]
+                            self.tree.sync()
+                else:
+                    # node operation
+                    # in case /<name>/ was passed as the new name, we need to drop them
+                    # since they aren't valid in set_name()
+                    if modify_expr[2]:
+                        modify_expr[2] = modify_expr[2].replace( '/', '' )
+                        try:
+                            # change the name of the node
+                            # hmm, should this be a copy and delete ? versus just a name change ?
+                            self.tree[modify_expr[0]].name = modify_expr[2]
+                            self.tree.sync( self.FDT )
+                        except Exception as e:
+                            print( "[ERROR]:cannot rename node '%s' to '%s' (%s)" %(modify_expr[0], modify_expr[2], e))
+                            sys.exit(1)
+                    else:
+                        # first we see if the node prefix is an exact match
+                        # node_to_remove = Lopper.node_find( self.FDT, modify_expr[0] )
+                        try:
+                            node_to_remove = self.tree[modify_expr[0]]
+                        except:
+                            node_to_remove = None
+
+                        if not node_to_remove:
+                            print( "[WARNING]: Cannot find node %s for delete operation" % modify_expr[0] )
+                            if self.werror:
+                                sys.exit(1)
+                        else:
+                            try:
+                                self.tree.delete( node_to_remove )
+                                self.tree.sync( self.FDT )
+                            except:
+                                print( "[WARNING]: could not remove node number: %s" % node_to_remove )
+
+        # if the lop didn't return, we return false by default
+        return False
+
     def perform_lops(self):
         """Execute all loaded lops
 
@@ -664,7 +1189,7 @@ class LopperSDT:
             self.verbose = 2
 
         if self.verbose:
-            print( "[NOTE]: \'%d\' lopper operation input(s) available" % len(self.lops))
+            print( "[NOTE]: \'%d\' lopper operation files will be processed" % len(self.lops))
 
         lops_runqueue = {}
         for pri in range(1,10):
@@ -696,7 +1221,7 @@ class LopperSDT:
                     lops_fdt = x.fdt
 
                 # Get all the nodes with a lop property
-                lops_nodes = Lopper.nodes_with_property( lops_fdt, "compatible", "system-device-tree-v1,lop.*", "lops" )
+                lops_nodes = Lopper.nodes_with_property( lops_fdt, "compatible", "system-device-tree-v1,lop.*", "lops", False, 1 )
                 for n in lops_nodes:
                     prop = lops_fdt.getprop( n, "compatible" )
                     val = Lopper.property_get( lops_fdt, n, "compatible" )
@@ -710,343 +1235,12 @@ class LopperSDT:
 
                     if self.verbose:
                         print( "[INFO]: ------> processing lop: %s" % val )
+
                     if self.verbose > 2:
                         print( "[DBG+]: prop: %s val: %s" % (prop.name, val ))
                         print( "[DBG+]: node name: %s" % node_name )
 
-                    # TODO: need a better way to search for the possible lop types, i.e. a dict
-                    if re.search( ".*,output$", val ):
-                        output_file_name = Lopper.property_get( lops_fdt, n, 'outfile' )
-                        if not output_file_name:
-                            print( "[ERROR]: cannot get output file name from lop" )
-                            sys.exit(1)
-
-                        if self.verbose > 1:
-                            print( "[DBG+]: outfile is: %s" % output_file_name )
-
-                        output_nodes = Lopper.property_get( lops_fdt, n, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
-
-                        if self.verbose > 1:
-                            print( "[DBG+]: output selected are: %s" % output_nodes )
-
-                        if "*" in output_nodes:
-                            ff = libfdt.Fdt(self.FDT.as_bytearray())
-                        else:
-                            # Note: we may want to switch this around, and copy the old tree and
-                            #       delete nodes. This will be important if we run into some
-                            #       strangely formatted ones that we can't copy.
-                            ff = libfdt.Fdt.create_empty_tree( self.FDT.totalsize() )
-                            for o_node in output_nodes:
-
-                                split_node = o_node.split(":")
-                                o_node = split_node[0]
-                                o_prop_name = ""
-                                o_prop_val = ""
-                                if len(split_node) > 1:
-                                    o_prop_name = split_node[1]
-                                    if len(split_node) > 2:
-                                        o_prop_val = split_node[2]
-
-                                if o_prop_name:
-                                    if self.verbose > 1:
-                                        print( "[DBG+]: output prop: %s val: %s" % (o_prop_name, o_prop_val))
-
-                                # TODO: this really should be using node_find() and we should make sure the
-                                #       output 'lop' has full paths.
-
-                                # regex capability in the output, comes from this call, where o_node can be a regex
-                                # and return multiple matches
-
-                                # TODO: convert this to use the tree routines for find and copy
-                                node_to_copy, nodes_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0, True )
-                                if node_to_copy == -1:
-                                    print( "[WARNING]: could not find node to copy: %s" % o_node )
-                                else:
-                                    for n in nodes_to_copy:
-                                        copy_node_flag = True
-
-                                        # we test for a property in the node if it was defined
-                                        if o_prop_name:
-                                            copy_node_flag = False
-                                            p = self.tree[n].propval(o_prop_name)
-                                            if o_prop_val:
-                                                if p:
-                                                    if o_prop_val in p:
-                                                        copy_node_flag = True
-
-                                        if copy_node_flag:
-                                            node_to_copy_path = Lopper.node_abspath( self.FDT, n )
-                                            new_node = Lopper.node_copy_from_path( self.FDT, node_to_copy_path, ff, node_to_copy_path, self.verbose )
-                                            if not new_node:
-                                                print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
-
-                        if not self.dryrun:
-                            output_file_full = self.outdir + "/" + output_file_name
-                            Lopper.write_fdt( ff, output_file_full, self, True, self.verbose, self.enhanced )
-                        else:
-                            print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
-
-                    if re.search( ".*,assist-v1$", val ):
-                        # also note: this assist may change from being called as
-                        # part of the lop loop, to something that is instead
-                        # called by walking the entire device tree, looking for
-                        # matching nodes and making assists at that moment.
-                        #
-                        # but that sort of node walking, will invoke the assists
-                        # out of order with other lopper operations, so it isn't
-                        # particularly feasible or desireable.
-                        #
-                        cb_tgt_node_name = Lopper.property_get( lops_fdt, n, 'node' )
-                        if not cb_tgt_node_name:
-                            print( "[ERROR]: cannot find target node for the assist" )
-                            sys.exit(1)
-
-                        cb = Lopper.property_get( lops_fdt, n, 'assist' )
-                        cb_id = Lopper.property_get( lops_fdt, n, 'id' )
-                        cb_opts = Lopper.property_get( lops_fdt, n, 'options' )
-                        cb_opts = cb_opts.lstrip()
-                        if cb_opts:
-                            cb_opts = cb_opts.split( ' ' )
-                        else:
-                            cb_opts = []
-                        cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
-                        if cb_node < 0:
-                            if self.werror:
-                                print( "[ERROR]: cannot find assist target node in tree" )
-                                sys.exit(1)
-                            else:
-                                continue
-                        if self.verbose:
-                            print( "[INFO]: assist lop detected" )
-                            if cb:
-                                print( "        cb: %s" % cb )
-                            print( "        id: %s opts: %s" % (cb_id,cb_opts) )
-
-                        cb_funcs = self.find_compatible_assist( cb_node, cb_id )
-                        if cb_funcs:
-                            for cb_func in cb_funcs:
-                                try:
-                                    if not cb_func( cb_node, self, { 'verbose' : self.verbose, 'args': cb_opts } ):
-                                        print( "[WARNING]: the assist returned false, check for errors ..." )
-                                except Exception as e:
-                                    print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )
-                                    exc_type, exc_obj, exc_tb = sys.exc_info()
-                                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                                    print(exc_type, fname, exc_tb.tb_lineno)
-                                    # exit if warnings are treated as errors
-                                    if self.werror:
-                                        sys.exit(1)
-                        else:
-                            print( "[INFO]: no compatible assist found, skipping" )
-
-                    if re.search( ".*,lop,load$", val ):
-                        prop_id = ""
-                        prop_extension = ""
-
-                        if self.verbose:
-                            print( "--------------- [INFO]: node %s is a load module lop" % node_name )
-                        try:
-                            load_prop = lops_fdt.getprop( n, 'load' ).as_str()
-                        except:
-                            load_prop = ""
-
-                        if load_prop:
-                            # for submodule loading
-                            for p in self.load_paths:
-                                if p not in sys.path:
-                                    sys.path.append( p )
-
-                            if self.verbose:
-                                print( "[INFO]: loading module %s" % load_prop )
-
-                            mod_file = self.assist_find( load_prop, self.load_paths )
-                            if not mod_file:
-                                print( "[ERROR]: unable to find assist (%s)" % load_prop )
-                                sys.exit(1)
-
-                            mod_file_abs = mod_file.resolve()
-
-                            try:
-                                imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
-                            except Exception as e:
-                                print( "[ERROR]: could not load assist: %s: %s" % (mod_file_abs,e) )
-                                sys.exit(1)
-
-                            assist_properties = {}
-                            try:
-                                props = lops_fdt.getprop( n, 'props' )
-                                if props:
-                                    props = Lopper.property_value_decode( props, 0, LopperFmt.COMPOUND )
-                            except:
-                                # does the module have a "props" routine for extra querying ?
-                                try:
-                                    props = imported_module.props()
-                                except:
-                                    props = []
-
-                            for p in props:
-                                # TODO: we can generate and evaluate these generically, right now, this
-                                #       is ok as a proof of concept only
-                                if p == "file_ext":
-                                    try:
-                                        prop_extension = lops_fdt.getprop( n, 'file_ext' ).as_str()
-                                        # TODO: debug why the call below can't figure out that this is a
-                                        #       string property.
-                                        # Lopper.property_get( lops_fdt, n, "file_ext" )
-                                    except:
-                                        try:
-                                            prop_extension = imported_module.file_ext()
-                                        except:
-                                            prop_extension = ""
-
-                                    assist_properties['mask'] = prop_extension
-
-                                if p == "id":
-                                    try:
-                                        prop_id = lops_fdt.getprop( n, 'id' ).as_str()
-                                    except:
-                                        try:
-                                            prop_id = imported_module.id()
-                                        except:
-                                            prop_id = ""
-
-                                    assist_properties['id'] = prop_id
-
-                            # TODO: move this "assist already available" check into a function
-                            already_loaded = False
-                            if self.assists:
-                                for a in self.assists:
-                                    try:
-                                        if Path(a.file).resolve() == mod_file.resolve():
-                                            already_loaded = True
-                                            a.module = imported_module
-                                            a.properties = assist_properties
-                                    except:
-                                        pass
-                            if not already_loaded:
-                                if verbose > 1:
-                                    if prop_extension:
-                                        print( "[INFO]: loading assist with properties (%s,%s)" % (prop_extension, prop_id) )
-
-                                self.assists.append( LopperAssist( mod_file.name, imported_module, assist_properties ) )
-
-                    if re.search( ".*,lop,add$", val ):
-                        if self.verbose:
-                            print( "[INFO]: node add lop found" )
-
-                        src_node_name = Lopper.property_get( lops_fdt, n, "node_src" )
-                        if not src_node_name:
-                            print( "[ERROR]: node add detected, but no node name found" )
-                            sys.exit(1)
-
-                        lops_node_path = Lopper.node_abspath( lops_fdt, n )
-                        src_node_path = lops_node_path + "/" + src_node_name
-
-                        dest_node_path = Lopper.property_get( lops_fdt, n, "node_dest" )
-                        if not dest_node_path:
-                            dest_node_path = "/" + src_node_name
-
-                        if self.verbose:
-                            print( "[INFO]: node name: %s node path: %s" % (src_node_path, dest_node_path) )
-
-                        # TODO: replace this copy with a sdt.tree node to node copy.
-                        if not Lopper.node_copy_from_path( lops_fdt, src_node_path, self.FDT, dest_node_path, self.verbose ):
-                            print( "[ERROR]: unable to copy node: %s" % src_node_name )
-                            sys.exit(1)
-                        else:
-                            # self.FDT is backs the tree object, so we need to sync
-                            self.tree.sync()
-
-                    if re.search( ".*,lop,modify$", val ):
-                        if self.verbose:
-                            print( "[INFO]: node %s is a compatible modify lop" % node_name )
-                        try:
-                            prop = lops_fdt.getprop( n, 'modify' ).as_str()
-                        except:
-                            prop = ""
-
-                        # was there a regex passed for node matching ?
-                        nodes = Lopper.property_get( lops_fdt, n, "nodes" )
-                        if prop:
-                            if self.verbose:
-                                print( "[INFO]: modify property found: %s" % prop )
-
-                            # format is: "path":"property":"replacement"
-                            #    - modify to "nothing", is a remove operation
-                            #    - modify with no property is node operation (rename or remove)
-                            modify_expr = prop.split(":")
-                            if self.verbose:
-                                print( "[INFO]: modify path: %s" % modify_expr[0] )
-                                print( "        modify prop: %s" % modify_expr[1] )
-                                print( "        modify repl: %s" % modify_expr[2] )
-                                if nodes:
-                                    print( "        modify regex: %s" % nodes )
-
-                            if modify_expr[1]:
-                                # property operation
-                                if not modify_expr[2]:
-                                    if self.verbose:
-                                        print( "[INFO]: property remove operation detected: %s %s" % (modify_expr[0], modify_expr[1]))
-
-                                    try:
-                                        # TODO: make a special case of the property_modify_below
-
-                                        # just to be sure that any other pending changes have been
-                                        # written, since we need accurate node IDs
-                                        self.tree.sync()
-                                        nodes = self.tree.subnodes( self.tree[modify_expr[0]] )
-                                        for n in nodes:
-                                            try:
-                                                n.delete( modify_expr[1] )
-                                            except:
-                                                # no big deal if it doesn't have the property
-                                                pass
-                                            self.tree.sync()
-                                    except Exception as e:
-                                        print( "[WARNING]: unable to remove property %s (%s)" % (modify_expr[0],e))
-                                else:
-                                    if self.verbose:
-                                        print( "[INFO]: property modify operation detected" )
-
-                                    # just to be sure that any other pending changes have been
-                                    # written, since we need accurate node IDs
-                                    self.tree.sync()
-                                    nodes = self.tree.nodes( modify_expr[0] )
-                                    for n in nodes:
-                                        n[modify_expr[1]] = [ modify_expr[2] ]
-                                        self.tree.sync()
-                            else:
-                                # node operation
-                                # in case /<name>/ was passed as the new name, we need to drop them
-                                # since they aren't valid in set_name()
-                                if modify_expr[2]:
-                                    modify_expr[2] = modify_expr[2].replace( '/', '' )
-                                    try:
-                                        # change the name of the node
-                                        # hmm, should this be a copy and delete ? versus just a name change ?
-                                        self.tree[modify_expr[0]].name = modify_expr[2]
-                                        self.tree.sync( self.FDT )
-                                    except Exception as e:
-                                        print( "[ERROR]:cannot rename node '%s' to '%s' (%s)" %(modify_expr[0], modify_expr[2], e))
-                                        sys.exit(1)
-                                else:
-                                    # first we see if the node prefix is an exact match
-                                    # node_to_remove = Lopper.node_find( self.FDT, modify_expr[0] )
-                                    try:
-                                        node_to_remove = self.tree[modify_expr[0]]
-                                    except:
-                                        node_to_remove = None
-
-                                    if not node_to_remove:
-                                        print( "[WARNING]: Cannot find node %s for delete operation" % modify_expr[0] )
-                                        if self.werror:
-                                            sys.exit(1)
-                                    else:
-                                        try:
-                                            self.tree.delete( node_to_remove )
-                                            self.tree.sync( self.FDT )
-                                        except:
-                                            print( "[WARNING]: could not remove node number: %s" % node_to_remove )
+                    self.exec_lop( lops_fdt, n )
 
 
 class LopperFile:

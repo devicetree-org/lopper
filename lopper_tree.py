@@ -36,6 +36,7 @@ class LopperAction(Enum):
     REPORT = 2
     WHITELIST = 3
     BLACKLIST = 4
+    NONE = 5
 
 
 class LopperProp():
@@ -165,6 +166,132 @@ class LopperProp():
             self.resolve( None )
         else:
             self.__dict__[name] = value
+
+    def compare( self, other_prop ):
+        """Compare one property to another
+
+        Due to the complexity of property representations, this compare is
+        not a strict 1:1 value equality. It looks through various elements
+        of the source and comparision properties to decide if they have
+        common components.
+
+        The following metrics are used, where "single" means a property with
+        a single value (string or number) and "list" is a property with
+        multiple strings or integer properties.
+
+          comparison types:
+               single -> list:   single must be somewhere in the list
+                                    - for strings, single may be a regex
+               single -> single: single must be in or equal the other
+                                    - for strings, single may be a regex
+               list -> single:   any value in list must match single
+                                    - for strings, list elements can be regexs
+               list -> list:     all individual elements must match
+                                    - NO regexs allowed
+
+        Args:
+           other_prop (LopperProp): comparison target
+           value: attribute value
+
+        Returns:
+           boolean: True there is a match, false otherwise
+        """
+        if self.__dbg__ > 1:
+            print( "[DBG++]: property compare compare (%s) vs (%s)" % (self,other_prop) )
+
+        ret_val = False
+        invert_check  = ""
+        if len(self.value) == 1:
+            # single comparison value
+            if len( other_prop.value ) == 1:
+                # single -> single: single must be in or equal the other
+                lop_compare_value = self.value[0]
+                tgt_node_compare_value = other_prop.value[0]
+
+                if type(lop_compare_value) == str:
+                    constructed_condition = "{0} re.search(\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
+                elif type(lop_compare_value) == int:
+                    constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
+
+                if self.__dbg__ > 2:
+                    print( "[DBG+++]:    single:single. Condition: %s" % (constructed_condition))
+
+                constructed_check = eval(constructed_condition)
+                if constructed_check:
+                    ret_val = True
+                else:
+                    ret_val = False
+            else:
+                #  single -> list:  single must be somewhere in the list
+                #                     - for strings, single may be a regex
+                lop_compare_value = self.value[0]
+                ret_val = False
+                for tgt_node_compare_value in other_prop.value:
+                    # if we have found a match, we are done and can stop comparing
+                    if ret_val:
+                        continue
+
+                    # otherwise, run the compare
+                    if type(lop_compare_value) == str:
+                        constructed_condition = "{0} re.search(\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
+
+                    elif type(lop_compare_value) == int:
+                        constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
+
+                    if self.__dbg__ > 2:
+                        print( "[DBG+++]:    single:list. Condition: %s" % (constructed_condition))
+
+                    constructed_check = eval(constructed_condition)
+                    if constructed_check:
+                        ret_val = True
+                    else:
+                        ret_val = False
+        else:
+            # list comparison value
+            if len( other_prop.value ) == 1:
+                # list -> single:  any value in list must match single
+                #                     - for strings, list elements can be regexs
+
+                tgt_node_compare_value = other_prop.value[0]
+                for lop_compare_value in self.value:
+                    # if we have found a match, we are done and can stop comparing
+                    if ret_val:
+                        continue
+
+                    # otherwise, run the compare
+                    if type(lop_compare_value) == str:
+                        constructed_condition = "{0} re.search(\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
+
+                    elif type(lop_compare_value) == int:
+                        constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
+
+                    if self.__dbg__ > 2:
+                        print( "[DBG+++]:    list:single. Condition: %s" % (constructed_condition))
+
+                    constructed_check = eval(constructed_condition)
+                    if constructed_check:
+                        ret_val = True
+                    else:
+                        ret_val = False
+            else:
+                lop_compare_value = self.value
+                tgt_node_compare_value = other_prop.value
+
+                # list -> list
+                # regex are not supported (since we'd have to index iterate and run
+                # different compares. So instead, we just compare the lists directly
+                if self.__dbg__ > 2:
+                    print( "[DBG+++]:    list:list. Condition: %s == %s" % (lop_compare_value,tgt_node_compare_value))
+
+                if lop_compare_value == tgt_node_compare_value:
+                    ret_val = True
+                else:
+                    ret_val = False
+
+        if self.__dbg__ > 2:
+            print( "[DBG+++]:        prop compare: %s" % (ret_val))
+
+        return ret_val
 
     def phandle_params( self ):
         """Determines the phandle elements/params of a property
@@ -2053,6 +2180,132 @@ class LopperTree:
         except:
             return None
 
+    def exec_cmd( self, node, cmd ):
+        """Execute a (limited) code block against a node
+
+        Execute a python clode block with the 'node' context set to the
+        value passed to this routine.
+
+        The "cmd" python code, runs in a constructed/safe environment to ensure
+        that the code won't cause harmful sideffects to the execution
+        environment.
+
+        The following functions and variables are currently available in the
+        safe_dict:
+
+            len
+            print
+            verbose
+
+        When executing in the code context, the following variables are
+        available to the python code block.
+
+            tree : the LopperTree object containing the node
+            node : the LopperNode being processed
+            node_name : the name of the node (as defined by the dts/dtb)
+            node_number : the number of the node being processed
+
+        The return value of the block is sent to the caller, so it can act
+        accordingly.
+
+        Args:
+            node (LopperNode or string): starting node
+            cmd (string): block of python code to execute
+
+        Returns:
+            Return value from the execution of the code block
+
+        """
+
+        n = node
+
+        if node == None:
+            return False
+
+        if type(node) == str:
+            n = self[node]
+
+        # make a list of seed safe functions
+        safe_list = []
+
+        # this should work, but isn't resolving the local vars, so we have to add them again in the
+        # loop below.
+        # references: https://stackoverflow.com/questions/701802/how-do-i-execute-a-string-containing-python-code-in-python
+        #             http://code.activestate.com/recipes/52217-replace-embedded-python-code-in-a-string-with-the-/
+        safe_dict = dict([ (k, locals().get(k, None)) for k in safe_list ])
+        safe_dict['len'] = len
+        safe_dict['print'] = print
+        safe_dict['prop_get'] = Lopper.property_get
+        safe_dict['getphandle'] = Lopper.node_getphandle
+        safe_dict['fdt'] = self.fdt
+        safe_dict['verbose'] = self.__dbg__
+        safe_dict['tree'] = self
+
+        if self.__dbg__ > 1:
+            print( "[INFO]: filter: base safe dict: %s" % safe_dict )
+            print( "[INFO]: filter: node: %s" % node )
+
+        # build up the device tree node path
+        # node_name = node_prefix + n
+        node_name = n.abs_path
+        node_number = n.number
+        prop_list = n.__props__
+
+        # add any needed builtins back in
+        safe_dict['node'] = n
+        safe_dict['node_number'] = node_number
+        safe_dict['node_name' ] = node_name
+
+        # search and replace any template options in the cmd. yes, this is
+        # only a proof of concept, you'd never do this like this in the end.
+        tc = cmd
+
+        # we wrap the test command to control the ins and outs
+        __nret = False
+        # indent everything, its going in a function
+        tc_indented = textwrap.indent( tc, '    ' )
+        # define the function, add the body, call the function and grab the return value
+        tc_full_block = "def __node_test_block():" + tc_indented + "\n__nret = __node_test_block()"
+
+        if self.__dbg__ > 2:
+           print( "[DBG+]: node exec cmd:\n%s" % tc_full_block )
+
+        # compile the block, so we can evaluate it later
+        b = compile( tc_full_block, '<string>', 'exec' )
+
+        x = locals()
+        y = globals()
+
+        # we merge the locals and globals into a single dictionary, so that
+        # the local variables of *this* function (i.e. node, node_name) that
+        # change each loop, will be availble when calling the code block as
+        # globals in that context.
+        m = {**x, **y, **safe_dict}
+
+        # TODO: we could restrict the locals and globals a bit more, but
+        #       in this function context, the side effects are limited to
+        #       the dictionary 'm'.
+        #
+        #       BUT we should ensure that modules like 'os' aren't available
+        #       to be mis-used
+        #          x = eval( b, {"__builtins__" : None }, locals() )
+        #       or
+        #          x = eval( b, {"__builtins__" : None }, safe_dict )
+        try:
+            eval( b, m, m )
+        except Exception as e:
+            print("[WARNING]: Exception (%s) raised by code block: %s" % (e,tc_full_block))
+            os._exit(1)
+
+        if self.__dbg__ > 2:
+            print( "[DBG+] return code was: %s" % m['__nret'] )
+
+        if m['__nret']:
+            return m['__nret']
+        else:
+            return False
+
+
     def filter( self, node_prefix, action, test_cmd, fdt=None, verbose=0 ):
         """Filter tree nodes and perform an action
 
@@ -2072,22 +2325,8 @@ class LopperTree:
 
         The "test_cmd" python code, runs in a constructed/safe environment to
         ensure that the code won't cause harmful sideffects to the execution
-        environment.
-
-        The following functions and variables are currently available in the
-        safe_dict:
-
-            len
-            print
-            verbose
-
-        When executing in the filter context (aka node walking), the following
-        variables are available to the python code block.
-
-            fdt  : the flattened device tree being processed
-            node : the LopperNode being processed
-            node_name : the name of the node (as defined by the dts/dtb)
-            node_number : the number of the node being processed
+        environment. See the exec_cmd method for details of the command
+        execution.
 
         A standard python "return True" and "return False" should be used to
         indicate the result of the test.
@@ -2120,104 +2359,32 @@ class LopperTree:
             node_list = []
             if verbose:
                 print( "[ERROR]: no nodes found that match prefix %s" % node_prefix )
-            sys.exit(1)
-
-
-        # make a list of safe functions
-        safe_list = ['Lopper.property_get', 'Lopper.node_getphandle', 'verbose', 'print']
-
-        # this should work, but isn't resolving the local vars, so we have to add them again in the
-        # loop below.
-        # references: https://stackoverflow.com/questions/701802/how-do-i-execute-a-string-containing-python-code-in-python
-        #             http://code.activestate.com/recipes/52217-replace-embedded-python-code-in-a-string-with-the-/
-        safe_dict = dict([ (k, locals().get(k, None)) for k in safe_list ])
-        safe_dict['len'] = len
-        safe_dict['print'] = print
-        safe_dict['prop_get'] = Lopper.property_get
-        safe_dict['getphandle'] = Lopper.node_getphandle
-        safe_dict['fdt'] = fdt
-        safe_dict['verbose'] = verbose
 
         if verbose > 1:
-            print( "[INFO]: filter: base safe dict: %s" % safe_dict )
             print( "[INFO]: filter: node list: ", end=" " )
             for nn in node_list:
                 print( "%s" % nn.abs_path, end="  " )
             print( "" )
 
         for n in node_list:
-            # build up the device tree node path
-            # node_name = node_prefix + n
-            node_name = n.abs_path
-            # node = fdt.path_offset(node_name)
-            node_number = n.number
-            #print( "---------------------------------- node name: %s" % fdt.get_name( node ) )
-            # prop_list = Lopper.property_list( fdt, node_name )
-            prop_list = n.__props__
-            #print( "---------------------------------- node props name: %s" % prop_list )
+            if verbose > 2:
+               print( "[DBG+]: filter node cmd:\n%s" % test_cmd )
 
-            # Add the current node (n) to the list of safe things
-            # NOTE: might not be required
-            # safe_list.append( 'n' )
-            # safe_list.append( 'node_name' )
-
-            # add any needed builtins back in
-            safe_dict['node'] = n
-            safe_dict['node_number'] = node_number
-            safe_dict['node_name' ] = node_name
-
-            # search and replace any template options in the cmd. yes, this is
-            # only a proof of concept, you'd never do this like this in the end.
-            tc = test_cmd
-
-            # we wrap the test command to control the ins and outs
-            __nret = False
-            # indent everything, its going in a function
-            tc_indented = textwrap.indent( tc, '    ' )
-            # define the function, add the body, call the function and grab the return value
-            tc_full_block = "def __node_test_block():" + tc_indented + "\n__nret = __node_test_block()"
+            test_cmd_result = self.exec_cmd( n, test_cmd )
 
             if verbose > 2:
-               print( "[DBG+]: filter node cmd:\n%s" % tc_full_block )
-
-            # compile the block, so we can evaluate it later
-            b = compile( tc_full_block, '<string>', 'exec' )
-
-            x = locals()
-            y = globals()
-
-            # we merge the locals and globals into a single dictionary, so that
-            # the local variables of *this* function (i.e. node, node_name) that
-            # change each loop, will be availble when calling the code block as
-            # globals in that context.
-            m = {**x, **y, **safe_dict}
-
-            # TODO: we could restrict the locals and globals a bit more, but
-            #       in this function context, the side effects are limited to
-            #       the dictionary 'm'.
-            #
-            #       BUT we should ensure that modules like 'os' aren't available
-            #       to be mis-used
-            #          x = eval( b, {"__builtins__" : None }, locals() )
-            #       or
-            #          x = eval( b, {"__builtins__" : None }, safe_dict )
-            try:
-                eval( b, m, m )
-            except Exception as e:
-                print("[WARNING]: Something wrong with the filter code: %s" % e)
-                sys.exit(1)
-
-            if verbose > 2:
-                print( "[DBG+] return code was: %s" % m['__nret'] )
+                print( "[DBG+] return code was: %s" % test_cmd_result )
 
             # did the block set the return variable to True ?
-            if m['__nret']:
+            if test_cmd_result:
                 if action == LopperAction.DELETE:
                     if verbose:
-                        print( "[INFO]: deleting node %s" % node_name )
+                        print( "[INFO]: deleting node %s" % n.abs_path )
                     self.delete( n )
             else:
                 pass
+
+        return test_cmd_result
 
     def exec(self):
         """Start a tree walk execution, with callbacks executed as required
@@ -2386,6 +2553,16 @@ class LopperTree:
                 # resolve the details against the fdt
                 node.resolve( self.fdt )
 
+
+                try:
+                    node_check = self.__nodes__[node.abs_path]
+                    if node_check:
+                        print( "[ERROR]: tree inconsistency found, two nodes with the same path" )
+                        # we need to exit the thread/backgound call AND the entire application, so
+                        # hit is with a hammer.
+                        os._exit(1)
+                except:
+                    pass
                 # we want to find these by name AND number (but note, number can
                 # change after some tree ops, so make sure to check the state of
                 # a tree/node before using the number
@@ -2500,25 +2677,28 @@ class LopperTreePrinter( LopperTree ):
 
         self.__dbg__ = debug
 
-    def reset(self, output=sys.stdout ):
+    def reset(self, output_file=sys.stdout ):
         """reset the output of a printer
 
-        closes the existing output (if not stdout) and opens a new
-        output (if not stdout)
+        closes the existing output_file (if not stdout) and opens a new
+        output_file (if not stdout)
 
         Args:
-            output (string,optional): name of file to open for output, default is stdout
+            output_file (string,optional): name of file to open for output, default is stdout
 
         Returns:
             Nothing
         """
         super().reset()
 
-        if self.output != sys.stdout:
+        if self.output != sys.stdout and self.output.name != '<stdout>':
             self.output.close()
 
-        if output != sys.stdout:
-            self.output = open( output, "w")
+        if output_file != sys.stdout and output_file.name != '<stdout>':
+            try:
+                self.output = open( output_file, "w")
+            except Exception as e:
+                print( "[WARNING]: could not open %s as output: %s" % (output_file,e))
 
     def start(self, n, fdt ):
         """LopperTreePrinter start

@@ -103,7 +103,7 @@ def cdo_type( device_tree_type ):
                 x = x[1]
     return x
 
-def cdo_write( node, sdt, outfile, options ):
+def cdo_write( node, lt, outfile, options ):
     try:
         verbose = options['verbose']
     except:
@@ -117,7 +117,7 @@ def cdo_write( node, sdt, outfile, options ):
         print( "[INFO]: cdo write: {}".format(outfile) )
 
     # we are going to tag the tree with some attributes, so make a copy
-    cdo_tree = LopperTree( sdt.FDT, True )
+    cdo_tree = lt # LopperTree( sdt.FDT, True )
 
     print( "# Lopper CDO export", file=output )
 
@@ -133,7 +133,7 @@ def cdo_write( node, sdt, outfile, options ):
             sub_clocks = n["clock-names"].value
             # TODO: we have to make sure these don't get output again
             for c in sub_clocks:
-                cn = sdt.tree["/.*" + c]
+                cn = cdo_tree["/.*" + c]
                 if cn:
                     cn.ref = 1
 
@@ -238,7 +238,7 @@ def cdo_write( node, sdt, outfile, options ):
                 # sub_clocks = Lopper.property_get( fdt, nodeoffset, "clock-names" )
                 sub_clocks = n["clock-names"].value
                 for c in sub_clocks:
-                    cn = sdt.tree["/.*" + c]
+                    cn = cdo_tree["/.*" + c]
                     if cn:
                         # we put out a pm_add for each subclock
                         sub_node_type = "subclock"
