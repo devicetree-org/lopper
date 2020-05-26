@@ -392,6 +392,175 @@ The following types of lops are currently valid:
 		       nodes = "amba.*:testprop:testvalue";
 		};
 
+# conditional: do a conditional test on nodes of the tree, and execute an operation
+#
+# does a set of conditional tests against a nodes in the system device tree that
+# match the structure of the conditional tree found at the base defined by "cond_root".
+#
+# conditions are compound, if any are not true, then the overall condition is False
+# conditions can be inverted with a suffix of __not__ at the end of property name
+#
+# if the result is true, all blocks that start with "true" are executed. These can
+# contain any valid lop, and can modify the tree. Execution stops if any lop returns
+# False.
+#
+# Similarly, false blocks are executed when the conditions evaluate to false.
+
+# code: a block of python code to execute against a node
+#
+# Excute python code in a restricted environment. This can be used to test and
+# produce special output without needing to write an assist. Changes made to a node
+# are peristent and hence collection of data can be done, as the following examples
+# show.
+#
+# See README.pydoc for details of the code execution environment
+
+                lop_15_1 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] compatible a72 found: %s' % node )
+                               print( '[FOUND] enable-method: %s' % node['enable-method'].value[0] )
+
+                               return True
+                               ";
+                      };
+                      true_2 {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[FOUND 2] enable-method: %s' % node['enable-method'].value[0] )
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_2 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*invalid-proc-72.*";
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] compatible invalid a72 found: %s' % node )
+
+                               return True
+                               ";
+                      };
+                      false {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[FOUND] cpu that does not match invalid a72: %s' % node )
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_3 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                               operating-points-v2 = <0x1>;
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] double condition a72 found: %s' % node )
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_4 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                               operating-points-v2 = <0x2>;
+                           };
+                      };
+                      false {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] double condition a72 not found: %s' % node )
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_5 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                               operating-points-v2__not__ = <0x2>;
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] double condition inverted a72 found: %s' % node )
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_6 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                               clocks = <0x3 0x4d>;
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] double condition list a72 found: %s' % node )
+                               node['magic-clock'] = 'True'
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_7 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] node tag: %s (tag:%s)' % (node,node['tag'].value[0]) )
+                               try:
+                                   print( '[INFO] clock magic: %s' % node['magic-clock'].value[0] )
+                               except:
+                                   pass
+
+                               return True
+                               ";
+                      };
+                };
+
 Note: the lopper_sanity.py utility has an embedded lops file that can be
       used as a reference, as well as embedded LopperTree sanity tests.
 

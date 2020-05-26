@@ -142,6 +142,23 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
+     |  exec_lop(self, lops_fdt, lop_node_number, options=None)
+     |      Executes a a lopper operation (lop)
+     |      
+     |      Runs a lopper operation against the system device tree.
+     |      
+     |      Details of the lop are in the lops_fdt, with extra parameters and lop
+     |      specific information from the caller being passed in the options
+     |      variable.
+     |      
+     |      Args:
+     |          lops_fdt (FDT): lopper operation flattened device tree
+     |          lop_node_number (int): node number for the operation in lops_fdt
+     |          options (dictionary,optional): lop specific options passed from the caller
+     |      
+     |      Returns:
+     |          boolean
+     |  
      |  find_compatible_assist(self, cb_node=0, cb_id='', mask='')
      |      Finds a registered assist that is compatible with a given ID
      |      
@@ -625,7 +642,7 @@ CLASSES
      |      Returns:
      |          List of nodes. Each containg the [node number, name, phandle, depth]
      |  
-     |  nodes_with_property(fdt, match_propname, match_regex='', start_path='/', include_children=True)
+     |  nodes_with_property(fdt, match_propname, match_regex='', start_path='/', include_children=True, match_depth=0)
      |      Get a list of nodes with a particular property
      |      
      |      Searches a device tree and returns a list of nodes that contain
@@ -643,6 +660,7 @@ CLASSES
      |          match_regex (string,optional): property value match regex. Default is ""
      |          start_path (string,optional): starting path in the device tree. Default is "/"
      |          include_children (bool,optional): should child nodes be searched. Default is True.
+     |          match_depth (int): depth of the node, relative to the start path. Default is 0 (all nodes)
      |      
      |      Returns:
      |          list: list of matching nodes if successful, otherwise an empty list
@@ -1003,6 +1021,8 @@ CLASSES
      |  BLACKLIST = <LopperAction.BLACKLIST: 4>
      |  
      |  DELETE = <LopperAction.DELETE: 1>
+     |  
+     |  NONE = <LopperAction.NONE: 5>
      |  
      |  REPORT = <LopperAction.REPORT: 2>
      |  
@@ -1510,6 +1530,35 @@ CLASSES
      |      Returns:
      |         string
      |  
+     |  compare(self, other_prop)
+     |      Compare one property to another
+     |      
+     |      Due to the complexity of property representations, this compare is
+     |      not a strict 1:1 value equality. It looks through various elements
+     |      of the source and comparision properties to decide if they have
+     |      common components.
+     |      
+     |      The following metrics are used, where "single" means a property with
+     |      a single value (string or number) and "list" is a property with
+     |      multiple strings or integer properties.
+     |      
+     |        comparison types:
+     |             single -> list:   single must be somewhere in the list
+     |                                  - for strings, single may be a regex
+     |             single -> single: single must be in or equal the other
+     |                                  - for strings, single may be a regex
+     |             list -> single:   any value in list must match single
+     |                                  - for strings, list elements can be regexs
+     |             list -> list:     all individual elements must match
+     |                                  - NO regexs allowed
+     |      
+     |      Args:
+     |         other_prop (LopperProp): comparison target
+     |         value: attribute value
+     |      
+     |      Returns:
+     |         boolean: True there is a match, false otherwise
+     |  
      |  hex(self)
      |      Get the property value as a list of hex formatted numbers
      |      
@@ -1850,6 +1899,41 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
+     |  exec_cmd(self, node, cmd)
+     |      Execute a (limited) code block against a node
+     |      
+     |      Execute a python clode block with the 'node' context set to the
+     |      value passed to this routine.
+     |      
+     |      The "cmd" python code, runs in a constructed/safe environment to ensure
+     |      that the code won't cause harmful sideffects to the execution
+     |      environment.
+     |      
+     |      The following functions and variables are currently available in the
+     |      safe_dict:
+     |      
+     |          len
+     |          print
+     |          verbose
+     |      
+     |      When executing in the code context, the following variables are
+     |      available to the python code block.
+     |      
+     |          tree : the LopperTree object containing the node
+     |          node : the LopperNode being processed
+     |          node_name : the name of the node (as defined by the dts/dtb)
+     |          node_number : the number of the node being processed
+     |      
+     |      The return value of the block is sent to the caller, so it can act
+     |      accordingly.
+     |      
+     |      Args:
+     |          node (LopperNode or string): starting node
+     |          cmd (string): block of python code to execute
+     |      
+     |      Returns:
+     |          Return value from the execution of the code block
+     |  
      |  filter(self, node_prefix, action, test_cmd, fdt=None, verbose=0)
      |      Filter tree nodes and perform an action
      |      
@@ -1869,22 +1953,8 @@ CLASSES
      |      
      |      The "test_cmd" python code, runs in a constructed/safe environment to
      |      ensure that the code won't cause harmful sideffects to the execution
-     |      environment.
-     |      
-     |      The following functions and variables are currently available in the
-     |      safe_dict:
-     |      
-     |          len
-     |          print
-     |          verbose
-     |      
-     |      When executing in the filter context (aka node walking), the following
-     |      variables are available to the python code block.
-     |      
-     |          fdt  : the flattened device tree being processed
-     |          node : the LopperNode being processed
-     |          node_name : the name of the node (as defined by the dts/dtb)
-     |          node_number : the number of the node being processed
+     |      environment. See the exec_cmd method for details of the command
+     |      execution.
      |      
      |      A standard python "return True" and "return False" should be used to
      |      indicate the result of the test.
@@ -2108,14 +2178,14 @@ CLASSES
      |      Returns:
      |          Nothing
      |  
-     |  reset(self, output=<_io.TextIOWrapper name='<stdout>' mode='w' encoding='UTF-8'>)
+     |  reset(self, output_file=<_io.TextIOWrapper name='<stdout>' mode='w' encoding='UTF-8'>)
      |      reset the output of a printer
      |      
-     |      closes the existing output (if not stdout) and opens a new
-     |      output (if not stdout)
+     |      closes the existing output_file (if not stdout) and opens a new
+     |      output_file (if not stdout)
      |      
      |      Args:
-     |          output (string,optional): name of file to open for output, default is stdout
+     |          output_file (string,optional): name of file to open for output, default is stdout
      |      
      |      Returns:
      |          Nothing
@@ -2362,6 +2432,41 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
+     |  exec_cmd(self, node, cmd)
+     |      Execute a (limited) code block against a node
+     |      
+     |      Execute a python clode block with the 'node' context set to the
+     |      value passed to this routine.
+     |      
+     |      The "cmd" python code, runs in a constructed/safe environment to ensure
+     |      that the code won't cause harmful sideffects to the execution
+     |      environment.
+     |      
+     |      The following functions and variables are currently available in the
+     |      safe_dict:
+     |      
+     |          len
+     |          print
+     |          verbose
+     |      
+     |      When executing in the code context, the following variables are
+     |      available to the python code block.
+     |      
+     |          tree : the LopperTree object containing the node
+     |          node : the LopperNode being processed
+     |          node_name : the name of the node (as defined by the dts/dtb)
+     |          node_number : the number of the node being processed
+     |      
+     |      The return value of the block is sent to the caller, so it can act
+     |      accordingly.
+     |      
+     |      Args:
+     |          node (LopperNode or string): starting node
+     |          cmd (string): block of python code to execute
+     |      
+     |      Returns:
+     |          Return value from the execution of the code block
+     |  
      |  filter(self, node_prefix, action, test_cmd, fdt=None, verbose=0)
      |      Filter tree nodes and perform an action
      |      
@@ -2381,22 +2486,8 @@ CLASSES
      |      
      |      The "test_cmd" python code, runs in a constructed/safe environment to
      |      ensure that the code won't cause harmful sideffects to the execution
-     |      environment.
-     |      
-     |      The following functions and variables are currently available in the
-     |      safe_dict:
-     |      
-     |          len
-     |          print
-     |          verbose
-     |      
-     |      When executing in the filter context (aka node walking), the following
-     |      variables are available to the python code block.
-     |      
-     |          fdt  : the flattened device tree being processed
-     |          node : the LopperNode being processed
-     |          node_name : the name of the node (as defined by the dts/dtb)
-     |          node_number : the number of the node being processed
+     |      environment. See the exec_cmd method for details of the command
+     |      execution.
      |      
      |      A standard python "return True" and "return False" should be used to
      |      indicate the result of the test.
