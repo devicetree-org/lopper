@@ -32,6 +32,24 @@ from lopper_tree import *
 from lopper import *
 from lopper_fdt import *
 
+from io import StringIO
+import sys
+
+from io import StringIO
+import sys
+
+class Capturing(list):
+    def __enter__(self):
+        self._stdout = sys.stdout
+        sys.stdout = self._stringio = StringIO()
+        return self
+    def __exit__(self, *args):
+        self.extend(self._stringio.getvalue().splitlines())
+        sys.stdout = self._stdout
+    def reset(self):
+        del self._stringio
+        sys.stdout = self._stdout
+
 def setup_lops( outdir ):
     with open( outdir + "/lops.dts", "w") as w:
             w.write("""\
@@ -176,7 +194,214 @@ def setup_lops( outdir ):
 };
             """)
 
-    return "/tmp/lops.dts"
+    return outdir + "/lops.dts"
+
+def setup_code_lops( outdir ):
+    with open( outdir + "/lops-code.dts", "w") as w:
+            w.write("""\
+/*
+ * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+ *
+ * Author:
+ *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1";
+        lops {
+                // compatible = "system-device-tree-v1,lop";
+                lop_0 {
+                        // sanity on modules is not currently implemented
+                        compatible = "system-device-tree-v1,lop,assist-v1";
+                        node = "/domains/openamp_r5";
+                        id = "openamp,domain-v1";
+                        noexec;
+                };
+                lop_1 {
+                        // node name modify
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/cpus::cpus_a72";
+                        noexec;
+                };
+                lop_2 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        // format is: "path":"property":"replacement"
+                        //    - modify to "nothing", is a remove operation
+                        //    - modify with no property is node operation (rename or remove)
+                        modify = "/cpus/:access:";
+                        noexec;
+                };
+                lop_15 {
+                        compatible = "system-device-tree-v1,lop,code-v1";
+                        code = "
+                            nodes = tree.nodes('/cpus.*/cpu@.*')
+                            for n in nodes:
+                                print( 'n: %s (%s)' % (n.abs_path,[n]) )
+                                compat = n['compatible'].value
+                                print( 'compat: %s' % compat )
+                                for c in compat:
+                                    if 'cortex-a72' in c:
+                                        print( '[INFO]: a72 found, tagging' )
+                                        n['tag'] = 'a72'
+
+                            return 1
+                        ";
+                };
+                lop_15_1 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] compatible a72 found: %s' % node )
+                               print( '[FOUND] enable-method: %s' % node['enable-method'].value[0] )
+
+                               return True
+                               ";
+                      };
+                      true_2 {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[FOUND 2] enable-method: %s' % node['enable-method'].value[0] )
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_2 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*invalid-proc-72.*";
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] compatible invalid a72 found: %s' % node )
+
+                               return True
+                               ";
+                      };
+                      false {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[FOUND] cpu that does not match invalid a72: %s' % node )
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_3 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                               operating-points-v2 = <0x1>;
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] double condition a72 found: %s' % node )
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_4 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                               operating-points-v2 = <0x2>;
+                           };
+                      };
+                      false {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] double condition a72 not found: %s' % node )
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_5 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                               operating-points-v2__not__ = <0x2>;
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] double condition inverted a72 found: %s' % node )
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_6 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                               clocks = <0x3 0x4d>;
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] double condition list a72 found: %s' % node )
+                               node['magic-clock'] = 'True'
+
+                               return True
+                               ";
+                      };
+                };
+                lop_15_7 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO] node tag: %s (tag:%s)' % (node,node['tag'].value[0]) )
+                               try:
+                                   print( '[INFO] clock magic: %s' % node['magic-clock'].value[0] )
+                               except:
+                                   pass
+
+                               return True
+                               ";
+                      };
+                };
+        };
+};
+            """)
+
+    return "/tmp/lops-code.dts"
 
 def setup_assist_lops( outdir ):
     with open( outdir + "/lops-assists.dts", "w") as w:
@@ -1301,6 +1526,76 @@ def tree_sanity_test( fdt, verbose=0 ):
         test_passed( "node remove differed" )
 
 
+def lops_code_test( device_tree, lop_file, verbose ):
+    device_tree.setup( dt, [lop_file], "", True )
+
+    with Capturing() as output:
+        device_tree.perform_lops()
+
+    if verbose:
+        print( output._stringio.getvalue() )
+
+    test_output = output._stringio.getvalue()
+
+    if re.search( "a72 found, tagging", test_output ):
+        test_passed( "code block exec" )
+    else:
+        test_failed( "code block exec" )
+
+    if re.search( "\[FOUND\] enable-method", test_output ):
+        test_passed( "enable-method, true block" )
+    else:
+        test_failed( "compatible node, true block" )
+
+    if re.search( "\[FOUND 2\] enable-method", test_output ):
+        test_passed( "enable-method, chained true block" )
+    else:
+        test_failed( "enable-method, chained true block" )
+
+    c = len(re.findall( "\[FOUND\] cpu that does not match invalid a72", test_output ))
+    if c == 2:
+        test_passed( "compatible node, false block" )
+    else:
+        test_failed( "compatible node, false block" )
+
+    c = len(re.findall( "double condition a72 found", test_output ))
+    if c == 2:
+        test_passed( "double condition" )
+    else:
+        test_failed( "double condition" )
+
+    c = len(re.findall( "double condition a72 not found", test_output ))
+    if c == 2:
+        test_passed( "double condition, false" )
+    else:
+        test_failed( "double condition, false" )
+
+    c = len(re.findall( "double condition inverted a72 found", test_output ))
+    if c == 2:
+        test_passed( "double condition, inverted" )
+    else:
+        test_failed( "double condition, inverted" )
+
+    c = len(re.findall( "double condition list a72 found", test_output ))
+    if c == 1:
+        test_passed( "double condition, list" )
+    else:
+        test_failed( "double condition, list" )
+
+    c = len(re.findall( "node tag:", test_output ))
+    if c == 2:
+        test_passed( "data persistence" )
+    else:
+        test_failed( "data persistence" )
+
+    c = len(re.findall( "clock magic", test_output ))
+    if c == 1:
+        test_passed( "data persistence 2" )
+    else:
+        test_failed( "data persistence 2" )
+
+    output.reset()
+
 def lops_sanity_test( device_tree, lop_file, verbose ):
     device_tree.setup( dt, [lop_file], "", True )
     device_tree.perform_lops()
@@ -1479,6 +1774,7 @@ if __name__ == "__main__":
     if lops:
         dt = setup_system_device_tree( outdir )
         lop_file = setup_lops( outdir )
+        lop_file_2 = setup_code_lops( outdir )
 
         device_tree = LopperSDT( dt )
 
@@ -1492,6 +1788,22 @@ if __name__ == "__main__":
         device_tree.outdir = outdir
 
         lops_sanity_test( device_tree, lop_file, verbose )
+
+        # reset for the 2nd test
+        print( "\n\n[INFO]: resetting and running code tests\n\n" )
+        device_tree = LopperSDT( dt )
+
+        device_tree.dryrun = False
+        device_tree.verbose = verbose
+        device_tree.werror = werror
+        device_tree.output_file = outdir + "/sdt-output.dts"
+        device_tree.cleanup_flag = True
+        device_tree.save_temps = False
+        device_tree.enhanced = True
+        device_tree.outdir = outdir
+
+
+        lops_code_test( device_tree, lop_file_2, verbose )
 
     if assists:
         dt = setup_system_device_tree( outdir )
