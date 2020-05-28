@@ -1343,7 +1343,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     new_property = LopperProp( "foobar", -1, new_node, [ "testingfoo" ] )
 
     if verbose:
-        print( "Property add to node: ")
+        print( "Property (%s) add to node: %s" % (new_property.name,new_node ))
 
     # new_node.add( new_property )
     new_node + new_property
@@ -1462,7 +1462,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     # remove the 2nd property, re-write
     if verbose:
-        print( "writing to: /tmp/tester-output2.dts (with one less property" )
+        print( "writing to: /tmp/tester-output2.dts (with one less property)" )
     new_node - new_property2
     printer.sync()
 
@@ -1496,6 +1496,8 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     if new_node != new_node2:
         test_failed( "copied nodes should be equal" )
+    else:
+        test_passed( "copied nodes equal" )
 
     if new_node.__props__ == new_node2.__props__:
         test_failed( "copied properties should not be equal" )
