@@ -702,7 +702,7 @@ class LopperNode(object):
         # the order we put them in (when we iterate).
         self.__props__ = OrderedDict()
         self.__current_property__ = -1
-        self.__props__pending__ = OrderedDict()
+        self.__props_pending_delete__ = OrderedDict()
 
         self.__dbg__ = debug
 
@@ -1199,13 +1199,13 @@ class LopperNode(object):
                     p.sync( fdt )
                     retval = True
 
-            for p in list(self.__props__pending__.values()):
+            for p in list(self.__props_pending_delete__.values()):
                 if p.__pstate__ == "deleted":
                     if self.__dbg__ > 2:
                         print( "[DBG++]:    node sync: pending property %s is delete, writing back" % p.name )
 
                     Lopper.property_remove( fdt, self.name, p.name )
-                    del self.__props__pending__[p.name]
+                    del self.__props_pending_delete__[p.name]
                     retval = True
 
             self.__modified__ = False
@@ -1244,7 +1244,7 @@ class LopperNode(object):
         self.__modified__ = True
         try:
             prop_to_delete.__pstate__ = "deleted"
-            self.__props__pending__[prop_to_delete.name] = prop_to_delete
+            self.__props_pending_delete__[prop_to_delete.name] = prop_to_delete
             del self.__props__[prop_to_delete.name]
         except Exception as e:
             raise e
@@ -1436,6 +1436,10 @@ class LopperNode(object):
 
         if fdt:
             if self.number >= 0:
+
+                saved_props = self.__props__
+                self.__props__ = OrderedDict()
+
                 self.name = fdt.get_name(self.number)
                 self.phandle = Lopper.node_getphandle( fdt, self.number )
 
@@ -1445,7 +1449,7 @@ class LopperNode(object):
                     self.abs_path = "/"
 
                 if self.__dbg__ > 2:
-                    print( "[DBG++]:    resolved: number: %s name: %s path: %s [fdt:%s]" %
+                    print( "[DBG++]:    node resolved: number: %s name: %s path: %s [fdt:%s]" %
                            ( self.number, self.name, self.abs_path, fdt ) )
 
                 # parent and depth
@@ -1456,11 +1460,7 @@ class LopperNode(object):
                     parent_path = Lopper.node_abspath( fdt, parent_node_num )
                     if self.tree:
                         self.parent = self.tree[parent_path]
-
-                    p = parent_node_num
-                    while p > 0:
-                        depth = depth + 1
-                        p = fdt.parent_offset( p, QUIET_NOTFOUND )
+                    depth = len(re.findall( '/', self.abs_path ))
                 else:
                     depth = 0
 
@@ -1469,13 +1469,20 @@ class LopperNode(object):
                 self.children = []
                 offset = fdt.first_subnode( self.number, QUIET_NOTFOUND )
                 while offset > 0:
-                    child_path = Lopper.node_abspath( fdt, offset )
-                    self.children.append(child_path)
+                    if self.abs_path != '/':
+                        child_path2 = self.abs_path + '/' + Lopper.node_getname( fdt, offset )
+                    else:
+                        child_path2 = '/' + Lopper.node_getname( fdt, offset )
+
+                    self.children.append(child_path2)
                     offset = fdt.next_subnode(offset, QUIET_NOTFOUND)
 
-                # decode the properties
+                # First pass: we look at the properties in the FDT. If they were in our
+                # saved properties dictionary from above, we copy them back in. Re-resolving
+                # and decoding unchanged properties is slow, so we avoid that step where
+                # possible.
                 self.type = []
-                prop_list = []
+                label_props = []
                 poffset = fdt.first_property_offset(self.number, QUIET_NOTFOUND)
                 while poffset > 0:
                     prop = fdt.get_property_by_offset(poffset)
@@ -1486,30 +1493,45 @@ class LopperNode(object):
                     if prop.name == "compatible":
                         self.type += prop_val
 
-                    ## TODO: simlar to the tree resolve() we might not want to throw these
-                    ##       away if the exist, and instead sync + update, or at a minumum
-                    ##       we should check to see if they are modified, before chucking them
-                    ##       in the bin
                     # create property objects, and resolve them
-                    self.__props__[prop.name] = LopperProp( prop.name, poffset, self, prop_val, self.__dbg__ )
-                    if dtype == LopperFmt.UINT8:
-                        self.__props__[prop.name].binary = True
+                    try:
+                        existing_prop = saved_props[prop.name]
+                    except Exception as e:
+                        existing_prop = None
 
-                    self.__props__[prop.name].resolve( fdt )
-                    self.__props__[prop.name].__modified__ = False
+                    if existing_prop:
+                        # same prop name, same parent node .. it is the same. If this
+                        # somehow changes, we'll need to call resolve on this as well.
+                        self.__props__[prop.name] = existing_prop
+                    else:
+                        self.__props__[prop.name] = LopperProp( prop.name, poffset, self, prop_val, self.__dbg__ )
+                        if dtype == LopperFmt.UINT8:
+                            self.__props__[prop.name].binary = True
 
-                    # if our node has a property of type label, we bubble it up to the node
-                    # for future use when replacing phandles, etc.
-                    if self.__props__[prop.name].type == "label":
-                        self.label = self.__props__[prop.name].value[0]
+                        self.__props__[prop.name].resolve( fdt )
+                        self.__props__[prop.name].__modified__ = False
+
+                        # if our node has a property of type label, we bubble it up to the node
+                        # for future use when replacing phandles, etc.
+                        if self.__props__[prop.name].type == "label":
+                            self.label = self.__props__[prop.name].value[0]
+                            label_props.append( self.__props__[prop.name] )
 
                     poffset = fdt.next_property_offset(poffset, QUIET_NOTFOUND)
 
-                # pass 2: resolve() below may use the label, hence why it is a separate pass from
-                #         above, where the label is filled in.
-                for p in self.__props__.values():
-                    self.__props__[p.name].resolve( fdt )
-                    self.__props__[p.name].__modified__ = False
+                # second pass: re-resolve properties if we found some that had labels
+                if label_props:
+                    # we had labels, some output strings in the properities may need to be
+                    # update to reflect the new targets
+                    for p in self.__props__:
+                        self.__props__[p].resolve( fdt )
+                        self.__props__[p].__modified__ = False
+
+                # 3rd pass: did we have any added, but not syn'd properites. They need
+                #           to be brought back into the main property dictionary.
+                for p in saved_props:
+                    if saved_props[p].__pstate__ == "init":
+                        self.__props__[p] = saved_props[p]
 
             if not self.type:
                 self.type = [ "" ]
@@ -2553,7 +2575,6 @@ class LopperTree:
                 # resolve the details against the fdt
                 node.resolve( self.fdt )
 
-
                 try:
                     node_check = self.__nodes__[node.abs_path]
                     if node_check:
@@ -2691,10 +2712,20 @@ class LopperTreePrinter( LopperTree ):
         """
         super().reset()
 
-        if self.output != sys.stdout and self.output.name != '<stdout>':
+        if type(self.output) != str:
+            output_name = self.output.name
+        else:
+            output_name = ""
+
+        if self.output != sys.stdout and output_name != '<stdout>':
             self.output.close()
 
-        if output_file != sys.stdout and output_file.name != '<stdout>':
+        if type(output_file) != str:
+            output_name = output_file.name
+        else:
+            output_name = output_file
+
+        if output_file != sys.stdout and output_name != '<stdout>':
             try:
                 self.output = open( output_file, "w")
             except Exception as e:

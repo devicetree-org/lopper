@@ -954,7 +954,7 @@ class LopperSDT:
                     cond_prop_name = re.sub( "__not__$", "", cond_prop.name )
                     invert_check = "not"
                 if self.verbose > 1:
-                    print( "[DBG++]: conditional property:  %s" % cond_prop_name )
+                    print( "[DBG++]: conditional property:  %s tgt_nodes: %s" % (cond_prop_name,sdt_tgt_nodes) )
 
                 for tgt_node in sdt_tgt_nodes:
                     # is the property present in the target node ?
@@ -970,7 +970,7 @@ class LopperSDT:
                         # if there was an inversion in the name, flip the result
                         check_val_final = eval( "{0} {1}".format(invert_check, check_val ))
                         if self.verbose > 1:
-                            print ( "[DBG++]   condition check final value: {0} {1} was {2}".format(invert_check, check_val, check_val_final ))
+                            print ( "[DBG++]   ({0}:{1}) condition check final value: {2} {3} was {4}".format(tgt_node.abs_path,tgt_node_prop.value[0],invert_check, check_val, check_val_final ))
                         if check_val_final:
                             # if not already in the list, we need to add the target node
                             if not tgt_node in tgt_matches:
@@ -996,7 +996,6 @@ class LopperSDT:
                         # and add it to the false matches list
                         if not tgt_node in tgt_false_matches:
                             tgt_false_matches.append(tgt_node)
-
 
             # loop over the true matches, executing their operations, if one of them returns
             # false, we stop the loop
@@ -1059,8 +1058,8 @@ class LopperSDT:
             if self.verbose:
                 print ( "[DBG]: code lop found, node context: %s" % start_node )
 
-            ret = self.tree.exec_cmd( start_node, code )
 
+            ret = self.tree.exec_cmd( start_node, code )
             # who knows what the command did, better sync!
             self.tree.sync()
 
@@ -1295,7 +1294,9 @@ def main():
     global load_paths
     global module_name
     global module_args
+    global debug
 
+    debug = False
     sdt = None
     verbose = 0
     output = ""
@@ -1311,7 +1312,7 @@ def main():
     outdir="./"
     load_paths = []
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:", [ "assist-paths=", "outdir", "enhanced", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
+        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:D", [ "debug", "assist-paths=", "outdir", "enhanced", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -1339,6 +1340,8 @@ def main():
             load_paths += a.split(":")
         elif o in ('-O', '--outdir'):
             outdir = a
+        elif o in ('-D', '--debug'):
+            debug = True
         elif o in ('-t', '--target'):
             target_domain = a
         elif o in ('-o', '--output'):
@@ -1465,7 +1468,11 @@ if __name__ == "__main__":
     if module_name:
         device_tree.module_setup( module_name, module_args )
 
-    device_tree.perform_lops()
+    if debug:
+        import cProfile
+        cProfile.run( 'device_tree.perform_lops()' )
+    else:
+        device_tree.perform_lops()
 
     if not dryrun:
         Lopper.write_phandle_map( device_tree.FDT, output + ".phandle", device_tree.verbose )
