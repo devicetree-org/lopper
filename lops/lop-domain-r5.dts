@@ -13,6 +13,15 @@
         compatible = "system-device-tree-v1,lop";
         lops {
                 compatible = "system-device-tree-v1,lop";
+                lop_0_0 {
+                        compatible = "system-device-tree-v1,lop,meta-v1","phandle-desc-v1";
+                        address-map = "#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells";
+                        interrupt-parent = "phandle";
+                        iommus = "phandle field";
+                        interrupt-map = "#interrupt-cells phandle #interrupt-cells";
+                        access = "phandle flags";
+                        cpus = "phandle mask mode";
+                };
                 lop_0 {
                         compatible = "system-device-tree-v1,lop,assist-v1";
                         node = "/domains/openamp_r5";
