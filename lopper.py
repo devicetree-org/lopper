@@ -665,12 +665,37 @@ class LopperSDT:
         if self.verbose > 1:
             print( "[DBG++]: executing lop: %s" % lop_type )
 
+        lops_tree = LopperTree( lops_fdt )
+
+        if re.search( ".*,exec.*$", lop_type ):
+            if self.verbose > 1:
+                print( "[DBG++]: code exec jump" )
+            this_node = lops_tree[lop_node_number]
+            try:
+                exec_tgt = this_node['exec'].value[0]
+                target_node = lops_tree.pnode( exec_tgt )
+                if self.verbose > 1:
+                    print( "[DBG++]: exec phandle: %s target: %s" % (exec_tgt,target_node))
+                if target_node:
+                    try:
+                        ret = self.exec_lop( lops_fdt, target_node.number, {} )
+                    except Exception as e:
+                        print( "[WARNING]: exec block caused exception: %s" % e )
+                        ret = False
+
+                    return ret
+                else:
+                    return False
+
+            except Exception as e:
+                print( "[WARNING]: exec lop exception: %s" % e )
+                return False
+
         if re.search( ".*,meta.*$", lop_type ):
             if re.search( "phandle-desc", lop_args ):
                 if self.verbose > 1:
                     print( "[DBG++]: processing phandle meta data" )
                 Lopper.phandle_possible_prop_dict = OrderedDict()
-                lops_tree = LopperTree( lops_fdt )
                 this_node = lops_tree[lop_node_number]
                 for p in this_node:
                     Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
