@@ -382,6 +382,23 @@ def setup_code_lops( outdir ):
                       cpus {
                            cpu@.* {
                                compatible = ".*a72.*";
+                               cpu-idle-states__not__ = <0x1 0x2>;
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               print( '[INFO]: not one or two' )
+                               return True
+                               ";
+                      };
+                };
+                lop_15_8 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
                            };
                       };
                       true {
@@ -672,7 +689,16 @@ def setup_system_device_tree( outdir ):
                         enable-method = "psci";
                         operating-points-v2 = <0x1>;
                         reg = <0x1>;
-                        cpu-idle-states = <0x2>;
+                        cpu-idle-states = <0x1>;
+                };
+
+                cpu@2 {
+                        compatible = "arm,cortex-a72", "arm,armv8";
+                        device_type = "cpu";
+                        enable-method = "psci";
+                        operating-points-v2 = <0x2>;
+                        reg = <0x1>;
+                        cpu-idle-states = <0x3>;
                 };
 
                 idle-states {
@@ -1555,7 +1581,7 @@ def lops_code_test( device_tree, lop_file, verbose ):
         test_failed( "enable-method, chained true block" )
 
     c = len(re.findall( "\[FOUND\] cpu that does not match invalid a72", test_output ))
-    if c == 2:
+    if c == 3:
         test_passed( "compatible node, false block" )
     else:
         test_failed( "compatible node, false block" )
@@ -1585,7 +1611,7 @@ def lops_code_test( device_tree, lop_file, verbose ):
         test_failed( "double condition, list" )
 
     c = len(re.findall( "node tag:", test_output ))
-    if c == 2:
+    if c == 3:
         test_passed( "data persistence" )
     else:
         test_failed( "data persistence" )
