@@ -2202,7 +2202,7 @@ class LopperTree:
         except:
             return None
 
-    def exec_cmd( self, node, cmd ):
+    def exec_cmd( self, node, cmd, env = None ):
         """Execute a (limited) code block against a node
 
         Execute a python clode block with the 'node' context set to the
@@ -2233,6 +2233,8 @@ class LopperTree:
         Args:
             node (LopperNode or string): starting node
             cmd (string): block of python code to execute
+            env (dictionary,optional): values to make available as
+                                       variables to the code block
 
         Returns:
             Return value from the execution of the code block
@@ -2277,6 +2279,10 @@ class LopperTree:
         safe_dict['node'] = n
         safe_dict['node_number'] = node_number
         safe_dict['node_name' ] = node_name
+
+        if env:
+            for e in env:
+                safe_dict[e] = env[e]
 
         # search and replace any template options in the cmd. yes, this is
         # only a proof of concept, you'd never do this like this in the end.
