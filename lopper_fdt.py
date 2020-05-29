@@ -877,7 +877,9 @@ class Lopper:
 
         return safe_name
 
-    # TODO: we'll need a way to make this more flexible, and extendible
+    # class variable for tracking phandle property formats
+    phandle_possible_prop_dict = {}
+
     @staticmethod
     def phandle_possible_properties():
         """Get the diectionary of properties that can contain phandles
@@ -902,17 +904,21 @@ class Lopper:
         Returns:
             The phandle property dictionary
         """
-
-        phandle_possible_properties = {
-            "address-map" : [ '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells', 0 ],
-            "interrupt-parent" : [ 'phandle', 0 ],
-            "iommus" : [ 'phandle field' ],
-            "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
-            "access" : [ 'phandle flags' ],
-            "cpus" : [ 'phandle mask mode' ],
-        }
-
-        return phandle_possible_properties
+        try:
+            if Lopper.phandle_possible_prop_dict:
+                return Lopper.phandle_possible_prop_dict
+            else:
+                return {
+                    "DEFAULT" : [ 'this is the default provided phandle map' ],
+                    "address-map" : [ '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells', 0 ],
+                    "interrupt-parent" : [ 'phandle', 0 ],
+                    "iommus" : [ 'phandle field' ],
+                    "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
+                    "access" : [ 'phandle flags' ],
+                    "cpus" : [ 'phandle mask mode' ],
+                }
+        except:
+            return {}
 
     @staticmethod
     def property_phandle_params( fdt, nodeoffset, property_name ):

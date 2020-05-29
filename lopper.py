@@ -451,7 +451,7 @@ class LopperSDT:
         mod_file_wo_ext = mod_file.with_suffix('')
 
         if self.verbose > 1:
-            print( "assist_find: %s local search: %s" % (assist_name,local_load_paths) )
+            print( "[DBG+]: assist_find: %s local search: %s" % (assist_name,local_load_paths) )
 
         try:
             mod_file_abs = mod_file.resolve()
@@ -655,10 +655,25 @@ class LopperSDT:
 
         """
 
-        lop_type = Lopper.property_get( lops_fdt, lop_node_number, "compatible" )
+        lop = Lopper.property_get( lops_fdt, lop_node_number, "compatible", LopperFmt.COMPOUND )
+        lop_type = lop[0]
+        try:
+            lop_args = lop[1]
+        except:
+            lop_args = ""
 
-        if self.verbose > 2:
+        if self.verbose > 1:
             print( "[DBG++]: executing lop: %s" % lop_type )
+
+        if re.search( ".*,meta.*$", lop_type ):
+            if re.search( "phandle-desc", lop_args ):
+                if self.verbose > 1:
+                    print( "[DBG++]: processing phandle meta data" )
+                Lopper.phandle_possible_prop_dict = OrderedDict()
+                lops_tree = LopperTree( lops_fdt )
+                this_node = lops_tree[lop_node_number]
+                for p in this_node:
+                    Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
 
         if re.search( ".*,output$", lop_type ):
             output_file_name = Lopper.property_get( lops_fdt, lop_node_number, 'outfile' )
