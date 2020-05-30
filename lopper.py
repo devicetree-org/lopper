@@ -672,13 +672,37 @@ class LopperSDT:
                 print( "[DBG++]: code exec jump" )
             this_node = lops_tree[lop_node_number]
             try:
+                try:
+                    node_spec = this_node['node'].value[0]
+                except:
+                    node_spec = ""
+
+                if not options:
+                    options = {}
+
+                try:
+                    options_spec = this_node['options'].value
+                except:
+                    options_spec = ""
+
+                if options_spec:
+                    for o in options_spec:
+                        opt_key,opt_val = o.split(":")
+                        if opt_key:
+                            options[opt_key] = opt_val
+
+
                 exec_tgt = this_node['exec'].value[0]
                 target_node = lops_tree.pnode( exec_tgt )
                 if self.verbose > 1:
                     print( "[DBG++]: exec phandle: %s target: %s" % (exec_tgt,target_node))
+
                 if target_node:
                     try:
-                        ret = self.exec_lop( lops_fdt, target_node.number, {} )
+                        if node_spec:
+                            options['start_node'] = node_spec
+
+                        ret = self.exec_lop( lops_fdt, target_node.number, options )
                     except Exception as e:
                         print( "[WARNING]: exec block caused exception: %s" % e )
                         ret = False
@@ -1098,8 +1122,7 @@ class LopperSDT:
             if self.verbose:
                 print ( "[DBG]: code lop found, node context: %s" % start_node )
 
-
-            ret = self.tree.exec_cmd( start_node, code )
+            ret = self.tree.exec_cmd( start_node, code, options )
             # who knows what the command did, better sync!
             self.tree.sync()
 
