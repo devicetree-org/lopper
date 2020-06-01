@@ -666,11 +666,11 @@ class LopperSDT:
             print( "[DBG++]: executing lop: %s" % lop_type )
 
         lops_tree = LopperTree( lops_fdt )
+        this_node = lops_tree[lop_node_number]
 
         if re.search( ".*,exec.*$", lop_type ):
             if self.verbose > 1:
                 print( "[DBG++]: code exec jump" )
-            this_node = lops_tree[lop_node_number]
             try:
                 try:
                     node_spec = this_node['node'].value[0]
@@ -714,6 +714,12 @@ class LopperSDT:
             except Exception as e:
                 print( "[WARNING]: exec lop exception: %s" % e )
                 return False
+
+        if re.search( ".*,print.*$", lop_type ):
+            print_props = this_node.props('print.*')
+            for print_prop in print_props:
+                for line in print_prop.value:
+                    print( line )
 
         if re.search( ".*,meta.*$", lop_type ):
             if re.search( "phandle-desc", lop_args ):
