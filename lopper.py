@@ -719,7 +719,17 @@ class LopperSDT:
             print_props = this_node.props('print.*')
             for print_prop in print_props:
                 for line in print_prop.value:
-                    print( line )
+                    if type(line) == str:
+                        print( line )
+                    else:
+                        # is it a phandle?
+                        node = self.tree.pnode(line)
+                        if node:
+                            print( "%s {" % node )
+                            for p in node:
+                                print( "    %s" % p )
+                            print( "}" )
+
 
         if re.search( ".*,meta.*$", lop_type ):
             if re.search( "phandle-desc", lop_args ):
