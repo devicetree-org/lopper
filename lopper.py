@@ -743,22 +743,19 @@ class LopperSDT:
                         if self.verbose > 1:
                             print( "[DBG++]: running node selection: %s" % s )
 
-                        node_regex, prop, prop_val = s.split(":")
+                        try:
+                            node_regex, prop, prop_val = s.split(":")
+                        except:
+                            node_regex = s
+                            prop = ""
+                            prop_val = ""
+
                         # if the node_regex is empty, we operate on previously
                         # selected nodes.
                         if not node_regex:
                             selected_nodes_possible = self.tree.__selected__
                         else:
-                            # Note: and/or are not implemented yet.
-                            if node_regex == "and":
-                                and_conditional = True
-                                or_conditional  = False
-                                pass
-                            elif node_regex == "or":
-                                and_conditional = False
-                                or_conditional = True
-                            else:
-                                selected_nodes_possible = self.tree.nodes( node_regex )
+                            selected_nodes_possible = self.tree.nodes( node_regex )
 
                         if prop and prop_val:
                             # construct a test prop, so we can use the internal compare
@@ -780,14 +777,19 @@ class LopperSDT:
                                     if are_they_equal:
                                         selected_nodes.append( sl )
                         else:
-                            selected_nodes += selected_nodes_possible
+                            if node_regex:
+                                selected_nodes += selected_nodes_possible
 
                     if self.verbose > 2:
                         print( "[DBG+++]: selected nodes %s" % selected_nodes )
                         for n in selected_nodes:
                             print( n )
 
-                    self.tree.__selected__ += selected_nodes
+                    # drop any repeated elements
+                    #   end result: self.tree.__selected__ += selected_nodes
+                    for s in selected_nodes:
+                        if not s in self.tree.__selected__:
+                            self.tree.__selected__.append(s)
 
         if re.search( ".*,meta.*$", lop_type ):
             if re.search( "phandle-desc", lop_args ):
@@ -1190,7 +1192,12 @@ class LopperSDT:
             try:
                 start_node = options['start_node']
             except:
-                start_node = "/"
+                # were there selected nodes ? Make them the context, unless overrriden
+                # by an explicit start_node property
+                if self.tree.__selected__:
+                    start_node = self.tree.__selected__[0]
+                else:
+                    start_node = "/"
 
             if self.verbose:
                 print ( "[DBG]: code lop found, node context: %s" % start_node )
