@@ -675,7 +675,10 @@ class LopperSDT:
                 try:
                     node_spec = this_lop_node['node'].value[0]
                 except:
-                    node_spec = ""
+                    if self.tree.__selected__:
+                        node_spec = self.tree.__selected__[0]
+                    else:
+                        node_spec = ""
 
                 if not options:
                     options = {}
