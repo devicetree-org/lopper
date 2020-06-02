@@ -739,6 +739,15 @@ class LopperSDT:
                     self.tree.__selected__ = []
                 else:
                     selected_nodes = []
+
+                    # to do an "or" condition
+                    #    select_1 = "/path/or/regex/to/nodes:prop:val";
+                    #    select_2 = "/path/or/2nd/regex:prop2:val2";
+                    #
+                    # to do an "and" condition:
+                    #    select_1 = "/path/or/regex/to/nodes:prop:val";
+                    #    select_2 = ":prop2:val2";
+                    #
                     for s in sel.value:
                         if self.verbose > 1:
                             print( "[DBG++]: running node selection: %s" % s )
