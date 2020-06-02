@@ -665,15 +665,15 @@ class LopperSDT:
         if self.verbose > 1:
             print( "[DBG++]: executing lop: %s" % lop_type )
 
-        lops_tree = LopperTree( lops_fdt )
-        this_node = lops_tree[lop_node_number]
+        lops_tree = lt.LopperTree( lops_fdt )
+        this_lop_node = lops_tree[lop_node_number]
 
         if re.search( ".*,exec.*$", lop_type ):
             if self.verbose > 1:
                 print( "[DBG++]: code exec jump" )
             try:
                 try:
-                    node_spec = this_node['node'].value[0]
+                    node_spec = this_lop_node['node'].value[0]
                 except:
                     node_spec = ""
 
@@ -681,7 +681,7 @@ class LopperSDT:
                     options = {}
 
                 try:
-                    options_spec = this_node['options'].value
+                    options_spec = this_lop_node['options'].value
                 except:
                     options_spec = ""
 
@@ -692,7 +692,7 @@ class LopperSDT:
                             options[opt_key] = opt_val
 
 
-                exec_tgt = this_node['exec'].value[0]
+                exec_tgt = this_lop_node['exec'].value[0]
                 target_node = lops_tree.pnode( exec_tgt )
                 if self.verbose > 1:
                     print( "[DBG++]: exec phandle: %s target: %s" % (exec_tgt,target_node))
@@ -716,7 +716,7 @@ class LopperSDT:
                 return False
 
         if re.search( ".*,print.*$", lop_type ):
-            print_props = this_node.props('print.*')
+            print_props = this_lop_node.props('print.*')
             for print_prop in print_props:
                 for line in print_prop.value:
                     if type(line) == str:
@@ -730,14 +730,71 @@ class LopperSDT:
                                 print( "    %s" % p )
                             print( "}" )
 
+        if re.search( ".*,select.*$", lop_type ):
+            select_props = this_lop_node.props( 'select.*' )
+            for sel in select_props:
+                if sel.value == ['']:
+                    if self.verbose > 1:
+                        print( "[DBG++]: clearing selected nodes" )
+                    self.tree.__selected__ = []
+                else:
+                    selected_nodes = []
+                    for s in sel.value:
+                        if self.verbose > 1:
+                            print( "[DBG++]: running node selection: %s" % s )
+
+                        node_regex, prop, prop_val = s.split(":")
+                        # if the node_regex is empty, we operate on previously
+                        # selected nodes.
+                        if not node_regex:
+                            selected_nodes_possible = self.tree.__selected__
+                        else:
+                            # Note: and/or are not implemented yet.
+                            if node_regex == "and":
+                                and_conditional = True
+                                or_conditional  = False
+                                pass
+                            elif node_regex == "or":
+                                and_conditional = False
+                                or_conditional = True
+                            else:
+                                selected_nodes_possible = self.tree.nodes( node_regex )
+
+                        if prop and prop_val:
+                            # construct a test prop, so we can use the internal compare
+                            test_prop = LopperProp( prop, -1, None, [prop_val] )
+                            test_prop.resolve( None )
+
+                            for sl in selected_nodes_possible:
+                                try:
+                                    sl_prop = sl[prop]
+                                except Exception as e:
+                                    sl_prop = None
+                                    are_they_equal = False
+
+                                if sl_prop:
+                                    if self.verbose > 2:
+                                        test_prop.__dbg__ = self.verbose
+
+                                    are_they_equal = test_prop.compare( sl_prop )
+                                    if are_they_equal:
+                                        selected_nodes.append( sl )
+                        else:
+                            selected_nodes += selected_nodes_possible
+
+                    if self.verbose > 2:
+                        print( "[DBG+++]: selected nodes %s" % selected_nodes )
+                        for n in selected_nodes:
+                            print( n )
+
+                    self.tree.__selected__ += selected_nodes
 
         if re.search( ".*,meta.*$", lop_type ):
             if re.search( "phandle-desc", lop_args ):
                 if self.verbose > 1:
                     print( "[DBG++]: processing phandle meta data" )
                 Lopper.phandle_possible_prop_dict = OrderedDict()
-                this_node = lops_tree[lop_node_number]
-                for p in this_node:
+                for p in this_lop_node:
                     Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
 
         if re.search( ".*,output$", lop_type ):
@@ -1154,7 +1211,7 @@ class LopperSDT:
                 prop = ""
 
             # was there a regex passed for node matching ?
-            nodes = Lopper.property_get( lops_fdt, lop_node_number, "nodes" )
+            nodes_selection = Lopper.property_get( lops_fdt, lop_node_number, "nodes" )
             if prop:
                 if self.verbose:
                     print( "[INFO]: modify property found: %s" % prop )
@@ -1163,18 +1220,36 @@ class LopperSDT:
                 #    - modify to "nothing", is a remove operation
                 #    - modify with no property is node operation (rename or remove)
                 modify_expr = prop.split(":")
+                # combine these into the assigment, once everything has bee tested
+                modify_path = modify_expr[0]
+                modify_prop = modify_expr[1]
+                modify_val = modify_expr[2]
                 if self.verbose:
                     print( "[INFO]: modify path: %s" % modify_expr[0] )
                     print( "        modify prop: %s" % modify_expr[1] )
                     print( "        modify repl: %s" % modify_expr[2] )
-                    if nodes:
-                        print( "        modify regex: %s" % nodes )
+                    if nodes_selection:
+                        print( "        modify regex: %s" % nodes_selection )
 
-                if modify_expr[1]:
+                # if modify_expr[0] (the nodes) is empty, we use the selected nodes
+                # if they are available
+                if not modify_path:
+                    if not self.tree.__selected__:
+                        print( "[WARNING]: no nodes supplied to modify, and no nodes are selected" )
+                        return False
+                    else:
+                        nodes = self.tree.__selected__
+                else:
+                    try:
+                        nodes = self.tree.subnodes( self.tree[modify_path] )
+                    except:
+                        nodes = []
+
+                if modify_prop:
                     # property operation
-                    if not modify_expr[2]:
+                    if not modify_val:
                         if self.verbose:
-                            print( "[INFO]: property remove operation detected: %s %s" % (modify_expr[0], modify_expr[1]))
+                            print( "[INFO]: property remove operation detected: %s %s" % (modify_path, modify_prop))
 
                         try:
                             # TODO: make a special case of the property_modify_below
@@ -1182,16 +1257,15 @@ class LopperSDT:
                             # just to be sure that any other pending changes have been
                             # written, since we need accurate node IDs
                             self.tree.sync()
-                            nodes = self.tree.subnodes( self.tree[modify_expr[0]] )
                             for n in nodes:
                                 try:
-                                    n.delete( modify_expr[1] )
+                                    n.delete( modify_prop )
                                 except:
                                     # no big deal if it doesn't have the property
                                     pass
                                 self.tree.sync()
                         except Exception as e:
-                            print( "[WARNING]: unable to remove property %s (%s)" % (modify_expr[0],e))
+                            print( "[WARNING]: unable to remove property %s/%s (%s)" % (modify_path,modify_prop,e))
                     else:
                         if self.verbose:
                             print( "[INFO]: property modify operation detected" )
@@ -1199,34 +1273,44 @@ class LopperSDT:
                         # just to be sure that any other pending changes have been
                         # written, since we need accurate node IDs
                         self.tree.sync()
-                        nodes = self.tree.nodes( modify_expr[0] )
+
+                        # we re-do the nodes fetch here, since there are slight behaviour/return
+                        # differences between nodes() (what this has always used), and subnodes()
+                        # which is what we do above. We can re-test and reconcile this in the future.
+                        if modify_path:
+                            nodes = self.tree.nodes( modify_path )
+                        else:
+                            nodes = self.tree.__selected__
                         for n in nodes:
-                            n[modify_expr[1]] = [ modify_expr[2] ]
+                            n[modify_prop] = [ modify_val ]
+                            # this is fairly heavy, and may need to come out of the loop
                             self.tree.sync()
                 else:
+                    # drop the list, since if we are modifying a node, it is just one
+                    # target node.
+                    try:
+                        node = nodes[0]
+                    except:
+                        node = None
+
                     # node operation
                     # in case /<name>/ was passed as the new name, we need to drop them
                     # since they aren't valid in set_name()
-                    if modify_expr[2]:
-                        modify_expr[2] = modify_expr[2].replace( '/', '' )
+                    if modify_val:
+                        modify_val = modify_val.replace( '/', '' )
                         try:
                             # change the name of the node
-                            # hmm, should this be a copy and delete ? versus just a name change ?
-                            self.tree[modify_expr[0]].name = modify_expr[2]
+                            node.name = modify_val
                             self.tree.sync( self.FDT )
                         except Exception as e:
-                            print( "[ERROR]:cannot rename node '%s' to '%s' (%s)" %(modify_expr[0], modify_expr[2], e))
+                            print( "[ERROR]:cannot rename node '%s' to '%s' (%s)" %(node.abs_path, modify_val, e))
                             sys.exit(1)
                     else:
                         # first we see if the node prefix is an exact match
-                        # node_to_remove = Lopper.node_find( self.FDT, modify_expr[0] )
-                        try:
-                            node_to_remove = self.tree[modify_expr[0]]
-                        except:
-                            node_to_remove = None
+                        node_to_remove = node
 
                         if not node_to_remove:
-                            print( "[WARNING]: Cannot find node %s for delete operation" % modify_expr[0] )
+                            print( "[WARNING]: Cannot find node %s for delete operation" % node.abs_path )
                             if self.werror:
                                 sys.exit(1)
                         else:

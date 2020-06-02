@@ -1178,6 +1178,9 @@ class LopperNode(object):
             fdt_name = Lopper.node_getname( fdt, self.number )
             if fdt_name != self.name:
                 try:
+                    if self.__dbg__ > 2:
+                        print( "[DBG++]:    node sync: syncing name from %s to %s" % (fdt_name,self.name))
+
                     Lopper.node_setname( fdt, self.number, self.name )
                 except Exception as e:
                     print( "[WARNING]: could not set node name to %s (%s)" % (self.name,e))
@@ -1604,6 +1607,8 @@ class LopperTree:
         self.__pnodes__ = OrderedDict()
         # nodes, indexed by label
         self.__lnodes__ = OrderedDict()
+        # nodes. selected. default/fallback for some operations
+        self.__selected__ = []
 
         # callbacks
         # these can even be lambdas. i.e lambda n, fdt: print( "start the tree!: %s" % n )
