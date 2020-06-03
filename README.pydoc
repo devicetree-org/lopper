@@ -924,6 +924,11 @@ CLASSES
      |  
      |  __weakref__
      |      list of weak references to the object (if defined)
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data and other attributes defined here:
+     |  
+     |  phandle_possible_prop_dict = {}
     
     class LopperFmt(enum.Enum)
      |  Enum class to define the types and encodings of Lopper format routines
@@ -1899,7 +1904,7 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
-     |  exec_cmd(self, node, cmd)
+     |  exec_cmd(self, node, cmd, env=None)
      |      Execute a (limited) code block against a node
      |      
      |      Execute a python clode block with the 'node' context set to the
@@ -1930,6 +1935,8 @@ CLASSES
      |      Args:
      |          node (LopperNode or string): starting node
      |          cmd (string): block of python code to execute
+     |          env (dictionary,optional): values to make available as
+     |                                     variables to the code block
      |      
      |      Returns:
      |          Return value from the execution of the code block
@@ -2432,7 +2439,7 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
-     |  exec_cmd(self, node, cmd)
+     |  exec_cmd(self, node, cmd, env=None)
      |      Execute a (limited) code block against a node
      |      
      |      Execute a python clode block with the 'node' context set to the
@@ -2463,6 +2470,8 @@ CLASSES
      |      Args:
      |          node (LopperNode or string): starting node
      |          cmd (string): block of python code to execute
+     |          env (dictionary,optional): values to make available as
+     |                                     variables to the code block
      |      
      |      Returns:
      |          Return value from the execution of the code block

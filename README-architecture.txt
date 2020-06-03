@@ -234,7 +234,7 @@ The following types of lops are currently valid:
 
 # module load: load a lopper assist module
 
-               lop_0 {
+                lop_0 {
                         compatible = "system-device-tree-v1,lop,load";
                         // load: name of the module to load
                         load = "<python module name>.py";
@@ -559,6 +559,139 @@ The following types of lops are currently valid:
                                return True
                                ";
                       };
+                };
+
+
+# print: output strings during processing
+#
+# print provides basic string output and is primarily provided for debug purposes
+# (complex output can be generated from code lops).
+#
+# Any properties that begin with "print" will be output to stdout when the lop
+# is processed.
+#
+# One convenience routine is provided to print a node. If the print property is
+# a valid phandle, then the node will be pretty printed to stdout.
+#
+
+                lop_16_2 {
+                      compatible = "system-device-tree-v1,lop,print-v1";
+                      print = "print_test: print 1";
+                      print2 = "print_test: print2";
+                      print3 = <0x2>;
+                };
+
+
+# exec: execute another lop
+#
+# Commonly used in combination with a conditional lop to avoid code dupblication
+# and execute another lopper operation. i.e. renaming a node, deleting a property
+# running code, etc.
+#
+# The lop to exec is found in the "exec" property of the lop, and must be a valid
+# phandle to the target lopper operation.
+#
+#
+
+                track_feature: track_feature {
+                        compatible = "system-device-tree-v1,lop,code-v1";
+                        noexec;
+                        code = "
+                            print( 'track: lopper library routine: %s' % node )
+                            try:
+                                node.ttunes[prop] = prop
+                            except:
+                                pass
+                        ";
+                };
+                lop_exec {
+                      compatible = "system-device-tree-v1,lop,exec-v1";
+                      exec = <&track_feature>;
+                };
+
+# select: select nodes to be used in other lopper operations
+#
+# select is provided to build up complex conditionals or series of nodes,
+# It is similar to the conditional lop (and could replace it in the
+# future). In particular regular expressions which are not valid to dtc
+# can be expressed in select.
+#
+# The syntax of a select test is exactly the same as the modify operation:
+#
+#    <path to node>:<property>:<value>
+#
+#    If <path to node> is omitted, then the nodes from the previous
+#    select operation are used. Hence you can build up a series of
+#    tests to refine search operations.
+#
+# Each select operation is a property of the format:
+#
+#    select[_]<extension> = <select expression>
+#
+# If "select"  with no extension is encountered, it clears any
+# previously selected nodes.
+#
+# Operations are processed in the order they are found in the lop node.
+#
+# Once selected, other lopper operations will use the nodes if no
+# override is supplied in their lop.
+#
+#    - code, exec: The selected node is the default node contex of the block
+#                  And all selected nodes are available in the tree variable
+#                  __selected__
+#    - modify: If no node regex is supplied, the selected nodes are used
+#    - output: If no nodes are specified, the selected nodes are used
+#
+#
+# An example of an "or" condition (meaning both sets of matching nodes
+# will be selected).
+#
+#    select_1 = "/path/or/regex/to/nodes:prop:val";
+#    select_2 = "/path/or/2nd/node/regex:prop2:val2";
+#
+# to do an "and" condition (meaning only nodes that match both conditions
+# will be selected).
+#
+#    select_1 = "/path/or/regex/to/nodes:prop:val";
+#    select_2 = ":prop2:val2";
+#
+                lop_17_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      // clear any old selections
+                      select_1;
+                      select_2 = "/cpus/.*:compatible:.*arm,cortex-a72.*";
+                      // if the path specifier isn't used, we operate on previously selected nodes.
+                      select_3 = ":cpu-idle-states:3";
+                };
+                lop_17_2 {
+                      compatible = "system-device-tree-v1,lop,modify";
+                      // this will use the selected nodes above, to add a property
+                      modify = ":testprop:testvalue";
+                };
+                lop_17_3 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                          print( 'node: %s' % node )
+                          for s in tree.__selected__:
+                              print( 'selected: %s' % s.abs_path )
+                              print( '    testprop: %s' % s['testprop'].value[0] )
+                      ";
+                };
+                lop_17_4 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      // clear any old selections
+                      select_1;
+                      select_2 = "/cpus/.*:compatible:.*arm,cortex-a72.*";
+                      // since there's a path specifier, this is an OR operation
+                      select_3 = "/amba/.*:phy-handle:0x9";
+                };
+                lop_17_5 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                          print( 'node2: %s' % node )
+                          for s in tree.__selected__:
+                              print( 'selected2: %s' % s.abs_path )
+                      ";
                 };
 
 Note: the lopper_sanity.py utility has an embedded lops file that can be
