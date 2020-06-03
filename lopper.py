@@ -735,22 +735,25 @@ class LopperSDT:
 
         if re.search( ".*,select.*$", lop_type ):
             select_props = this_lop_node.props( 'select.*' )
+
+            #
+            # to do an "or" condition
+            #    select_1 = "/path/or/regex/to/nodes:prop:val";
+            #    select_2 = "/path/or/2nd/regex:prop2:val2";
+            #
+            # to do an "and" condition:
+            #    select_1 = "/path/or/regex/to/nodes:prop:val";
+            #    select_2 = ":prop2:val2";
+            #
+            selected_nodes = []
             for sel in select_props:
                 if sel.value == ['']:
                     if self.verbose > 1:
                         print( "[DBG++]: clearing selected nodes" )
                     self.tree.__selected__ = []
                 else:
-                    selected_nodes = []
-
-                    # to do an "or" condition
-                    #    select_1 = "/path/or/regex/to/nodes:prop:val";
-                    #    select_2 = "/path/or/2nd/regex:prop2:val2";
-                    #
-                    # to do an "and" condition:
-                    #    select_1 = "/path/or/regex/to/nodes:prop:val";
-                    #    select_2 = ":prop2:val2";
-                    #
+                    # if different node regex + properties are listed in the same
+                    # select = "foo","bar","blah", they are always AND conditions.
                     for s in sel.value:
                         if self.verbose > 1:
                             print( "[DBG++]: running node selection: %s" % s )
@@ -762,19 +765,32 @@ class LopperSDT:
                             prop = ""
                             prop_val = ""
 
-                        # if the node_regex is empty, we operate on previously
-                        # selected nodes.
-                        if not node_regex:
-                            selected_nodes_possible = self.tree.__selected__
-                        else:
+                        if node_regex:
+                            # if selected_nodes:
+                            #     selected_nodes_possible = selected_nodes
+                            # else:
                             selected_nodes_possible = self.tree.nodes( node_regex )
+                        else:
+                            # if the node_regex is empty, we operate on previously
+                            # selected nodes.
+                            if selected_nodes:
+                                selected_nodes_possible = selected_nodes
+                            else:
+                                selected_nodes_possible = self.tree.__selected__
+
+                        if self.verbose > 1:
+                            print( "[DBG++]: selected potential nodes %s" % selected_nodes_possible )
+                            for n in selected_nodes_possible:
+                                print( "       %s" % n )
 
                         if prop and prop_val:
                             # construct a test prop, so we can use the internal compare
-                            test_prop = LopperProp( prop, -1, None, [prop_val] )
+                            test_prop = lt.LopperProp( prop, -1, None, [prop_val] )
                             test_prop.resolve( None )
 
-                            for sl in selected_nodes_possible:
+                            # we need this list(), since the removes below will yank items out of
+                            # our iterator if we aren't careful
+                            for sl in list(selected_nodes_possible):
                                 try:
                                     sl_prop = sl[prop]
                                 except Exception as e:
@@ -787,21 +803,28 @@ class LopperSDT:
 
                                     are_they_equal = test_prop.compare( sl_prop )
                                     if are_they_equal:
-                                        selected_nodes.append( sl )
-                        else:
-                            if node_regex:
-                                selected_nodes += selected_nodes_possible
+                                        if not sl in selected_nodes:
+                                            selected_nodes.append( sl )
+                                    else:
+                                        # no match, you are out! (only if this is an AND operation though, which
+                                        # is indicated by the lack of a node regex)
+                                        if not node_regex:
+                                            if sl in selected_nodes:
+                                                selected_nodes.remove( sl )
+                                else:
+                                    # no prop, you are out! (only if this is an AND operation though, which
+                                    # is indicated by the lack of a node regex)
+                                    if not node_regex:
+                                        if sl in selected_nodes:
+                                            selected_nodes.remove( sl )
 
-                    if self.verbose > 2:
-                        print( "[DBG+++]: selected nodes %s" % selected_nodes )
+                    if self.verbose > 1:
+                        print( "[DBG++]: selected nodes %s" % selected_nodes )
                         for n in selected_nodes:
-                            print( n )
+                            print( "    %s" % n )
 
-                    # drop any repeated elements
-                    #   end result: self.tree.__selected__ += selected_nodes
-                    for s in selected_nodes:
-                        if not s in self.tree.__selected__:
-                            self.tree.__selected__.append(s)
+            # update the tree selection with our results
+            self.tree.__selected__ = selected_nodes
 
         if re.search( ".*,meta.*$", lop_type ):
             if re.search( "phandle-desc", lop_args ):
@@ -840,7 +863,7 @@ class LopperSDT:
                 #       strangely formatted ones that we can't copy.
                 ff = libfdt.Fdt.create_empty_tree( self.FDT.totalsize() )
                 for o_node in output_nodes:
-                    if isinstance( o_node, LopperNode ):
+                    if isinstance( o_node, lt.LopperNode ):
                         new_node = Lopper.node_copy_from_path( self.FDT, o_node.abs_path, ff, o_node.abs_path, self.verbose )
                         if not new_node:
                             print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
