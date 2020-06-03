@@ -78,7 +78,7 @@ class LopperProp():
             self.__dict__["value"] = value
 
         self.string_val = "**unresolved**"
-        self.type = ""
+        self.pclass = ""
         self.subtype = ""
         self.binary = False
 
@@ -468,8 +468,7 @@ class LopperProp():
             # we could make this smarter, and use the Lopper Guessed type
             prop_type = type(prop_val)
 
-        # type should re renamed "class"
-        self.type = prop_type
+        self.pclass = prop_type
         # this is the actual type of the elements (if a list, or the
         # value if not a list).
         self.subtype = prop_type
@@ -700,7 +699,7 @@ class LopperNode(object):
 
         # 'type' is roughly equivalent to a compatible property in
         # the node if it exists.
-        self.type = []
+        self.pclass = []
 
         self.abs_path = abspath
 
@@ -1524,7 +1523,7 @@ class LopperNode(object):
 
                         # if our node has a property of type label, we bubble it up to the node
                         # for future use when replacing phandles, etc.
-                        if self.__props__[prop.name].type == "label":
+                        if self.__props__[prop.name].pclass == "label":
                             self.label = self.__props__[prop.name].value[0]
                             label_props.append( self.__props__[prop.name] )
 
@@ -2764,7 +2763,7 @@ class LopperTreePrinter( LopperTree ):
         """
         # peek ahead to handle the preamble
         for p in n:
-            if p.type == "preamble":
+            if p.pclass == "preamble":
                 print( "%s" % p, file=self.output )
 
         print( "/dts-v1/;\n\n/ {", file=self.output )
@@ -2837,14 +2836,14 @@ class LopperTreePrinter( LopperTree ):
         indent = (p.node.depth * 8) + 8
         outstring = str( p )
 
-        if p.type == "comment":
+        if p.pclass == "comment":
             # we have to substitute \n for better indentation, since comments
             # are multiline
             dstring = ""
             dstring = dstring.rjust(len(dstring) + indent + 1, " " )
             outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
-        if p.type == "preamble":
+        if p.pclass == "preamble":
             # start tree peeked at this, so we do nothing
             outstring = ""
 
