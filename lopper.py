@@ -694,7 +694,6 @@ class LopperSDT:
                         if opt_key:
                             options[opt_key] = opt_val
 
-
                 exec_tgt = this_lop_node['exec'].value[0]
                 target_node = lops_tree.pnode( exec_tgt )
                 if self.verbose > 1:
@@ -1238,6 +1237,21 @@ class LopperSDT:
         if re.search( ".*,lop,code.*$", lop_type ):
             # execute a block of python code against a specified start_node
             code = Lopper.property_get( lops_fdt, lop_node_number, "code" )
+
+            if not options:
+                options = {}
+
+            try:
+                options_spec = this_lop_node['options'].value
+            except:
+                options_spec = ""
+
+            if options_spec:
+                for o in options_spec:
+                    opt_key,opt_val = o.split(":")
+                    if opt_key:
+                        options[opt_key] = opt_val
+
             try:
                 start_node = options['start_node']
             except:
