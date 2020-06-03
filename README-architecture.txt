@@ -413,6 +413,18 @@ The following types of lops are currently valid:
 # are peristent and hence collection of data can be done, as the following examples
 # show.
 #
+# The 'code' property contains the block of python code to be executed. Note, that
+# since this is compiled with dtc, you cannot use quotes " within the code, and
+# should use single quotes ' instead.
+#
+# The 'options' property in a code lop is of the format:
+#
+#    <variable name>:<value>
+#
+# Lopper will arrange for a variable to be available to the python code under
+# that name, with the specified value.
+#
+#
 # See README.pydoc for details of the code execution environment
 
                 lop_15_1 {
@@ -591,11 +603,17 @@ The following types of lops are currently valid:
 # The lop to exec is found in the "exec" property of the lop, and must be a valid
 # phandle to the target lopper operation.
 #
+# The 'options' property in a code lop is of the format:
+#
+#    <variable name>:<value>
+#
+# Lopper will arrange for those options to be available to the called lop routine.
+# If the exec'd lop is a code block, the options will be propagated to the code
+# as local variables.
 #
 
                 track_feature: track_feature {
                         compatible = "system-device-tree-v1,lop,code-v1";
-                        noexec;
                         code = "
                             print( 'track: lopper library routine: %s' % node )
                             try:
@@ -606,6 +624,7 @@ The following types of lops are currently valid:
                 };
                 lop_exec {
                       compatible = "system-device-tree-v1,lop,exec-v1";
+                      options = "prop:64-bit";
                       exec = <&track_feature>;
                 };
 
