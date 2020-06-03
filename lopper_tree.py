@@ -79,7 +79,7 @@ class LopperProp():
 
         self.string_val = "**unresolved**"
         self.pclass = ""
-        self.subtype = ""
+        self.ptype = ""
         self.binary = False
 
         self.abs_path = ""
@@ -209,9 +209,9 @@ class LopperProp():
                 lop_compare_value = self.value[0]
                 tgt_node_compare_value = other_prop.value[0]
 
-                if other_prop.subtype == LopperFmt.STRING: # type(lop_compare_value) == str:
+                if other_prop.ptype == LopperFmt.STRING: # type(lop_compare_value) == str:
                     constructed_condition = "{0} re.search(\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
-                elif other_prop.subtype == LopperFmt.UINT32: # type(lop_compare_value) == int:
+                elif other_prop.ptype == LopperFmt.UINT32: # type(lop_compare_value) == int:
                     constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
 
                 if self.__dbg__ > 2:
@@ -233,10 +233,10 @@ class LopperProp():
                         continue
 
                     # otherwise, run the compare
-                    if self.subtype == LopperFmt.STRING: # type(lop_compare_value) == str:
+                    if self.ptype == LopperFmt.STRING: # type(lop_compare_value) == str:
                         constructed_condition = "{0} re.search(\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
 
-                    elif self.subtype == LopperFmt.UINT32: # type(lop_compare_value) == int:
+                    elif self.ptype == LopperFmt.UINT32: # type(lop_compare_value) == int:
                         constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
 
                     if self.__dbg__ > 2:
@@ -260,10 +260,10 @@ class LopperProp():
                         continue
 
                     # otherwise, run the compare
-                    if self.subtype == LopperFmt.STRING: # type(lop_compare_value) == str:
+                    if self.ptype == LopperFmt.STRING: # type(lop_compare_value) == str:
                         constructed_condition = "{0} re.search(\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
 
-                    elif self.subtype == LopperFmt.UINT32: # type(lop_compare_value) == int:
+                    elif self.ptype == LopperFmt.UINT32: # type(lop_compare_value) == int:
                         constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
 
                     if self.__dbg__ > 2:
@@ -471,7 +471,7 @@ class LopperProp():
         self.pclass = prop_type
         # this is the actual type of the elements (if a list, or the
         # value if not a list).
-        self.subtype = prop_type
+        self.ptype = prop_type
 
         phandle_idx, phandle_field_count = self.phandle_params()
 
@@ -542,14 +542,14 @@ class LopperProp():
                     list_of_nums = True
 
                 if list_of_nums:
-                    self.subtype = LopperFmt.UINT32
+                    self.ptype = LopperFmt.UINT32
                     if self.binary:
                         outstring_list += "["
                     else:
                         # we have to open with a '<', if this is a list of numbers
                         outstring_list += "<"
                 else:
-                    self.subtype = LopperFmt.STRING
+                    self.ptype = LopperFmt.STRING
 
                 element_count = 1
                 element_total = len(prop_val)
