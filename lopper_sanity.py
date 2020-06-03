@@ -414,6 +414,75 @@ def setup_code_lops( outdir ):
                                ";
                       };
                 };
+                track_feature: track_feature {
+                        compatible = "system-device-tree-v1,lop,code-v1";
+                        noexec;
+                        code = "
+                            print( 'track: lopper library routine: %s' % node )
+                            try:
+                                node.ttunes[prop] = prop
+                            except:
+                                pass
+                        ";
+                };
+                lop_16_1 {
+                      compatible = "system-device-tree-v1,lop,conditional-v1";
+                      cond_root = "cpus";
+                      cpus {
+                           cpu@.* {
+                               compatible = ".*a72.*";
+                               clocks = <0x3 0x4d>;
+                           };
+                      };
+                      true {
+                           compatible = "system-device-tree-v1,lop,exec-v1";
+                           exec = <&track_feature>;
+                      };
+                };
+                lop_16_2 {
+                      compatible = "system-device-tree-v1,lop,print-v1";
+                      print = "print_test: print 1";
+                      print2 = "print_test: print2";
+                      print3 = <0x2>;
+                };
+                lop_17_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      // clear any old selections
+                      select_1;
+                      select_2 = "/cpus/.*:compatible:.*arm,cortex-a72.*";
+                      // if the path specifier isn't used, we operate on previously selected nodes.
+                      select_3 = ":cpu-idle-states:3";
+                };
+                lop_17_2 {
+                      compatible = "system-device-tree-v1,lop,modify";
+                      // this will use the selected nodes above, to add a property
+                      modify = ":testprop:testvalue";
+                };
+                lop_17_3 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                          print( 'node: %s' % node )
+                          for s in tree.__selected__:
+                              print( 'selected: %s' % s.abs_path )
+                              print( '    testprop: %s' % s['testprop'].value[0] )
+                      ";
+                };
+                lop_17_4 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      // clear any old selections
+                      select_1;
+                      select_2 = "/cpus/.*:compatible:.*arm,cortex-a72.*";
+                      // since there's a path specifier, this is an OR operation
+                      select_3 = "/amba/.*:phy-handle:0x9";
+                };
+                lop_17_5 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                          print( 'node2: %s' % node )
+                          for s in tree.__selected__:
+                              print( 'selected2: %s' % s.abs_path )
+                      ";
+                };
         };
 };
             """)
@@ -1621,6 +1690,38 @@ def lops_code_test( device_tree, lop_file, verbose ):
         test_passed( "data persistence 2" )
     else:
         test_failed( "data persistence 2" )
+
+    c = len(re.findall( "track: lopper library routine", test_output ))
+    if c == 1:
+        test_passed( "exec/library routine" )
+    else:
+        test_failed( "exec/library routine" )
+
+    c = len(re.findall( "print_test", test_output ))
+    if c == 2:
+        test_passed( "print_test" )
+    else:
+        test_failed( "print_test" )
+
+    if re.search( "arm,idle-state", test_output ):
+        test_passed( "node print test" )
+    else:
+        test_failed( "node print test" )
+
+    if re.search( "selected: /cpus/cpu@2" , test_output ):
+        c = len(re.findall( "testprop: testvalue", test_output ))
+        if c == 1:
+            test_passed( "selection test (and)" )
+        else:
+            test_failed( "selection test (and)" )
+
+    c = len(re.findall( "node2:", test_output ))
+    if c == 4:
+        test_passed( "selection test (or)" )
+    else:
+        test_failed( "selection test (or)" )
+
+
 
     output.reset()
 
