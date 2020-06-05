@@ -24,6 +24,52 @@ import importlib
 from lopper import Lopper
 from lopper import LopperFmt
 import lopper
+from lopper_tree import *
+
+openamp_file_name = "openamp_lopper_gen.h"
+
+# given interrupt list, write interrupt base addresses and adequate register width to header file
+# TODO append memory carveout-related info
+def generate_openamp_file(ipi_list):
+    f = open(openamp_file_name, "w")
+    # for each pair of ipi's present, write a master+remote ipi
+    f.write("#ifndef OPENAMP_LOPPER_INFO_H_\n")
+    f.write("#define OPENAMP_LOPPER_INFO_H_\n\n")
+
+    for index,value in enumerate(ipi_list):
+        f.write("#define ")
+        # first ipi in pair for master, second for remote
+        ipi = "CHANNEL_"
+        ipi += str(index//2) # 1 channel per pair of IPIs
+
+        if (index % 2 == 0):
+            ipi += "_MASTER_"
+        else:
+            ipi += "_REMOTE_"
+        ipi += "IPI_BASE_ADDR_" + str(index)
+        ipi += "\t"+value+"\n"
+        f.write(ipi)
+    f.write("\n\n#endif /* OPENAMP_LOPPER_INFO_H_\n")
+    f.close()
+
+
+def parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options):
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
+
+    ipi_list = []
+    for k,v in sdt.tree.__nodes__.items():
+        if "ps_ipi" in k:
+            ipi_list.append((v["reg"]).hex()[0])
+
+    if verbose:
+        print( "[INFO]: Dedicated IPIs for OpenAMP: %s" % ipi_list)
+
+    ipis_prop = LopperProp(name="ipis", value=ipi_list)
+    rpu_cpu_node + ipis_prop
+    return ipi_list
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,xlnx-rpu", compat_string_to_test):
@@ -276,6 +322,8 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
                 rpu_cpu_node["mbox-names"].value = mbox_names
                 rpu_cpu_node.sync( sdt.FDT )
 
+    ipis = parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options)
+    generate_openamp_file(ipis)
 
     return True
 
