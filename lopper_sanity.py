@@ -1631,16 +1631,20 @@ def tree_sanity_test( fdt, verbose=0 ):
     existing_node + prop
     # you can resolve the prop, but it isn't required
     # prop.resolve( printer.fdt )
-    printer.sync()
+    # You also don't need this full sync
+    # printer.sync()
+    # you can sync the node if you want, but also, not
+    # required
+    # existing_node.sync( printer.fdt )
 
     printer.reset( fpp.name )
     printer.exec()
 
     c = test_pattern_count( fpp.name, "newproperty_existingnode" )
     if c == 1:
-        test_passed( "property add, existing node" )
+        test_passed( "property add, existing node (%s)" % fpp.name )
     else:
-        test_failed( "property add, existing node" )
+        test_failed( "property add, existing node (%s)" % fpp.name )
 
 
 
@@ -1736,13 +1740,11 @@ def lops_code_test( device_tree, lop_file, verbose ):
         else:
             test_failed( "selection test (and)" )
 
-    c = len(re.findall( "node2:", test_output ))
+    c = len(re.findall( "selected2:", test_output ))
     if c == 4:
         test_passed( "selection test (or)" )
     else:
-        test_failed( "selection test (or)" )
-
-
+        test_failed( "selection test (or) (found %s, expected: %s)" %(c,4))
 
     output.reset()
 
