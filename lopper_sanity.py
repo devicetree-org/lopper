@@ -1019,7 +1019,10 @@ def setup_fdt( device_tree, outdir ):
 
 def test_failed( error_msg ):
     print( "[TEST FAILED]: " + error_msg )
-    sys.exit(1)
+    if continue_on_error:
+        print( "[NOTE]: continue is enabled, not exiting" )
+    else:
+        sys.exit(1)
 
 def test_passed( msg ):
     print( "[TEST PASSED]: " + msg )
@@ -1622,6 +1625,24 @@ def tree_sanity_test( fdt, verbose=0 ):
     else:
         test_passed( "node remove differed" )
 
+    # another propery add manipulation test
+    prop = LopperProp( "newproperty_existingnode" )
+    existing_node = printer['/amba']
+    existing_node + prop
+    # you can resolve the prop, but it isn't required
+    # prop.resolve( printer.fdt )
+    printer.sync()
+
+    printer.reset( fpp.name )
+    printer.exec()
+
+    c = test_pattern_count( fpp.name, "newproperty_existingnode" )
+    if c == 1:
+        test_passed( "property add, existing node" )
+    else:
+        test_failed( "property add, existing node" )
+
+
 
 def lops_code_test( device_tree, lop_file, verbose ):
     device_tree.setup( dt, [lop_file], "", True )
@@ -1844,6 +1865,7 @@ def main():
     global tree
     global assists
     global format
+    global continue_on_error
 
     verbose = 0
     force = False
@@ -1853,8 +1875,9 @@ def main():
     lops = False
     assists = False
     format = False
+    continue_on_error = False
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlh", [ "format", "assists", "tree", "lops", "werror","verbose", "help"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlh", [ "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -1884,6 +1907,8 @@ def main():
             assists=True
         elif o in ( '--format'):
             format=True
+        elif o in ( '--continue' ):
+            continue_on_error = True
         elif o in ('--version'):
             print( "%s" % LOPPER_VERSION )
             sys.exit(0)
