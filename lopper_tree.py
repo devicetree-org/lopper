@@ -458,7 +458,13 @@ class LopperProp():
         # property was assigned.
         if fdt != None:
             if self.node.number != 0:
-                self.abs_path = Lopper.node_abspath( fdt, self.node.number )
+                try:
+                    self.abs_path = Lopper.node_abspath( fdt, self.node.number )
+                except Exception as e:
+                    print( "[WARNING]: exception %s triggered while resolving %s" % (e,self.name))
+                    # if something has gone wrong with node number, we can have
+                    # an exception
+                    self.abs_path = self.node.name + self.name
 
         self.abs_path = self.abs_path + "/" + self.name
 
@@ -1207,6 +1213,9 @@ class LopperNode(object):
                         print( "[DBG++]:    node sync: property %s is modified, writing back ffff" % p.name )
                     try:
                         p.sync( fdt )
+                        # this will have renumbered elements of the tree, we need to
+                        # flag for a full sync.
+                        self.tree.__must_sync__ = True
                     except Exception as e:
                         print( "[ERROR]: could not sync property: %s" % e )
 
@@ -1966,7 +1975,7 @@ class LopperTree:
 
         return ret_nodes
 
-    def sync( self, fdt = None ):
+    def sync( self, fdt = None, only_if_required = False ):
         """Sync a tree to a backing FDT
 
         This routine walks the FDT, and sync's changes from any LopperTree nodes
@@ -1978,11 +1987,19 @@ class LopperTree:
         Args:
            fdt (FDT,optional): the flattended device tree to sync to. If it isn't
                                passed, the stored FDT is use for sync.
+           only_if_required(boolean,optional): flag to indicate that we should only
+                                               sync if something is dirty
 
         Returns:
            Nothing
 
         """
+        if only_if_required:
+            if not self.__must_sync__:
+                if self.__dbg__ > 2:
+                    print( "[DBG+++]: not syncing, since __must_sync__ is not set" )
+                return
+
         sync_fdt = fdt
         if sync_fdt == None:
             sync_fdt = self.fdt
@@ -2262,6 +2279,8 @@ class LopperTree:
             Return value from the execution of the code block
 
         """
+        # only sync if required
+        self.sync( self.fdt, True )
 
         n = node
 
@@ -2395,6 +2414,9 @@ class LopperTree:
         if fdt == None:
             fdt = self.fdt
 
+        # only sync if required
+        self.sync( self.fdt, True )
+
         if verbose:
             print( "[NOTE]: filtering nodes root: %s" % node_prefix )
 
@@ -2455,6 +2477,9 @@ class LopperTree:
            Nothing
 
         """
+        # only sync if required
+        self.sync( self.fdt, True )
+
         if self.__dbg__ > 4:
             print( "[DBG++++]: LopperTree exec start" )
 
