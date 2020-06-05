@@ -63,7 +63,7 @@ class LopperProp():
        - abs_path: The absolute device tree path to this property
 
     """
-    def __init__(self, name, number, node, value = None, debug_lvl = 0 ):
+    def __init__(self, name, number = -1, node = None, value = None, debug_lvl = 0 ):
         self.__modified__ = True
         self.__pstate__ = "init"
         self.__dbg__ = debug_lvl
@@ -355,6 +355,10 @@ class LopperProp():
            boolean: True if the property was sync'd, otherwise False
         """
         # we could do a read-and-set-if-different
+
+        if self.__dbg__ > 2:
+            print( "[DBG+++]: property sync: node: %s, name: %s value: %s" % (self.node.number,self.name,self.value))
+
         Lopper.property_set( fdt, self.node.number, self.name, self.value, LopperFmt.COMPOUND )
         self.__modified__ = False
         self.__pstate__ = "syncd"
@@ -498,7 +502,8 @@ class LopperProp():
             # if the length is one, and the only element is empty '', then
             # we just put out the name
             if len(prop_val) == 0:
-                outstring = ""
+                # outstring = ""
+                outstring = "{0};".format( self.name )
             elif len(prop_val) == 1 and prop_val[0] == '':
                 outstring = "{0};".format( self.name )
             else:
@@ -1199,8 +1204,12 @@ class LopperNode(object):
 
                 if p.__modified__:
                     if self.__dbg__ > 2:
-                        print( "[DBG++]:    node sync: property %s is modified, writing back" % p.name )
-                    p.sync( fdt )
+                        print( "[DBG++]:    node sync: property %s is modified, writing back ffff" % p.name )
+                    try:
+                        p.sync( fdt )
+                    except Exception as e:
+                        print( "[ERROR]: could not sync property: %s" % e )
+
                     retval = True
                 if not p.__pstate__ == "syncd":
                     if self.__dbg__ > 2:
@@ -1401,6 +1410,7 @@ class LopperNode(object):
             print( "[DBG++]: node %s adding property: %s" % (self.abs_path,prop.name) )
 
         self.__props__[prop.name] = prop
+        prop.node = self
 
         # indicates that we should be sync'd
         self.__modified__ = True
@@ -2748,6 +2758,8 @@ class LopperTreePrinter( LopperTree ):
                 self.output = open( output_file, "w")
             except Exception as e:
                 print( "[WARNING]: could not open %s as output: %s" % (output_file,e))
+        else:
+            self.output = output_file
 
     def start(self, n, fdt ):
         """LopperTreePrinter start
