@@ -94,8 +94,6 @@
 		              <0xf9000000 &amba_rpu 0xf9000000 0x10000>,
 		              <0x0 &memory 0x0 0x80000000>,
 		              <0x0 &tcm 0xFFE90000 0x10000>;
-//			      <0x0 &ps_ipi_0 0xFF340000 0x1000>,
-//			      <0x0 &ps_ipi_1 0xFF350000 0x1000>;
 		cpu@0 {
 			compatible = "arm,cortex-r5";
 			device_type = "cpu";
@@ -813,7 +811,6 @@
 			 */
 			access = <&tcm 0x1>, <&ethernet0 0x0>;
 
-			//ipis =	<&ps_ipi_0 0x0>,  <&ps_ipi_1 0x1>;
 			chosen {
 				bootargs = "console=ttyAMA0";
 			};
