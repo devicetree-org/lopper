@@ -1456,7 +1456,7 @@ class LopperNode(object):
                 saved_props = self.__props__
                 self.__props__ = OrderedDict()
 
-                self.name = fdt.get_name(self.number)
+                self.name = Lopper.node_getname( fdt, self.number )
                 self.phandle = Lopper.node_getphandle( fdt, self.number )
 
                 if self.number > 0:
