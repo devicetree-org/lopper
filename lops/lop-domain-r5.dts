@@ -92,6 +92,7 @@
                           compatible = "system-device-tree-v1,lop,assist-v1";
                           id = "openamp,xlnx-rpu";
                           node = "/domains/openamp_r5";
+                          options = "openamp_channel_info.h";
                   };
                   lop_13 {
                          compatible = "system-device-tree-v1,lop,output";
