@@ -26,16 +26,20 @@ from lopper import LopperFmt
 import lopper
 from lopper_tree import *
 
-openamp_file_name = "openamp_lopper_gen.h"
 
 # given interrupt list, write interrupt base addresses and adequate register width to header file
 # TODO append memory carveout-related info
-def generate_openamp_file(ipi_list):
-    f = open(openamp_file_name, "w")
-    # for each pair of ipi's present, write a master+remote ipi
+def generate_openamp_file(ipi_list, options):
+    if (len(options["args"])) > 0:
+        f_name = options["args"][0]
+    else:
+        f_name = "openamp_lopper_info.h"
+
+    f = open(f_name, "w")
     f.write("#ifndef OPENAMP_LOPPER_INFO_H_\n")
     f.write("#define OPENAMP_LOPPER_INFO_H_\n\n")
 
+    # for each pair of ipi's present, write a master+remote ipi
     for index,value in enumerate(ipi_list):
         f.write("#define ")
         # first ipi in pair for master, second for remote
@@ -323,7 +327,7 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
                 rpu_cpu_node.sync( sdt.FDT )
 
     ipis = parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options)
-    generate_openamp_file(ipis)
+    generate_openamp_file(ipis,options)
 
     return True
 
