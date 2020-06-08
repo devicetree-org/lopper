@@ -390,36 +390,30 @@ class LopperProp():
         if not prop_val:
             return phandle_targets
 
-        prop_type = type(prop_val)
-        if prop_type == list:
-            phandle_idxs = list(range(1,len(prop_val) + 1))
-            phandle_idxs = phandle_idxs[idx - 1::pfields]
+        phandle_idxs = list(range(1,len(prop_val) + 1))
+        phandle_idxs = phandle_idxs[idx - 1::pfields]
 
-            element_count = 1
-            element_total = len(prop_val)
-            for i in prop_val:
-                base = 10
-                if re.search( "0x", i ):
-                    base = 16
+        element_count = 1
+        element_total = len(prop_val)
+        for i in prop_val:
+            base = 10
+            if re.search( "0x", i ):
+                base = 16
+            try:
+                i_as_int = int(i,base)
+                i = i_as_int
+            except:
+                pass
+
+            if element_count in phandle_idxs:
                 try:
-                    i_as_int = int(i,base)
-                    i = i_as_int
+                    lnode = self.node.tree.pnode( i )
+                    if lnode:
+                        phandle_targets.append( lnode )
                 except:
                     pass
 
-                if element_count in phandle_idxs:
-                    try:
-                        # TODO: this should be a list of LopperNodes, not offsets
-                        tgn = fdt.node_offset_by_phandle( i )
-                        phandle_tgt_name = Lopper.phandle_safe_name( fdt.get_name( tgn ) )
-                        # TODO: name isn't used, we could probably drop the call.
-                        phandle_targets.append( tgn )
-                    except:
-                        pass
-
-                element_count = element_count + 1
-        else:
-            return phandle_targets
+            element_count = element_count + 1
 
         return phandle_targets
 
@@ -1103,19 +1097,12 @@ class LopperNode(object):
             if not skip:
                 # process the property
                 phandle_nodes = p.resolve_phandles( resolve_fdt )
-                for ph in phandle_nodes:
+                for ph_node in phandle_nodes:
                     # don't call in for our own node, or we'll recurse forever
-                    if ph != self.number:
-                        try:
-                            ph_node = self.tree.__nnodes__[ph]
-                        except:
-                            ph_node = None
-
-                        refs = []
-                        if ph_node:
-                            refs = ph_node.resolve_all_refs( resolve_fdt, property_mask_check )
-                            if refs:
-                                reference_list.append( refs )
+                    if ph_node.number != self.number:
+                        refs = ph_node.resolve_all_refs( resolve_fdt, property_mask_check )
+                        if refs:
+                            reference_list.append( refs )
 
         # flatten the list
         flat_list = []
