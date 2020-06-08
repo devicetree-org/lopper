@@ -722,6 +722,24 @@ class LopperNode(object):
         self.__nstate__ = "init"
         self.__modified__ = False
 
+    def __deepcopy__(self, memodict={}):
+        new_instance = LopperNode()
+
+        # if we blindly want everything, we'd do this update. But it
+        # is easier to pick out the properties that we do want, versus
+        # copying and undoing.
+        # new_instance.__dict__.update(self.__dict__)
+        new_instance.__props__ = copy.deepcopy( self.__props__, memodict )
+        new_instance.name = copy.deepcopy( self.name, memodict )
+        new_instance.number = copy.deepcopy( self.number, memodict )
+        new_instance.depth = copy.deepcopy( self.depth, memodict )
+        new_instance.label = copy.deepcopy( self.label, memodict )
+        new_instance.pclass = copy.deepcopy( self.pclass, memodict )
+        new_instance.abs_path = copy.deepcopy( self.abs_path, memodict )
+
+        return new_instance
+
+
     # supports NodeA( NodeB ) to copy state
     def __call__( self, othernode=None ):
         """Callable implementation for the node class
@@ -826,11 +844,6 @@ class LopperNode(object):
         Returns:
            The attribute value, or AttributeError if it doesn't exist.
         """
-        # this is needed to ensure that deep copy works, the exception is expected
-        # by that process.
-        if name == "__setstate__" or name == "__deepcopy__" or name == "__getstate__":
-            raise AttributeError(name)
-
         try:
             return object.__getattribute__(self, name)
         except:
@@ -1470,9 +1483,7 @@ class LopperNode(object):
 
                 # parent and depth
                 if self.number > 0:
-                    depth = 1
-
-                    parent_node_num = fdt.parent_offset( self.number, QUIET_NOTFOUND )
+                    parent_node_num = Lopper.node_parent( fdt, self.number )
                     parent_path = Lopper.node_abspath( fdt, parent_node_num )
                     if self.tree:
                         self.parent = self.tree[parent_path]
@@ -1483,15 +1494,14 @@ class LopperNode(object):
                 self.depth = depth
 
                 self.children = []
-                offset = fdt.first_subnode( self.number, QUIET_NOTFOUND )
-                while offset > 0:
+                subnodes = Lopper.node_subnodes( fdt, self.abs_path, False )
+                for s in subnodes:
                     if self.abs_path != '/':
-                        child_path2 = self.abs_path + '/' + Lopper.node_getname( fdt, offset )
+                        child_path2 = self.abs_path + '/' + s
                     else:
-                        child_path2 = '/' + Lopper.node_getname( fdt, offset )
+                        child_path2 = '/' + s
 
                     self.children.append(child_path2)
-                    offset = fdt.next_subnode(offset, QUIET_NOTFOUND)
 
                 # First pass: we look at the properties in the FDT. If they were in our
                 # saved properties dictionary from above, we copy them back in. Re-resolving
@@ -1499,9 +1509,8 @@ class LopperNode(object):
                 # possible.
                 self.type = []
                 label_props = []
-                poffset = fdt.first_property_offset(self.number, QUIET_NOTFOUND)
-                while poffset > 0:
-                    prop = fdt.get_property_by_offset(poffset)
+                node_props = Lopper.node_properties( fdt, self.number )
+                for prop in node_props:
                     prop_val = Lopper.property_get( fdt, self.number, prop.name, LopperFmt.COMPOUND )
                     dtype = Lopper.property_type_guess( prop )
 
@@ -1520,7 +1529,7 @@ class LopperNode(object):
                         # somehow changes, we'll need to call resolve on this as well.
                         self.__props__[prop.name] = existing_prop
                     else:
-                        self.__props__[prop.name] = LopperProp( prop.name, poffset, self, prop_val, self.__dbg__ )
+                        self.__props__[prop.name] = LopperProp( prop.name, -1, self, prop_val, self.__dbg__ )
                         if dtype == LopperFmt.UINT8:
                             self.__props__[prop.name].binary = True
 
@@ -1533,7 +1542,6 @@ class LopperNode(object):
                             self.label = self.__props__[prop.name].value[0]
                             label_props.append( self.__props__[prop.name] )
 
-                    poffset = fdt.next_property_offset(poffset, QUIET_NOTFOUND)
 
                 # second pass: re-resolve properties if we found some that had labels
                 if label_props:
@@ -2002,17 +2010,14 @@ class LopperTree:
         # order and pickup any trickle down changes (as far as we know).
 
         # technique b)
-        nn = 0
-        depth = 0
-        while depth >= 0:
-            lname = Lopper.node_abspath( sync_fdt, nn )
+
+        nodes = Lopper.nodes( sync_fdt, "/" )
+        for n in nodes:
             try:
-                if self.__nodes__[lname]:
-                    self.__nodes__[lname].sync( sync_fdt )
+                if self.__nodes__[n]:
+                    self.__nodes__[n].sync( sync_fdt )
             except:
                 pass
-
-            nn, depth = sync_fdt.next_node( nn, depth, (libfdt.BADOFFSET,) )
 
         # technique a), left for reference
         # sync any modified properties to a device tree
@@ -2131,6 +2136,8 @@ class LopperTree:
 
         # node is a LopperNode
         node.number = Lopper.node_add( self.fdt, node.abs_path, True, 0 )
+
+        node.tree = self
 
         node.__dbg__ = self.__dbg__
 
@@ -2599,9 +2606,10 @@ class LopperTree:
                 print( "[DGB+]: tree resolution start: %s" % self )
 
             nn = 0
-            depth = 0
-            while depth >= 0:
-                abs_path = Lopper.node_abspath( self.fdt, nn )
+            nodes = Lopper.nodes( self.fdt, "/" )
+            for node_path in nodes:
+                abs_path = node_path
+                nn = Lopper.node_number( self.fdt, node_path )
                 try:
                     # we try and re-use the node if possible, since that keeps
                     # old references valid for adding more properties, etc
@@ -2614,11 +2622,10 @@ class LopperTree:
 
                 # resolve the details against the fdt
                 node.resolve( self.fdt )
-
                 try:
                     node_check = self.__nodes__[node.abs_path]
                     if node_check:
-                        print( "[ERROR]: tree inconsistency found, two nodes with the same path" )
+                        print( "[ERROR]: tree inconsistency found, two nodes with the same path (%s)" % node_check )
                         # we need to exit the thread/backgound call AND the entire application, so
                         # hit is with a hammer.
                         os._exit(1)
@@ -2634,7 +2641,6 @@ class LopperTree:
                 if node.label:
                     self.__lnodes__[node.label] = node
 
-                nn, depth = self.fdt.next_node( nn, depth, (libfdt.BADOFFSET,) )
 
             for node_abs_path in nodes_saved:
                 # invalidate nodes, in case someone is holding a reference
@@ -2807,20 +2813,23 @@ class LopperTreePrinter( LopperTree ):
         indent = n.depth * 8
         nodename = n.name
         if n.number != 0:
-            if n.phandle != 0:
-                plabel = ""
-                try:
-                    if n['lopper-label.*']:
-                        plabel = n['lopper-label.*'].value[0]
-                except:
-                    pass
+            plabel = ""
+            try:
+                if n['lopper-label.*']:
+                    plabel = n['lopper-label.*'].value[0]
+            except:
+                pass
 
+            if n.phandle != 0:
                 if plabel:
                     outstring = plabel + ": " + nodename + " {"
                 else:
                     outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
             else:
-                outstring = nodename + " {"
+                if plabel:
+                    outstring = plabel + ": " + nodename + " {"
+                else:
+                    outstring = nodename + " {"
 
             print(outstring.rjust(len(outstring)+indent," " ), file=self.output )
 

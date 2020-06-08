@@ -405,6 +405,21 @@ class Lopper:
         return prev
 
     @staticmethod
+    def node_subnode( fdt, node_number_or_path ):
+        parent = -1
+        node_number = Lopper.node_number( fdt, node_number_or_path )
+
+
+    @staticmethod
+    def node_parent( fdt, node_number_or_path ):
+        parent = -1
+        node_number = Lopper.node_number( fdt, node_number_or_path )
+        if node_number > 0:
+            parent = fdt.parent_offset( node_number, QUIET_NOTFOUND )
+
+        return parent
+
+    @staticmethod
     def node_properties_as_dict( fdt, node, verbose=0 ):
         """Create a dictionary populated with the nodes properties.
 
