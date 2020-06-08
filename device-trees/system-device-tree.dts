@@ -56,25 +56,25 @@
 			};
 		};
 	};
-	ps_ipi_1 {
+	ps_ipi_1: ps_ipi@ff340000 {
 		compatible = "ps-interrupt";
 		#address-cells = <2>;
 		#size-cells = <2>;
 		reg = <0xFF340000 0x1000>;
 	};
-	ps_ipi_2 {
+	ps_ipi_2: ps_ipi@ff350000 {
 		compatible = "ps-interrupt";
 		#address-cells = <2>;
 		#size-cells = <2>;
 		reg = <0xFF350000 0x1000>;
 	};
-	ps_ipi_3 {
+	ps_ipi_3: ps_ipi@ff360000 {
 		compatible = "ps-interrupt";
 		#address-cells = <2>;
 		#size-cells = <2>;
 		reg = <0xFF360000 0x1000>;
 	};
-	ps_ipi_4 {
+	ps_ipi_4: ps_ipi@ff370000 {
 		compatible = "ps-interrupt";
 		#address-cells = <2>;
 		#size-cells = <2>;
