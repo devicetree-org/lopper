@@ -29,6 +29,9 @@ import textwrap
 from collections import UserDict
 from collections import OrderedDict
 
+from string import printable
+
+
 import libfdt
 from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
 
@@ -1640,6 +1643,48 @@ class Lopper:
         return barray
 
     @staticmethod
+    def string_test( prop, allow_multiline = True ):
+        """ Check if a property (byte array) is a string
+
+        Args:
+           prop: (libfdt property)
+
+        Returns:
+           boolean: True if the property looks like a string
+        """
+        if not len( prop ):
+            return False
+
+        if prop[-1] != 0:
+            return False
+
+        byte = 0
+        while byte < len( prop ):
+            bytei = byte
+            while byte < len( prop ) and \
+                  prop[byte] != 0 and \
+                  prop[byte] in printable.encode() and \
+                  prop[byte] not in (ord('\r'), ord('\n')):
+
+                byte += 1
+
+            if prop[byte] in (ord('\r'), ord('\n')):
+                if allow_multiline:
+                    byte += 1
+                    continue
+
+            # if we broke walking through the positions, and
+            # we aren't on a null (multiple strings) or are
+            # where we started, then this isn't a string.
+            if prop[byte] != 0 or byte == bytei:
+                return False
+
+            byte += 1
+
+        return True
+
+
+    @staticmethod
     def property_type_guess( prop ):
         """utility routine to guess the type of a property
 
@@ -1677,6 +1722,11 @@ class Lopper:
                 type_guess = LopperFmt.STRING
                 try:
                     val = prop[:-1].decode('utf-8').split('\x00')
+                    # and a 2nd opinion
+                    if not Lopper.string_test( prop ):
+                        # change our mind
+                        type_guess = LopperFmt.UINT8
+
                 except Exception as e:
                     # it didn't decode, fall back to numbers ..
                     type_guess = LopperFmt.UINT8
@@ -1735,7 +1785,7 @@ class Lopper:
 
         """
         if verbose > 3:
-            print( "[DBG+]: property_value_decode start ------> %s %s" % (prop,ftype))
+            print( "[DBG+]: '%s' decode start: %s %s" % (prop.name,prop,ftype))
 
         # Note: these could also be nested.
         # Note: this is temporary since the decoding
