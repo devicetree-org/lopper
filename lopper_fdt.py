@@ -368,7 +368,7 @@ class Lopper:
 
     @staticmethod
     def node_add( fdt_dest, node_full_path, create_parents = True, verbose = 0 ):
-        """Add an empty node to a flattended device tree
+        """Add an empty node to a flattened device tree
 
         Creates a new node in a flattened devide tree at a given path. If
         desired a node structure (aka parents) will be created as part of
@@ -405,10 +405,94 @@ class Lopper:
         return prev
 
     @staticmethod
-    def node_subnode( fdt, node_number_or_path ):
-        parent = -1
-        node_number = Lopper.node_number( fdt, node_number_or_path )
+    def node_properties( fdt, node_number_or_path ):
+        """Get the list of properties for a node
 
+        Gather the list of FDT properties for a given node.
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_number_or_path: (string or int): node number or full path to
+                                 the target node.
+
+        Returns:
+            list (FDT prop): The properties of the node [] if no props
+        """
+        prop_list = []
+        node = Lopper.node_number( fdt, node_number_or_path )
+        if node == -1:
+            return prop_list
+
+        poffset = fdt.first_property_offset(node, QUIET_NOTFOUND)
+        while poffset > 0:
+            prop = fdt.get_property_by_offset(poffset)
+            prop_list.append(prop)
+            poffset = fdt.next_property_offset(poffset, QUIET_NOTFOUND)
+
+        return prop_list
+
+    @staticmethod
+    def nodes( fdt, node_number_or_path, abs_paths = True ):
+        """Get the nodes of a tree from a starting point
+
+        Gather the list nodes in the tree from a particular starting point
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_number_or_path: (string or int): node number or full path to
+                                 the target node.
+            abs_paths (boolean, optional): indicate if absolute paths should be returned
+
+        Returns:
+            list (strings): The nodes, [] if no nodes
+        """
+        node_list = []
+
+        node = Lopper.node_number( fdt, node_number_or_path )
+        if node == -1:
+            return node_list
+
+        depth = 0
+        while depth >= 0:
+            if abs_paths:
+                node_list.append( Lopper.node_abspath( fdt, node ) )
+            else:
+                node_list.append( Lopper.node_getname( fdt, node ) )
+
+            node, depth = fdt.next_node(node, depth, (libfdt.BADOFFSET,))
+
+        return node_list
+
+    @staticmethod
+    def node_subnodes( fdt, node_number_or_path, abs_paths = True ):
+        """Get the list of properties for a node
+
+        Gather the list of FDT properties for a given node.
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_number_or_path: (string or int): node number or full path to
+                                 the target node.
+            abs_paths (boolean, optional): indicate if absolute paths should be returned
+
+        Returns:
+            list (strings): The subnodes, [] if no subnodes
+        """
+        node_list = []
+        node = Lopper.node_number( fdt, node_number_or_path )
+        if node == -1:
+            return node_list
+
+        offset = fdt.first_subnode(node, QUIET_NOTFOUND)
+        while offset > 0:
+            if abs_paths:
+                node_list.append( Lopper.node_abspath( fdt, offset ) )
+            else:
+                node_list.append( Lopper.node_getname( fdt, offset ) )
+
+            offset = fdt.next_subnode( offset, QUIET_NOTFOUND )
+
+        return node_list
 
     @staticmethod
     def node_parent( fdt, node_number_or_path ):
@@ -1072,27 +1156,6 @@ class Lopper:
                     if verbose:
                         print( "[INFO]: deleting node %s" % node_name )
                     fdt.del_node( node, True )
-
-    # source: libfdt tests
-    @staticmethod
-    def subnodes(fdt, node_path):
-        """Read a list of subnodes from a node
-
-        Args:
-           node_path: Full path to node, e.g. '/subnode@1/subsubnode'
-
-        Returns:
-           List of subnode names for that node, e.g. ['subsubnode', 'ss1']
-        """
-        subnode_list = []
-        node = fdt.path_offset(node_path)
-        offset = fdt.first_subnode(node, QUIET_NOTFOUND)
-        while offset > 0:
-            name = fdt.get_name(offset)
-            subnode_list.append(name)
-            offset = fdt.next_subnode(offset, QUIET_NOTFOUND)
-
-        return subnode_list
 
     # source: libfdt tests
     @staticmethod
