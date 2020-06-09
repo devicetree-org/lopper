@@ -1007,6 +1007,14 @@ def setup_format_tree( outdir ):
                         queues-2 = <0x00 0x01>;
                 };
         };
+        channel0vdev0buffer: channel0vdev0buffer@3ed48000 {
+            no-map;
+            #address-cells = <2>;
+            #size-cells = <2>;
+            reg = <0x3ed48000 0x100000>;
+            reg2 = <0x3ed48 0x100000>;
+            compatible = "openamp,xlnx,mem-carveout";
+        };
 };
 """)
 
