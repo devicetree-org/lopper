@@ -947,8 +947,8 @@ class Lopper:
             if cb_funcs:
                 for cb_func in cb_funcs:
                     try:
-                        out_tree = lt.LopperTreePrinter(  fdt_to_write, True, output_filename, verbose )
-                        if not cb_func( 0, out_tree, output_filename, { 'verbose' : sdt.verbose } ):
+                        out_tree = lt.LopperTreePrinter( fdt_to_write, True, output_filename, verbose )
+                        if not cb_func( 0, out_tree, { 'outfile': output_filename, 'verbose' : sdt.verbose } ):
                             print( "[WARNING]: the assist returned false, check for errors ..." )
                     except Exception as e:
                         print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )

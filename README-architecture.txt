@@ -815,10 +815,16 @@ example above), or one that is associated with an output node in a lop file.
 If compatible, and output assist should return a function of the following
 format:
 
-   def assist_write( node, lt, outfile, options ):
+   def assist_write( node, lt, options ):
+
+Note: A LopperTree is passed to the output assist, and not a system device
+      tree, since changes to the core SDT should not be made by an output
+      assist.
 
 The routine can write the appropriate parts of the passed LopperTreePrinter (lt
 above) to the passed output filename.
+
+The output filename is passed via the options dictionary, in the key 'outfile'
 
 execution samples:
 ------------------
