@@ -25,11 +25,54 @@ from lopper import Lopper
 from lopper import LopperFmt
 import lopper
 from lopper_tree import *
+from re import *
 
+def write_one_carveout(f, prefix, addr_prop, range_prop):
+    f.write("#define ")
+    f.write(prefix+"ADDR\t"+addr_prop+"\n")
+    f.write("#define ")
+    f.write(prefix+"RANGE\t"+range_prop+"\n")
+
+def write_mem_carveouts(f, carveout_list, options):
+    symbol_name = "CHANNEL_0_MEM_"
+    current_channel_number = 0
+    channel_range = 0
+    current_channel_count = 0 # if == 4 then got complete channel range
+
+    for i in carveout_list:
+        if "channel" in i[0]:
+            # save channel number
+            channel_number = int((re.search("channel([0-9]+)", i[0]).group(1) ))
+            if channel_number != current_channel_number:
+                symbol_name = "CHANNEL_"+str(channel_number)+"_MEM_"
+                current_channel_number = channel_number
+
+            if "vdev0buffer" in i[0]:
+                write_one_carveout(f, symbol_name+"VDEV0BUFFER_", i[1][0], i[1][1])
+                channel_range += int(i[1][1],16)
+                current_channel_count += 1
+            elif "vdev0vring0" in i[0]:
+                write_one_carveout(f, symbol_name+"VDEV0VRING0_", i[1][0], i[1][1])
+                channel_range += int(i[1][1],16)
+                current_channel_count += 1
+            elif "vdev0vring1" in i[0]:
+                write_one_carveout(f, symbol_name+"VDEV0VRING1_", i[1][0], i[1][1])
+                channel_range += int(i[1][1],16)
+                current_channel_count += 1
+            elif "elfload" in i[0]:
+                write_one_carveout(f, symbol_name+"ELFLOAD_", i[1][0], i[1][1])
+                channel_range += int(i[1][1],16)
+                current_channel_count += 1
+
+            if current_channel_count == 4:
+                current_channel_count = 0
+                f.write("#define ")
+                f.write(symbol_name+"RANGE\t"+str(hex(channel_range))+"\n\n")
+                channel_range = 0
 
 # given interrupt list, write interrupt base addresses and adequate register width to header file
 # TODO append memory carveout-related info
-def generate_openamp_file(ipi_list, options):
+def generate_openamp_file(ipi_list, carveout_list, options):
     if (len(options["args"])) > 0:
         f_name = options["args"][0]
     else:
@@ -53,9 +96,13 @@ def generate_openamp_file(ipi_list, options):
         ipi += "IPI_BASE_ADDR_" + str(index)
         ipi += "\t"+value+"\n"
         f.write(ipi)
+    f.write("\n")
+
+    write_mem_carveouts(f, carveout_list, options)
+
+
     f.write("\n\n#endif /* OPENAMP_LOPPER_INFO_H_\n")
     f.close()
-
 
 def parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options):
     try:
@@ -74,6 +121,19 @@ def parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options):
     ipis_prop = LopperProp(name="ipis", value=ipi_list)
     rpu_cpu_node + ipis_prop
     return ipi_list
+
+def parse_memory_carevouts_for_rpu(sdt, domain_node, rpu_cpu_node, options):
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
+
+    carveout_list = []
+    for k,v in sdt.tree.__nodes__.items():
+        if "channel" in k and "openamp,xlnx,mem-carveout" in str(v['compatible']):
+            carveout_list.append( ( (str(v), str(v['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
+
+    return carveout_list
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,xlnx-rpu", compat_string_to_test):
@@ -327,7 +387,8 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
                 rpu_cpu_node.sync( sdt.FDT )
 
     ipis = parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options)
-    generate_openamp_file(ipis,options)
+    mem_carveouts = parse_memory_carevouts_for_rpu(sdt, domain_node, rpu_cpu_node, options)
+    generate_openamp_file(ipis, mem_carveouts, options)
 
     return True
 
