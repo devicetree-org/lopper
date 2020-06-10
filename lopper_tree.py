@@ -23,9 +23,6 @@ from collections import OrderedDict
 from collections import Counter
 import copy
 
-import libfdt
-from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
-
 from lopper import *
 
 # used in node_filter
@@ -445,7 +442,7 @@ class LopperProp():
         prop_val = self.value
 
         if self.__dbg__ > 1:
-            print( "[DBG+]:         property resolve: %s" % self.name )
+            print( "[DBG+]:         property resolve: %s (%s)" % (self.name,self.value) )
 
         self.abs_path = ""
         # we sometimes resolve against a zerod out fdt, i.e. when a
@@ -1529,7 +1526,8 @@ class LopperNode(object):
                         # somehow changes, we'll need to call resolve on this as well.
                         self.__props__[prop.name] = existing_prop
                     else:
-                        self.__props__[prop.name] = LopperProp( prop.name, -1, self, prop_val, self.__dbg__ )
+                        self.__props__[prop.name] = LopperProp( prop.name, -1, self,
+                                                                prop_val, self.__dbg__ )
                         if dtype == LopperFmt.UINT8:
                             self.__props__[prop.name].binary = True
 
@@ -2319,8 +2317,6 @@ class LopperTree:
             for e in env:
                 safe_dict[e] = env[e]
 
-        # search and replace any template options in the cmd. yes, this is
-        # only a proof of concept, you'd never do this like this in the end.
         tc = cmd
 
         # we wrap the test command to control the ins and outs
