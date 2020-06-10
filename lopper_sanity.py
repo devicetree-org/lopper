@@ -1564,7 +1564,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     if verbose:
         print( "writing to: /tmp/tester-output.dts" )
-    Lopper.write_fdt( printer.fdt, "/tmp/tester-output.dts", None, True, verbose, True )
+    LopperSDT(printer.fdt).write( printer.fdt, "/tmp/tester-output.dts", True, True )
 
     # remove the 2nd property, re-write
     if verbose:
@@ -1572,7 +1572,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     new_node - new_property2
     printer.sync()
 
-    Lopper.write_fdt( printer.fdt, "/tmp/tester-output2.dts", None, True, verbose, True )
+    LopperSDT(printer.fdt).write( printer.fdt, "/tmp/tester-output2.dts", True, True )
 
     if filecmp.cmp( "/tmp/tester-output.dts", "/tmp/tester-output2.dts", False ):
         test_failed( "node remove write should have differed" )
@@ -1616,7 +1616,7 @@ def tree_sanity_test( fdt, verbose=0 ):
         tree2.__dbg__ = 3
 
     tree2 + new_node2
-    Lopper.write_fdt( tree2.fdt, "/tmp/tester-output-tree2.dts", None, True, verbose, True )
+    LopperSDT(tree2.fdt).write( tree2.fdt, "/tmp/tester-output-tree2.dts", True, True )
 
     print( "[TEST]: end: second tree test, node deep copy\n" )
 
@@ -1625,7 +1625,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     printer = printer - new_node
     #printer.delete( new_node )
 
-    Lopper.write_fdt( printer.fdt, "/tmp/tester-output-node-removed.dts", None, True, verbose, True )
+    LopperSDT(printer.fdt).write( printer.fdt, "/tmp/tester-output-node-removed.dts", True, True )
     print( "[TEST]: end: tree test, node remove" )
 
     if filecmp.cmp( "/tmp/tester-output-node-removed.dts", "/tmp/tester-output-tree2.dts", False ):
@@ -1761,7 +1761,7 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
     device_tree.perform_lops()
 
     print( "[TEST]: writing to %s" % (device_tree.output_file))
-    Lopper.write_fdt( device_tree.FDT, device_tree.output_file, device_tree, True, device_tree.verbose, device_tree.enhanced )
+    device_tree.write( enhanced = True )
 
     print( "\n[TEST]: check lopper operations on: %s" % (device_tree.output_file))
     c = test_pattern_count( device_tree.output_file, "anode_to_delete" )
@@ -1844,7 +1844,7 @@ def assists_sanity_test( device_tree, lop_file, verbose ):
     device_tree.perform_lops()
 
     print( "[TEST]: writing resulting FDT to %s" % device_tree.output_file )
-    Lopper.write_fdt( device_tree.FDT, device_tree.output_file, device_tree, True, device_tree.verbose, device_tree.enhanced )
+    device_tree.write( enhanced = True )
 
     device_tree.cleanup()
 
@@ -1852,7 +1852,7 @@ def format_sanity_test( device_tree, verbose ):
     device_tree.setup( dt, [], "", True )
 
     print( "[TEST]: writing to %s" % (device_tree.output_file))
-    Lopper.write_fdt( device_tree.FDT, device_tree.output_file, device_tree, True, device_tree.verbose, device_tree.enhanced )
+    device_tree.write( enhanced = True )
 
 
 def usage():

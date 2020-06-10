@@ -399,7 +399,6 @@ class LopperSDT:
                     os.remove( self.dtb )
                 if self.enhanced:
                     os.remove( self.dts + ".enhanced" )
-                    os.remove( self.dts + ".phandle" )
             except:
                 # doesn't matter if the remove failed, it means it is
                 # most likely gone
@@ -410,26 +409,95 @@ class LopperSDT:
         #       not cleaning up the concatenated compiled. pp file, since
         #       it is created with mktmp()
 
-    def write( self, outfilename ):
-        """write the system device tree to a file
+    def write( self, fdt = None, output_filename = None, overwrite = True, enhanced = False ):
+        """Write a system device tree to a file
 
-        Writes the system device tree (modified or not) to the passed
-        output file name
+        Write a fdt (or system device tree) to an output file. This routine uses
+        the output filename to determine if a module should be used to write the
+        output.
+
+        If the output format is .dts or .dtb, Lopper takes care of writing the
+        output. If it is an unrecognized output type, the available assist
+        modules are queried for compatibility. If there is a compatible assist,
+        it is called to write the file, otherwise, a warning or error is raised.
 
         Args:
-           outfilename (string): output file name
+            fdt (fdt,optional): source flattened device tree to write
+            output_filename (string,optional): name of the output file to create
+            overwrite (bool,optional): Should existing files be overwritten. Default is True.
+            enhanced(bool,optional): whether enhanced printing should be performed. Default is False
 
         Returns:
-           Nothing
+            Nothing
 
         """
-        byte_array = self.FDT.as_bytearray()
+        if not output_filename:
+            output_filename = self.output_file
 
-        if self.verbose:
-            print( "[INFO]: writing output dtb: %s" % outfilename )
+        if not output_filename:
+            return
 
-        with open(outfilename, 'wb') as w:
-            w.write(byte_array)
+        fdt_to_write = fdt
+        if not fdt_to_write:
+            fdt_to_write = self.FDT
+
+        if re.search( ".dtb", output_filename ):
+            Lopper.write_fdt( fdt_to_write, output_filename, True, self.verbose )
+
+        elif re.search( ".dts", output_filename ):
+            if self.verbose:
+                print( "[INFO]: dts format detected, writing %s" % output_filename )
+
+            if enhanced:
+                o = Path(output_filename)
+                if o.exists() and not overwrite:
+                    print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                    sys.exit(1)
+
+                printer = lt.LopperTreePrinter( fdt_to_write, True, output_filename, self.verbose )
+                printer.exec()
+            else:
+                Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose, False )
+
+        else:
+            # we use the outfile extension as a mask
+            (out_name, out_ext) = os.path.splitext(output_filename)
+            cb_funcs = self.find_compatible_assist( 0, "", out_ext )
+            if cb_funcs:
+                for cb_func in cb_funcs:
+                    try:
+                        out_tree = lt.LopperTreePrinter( fdt_to_write, True, output_filename, self.verbose )
+                        if not cb_func( 0, out_tree, { 'outfile': output_filename, 'verbose' : self.verbose } ):
+                            print( "[WARNING]: the assist returned false, check for errors ..." )
+                    except Exception as e:
+                        print( "[WARNING]: output assist %s failed: %s" % (cb_func,e) )
+                        exc_type, exc_obj, exc_tb = sys.exc_info()
+                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                        print(exc_type, fname, exc_tb.tb_lineno)
+                        if self.werror:
+                            sys.exit(1)
+            else:
+                if self.verbose:
+                    print( "[INFO]: no compatible output assist found, skipping" )
+                if self.werror:
+                    sys.exit(2)
+
+    @staticmethod
+    def phandle_safe_name( phandle_name ):
+        """Make the passed name safe to use as a phandle label/reference
+
+        Args:
+            phandle_name (string): the name to use for a phandle
+
+        Returns:
+            The modified phandle safe string
+        """
+
+        safe_name = phandle_name.replace( '@', '' )
+        safe_name = safe_name.replace( '-', "_" )
+
+        return safe_name
+
 
     def assist_find(self, assist_name, local_load_paths = []):
         """Locates a python module that matches assist_name
@@ -842,7 +910,8 @@ class LopperSDT:
             if self.verbose > 1:
                 print( "[DBG+]: outfile is: %s" % output_file_name )
 
-            output_nodes = Lopper.property_get( lops_fdt, lop_node_number, 'nodes', LopperFmt.COMPOUND, LopperFmt.STRING )
+            output_nodes = Lopper.property_get( lops_fdt, lop_node_number, 'nodes',
+                                                LopperFmt.COMPOUND, LopperFmt.STRING )
 
             if self.verbose > 1:
                 print( "[DBG+]: output selected are: %s" % output_nodes )
@@ -914,7 +983,7 @@ class LopperSDT:
 
             if not self.dryrun:
                 output_file_full = self.outdir + "/" + output_file_name
-                Lopper.write_fdt( ff, output_file_full, self, True, self.verbose, self.enhanced )
+                self.write( ff, output_file_full, True, self.enhanced )
             else:
                 print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
@@ -1708,8 +1777,7 @@ if __name__ == "__main__":
         device_tree.perform_lops()
 
     if not dryrun:
-        Lopper.write_phandle_map( device_tree.FDT, output + ".phandle", device_tree.verbose )
-        Lopper.write_fdt( device_tree.FDT, output, device_tree, True, device_tree.verbose, enhanced_print )
+        device_tree.write( enhanced = device_tree.enhanced )
     else:
         print( "[INFO]: --dryrun was passed, output file %s not written" % output )
 

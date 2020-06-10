@@ -870,7 +870,7 @@ class Lopper:
         w.close()
 
     @staticmethod
-    def write_fdt( fdt_to_write, output_filename, sdt=None, overwrite=True, verbose=0, enhanced=False ):
+    def write_fdt( fdt_to_write, output_filename, overwrite=True, verbose=0, enhanced=False ):
         """Write a system device tree to a file
 
         Write a fdt (or system device tree) to an output file. This routine uses
@@ -885,8 +885,6 @@ class Lopper:
         Args:
             fdt_to_write (fdt): source flattened device tree to write
             output_filename (string): name of the output file to create
-            sdt (SystemDeviceTree,optional): system device tree to use for output modules.
-                   None means don't use a system device tree for module loading.
             overwrite (bool,optional): Should existing files be overwritten. Default is True.
             verbose (int,optional): verbosity level to use.
             enhanced(bool,optional): whether enhanced printing should be performed. Default is False
@@ -924,44 +922,22 @@ class Lopper:
                 print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
                 sys.exit(1)
 
-            # write the device tree to a temporary dtb
-            fp = tempfile.NamedTemporaryFile()
-            byte_array = fdt_to_write.as_bytearray()
-            with open(fp.name, 'wb') as w:
-                w.write(byte_array)
-
             if enhanced:
                 printer = lt.LopperTreePrinter( fdt_to_write, True, output_filename, verbose )
                 printer.exec()
             else:
+                # write the device tree to a temporary dtb
+                fp = tempfile.NamedTemporaryFile()
+                byte_array = fdt_to_write.as_bytearray()
+                with open(fp.name, 'wb') as w:
+                    w.write(byte_array)
+
                 Lopper.dtb_dts_export( fp.name, output_filename )
 
-            # close the temp file so it is removed
-            fp.close()
+                # close the temp file so it is removed
+                fp.close()
         else:
-            cb_funcs = ""
-            if sdt:
-                # we use the outfile extension as a mask
-                (out_name, out_ext) = os.path.splitext(output_filename)
-                cb_funcs = sdt.find_compatible_assist( 0, "", out_ext )
-            if cb_funcs:
-                for cb_func in cb_funcs:
-                    try:
-                        out_tree = lt.LopperTreePrinter( fdt_to_write, True, output_filename, verbose )
-                        if not cb_func( 0, out_tree, { 'outfile': output_filename, 'verbose' : sdt.verbose } ):
-                            print( "[WARNING]: the assist returned false, check for errors ..." )
-                    except Exception as e:
-                        print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )
-                        exc_type, exc_obj, exc_tb = sys.exc_info()
-                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                        print(exc_type, fname, exc_tb.tb_lineno)
-                        if sdt and sdt.werror:
-                            sys.exit(1)
-            else:
-                if sdt and sdt.verbose:
-                    print( "[INFO]: no compatible output assist found, skipping" )
-                if sdt and sdt.werror:
-                    sys.exit(2)
+            print( "[INFO]: unknown file type (%s) passed for writing, skipping" % output_filename )
 
     @staticmethod
     def phandle_safe_name( phandle_name ):
