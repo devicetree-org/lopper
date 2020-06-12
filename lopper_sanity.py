@@ -1654,6 +1654,29 @@ def tree_sanity_test( fdt, verbose=0 ):
     else:
         test_failed( "property add, existing node (%s)" % fpp.name )
 
+    print( "[TEST]: start, new tree test" )
+
+    fpp = tempfile.NamedTemporaryFile( delete=True )
+
+    new_tree = LopperTreePrinter( None, False, fpp.name )
+    # make a copy of our existing node
+    new_tree_new_node = new_node()
+
+    new_tree + new_tree_new_node
+    new_tree_new_node + prop
+    new_tree.exec()
+
+    c = test_pattern_count( fpp.name, "amba" )
+    if c != 1:
+        test_failed( "new tree test" )
+    c = test_pattern_count( fpp.name, "bruce" )
+    if c != 1:
+        test_failed( "new tree test" )
+    c = test_pattern_count( fpp.name, "newproperty_existingnode" )
+    if c != 1:
+        test_failed( "new tree test" )
+
+    test_passed( "new tree test" )
 
 
 def lops_code_test( device_tree, lop_file, verbose ):
