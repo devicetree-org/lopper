@@ -65,6 +65,37 @@ class Lopper:
     """
 
     @staticmethod
+    def fdt( size=None, other_fdt=None ):
+        """Create a new FDT
+
+        Creats a new FDT of a passed size. If other_fdt is passed, it
+        is used as the start size of the fdt.
+
+        If no size or other fdt is passed, 128 bytes is the default
+        size
+
+        Args:
+            size (int,optional): size in bytes of the FDT
+            other_fdt (FDT,optional): reference FDT for size
+
+        Returns:
+            fdt: The newly created FDT
+        """
+
+        fdt = None
+
+        if other_fdt:
+            size = other_fdt.totalsize()
+        else:
+            if not size:
+                # size is in bytes
+                size = 128
+
+            fdt = libfdt.Fdt.create_empty_tree( size )
+
+        return fdt
+
+    @staticmethod
     def node_getname( fdt, node_number_or_path ):
         """Gets the FDT name of a node
 
@@ -387,17 +418,16 @@ class Lopper:
         Returns:
             int: The node offset of the created node, if successfull, otherwise -1
         """
-
-        prev = -1
+        prev = 0
         for p in os.path.split( node_full_path ):
             n = Lopper.node_find( fdt_dest, p )
             if n < 0:
                 if create_parents:
                     for _ in range(MAX_RETRIES):
                         try:
-                            pp = Lopper.node_abspath( fdt_dest, prev )
+                            p = p.lstrip( '/' )
                             prev = fdt_dest.add_subnode( prev, p )
-                        except:
+                        except Exception as e:
                             fdt_dest.resize( fdt_dest.totalsize() + 1024 )
                             continue
                         else:
