@@ -445,9 +445,6 @@ class LopperSDT:
             Lopper.write_fdt( fdt_to_write, output_filename, True, self.verbose )
 
         elif re.search( ".dts", output_filename ):
-            if self.verbose:
-                print( "[INFO]: dts format detected, writing %s" % output_filename )
-
             if enhanced:
                 o = Path(output_filename)
                 if o.exists() and not overwrite:
@@ -902,19 +899,19 @@ class LopperSDT:
                     Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
 
         if re.search( ".*,output$", lop_type ):
-            output_file_name = Lopper.property_get( lops_fdt, lop_node_number, 'outfile' )
-            if not output_file_name:
+            try:
+                output_file_name = this_lop_node['outfile'].value[0]
+            except:
                 print( "[ERROR]: cannot get output file name from lop" )
                 sys.exit(1)
 
             if self.verbose > 1:
                 print( "[DBG+]: outfile is: %s" % output_file_name )
 
-            output_nodes = Lopper.property_get( lops_fdt, lop_node_number, 'nodes',
-                                                LopperFmt.COMPOUND, LopperFmt.STRING )
-
-            if self.verbose > 1:
-                print( "[DBG+]: output selected are: %s" % output_nodes )
+            try:
+                output_nodes = this_lop_node['nodes'].value
+            except:
+                output_nodes = []
 
             if not output_nodes:
                 if self.tree.__selected__:
@@ -922,6 +919,9 @@ class LopperSDT:
 
             if not output_nodes:
                 return False
+
+            if self.verbose > 1:
+                print( "[DBG+]: output selected are: %s" % output_nodes )
 
             if "*" in output_nodes:
                 ff = libfdt.Fdt(self.FDT.as_bytearray())
