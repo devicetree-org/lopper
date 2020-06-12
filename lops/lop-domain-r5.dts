@@ -142,7 +142,7 @@
 			 compatible = "system-device-tree-v1,lop,output";
 			 outfile = "linux-special-props.dts";
 			 // nodes (regex), with a property that must be set
-			 nodes = "amba.*:testprop:testvalue";
+			 nodes = "bus.*:testprop:testvalue";
 		  };
         };
 };
