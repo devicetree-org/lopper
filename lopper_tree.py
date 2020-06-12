@@ -1610,13 +1610,16 @@ class LopperTree:
        - depth_first: not currently implemented
 
     """
-    def __init__(self, fdt, snapshot = False, depth_first=True ):
+    def __init__(self, fdt=None, snapshot = False, depth_first=True ):
         # copy the tree, so we'll remain valid if operations happen
         # on the tree. This is unlike many of the other modes
         if snapshot:
             self.fdt = Fdt( fdt.as_bytearray() )
         else:
             self.fdt = fdt
+
+        if self.fdt == None:
+            self.fdt = Lopper.fdt()
 
         # nodes, indexed by abspath
         self.__nodes__ = OrderedDict()
@@ -2121,6 +2124,22 @@ class LopperTree:
            LopperTree: returns self, raises Exception on invalid parameter
 
         """
+
+        node_full_path = node.abs_path
+
+        # check all the path components, up until the last one (since
+        # that's why this routine was called).
+        for p in os.path.split( node_full_path )[:-1]:
+            try:
+                existing_node = self.__nodes__[p]
+            except:
+                existing_node = None
+
+            if not existing_node:
+                # an intermediate node is missing, we need to add it
+                i_node = LopperNode( -1, p )
+                self.add( i_node )
+
         # do we already have a node at this path ?
         try:
             existing_node = self.__nodes__[node.abs_path]
@@ -2133,7 +2152,9 @@ class LopperTree:
             return self
 
         # node is a LopperNode
-        node.number = Lopper.node_add( self.fdt, node.abs_path, True, 0 )
+        node.number = Lopper.node_add( self.fdt, node.abs_path, True, self.__dbg__ )
+        if node.number == -1:
+            sys.exit(1)
 
         node.tree = self
 
@@ -2724,7 +2745,7 @@ class LopperTreePrinter( LopperTree ):
        - output: output file name, if not passed stdout is used
 
     """
-    def __init__( self, fdt, snapshot = False, output=sys.stdout, debug=0 ):
+    def __init__( self, fdt = None, snapshot = False, output=sys.stdout, debug=0 ):
         # init the base walker.
         super().__init__( fdt, snapshot )
 
