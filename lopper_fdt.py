@@ -1302,7 +1302,7 @@ class Lopper:
         try:
             prop = fdt.getprop( node_number, prop_name )
             val = Lopper.property_value_decode( prop, 0, ftype, encode )
-        except:
+        except Exception as e:
             val = ""
 
         return val
@@ -1368,7 +1368,7 @@ class Lopper:
                         fdt.setprop_u32( node_number, prop_name, prop_val )
 
                     break
-                except:
+                except Exception as e:
                     fdt.resize( fdt.totalsize() + 1024 )
                     continue
                 else:
@@ -1403,7 +1403,7 @@ class Lopper:
                 for _ in range(MAX_RETRIES):
                     try:
                         fdt.setprop( node_number, prop_name, bval)
-                    except:
+                    except Exception as e:
                         fdt.resize( fdt.totalsize() + 1024 )
                         continue
                     else:

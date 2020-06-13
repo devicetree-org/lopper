@@ -908,38 +908,35 @@ class LopperSDT:
             if self.verbose > 1:
                 print( "[DBG+]: outfile is: %s" % output_file_name )
 
+            output_nodes = []
             try:
-                output_nodes = this_lop_node['nodes'].value
+                output_regex = this_lop_node['nodes'].value
             except:
-                output_nodes = []
+                output_regex = []
 
-            if not output_nodes:
+            if not output_regex:
                 if self.tree.__selected__:
                     output_nodes = self.tree.__selected__
 
-            if not output_nodes:
+            if not output_regex and not output_nodes:
                 return False
 
             if self.verbose > 1:
-                print( "[DBG+]: output selected are: %s" % output_nodes )
+                print( "[DBG+]: output regex: %s" % output_regex )
 
-            if "*" in output_nodes:
-                ff = libfdt.Fdt(self.FDT.as_bytearray())
-            else:
-                # Note: we may want to switch this around, and copy the old tree and
-                #       delete nodes. This will be important if we run into some
-                #       strangely formatted ones that we can't copy.
-                ff = libfdt.Fdt.create_empty_tree( self.FDT.totalsize() )
-                for o_node in output_nodes:
-                    if isinstance( o_node, lt.LopperNode ):
-                        new_node = Lopper.node_copy_from_path( self.FDT, o_node.abs_path, ff, o_node.abs_path, self.verbose )
-                        if not new_node:
-                            print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
-                            sys.exit(1)
-                    else:
-                        # TODO: this entire block needs to be converted to use LopperTree()
-                        split_node = o_node.split(":")
-                        o_node = split_node[0]
+            output_tree = None
+            if output_regex:
+                output_nodes = []
+                # select some nodes!
+                if "*" in output_regex:
+                    output_tree = lt.LopperTree( self.FDT, True )
+                else:
+                    # we can gather the output nodes and unify with the selected
+                    # copy below.
+                    for regex in output_regex:
+
+                        split_node = regex.split(":")
+                        o_node_regex = split_node[0]
                         o_prop_name = ""
                         o_prop_val = ""
                         if len(split_node) > 1:
@@ -947,43 +944,59 @@ class LopperSDT:
                             if len(split_node) > 2:
                                 o_prop_val = split_node[2]
 
-                        if o_prop_name:
-                            if self.verbose > 1:
-                                print( "[DBG+]: output prop: %s val: %s" % (o_prop_name, o_prop_val))
+                        # Note: we may want to switch this around, and copy the old tree and
+                        #       delete nodes. This will be important if we run into some
+                        #       strangely formatted ones that we can't copy.
 
-                        # TODO: this really should be using node_find() and we should make sure the
-                        #       output 'lop' has full paths.
+                        try:
+                            # if there's no / anywhere in the regex, then it is just
+                            # a node name, and we need to wrap it in a regex. This is
+                            # for compatibility with when just node names were allowed
+                            c = re.findall( '/', o_node_regex )
+                            if not c:
+                                o_node_regex = ".*" + o_node_regex
 
-                        # regex capability in the output, comes from this call, where o_node can be a regex
-                        # and return multiple matches
+                            o_nodes = self.tree.nodes(o_node_regex)
+                            if not o_nodes:
+                                # was it a label ?
+                                label_nodes = []
+                                try:
+                                    o_nodes = self.tree.lnodes(o_node_regex)
+                                except Exception as e:
+                                    pass
 
-                        # TODO: convert this to use the tree routines for find and copy
-                        node_to_copy, nodes_to_copy = Lopper.node_find_by_name( self.FDT, o_node, 0, True )
-                        if node_to_copy == -1:
-                            print( "[WARNING]: could not find node to copy: %s" % o_node )
-                        else:
-                            for n in nodes_to_copy:
-                                copy_node_flag = True
-
+                            for o in o_nodes:
                                 # we test for a property in the node if it was defined
                                 if o_prop_name:
-                                    copy_node_flag = False
-                                    p = self.tree[n].propval(o_prop_name)
+                                    p = self.tree[o].propval(o_prop_name)
                                     if o_prop_val:
                                         if p:
                                             if o_prop_val in p:
-                                                copy_node_flag = True
+                                                if not o in output_nodes:
+                                                    output_nodes.append( o )
+                                else:
+                                    if not o in output_nodes:
+                                        output_nodes.append( o )
 
-                                if copy_node_flag:
-                                    node_to_copy_path = Lopper.node_abspath( self.FDT, n )
-                                    new_node = Lopper.node_copy_from_path( self.FDT, node_to_copy_path, ff, node_to_copy_path, self.verbose )
-                                    if not new_node:
-                                        print( "[ERROR]: unable to copy node: %s" % node_to_copy_path, )
-                                        sys.exit(1)
+                        except Exception as e:
+                            print( "[WARNING]: except caught during output processing: %s" % e )
+
+                if not output_tree and output_nodes:
+                    output_tree = lt.LopperTreePrinter()
+                    output_tree.__dbg__ = self.verbose
+                    for on in output_nodes:
+                        # make a deep copy of the selected node
+                        new_node = on()
+                        new_node.__dbg__ = self.verbose
+                        # and assign it to our tree
+                        # if the performance of this becomes a problem, we can use
+                        # direct calls to Lopper.node_copy_from_path()
+                        output_tree + new_node
 
             if not self.dryrun:
-                output_file_full = self.outdir + "/" + output_file_name
-                self.write( ff, output_file_full, True, self.enhanced )
+                if output_tree:
+                    output_file_full = self.outdir + "/" + output_file_name
+                    self.write( output_tree.fdt, output_file_full, True, self.enhanced )
             else:
                 print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 

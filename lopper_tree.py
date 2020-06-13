@@ -354,7 +354,8 @@ class LopperProp():
         # we could do a read-and-set-if-different
 
         if self.__dbg__ > 2:
-            print( "[DBG+++]: property sync: node: %s, name: %s value: %s" % (self.node.number,self.name,self.value))
+            print( "[DBG+++]: property sync: node: %s [%s], name: %s value: %s" %
+                   ([self.node],self.node.number,self.name,self.value))
 
         Lopper.property_set( fdt, self.node.number, self.name, self.value, LopperFmt.COMPOUND )
         self.__modified__ = False
@@ -768,6 +769,8 @@ class LopperNode(object):
 
             for p in nn.__props__.values():
                 p.__modified__ = True
+                p.__pstate__ = "init"
+                p.node = nn
 
             # invalidate a few things
             # self.children = []
@@ -1174,13 +1177,14 @@ class LopperNode(object):
         """
         retval = False
 
+
         # is the node resolved ? if not, it may have been added since we read the
         # tree and created things.
         if self.__nstate__ != "resolved":
             print( "[WARNING]: node sync: unresolved node, not syncing" )
         else:
             if self.__dbg__ > 1:
-                print( "[DBG+]: node sync: %s" % (self.abs_path) )
+                print( "[DBG++]: node sync start: [%s][%s]" % (self.number,self.abs_path))
 
             # check the FDT number and our number, and update as required
             nn = Lopper.node_find( fdt, self.abs_path )
@@ -1207,7 +1211,7 @@ class LopperNode(object):
 
                 if p.__modified__:
                     if self.__dbg__ > 2:
-                        print( "[DBG++]:    node sync: property %s is modified, writing back ffff" % p.name )
+                        print( "[DBG++]:    node sync: property %s is modified, writing back" % p.name )
                     try:
                         p.sync( fdt )
                         # this will have renumbered elements of the tree, we need to
@@ -1458,7 +1462,7 @@ class LopperNode(object):
         # resolve the rest of the references based on the passed device tree
         # self.number must be set before calling this routine.
         if self.__dbg__ > 2:
-            print( "[DBG++]: node resolution start [fdt:%s][%s]: %s" % (fdt,self,self.abs_path))
+            print( "[DBG++]: node resolution start [fdt:%s][%s][%s]: %s" % (fdt,self,self.number,self.abs_path))
 
         if fdt:
             if self.number >= 0:
@@ -1554,6 +1558,7 @@ class LopperNode(object):
                 for p in saved_props:
                     if saved_props[p].__pstate__ == "init":
                         self.__props__[p] = saved_props[p]
+                        self.__props__[p].node = self
 
             if not self.type:
                 self.type = [ "" ]
@@ -1802,7 +1807,10 @@ class LopperTree:
         try:
             # a common mistake is to leave a trailing / on a node
             # path. Drop it to make life easier.
-            access_name = key.rstrip('/')
+            access_name = key
+            if access_name != "/":
+                # but if we rstrip just "/", we have nothing!
+                access_name = key.rstrip('/')
             return self.__nodes__[access_name]
         except Exception as e:
             # is it a label :
@@ -1811,12 +1819,17 @@ class LopperTree:
             except Exception as e:
                 # is it a regex ?
                 # we tweak the key a bit, to make sure the regex is bounded.
-                m = self.nodes( "^" + key + "$" )
-                if m:
-                    # we get the first match, if you want multiple matches
-                    # call the "nodes()" method
-                    return m[0]
+                # avoid looking for "^/$" accross all nodes. It's a common
+                # search and can't match anything but the root node
+                regex = "^" + key + "$"
+                if not regex == "^/$":
+                    m = self.nodes( regex )
+                    if m:
+                        # we get the first match, if you want multiple matches
+                        # call the "nodes()" method
+                        return m[0]
 
+                # nothing, let the exception bubble up
                 raise e
 
     def __setitem__(self, key, val):
@@ -2101,7 +2114,7 @@ class LopperTree:
 
         """
         if not isinstance( other, LopperNode ):
-            raise Excepton( "LopperNode was not passed" )
+            raise Exception( "LopperNode was not passed" )
 
         self.add( other )
 
@@ -2163,12 +2176,13 @@ class LopperTree:
         # put the new node in the nodes dictionary and resolve it. This is
         # temporary, since it will be re-ordered and re-solved below, but they
         # key off the dictionary, so we need it in the dict to be processed
+
         node.resolve( self.fdt )
 
         self.__nodes__[node.abs_path] = node
 
         if self.__dbg__ > 1:
-            print( "[DBG+][%s] node added: %s" % (self.fdt,node.abs_path) )
+            print( "[DBG+][%s] node added: [%s] %s" % (self.fdt,[node],node.abs_path) )
             if self.__dbg__ > 2:
                 for p in node:
                     print( "[DBG++]      property: %s %s (state:%s)" % (p.name,p.value,p.__pstate__) )
@@ -2253,6 +2267,30 @@ class LopperTree:
             return self.__pnodes__[phandle]
         except:
             return None
+
+
+    def lnodes( self, label ):
+        """Find nodes in a tree by label
+
+        Safely (no exception raised) returns the node that can be found
+        at a given label value.
+
+        Args:
+           label (string): node string  to check
+
+        Returns:
+           list (LopperNode): the matching nodes if found, [] otherwise
+
+        """
+        nodes = []
+        try:
+            for l in self.__lnodes__.keys():
+                if re.search( label, l ):
+                    nodes.append( self.__lnodes__[l] )
+        except:
+            return nodes
+
+        return nodes
 
     def exec_cmd( self, node, cmd, env = None ):
         """Execute a (limited) code block against a node
@@ -2648,6 +2686,7 @@ class LopperTree:
                         os._exit(1)
                 except:
                     pass
+
                 # we want to find these by name AND number (but note, number can
                 # change after some tree ops, so make sure to check the state of
                 # a tree/node before using the number
