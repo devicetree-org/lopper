@@ -1056,12 +1056,9 @@ class LopperSDT:
         if re.search( ".*,lop,load$", lop_type ):
             prop_id = ""
             prop_extension = ""
-            node_name = lops_fdt.get_name( lop_node_number )
 
-            if self.verbose:
-                print( "--------------- [INFO]: node %s is a load module lop" % node_name )
             try:
-                load_prop = lops_fdt.getprop( lop_node_number, 'load' ).as_str()
+                load_prop = this_lop_node['load'].value[0]
             except:
                 load_prop = ""
 
@@ -1089,9 +1086,7 @@ class LopperSDT:
 
                 assist_properties = {}
                 try:
-                    props = lops_fdt.getprop( lop_node_number, 'props' )
-                    if props:
-                        props = Lopper.property_value_decode( props, 0, LopperFmt.COMPOUND )
+                    props = this_lop_node['props'].value
                 except:
                     # does the module have a "props" routine for extra querying ?
                     try:
@@ -1104,10 +1099,7 @@ class LopperSDT:
                     #       is ok as a proof of concept only
                     if p == "file_ext":
                         try:
-                            prop_extension = lops_fdt.getprop( lop_node_number, 'file_ext' ).as_str()
-                            # TODO: debug why the call below can't figure out that this is a
-                            #       string property.
-                            # Lopper.property_get( lops_fdt, lop_node_number, "file_ext" )
+                            prop_extension = this_lop_node['file_ext'].value[0]
                         except:
                             try:
                                 prop_extension = imported_module.file_ext()
@@ -1118,7 +1110,7 @@ class LopperSDT:
 
                     if p == "id":
                         try:
-                            prop_id = lops_fdt.getprop( lop_node_number, 'id' ).as_str()
+                            prop_id = this_lop_node['id'].value[0]
                         except:
                             try:
                                 prop_id = imported_module.id()
@@ -1139,7 +1131,7 @@ class LopperSDT:
                         except:
                             pass
                 if not already_loaded:
-                    if verbose > 1:
+                    if self.verbose > 1:
                         if prop_extension:
                             print( "[INFO]: loading assist with properties (%s,%s)" % (prop_extension, prop_id) )
 
