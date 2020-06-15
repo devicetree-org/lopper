@@ -111,9 +111,9 @@ def parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options):
         verbose = 0
 
     ipi_list = []
-    for k,v in sdt.tree.__nodes__.items():
-        if "ps_ipi" in k:
-            ipi_list.append((v["reg"]).hex()[0])
+    for node in sdt.tree:
+        if "ps_ipi" in node.abs_path:
+            ipi_list.append(node["reg"].hex()[0])
 
     if verbose:
         print( "[INFO]: Dedicated IPIs for OpenAMP: %s" % ipi_list)
@@ -129,9 +129,9 @@ def parse_memory_carevouts_for_rpu(sdt, domain_node, rpu_cpu_node, options):
         verbose = 0
 
     carveout_list = []
-    for k,v in sdt.tree.__nodes__.items():
-        if "channel" in k and "openamp,xlnx,mem-carveout" in str(v['compatible']):
-            carveout_list.append( ( (str(v), str(v['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
+    for node in sdt.tree:
+        if "channel" in node.abs_path and "openamp,xlnx,mem-carveout" in node['compatible'].value[0]:
+            carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
 
     return carveout_list
 
