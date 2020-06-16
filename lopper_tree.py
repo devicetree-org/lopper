@@ -81,6 +81,32 @@ class LopperProp():
 
         self.abs_path = ""
 
+    def __deepcopy__(self, memodict={}):
+        """ Create a deep copy of a property
+
+        Properties have links to nodes, so we need to ensure that they are
+        cleared as part of a deep copy.
+
+        """
+        if self.__dbg__ > 1:
+            print( "[DBG++]: property '%s' deepcopy start: %s" % (self.name,[self]) )
+
+        new_instance = LopperProp(self.name)
+
+        # if we blindly want everything, we'd do this update. But it
+        # is easier to pick out the properties that we do want, versus
+        # copying and undoing.
+        #      new_instance.__dict__.update(self.__dict__)
+        new_instance.__dbg__ = copy.deepcopy( self.number, memodict )
+        new_instance.value = copy.deepcopy( self.value, memodict )
+        new_instance.__pstate__ = "init"
+        new_instance.node = None
+
+        if self.__dbg__ > 1:
+            print( "[DBG++]: property deep copy done: %s" % [self] )
+
+        return new_instance
+
     def __str__( self ):
         """The string representation of the property
 
@@ -685,16 +711,14 @@ class LopperNode(object):
        - __modified__: flag indicating if the node has been modified
 
     """
-    def __init__(self, number = -1, abspath="", tree = None, phandle = -1, name = "", children = None, debug=0 ):
+    def __init__(self, number = -1, abspath="", tree = None, phandle = -1, name = "", debug=0 ):
         self.number = number
         self.name = name
         self.parent = None
         self.tree = tree
         self.depth = 0
-        if children == None:
-            self.children = []
-        else:
-            self.children = children
+
+        self.child_nodes = OrderedDict()
 
         self.phandle = phandle
 
@@ -702,7 +726,7 @@ class LopperNode(object):
 
         # 'type' is roughly equivalent to a compatible property in
         # the node if it exists.
-        self.pclass = []
+        self.type = []
 
         self.abs_path = abspath
 
@@ -721,19 +745,47 @@ class LopperNode(object):
         self.__modified__ = False
 
     def __deepcopy__(self, memodict={}):
+        """ Create a deep copy of a node
+
+        Only certain parts of a node need to be copied, we also have to
+        trigger deep copies of properties, since they have references
+        to nodes.
+
+        We leave most values as the defaults on the new node instance,
+        since the copied node needs to be added to a tree, where they'll
+        be filled in.
+        """
+
+        if self.__dbg__ > 1:
+            print( "[DBG++]: node deepcopy start: %s" % [self] )
+
         new_instance = LopperNode()
 
         # if we blindly want everything, we'd do this update. But it
         # is easier to pick out the properties that we do want, versus
         # copying and undoing.
-        # new_instance.__dict__.update(self.__dict__)
-        new_instance.__props__ = copy.deepcopy( self.__props__, memodict )
+        #      new_instance.__dict__.update(self.__dict__)
+
+        # we loop instead of the copy below, since we want to preserve the order
+        #      new_instance.__props__ = copy.deepcopy( self.__props__, memodict )
+        new_instance.__props__ = OrderedDict()
+        for p in reversed(self.__props__):
+            new_instance[p] = copy.deepcopy( self.__props__[p], memodict )
         new_instance.name = copy.deepcopy( self.name, memodict )
-        new_instance.number = copy.deepcopy( self.number, memodict )
+        new_instance.number = -1 # copy.deepcopy( self.number, memodict )
         new_instance.depth = copy.deepcopy( self.depth, memodict )
         new_instance.label = copy.deepcopy( self.label, memodict )
-        new_instance.pclass = copy.deepcopy( self.pclass, memodict )
+        new_instance.type = copy.deepcopy( self.type, memodict )
         new_instance.abs_path = copy.deepcopy( self.abs_path, memodict )
+
+        new_instance.child_nodes = OrderedDict()
+        for c in reversed(self.child_nodes.values()):
+            new_instance.child_nodes[c.abs_path] = copy.deepcopy( c, memodict )
+            new_instance.child_nodes[c.abs_path].number = -1
+            new_instance.child_nodes[c.abs_path].parent = new_instance
+
+        if self.__dbg__ > 1:
+            print( "[DBG++]: deep copy done: %s" % [self] )
 
         return new_instance
 
@@ -766,14 +818,12 @@ class LopperNode(object):
         """
         if othernode == None:
             nn = copy.deepcopy( self )
-
             for p in nn.__props__.values():
                 p.__modified__ = True
                 p.__pstate__ = "init"
                 p.node = nn
 
             # invalidate a few things
-            # self.children = []
             nn.__nstate__ = "init"
             nn.__modified__ = True
 
@@ -788,7 +838,6 @@ class LopperNode(object):
                 p.__modified__ = True
 
             # invalidate a few things
-            # self.children = []
             self.__nstate__ = "init"
             self.__modified__ = True
 
@@ -1145,8 +1194,7 @@ class LopperNode(object):
 
         """
         all_kids = [ self ]
-        for n in self.children:
-            child_node = self.tree[n]
+        for child_node in self.child_nodes.values():
             all_kids = all_kids + child_node.subnodes()
 
         return all_kids
@@ -1465,7 +1513,14 @@ class LopperNode(object):
             print( "[DBG++]: node resolution start [fdt:%s][%s][%s]: %s" % (fdt,self,self.number,self.abs_path))
 
         if fdt:
-            if self.number >= 0:
+            if self.number == -1:
+                # we aren't in the FDT yet. So we can only calcuate a few things.
+                # we could probably also test this by checking the path against the
+                # node prefix in Lopper FDT.
+                if self.parent:
+                    self.abs_path = self.parent.abs_path + "/" + self.name
+
+            elif self.number >= 0:
 
                 saved_props = self.__props__
                 self.__props__ = OrderedDict()
@@ -1488,21 +1543,44 @@ class LopperNode(object):
                     parent_path = Lopper.node_abspath( fdt, parent_node_num )
                     if self.tree:
                         self.parent = self.tree[parent_path]
+                        if self.parent:
+                            # the child dictionary is ordered. So we delete a key and
+                            # re-assign it to make sure ordering is up to date
+                            try:
+                                if self.parent.child_nodes[self.abs_path]:
+                                    del self.parent.child_nodes[self.abs_path]
+                            except:
+                                pass
+
+                            self.parent.child_nodes[self.abs_path] = self
+
+                            # if self.parent.abs_path == "/amba":
+                            #     print( "amba is my parent, adding %s" % self.abs_path )
+                            #     print( "   parent kids: %s" % self.parent.child_nodes.keys())
+
                     depth = len(re.findall( '/', self.abs_path ))
                 else:
                     depth = 0
 
                 self.depth = depth
 
-                self.children = []
-                subnodes = Lopper.node_subnodes( fdt, self.abs_path, False )
-                for s in subnodes:
-                    if self.abs_path != '/':
-                        child_path2 = self.abs_path + '/' + s
-                    else:
-                        child_path2 = '/' + s
+                ## we may want to check if children[] isnt empty and their state is
+                ## "init", since that means we are adding nodes to the FDT.
 
-                    self.children.append(child_path2)
+                # kept as reference: the children now add themselves to the parent
+                # tracking dictionary, but if we need top down control in the future,
+                # we'll need something like this:
+
+                # this reads the children from the FDT, but if they aren't there
+                # yet, we'll have to re-resolve later to get them.
+                # self.children = []
+                # subnodes = Lopper.node_subnodes( fdt, self.abs_path, False )
+                # for s in subnodes:
+                #     if self.abs_path != '/':
+                #         child_path2 = self.abs_path + '/' + s
+                #     else:
+                #         child_path2 = '/' + s
+                #     self.children.append(child_path2)
 
                 # First pass: we look at the properties in the FDT. If they were in our
                 # saved properties dictionary from above, we copy them back in. Re-resolving
@@ -1566,8 +1644,8 @@ class LopperNode(object):
             self.__nstate__ = "resolved"
             self.__modified__ = False
 
-            if self.__dbg__ > 2:
-                print( "[DGB++]: node resolution end: %s" % self)
+        if self.__dbg__ > 2:
+            print( "[DGB++]: node resolution end: %s" % self)
 
 class LopperTree:
     """Class for walking a device tree, and providing callbacks at defined points
@@ -2044,8 +2122,9 @@ class LopperTree:
             print( "[DBG++][%s]: tree sync end: %s" % (sync_fdt,self) )
 
         # resolve and details that may have changed from the sync
-        self.resolve()
         self.__must_sync__ = False
+        self.resolve()
+
 
     # in case someone wants to do "tree" - "node"
     def __sub__( self, other ):
@@ -2120,7 +2199,7 @@ class LopperTree:
 
         return self
 
-    def add( self, node ):
+    def add( self, node, dont_sync = False ):
         """Add a node to a tree
 
         Supports adding a node to a tree through:
@@ -2132,16 +2211,23 @@ class LopperTree:
 
         Args:
            node (LopperNode): node to add
+           dont_sync (boolean, optional): don't invoke a tree wide sync when
+                                          complete
 
         Returns:
            LopperTree: returns self, raises Exception on invalid parameter
 
         """
 
+        if self.__dbg__ > 2:
+            print( "[DBG+++]: tree: node add: [%s] %s (%s)(%s)" % (node.name,[ node ],node.abs_path,node.number) )
+
         node_full_path = node.abs_path
 
         # check all the path components, up until the last one (since
-        # that's why this routine was called).
+        # that's why this routine was called). If the nodes don't exist, we
+        # need to add them, since that means we are trying to add a child
+        # node
         for p in os.path.split( node_full_path )[:-1]:
             try:
                 existing_node = self.__nodes__[p]
@@ -2151,7 +2237,7 @@ class LopperTree:
             if not existing_node:
                 # an intermediate node is missing, we need to add it
                 i_node = LopperNode( -1, p )
-                self.add( i_node )
+                self.add( i_node, True )
 
         # do we already have a node at this path ?
         try:
@@ -2164,9 +2250,9 @@ class LopperTree:
                 print( "[WARNING]: add: node: %s already exists" % node.abs_path )
             return self
 
-        # node is a LopperNode
         node.number = Lopper.node_add( self.fdt, node.abs_path, True, self.__dbg__ )
         if node.number == -1:
+            print( "[ERROR]: failed to add node %s to fdt: %s" % (node.abs_path,self.fdt))
             sys.exit(1)
 
         node.tree = self
@@ -2176,10 +2262,28 @@ class LopperTree:
         # put the new node in the nodes dictionary and resolve it. This is
         # temporary, since it will be re-ordered and re-solved below, but they
         # key off the dictionary, so we need it in the dict to be processed
-
         node.resolve( self.fdt )
 
         self.__nodes__[node.abs_path] = node
+
+        # Check to see if the node has any children. If it does, are they already in
+        # our node dictionary ? If they aren't, it means we are not just adding one
+        # node but a node + children.
+        for child in list(node.child_nodes.values()):
+            try:
+                existing_node = self.__nodes__[child.abs_path]
+            except:
+                existing_node = None
+
+            if not existing_node:
+                if self.__dbg__ > 2:
+                    print ( "[DBG+++]:     node add: adding child: %s (%s)" % (child,[child]))
+                # this mainly adjusts the path, since it hasn't been sync'd yet.
+                child.resolve( self.fdt )
+                self.add( child, True )
+                if self.__dbg__ > 2:
+                    print ( "[DBG+++]:     node add: child add complete: %s (%s)" % (child,[child]))
+
 
         if self.__dbg__ > 1:
             print( "[DBG+][%s] node added: [%s] %s" % (self.fdt,[node],node.abs_path) )
@@ -2190,7 +2294,16 @@ class LopperTree:
         # we can probably drop this by making the individual node sync's smarter and
         # more efficient when something doesn't need to be written
         self.__must_sync__ = True
-        self.sync()
+        if dont_sync:
+            if self.__dbg__ > 0:
+                print( "[DBG]: %s: %s/%s: treewide sync inhibited" %
+                       ( self, sys._getframe(0).f_lineno, sys._getframe(0).f_code.co_name ) )
+        else:
+            if self.__dbg__ > 0:
+                print( "[DBG]: %s: %s/%s: treewide sync started" %
+                       ( self, sys._getframe(0).f_lineno, sys._getframe(0).f_code.co_name ) )
+
+            self.sync()
 
         return self
 
@@ -2212,8 +2325,8 @@ class LopperTree:
         """
         # gets you a list of all looper nodes under starting node
         all_kids = [ start_node ]
-        for n in start_node.children:
-            all_kids = all_kids + self.subnodes( self.__nodes__[n] )
+        for n in start_node.child_nodes.values():
+            all_kids = all_kids + self.subnodes( n )
 
         all_matching_kids = []
         if node_regex:
@@ -2536,24 +2649,28 @@ class LopperTree:
         chain_close_dict = {}
         for n in self:
             if self.__dbg__ > 4:
-                print( "[DBG++++]: node: %s:%s [%s] parent: %s children: %s" % (n.name, n.number, n.phandle, n.parent, n.children))
+                print( "[DBG++++]: node: %s:%s [%s] parent: %s children: %s" % (n.name, n.number, n.phandle, n.parent, n.child_nodes))
+
             if n.number == 0:
                 if self.start_tree_cb:
                     self.start_tree_cb( n, self.fdt )
 
-            if n.children:
+            if n.child_nodes:
+                last_child = list(n.child_nodes.values())
+                last_child = last_child[-1]
+
                 # add the last child in our list, we'll use it to know when to end a node.
                 # we could remove these on the close, if memory becomes an issue
                 if self.__dbg__ > 4:
-                    print( "[DBG++++]: node %s (%s) has last child %s" % (n.number,n.abs_path,n.children[-1]))
+                    print( "[DBG++++]: node %s (%s) has last child %s" % (n.number,n.abs_path,last_child))
 
                 if not n.abs_path in last_children:
                     last_children.append( n.abs_path )
 
-                last_children.append( n.children[-1] )
-                chain_close_dict[n.children[-1]] = n
+                last_children.append( last_child.abs_path )
+                chain_close_dict[last_child.abs_path] = n
                 if self.__dbg__ > 4:
-                    print( "[DBG++++]: mapped chain close %s (%s) to %s" % (n.number,n.abs_path,n.children[-1]))
+                    print( "[DBG++++]: mapped chain close %s (%s) to %s" % (n.number,n.abs_path,last_child))
 
             if self.start_node_cb:
                 self.start_node_cb( n, self.fdt )
@@ -2568,7 +2685,7 @@ class LopperTree:
             #if last_children and n.number == last_children[-1]:
             if last_children and n.abs_path == last_children[-1]:
                 if self.__dbg__ > 4:
-                    print( "[DBG++++]: %s is in %s" % (n.number, last_children ))
+                    print( "[DBG++++]: %s matches last %s (%s)" % (n.abs_path, last_children, last_children[-1] ))
 
                 # we are closing!
                 if self.end_node_cb:
@@ -2598,7 +2715,7 @@ class LopperTree:
                         self.end_node_cb( to_close, self.fdt )
 
                     cc_close = to_close.abs_path
-            elif not n.children:
+            elif not n.child_nodes:
                 # we are closing!
                 if self.end_node_cb:
                     if self.__dbg__ > 4:
@@ -2642,6 +2759,18 @@ class LopperTree:
            Nothing
 
         """
+
+        # We are checking the __must_sync__ flag. Since this routine will throw
+        # away unsync'd nodes, due to the fact that it reads from the FDT
+        # and re-establishes nodes based on that. We can also check for
+        # nodes in the "init" state, or with node number -1 and save them .. but
+        # only if this check and exit starts catching valid use cases we can't fix
+        if self.__must_sync__:
+            print( "[ERROR]: tree should be sync'd before resolving. Some nodes may be lost" )
+            if self.__dbg__ > 2:
+                print( "[DBG++]:     caller: %s/%s" %( sys._getframe(1).f_lineno, sys._getframe(1).f_code.co_name ) )
+            sys.exit(1)
+
         if self.depth_first:
             nodes_saved = dict(self.__nodes__)
 
@@ -2887,6 +3016,7 @@ class LopperTreePrinter( LopperTree ):
                 else:
                     outstring = nodename + " {"
 
+            print( "", file=self.output )
             print(outstring.rjust(len(outstring)+indent," " ), file=self.output )
 
     def end_node(self, n, fdt):
@@ -2902,7 +3032,7 @@ class LopperTreePrinter( LopperTree ):
             Nothing
         """
         indent = n.depth * 8
-        outstring = "};\n"
+        outstring = "};"
         print(outstring.rjust(len(outstring)+indent," " ), file=self.output)
 
     def start_property(self, p, fdt):

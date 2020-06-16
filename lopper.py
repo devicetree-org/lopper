@@ -1141,12 +1141,13 @@ class LopperSDT:
             if self.verbose:
                 print( "[INFO]: node add lop" )
 
-            src_node_name = Lopper.property_get( lops_fdt, lop_node_number, "node_src" )
-            if not src_node_name:
+            try:
+                src_node_name = this_lop_node['node_src'].value[0]
+            except:
                 print( "[ERROR]: node add detected, but no node name found" )
                 sys.exit(1)
 
-            lops_node_path = Lopper.node_abspath( lops_fdt, lop_node_number )
+            lops_node_path = this_lop_node.abs_path
             src_node_path = lops_node_path + "/" + src_node_name
 
             dest_node_path = Lopper.property_get( lops_fdt, lop_node_number, "node_dest" )
@@ -1154,15 +1155,26 @@ class LopperSDT:
                 dest_node_path = "/" + src_node_name
 
             if self.verbose:
-                print( "[INFO]: node name: %s node path: %s" % (src_node_path, dest_node_path) )
+                print( "[INFO]: add node name: %s node path: %s" % (src_node_path, dest_node_path) )
 
-            # TODO: replace this copy with a sdt.tree node to node copy.
-            if not Lopper.node_copy_from_path( lops_fdt, src_node_path, self.FDT, dest_node_path, self.verbose ):
-                print( "[ERROR]: unable to copy node: %s" % src_node_name )
-                sys.exit(1)
+
+            if self.tree:
+                src_node = lops_tree[src_node_path]
+
+                # copy the source node
+                dst_node = src_node()
+                # adjust the path to where it will land
+                dst_node.abs_path = dest_node_path
+
+                # add it to the tree, and this will adjust the children appropriately
+                self.tree + dst_node
             else:
-                # self.FDT is backs the tree object, so we need to sync
-                self.tree.sync()
+                if not Lopper.node_copy_from_path( lops_fdt, src_node_path, self.FDT, dest_node_path, self.verbose ):
+                    print( "[ERROR]: unable to copy node: %s" % src_node_name )
+                    sys.exit(1)
+                else:
+                    # self.FDT is backs the tree object, so we need to sync
+                    self.tree.sync()
 
         if re.search( ".*,lop,conditional.*$", lop_type ):
             if self.verbose:

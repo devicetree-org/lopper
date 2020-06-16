@@ -1600,7 +1600,7 @@ def tree_sanity_test( fdt, verbose=0 ):
         print( "node1 props: %s" % new_node.__props__ )
         print( "node2 props: %s" % new_node2.__props__ )
 
-    if new_node != new_node2:
+    if new_node.abs_path != new_node2.abs_path:
         test_failed( "copied nodes should be equal" )
     else:
         test_passed( "copied nodes equal" )
