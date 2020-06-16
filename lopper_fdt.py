@@ -1683,6 +1683,12 @@ class Lopper:
             # we aren't on a null (multiple strings) or are
             # where we started, then this isn't a string.
             if prop[byte] != 0 or byte == bytei:
+                if byte + 3 < len(prop):
+                    if prop[byte:byte+3] == b'\xe2\x80\x9c' or prop[byte:byte+3] == b'\xe2\x80\x9d':
+                        #print( "jumping ahead, looks like an escaped quote" )
+                        byte += 3
+                        continue
+
                 return False
 
             byte += 1
