@@ -144,5 +144,12 @@
 			 // nodes (regex), with a property that must be set
 			 nodes = "bus.*:testprop:testvalue";
 		  };
+		  lop_22 {
+			 compatible = "system-device-tree-v1,lop,output";
+			 outfile = "linux-labels.dts";
+			 // select nodes labelled "amba*"
+			 nodes = "amba.*";
+		  };
+
         };
 };
