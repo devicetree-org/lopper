@@ -1055,22 +1055,28 @@ def tree_sanity_test( fdt, verbose=0 ):
     fpp = tempfile.NamedTemporaryFile( delete=True )
     fpw = open( fpp.name, 'w+')
     for n in walker:
-        print( "\nnode: %s:%s [%s] parent: %s children: %s depth: %s" % (n.name, n.number,
-                                                                         hex(n.phandle), n.parent,
-                                                                         n.children, n.depth), file=fpw)
-        for prop in n:
-            print( "    property: %s %s" % (prop.name, prop.value), file=fpw)
-            print( "    raw: %s" % (n[prop.name]), file=fpw )
+        try:
+            print( "\nnode: %s:%s [%s] parent: %s children: %s depth: %s" % (n.name, n.number,
+                                                                             hex(n.phandle), n.parent,
+                                                                             n.child_nodes, n.depth), file=fpw)
+            for prop in n:
+                print( "    property: %s %s" % (prop.name, prop.value), file=fpw)
+                print( "    raw: %s" % (n[prop.name]), file=fpw )
+        except Exception as e:
+            print( "ERROR. exception while walking nodes: %s" % e )
+            sys.exit(1)
 
+    fpw.seek(0)
     # we should have: <x> "node:" prints
     with open(fpp.name) as fp:
         node_count = 0
         for line in fp:
+            print( "%s" % line )
             if re.search( "node:", line ):
                 node_count += 1
 
-    if node_count != 15:
-        test_failed( "node count is incorrect" )
+    if node_count != 16:
+        test_failed( "node count is incorrect. Got %s, expected %s" % (node_count,15) )
     else:
         test_passed( "end: node walk passed\n" )
 
