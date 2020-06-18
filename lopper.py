@@ -635,7 +635,7 @@ class LopperSDT:
         """
         return Lopper.node_find( self.FDT, node_prefix )
 
-    def find_compatible_assist( self, cb_node = 0, cb_id = "", mask = "" ):
+    def find_compatible_assist( self, cb_node = None, cb_id = "", mask = "" ):
         """Finds a registered assist that is compatible with a given ID
 
         Searches the registered assists for one that is compatible with an ID.
@@ -1010,26 +1010,37 @@ class LopperSDT:
             # out of order with other lopper operations, so it isn't
             # particularly feasible or desireable.
             #
-            cb_tgt_node_name = Lopper.property_get( lops_fdt, lop_node_number, 'node' )
-            if not cb_tgt_node_name:
+            try:
+                cb_tgt_node_name = this_lop_node['node'].value[0]
+            except:
                 print( "[ERROR]: cannot find target node for the assist" )
                 sys.exit(1)
 
-            cb = Lopper.property_get( lops_fdt, lop_node_number, 'assist' )
-            cb_id = Lopper.property_get( lops_fdt, lop_node_number, 'id' )
-            cb_opts = Lopper.property_get( lops_fdt, lop_node_number, 'options' )
-            cb_opts = cb_opts.lstrip()
-            if cb_opts:
-                cb_opts = cb_opts.split( ' ' )
-            else:
-                cb_opts = []
-            cb_node = Lopper.node_find( self.FDT, cb_tgt_node_name )
-            if cb_node < 0:
+            try:
+                cb = this_lop_node.propval('assist')[0]
+                cb_id = this_lop_node.propval('id')[0]
+                cb_opts = this_lop_node.propval('options')[0]
+                cb_opts = cb_opts.lstrip()
+                if cb_opts:
+                    cb_opts = cb_opts.split( ' ' )
+                else:
+                    cb_opts = []
+            except Exception as e:
+                print( "[ERROR]: callback options are missing: %s" % e )
+                sys.exit(1)
+
+            try:
+                cb_node = self.tree.nodes(cb_tgt_node_name )[0]
+            except:
+                cb_node = None
+
+            if not cb_node:
                 if self.werror:
                     print( "[ERROR]: cannot find assist target node in tree" )
                     sys.exit(1)
                 else:
                     return
+
             if self.verbose:
                 print( "[INFO]: assist lop detected" )
                 if cb:
