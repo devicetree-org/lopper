@@ -122,16 +122,34 @@ def parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options):
     rpu_cpu_node + ipis_prop
     return ipi_list
 
-def parse_memory_carevouts_for_rpu(sdt, domain_node, rpu_cpu_node, options):
+
+def parse_memory_carevouts_for_rpu(sdt, domain_node, rpu_cpu_node, memory_node, options):
     try:
         verbose = options['verbose']
     except:
         verbose = 0
 
-    carveout_list = []
+    carveout_list = [] # string representation of mem carveout nodes
+    dt_carveout_list = [] # values used for later being put into output DT's
     for node in sdt.tree:
         if "channel" in node.abs_path and "openamp,xlnx,mem-carveout" in node['compatible'].value[0]:
             carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
+            for i in  node['reg'].int():
+                dt_carveout_list.append(i)
+
+    prop = LopperProp("memory-region")
+    prop.value = dt_carveout_list
+    rpu_path = memory_node.abs_path
+
+    # output to DT
+    for i in range(1,2):
+        name = "/memory_r5@"+str(i)
+        try:
+            rpu_mem_node = sdt.tree[ memory_node.abs_path + name ]
+            rpu_mem_node + prop
+            rpu_mem_node.sync ( sdt.FDT )
+        except:
+            print( "[ERROR]: cannot find the target rpu "+name+" mem node" )
 
     return carveout_list
 
@@ -260,10 +278,6 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
             try:
                 rpu_cpu_node = sdt.tree[ rpu_path + "/" + new_rpu_name ]
 
-                # TODO: the list of phandles is coming out as <a b c> versus <a>,<b>,<c>
-                #       this may or may not work at runtime and needs to be investigated.
-                rpu_cpu_node["memory-region"].value = phandle_list
-                rpu_cpu_node.sync( sdt.FDT )
 
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -387,7 +401,7 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
                 rpu_cpu_node.sync( sdt.FDT )
 
     ipis = parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options)
-    mem_carveouts = parse_memory_carevouts_for_rpu(sdt, domain_node, rpu_cpu_node, options)
+    mem_carveouts = parse_memory_carevouts_for_rpu(sdt, domain_node, rpu_cpu_node, memory_node, options)
     generate_openamp_file(ipis, mem_carveouts, options)
 
     return True
