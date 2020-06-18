@@ -1150,8 +1150,9 @@ class LopperSDT:
             lops_node_path = this_lop_node.abs_path
             src_node_path = lops_node_path + "/" + src_node_name
 
-            dest_node_path = Lopper.property_get( lops_fdt, lop_node_number, "node_dest" )
-            if not dest_node_path:
+            try:
+                dest_node_path = this_lop_node["node_dest"].value[0]
+            except:
                 dest_node_path = "/" + src_node_name
 
             if self.verbose:
