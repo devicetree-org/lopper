@@ -107,6 +107,13 @@
                          // * is "all nodes"
                          nodes = "*";
                   };
+                  lop_15 {
+                         compatible = "system-device-tree-v1,lop,output";
+                         outfile = "r5.dtb";
+                         // * is "all nodes"
+                         nodes = "ps_ipi_*", "channel*", "cpus*","fpga*", "amba_rpu","tcm","memory_r5@0";
+                  };
+
                   lop_16 {
                          compatible = "system-device-tree-v1,lop,modify";
                          modify = "/amba/.*ethernet.*phy.*:testprop:testvalue";
