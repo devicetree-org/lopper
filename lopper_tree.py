@@ -23,8 +23,6 @@ from collections import OrderedDict
 from collections import Counter
 import copy
 
-from lopper import *
-
 # used in node_filter
 class LopperAction(Enum):
     """Enum class to define the actions available in Lopper's node_filter function
@@ -1697,7 +1695,7 @@ class LopperTree:
         # copy the tree, so we'll remain valid if operations happen
         # on the tree. This is unlike many of the other modes
         if snapshot:
-            self.fdt = Fdt( fdt.as_bytearray() )
+            self.fdt = Lopper.fdt_copy( fdt )
         else:
             self.fdt = fdt
 
@@ -2790,6 +2788,7 @@ class LopperTree:
                 print( "[DGB+]: tree resolution start: %s" % self )
 
             nn = 0
+
             nodes = Lopper.nodes( self.fdt, "/" )
             for node_path in nodes:
                 abs_path = node_path
@@ -3086,3 +3085,4 @@ class LopperTreePrinter( LopperTree ):
             self.output.close()
 
 
+from lopper_fdt import *

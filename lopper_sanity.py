@@ -31,6 +31,7 @@ from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
 from lopper_tree import *
 from lopper import *
 from lopper_fdt import *
+from lopper_yaml import *
 
 from io import StringIO
 import sys
@@ -1054,6 +1055,43 @@ def setup_format_tree( outdir ):
 
     return outdir + "/format-tester.dts"
 
+def setup_yaml( outdir ):
+    with open( outdir + "/yaml-tester.yaml", "w") as w:
+            w.write("""\
+compatible: [ "ti,am335x-bone-black", "ti,am335x-bone", "ti,am33xx" ]
+interrupt-parent: # *intr
+"#address-cells": 1
+"#size-cells": 1
+model: "TI AM335x BeagleBone Black"
+interrupt-controller: &intr
+  compatible: "ti,am33xx-intc"
+  interrupt-controller: true
+  "#interrupt-cells": 1
+  reg: [ 0x48200000, 0x00001000 ]
+chosen:
+  stdout-path: "/ocp/serial@44e09000"
+ocp:
+  compatible: "simple-bus"
+  "#address-cells": 0x00000001
+  "#size-cells": 0x00000001
+  ranges: true
+  ti,hwmods: "l3_main"
+  gpio@481ac000: &gpio
+    compatible: "ti,omap4-gpio"
+    ti,hwmods: "gpio3"
+    gpio-controller: true
+    "#gpio-cells": 0x00000002
+    interrupt-controller: true
+    "#interrupt-cells": 0x00000002
+    reg: [ 0x481ac000,  0x00001000 ]
+    interrupts: 0x00000020
+  TIMER4:
+    gpio: [ *gpio, 0x00000002 ]
+""")
+
+    return outdir + "/yaml-tester.yaml"
+
+
 def setup_fdt( device_tree, outdir ):
     Lopper.dt_compile( device_tree, "", "", True, outdir )
     return libfdt.Fdt(open( device_tree + ".dtb", mode='rb').read())
@@ -1938,6 +1976,22 @@ def format_sanity_test( device_tree, verbose ):
     print( "[TEST]: writing to %s" % (device_tree.output_file))
     device_tree.write( enhanced = True )
 
+def yaml_sanity_test( device_tree, yaml_file, outdir, verbose ):
+    device_tree.setup( dt, [], "", True )
+
+    yaml = LopperYAML( yaml_file )
+
+    print( "[TEST]: writing yaml to: %s" % outdir + "output_yaml.yaml" )
+    yaml.to_yaml( outdir + "output_yaml.yaml" )
+
+    lt = yaml.to_tree()
+
+    print( "[TEST]: writing dts from yaml to: %s" % outdir + "output_yaml_to_dts.dts" )
+    Lopper.write_fdt( lt.fdt, outdir + "output_yaml_to_dts.dts", True, 0, True )
+
+    print( "[TEST]: converting SDT to yaml" )
+    yaml2 = LopperYAML( None, device_tree.tree )
+    yaml2.dump()
 
 def usage():
     prog = os.path.basename(sys.argv[0])
@@ -1946,6 +2000,7 @@ def usage():
     print('  -t, --tree          run lopper tree tests' )
     print('  -l, --lops          run lop tests' )
     print('  -a, --assists       run assist tests' )
+    print('  -f, --format        run format tests (dts/yaml)' )
     print('    , --werror        treat warnings as errors' )
     print('  -h, --help          display this help and exit')
     print('')
@@ -1999,7 +2054,7 @@ def main():
             tree=True
         elif o in ( '-a','--assists'):
             assists=True
-        elif o in ( '--format'):
+        elif o in ( '-f', '--format'):
             format=True
         elif o in ( '--continue' ):
             continue_on_error = True
@@ -2072,6 +2127,7 @@ if __name__ == "__main__":
 
     if format:
         dt = setup_format_tree( outdir )
+        yt =  setup_yaml( outdir )
         device_tree = LopperSDT( dt )
 
         device_tree.dryrun = False
@@ -2084,3 +2140,5 @@ if __name__ == "__main__":
         device_tree.outdir = outdir
 
         format_sanity_test( device_tree, verbose )
+
+        yaml_sanity_test( device_tree, yt, outdir, verbose )

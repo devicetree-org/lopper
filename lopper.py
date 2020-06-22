@@ -34,8 +34,16 @@ from collections import OrderedDict
 import libfdt
 from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
 
-from lopper_tree import *
-from lopper_fdt import *
+from lopper_fdt import Lopper
+from lopper_fdt import LopperFmt
+
+try:
+    from lopper_yaml import *
+    yaml_support = True
+except:
+    yaml_support = False
+
+import lopper_tree
 
 LOPPER_VERSION = "2020.4-beta"
 
@@ -211,6 +219,23 @@ class LopperSDT:
                     sdt_files.append( ifile )
             elif re.search( ".dtb$", ifile ):
                 lop_files.append( ifile )
+            elif re.search( ".yaml$", ifile ):
+                if yaml_support:
+                    with open(ifile) as f:
+                        datafile = f.readlines()
+                        found = False
+                        for line in datafile:
+                            if not found:
+                                if re.search( "system-device-tree-v1,lop", line ):
+                                    print( "adding: %s as a lop file" % ifile)
+                                    lop_files.append( ifile )
+                                    found = True
+
+                    if not found:
+                        sdt_files.append( ifile )
+                else:
+                    print( "[ERROR]. YAML support is not loaded, check dependencies" )
+                    sys.exit(1)
 
         # is the sdt a dts ?
         if re.search( ".dts$", self.dts ):
@@ -299,15 +324,41 @@ class LopperSDT:
 
             # this is not a snapshot, but a reference, so we'll see all changes to
             # the backing FDT.
-            self.tree = lt.LopperTree( self.FDT )
+            self.tree = lopper_tree.LopperTree( self.FDT )
 
             fpp.close()
+        elif re.search( ".yaml$", self.dts ):
+            if not yaml_support:
+                print( "[ERROR]: no yaml support detected, but system device tree is yaml" )
+                sys.exit(1)
+
+            fp = ""
+            fpp = tempfile.NamedTemporaryFile( delete=False )
+            if sdt_files:
+                sdt_files.insert( 0, self.dts )
+
+                # this block concatenates all the files into a single yaml file to process
+                with open( fpp.name, 'wb') as wfd:
+                    for f in sdt_files:
+                        with open(f,'rb') as fd:
+                            shutil.copyfileobj(fd, wfd)
+
+                fp = fpp.name
+            else:
+                sdt_files.append( sdt_file )
+                fp = sdt_file
+
+            yaml = LopperYAML( fp )
+            lt = yaml.to_tree()
+            self.dtb = None
+            self.FDT = lt.fdt
+            self.tree = lt
         else:
             # the system device tree is a dtb
             self.dtb = sdt_file
             self.dts = sdt_file
             self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
-            self.tree = lt.LopperTree( self.FDT )
+            self.tree = lopper_tree.LopperTree( self.FDT )
 
         if self.verbose:
             print( "" )
@@ -332,6 +383,15 @@ class LopperSDT:
                     print( "[ERROR]: could not compile file %s" % ifile )
                     sys.exit(1)
                 lop.dtb = compiled_file
+                self.lops.append( lop )
+            elif re.search( ".yaml$", ifile ):
+                yaml = LopperYAML( ifile )
+                yaml_tree = yaml.to_tree()
+
+                lop = LopperFile( ifile )
+                lop.dts = ""
+                lop.dtb = ""
+                lop.fdt = yaml_tree.fdt
                 self.lops.append( lop )
             elif re.search( ".dtb$", ifile ):
                 lop = LopperFile( ifile )
@@ -452,11 +512,19 @@ class LopperSDT:
                     print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
                     sys.exit(1)
 
-                printer = lt.LopperTreePrinter( fdt_to_write, True, output_filename, self.verbose )
+                printer = lopper_tree.LopperTreePrinter( fdt_to_write, True, output_filename, self.verbose )
                 printer.exec()
             else:
                 Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose, False )
 
+        elif re.search( ".yaml", output_filename ):
+            o = Path(output_filename)
+            if o.exists() and not overwrite:
+                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                sys.exit(1)
+
+            yaml = LopperYAML( None, self.tree )
+            yaml.to_yaml( output_filename )
         else:
             # we use the outfile extension as a mask
             (out_name, out_ext) = os.path.splitext(output_filename)
@@ -464,7 +532,7 @@ class LopperSDT:
             if cb_funcs:
                 for cb_func in cb_funcs:
                     try:
-                        out_tree = lt.LopperTreePrinter( fdt_to_write, True, output_filename, self.verbose )
+                        out_tree = lopper_tree.LopperTreePrinter( fdt_to_write, True, output_filename, self.verbose )
                         if not cb_func( 0, out_tree, { 'outfile': output_filename, 'verbose' : self.verbose } ):
                             print( "[WARNING]: the assist returned false, check for errors ..." )
                     except Exception as e:
@@ -735,7 +803,7 @@ class LopperSDT:
         if self.verbose > 1:
             print( "[DBG++]: executing lop: %s" % lop_type )
 
-        lops_tree = lt.LopperTree( lops_fdt )
+        lops_tree = lopper_tree.LopperTree( lops_fdt )
         this_lop_node = lops_tree[lop_node_number]
 
         if re.search( ".*,exec.*$", lop_type ):
@@ -864,7 +932,7 @@ class LopperSDT:
 
                         if prop and prop_val:
                             # construct a test prop, so we can use the internal compare
-                            test_prop = lt.LopperProp( prop, -1, None, [prop_val] )
+                            test_prop = lopper_tree.LopperProp( prop, -1, None, [prop_val] )
                             test_prop.resolve( None )
 
                             # we need this list(), since the removes below will yank items out of
@@ -955,7 +1023,7 @@ class LopperSDT:
                 output_nodes = []
                 # select some nodes!
                 if "*" in output_regex:
-                    output_tree = lt.LopperTree( self.FDT, True )
+                    output_tree = lopper_tree.LopperTree( self.FDT, True )
                 else:
                     # we can gather the output nodes and unify with the selected
                     # copy below.
@@ -1008,7 +1076,7 @@ class LopperSDT:
                             print( "[WARNING]: except caught during output processing: %s" % e )
 
                 if not output_tree and output_nodes:
-                    output_tree = lt.LopperTreePrinter()
+                    output_tree = lopper_tree.LopperTreePrinter()
                     output_tree.__dbg__ = self.verbose
                     for on in output_nodes:
                         # make a deep copy of the selected node
@@ -1056,7 +1124,7 @@ class LopperSDT:
                 tree_nodes = []
                 # select some nodes!
                 if "*" in tree_regex:
-                    new_tree = lt.LopperTree( self.FDT, True )
+                    new_tree = lopper_tree.LopperTree( self.FDT, True )
                 else:
                     # we can gather the tree nodes and unify with the selected
                     # copy below.
@@ -1109,7 +1177,7 @@ class LopperSDT:
                             print( "[WARNING]: except caught during tree processing: %s" % e )
 
                 if not new_tree and tree_nodes:
-                    new_tree = lt.LopperTreePrinter()
+                    new_tree = lopper_tree.LopperTreePrinter()
                     new_tree.__dbg__ = self.verbose
                     for on in tree_nodes:
                         # make a deep copy of the selected node
@@ -1961,7 +2029,7 @@ def main():
             print( "Error: input file %s does not exist" % i )
             sys.exit(1)
 
-        valid_ifile_types = [ ".dtsi", ".dtb", ".dts" ]
+        valid_ifile_types = [ ".dtsi", ".dtb", ".dts", ".yaml" ]
         itype = Lopper.input_file_type(i)
         if not itype in valid_ifile_types:
             print( "[ERROR]: unrecognized input file type passed" )

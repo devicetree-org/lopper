@@ -32,10 +32,9 @@ from collections import OrderedDict
 from string import printable
 
 
+
 import libfdt
 from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
-
-import lopper_tree as lt
 
 # used in encode/decode routines
 class LopperFmt(Enum):
@@ -63,6 +62,21 @@ class Lopper:
     libfdt FDT objects) or SystemDeviceTree classes.
 
     """
+
+    @staticmethod
+    def fdt_copy( fdt ):
+        """Copy a fdt
+
+        Creats a new FDT that is a copy of the passed one.
+
+        Args:
+            fdt (FDT): reference FDT
+
+        Returns:
+            fdt: The newly created FDT
+        """
+
+        return Fdt( fdt.as_bytearray() )
 
     @staticmethod
     def fdt( size=None, other_fdt=None ):
@@ -953,7 +967,7 @@ class Lopper:
                 sys.exit(1)
 
             if enhanced:
-                printer = lt.LopperTreePrinter( fdt_to_write, True, output_filename, verbose )
+                printer = LopperTreePrinter( fdt_to_write, True, output_filename, verbose )
                 printer.exec()
             else:
                 # write the device tree to a temporary dtb
@@ -1412,7 +1426,7 @@ class Lopper:
                     # fail!
                     pass
         else:
-            print( "[WARNING]; uknown type was used" )
+            print( "[WARNING]; unknown type was used: %s" % type(prop_val) )
 
     @staticmethod
     def property_remove( fdt, node_name, prop_name, verbose=0 ):
@@ -1902,3 +1916,5 @@ class Lopper:
             print( "[DBG+]: decoding prop: \"%s\" (%s) [%s] --> %s" % (prop, poffset, prop, decode_msg ) )
 
         return val
+
+from lopper_tree import *
