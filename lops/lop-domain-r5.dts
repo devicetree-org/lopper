@@ -109,7 +109,7 @@
                   };
                   lop_15 {
                          compatible = "system-device-tree-v1,lop,output";
-                         outfile = "r5.dtb";
+                         outfile = "r5.dts";
                          // * is "all nodes"
                          nodes = "ps_ipi_*", "channel*", "cpus*","fpga*", "amba_rpu","tcm","memory_r5@0";
                   };
