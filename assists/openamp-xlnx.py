@@ -142,7 +142,7 @@ def parse_memory_carevouts_for_rpu(sdt, domain_node, rpu_cpu_node, memory_node, 
     rpu_path = memory_node.abs_path
 
     # output to DT
-    for i in range(1,2):
+    for i in range(0,1):
         name = "/memory_r5@"+str(i)
         try:
             rpu_mem_node = sdt.tree[ memory_node.abs_path + name ]
