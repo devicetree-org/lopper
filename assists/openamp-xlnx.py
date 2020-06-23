@@ -27,6 +27,12 @@ import lopper
 from lopper_tree import *
 from re import *
 
+class SOC_TYPE:
+    UNINITIALIZED = -1
+    VERSAL = 0
+    ZYNQMP = 1
+    ZYNQ = 2
+
 def write_one_carveout(f, prefix, addr_prop, range_prop):
     f.write("#define ")
     f.write(prefix+"ADDR\t"+addr_prop+"\n")
@@ -119,11 +125,12 @@ def write_mem_carveouts(f, carveout_list, options):
                 channel_range = 0
 
 # table relating ipi's to IPI_BASE_ADDR -> IPI_IRQ_VECT_ID and IPI_CHN_BITMASK
-ipi_lookup_table = { "0xff340000" : [63, 0x0000020 ] , "0xff360000" : [61, 0x0000008] }
+versal_ipi_lookup_table = { "0xff340000" : [63, 0x0000020 ] , "0xff360000" : [0 , 0x0000008] }
+zynqmp_ipi_lookup_table = { "0xff310000" : [65, 0x1000000 ] , "0xff340000" : [0 , 0x100 ] }
 
 # given interrupt list, write interrupt base addresses and adequate register width to header file
 # TODO append memory carveout-related info
-def generate_openamp_file(ipi_list, carveout_list, options):
+def generate_openamp_file(ipi_list, carveout_list, options, platform):
     if (len(options["args"])) > 0:
         f_name = options["args"][0]
     else:
@@ -148,14 +155,22 @@ def generate_openamp_file(ipi_list, carveout_list, options):
             ipi += "_MASTER_"
         else:
             ipi += "_REMOTE_"
-        f.write(ipi+"IPI_BASE_ADDR_" + str(index)+"\t"+value+"\n")
+        f.write(ipi+"IPI_BASE_ADDR\t"+value+"\n")
 
         try:
-            ipi_details_list = ipi_lookup_table[value]
-            f.write("#define "+ipi+"IRQ_VECT_ID_"+str(index)+"\t") #+"\t"+ipi_details_list[0]+"\n")
+            ipi_details_list = None
+            if platform == SOC_TYPE.VERSAL:
+                ipi_details_list = versal_ipi_lookup_table[value]
+            elif platform == SOC_TYPE.ZYNQMP:
+                ipi_details_list = zynqmp_ipi_lookup_table[value]
+            else:
+                if verbose != 0:
+                    print ("[WARNING]: invalid device tree. no valid platform found")
+                    return -1
+            f.write("#define "+ipi+"IRQ_VECT_ID\t")
             f.write(str(ipi_details_list[0]))
             f.write("\n")
-            f.write("#define "+ipi+"CHN_BITMASK_"+str(index)+"\t")
+            f.write("#define "+ipi+"CHN_BITMASK\t")
             f.write(str(hex(ipi_details_list[1])))
             f.write("\n")
         except:
@@ -242,6 +257,18 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
         print( "[INFO]: cb: xlnx_openamp_rpu( %s, %s, %s )" % (tgt_node, sdt, verbose))
 
     domain_node = sdt.tree[tgt_node]
+
+    root_node = sdt.tree["/"]
+    platform = SOC_TYPE.UNINITIALIZED
+    if 'versal' in str(root_node['compatible']):
+        platform = SOC_TYPE.VERSAL
+    elif 'zynqmp' in str(root_node['compatible']):
+        platform = SOC_TYPE.ZYNQMP
+    else:
+        print("invalid input system DT")
+        return False
+
+
 
     try:
         cpu_prop_values = domain_node['cpus'].value
@@ -466,7 +493,7 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
 
     ipis = parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options)
     mem_carveouts = parse_memory_carevouts_for_rpu(sdt, domain_node, rpu_cpu_node, memory_node, options)
-    generate_openamp_file(ipis, mem_carveouts, options)
+    generate_openamp_file(ipis, mem_carveouts, options, platform)
 
     return True
 
