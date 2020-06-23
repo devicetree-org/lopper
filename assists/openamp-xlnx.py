@@ -69,6 +69,7 @@ def write_openamp_virtio_rpmsg_info(f, carveout_list, options):
                 f.write("#define "+symbol_name+"RING_RX\t"+i[1][0]+"\n")
             elif "elfload" in i[0]:
                 f.write("#define "+symbol_name+"RSC_MEM_PA\t"+hex( int( i[1][0],16)+0x20000 )+"\n")
+                f.write("#define "+symbol_name+"SHM_DEV_NAME\t\""+hex( int( i[1][0],16)+0x20000 ).replace("0x","")+".shm\"\n")
                 f.write("#define "+symbol_name+"SHARED_BUF_SIZE\t"+i[1][1]+"\n")
                 current_channel_count += 1
 
@@ -85,6 +86,8 @@ def write_openamp_virtio_rpmsg_info(f, carveout_list, options):
                 f.write("#define "+symbol_name+"VRING_ALIGN\t0x1000\n")
                 f.write("#define "+symbol_name+"VRING_SIZE\t256\n")
                 f.write("#define "+symbol_name+"NUM_TABLE_ENTRIES\t1\n")
+                f.write("#define MASTER_BUS_NAME\t\"platform\"\n")
+                f.write("#define REMOTE_BUS_NAME\t\"generic\"\n")
 
 
 def write_mem_carveouts(f, carveout_list, options):
@@ -156,6 +159,7 @@ def generate_openamp_file(ipi_list, carveout_list, options, platform):
         else:
             ipi += "_REMOTE_"
         f.write(ipi+"IPI_BASE_ADDR\t"+value+"\n")
+        f.write("#define "+ipi+"IPI_NAME\t\""+value.replace("0x","")+".ipi\"\n")
 
         try:
             ipi_details_list = None
@@ -180,7 +184,7 @@ def generate_openamp_file(ipi_list, carveout_list, options, platform):
     f.write("\n")
     write_mem_carveouts(f, carveout_list, options)
     write_openamp_virtio_rpmsg_info(f, carveout_list, options)
-    f.write("\n\n#endif /* OPENAMP_LOPPER_INFO_H_\n")
+    f.write("\n\n#endif /* OPENAMP_LOPPER_INFO_H_ */\n")
     f.close()
 
 def parse_ipis_for_rpu(sdt, domain_node, rpu_cpu_node, options):
