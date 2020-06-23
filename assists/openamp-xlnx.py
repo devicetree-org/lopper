@@ -33,6 +33,54 @@ def write_one_carveout(f, prefix, addr_prop, range_prop):
     f.write("#define ")
     f.write(prefix+"RANGE\t"+range_prop+"\n")
 
+def write_openamp_virtio_rpmsg_info(f, carveout_list, options):
+    symbol_name = "CHANNEL_0_MEM_"
+    current_channel_number = 0
+    current_channel_count = 0 # if == 4 then got complete channel range
+    vring_mems = []
+
+    for i in carveout_list:
+        if "channel" in i[0]:
+            # save channel number
+            channel_number = int((re.search("channel([0-9]+)", i[0]).group(1) ))
+            if channel_number != current_channel_number:
+                symbol_name = "CHANNEL_"+str(channel_number)+"_MEM_"
+                current_channel_number = channel_number
+
+            if "vdev0buffer" in i[0]:
+                current_channel_count += 1
+                f.write("#define "+symbol_name+"SHARED_MEM_SIZE\t"+i[1][1]+"\n")
+                f.write("#define "+symbol_name+"SHARED_BUF_PA\t"+i[1][0]+"\n")
+            elif "vdev0vring0" in i[0]:
+                current_channel_count += 1
+                f.write("#define "+symbol_name+"SHARED_MEM_PA\t"+i[1][0]+"\n")
+                f.write("#define "+symbol_name+"RING_TX\t"+i[1][0]+"\n")
+                f.write("#define "+symbol_name+"VRING_MEM_PA\t"+i[1][0]+"\n")
+                vring_mems.append(i[1][1])
+            elif "vdev0vring1" in i[0]:
+                vring_mems.append(i[1][1])
+                current_channel_count += 1
+                f.write("#define "+symbol_name+"RING_RX\t"+i[1][0]+"\n")
+            elif "elfload" in i[0]:
+                f.write("#define "+symbol_name+"RSC_MEM_PA\t"+hex( int( i[1][0],16)+0x20000 )+"\n")
+                f.write("#define "+symbol_name+"SHARED_BUF_SIZE\t"+i[1][1]+"\n")
+                current_channel_count += 1
+
+            if current_channel_count == 4:
+                current_channel_count = 0
+                vring_mems_size_total = 0
+                for i in vring_mems:
+                    vring_mems_size_total += int(i,16)
+                f.write("#define "+symbol_name+"SHARED_BUF_OFFSET\t"+hex(vring_mems_size_total)+"\n")
+                f.write("#define "+symbol_name+"VRING_MEM_SIZE\t"+hex(vring_mems_size_total)+"\n")
+                vring_mem_size = 0
+                f.write("#define "+symbol_name+"RSC_MEM_SIZE\t0x2000UL\n")
+                f.write("#define "+symbol_name+"NUM_VRINGS\t2\n")
+                f.write("#define "+symbol_name+"VRING_ALIGN\t0x1000\n")
+                f.write("#define "+symbol_name+"VRING_SIZE\t256\n")
+                f.write("#define "+symbol_name+"NUM_TABLE_ENTRIES\t1\n")
+
+
 def write_mem_carveouts(f, carveout_list, options):
     symbol_name = "CHANNEL_0_MEM_"
     current_channel_number = 0
@@ -70,6 +118,9 @@ def write_mem_carveouts(f, carveout_list, options):
                 f.write(symbol_name+"RANGE\t"+str(hex(channel_range))+"\n\n")
                 channel_range = 0
 
+# table relating ipi's to IPI_BASE_ADDR -> IPI_IRQ_VECT_ID and IPI_CHN_BITMASK
+ipi_lookup_table = { "0xff340000" : [63, 0x0000020 ] , "0xff360000" : [61, 0x0000008] }
+
 # given interrupt list, write interrupt base addresses and adequate register width to header file
 # TODO append memory carveout-related info
 def generate_openamp_file(ipi_list, carveout_list, options):
@@ -77,6 +128,10 @@ def generate_openamp_file(ipi_list, carveout_list, options):
         f_name = options["args"][0]
     else:
         f_name = "openamp_lopper_info.h"
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
 
     f = open(f_name, "w")
     f.write("#ifndef OPENAMP_LOPPER_INFO_H_\n")
@@ -93,14 +148,23 @@ def generate_openamp_file(ipi_list, carveout_list, options):
             ipi += "_MASTER_"
         else:
             ipi += "_REMOTE_"
-        ipi += "IPI_BASE_ADDR_" + str(index)
-        ipi += "\t"+value+"\n"
-        f.write(ipi)
+        f.write(ipi+"IPI_BASE_ADDR_" + str(index)+"\t"+value+"\n")
+
+        try:
+            ipi_details_list = ipi_lookup_table[value]
+            f.write("#define "+ipi+"IRQ_VECT_ID_"+str(index)+"\t") #+"\t"+ipi_details_list[0]+"\n")
+            f.write(str(ipi_details_list[0]))
+            f.write("\n")
+            f.write("#define "+ipi+"CHN_BITMASK_"+str(index)+"\t")
+            f.write(str(hex(ipi_details_list[1])))
+            f.write("\n")
+        except:
+            if verbose != 0:
+                print ("[WARNING]: unable to find detailed interrupt information for "+i)
+
     f.write("\n")
-
     write_mem_carveouts(f, carveout_list, options)
-
-
+    write_openamp_virtio_rpmsg_info(f, carveout_list, options)
     f.write("\n\n#endif /* OPENAMP_LOPPER_INFO_H_\n")
     f.close()
 

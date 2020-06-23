@@ -56,30 +56,19 @@
 			};
 		};
 	};
-	ps_ipi_1: ps_ipi@ff340000 {
-		compatible = "ps-interrupt";
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0xFF340000 0x1000>;
-	};
-	ps_ipi_2: ps_ipi@ff350000 {
-		compatible = "ps-interrupt";
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0xFF350000 0x1000>;
-	};
 	ps_ipi_3: ps_ipi@ff360000 {
 		compatible = "ps-interrupt";
 		#address-cells = <2>;
 		#size-cells = <2>;
 		reg = <0xFF360000 0x1000>;
 	};
-	ps_ipi_4: ps_ipi@ff370000 {
+	ps_ipi_1: ps_ipi@ff340000 {
 		compatible = "ps-interrupt";
 		#address-cells = <2>;
 		#size-cells = <2>;
-		reg = <0xFF370000 0x1000>;
+		reg = <0xFF340000 0x1000>;
 	};
+
 	channel0vdev0vring0: channel0vdev0vring0@3ed40000 {
 		no-map;
 		#address-cells = <2>;
@@ -106,34 +95,6 @@
 		#address-cells = <2>;
 		#size-cells = <2>;
 		reg = <0x3ed00000 0x40000>;
-		compatible = "openamp,xlnx,mem-carveout";
-	};
-	channel1vdev0vring0: channel1vdev0vring0@3ef40000 {
-		no-map;
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0x3ef40000 0x4000>;
-		compatible = "openamp,xlnx,mem-carveout";
-	};
-	channel1vdev0vring1: channel1vdev0vring1@3ef44000 {
-		no-map;
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0x3ef44000 0x4000>;
-		compatible = "openamp,xlnx,mem-carveout";
-	};
-	channel1vdev0buffer: channel1vdev0buffer@3ef48000 {
-		no-map;
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0x3ef48000 0x100000>;
-		compatible = "openamp,xlnx,mem-carveout";
-	};
-	channel1_elfload: channel1_elfload@3ef000000 {
-		no-map;
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0x3ef00000 0x40000>;
 		compatible = "openamp,xlnx,mem-carveout";
 	};
 
