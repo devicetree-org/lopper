@@ -94,6 +94,27 @@
                           node = "/domains/openamp_r5";
                           options = "openamp_channel_info.h";
                   };
+                  lop_13_1 {
+                         compatible = "system-device-tree-v1,lop,tree";
+                         tree = "openamp-test";
+                         nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
+                  };
+                  lop_13_2 {
+                         compatible = "system-device-tree-v1,lop,modify";
+                         tree = "openamp-test";
+                         modify = "/reserved-memory:#size-cells:3";
+                  };
+                  lop_13_2_1 {
+                         compatible = "system-device-tree-v1,lop,modify";
+                         tree = "openamp-test";
+                         modify = "/reserved-memory::/zynqmp-rpu/reserved-memory";
+                  };
+                  lop_13_3 {
+                         compatible = "system-device-tree-v1,lop,output";
+                         tree = "openamp-test";
+                         outfile = "openamp-test-foo.dts"; 
+                         nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
+                  };
                   lop_13 {
                          compatible = "system-device-tree-v1,lop,output";
                          outfile = "openamp-test.dts";
