@@ -1330,6 +1330,16 @@ class LopperSDT:
             if self.verbose:
                 print( "[INFO]: conditional lop found" )
 
+            try:
+                tree_name = this_lop_node['tree'].value[0]
+                try:
+                    tree = self.subtrees[tree_name]
+                except:
+                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
+                    sys.exit(1)
+            except:
+                tree = self.tree
+
             lop_tree = lt.LopperTree( lops_fdt )
             this_lop = lop_tree[lop_node_number]
 
@@ -1358,7 +1368,7 @@ class LopperSDT:
             # system device tree.
             cond_path = re.sub( this_lop.abs_path, "", cond_last_node.abs_path)
 
-            sdt_tgt_nodes = self.tree.nodes(cond_path)
+            sdt_tgt_nodes = tree.nodes(cond_path)
             if not sdt_tgt_nodes:
                 if self.verbose > 1:
                     print( "[DBG++]: no target nodes found at: %s, returning" % cond_path )
