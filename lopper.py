@@ -520,6 +520,8 @@ class LopperSDT:
 
         try:
             mod_file_abs = mod_file.resolve()
+            if not mod_file_abs:
+                raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
         except FileNotFoundError:
             # check the path from which lopper is running, that directory + assists, and paths
             # specified on the command line
@@ -544,6 +546,8 @@ class LopperSDT:
 
             if not mod_file_abs:
                 print( "[ERROR]: module file %s not found" % assist_name )
+                if self.werror:
+                    sys.exit(1)
                 return None
 
         return mod_file
