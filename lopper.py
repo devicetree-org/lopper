@@ -99,6 +99,7 @@ class LopperSDT:
         self.enhanced = False
         self.FDT = None
         self.tree = None
+        self.subtrees = {}
         self.outdir = "./"
         self.target_domain = ""
         self.load_paths = []
@@ -1003,6 +1004,106 @@ class LopperSDT:
                     self.write( output_tree.fdt, output_file_full, True, self.enhanced )
             else:
                 print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
+
+        if re.search( ".*,tree$", lop_type ):
+            try:
+                tree_name = this_lop_node['tree'].value[0]
+            except:
+                print( "[ERROR]: cannot get tree name from lop" )
+                sys.exit(1)
+
+            if self.verbose > 1:
+                print( "[DBG+]: tree is: %s" % tree_name )
+
+            tree_nodes = []
+            try:
+                tree_regex = this_lop_node['nodes'].value
+            except:
+                tree_regex = []
+
+            if not tree_regex:
+                if self.tree.__selected__:
+                    tree_nodes = self.tree.__selected__
+
+            if not tree_regex and not tree_nodes:
+                print( "[WARNING]: no nodes or regex proviced for tree, returning" )
+                return False
+
+            new_tree = None
+            if tree_regex:
+                tree_nodes = []
+                # select some nodes!
+                if "*" in tree_regex:
+                    new_tree = lt.LopperTree( self.FDT, True )
+                else:
+                    # we can gather the tree nodes and unify with the selected
+                    # copy below.
+                    for regex in tree_regex:
+
+                        split_node = regex.split(":")
+                        o_node_regex = split_node[0]
+                        o_prop_name = ""
+                        o_prop_val = ""
+                        if len(split_node) > 1:
+                            o_prop_name = split_node[1]
+                            if len(split_node) > 2:
+                                o_prop_val = split_node[2]
+
+                        # Note: we may want to switch this around, and copy the old tree and
+                        #       delete nodes. This will be important if we run into some
+                        #       strangely formatted ones that we can't copy.
+
+                        try:
+                            # if there's no / anywhere in the regex, then it is just
+                            # a node name, and we need to wrap it in a regex. This is
+                            # for compatibility with when just node names were allowed
+                            c = re.findall( '/', o_node_regex )
+                            if not c:
+                                o_node_regex = ".*" + o_node_regex
+
+                            o_nodes = self.tree.nodes(o_node_regex)
+                            if not o_nodes:
+                                # was it a label ?
+                                label_nodes = []
+                                try:
+                                    o_nodes = self.tree.lnodes(o_node_regex)
+                                except Exception as e:
+                                    pass
+
+                            for o in o_nodes:
+                                # we test for a property in the node if it was defined
+                                if o_prop_name:
+                                    p = self.tree[o].propval(o_prop_name)
+                                    if o_prop_val:
+                                        if p:
+                                            if o_prop_val in p:
+                                                if not o in tree_nodes:
+                                                    tree_nodes.append( o )
+                                else:
+                                    if not o in tree_nodes:
+                                        tree_nodes.append( o )
+
+                        except Exception as e:
+                            print( "[WARNING]: except caught during tree processing: %s" % e )
+
+                if not new_tree and tree_nodes:
+                    new_tree = lt.LopperTreePrinter()
+                    new_tree.__dbg__ = self.verbose
+                    for on in tree_nodes:
+                        # make a deep copy of the selected node
+                        new_node = on()
+                        new_node.__dbg__ = self.verbose
+                        # and assign it to our tree
+                        # if the performance of this becomes a problem, we can use
+                        # direct calls to Lopper.node_copy_from_path()
+                        new_tree + new_node
+
+            if new_tree:
+                self.subtrees[tree_name] = new_tree
+            else:
+                print( "[ERROR]: no tree created, exiting" )
+                sys.exit(1)
+
 
         if re.search( ".*,assist-v1$", lop_type ):
             # also note: this assist may change from being called as
