@@ -1598,14 +1598,36 @@ class LopperSDT:
                     # in case /<name>/ was passed as the new name, we need to drop them
                     # since they aren't valid in set_name()
                     if modify_val:
-                        modify_val = modify_val.replace( '/', '' )
-                        try:
-                            # change the name of the node
-                            node.name = modify_val
-                            tree.sync( self.FDT )
-                        except Exception as e:
-                            print( "[ERROR]:cannot rename node '%s' to '%s' (%s)" %(node.abs_path, modify_val, e))
-                            sys.exit(1)
+                        modify_source_path = Path(node.abs_path)
+
+                        modify_dest_path = Path( modify_val )
+                        if modify_source_path.parent != modify_dest_path.parent:
+                            if self.verbose > 1:
+                                print( "[DBG++]: [%s] node move: %s -> %s" %
+                                       (tree,modify_source_path,modify_dest_path))
+                            # deep copy the node
+                            new_dst_node = node()
+                            new_dst_node.abs_path = modify_val
+                            tree + new_dst_node
+
+                            # delete the old node
+                            tree.delete( node )
+
+                            tree.sync()
+
+                        if modify_source_path.name != modify_dest_path.name:
+                            if self.verbose > 1:
+                                print( "[DBG++]: [%s] node rename: %s -> %s" %
+                                       (tree,modify_source_path.name,modify_dest_path.name))
+
+                            modify_val = modify_val.replace( '/', '' )
+                            try:
+                                # change the name of the node
+                                node.name = modify_val
+                                tree.sync()
+                            except Exception as e:
+                                print( "[ERROR]:cannot rename node '%s' to '%s' (%s)" % (node.abs_path, modify_val, e))
+                                sys.exit(1)
                     else:
                         # first we see if the node prefix is an exact match
                         node_to_remove = node
