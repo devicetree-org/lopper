@@ -175,11 +175,33 @@ def setup_lops( outdir ):
                         outfile = "openamp-test.dts";
                         nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
                  };
-                 lop_13_1 {
+                 lop_13_1_1 {
                         compatible = "system-device-tree-v1,lop,output";
                         outfile = "openamp-test.dtb";
                         nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
                  };
+                 lop_13_1 {
+                        compatible = "system-device-tree-v1,lop,tree";
+                        tree = "openamp-test";
+                        nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
+                 };
+                 lop_13_2 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        tree = "openamp-test";
+                        modify = "/reserved-memory:#size-cells:3";
+                 };
+                 lop_13_2_1 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        tree = "openamp-test";
+                        modify = "/reserved-memory::/zynqmp-rpu/reserved-memory";
+                 };
+                 lop_13_3 {
+                        compatible = "system-device-tree-v1,lop,output";
+                        tree = "openamp-test";
+                        outfile = "openamp-test2.dts";
+                        nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
+                 };
+
                  lop_14 {
                         compatible = "system-device-tree-v1,lop,output";
                         outfile = "linux.dts";
@@ -915,6 +937,18 @@ def setup_system_device_tree( outdir ):
                     nested-node-child1 {
                          compatible = "delete-me2";
                     };
+                };
+        };
+
+        reserved-memory {
+                #address-cells = <0x2>;
+                #size-cells = <0x2>;
+                ranges;
+
+                /* For compatibility with default the cpus cluster */
+                memory_r5@0 {
+                        compatible = "openamp,domain-memory-v1";
+                        reg = <0x0 0x0 0x0 0x8000000>;
                 };
         };
 
@@ -1862,6 +1896,27 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
         test_passed( "property via regex add" )
     else:
         test_failed( "property via regex add" )
+
+    sub_tree = device_tree.subtrees["openamp-test"]
+    sub_tree_output = Path("/tmp/openamp-test2.dts")
+    sub_tree_file = sub_tree_output.resolve()
+    if not sub_tree_file:
+        test_failed( "subtree write" )
+    else:
+        test_passed( "subtree_wrte" )
+
+    c = test_pattern_count( str(sub_tree_file), "#size-cells = <0x3>;" )
+    if c == 1:
+        test_passed( "subtree property modify" )
+    else:
+        test_failed( "subtree property modify" )
+
+    # if the indentation matches this, it was moved
+    c = test_pattern_count( str(sub_tree_file), "                reserved-memory {" )
+    if c == 1:
+        test_passed( "subtree node move" )
+    else:
+        test_failed( "subtree node move" )
 
     device_tree.cleanup()
 
