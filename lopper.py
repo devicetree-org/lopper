@@ -1594,13 +1594,21 @@ class LopperSDT:
                     except:
                         node = None
 
+                    if not node:
+                        print( "[ERROR]: no nodes found for %s" % modify_path )
+                        sys.exit(1)
+
                     # node operation
                     # in case /<name>/ was passed as the new name, we need to drop them
                     # since they aren't valid in set_name()
                     if modify_val:
                         modify_source_path = Path(node.abs_path)
 
-                        modify_dest_path = Path( modify_val )
+                        if modify_val.startswith( "/" ):
+                            modify_dest_path = Path( modify_val )
+                        else:
+                            modify_dest_path = Path( "/" + modify_val )
+
                         if modify_source_path.parent != modify_dest_path.parent:
                             if self.verbose > 1:
                                 print( "[DBG++]: [%s] node move: %s -> %s" %
