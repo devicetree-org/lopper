@@ -35,9 +35,9 @@ class SOC_TYPE:
 
 def write_one_carveout(f, prefix, addr_prop, range_prop):
     f.write("#define ")
-    f.write(prefix+"ADDR\t"+addr_prop+"\n")
+    f.write(prefix+"ADDR\t"+addr_prop+"U\n")
     f.write("#define ")
-    f.write(prefix+"RANGE\t"+range_prop+"\n")
+    f.write(prefix+"RANGE\t"+range_prop+"U\n")
 
 def write_openamp_virtio_rpmsg_info(f, carveout_list, options):
     symbol_name = "CHANNEL_0_MEM_"
@@ -124,7 +124,7 @@ def write_mem_carveouts(f, carveout_list, options):
             if current_channel_count == 4:
                 current_channel_count = 0
                 f.write("#define ")
-                f.write(symbol_name+"RANGE\t"+str(hex(channel_range))+"\n\n")
+                f.write(symbol_name+"RANGE\t"+str(hex(channel_range))+U"\n\n")
                 channel_range = 0
 
 # table relating ipi's to IPI_BASE_ADDR -> IPI_IRQ_VECT_ID and IPI_CHN_BITMASK
@@ -158,7 +158,7 @@ def generate_openamp_file(ipi_list, carveout_list, options, platform):
             ipi += "_MASTER_"
         else:
             ipi += "_REMOTE_"
-        f.write(ipi+"IPI_BASE_ADDR\t"+value+"\n")
+        f.write(ipi+"IPI_BASE_ADDR\t"+value+"U\n")
         f.write("#define "+ipi+"IPI_NAME\t\""+value.replace("0x","")+".ipi\"\n")
 
         try:
@@ -176,7 +176,7 @@ def generate_openamp_file(ipi_list, carveout_list, options, platform):
             f.write("\n")
             f.write("#define "+ipi+"CHN_BITMASK\t")
             f.write(str(hex(ipi_details_list[1])))
-            f.write("\n")
+            f.write("U\n")
         except:
             if verbose != 0:
                 print ("[WARNING]: unable to find detailed interrupt information for "+i)
