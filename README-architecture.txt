@@ -264,7 +264,7 @@ The following types of lops are currently valid:
                         id = "openamp,domain-v1";
                 };
 
-# modify: a general purpose node and property modify/delete/add operation
+# modify: a general purpose node and property modify/delete/add/move operation
 #
 #         format is: "path":"property":"replacement"
 #                     - modify to "nothing", is a remove operation
@@ -305,7 +305,11 @@ The following types of lops are currently valid:
                        // note: nodes is legacy now. Just put the regex into the modify parameter
                        // nodes = "/amba/.*ethernet.*phy.*";
                 };
-
+                lop_13_2_1 {
+                       compatible = "system-device-tree-v1,lop,modify";
+                       // moves the node reserved-memory under a new parent
+                       modify = "/reserved-memory::/zynqmp-rpu/reserved-memory";
+                };
 
 # node add: copies the compiled node to the target device tree
 #
