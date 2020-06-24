@@ -30,6 +30,8 @@ import atexit
 import textwrap
 from collections import UserDict
 from collections import OrderedDict
+import os.path
+from os import path
 
 import libfdt
 from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
@@ -520,6 +522,9 @@ class LopperSDT:
 
         try:
             mod_file_abs = mod_file.resolve()
+            if path.exists(os.path.abspath(assist_name)) == False:
+                raise FileNotFoundError
+
         except FileNotFoundError:
             # check the path from which lopper is running, that directory + assists, and paths
             # specified on the command line
@@ -528,7 +533,8 @@ class LopperSDT:
                 mod_file = Path( s + "/" + mod_file.name )
                 try:
                     mod_file_abs = mod_file.resolve()
-                    break
+                    if path.exists(os.path.abspath(mod_file_abs)):
+                        break
                 except FileNotFoundError:
                     mod_file_abs = ""
 
