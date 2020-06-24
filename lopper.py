@@ -1534,6 +1534,8 @@ class LopperSDT:
                                 try:
                                     n.delete( modify_prop )
                                 except:
+                                    if self.verbose:
+                                        print( "[WARNING]: property %s not found, and not deleted" % modify_prop )
                                     # no big deal if it doesn't have the property
                                     pass
                                 self.tree.sync()
@@ -1554,6 +1556,11 @@ class LopperSDT:
                             nodes = self.tree.nodes( modify_path )
                         else:
                             nodes = self.tree.__selected__
+
+                        if not nodes:
+                            if self.verbose:
+                                print( "[WARNING]: node %s not found,  property %s not modified " % (modify_path,modify_prop))
+
                         for n in nodes:
                             n[modify_prop] = [ modify_val ]
                             # this is fairly heavy, and may need to come out of the loop
