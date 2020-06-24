@@ -1340,22 +1340,19 @@ class LopperSDT:
             except:
                 tree = self.tree
 
-            lop_tree = lt.LopperTree( lops_fdt )
-            this_lop = lop_tree[lop_node_number]
-
-            this_lop_subnodes = this_lop.subnodes()
+            this_lop_subnodes = this_lop_node.subnodes()
             # the "cond_root" property of the lop node is the name of a node
             # under the same lop node that is the start of the conditional node
             # chain. If one wasn't provided, we start at '/'
             try:
-                root = this_lop["cond_root"]
+                root = this_lop_node["cond_root"].value[0]
             except:
                 root = "/"
 
             try:
-                conditional_start = lop_tree[this_lop.abs_path + "/" + root.value[0]]
+                conditional_start = lops_tree[this_lop_node.abs_path + "/" + root]
             except:
-                print( "[INFO]: conditional node %s not found, returning" % this_lop.abs_path + "/" + root.value[0] )
+                print( "[INFO]: conditional node %s not found, returning" % this_lop_node.abs_path + "/" + root )
                 return False
 
             # the subnodes of the conditional lop represent the set of conditions
@@ -1366,7 +1363,7 @@ class LopperSDT:
             # drop the path to the this conditional lop from the full path of
             # the last node in the chain. That's the path we'll look for in the
             # system device tree.
-            cond_path = re.sub( this_lop.abs_path, "", cond_last_node.abs_path)
+            cond_path = re.sub( this_lop_node.abs_path, "", cond_last_node.abs_path)
 
             sdt_tgt_nodes = tree.nodes(cond_path)
             if not sdt_tgt_nodes:
