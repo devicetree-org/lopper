@@ -805,6 +805,16 @@ class LopperSDT:
         if re.search( ".*,select.*$", lop_type ):
             select_props = this_lop_node.props( 'select.*' )
 
+            try:
+                tree_name = this_lop_node['tree'].value[0]
+                try:
+                    tree = self.subtrees[tree_name]
+                except:
+                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
+                    sys.exit(1)
+            except:
+                tree = self.tree
+
             #
             # to do an "or" condition
             #    select_1 = "/path/or/regex/to/nodes:prop:val";
@@ -819,7 +829,7 @@ class LopperSDT:
                 if sel.value == ['']:
                     if self.verbose > 1:
                         print( "[DBG++]: clearing selected nodes" )
-                    self.tree.__selected__ = []
+                    tree.__selected__ = []
                 else:
                     # if different node regex + properties are listed in the same
                     # select = "foo","bar","blah", they are always AND conditions.
@@ -838,14 +848,14 @@ class LopperSDT:
                             # if selected_nodes:
                             #     selected_nodes_possible = selected_nodes
                             # else:
-                            selected_nodes_possible = self.tree.nodes( node_regex )
+                            selected_nodes_possible = tree.nodes( node_regex )
                         else:
                             # if the node_regex is empty, we operate on previously
                             # selected nodes.
                             if selected_nodes:
                                 selected_nodes_possible = selected_nodes
                             else:
-                                selected_nodes_possible = self.tree.__selected__
+                                selected_nodes_possible = tree.__selected__
 
                         if self.verbose > 1:
                             print( "[DBG++]: selected potential nodes %s" % selected_nodes_possible )
@@ -893,7 +903,7 @@ class LopperSDT:
                             print( "    %s" % n )
 
             # update the tree selection with our results
-            self.tree.__selected__ = selected_nodes
+            tree.__selected__ = selected_nodes
 
         if re.search( ".*,meta.*$", lop_type ):
             if re.search( "phandle-desc", lop_args ):
