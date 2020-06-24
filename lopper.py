@@ -1489,6 +1489,16 @@ class LopperSDT:
             except:
                 options_spec = ""
 
+            try:
+                tree_name = this_lop_node['tree'].value[0]
+                try:
+                    tree = self.subtrees[tree_name]
+                except:
+                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
+                    sys.exit(1)
+            except:
+                tree = self.tree
+
             if options_spec:
                 for o in options_spec:
                     opt_key,opt_val = o.split(":")
@@ -1500,17 +1510,17 @@ class LopperSDT:
             except:
                 # were there selected nodes ? Make them the context, unless overrriden
                 # by an explicit start_node property
-                if self.tree.__selected__:
-                    start_node = self.tree.__selected__[0]
+                if tree.__selected__:
+                    start_node = tree.__selected__[0]
                 else:
                     start_node = "/"
 
             if self.verbose:
                 print ( "[DBG]: code lop found, node context: %s" % start_node )
 
-            ret = self.tree.exec_cmd( start_node, code, options )
+            ret = tree.exec_cmd( start_node, code, options )
             # who knows what the command did, better sync!
-            self.tree.sync()
+            tree.sync()
 
             return ret
 
