@@ -1027,6 +1027,7 @@ class LopperSDT:
                 print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
         if re.search( ".*,tree$", lop_type ):
+            # TODO: consolidate this with the output lop
             try:
                 tree_name = this_lop_node['tree'].value[0]
             except:
@@ -1284,6 +1285,17 @@ class LopperSDT:
                 print( "[ERROR]: node add detected, but no node name found" )
                 sys.exit(1)
 
+            try:
+                tree_name = this_lop_node['tree'].value[0]
+                try:
+                    tree = self.subtrees[tree_name]
+                except:
+                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
+                    sys.exit(1)
+            except:
+                tree = self.tree
+
+
             lops_node_path = this_lop_node.abs_path
             src_node_path = lops_node_path + "/" + src_node_name
 
@@ -1296,7 +1308,7 @@ class LopperSDT:
                 print( "[INFO]: add node name: %s node path: %s" % (src_node_path, dest_node_path) )
 
 
-            if self.tree:
+            if tree:
                 src_node = lops_tree[src_node_path]
 
                 # copy the source node
@@ -1305,14 +1317,14 @@ class LopperSDT:
                 dst_node.abs_path = dest_node_path
 
                 # add it to the tree, and this will adjust the children appropriately
-                self.tree + dst_node
+                tree + dst_node
             else:
                 if not Lopper.node_copy_from_path( lops_fdt, src_node_path, self.FDT, dest_node_path, self.verbose ):
                     print( "[ERROR]: unable to copy node: %s" % src_node_name )
                     sys.exit(1)
                 else:
                     # self.FDT is backs the tree object, so we need to sync
-                    self.tree.sync()
+                    tree.sync()
 
         if re.search( ".*,lop,conditional.*$", lop_type ):
             if self.verbose:
