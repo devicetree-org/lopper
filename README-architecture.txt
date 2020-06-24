@@ -713,6 +713,45 @@ The following types of lops are currently valid:
                       ";
                 };
 
+# tree: create a subtree from specified nodes
+#
+# To allow for nodes to not only be collected for output, but also for
+# modificaton, we have the "tree" lop.
+#
+# This lop follows the same syntax as "output". If no nodes are specified
+# in the lop itself, previously selected ones via "select" are used
+#
+# The lop must provide the name of the newly created tree via the "tree"
+# property. A new tree is created and stored in the system device tree
+# in the "subtrees" dictionary.
+#
+# lops that support specifying the tree, can then modify the named tree
+# instead of the default system device tree (which they do via an optional
+# "tree" property in their lops.
+#
+
+                lop_13_1 {
+                       compatible = "system-device-tree-v1,lop,tree";
+                       tree = "openamp-test";
+                       nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
+                };
+                lop_13_2 {
+                       compatible = "system-device-tree-v1,lop,modify";
+                       tree = "openamp-test";
+                       modify = "/reserved-memory:#size-cells:3";
+                };
+                lop_13_2_1 {
+                       compatible = "system-device-tree-v1,lop,modify";
+                       tree = "openamp-test";
+                       modify = "/reserved-memory::/zynqmp-rpu/reserved-memory";
+                };
+                lop_13_3 {
+                       compatible = "system-device-tree-v1,lop,output";
+                       tree = "openamp-test";
+                       outfile = "openamp-test-special.dts"; 
+                       nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
+                };
+
 Note: the lopper_sanity.py utility has an embedded lops file that can be
       used as a reference, as well as embedded LopperTree sanity tests.
 
