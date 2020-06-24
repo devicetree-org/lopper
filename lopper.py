@@ -913,6 +913,17 @@ class LopperSDT:
             if self.verbose > 1:
                 print( "[DBG+]: outfile is: %s" % output_file_name )
 
+            try:
+                tree_name = this_lop_node['tree'].value[0]
+                try:
+                    tree = self.subtrees[tree_name]
+                except:
+                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
+                    sys.exit(1)
+            except:
+                tree = self.tree
+
+
             output_nodes = []
             try:
                 output_regex = this_lop_node['nodes'].value
@@ -920,8 +931,8 @@ class LopperSDT:
                 output_regex = []
 
             if not output_regex:
-                if self.tree.__selected__:
-                    output_nodes = self.tree.__selected__
+                if tree.__selected__:
+                    output_nodes = tree.__selected__
 
             if not output_regex and not output_nodes:
                 return False
@@ -961,19 +972,19 @@ class LopperSDT:
                             if not c:
                                 o_node_regex = ".*" + o_node_regex
 
-                            o_nodes = self.tree.nodes(o_node_regex)
+                            o_nodes = tree.nodes(o_node_regex)
                             if not o_nodes:
                                 # was it a label ?
                                 label_nodes = []
                                 try:
-                                    o_nodes = self.tree.lnodes(o_node_regex)
+                                    o_nodes = tree.lnodes(o_node_regex)
                                 except Exception as e:
                                     pass
 
                             for o in o_nodes:
                                 # we test for a property in the node if it was defined
                                 if o_prop_name:
-                                    p = self.tree[o].propval(o_prop_name)
+                                    p = tree[o].propval(o_prop_name)
                                     if o_prop_val:
                                         if p:
                                             if o_prop_val in p:
@@ -1483,6 +1494,16 @@ class LopperSDT:
             except:
                 prop = ""
 
+            try:
+                tree_name = this_lop_node['tree'].value[0]
+                try:
+                    tree = self.subtrees[tree_name]
+                except:
+                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
+                    sys.exit(1)
+            except:
+                tree = self.tree
+
             # was there a regex passed for node matching ?
             nodes_selection = Lopper.property_get( lops_fdt, lop_node_number, "nodes" )
             if prop:
@@ -1507,14 +1528,14 @@ class LopperSDT:
                 # if modify_expr[0] (the nodes) is empty, we use the selected nodes
                 # if they are available
                 if not modify_path:
-                    if not self.tree.__selected__:
+                    if not tree.__selected__:
                         print( "[WARNING]: no nodes supplied to modify, and no nodes are selected" )
                         return False
                     else:
-                        nodes = self.tree.__selected__
+                        nodes = tree.__selected__
                 else:
                     try:
-                        nodes = self.tree.subnodes( self.tree[modify_path] )
+                        nodes = tree.subnodes( tree[modify_path] )
                     except:
                         nodes = []
 
@@ -1529,7 +1550,7 @@ class LopperSDT:
 
                             # just to be sure that any other pending changes have been
                             # written, since we need accurate node IDs
-                            self.tree.sync()
+                            tree.sync()
                             for n in nodes:
                                 try:
                                     n.delete( modify_prop )
@@ -1538,7 +1559,7 @@ class LopperSDT:
                                         print( "[WARNING]: property %s not found, and not deleted" % modify_prop )
                                     # no big deal if it doesn't have the property
                                     pass
-                                self.tree.sync()
+                                tree.sync()
                         except Exception as e:
                             print( "[WARNING]: unable to remove property %s/%s (%s)" % (modify_path,modify_prop,e))
                     else:
@@ -1547,15 +1568,15 @@ class LopperSDT:
 
                         # just to be sure that any other pending changes have been
                         # written, since we need accurate node IDs
-                        self.tree.sync()
+                        tree.sync()
 
                         # we re-do the nodes fetch here, since there are slight behaviour/return
                         # differences between nodes() (what this has always used), and subnodes()
                         # which is what we do above. We can re-test and reconcile this in the future.
                         if modify_path:
-                            nodes = self.tree.nodes( modify_path )
+                            nodes = tree.nodes( modify_path )
                         else:
-                            nodes = self.tree.__selected__
+                            nodes = tree.__selected__
 
                         if not nodes:
                             if self.verbose:
@@ -1564,7 +1585,7 @@ class LopperSDT:
                         for n in nodes:
                             n[modify_prop] = [ modify_val ]
                             # this is fairly heavy, and may need to come out of the loop
-                            self.tree.sync()
+                            tree.sync()
                 else:
                     # drop the list, since if we are modifying a node, it is just one
                     # target node.
@@ -1581,7 +1602,7 @@ class LopperSDT:
                         try:
                             # change the name of the node
                             node.name = modify_val
-                            self.tree.sync( self.FDT )
+                            tree.sync( self.FDT )
                         except Exception as e:
                             print( "[ERROR]:cannot rename node '%s' to '%s' (%s)" %(node.abs_path, modify_val, e))
                             sys.exit(1)
@@ -1595,8 +1616,8 @@ class LopperSDT:
                                 sys.exit(1)
                         else:
                             try:
-                                self.tree.delete( node_to_remove )
-                                self.tree.sync( self.FDT )
+                                tree.delete( node_to_remove )
+                                tree.sync( self.FDT )
                             except:
                                 print( "[WARNING]: could not remove node number: %s" % node_to_remove )
 
