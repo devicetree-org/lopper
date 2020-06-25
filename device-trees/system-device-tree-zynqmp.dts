@@ -585,6 +585,7 @@
 			#address-cells = <2>;
 			#size-cells = <2>;
 			reg = <0x0 0xFF340000 0x0 0x1000>;
+			interrupts = <0 29 4>;
 		};
 		ps_ipi_1: ps_ipi@ff310000 {
 			compatible = "ps-interrupt";
