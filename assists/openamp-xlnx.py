@@ -79,7 +79,7 @@ def write_openamp_virtio_rpmsg_info(f, carveout_list, options, is_kernel_case):
                 f.write("#define "+symbol_name+"RING_RX\tFW_RSC_U32_ADDR_ANY\n")
             else:
                 f.write("#define "+symbol_name+"RING_RX\t"+i[1][1]+"\n")
-        elif "elfload" in i[0]:
+        elif "elfload" in i[0] or "rproc" in i[0]:
             f.write("#define "+symbol_name+"RSC_MEM_PA\t"+hex( int( i[1][1],16)+0x20000 )+"\n")
             rsc_mem_pa =  int( i[1][1],16)+0x20000
             f.write("#define "+symbol_name+"SHM_DEV_NAME\t\""+hex( int( i[1][1],16)+0x20000 ).replace("0x","")+".shm\"\n")
@@ -112,7 +112,11 @@ def write_mem_carveouts(f, carveout_list, options):
     for i in carveout_list:
         if "channel" in i[0]:
             # save channel number
-            channel_number = int((re.search("channel([0-9]+)", i[0]).group(1) ))
+            if "channel" in i[0]:
+                channel_number = int((re.search("channel([0-9]+)", i[0]).group(1) ))
+            elif "rpu" in i[0]:
+                 channel_number = int((re.search("rpu([0-9]+)", i[0]).group(1) ))
+
             if channel_number != current_channel_number:
                 symbol_name = "CHANNEL_"+str(channel_number)+"_MEM_"
                 current_channel_number = channel_number
@@ -209,14 +213,14 @@ def parse_ipis_for_rpu(sdt, domain_node, options):
     ipi_list = []
     for node in sdt.tree:
         if "ps_ipi" in node.abs_path:
-            ipi_list.append(node["reg"].hex()[1])
+            ipi_list.append(hex(int(node["reg"].value[1])))
 
     if verbose:
         print( "[INFO]: Dedicated IPIs for OpenAMP: %s" % ipi_list)
 
     return ipi_list
 
-def parse_memory_carevouts_for_rpu(sdt, domain_node, memory_node, options):
+def parse_memory_carevouts_for_rpu(sdt, domain_node, memory_node, options, platform):
     try:
         verbose = options['verbose']
     except:
@@ -224,11 +228,20 @@ def parse_memory_carevouts_for_rpu(sdt, domain_node, memory_node, options):
 
     carveout_list = [] # string representation of mem carveout nodes
     dt_carveout_list = [] # values used for later being put into output DT's
-    for node in sdt.tree:
-        if node.props("compatible") != [] and "openamp,xlnx,mem-carveout" in node['compatible'].value[0]:
-            carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
-            for i in  node['reg'].int():
-                dt_carveout_list.append(i)
+    if platform == SOC_TYPE.ZYNQMP:
+        for node in sdt.tree:
+            if node.props("compatible") != [] and "openamp,xlnx,mem-carveout" in node['compatible'].value[0]:
+                carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
+                for i in  node['reg'].int():
+                    dt_carveout_list.append(i)
+    if platform == SOC_TYPE.VERSAL:
+        reserved_mem_node = sdt.tree["/reserved-memory"]
+        for node in reserved_mem_node.subnodes():
+            if node.props("compatible") != [] and "openamp,xlnx,mem-carveout" in  node.props("compatible")[0].value:
+                carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
+                for i in  node['reg'].int():
+                    dt_carveout_list.append(i)
+
     prop = LopperProp("memory-region")
     prop.value = dt_carveout_list
     rpu_path = memory_node.abs_path
@@ -241,7 +254,8 @@ def parse_memory_carevouts_for_rpu(sdt, domain_node, memory_node, options):
             rpu_mem_node + prop
             rpu_mem_node.sync ( sdt.FDT )
         except:
-            print( "[ERROR]: cannot find the target rpu "+name+" mem node" )
+            if verbose > 0:
+                print( "[ERROR]: cannot find the target rpu "+name+" mem node" )
 
     return carveout_list
 
@@ -260,8 +274,12 @@ def check_bit_set(n, k):
     return False
 
 zynqmp_userspace_ipi_prop_table =  { "0xff340000" : [ "0 29 4" ] }
-def handle_rpmsg_userspace_case(tgt_node, sdt, options, domain_node, memory_node, rpu_node, rsc_mem_pa, shared_mem_size):
-    gic_node = sdt.tree["/amba-apu@0/interrupt-controller@f9010000"]
+versal_userspace_ipi_prop_table =  { "0xff360000" : [ "0 33 4" ] }
+def handle_rpmsg_userspace_case(tgt_node, sdt, options, domain_node, memory_node, rpu_node, rsc_mem_pa, shared_mem_size, platform):
+    if platform == SOC_TYPE.VERSAL:
+        gic_node = sdt.tree["/amba_apu/interrupt-controller@f9000000"]
+    if platform == SOC_TYPE.ZYNQMP:
+        gic_node = sdt.tree["/amba-apu@0/interrupt-controller@f9000000"]
     openamp_shm_node = sdt.tree["/amba/shm"]
     openamp_shm_node["reg"].value = [0x0 , rsc_mem_pa, 0x0, shared_mem_size]
     openamp_shm_node.sync ( sdt.FDT )
@@ -272,10 +290,7 @@ def handle_rpmsg_userspace_case(tgt_node, sdt, options, domain_node, memory_node
             node + prop
             node.sync ( sdt.FDT )
 
-
-
-
-def handle_rpmsg_kernelspace_case(tgt_node, sdt, options, domain_node, memory_node, rpu_node):
+def handle_rpmsg_kernelspace_case(tgt_node, sdt, options, domain_node, memory_node, rpu_node, platform):
     try:
         verbose = options['verbose']
     except:
@@ -310,12 +325,20 @@ def handle_rpmsg_kernelspace_case(tgt_node, sdt, options, domain_node, memory_no
         return  memory_node
 
     # update mboxes value with phandles
-    for node in sdt.tree:
-        if "zynqmp_ipi" in node.abs_path and "mailbox" in node.abs_path:
+    if platform == SOC_TYPE.VERSAL:
+        mailbox_node = sdt.tree["/zynqmp_ipi1"]
+        for node in mailbox_node.subnodes():
             if node.props('xlnx,open-amp,mailbox') != []:
-                zynqmp_ipi_mbox_phandle_value = node.phandle
-                rpu_cpu_node["mboxes"].value = [ zynqmp_ipi_mbox_phandle_value , 0x0, zynqmp_ipi_mbox_phandle_value, 0x1 ]
+                rpu_cpu_node["mboxes"].value = zynqmp_ipi_mbox_phandle_value = [ node.phandle , 0x0, node.phandle, 0x1]
                 rpu_node.sync( sdt.FDT )
+
+    elif platform == SOC_TYPE.ZYNQMP:
+        for node in sdt.tree:
+            if "zynqmp_ipi1" in node.abs_path and "mailbox" in node.abs_path:
+                if node.props('xlnx,open-amp,mailbox') != []:
+                    zynqmp_ipi_mbox_phandle_value = node.phandle
+                    rpu_cpu_node["mboxes"].value = [ zynqmp_ipi_mbox_phandle_value , 0x0, zynqmp_ipi_mbox_phandle_value, 0x1 ]
+                    rpu_node.sync( sdt.FDT )
 
     # we have to turn the cpu mask into a name, and then apply it
     # to the rpu node for later
@@ -505,7 +528,6 @@ def handle_rpmsg_kernelspace_case(tgt_node, sdt, options, domain_node, memory_no
                 print(mbox_names)
                 rpu_cpu_node["mbox-names"].value = mbox_names
                 rpu_cpu_node.sync( sdt.FDT )
-    print("ret memory_node and exit gracefully")
     return memory_node
 
 # tgt_node: is the openamp domain node number
@@ -544,14 +566,15 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
     except:
         return False
     ipis = parse_ipis_for_rpu(sdt, domain_node, options)
-    mem_carveouts = parse_memory_carevouts_for_rpu(sdt, domain_node, memory_node, options)
+    mem_carveouts = parse_memory_carevouts_for_rpu(sdt, domain_node, memory_node, options, platform)
     # last argument is for determining kernel case. if rpu_node exists, then is kernel case
     [rsc_mem_pa,shared_mem_size] = generate_openamp_file(ipis, mem_carveouts, options, platform, (rpu_node != None) )
     if rsc_mem_pa == -1:
         print("[ERROR]: failed to generate openamp file")
-    if handle_rpmsg_kernelspace_case(tgt_node, sdt, options, domain_node, memory_node, rpu_node) != False:
+    if rpu_node != None:
+        handle_rpmsg_kernelspace_case(tgt_node, sdt, options, domain_node, memory_node, rpu_node, platform)
     else:
-        handle_rpmsg_userspace_case(tgt_node, sdt, options, domain_node, memory_node, rpu_node, rsc_mem_pa, shared_mem_size)
+        handle_rpmsg_userspace_case(tgt_node, sdt, options, domain_node, memory_node, rpu_node, rsc_mem_pa, shared_mem_size, platform)
 
     return True
 
