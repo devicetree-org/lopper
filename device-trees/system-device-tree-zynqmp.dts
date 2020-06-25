@@ -7,46 +7,6 @@
 	model = "ZynqMP ZCU102 Rev1.0";
 
 
-	ps_ipi_3: ps_ipi@ff340000 {
-		compatible = "ps-interrupt";
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0xFF340000 0x1000>;
-	};
-	ps_ipi_1: ps_ipi@ff310000 {
-		compatible = "ps-interrupt";
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0xFF310000 0x1000>;
-	};
-	channel0vdev0vring0: channel0vdev0vring0@3ed40000 {
-		no-map;
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0x3ed40000 0x4000>;
-		compatible = "openamp,xlnx,mem-carveout";
-	};
-	channel0vdev0vring1: channel0vdev0vring1@3ed44000 {
-		no-map;
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0x3ed44000 0x4000>;
-		compatible = "openamp,xlnx,mem-carveout";
-	};
-	channel0vdev0buffer: channel0vdev0buffer@3ed48000 {
-		no-map;
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0x3ed48000 0x100000>;
-		compatible = "openamp,xlnx,mem-carveout";
-	};
-	channel0_elfload: channel0_elfload@3ed000000 {
-		no-map;
-		#address-cells = <2>;
-		#size-cells = <2>;
-		reg = <0x3ed00000 0x40000>;
-		compatible = "openamp,xlnx,mem-carveout";
-	};
 	
 
         cpus_r5: cpus-cluster@0 {
@@ -102,6 +62,24 @@
 			opp-hz = <0x0 0x11e1a2fd>;
 			opp-microvolt = <0xf4240>;
 			clock-latency-ns = <0x7a120>;
+		};
+	};
+	zynqmp_ipi {
+		u-boot,dm-pre-reloc;
+		compatible = "xlnx,zynqmp-ipi-mailbox";
+		interrupt-parent = <0x4>;
+		interrupts = <0x0 0x23 0x4>;
+		xlnx,ipi-id = <0x0>;
+		#address-cells = <0x2>;
+		#size-cells = <0x2>;
+		ranges;
+
+		mailbox@ff990400 {
+			u-boot,dm-pre-reloc;
+			reg = <0x0 0xff9905c0 0x0 0x20 0x0 0xff9905e0 0x0 0x20 0x0 0xff990e80 0x0 0x20 0x0 0xff990ea0 0x0 0x20>;
+			reg-names = "local_request_region", "local_response_region", "remote_request_region", "remote_response_region";
+			#mbox-cells = <0x1>;
+			xlnx,ipi-id = <0x4>;
 		};
 	};
 
@@ -601,6 +579,19 @@
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
 		ranges;
+
+		ps_ipi_3: ps_ipi@ff340000 {
+			compatible = "ps-interrupt";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			reg = <0x0 0xFF340000 0x0 0x1000>;
+		};
+		ps_ipi_1: ps_ipi@ff310000 {
+			compatible = "ps-interrupt";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			reg = <0x0 0xFF310000 0x0 0x1000>;
+		};
 
 		can@ff060000 {
 			compatible = "xlnx,zynq-can-1.0";
@@ -1913,24 +1904,6 @@
 			clocks = <0x3 0x70>;
 		};
 
-		zynqmp_ipi: zynqmp_ipi{
-			compatible = "xlnx,zynqmp-ipi-mailbox";
-			interrupt-parent = <0x4>;
-			interrupts = <0x0 0x23 0x4>;
-			xlnx,ipi-id = <0x0>;
-			#address-cells = <0x2>;
-			#size-cells = <0x2>;
-			ranges;
-
-			mailbox@ff990400 {
-				reg = <0x0 0xff9905c0 0x0 0x20 0x0 0xff9905e0 0x0 0x20 0x0 0xff990e80 0x0 0x20 0x0 0xff990ea0 0x0 0x20>;
-				reg-names = "local_request_region", "local_response_region", "remote_request_region", "remote_response_region";
-				#mbox-cells = <0x1>;
-				xlnx,ipi-id = <0x4>;
-				phandle = <0x5>;
-			};
-		};
-
 		ams@ffa50000 {
 			compatible = "xlnx,zynqmp-ams";
 			status = "okay";
@@ -2273,8 +2246,51 @@
 			compatible = "openamp,domain-memory-v1";
 			reg = <0x0 0x0 0x0 0x8000000>;
 		};
+		rpu0vdev0vring0: rpu0vdev0vring0@3ed40000 {
+			no-map;
+			reg = <0x0 0x3ed40000 0x0 0x4000>;
+			compatible = "openamp,xlnx,mem-carveout";
+			phandle = <0x3b>;
+		};
+		rpu0vdev0vring1: rpu0vdev0vring1@3ed44000 {
+			no-map;
+			reg = <0x0 0x3ed44000 0x0 0x4000>;
+			compatible = "openamp,xlnx,mem-carveout";
+			phandle = <0x3c>;
+		};
+		rpu0vdev0buffer: rpu0vdev0buffer@3ed48000 {
+			no-map;
+			reg = <0x0 0x3ed48000 0x0 0x100000>;
+			compatible = "openamp,xlnx,mem-carveout";
+			phandle = <0x3d>;
+		};
+		rpu0_elfload: rpu0_elfload@3ed000000 {
+			no-map;
+			reg = <0x0 0x3ed00000 0x0 0x40000>;
+			compatible = "openamp,xlnx,mem-carveout";
+			phandle = <0x3e>;
+		};
 
 	};
+	zynqmp_ipi1 {
+		compatible = "xlnx,zynqmp-ipi-mailbox";
+		interrupt-parent = <0x4>;
+		interrupts = <0x0 0x1d 0x4>;
+		xlnx,ipi-id = <0x7>;
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+		ranges;
+
+		ipi_mailbox_rpu0: mailbox@ff990600 {
+			reg = <0xff990600 0x20 0xff990620 0x20 0xff9900c0 0x20 0xff9900e0 0x20>;
+			reg-names = "local_request_region", "local_response_region", "remote_request_region", "remote_response_region";
+			#mbox-cells = <0x1>;
+			xlnx,ipi-id = <0x1>;
+			phandle = <0x40>;
+			xlnx,open-amp,mailbox = <0>;
+		};
+	};
+
 	domains {
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
