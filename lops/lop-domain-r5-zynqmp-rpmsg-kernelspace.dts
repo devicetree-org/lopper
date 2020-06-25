@@ -90,7 +90,7 @@
                   };
                   lop_14 {
                          compatible = "system-device-tree-v1,lop,output";
-                         outfile = "linux.dts";
+                         outfile = "linux.dtb";
                          // * is "all nodes"
 			 nodes =  "*", "*amba*";
                   };
