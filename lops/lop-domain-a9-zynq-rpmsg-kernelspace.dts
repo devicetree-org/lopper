@@ -29,9 +29,6 @@
                         node_dest = "/remoteproc0";
                         remoteproc0 {
                             compatible = "xlnx,zynq_remoteproc";
-                            #address-cells = <2>;
-                            #size-cells = <2>;
-                            ranges;
 			    vring0 = <15>;
 			    vring1 = <14>;
                             memory-region = <0x0> ;
@@ -56,7 +53,7 @@
                   };
                   lop_14 {
                          compatible = "system-device-tree-v1,lop,output";
-                         outfile = "linux.dts";
+                         outfile = "linux.dtb";
                          // * is "all nodes"
 			 nodes =  "*", "*amba*";
                   };
