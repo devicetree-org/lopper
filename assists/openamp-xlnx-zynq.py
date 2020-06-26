@@ -83,6 +83,8 @@ def write_openamp_virtio_rpmsg_info(f, carveout_list, options):
             f.write("#define STRONG_ORDERED 0xC02    /* Strongly ordered */\n")
             f.write("#define DEVICE_MEMORY 0xC06     /* Device memory */\n")
             f.write("#define RESERVED 0x0            /* reserved memory */\n")
+            f.write("#define SHARED_MEM_SIZE 0x80000UL\n")
+            f.write("#define SHARED_BUF_OFFSET 0x80000UL\n")
 
     return [rsc_mem_pa, shared_mem_size]
 
