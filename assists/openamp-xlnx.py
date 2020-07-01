@@ -40,47 +40,6 @@ def get_r5_needed_symbols(carveout_list):
 
     return [rsc_mem_pa, shared_mem_size]
 
-def write_mem_carveouts(f, carveout_list, options):
-    symbol_name = "CHANNEL_0_MEM_"
-    current_channel_number = 0
-    channel_range = 0
-    current_channel_count = 0 # if == 4 then got complete channel range
-
-    for i in carveout_list:
-        if "channel" in i[0]:
-            # save channel number
-            if "channel" in i[0]:
-                channel_number = int((re.search("channel([0-9]+)", i[0]).group(1) ))
-            elif "rpu" in i[0]:
-                 channel_number = int((re.search("rpu([0-9]+)", i[0]).group(1) ))
-
-            if channel_number != current_channel_number:
-                symbol_name = "CHANNEL_"+str(channel_number)+"_MEM_"
-                current_channel_number = channel_number
-
-            if "vdev0buffer" in i[0]:
-                write_one_carveout(f, symbol_name+"VDEV0BUFFER_", i[1][1], i[1][3])
-                channel_range += int(i[1][3],16)
-                current_channel_count += 1
-            elif "vdev0vring0" in i[0]:
-                write_one_carveout(f, symbol_name+"VDEV0VRING0_", i[1][1], i[1][3])
-                channel_range += int(i[1][3],16)
-                current_channel_count += 1
-            elif "vdev0vring1" in i[0]:
-                write_one_carveout(f, symbol_name+"VDEV0VRING1_", i[1][1], i[1][3])
-                channel_range += int(i[1][3],16)
-                current_channel_count += 1
-            elif "elfload" in i[0]:
-                write_one_carveout(f, symbol_name+"ELFLOAD_", i[1][1], i[1][3])
-                channel_range += int(i[1][3],16)
-                current_channel_count += 1
-
-            if current_channel_count == 4:
-                current_channel_count = 0
-                f.write("#define ")
-                f.write(symbol_name+"RANGE\t"+str(hex(channel_range))+U"\n\n")
-                channel_range = 0
-
 # table relating ipi's to IPI_BASE_ADDR -> IPI_IRQ_VECT_ID and IPI_CHN_BITMASK
 versal_ipi_lookup_table = { "0xff340000" : [63, 0x0000020 ] , "0xff360000" : [0 , 0x0000008] }
 zynqmp_ipi_lookup_table = { "0xff310000" : [65, 0x1000000 ] , "0xff340000" : [0 , 0x100 ] }
