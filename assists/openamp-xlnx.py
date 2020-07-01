@@ -60,34 +60,6 @@ def parse_ipis_for_rpu(sdt, domain_node, options):
 
     return ipi_list
 
-def parse_memory_carevouts_for_rpu(sdt, domain_node, memory_node, options, platform):
-    try:
-        verbose = options['verbose']
-    except:
-        verbose = 0
-
-    carveout_list = [] # string representation of mem carveout nodes
-    dt_carveout_list = [] # values used for later being put into output DT's
-    reserved_mem_node = sdt.tree["/reserved-memory"]
-    for node in reserved_mem_node.subnodes():
-        if node.props("compatible") != [] and "openamp,xlnx,mem-carveout" in  node.props("compatible")[0].value:
-            carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
-            for i in  node['reg'].int():
-                dt_carveout_list.append(i)
-
-    # output to DT
-    try:
-        remoteproc_node = sdt.tree[ memory_node.abs_path + "/memory_r5@0" ]
-        remoteproc_node["memory-region"].value = dt_carveout_list
-        remoteproc_node.sync ( sdt.FDT )
-    except:
-        if verbose > 0:
-            print( "[ERROR]: cannot find the target rpu "+name+" mem node" )
-
-    return carveout_list
-
-
-
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,xlnx-rpu", compat_string_to_test):
         return xlnx_openamp_rpu
@@ -434,7 +406,12 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
         return False
     ipis = parse_ipis_for_rpu(sdt, domain_node, options)
 
-    mem_carveouts = parse_memory_carevouts_for_rpu(sdt, domain_node, memory_node, options, platform)
+    if is_kernel_case:
+        remoteproc_node = sdt.tree[ memory_node.abs_path + "/memory_r5@0"]
+    else:
+        remoteproc_node = None
+
+    mem_carveouts = parse_memory_carevouts(sdt, domain_node, options, platform, remoteproc_node)
 
     [rsc_mem_pa,shared_mem_size] = get_r5_needed_symbols(mem_carveouts)
     if rsc_mem_pa == -1 or shared_mem_size == -1:
