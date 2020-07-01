@@ -1053,28 +1053,28 @@
 
 		vdev0vring0@3e800000 {
 			no-map;
-			compatible = "openamp,xlnx-mem-carveout";
+			compatible = "openamp,xlnx,mem-carveout";
 			reg = <0x3e800000 0x4000>;
 			phandle = <0x1f>;
 		};
 
 		vdev0vring1@3e804000 {
 			no-map;
-			compatible = "openamp,xlnx-mem-carveout";
+			compatible = "openamp,xlnx,mem-carveout";
 			reg = <0x3e804000 0x4000>;
 			phandle = <0x20>;
 		};
 
 		vdev0buffer@3e808000 {
 			no-map;
-			compatible = "openamp,xlnx-mem-carveout";
+			compatible = "openamp,xlnx,mem-carveout";
 			reg = <0x3e808000 0x100000>;
 			phandle = <0x1e>;
 		};
 
 		elfload@3e000000 {
 			no-map;
-			compatible = "openamp,xlnx-mem-carveout";
+			compatible = "openamp,xlnx,mem-carveout";
 			reg = <0x3e000000 0x800000>;
 			phandle = <0x1d>;
 		};

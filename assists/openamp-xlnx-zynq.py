@@ -30,25 +30,6 @@ from re import *
 from openamp_xlnx_common import *
 
 
-def parse_memory_carevouts_for_zynq(sdt, options):
-    try:
-        verbose = options['verbose']
-    except:
-        verbose = 0
-    mem_node = sdt.tree["/reserved-memory"]
-    remoteproc_node = sdt.tree["/remoteproc0"]
-    carveout_list = [] # string representation of mem carveout nodes
-    dt_carveout_list = [] # values used for later being put into output DT's
-    phandle_list = []
-
-    for node in mem_node.subnodes():
-            if len(node.props("compatible")) > 0 and "openamp,xlnx-mem-carveout" in node["compatible"].value:
-                phandle_list.append(node.phandle)
-                carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
-    remoteproc_node["memory-region"].value = phandle_list
-    remoteproc_node.sync ( sdt.FDT )
-    return carveout_list
-
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,xlnx-zynq-a9", compat_string_to_test):
         return xlnx_openamp_zynq
@@ -74,7 +55,9 @@ def xlnx_openamp_zynq( tgt_node, sdt, options ):
         is_kernel_case = True
     except:
         return False
-    mem_carveouts = parse_memory_carevouts_for_zynq(sdt, options)
+
+    remoteproc_node = sdt.tree["/remoteproc0"]
+    mem_carveouts = parse_memory_carevouts(sdt, options, remoteproc_node)
     # last arg (True) denotes for kernelspace case
     inputs = {
         "CHANNEL_0_MEM_SIZE" : "0x80000UL",

@@ -146,3 +146,30 @@ def generate_openamp_file(carveout_list, options, platform, is_kernel_case, inpu
 
     write_openamp_header(platform, is_kernel_case, inputs, options)
 
+def parse_memory_carevouts(sdt, options, remoteproc_node):
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
+
+    carveout_list = [] # string representation of mem carveout nodes
+    phandle_list = []
+
+    reserved_mem_node = sdt.tree["/reserved-memory"]
+
+    for node in reserved_mem_node.subnodes():
+        if node.props("compatible") != [] and "openamp,xlnx,mem-carveout" in node["compatible"].value:
+            phandle_list.append(node.phandle)
+            carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
+
+    # output to DT
+    if remoteproc_node != None:
+        try:
+            remoteproc_node["memory-region"].value = phandle_list
+            remoteproc_node.sync ( sdt.FDT )
+        except:
+            if verbose > 0:
+                print( "[ERROR]: cannot find the target remoteproc node ")
+
+    return carveout_list
+
