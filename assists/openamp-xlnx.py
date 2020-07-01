@@ -68,34 +68,21 @@ def parse_memory_carevouts_for_rpu(sdt, domain_node, memory_node, options, platf
 
     carveout_list = [] # string representation of mem carveout nodes
     dt_carveout_list = [] # values used for later being put into output DT's
-    if platform == SOC_TYPE.ZYNQMP:
-        for node in sdt.tree:
-            if node.props("compatible") != [] and "openamp,xlnx,mem-carveout" in node['compatible'].value[0]:
-                carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
-                for i in  node['reg'].int():
-                    dt_carveout_list.append(i)
-    if platform == SOC_TYPE.VERSAL:
-        reserved_mem_node = sdt.tree["/reserved-memory"]
-        for node in reserved_mem_node.subnodes():
-            if node.props("compatible") != [] and "openamp,xlnx,mem-carveout" in  node.props("compatible")[0].value:
-                carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
-                for i in  node['reg'].int():
-                    dt_carveout_list.append(i)
-
-    prop = LopperProp("memory-region")
-    prop.value = dt_carveout_list
-    rpu_path = memory_node.abs_path
+    reserved_mem_node = sdt.tree["/reserved-memory"]
+    for node in reserved_mem_node.subnodes():
+        if node.props("compatible") != [] and "openamp,xlnx,mem-carveout" in  node.props("compatible")[0].value:
+            carveout_list.append( ( (str(node), str(node['reg']).replace("reg = <","").replace(">;","").split(" ")) ))
+            for i in  node['reg'].int():
+                dt_carveout_list.append(i)
 
     # output to DT
-    for i in range(0,1):
-        name = "/memory_r5@"+str(i)
-        try:
-            rpu_mem_node = sdt.tree[ memory_node.abs_path + name ]
-            rpu_mem_node + prop
-            rpu_mem_node.sync ( sdt.FDT )
-        except:
-            if verbose > 0:
-                print( "[ERROR]: cannot find the target rpu "+name+" mem node" )
+    try:
+        remoteproc_node = sdt.tree[ memory_node.abs_path + "/memory_r5@0" ]
+        remoteproc_node["memory-region"].value = dt_carveout_list
+        remoteproc_node.sync ( sdt.FDT )
+    except:
+        if verbose > 0:
+            print( "[ERROR]: cannot find the target rpu "+name+" mem node" )
 
     return carveout_list
 
