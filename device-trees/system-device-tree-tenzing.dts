@@ -1530,25 +1530,25 @@
 			no-map;
 			reg = <0x0 0x3ed40000 0x0 0x4000>;
 			compatible = "openamp,xlnx,mem-carveout";
-			phandle = <0x3b>;
+			phandle = <0x55>;
 		};
 		rpu0vdev0vring1: rpu0vdev0vring1@3ed44000 {
 			no-map;
 			reg = <0x0 0x3ed44000 0x0 0x4000>;
 			compatible = "openamp,xlnx,mem-carveout";
-			phandle = <0x3c>;
+			phandle = <0x56>;
 		};
 		rpu0vdev0buffer: rpu0vdev0buffer@3ed48000 {
 			no-map;
 			reg = <0x0 0x3ed48000 0x0 0x100000>;
 			compatible = "openamp,xlnx,mem-carveout";
-			phandle = <0x3d>;
+			phandle = <0x57>;
 		};
 		rpu0_elfload: rpu0_elfload@3ed000000 {
 			no-map;
 			reg = <0x0 0x3ed00000 0x0 0x40000>;
 			compatible = "openamp,xlnx,mem-carveout";
-			phandle = <0x3e>;
+			phandle = <0x58>;
 		};
 
 	};
