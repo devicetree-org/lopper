@@ -27,80 +27,17 @@ from lopper import LopperFmt
 import lopper
 from lopper_tree import *
 from re import *
+from openamp_xlnx_common import *
 
-class SOC_TYPE:
-    UNINITIALIZED = -1
-    VERSAL = 0
-    ZYNQMP = 1
-    ZYNQ = 2
-
-def write_one_carveout(f, prefix, addr_prop, range_prop):
-    f.write("#define ")
-    f.write(prefix+"ADDR\t"+addr_prop+"U\n")
-    f.write("#define ")
-    f.write(prefix+"RANGE\t"+range_prop+"U\n")
-
-def write_openamp_virtio_rpmsg_info(f, carveout_list, options, is_kernel_case):
-    symbol_name = "CHANNEL_0_MEM_"
-    current_channel_number = 0
-    current_channel_count = 0 # if == 4 then got complete channel range
-    vring_mems = []
+def get_r5_needed_symbols(carveout_list):
     rsc_mem_pa = -1
     shared_mem_size = -1
     for i in carveout_list:
-        if "channel" in i[0] or "rpu" in i[0]:
-            # save channel number
-            if "channel" in i[0]:
-                channel_number = int((re.search("channel([0-9]+)", i[0]).group(1) ))
-            if "rpu" in i[0]:
-                channel_number = int((re.search("rpu([0-9]+)", i[0]).group(1) ))
-            if channel_number != current_channel_number:
-                symbol_name = "CHANNEL_"+str(channel_number)+"_MEM_"
-                current_channel_number = channel_number
-
         if "vdev0buffer" in i[0]:
-            current_channel_count += 1
-            f.write("#define "+symbol_name+"SHARED_MEM_SIZE\t"+i[1][3]+"\n")
             shared_mem_size = int(i[1][3],16)
-            f.write("#define "+symbol_name+"SHARED_BUF_PA\t"+i[1][1]+"\n")
-        elif "vdev0vring0" in i[0]:
-            current_channel_count += 1
-            f.write("#define "+symbol_name+"SHARED_MEM_PA\t"+i[1][1]+"\n")
-            if is_kernel_case:
-                f.write("#define "+symbol_name+"RING_TX\tFW_RSC_U32_ADDR_ANY\n")
-            else:
-                f.write("#define "+symbol_name+"RING_TX\t"+i[1][1]+"\n")
-            f.write("#define "+symbol_name+"VRING_MEM_PA\t"+i[1][1]+"\n")
-            vring_mems.append(i[1][3])
-        elif "vdev0vring1" in i[0]:
-            vring_mems.append(i[1][3])
-            current_channel_count += 1
-            if is_kernel_case:
-                f.write("#define "+symbol_name+"RING_RX\tFW_RSC_U32_ADDR_ANY\n")
-            else:
-                f.write("#define "+symbol_name+"RING_RX\t"+i[1][1]+"\n")
         elif "elfload" in i[0] or "rproc" in i[0]:
-            f.write("#define "+symbol_name+"RSC_MEM_PA\t"+hex( int( i[1][1],16)+0x20000 )+"\n")
             rsc_mem_pa =  int( i[1][1],16)+0x20000
-            f.write("#define "+symbol_name+"SHM_DEV_NAME\t\""+hex( int( i[1][1],16)+0x20000 ).replace("0x","")+".shm\"\n")
-            f.write("#define "+symbol_name+"SHARED_BUF_SIZE\t"+i[1][3]+"\n")
-            current_channel_count += 1
 
-        if current_channel_count == 4:
-            current_channel_count = 0
-            vring_mems_size_total = 0
-            for i in vring_mems:
-                vring_mems_size_total += int(i,16)
-            f.write("#define "+symbol_name+"SHARED_BUF_OFFSET\t"+hex(vring_mems_size_total)+"\n")
-            f.write("#define "+symbol_name+"VRING_MEM_SIZE\t"+hex(vring_mems_size_total)+"\n")
-            vring_mem_size = 0
-            f.write("#define "+symbol_name+"RSC_MEM_SIZE\t0x2000UL\n")
-            f.write("#define "+symbol_name+"NUM_VRINGS\t2\n")
-            f.write("#define "+symbol_name+"VRING_ALIGN\t0x1000\n")
-            f.write("#define "+symbol_name+"VRING_SIZE\t256\n")
-            f.write("#define "+symbol_name+"NUM_TABLE_ENTRIES\t1\n")
-            f.write("#define MASTER_BUS_NAME\t\"platform\"\n")
-            f.write("#define REMOTE_BUS_NAME\t\"generic\"\n")
     return [rsc_mem_pa, shared_mem_size]
 
 def write_mem_carveouts(f, carveout_list, options):
@@ -147,62 +84,6 @@ def write_mem_carveouts(f, carveout_list, options):
 # table relating ipi's to IPI_BASE_ADDR -> IPI_IRQ_VECT_ID and IPI_CHN_BITMASK
 versal_ipi_lookup_table = { "0xff340000" : [63, 0x0000020 ] , "0xff360000" : [0 , 0x0000008] }
 zynqmp_ipi_lookup_table = { "0xff310000" : [65, 0x1000000 ] , "0xff340000" : [0 , 0x100 ] }
-
-# given interrupt list, write interrupt base addresses and adequate register width to header file
-def generate_openamp_file(ipi_list, carveout_list, options, platform, is_kernel_case):
-    if (len(options["args"])) > 0:
-        f_name = options["args"][0]
-    else:
-        f_name = "openamp_lopper_info.h"
-    try:
-        verbose = options['verbose']
-    except:
-        verbose = 0
-
-    f = open(f_name, "w")
-    f.write("#ifndef OPENAMP_LOPPER_INFO_H_\n")
-    f.write("#define OPENAMP_LOPPER_INFO_H_\n\n")
-
-    # for each pair of ipi's present, write a master+remote ipi
-    for index,value in enumerate(ipi_list):
-        f.write("#define ")
-        # first ipi in pair for master, second for remote
-        ipi = "CHANNEL_"
-        ipi += str(index//2) # 1 channel per pair of IPIs
-
-        if (index % 2 == 0):
-            ipi += "_MASTER_"
-        else:
-            ipi += "_REMOTE_"
-        f.write(ipi+"IPI_BASE_ADDR\t"+value+"U\n")
-        f.write("#define "+ipi+"IPI_NAME\t\""+value.replace("0x","")+".ps_ipi\"\n")
-
-        try:
-            ipi_details_list = None
-            if platform == SOC_TYPE.VERSAL:
-                ipi_details_list = versal_ipi_lookup_table[value]
-            elif platform == SOC_TYPE.ZYNQMP:
-                ipi_details_list = zynqmp_ipi_lookup_table[value]
-            else:
-                if verbose != 0:
-                    print ("[WARNING]: invalid device tree. no valid platform found")
-                    return -1
-            f.write("#define "+ipi+"IRQ_VECT_ID\t")
-            f.write(str(ipi_details_list[0]))
-            f.write("\n")
-            f.write("#define "+ipi+"CHN_BITMASK\t")
-            f.write(str(hex(ipi_details_list[1])))
-            f.write("U\n")
-        except:
-            if verbose != 0:
-                print ("[WARNING]: unable to find detailed interrupt information for "+i)
-
-    f.write("\n")
-    write_mem_carveouts(f, carveout_list, options)
-    [ rsc_mem_pa, shared_mem_size ] = write_openamp_virtio_rpmsg_info(f, carveout_list, options, is_kernel_case)
-    f.write("\n\n#endif /* OPENAMP_LOPPER_INFO_H_ */\n")
-    f.close()
-    return [rsc_mem_pa,shared_mem_size]
 
 def parse_ipis_for_rpu(sdt, domain_node, options):
     try:
@@ -275,11 +156,49 @@ def check_bit_set(n, k):
 
 zynqmp_userspace_ipi_prop_table =  { "0xff340000" : [ "0 29 4" ] }
 versal_userspace_ipi_prop_table =  { "0xff360000" : [ "0 33 4" ] }
+def setup_ipi_inputs(inputs, platform, ipi_list, options):
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
+
+    # for each pair of ipi's present, write a master+remote ipi
+    for index,value in enumerate(ipi_list):
+        is_master = False
+        key = ""
+        if (index % 2 == 0):
+            key = "MASTER_"
+        else:
+            key = "REMOTE_"
+        inputs[key+"IPI_BASE_ADDR"] = value
+        inputs[key+"IPI_NAME"] = '\"'+value.replace("0x","")+".ps_ipi\""
+
+        try:
+            ipi_details_list = None
+            if platform == SOC_TYPE.VERSAL:
+                ipi_details_list = versal_ipi_lookup_table[value]
+            elif platform == SOC_TYPE.ZYNQMP:
+                ipi_details_list = zynqmp_ipi_lookup_table[value]
+            else:
+                if verbose != 0:
+                    print ("[WARNING]: invalid device tree. no valid platform found")
+                    return
+
+            inputs[key+"IRQ_VECT_ID"] = str(ipi_details_list[0])
+            inputs[key+"CHN_BITMASK"] = str(hex(ipi_details_list[1]))+"U"
+
+        except:
+            if verbose != 0:
+                print ("[WARNING]: unable to find detailed interrupt information for "+i)
+                return
+    return inputs
+
+
 def handle_rpmsg_userspace_case(tgt_node, sdt, options, domain_node, memory_node, rpu_node, rsc_mem_pa, shared_mem_size, platform):
     if platform == SOC_TYPE.VERSAL:
         gic_node = sdt.tree["/amba_apu/interrupt-controller@f9000000"]
     if platform == SOC_TYPE.ZYNQMP:
-        gic_node = sdt.tree["/amba-apu@0/interrupt-controller@f9000000"]
+        gic_node = sdt.tree["/amba-apu@0/interrupt-controller@f9010000"]
     openamp_shm_node = sdt.tree["/amba/shm"]
     openamp_shm_node["reg"].value = [0x0 , rsc_mem_pa, 0x0, shared_mem_size]
     openamp_shm_node.sync ( sdt.FDT )
@@ -557,20 +476,34 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
     # find the added rpu node
     try:
         rpu_node = sdt.tree[".*zynqmp-rpu" ]
+        is_kernel_case = True
     except:
         print( "[ERROR]: cannot find the target rpu node" )
         rpu_node = None
+        is_kernel_case = False
 
     try:
         memory_node = sdt.tree[ "/reserved-memory" ]
     except:
         return False
     ipis = parse_ipis_for_rpu(sdt, domain_node, options)
+
     mem_carveouts = parse_memory_carevouts_for_rpu(sdt, domain_node, memory_node, options, platform)
-    # last argument is for determining kernel case. if rpu_node exists, then is kernel case
-    [rsc_mem_pa,shared_mem_size] = generate_openamp_file(ipis, mem_carveouts, options, platform, (rpu_node != None) )
-    if rsc_mem_pa == -1:
-        print("[ERROR]: failed to generate openamp file")
+
+    [rsc_mem_pa,shared_mem_size] = get_r5_needed_symbols(mem_carveouts)
+    if rsc_mem_pa == -1 or shared_mem_size == -1:
+        print("[ERROR]: failed to find rsc_mem_pa or shared_mem_size")
+    inputs = {
+        "CHANNEL_0_RSC_MEM_SIZE" : "0x2000UL",
+        "CHANNEL_0_TX" : "FW_RSC_U32_ADDR_ANY",
+        "CHANNEL_0_RX" : "FW_RSC_U32_ADDR_ANY",
+    }
+    # userspace case is accounted for later on so do not worry about vring tx/rx
+
+    inputs = setup_ipi_inputs(inputs, platform, ipis, options)
+
+    generate_openamp_file( mem_carveouts, options, platform, is_kernel_case, inputs )
+
     if rpu_node != None:
         handle_rpmsg_kernelspace_case(tgt_node, sdt, options, domain_node, memory_node, rpu_node, platform)
     else:
