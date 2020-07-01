@@ -411,7 +411,7 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
     else:
         remoteproc_node = None
 
-    mem_carveouts = parse_memory_carevouts(sdt, domain_node, options, platform, remoteproc_node)
+    mem_carveouts = parse_memory_carevouts(sdt, options, remoteproc_node)
 
     [rsc_mem_pa,shared_mem_size] = get_r5_needed_symbols(mem_carveouts)
     if rsc_mem_pa == -1 or shared_mem_size == -1:
