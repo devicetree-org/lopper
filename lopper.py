@@ -31,8 +31,15 @@ import textwrap
 from collections import UserDict
 from collections import OrderedDict
 
-import libfdt
-from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
+try:
+    import libfdt
+    from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
+except:
+    import site
+    site.addsitedir('vendor/lib/python3.5/site-packages')
+
+    import libfdt
+    from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
 
 from lopper_fdt import Lopper
 from lopper_fdt import LopperFmt
