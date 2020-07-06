@@ -2232,7 +2232,7 @@
 		spi0 = "/amba/spi@ff0f0000";
 	};
 
-	memory {
+	memory@80000000 {
 		device_type = "memory";
 		reg = <0x0 0x0 0x0 0x7ff00000 0x8 0x0 0x0 0x80000000>;
 	};
