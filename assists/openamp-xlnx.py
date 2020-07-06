@@ -116,6 +116,7 @@ def handle_rpmsg_userspace_case(tgt_node, sdt, options, domain_node, memory_node
     if platform == SOC_TYPE.ZYNQMP:
         gic_node = sdt.tree["/amba-apu@0/interrupt-controller@f9010000"]
     openamp_shm_node = sdt.tree["/amba/shm@0"]
+    openamp_shm_node.name = "shm@"+hex(rsc_mem_pa).replace("0x","")
     openamp_shm_node["reg"].value = [0x0 , rsc_mem_pa, 0x0, shared_mem_size]
     openamp_shm_node.sync ( sdt.FDT )
     for node in sdt.tree:
