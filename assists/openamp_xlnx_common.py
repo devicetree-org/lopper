@@ -77,11 +77,15 @@ def write_openamp_header(platform, is_kernel_case, inputs, options):
     except:
         verbose = 0
 
+    if not inputs:
+        print( "[WARNING]: unable to generate openamp_lopper_info.h, no valid inputs" )
+        return
+
     f =  open(f_name,"w")
     if platform == SOC_TYPE.ZYNQ:
         inputs["soc_template"] = zynq_template
     else:
-       inputs["soc_template"] = r5_template.format(**inputs) 
+        inputs["soc_template"] = r5_template.format(**inputs)
         
     f.write(general_template.format(**inputs))
     f.close()

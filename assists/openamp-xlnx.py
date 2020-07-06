@@ -105,7 +105,7 @@ def setup_ipi_inputs(inputs, platform, ipi_list, options):
 
         except:
             if verbose != 0:
-                print ("[WARNING]: unable to find detailed interrupt information for "+i)
+                print ("[WARNING]: unable to find detailed interrupt information for "+value)
                 return
     return inputs
 
@@ -161,7 +161,12 @@ def handle_rpmsg_kernelspace_case(tgt_node, sdt, options, domain_node, memory_no
         return  memory_node
 
     # update mboxes value with phandles
-    mailbox_node = sdt.tree["/zynqmp_ipi1"]
+    try:
+        mailbox_node = sdt.tree["/zynqmp_ipi1"]
+    except:
+        print( "[WARNING]: unable to locate node /zynqmp_ipi1, returning early" )
+        return
+
     for node in mailbox_node.subnodes():
         if node.props('xlnx,open-amp,mailbox') != []:
             rpu_cpu_node["mboxes"].value = [ node.phandle , 0x0, node.phandle, 0x1]
