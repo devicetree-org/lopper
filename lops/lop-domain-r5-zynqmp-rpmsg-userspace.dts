@@ -49,9 +49,9 @@
                 lop_7 {
                         // node add
                         compatible = "system-device-tree-v1,lop,add";
-                        node_src = "shm";
-                        node_dest = "/amba/shm";
-                         shm {
+                        node_src = "shm@0";
+                        node_dest = "/amba/shm@0";
+                        shm@0 {
                             compatible = "xlnx,openamp-shm";
                             #address-cells = <2>;
                             #size-cells = <2>;
