@@ -355,6 +355,9 @@ def handle_rpmsg_kernelspace_case(tgt_node, sdt, options, domain_node, memory_no
                 print(mbox_names)
                 rpu_cpu_node["mbox-names"].value = mbox_names
                 rpu_cpu_node.sync( sdt.FDT )
+    # if is kernel case, make sure name reflects register prop
+    rpu_node.name = rpu_node.name +"@"+hex(rpu_node["reg"].value[1]).replace("0x","")
+    rpu_node.sync ( sdt.FDT )
     return memory_node
 
 # tgt_node: is the openamp domain node number
