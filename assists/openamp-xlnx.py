@@ -72,8 +72,6 @@ def check_bit_set(n, k):
 
     return False
 
-zynqmp_userspace_ipi_prop_table =  { "0xff340000" : [ "0 29 4" ] }
-versal_userspace_ipi_prop_table =  { "0xff360000" : [ "0 33 4" ] }
 def setup_ipi_inputs(inputs, platform, ipi_list, options):
     try:
         verbose = options['verbose']
@@ -117,7 +115,7 @@ def handle_rpmsg_userspace_case(tgt_node, sdt, options, domain_node, memory_node
         gic_node = sdt.tree["/amba_apu/interrupt-controller@f9000000"]
     if platform == SOC_TYPE.ZYNQMP:
         gic_node = sdt.tree["/amba-apu@0/interrupt-controller@f9010000"]
-    openamp_shm_node = sdt.tree["/amba/shm"]
+    openamp_shm_node = sdt.tree["/amba/shm@0"]
     openamp_shm_node["reg"].value = [0x0 , rsc_mem_pa, 0x0, shared_mem_size]
     openamp_shm_node.sync ( sdt.FDT )
     for node in sdt.tree:
@@ -162,20 +160,11 @@ def handle_rpmsg_kernelspace_case(tgt_node, sdt, options, domain_node, memory_no
         return  memory_node
 
     # update mboxes value with phandles
-    if platform == SOC_TYPE.VERSAL:
-        mailbox_node = sdt.tree["/zynqmp_ipi1"]
-        for node in mailbox_node.subnodes():
-            if node.props('xlnx,open-amp,mailbox') != []:
-                rpu_cpu_node["mboxes"].value = zynqmp_ipi_mbox_phandle_value = [ node.phandle , 0x0, node.phandle, 0x1]
-                rpu_node.sync( sdt.FDT )
-
-    elif platform == SOC_TYPE.ZYNQMP:
-        for node in sdt.tree:
-            if "zynqmp_ipi1" in node.abs_path and "mailbox" in node.abs_path:
-                if node.props('xlnx,open-amp,mailbox') != []:
-                    zynqmp_ipi_mbox_phandle_value = node.phandle
-                    rpu_cpu_node["mboxes"].value = [ zynqmp_ipi_mbox_phandle_value , 0x0, zynqmp_ipi_mbox_phandle_value, 0x1 ]
-                    rpu_node.sync( sdt.FDT )
+    mailbox_node = sdt.tree["/zynqmp_ipi1"]
+    for node in mailbox_node.subnodes():
+        if node.props('xlnx,open-amp,mailbox') != []:
+            rpu_cpu_node["mboxes"].value = [ node.phandle , 0x0, node.phandle, 0x1]
+            rpu_node.sync( sdt.FDT )
 
     # we have to turn the cpu mask into a name, and then apply it
     # to the rpu node for later
