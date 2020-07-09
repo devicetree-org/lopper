@@ -606,7 +606,8 @@ class LopperSDT:
                 mod_file = Path( s + "/" + mod_file.name )
                 try:
                     mod_file_abs = mod_file.resolve()
-                    break
+                    if not mod_file_abs:
+                        raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
                 except FileNotFoundError:
                     mod_file_abs = ""
 
@@ -615,7 +616,8 @@ class LopperSDT:
                     mod_file = Path( s + "/" + mod_file.name + ".py" )
                     try:
                         mod_file_abs = mod_file.resolve()
-                        break
+                        if not mod_file_abs:
+                            raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
                     except FileNotFoundError:
                         mod_file_abs = ""
 
