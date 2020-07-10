@@ -30,7 +30,8 @@ try:
     from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
 except:
     import site
-    site.addsitedir('vendor/lib/python3.5/site-packages')
+    python_version_dir = "python{}.{}".format( sys.version_info[0], sys.version_info[1] )
+    site.addsitedir('vendor/lib/{}/site-packages'.format( python_version_dir ))
 
     import libfdt
     from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
