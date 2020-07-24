@@ -278,6 +278,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
             else:
                 try:
                     prop_val = node[prop].value
+                    # For boolean property if present LopperProp will return
+                    # empty string convert it to baremetal config struct expected value
+                    if '' in prop_val:
+                        prop_val = [1]
                 except KeyError:
                     prop_val = [0]
 
