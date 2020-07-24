@@ -150,12 +150,21 @@ def get_phandle_regprop(sdt, prop, value):
     return reg
 
 #Return the base address of the interrupt parent.
-def get_intrerrupt_parent(sdt, node, value):
+def get_intrerrupt_parent(sdt, value):
     intr_parent = sdt.FDT.node_offset_by_phandle(value[0])
     name = sdt.FDT.get_name(intr_parent)
     root_sub_nodes = sdt.tree['/'].subnodes()
     intr_node = [node for node in root_sub_nodes if re.search(name, node.name)]
     reg, size = scan_reg_size(intr_node[0], intr_node[0]['reg'].value, 0)
+    """
+    Baremetal Interrupt Parent Property Format:
+        bits[0]    Interrupt parent type (0: GIC, 1: AXI INTC)
+        bits[31:1] Base Address of the interrupt parent
+    """
+    compat = intr_node[0]['compatible'].value
+    axi_intc = [item for item in compat if "xlnx,xps-intc-1.00.a" in item]
+    if axi_intc:
+        reg += 1
     return reg
 
 class DtbtoCStruct(object):
@@ -290,7 +299,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                     plat.buf('\n\t\t%s' % intr[0])
             elif prop == "interrupt-parent":
                 try:
-                    intr_parent = get_intrerrupt_parent(sdt, node, node[prop].value)
+                    intr_parent = get_intrerrupt_parent(sdt, node[prop].value)
                 except KeyError:
                     intr_parent = 0xFFFF
                 plat.buf('\n\t\t%s' % hex(intr_parent))
