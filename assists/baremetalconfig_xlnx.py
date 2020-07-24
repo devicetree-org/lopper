@@ -107,6 +107,8 @@ def get_interrupt_prop(fdt, node, value):
     Baremetal Interrupt Property format:
         bits[11:0]  interrupt-id
         bits[15:12] trigger type and level flags
+        bits[19:16] CPU Mask
+        bit[20] interrupt-type (1: PPI, 0: SPI)
     """
     # Below logic converts the interrupt propery value to baremetal
     # interrupt property format.
@@ -115,7 +117,14 @@ def get_interrupt_prop(fdt, node, value):
     for val in range(0, int(nintr)):
         intr_sensitivity = value[tmp+1] << 12
         intr_id = value[tmp]
+        # Convert PPI interrupt to baremetal interrupt format
+        if value[tmp-1] == 1 and inc == 3:
+            intr_sensitivity = (value[tmp+1] & 0xF) << 12
+            cpu_mask = (value[tmp+1] & 0xFF00) << 8
+            ppi_type = 1 << 20
+            intr_id = intr_id + cpu_mask + ppi_type
         intr.append(hex(intr_id + intr_sensitivity))
+        tmp += inc
 
     return intr
 
