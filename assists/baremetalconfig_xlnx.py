@@ -128,6 +128,27 @@ def get_interrupt_prop(fdt, node, value):
 
     return intr
 
+#Return the base address of the parent node.
+def get_phandle_regprop(sdt, prop, value):
+    parent_node = sdt.FDT.node_offset_by_phandle(value[0])
+    name = sdt.FDT.get_name(parent_node)
+    root_sub_nodes = sdt.tree['/'].subnodes()
+    parent_node = [node for node in root_sub_nodes if re.search(name, node.name)]
+    reg, size = scan_reg_size(parent_node[0], parent_node[0]['reg'].value, 0)
+    # Special handling for Soft Ethernet(1/2.5G, and 10G/25G MAC) axistream-connected property
+    if prop == "axistream-connected":
+        compat = parent_node[0]['compatible'].value[0]
+        axi_fifo = re.search("xlnx,axi-fifo", compat)
+        axi_dma = re.search("xlnx,eth-dma", compat)
+        axi_mcdma = re.search("xlnx,eth-mcdma", compat)
+        if axi_fifo:
+            reg += 1
+        elif axi_dma:
+            reg += 2
+        elif axi_mcdma:
+            reg += 3
+    return reg
+
 #Return the base address of the interrupt parent.
 def get_intrerrupt_parent(sdt, node, value):
     intr_parent = sdt.FDT.node_offset_by_phandle(value[0])
@@ -219,6 +240,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
             plat.buf('\n%s %s __attribute__ ((section (".drvcfg_sec"))) = {\n' % (config_struct, config_struct + str("Table[]")))
         for i, prop in enumerate(driver_proplist):
             pad = 0
+            phandle_prop = 0
             # Few drivers has multiple data interface type (AXI4 or AXI4-lite),
             # Driver config structures of these SoftIP's contains baseaddress entry for each possible data interface type.
             # Device-tree node reg property may or may not contain all the possible entries that driver config structure
@@ -231,6 +253,8 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
             if isinstance(prop, dict):
                pad = list(prop.values())[0]
                prop = list(prop.keys())[0]
+               if pad == "phandle":
+                   phandle_prop = 1
             if i == 0:
                  plat.buf('\n\t{')
 
@@ -284,6 +308,12 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                     else:
                         plat.buf('\n\t\t\t}')
                 plat.buf('\n\t\t}')
+            elif phandle_prop:
+                try:
+                    prop_val = get_phandle_regprop(sdt, prop, node[prop].value)
+                except KeyError:
+                    prop_val = 0
+                plat.buf('\n\t\t%s' % hex(prop_val))
             else:
                 try:
                     prop_val = node[prop].value
