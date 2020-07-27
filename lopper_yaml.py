@@ -10,6 +10,8 @@
 import yaml
 import sys
 
+from collections import OrderedDict
+
 from lopper_tree import LopperTree
 from lopper_tree import LopperTreePrinter
 from lopper_tree import LopperNode
@@ -195,10 +197,16 @@ class LopperYAML():
            Nothing
         """
         if self.anytree:
-            dct = DictExporter().export(self.anytree)
+            #dct = DictExporter(dictcls=OrderedDict, attriter=sorted).export(self.anytree)
+            dct = DictExporter(dictcls=OrderedDict).export(self.anytree)
+            #dct = DictExporter().export(self.anytree)
+
+            # print( "blah: %s" % dct )
+            # for d in dct:
+            #     print( "%s" % d )
 
             if not outfile:
-                print(yaml.dump(dct, default_flow_style=False))
+                print(yaml.dump(dct, default_flow_style=False,default_style='"'))
             else:
                 with open( outfile, "w") as file:
                       yaml.dump(dct, file, default_flow_style=False)
