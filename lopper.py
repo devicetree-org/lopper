@@ -235,7 +235,6 @@ class LopperSDT:
                         for line in datafile:
                             if not found:
                                 if re.search( "system-device-tree-v1,lop", line ):
-                                    print( "adding: %s as a lop file" % ifile)
                                     lop_files.append( ifile )
                                     found = True
 
