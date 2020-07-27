@@ -595,10 +595,9 @@ class LopperSDT:
             print( "[DBG+]: assist_find: %s local search: %s" % (assist_name,local_load_paths) )
 
         try:
-            mod_file_abs = mod_file.resolve(True)
+            mod_file_abs = mod_file.resolve()
             if not mod_file_abs:
                 raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
-
         except FileNotFoundError:
             # check the path from which lopper is running, that directory + assists, and paths
             # specified on the command line
@@ -606,7 +605,7 @@ class LopperSDT:
             for s in search_paths:
                 mod_file = Path( s + "/" + mod_file.name )
                 try:
-                    mod_file_abs = mod_file.resolve(True)
+                    mod_file_abs = mod_file.resolve()
                     if not mod_file_abs:
                         raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
                 except FileNotFoundError:
@@ -616,7 +615,7 @@ class LopperSDT:
                     # try it with a .py
                     mod_file = Path( s + "/" + mod_file.name + ".py" )
                     try:
-                        mod_file_abs = mod_file.resolve(True)
+                        mod_file_abs = mod_file.resolve()
                         if not mod_file_abs:
                             raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
                     except FileNotFoundError:
