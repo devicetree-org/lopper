@@ -594,8 +594,16 @@ class LopperSDT:
         if self.verbose > 1:
             print( "[DBG+]: assist_find: %s local search: %s" % (assist_name,local_load_paths) )
 
+
+        # anything less than python 3.6.x doesn't take "true" as a parameter to
+        # resolve. So we make it conditional on the version.
+        if sys.version_info.minor < 6:
+            resolve_param = None
+        else:
+            resolve_param = True
+
         try:
-            mod_file_abs = mod_file.resolve()
+            mod_file_abs = mod_file.resolve( resolve_param )
             if not mod_file_abs:
                 raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
         except FileNotFoundError:
@@ -605,7 +613,7 @@ class LopperSDT:
             for s in search_paths:
                 mod_file = Path( s + "/" + mod_file.name )
                 try:
-                    mod_file_abs = mod_file.resolve()
+                    mod_file_abs = mod_file.resolve( resolve_param )
                     if not mod_file_abs:
                         raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
                 except FileNotFoundError:
@@ -615,7 +623,7 @@ class LopperSDT:
                     # try it with a .py
                     mod_file = Path( s + "/" + mod_file.name + ".py" )
                     try:
-                        mod_file_abs = mod_file.resolve()
+                        mod_file_abs = mod_file.resolve( resolve_param )
                         if not mod_file_abs:
                             raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
                     except FileNotFoundError:
