@@ -64,12 +64,51 @@ ps/lop-domain-r5-versal-rpmsg-kernelspace.dts
                           node = "/domains/openamp_r5";
                           options = "openamp_channel_info.h";
                   };
-                  
+                  lop_20 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/domains/openamp_r5:memory:";
+
+                  };
+                  lop_21 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/domains/openamp_r5:cpus:";
+
+                  };
+                  lop_22 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/domains/openamp_r5:access:";
+
+                  };
+                  lop_23 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/domains/openamp_r5/::";
+
+                  };
+                  lop_24 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/reserved-memory/memory_r5@0/::";
+
+                  };
+                  lop_25 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/amba/ps_ipi@ff360000/::";
+
+                  };
+                  lop_26 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/amba/ps_ipi@ff340000/::";
+
+                  };
+		  lop_27 {
+			 compatible = "system-device-tree-v1,lop,modify";
+			  modify = "/cpus-cluster@0/::";
+		  };
+
                   lop_15 {
                          compatible = "system-device-tree-v1,lop,output";
                          outfile = "r5.dts";
                          // * is "all nodes"
-                         nodes = "ps_ipi_*", "channel*", "cpus*","fpga*", "amba_rpu","tcm","memory_r5@0";
+                         nodes = "channel*", "cpus*","fpga*", "amba_rpu","tcm","memory_r5@0";
                   };
                   lop_14 {
                          compatible = "system-device-tree-v1,lop,output";
