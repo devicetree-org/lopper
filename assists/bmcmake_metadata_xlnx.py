@@ -27,14 +27,30 @@ from collections import OrderedDict
 sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import *
 
-def generate_drvcmake_metadata(sdt, node_list, yamlfile):
+def generate_drvcmake_metadata(sdt, node_list, src_dir):
     driver_compatlist = []
+
+    drvname = src_dir.split('/')[-3]
+    yaml_file = Path( src_dir + "../data/" + drvname + ".yaml")
+    try:
+        yaml_file_abs = yaml_file.resolve()
+    except FileNotFoundError:
+        yaml_file_abs = ""
+
+    if yaml_file_abs:
+        yamlfile = str(yaml_file_abs)
+    else:
+        print("Driver doesn't have yaml file")
+        return False
 
     # Get the example_schema
     with open(yamlfile, 'r') as stream:
         schema = yaml.safe_load(stream)
         driver_compatlist = compat_list(schema)
-        example_schema = schema['examples']
+        try:
+            example_schema = schema['examples']
+        except KeyError:
+            example_schema = {}
        
     driver_nodes = []
     for compat in driver_compatlist:
@@ -142,14 +158,25 @@ def lwip_topolgy(config):
     topology_fd.write("\t}\n")
     topology_fd.write("};")
 
-def generate_hwtocmake_medata(sdt, node_list, yamlfile):
+def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path):
     meta_dict = {}
+    name = src_path.split('/')[-3]
+    yaml_file = Path( src_path + "../data/" + name + ".yaml")
+    try:
+        yaml_file_abs = yaml_file.resolve()
+    except FileNotFoundError:
+        yaml_file_abs = ""
+
+    if yaml_file_abs:
+        yamlfile = str(yaml_file_abs)
+    else:
+        print("Driver doesn't have yaml file")
+        return False
+
     with open(yamlfile, 'r') as stream:
         schema = yaml.safe_load(stream)
-        meta_dict = schema['HwConfig']
+        meta_dict = schema['required']
 
-    name = yamlfile.rsplit('/', 1)[-1]
-    name = name.replace('.yaml', '')
     lwip = re.search("lwip211", name)
     cmake_file = name.capitalize() + str("Example.cmake")
     topology_data = []
@@ -157,7 +184,7 @@ def generate_hwtocmake_medata(sdt, node_list, yamlfile):
         lwiptype_index = 0
         for drv, prop_list in sorted(meta_dict.items(), key=lambda kv:(kv[0], kv[1])):
             name = drv + str(".yaml")
-            drv_yamlpath = [y for x in os.walk(os.getcwd()) for y in glob.glob(os.path.join(x[0], name))]
+            drv_yamlpath = [y for x in os.walk(repo_path) for y in glob.glob(os.path.join(x[0], name))]
             nodes = getmatch_nodes(node_list, drv_yamlpath[0])
             name_list = [node.name for node in nodes]
             fd.write("set(%s_NUM_DRIVER_INSTANCES %s)\n" % (drv.upper(), to_cmakelist(name_list)))
@@ -214,10 +241,16 @@ def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
         except:
            pass
 
-    yamlfile = options['args'][0]
+    src_path = options['args'][0]
     command = options['args'][1]
+    repo_path = ""
+    try:
+        repo_path = options['args'][2]
+    except IndexError:
+        pass
+
     if command == "drvcmake_metadata":
-        generate_drvcmake_metadata(sdt, node_list, yamlfile)
+        generate_drvcmake_metadata(sdt, node_list, src_path)
     elif command == "hwcmake_metadata":
-        generate_hwtocmake_medata(sdt, node_list, yamlfile)
+        generate_hwtocmake_medata(sdt, node_list, src_path, repo_path)
     return True
