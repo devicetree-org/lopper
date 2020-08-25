@@ -31,14 +31,14 @@ sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import scan_reg_size
 
 def is_compat( node, compat_string_to_test ):
-    if re.search( "module,baremetal-linker_xlnx", compat_string_to_test):
+    if re.search( "module,baremetallinker_xlnx", compat_string_to_test):
         return xlnx_generate_bm_linker
     return ""
 
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 # options: baremetal application source path
-def xlnx_generate_bm_linker(tgt_node, sdt, options):
+def get_memranges(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     mem_nodes = []
@@ -70,7 +70,14 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
                 xlnx_memipname[key] += 1
         except KeyError:
             pass
-    
+
+    return mem_ranges
+
+# tgt_node: is the baremetal config top level domain node number
+# sdt: is the system device-tree
+# options: baremetal application source path
+def xlnx_generate_bm_linker(tgt_node, sdt, options):
+    mem_ranges = get_memranges(tgt_node, sdt, options)
     default_ddr = None
     with open('memory.ld', 'w') as fd:
         fd.write("MEMORY\n")
@@ -100,6 +107,6 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     src_dir = os.path.dirname(src_dir)
     appname = src_dir.rsplit('/', 1)[-1]
     cmake_file = appname.capitalize() + str("Example.cmake")
-    with open(cmake_file, 'w') as fd:
+    with open(cmake_file, 'a') as fd:
         fd.write("set(DDR %s)\n" % default_ddr)
     return True
