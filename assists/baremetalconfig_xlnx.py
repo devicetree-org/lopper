@@ -23,6 +23,8 @@ from lopper_tree import *
 from re import *
 import yaml
 
+sys.path.append(os.path.dirname(__file__))
+from bmcmake_metadata_xlnx import *
 
 def item_generator(json_input, lookup_key):
     if isinstance(json_input, dict):
@@ -203,6 +205,12 @@ def is_compat(node, compat_string_to_test):
         return xlnx_generate_bm_config
     return ""
 
+def get_stdin(sdt, chosen_node, node_list):
+    prop_val = chosen_node['stdout-path'].value
+    serial_node = sdt.FDT.get_alias(prop_val[0].split(':')[0])
+    match = [x for x in node_list if re.search(x.name, serial_node)]
+    return match[0]
+
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 # options: baremetal driver meta-data file path
@@ -210,17 +218,39 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     node_list = []
+    chosen_node = ""
     # Traverse the tree and find the nodes having status=ok property
     for node in root_sub_nodes:
         try:
+            if node.name == "chosen":
+                chosen_node = node
             status = node["status"].value
             if "okay" in status:
                 node_list.append(node)
         except:
            pass
 
-    yaml_file = options['args']
-    yamlfile = yaml_file[0]
+    src_dir = options['args'][0]
+    stdin = ""
+    try:
+        stdin = options['args'][1]
+        stdin_node = get_stdin(sdt, chosen_node, node_list)
+    except IndexError:
+        pass
+
+    drvname = src_dir.split('/')[-3]
+    yaml_file = Path( src_dir + "../data/" + drvname + ".yaml")
+    try:
+        yaml_file_abs = yaml_file.resolve()
+    except FileNotFoundError:
+        yaml_file_abs = ""
+
+    if yaml_file_abs:
+        yamlfile = str(yaml_file_abs)
+    else:
+        print("Driver doesn't have yaml file")
+        return False
+
     driver_compatlist = []
     driver_proplist = []
     # Read the yaml file and get the driver supported compatible list
@@ -243,7 +273,20 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     outfile = str("x") + driver_name + str("_g.c")
 
     plat = DtbtoCStruct(outfile)
+    nodename_list = []
+    for node in driver_nodes:
+        nodename_list.append(node.name)
+
+    cmake_file = drvname.upper() + str("Config.cmake")
+    with open(cmake_file, 'a') as fd:
+       fd.write("set(DRIVER_INSTANCES %s)\n" % to_cmakelist(nodename_list))
+       if stdin:
+           match = [x for x in nodename_list if re.search(x, stdin_node.name)]
+           if match:
+               fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(match[0]))
+
     for index,node in enumerate(driver_nodes):
+        drvprop_list = []
         if index == 0:
             plat.buf('#include "x%s.h"\n' % driver_name)
             plat.buf('\n%s %s __attribute__ ((section (".drvcfg_sec"))) = {\n' % (config_struct, config_struct + str("Table[]")))
@@ -269,16 +312,19 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
 
             if prop == "reg":
                 val, size = scan_reg_size(node, node[prop].value, 0)
+                drvprop_list.append(hex(val))
                 plat.buf('\n\t\t%s' % hex(val))
                 if pad:
                     for j in range(1, pad):
                         try:
                             val, size = scan_reg_size(node, node[prop].value, j)
+                            drvprop_list.append(hex(val))
                             plat.buf(',\n\t\t%s' % hex(val))
                         except IndexError:
                             plat.buf(',\n\t\t%s' % hex(0xFFFF))
             elif prop == "compatible":
                 plat.buf('\n\t\t%s' % '"{}"'.format(node[prop].value[0]))
+                drvprop_list.append(node[prop].value[0])
             elif prop == "interrupts":
                 try:
                     intr = get_interrupt_prop(sdt.FDT, node, node[prop].value)
@@ -290,19 +336,23 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                     for j in range(0, pad):
                         try:
                             plat.buf('%s' % intr[j])
+                            drvprop_list.append(intr[j])
                         except IndexError:
                             plat.buf('%s' % hex(0xFFFF))
+                            drvprop_list.append(hex(0xFFFF))
                         if j != pad-1:
                             plat.buf(',  ')
                     plat.buf('}')
                 else:
                     plat.buf('\n\t\t%s' % intr[0])
+                    drvprop_list.append(intr[0])
             elif prop == "interrupt-parent":
                 try:
                     intr_parent = get_intrerrupt_parent(sdt, node[prop].value)
                 except KeyError:
                     intr_parent = 0xFFFF
                 plat.buf('\n\t\t%s' % hex(intr_parent))
+                drvprop_list.append(hex(intr_parent))
             elif prop == "child,required":
                 plat.buf('\n\t\t{')
                 for j,child in enumerate(list(node.child_nodes.items())):
@@ -323,6 +373,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                 except KeyError:
                     prop_val = 0
                 plat.buf('\n\t\t%s' % hex(prop_val))
+                drvprop_list.append(hex(prop_val))
             else:
                 try:
                     prop_val = node[prop].value
@@ -336,11 +387,13 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                 if len(prop_val) > 1:
                     plat.buf('\n\t\t{')
                     for k,item in enumerate(prop_val):
+                        drvprop_list.append(item)
                         plat.buf('%s' % item)
                         if k != len(prop_val)-1:
                             plat.buf(',  ')
                     plat.buf('}')
                 else:
+                    drvprop_list.append(hex(prop_val[0]))
                     plat.buf('\n\t\t%s' % hex(prop_val[0]))
 
             if i == len(driver_proplist)-1:
@@ -351,6 +404,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                 plat.buf(' /* %s */' % prop)
         if index == len(driver_nodes)-1:
             plat.buf('\n};')
+
+        with open(cmake_file, 'a') as fd:
+           fd.write("set(DRIVER_PROP_%s_LIST %s)\n" % (index, to_cmakelist(drvprop_list)))
+           fd.write("list(APPEND TOTAL_DRIVER_PROP_LIST DRIVER_PROP_%s_LIST)\n" % index)
     plat.out(''.join(plat.get_buf()))
 
     return True
