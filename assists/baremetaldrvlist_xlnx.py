@@ -49,9 +49,12 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
            pass
 
     tmpdir = os.getcwd()
+    src_dir = options['args'][0]
+    os.chdir(src_dir)
     os.chdir("XilinxProcessorIPLib/drivers/")
     cwd = os.getcwd()
     files = os.listdir(cwd)
+    depdrv_list = []
     for name in files:
         os.chdir(cwd)
         if os.path.isdir(name):
@@ -71,10 +74,23 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
                                 match = [x for x in c if comp == x]
                                 if match:
                                     driver_list.append(name)
+                                    try:
+                                        if schema['depends']:
+                                            depdrv_list.append(schema['depends'])
+                                    except:
+                                        pass
                 except FileNotFoundError:
                     pass
 
+    for depdrv in depdrv_list:
+        if isinstance(depdrv, list):
+            for dep in depdrv:
+                driver_list.append(dep)
+        else:
+            driver_list.append(depdrv)
     driver_list = list(dict.fromkeys(driver_list))
+    # common driver needs to be present always
+    driver_list.append("common")
     driver_list.sort()
     os.chdir(tmpdir)
 
