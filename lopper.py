@@ -1711,10 +1711,25 @@ class LopperSDT:
                             if self.verbose:
                                 print( "[WARNING]: node %s not found,  property %s not modified " % (modify_path,modify_prop))
 
+                        # if the value has a "&", it is a phandle, and we need
+                        # to try and look it up.
+                        if re.search( '&', modify_val ):
+                            phandle_node_name = re.sub( '&', '', modify_val )
+                            pfnodes = tree.nodes( phandle_node_name )
+                            if not pfnodes:
+                                pfnodes = tree.lnodes( phandle_node_name )
+                                if pfnodes:
+                                    phandle = pfnodes[0].phandle
+                                else:
+                                    phandle = 0
+
+                            modify_val = phandle
+
                         for n in nodes:
                             n[modify_prop] = [ modify_val ]
                             # this is fairly heavy, and may need to come out of the loop
                             tree.sync()
+
                 else:
                     # drop the list, since if we are modifying a node, it is just one
                     # target node.
@@ -1889,6 +1904,7 @@ def usage():
     print('  -i, --input         process supplied input device tree description')
     print('  -a, --assist        load specified python assist (for node or output processing)' )
     print('  -A, --assist-paths  colon separated lists of paths to search for assist loading' )
+    print('    , --enhanced      when writing output files, do enhanced processing (this includes phandle replacement, comments, etc' )
     print('  -o, --output        output file')
     print('  -f, --force         force overwrite output file(s)')
     print('    , --werror        treat warnings as errors' )

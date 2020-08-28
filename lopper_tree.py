@@ -225,12 +225,45 @@ class LopperProp():
         invert_check  = ""
         if len(self.value) == 1:
             # single comparison value
+
+            lop_compare_value = self.value[0]
+
             if len( other_prop.value ) == 1:
+                # check if this is actually a phandle property
+                idx, pfields = self.phandle_params()
+                # idx2, pfields2 = other_prop.phandle_params()
+                if pfields > 0:
+                    if self.ptype == LopperFmt.STRING:
+                        # check for "&" to designate that it is a phandle, if it isn't
+                        # there, throw an error. If it is there, remove it, since we
+                        # don't use it for the lookup.
+                        if re.search( '&', lop_compare_value ):
+                            lop_compare_value = re.sub( '&', '', lop_compare_value )
+                        else:
+                            print( "[ERROR]: phandle is being compared, and target node does not start with &" )
+                            sys.exit(1)
+
+                        # this is a phandle, but is currently a string, we need to
+                        # resolve the value.
+                        nodes = other_prop.node.tree.nodes( lop_compare_value )
+                        if not nodes:
+                            nodes = other_prop.node.tree.lnodes( lop_compare_value )
+
+                        if nodes:
+                            phandle = nodes[0].phandle
+                        else:
+                            phandle = 0
+
+                        # update our value so the rest of the code can stay the same
+                        self.ptype = LopperFmt.UINT32
+                        self.value[0] = phandle
+
                 # single -> single: single must be in or equal the other
                 lop_compare_value = self.value[0]
                 tgt_node_compare_value = other_prop.value[0]
 
-                if other_prop.ptype == LopperFmt.STRING: # type(lop_compare_value) == str:
+                if other_prop.ptype == LopperFmt.STRING or \
+                             self.ptype == LopperFmt.STRING: # type(lop_compare_value) == str:
                     constructed_condition = "{0} re.search(\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
                 elif other_prop.ptype == LopperFmt.UINT32: # type(lop_compare_value) == int:
                     constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
@@ -594,6 +627,8 @@ class LopperProp():
                             i = i_as_int
                         except:
                             pass
+                    else:
+                        i_as_int = 0
 
                     phandle_tgt_name = ""
                     if phandle_idx != 0:
@@ -604,6 +639,16 @@ class LopperProp():
                                 try:
                                     try:
                                         tgn = self.node.tree.pnode( i )
+                                        if tgn == None:
+                                            # if we couldn't find the target, maybe it is in
+                                            # as a string. So let's check that way.
+                                            tgn2 = self.node.tree.nodes( i )
+                                            if not tgn2:
+                                                tgn2 = self.node.tree.lnodes( i )
+
+                                            if tgn2:
+                                                tgn = tgn2[0]
+
                                     except Exception as e:
                                         tgn = 0
 
@@ -612,17 +657,17 @@ class LopperProp():
                                     except:
                                         phandle_tgt_name = ""
 
-                                    if not phandle_tgt_name:
+                                    if not phandle_tgt_name and tgn:
                                         phandle_tgt_name = Lopper.phandle_safe_name( tgn.name )
 
                                     if self.__dbg__ > 1:
                                         print( "[DBG+]: [%s:%s] phandle replacement of: %s with %s" %
-                                               ( self.node.name, self.name, hex(i), phandle_tgt_name))
-                                except:
+                                               ( self.node.name, self.name, i, phandle_tgt_name))
+                                except Exception as e:
                                     # we need to drop the entire record from the output, the phandle wasn't found
                                     if self.__dbg__ > 1:
                                         print( "[DBG+]: [%s:%s] phandle: %s not found, dropping %s fields" %
-                                               ( self.node.name, self.name, hex(i), phandle_field_count))
+                                               ( self.node.name, self.name, i, phandle_field_count))
 
                                     drop_record = True
                                     if len(prop_val) == phandle_field_count:
