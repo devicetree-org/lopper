@@ -29,6 +29,7 @@ from re import *
 
 sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import scan_reg_size
+from bmcmake_metadata_xlnx import to_cmakelist
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetallinker_xlnx", compat_string_to_test):
@@ -79,10 +80,22 @@ def get_memranges(tgt_node, sdt, options):
 def xlnx_generate_bm_linker(tgt_node, sdt, options):
     mem_ranges = get_memranges(tgt_node, sdt, options)
     default_ddr = None
+    memtest_config = None
+
+    try:
+        memtest_config = options['args'][1]
+    except IndexError:
+        pass
+
     with open('memory.ld', 'w') as fd:
         fd.write("MEMORY\n")
         fd.write("{\n")
-        for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=True):
+        if memtest_config:
+            traverse = False
+        else:
+            traverse = True
+
+        for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
             if default_ddr is None:
                 default_ddr = key
             start,size = value[0], value[1]
@@ -109,4 +122,9 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     cmake_file = appname.capitalize() + str("Example.cmake")
     with open(cmake_file, 'a') as fd:
         fd.write("set(DDR %s)\n" % default_ddr)
+        memip_list = []
+        for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
+            memip_list.append(key)
+            fd.write("set(%s %s)\n" % (key, to_cmakelist([hex(value[0]), hex(value[1])])))
+        fd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
     return True
