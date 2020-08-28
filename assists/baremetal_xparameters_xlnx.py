@@ -63,6 +63,14 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
            pass
 
     srcdir = options['args'][0]
+    for node in node_list:
+        try:
+            prop_val = node['dma-coherent'].value
+            if '' in prop_val:
+                cci_en = 1
+                break
+        except KeyError:
+            cci_en = None
 
     drvlist = xlnx_generate_bm_drvlist(tgt_node, sdt, options)
     plat = DtbtoCStruct('xparameters.h')
@@ -213,6 +221,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         plat.buf("\n#define XPAR_%s_BASEADDRESS %s" % (key.upper(), hex(start)))
         plat.buf("\n#define XPAR_%s_HIGHADDRESS %s" % (key.upper(), hex(start + size)))
 
+    if cci_en:
+        plat.buf("\n#define XPAR_CACHE_COHERENT \n")
     plat.buf('\n#endif  /* end of protection macro */')
     plat.out(''.join(plat.get_buf()))
 
