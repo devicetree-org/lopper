@@ -169,6 +169,19 @@ def get_intrerrupt_parent(sdt, value):
         reg += 1
     return reg
 
+def get_clock_prop(sdt, value):
+    clk_parent = sdt.FDT.node_offset_by_phandle(value[0])
+    name = sdt.FDT.get_name(clk_parent)
+    root_sub_nodes = sdt.tree['/'].subnodes()
+    clk_node = [node for node in root_sub_nodes if re.search(name, node.name)]
+    """
+    Baremetal clock format:
+        bits[0] clock parent(controller) type(0: ZynqMP clock controller)
+        bits[31:1] clock value
+    """
+    compat = clk_node[0]['compatible'].value
+    return value[1]
+
 class DtbtoCStruct(object):
     def __init__(self, out_file):
         self._outfile = open(out_file, 'w')
@@ -353,6 +366,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                     intr_parent = 0xFFFF
                 plat.buf('\n\t\t%s' % hex(intr_parent))
                 drvprop_list.append(hex(intr_parent))
+            elif prop == "clocks":
+                clkprop_val = get_clock_prop(sdt, node[prop].value)
+                plat.buf('\n\t\t%s' % hex(clkprop_val))
+                drvprop_list.append(hex(clkprop_val))
             elif prop == "child,required":
                 plat.buf('\n\t\t{')
                 for j,child in enumerate(list(node.child_nodes.items())):
