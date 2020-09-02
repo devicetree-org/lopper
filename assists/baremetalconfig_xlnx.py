@@ -272,6 +272,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         schema = yaml.safe_load(stream)
         driver_compatlist = compat_list(schema)
         driver_proplist = schema['required']
+        try:
+            driver_optproplist = schema['optional']
+        except KeyError:
+            driver_optproplist = []
 
     driver_nodes = []
     for compat in driver_compatlist:
@@ -300,6 +304,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
 
     for index,node in enumerate(driver_nodes):
         drvprop_list = []
+        drvoptprop_list = []
         if index == 0:
             plat.buf('#include "x%s.h"\n' % driver_name)
             plat.buf('\n%s %s __attribute__ ((section (".drvcfg_sec"))) = {\n' % (config_struct, config_struct + str("Table[]")))
@@ -373,16 +378,19 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
             elif prop == "child,required":
                 plat.buf('\n\t\t{')
                 for j,child in enumerate(list(node.child_nodes.items())):
-                    plat.buf('\n\t\t\t{')
+                    if len(pad) != 1:
+                        plat.buf('\n\t\t\t{')
                     for k,p in enumerate(pad):
                         plat.buf('\n\t\t\t\t%s' % hex(child[1][p].value[0]))
-                        if k != (len(pad) - 1):
+                        drvprop_list.append(hex(child[1][p].value[0]))
+                        if k != (len(pad) - 1) or len(pad) == 1:
                             plat.buf(',')
                         plat.buf(' /* %s */' % p)
-                    if j != (len(list(node.child_nodes.items())) - 1):
-                        plat.buf('\n\t\t\t},')
-                    else:
-                        plat.buf('\n\t\t\t}')
+                    if len(pad) != 1:
+                        if j != (len(list(node.child_nodes.items())) - 1):
+                            plat.buf('\n\t\t\t},')
+                        else:
+                            plat.buf('\n\t\t\t}')
                 plat.buf('\n\t\t}')
             elif phandle_prop:
                 try:
@@ -422,8 +430,20 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         if index == len(driver_nodes)-1:
             plat.buf('\n};')
 
+        for i, prop in enumerate(driver_optproplist):
+            if isinstance(prop, dict):
+               pad = list(prop.values())[0]
+               prop = list(prop.keys())[0]
+            if prop == "child,required":
+                for j,child in enumerate(list(node.child_nodes.items())):
+                    for k,p in enumerate(pad):
+                        drvoptprop_list.append(child[1][p].value[0])
+            else:
+                drvoptprop_list.append(node[prop].value[0])
+
         with open(cmake_file, 'a') as fd:
            fd.write("set(DRIVER_PROP_%s_LIST %s)\n" % (index, to_cmakelist(drvprop_list)))
+           fd.write("set(DRIVER_OPTPROP_%s_LIST %s)\n" % (index, to_cmakelist(drvoptprop_list)))
            fd.write("list(APPEND TOTAL_DRIVER_PROP_LIST DRIVER_PROP_%s_LIST)\n" % index)
     plat.out(''.join(plat.get_buf()))
 
