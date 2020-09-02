@@ -1477,6 +1477,82 @@ class Lopper:
 
         return True
 
+
+    @staticmethod
+    def dt_preprocess( dts_file, includes, outdir="./", verbose=0 ):
+        """Compile a dts file to a dtb
+
+        This routine takes a dts input file, include search path and then
+        uses standard tools (cpp, etc) to expand references.
+
+        Environment variables can be used tweak the execution of the various
+        tools and stages:
+
+           LOPPER_CPP: set if a different cpp than the standard one should
+                       be used, or if cpp is not on the path
+           LOPPER_PPFLAGS: flags to be used when calling cpp
+
+        Args:
+           dts_file (string): path to the dts file to be preprocessed
+           includes (list): list of include directories (translated into -i <foo>
+                            for cpp calls)
+           outdir (string): directory to place all output and temporary files
+           verbose (bool,optional): verbosity level
+
+        Returns:
+           string: Name of the preprocessed dts
+
+        """
+        # TODO: might need to make 'dts_file' absolute for the cpp call below
+        dts_filename = os.path.basename( dts_file )
+        dts_filename_noext = os.path.splitext(dts_filename)[0]
+
+        #
+        # step 1: preprocess the file with CPP (if available)
+        #
+
+        # NOTE: we are putting the .pp file into the same directory as the
+        #       system device tree. Without doing this, dtc cannot resolve
+        #       labels from include files, and will throw an error. If we get
+        #       into a mode where the system device tree's directory is not
+        #       writeable, then we'll have to either copy everything or look
+        #       into why dtc can't handle the split directories and include
+        #       files.
+
+        # if outdir is left as the default (current dir), then we can respect
+        # the dts directory. Otherwise, we need to follow where outdir has been
+        # pointed. This may trigger the issue mentioned in the prvious comment,
+        # but we'll cross that bridge when we get to it
+        dts_dirname = outdir
+        if outdir == "./":
+            dts_file_dir = os.path.dirname( dts_file )
+            if dts_file_dir:
+                dts_dirname = dts_file_dir
+        preprocessed_name = "{0}/{1}.pp".format(dts_dirname,dts_filename)
+
+        includes += dts_dirname
+        includes += " "
+        includes += os.getcwd()
+
+        ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp")).split()
+        # Note: might drop the -I include later
+        ppargs += "-nostdinc -I include -undef -x assembler-with-cpp ".split()
+        ppargs += (os.environ.get('LOPPER_PPFLAGS') or "").split()
+        for i in includes.split():
+            ppargs.append("-I{0}".format(i))
+        ppargs += ["-o", preprocessed_name, dts_file]
+        if verbose:
+            print( "[INFO]: preprocessing dts_file: %s" % ppargs )
+
+        result = subprocess.run( ppargs, check = True )
+        if result.returncode is not 0:
+            print( "[ERROR]: unable to preprocess dts file: %s" % ppargs )
+            print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
+            sys.exit(result.returncode)
+
+        return preprocessed_name
+
+
     @staticmethod
     def dt_compile( dts_file, i_files, includes, force_overwrite=False, outdir="./", save_temps=False, verbose=0 ):
         """Compile a dts file to a dtb
@@ -1527,37 +1603,7 @@ class Lopper:
         #       writeable, then we'll have to either copy everything or look
         #       into why dtc can't handle the split directories and include
         #       files.
-
-        # if outdir is left as the default (current dir), then we can respect
-        # the dts directory. Otherwise, we need to follow where outdir has been
-        # pointed. This may trigger the issue mentioned in the prvious comment,
-        # but we'll cross that bridge when we get to it
-        dts_dirname = outdir
-        if outdir == "./":
-            dts_file_dir = os.path.dirname( dts_file )
-            if dts_file_dir:
-                dts_dirname = dts_file_dir
-        preprocessed_name = "{0}/{1}.pp".format(dts_dirname,dts_filename)
-
-        includes += dts_dirname
-        includes += " "
-        includes += os.getcwd()
-
-        ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp")).split()
-        # Note: might drop the -I include later
-        ppargs += "-nostdinc -I include -undef -x assembler-with-cpp ".split()
-        ppargs += (os.environ.get('LOPPER_PPFLAGS') or "").split()
-        for i in includes.split():
-            ppargs.append("-I{0}".format(i))
-        ppargs += ["-o", preprocessed_name, dts_file]
-        if verbose:
-            print( "[INFO]: preprocessing dts_file: %s" % ppargs )
-
-        result = subprocess.run( ppargs, check = True )
-        if result.returncode is not 0:
-            print( "[ERROR]: unable to preprocess dts file: %s" % ppargs )
-            print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
-            sys.exit(result.returncode)
+        preprocessed_name = Lopper.dt_preprocess( dts_file, includes, outdir, verbose )
 
         # step 2: compile the dtb
         #         dtc -O dtb -o test_tree1.dtb test_tree1.dts

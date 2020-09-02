@@ -265,6 +265,11 @@ class LopperSDT:
                 sdt_files.append( sdt_file )
                 fp = sdt_file
 
+            # preprocess the file, cpp, etc
+            pp = Lopper.dt_preprocess( fp, include_paths, self.outdir, self.verbose )
+            if pp:
+                fp = pp
+
             if self.enhanced:
                 # we need to ensure comments are maintained by converting them
                 # into DTS attributes
@@ -1727,9 +1732,8 @@ class LopperSDT:
 
                         for n in nodes:
                             n[modify_prop] = [ modify_val ]
-                            # this is fairly heavy, and may need to come out of the loop
-                            tree.sync()
 
+                        tree.sync()
                 else:
                     # drop the list, since if we are modifying a node, it is just one
                     # target node.
