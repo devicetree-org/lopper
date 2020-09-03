@@ -169,6 +169,40 @@ def get_intrerrupt_parent(sdt, value):
         reg += 1
     return reg
 
+"""
+This API scans the device-tree node and returns the address
+and size of the ranges property for the user provided index.
+
+Args:
+    node: LopperNode object
+    value: property value
+    idx: index
+"""
+def scan_ranges_size(node, value, idx):
+    na = node["#address-cells"].value[0]
+    ns = node["#size-cells"].value[0]
+    cells = na + ns + 2
+
+    addr = 0
+    size = 0
+
+    addr1 = value[cells * idx + 1]
+    if addr1 != 0:
+        val = str(value[cells * idx + ns])
+        pad = 8 - len(val)
+        val = val.ljust(pad + len(val), '0')
+        addr = int((str(hex(addr1)) + val), base=16)
+    else:
+        addr = value[cells * idx + ns]
+
+    size1 = value[cells * idx + na + 2]
+    if size1 != 0:
+        val = value[cells * idx + na + ns]
+        size = size1 + val
+    else:
+        size = value[cells * idx + na + ns + 1]
+    return addr, size
+
 def get_clock_prop(sdt, value):
     clk_parent = sdt.FDT.node_offset_by_phandle(value[0])
     name = sdt.FDT.get_name(clk_parent)
@@ -181,6 +215,15 @@ def get_clock_prop(sdt, value):
     """
     compat = clk_node[0]['compatible'].value
     return value[1]
+
+def get_pci_ranges(node, value, pad):
+    pci_ranges = []
+    for i in range(pad):
+        reg, size = scan_ranges_size(node, value, i)
+        high_addr = reg + size - 1
+        pci_ranges.append(hex(reg))
+        pci_ranges.append(hex(high_addr))
+    return pci_ranges
 
 class DtbtoCStruct(object):
     def __init__(self, out_file):
@@ -399,6 +442,20 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                     prop_val = 0
                 plat.buf('\n\t\t%s' % hex(prop_val))
                 drvprop_list.append(hex(prop_val))
+            elif prop == "ranges":
+                try:
+                    device_type = node['device_type'].value[0]
+                    if device_type == "pci":
+                        device_ispci = 1
+                except KeyError:
+                    device_ispci = 0
+                if device_ispci:
+                    prop_vallist = get_pci_ranges(node, node[prop].value, pad)
+                    for j, prop_val in enumerate(prop_vallist):
+                        plat.buf('\n\t\t%s' % prop_val)
+                        if j != (len(prop_vallist) - 1):
+                            plat.buf(',')
+                        drvprop_list.append(prop_val)
             else:
                 try:
                     prop_val = node[prop].value
