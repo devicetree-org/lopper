@@ -52,9 +52,55 @@ def get_memranges(tgt_node, sdt, options):
                 mem_nodes.append(node)
         except:
            pass
+
+    # Yocto Machine to CPU compat mapping
+    cpu_dict = {'cortexa53-zynqmp': 'arm,cortex-a53', 'cortexa72-versal':'arm,cortex-a72', 'cortexr5-zynqmp': 'arm,cortex-r5', 'cortexa9-zynq': 'arm,cortex-a9',
+                'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze'}
+    machine = options['args'][1]
+    nodes = sdt.tree.nodes('/cpu.*')
+    match_cpunodes = []
+    match = cpu_dict[machine]
+    for node in nodes:
+        try:
+            compat = node['compatible'].value[0]
+            match = cpu_dict[machine]
+            if compat == match:
+                match_cpunodes.append(node)
+        except KeyError:
+            pass
    
+    address_map = match_cpunodes[0].parent["address-map"].value
+    all_phandles = []
+    ns = match_cpunodes[0].parent["#ranges-size-cells"].value[0]
+    na = match_cpunodes[0].parent["#ranges-address-cells"].value[0]
+    cells = na + ns
+    tmp = na
+    while tmp < len(address_map):
+        all_phandles.append(address_map[tmp])
+        tmp = tmp + cells + na + 1
+
     mem_ranges = {}
     for node in mem_nodes:
+        # Check whether the memory node is mapped to cpu cluster or not
+        mem_phandles = [handle for handle in all_phandles if handle == node.phandle]
+        addr_list = []
+        if mem_phandles:
+           # Remove Duplicate phandle referenecs
+           mem_phandles = list(dict.fromkeys(mem_phandles))
+           indx_list = [index for index,handle in enumerate(address_map) for val in mem_phandles if handle == val]
+           for inx in indx_list:
+               start = [address_map[inx+i+1] for i in range(na)]
+               if na == 2 and start[0] != 0:
+                   val = str(start[1])
+                   pad = 8 - len(val)
+                   val = val.ljust(pad + len(val), '0')
+                   reg = int((str(hex(start[0])) + val), base=16)
+                   addr_list.append(reg)
+               elif na == 2:
+                   addr_list.append(start[1])
+               else:
+                   addr_list.append(start[0])
+
         na = node.parent["#address-cells"].value[0]
         ns = node.parent["#size-cells"].value[0]
         val = node['reg'].value
@@ -65,10 +111,12 @@ def get_memranges(tgt_node, sdt, options):
             match = [mem for mem in name_list if mem in compat]
             for i in range(total_nodes):
                 reg, size = scan_reg_size(node, val, i)
-                key = match[0].replace("-", "_")
-                linker_secname = key + str("_") + str(xlnx_memipname[key])
-                mem_ranges.update({linker_secname: [reg, size]})
-                xlnx_memipname[key] += 1
+                valid_range = [addr for addr in addr_list if reg == addr]
+                if valid_range:
+                    key = match[0].replace("-", "_")
+                    linker_secname = key + str("_") + str(xlnx_memipname[key])
+                    mem_ranges.update({linker_secname: [reg, size]})
+                    xlnx_memipname[key] += 1
         except KeyError:
             pass
 
