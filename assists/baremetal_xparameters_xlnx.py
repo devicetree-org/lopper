@@ -156,6 +156,10 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 canondef_dict.update({prop:hex(intr_parent)})
                             except KeyError:
                                 pass
+                        elif prop == "clocks":
+                            clkprop_val = get_clock_prop(sdt, node[prop].value)
+                            plat.buf('\n#define XPAR_%s_%s %s' % (label_name, prop.upper(), hex(clkprop_val)))
+                            canondef_dict.update({prop:hex(clkprop_val)})
                         elif prop == "child,required":
                             for j,child in enumerate(list(node.child_nodes.items())):
                                 for k,p in enumerate(pad):
@@ -170,6 +174,26 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 canondef_dict.update({prop:hex(prop_val)})
                             except KeyError:
                                 pass
+                        elif prop == "ranges":
+                            try:
+                                device_type = node['device_type'].value[0]
+                                if device_type == "pci":
+                                    device_ispci = 1
+                            except KeyError:
+                                device_ispci = 0
+                            if device_ispci:
+                                prop_vallist = get_pci_ranges(node, node[prop].value, pad)
+                                i = 0
+                                for j, prop_val in enumerate(prop_vallist):
+                                    if j % 2:
+                                        plat.buf('\n#define XPAR_%s_%s_HIGHADDR_%s %s' % (label_name, prop.upper(), i, prop_val))
+                                        cannon_prop = prop + str("_") + str("HIGHADDR") + str("_") + str(i)
+                                        canondef_dict.update({cannon_prop:prop_val})
+                                        i += 1
+                                    else:
+                                        plat.buf('\n#define XPAR_%s_%s_BASEADDR_%s %s' % (label_name, prop.upper(), i, prop_val))
+                                        cannon_prop = prop + str("_") + str("BASEADDR") + str("_") + str(i)
+                                        canondef_dict.update({cannon_prop:prop_val})
                         else:
                             try:
                                 prop_val = node[prop].value
