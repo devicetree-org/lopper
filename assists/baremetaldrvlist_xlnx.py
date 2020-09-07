@@ -49,7 +49,7 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
            pass
 
     tmpdir = os.getcwd()
-    src_dir = options['args'][0]
+    src_dir = options['args'][1]
     os.chdir(src_dir)
     os.chdir("XilinxProcessorIPLib/drivers/")
     cwd = os.getcwd()

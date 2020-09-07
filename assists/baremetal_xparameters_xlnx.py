@@ -62,7 +62,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         except:
            pass
 
-    srcdir = options['args'][0]
+    srcdir = options['args'][1]
     for node in node_list:
         try:
             prop_val = node['dma-coherent'].value

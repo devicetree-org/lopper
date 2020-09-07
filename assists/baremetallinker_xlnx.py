@@ -56,7 +56,7 @@ def get_memranges(tgt_node, sdt, options):
     # Yocto Machine to CPU compat mapping
     cpu_dict = {'cortexa53-zynqmp': 'arm,cortex-a53', 'cortexa72-versal':'arm,cortex-a72', 'cortexr5-zynqmp': 'arm,cortex-r5', 'cortexa9-zynq': 'arm,cortex-a9',
                 'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze'}
-    machine = options['args'][1]
+    machine = options['args'][0]
     nodes = sdt.tree.nodes('/cpu.*')
     match_cpunodes = []
     match = cpu_dict[machine]
@@ -129,9 +129,10 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     mem_ranges = get_memranges(tgt_node, sdt, options)
     default_ddr = None
     memtest_config = None
+    machine = options['args'][0]
 
     try:
-        memtest_config = options['args'][1]
+        memtest_config = options['args'][2]
     except IndexError:
         pass
 
@@ -164,7 +165,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             fd.write("\t%s : ORIGIN = %s, LENGTH = %s\n" % (key, hex(start), hex(size)))
         fd.write("}\n")
 
-    src_dir = os.path.dirname(options['args'][0])
+    src_dir = os.path.dirname(options['args'][1])
     src_dir = os.path.dirname(src_dir)
     appname = src_dir.rsplit('/', 1)[-1]
     cmake_file = appname.capitalize() + str("Example.cmake")
