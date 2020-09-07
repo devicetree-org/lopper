@@ -162,6 +162,13 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             if "ps7_ddr" in key:
                 start = 1048576
                 size -= start
+            """
+            For R5 PSU DDR initial 1MB is reserved for tcm
+            Adjust the size and start address accordingly.
+            """
+            if "psu_ddr" in key and machine == "cortexr5-zynqmp":
+                start = 1048576
+                size -= start
             fd.write("\t%s : ORIGIN = %s, LENGTH = %s\n" % (key, hex(start), hex(size)))
         fd.write("}\n")
 
