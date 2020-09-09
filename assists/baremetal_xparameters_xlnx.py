@@ -140,7 +140,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 plat.buf('\n#define XPAR_%s_%s %s' % (label_name, prop.upper(), intr[0]))
                                 canondef_dict.update({prop:intr[0]})
                             except KeyError:
-                                pass
+                                intr = [0xFFFF]
 
                             if pad:
                                 for j in range(1, pad):
