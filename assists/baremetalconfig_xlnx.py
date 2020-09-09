@@ -469,7 +469,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                 if len(prop_val) > 1:
                     plat.buf('\n\t\t{')
                     for k,item in enumerate(prop_val):
-                        drvprop_list.append(item)
+                        if isinstance(item, int):
+                            drvprop_list.append(hex(item))
+                        else:
+                            drvprop_list.append(item)
                         plat.buf('%s' % item)
                         if k != len(prop_val)-1:
                             plat.buf(',  ')
@@ -485,6 +488,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                 plat.buf(',')
                 plat.buf(' /* %s */' % prop)
         if index == len(driver_nodes)-1:
+            plat.buf('\n\t {\n\t\t NULL\n\t}')
             plat.buf('\n};')
 
         for i, prop in enumerate(driver_optproplist):
@@ -496,7 +500,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                     for k,p in enumerate(pad):
                         drvoptprop_list.append(child[1][p].value[0])
             else:
-                drvoptprop_list.append(node[prop].value[0])
+                try:
+                    drvoptprop_list.append(hex(node[prop].value[0]))
+                except KeyError:
+                    pass
 
         with open(cmake_file, 'a') as fd:
            fd.write("set(DRIVER_PROP_%s_LIST %s)\n" % (index, to_cmakelist(drvprop_list)))
