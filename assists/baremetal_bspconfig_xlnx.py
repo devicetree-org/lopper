@@ -103,7 +103,10 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
                            if index == 0:
                                fd.write("\t{")
                            try:
-                               fd.write("\n\t\t%s" % hex(match_cpunodes[0][prop].value[0]))
+                               for i in range(0, len(match_cpunodes[0][prop].value)):
+                                   fd.write("\n\t\t%s" % hex(match_cpunodes[0][prop].value[i]))
+                                   if i != (len(match_cpunodes[0][prop].value) - 1):
+                                       fd.write(",")
                            except:
                                fd.write("\n\t\t 0")
                            if prop == prop_list[-1]:
