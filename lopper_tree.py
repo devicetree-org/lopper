@@ -372,7 +372,7 @@ class LopperProp():
             phandle_idx = 0
             phandle_field_count = 0
             for f in property_fields:
-                if re.search( '#.*', f ):
+                if re.search( '^#.*', f ):
                     try:
                         # Looking into the node, is the same as:
                         #      field_val = Lopper.property_get( fdt, nodeoffset, f, LopperFmt.SIMPLE )
@@ -384,9 +384,43 @@ class LopperProp():
                         field_val = 1
 
                     phandle_field_count = phandle_field_count + field_val
-                elif re.search( 'phandle', f ):
+                elif re.search( '^phandle', f ):
                     phandle_field_count = phandle_field_count + 1
                     phandle_idx = phandle_field_count
+
+                    # if a phandle field is of the format "phandle:<#property>", then
+                    # we need to dereference the phandle, and get the value of #property
+                    # to figure out the indexes.
+                    derefs = f.split(':')
+                    if len(derefs) == 2:
+                        # we have to deference the phandle, and look at the property
+                        # specified to know the count
+                        try:
+                            phandle_tgt_val = self.value[phandle_field_count - 1]
+                            tgn = self.node.tree.pnode( phandle_tgt_val )
+                            if tgn == None:
+                                # if we couldn't find the target, maybe it is in
+                                # as a string. So let's check that way.
+                                tgn2 = self.node.tree.nodes( phandle_tgt_val )
+                                if not tgn2:
+                                    tgn2 = self.node.tree.lnodes( phandle_tgt_val )
+
+                                if tgn2:
+                                    tgn = tgn2[0]
+
+                            if tgn:
+                                try:
+                                    cell_count = tgn[derefs[1]].value[0]
+                                except:
+                                    cell_count = 0
+
+                                phandle_field_count = phandle_field_count + cell_count
+                        except:
+                            # either we had no value, or something else wasn't defined
+                            # yet, so we continue on with the initial values set at
+                            # the top (i.e. treat it just as a non dereferenced phandle
+                            pass
+
                 else:
                     # it's a placeholder field, count it as one
                     phandle_field_count = phandle_field_count + 1
@@ -2400,9 +2434,12 @@ class LopperTree:
             matches = [self.__nodes__[nodename]]
         except:
             # maybe it was a regex ?
-            for n in self.__nodes__.keys():
-                if re.search( nodename, n ):
-                    matches.append( self.__nodes__[n] )
+            try:
+                for n in self.__nodes__.keys():
+                    if re.search( nodename, n ):
+                        matches.append( self.__nodes__[n] )
+            except:
+                pass
 
         return matches
 

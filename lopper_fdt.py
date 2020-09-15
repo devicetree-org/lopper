@@ -1038,6 +1038,7 @@ class Lopper:
                     "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
                     "access" : [ 'phandle flags' ],
                     "cpus" : [ 'phandle mask mode' ],
+                    "clocks" : [ 'phandle:#clock-cells' ],
                 }
         except:
             return {}
