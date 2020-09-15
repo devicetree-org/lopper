@@ -23,13 +23,12 @@ from re import *
 import yaml
 
 sys.path.append(os.path.dirname(__file__))
-from baremetalconfig_xlnx import compat_list
+from baremetalconfig_xlnx import *
 
 def is_compat(node, compat_string_to_test):
     if re.search( "module,baremetaldrvlist_xlnx", compat_string_to_test):
         return xlnx_generate_bm_drvlist
     return ""
-
 
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
@@ -38,15 +37,20 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
     root_sub_nodes = root_node.subnodes()
     compatible_list = []
     driver_list = []
+    node_list = []
     # Traverse the tree and find the nodes having status=ok property
     # and create a compatible_list from these nodes.
     for node in root_sub_nodes:
         try:
             status = node["status"].value
             if "okay" in status:
-                compatible_list.append(node["compatible"].value)
+                node_list.append(node)
         except:
            pass
+
+    mapped_nodelist = get_mapped_nodes(sdt, node_list, options)
+    for node in mapped_nodelist:
+        compatible_list.append(node["compatible"].value)
 
     tmpdir = os.getcwd()
     src_dir = options['args'][1]
