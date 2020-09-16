@@ -27,7 +27,7 @@ from collections import OrderedDict
 sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import *
 
-def generate_drvcmake_metadata(sdt, node_list, src_dir):
+def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
     driver_compatlist = []
 
     drvname = src_dir.split('/')[-3]
@@ -59,6 +59,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir):
            if compat in compat_string:
                driver_nodes.append(node)
 
+    driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
     nodename_list = []
     reg_list = []
     example_dict = {}
@@ -115,7 +116,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir):
             fd.write("list(APPEND TOTAL_EXAMPLE_LIST EXAMPLE_LIST%s)\n" % index)
             fd.write("list(APPEND TOTAL_DEPDRV_REG_LIST DEPDRV_REG_LIST%s)\n" % index)
 
-def getmatch_nodes(node_list, yamlfile):  
+def getmatch_nodes(sdt, node_list, yamlfile, options):
     # Get the example_schema
     with open(yamlfile, 'r') as stream:
         schema = yaml.safe_load(stream)
@@ -128,6 +129,7 @@ def getmatch_nodes(node_list, yamlfile):
            if compat in compat_string:
                driver_nodes.append(node)
 
+    driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
     return driver_nodes
 
 def getxlnx_phytype(sdt, value):
@@ -158,7 +160,7 @@ def lwip_topolgy(config):
     topology_fd.write("\t}\n")
     topology_fd.write("};")
 
-def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path):
+def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options):
     meta_dict = {}
     name = src_path.split('/')[-3]
     yaml_file = Path( src_path + "../data/" + name + ".yaml")
@@ -185,7 +187,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path):
         for drv, prop_list in sorted(meta_dict.items(), key=lambda kv:(kv[0], kv[1])):
             name = drv + str(".yaml")
             drv_yamlpath = [y for x in os.walk(repo_path) for y in glob.glob(os.path.join(x[0], name))]
-            nodes = getmatch_nodes(node_list, drv_yamlpath[0])
+            nodes = getmatch_nodes(sdt, node_list, drv_yamlpath[0], options)
             name_list = [node.name for node in nodes]
             fd.write("set(%s_NUM_DRIVER_INSTANCES %s)\n" % (drv.upper(), to_cmakelist(name_list)))
             for index,node in enumerate(nodes):
@@ -241,16 +243,16 @@ def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
         except:
            pass
 
-    src_path = options['args'][0]
-    command = options['args'][1]
+    src_path = options['args'][1]
+    command = options['args'][2]
     repo_path = ""
     try:
-        repo_path = options['args'][2]
+        repo_path = options['args'][3]
     except IndexError:
         pass
 
     if command == "drvcmake_metadata":
-        generate_drvcmake_metadata(sdt, node_list, src_path)
+        generate_drvcmake_metadata(sdt, node_list, src_path, options)
     elif command == "hwcmake_metadata":
-        generate_hwtocmake_medata(sdt, node_list, src_path, repo_path)
+        generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options)
     return True
