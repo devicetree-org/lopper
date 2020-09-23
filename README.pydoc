@@ -159,7 +159,7 @@ CLASSES
      |      Returns:
      |          boolean
      |  
-     |  find_compatible_assist(self, cb_node=0, cb_id='', mask='')
+     |  find_compatible_assist(self, cb_node=None, cb_id='', mask='')
      |      Finds a registered assist that is compatible with a given ID
      |      
      |      Searches the registered assists for one that is compatible with an ID.
@@ -224,17 +224,38 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
-     |  write(self, outfilename)
-     |      write the system device tree to a file
+     |  write(self, fdt=None, output_filename=None, overwrite=True, enhanced=False)
+     |      Write a system device tree to a file
      |      
-     |      Writes the system device tree (modified or not) to the passed
-     |      output file name
+     |      Write a fdt (or system device tree) to an output file. This routine uses
+     |      the output filename to determine if a module should be used to write the
+     |      output.
+     |      
+     |      If the output format is .dts or .dtb, Lopper takes care of writing the
+     |      output. If it is an unrecognized output type, the available assist
+     |      modules are queried for compatibility. If there is a compatible assist,
+     |      it is called to write the file, otherwise, a warning or error is raised.
      |      
      |      Args:
-     |         outfilename (string): output file name
+     |          fdt (fdt,optional): source flattened device tree to write
+     |          output_filename (string,optional): name of the output file to create
+     |          overwrite (bool,optional): Should existing files be overwritten. Default is True.
+     |          enhanced(bool,optional): whether enhanced printing should be performed. Default is False
      |      
      |      Returns:
-     |         Nothing
+     |          Nothing
+     |  
+     |  ----------------------------------------------------------------------
+     |  Static methods defined here:
+     |  
+     |  phandle_safe_name(phandle_name)
+     |      Make the passed name safe to use as a phandle label/reference
+     |      
+     |      Args:
+     |          phandle_name (string): the name to use for a phandle
+     |      
+     |      Returns:
+     |          The modified phandle safe string
      |  
      |  ----------------------------------------------------------------------
      |  Data descriptors defined here:
@@ -256,10 +277,10 @@ FUNCTIONS
 
 DATA
     LOPPER_VERSION = '2020.4-beta'
-    MAX_RETRIES = 3
     QUIET_ALL = range(1, 18)
     QUIET_NOTFOUND = (1,)
     lopper_directory = '/home/bruce/git/system-device-tree'
+    yaml_support = True
 
 FILE
     /home/bruce/git/system-device-tree/lopper.py
@@ -325,6 +346,29 @@ CLASSES
      |      Returns:
      |         string: Name of the compiled dtb
      |  
+     |  dt_preprocess(dts_file, includes, outdir='./', verbose=0)
+     |      Compile a dts file to a dtb
+     |      
+     |      This routine takes a dts input file, include search path and then
+     |      uses standard tools (cpp, etc) to expand references.
+     |      
+     |      Environment variables can be used tweak the execution of the various
+     |      tools and stages:
+     |      
+     |         LOPPER_CPP: set if a different cpp than the standard one should
+     |                     be used, or if cpp is not on the path
+     |         LOPPER_PPFLAGS: flags to be used when calling cpp
+     |      
+     |      Args:
+     |         dts_file (string): path to the dts file to be preprocessed
+     |         includes (list): list of include directories (translated into -i <foo>
+     |                          for cpp calls)
+     |         outdir (string): directory to place all output and temporary files
+     |         verbose (bool,optional): verbosity level
+     |      
+     |      Returns:
+     |         string: Name of the preprocessed dts
+     |  
      |  dt_to_fdt(dtb, rmode='rb')
      |      takes a dtb and returns a flattened device tree object
      |      
@@ -365,6 +409,33 @@ CLASSES
      |      Returns:
      |         byte array: the encoded byte array
      |  
+     |  fdt(size=None, other_fdt=None)
+     |      Create a new FDT
+     |      
+     |      Creats a new FDT of a passed size. If other_fdt is passed, it
+     |      is used as the start size of the fdt.
+     |      
+     |      If no size or other fdt is passed, 128 bytes is the default
+     |      size
+     |      
+     |      Args:
+     |          size (int,optional): size in bytes of the FDT
+     |          other_fdt (FDT,optional): reference FDT for size
+     |      
+     |      Returns:
+     |          fdt: The newly created FDT
+     |  
+     |  fdt_copy(fdt)
+     |      Copy a fdt
+     |      
+     |      Creats a new FDT that is a copy of the passed one.
+     |      
+     |      Args:
+     |          fdt (FDT): reference FDT
+     |      
+     |      Returns:
+     |          fdt: The newly created FDT
+     |  
      |  input_file_type(infile)
      |      utility to return the "type" of a file, aka the extension
      |      
@@ -385,7 +456,7 @@ CLASSES
      |          string: node path, if successful, otherwise ""
      |  
      |  node_add(fdt_dest, node_full_path, create_parents=True, verbose=0)
-     |      Add an empty node to a flattended device tree
+     |      Add an empty node to a flattened device tree
      |      
      |      Creates a new node in a flattened devide tree at a given path. If
      |      desired a node structure (aka parents) will be created as part of
@@ -543,6 +614,8 @@ CLASSES
      |      Returns:
      |          string: node number, or -1 if the node doesn't exist
      |  
+     |  node_parent(fdt, node_number_or_path)
+     |  
      |  node_prop_check(fdt, node_name, property_name)
      |      Check if a node contains a property
      |      
@@ -559,6 +632,19 @@ CLASSES
      |      
      |      Returns:
      |          bool: True if the node has the property, otherwise False
+     |  
+     |  node_properties(fdt, node_number_or_path)
+     |      Get the list of properties for a node
+     |      
+     |      Gather the list of FDT properties for a given node.
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          node_number_or_path: (string or int): node number or full path to
+     |                               the target node.
+     |      
+     |      Returns:
+     |          list (FDT prop): The properties of the node [] if no props
      |  
      |  node_properties_as_dict(fdt, node, verbose=0)
      |      Create a dictionary populated with the nodes properties.
@@ -613,6 +699,20 @@ CLASSES
      |      Returns:
      |          boolean: True if the name was set, False otherwise
      |  
+     |  node_subnodes(fdt, node_number_or_path, abs_paths=True)
+     |      Get the list of properties for a node
+     |      
+     |      Gather the list of FDT properties for a given node.
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          node_number_or_path: (string or int): node number or full path to
+     |                               the target node.
+     |          abs_paths (boolean, optional): indicate if absolute paths should be returned
+     |      
+     |      Returns:
+     |          list (strings): The subnodes, [] if no subnodes
+     |  
      |  node_type(fdt, node_offset, verbose=0)
      |      Utility function to get the "type" of a node
      |      
@@ -641,6 +741,20 @@ CLASSES
      |      
      |      Returns:
      |          List of nodes. Each containg the [node number, name, phandle, depth]
+     |  
+     |  nodes(fdt, node_number_or_path, abs_paths=True)
+     |      Get the nodes of a tree from a starting point
+     |      
+     |      Gather the list nodes in the tree from a particular starting point
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          node_number_or_path: (string or int): node number or full path to
+     |                               the target node.
+     |          abs_paths (boolean, optional): indicate if absolute paths should be returned
+     |      
+     |      Returns:
+     |          list (strings): The nodes, [] if no nodes
      |  
      |  nodes_with_property(fdt, match_propname, match_regex='', start_path='/', include_children=True, match_depth=0)
      |      Get a list of nodes with a particular property
@@ -856,29 +970,16 @@ CLASSES
      |         (string): if SIMPLE. The property as a string
      |         (list): if COMPOUND. The property as a list of strings / values
      |  
-     |  read_phandle_map(phandle_file, verbose=0)
-     |      read an exported phandle map into memory
-     |      
-     |      reads a CSV formatted file of "phandle number" , "symbolic_name" into a
-     |      dictionary
+     |  string_test(prop, allow_multiline=True)
+     |      Check if a property (byte array) is a string
      |      
      |      Args:
-     |          phandle_file (string): path to the phandle file
-     |          verbose(bool,optional): whether or not verbose logging should be done
+     |         prop: (libfdt property)
      |      
      |      Returns:
-     |          dict: keys are the numeric phandle, values are the symbolic equivalent
+     |         boolean: True if the property looks like a string
      |  
-     |  subnodes(fdt, node_path)
-     |      Read a list of subnodes from a node
-     |      
-     |      Args:
-     |         node_path: Full path to node, e.g. '/subnode@1/subsubnode'
-     |      
-     |      Returns:
-     |         List of subnode names for that node, e.g. ['subsubnode', 'ss1']
-     |  
-     |  write_fdt(fdt_to_write, output_filename, sdt=None, overwrite=True, verbose=0, enhanced=False)
+     |  write_fdt(fdt_to_write, output_filename, overwrite=True, verbose=0, enhanced=False)
      |      Write a system device tree to a file
      |      
      |      Write a fdt (or system device tree) to an output file. This routine uses
@@ -893,28 +994,12 @@ CLASSES
      |      Args:
      |          fdt_to_write (fdt): source flattened device tree to write
      |          output_filename (string): name of the output file to create
-     |          sdt (SystemDeviceTree,optional): system device tree to use for output modules.
-     |                 None means don't use a system device tree for module loading.
      |          overwrite (bool,optional): Should existing files be overwritten. Default is True.
      |          verbose (int,optional): verbosity level to use.
      |          enhanced(bool,optional): whether enhanced printing should be performed. Default is False
      |      
      |      Returns:
      |          Nothing
-     |  
-     |  write_phandle_map(fdt_to_write, output_filename, verbose=0)
-     |      write a phandle map file
-     |      
-     |      creates a CSV formatted file of "phandle number" , "symbolic_name". This
-     |      can be later used to match hex values to symbolic phandles
-     |      
-     |      Args:
-     |          fdt_to_write (FDT): the flattened device tree to process
-     |          output_filename (string): path to the phandle file
-     |          verbose(bool,optional): whether or not verbose logging should be done
-     |      
-     |      Returns:
-     |          dict: keys are the numeric phandle, values are the symbolic equivalent
      |  
      |  ----------------------------------------------------------------------
      |  Data descriptors defined here:
@@ -984,6 +1069,7 @@ DATA
     MAX_RETRIES = 3
     QUIET_ALL = range(1, 18)
     QUIET_NOTFOUND = (1,)
+    printable = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU...
 
 FILE
     /home/bruce/git/system-device-tree/lopper_fdt.py
@@ -1122,6 +1208,17 @@ CLASSES
      |      Returns:
      |         The copied node, or self (if updating).
      |  
+     |  __deepcopy__(self, memodict={})
+     |      Create a deep copy of a node
+     |      
+     |      Only certain parts of a node need to be copied, we also have to
+     |      trigger deep copies of properties, since they have references
+     |      to nodes.
+     |      
+     |      We leave most values as the defaults on the new node instance,
+     |      since the copied node needs to be added to a tree, where they'll
+     |      be filled in.
+     |  
      |  __delitem__(self, key)
      |      magic method for removing a property from a node dictionary style
      |      
@@ -1197,7 +1294,7 @@ CLASSES
      |      Returns:
      |         LopperProp object or KeyError exception
      |  
-     |  __init__(self, number=-1, abspath='', tree=None, phandle=-1, name='', children=None, debug=0)
+     |  __init__(self, number=-1, abspath='', tree=None, phandle=-1, name='', debug=0)
      |      Initialize self.  See help(type(self)) for accurate signature.
      |  
      |  __int__(self)
@@ -1502,7 +1599,13 @@ CLASSES
      |  
      |  Methods defined here:
      |  
-     |  __init__(self, name, number, node, value=None, debug_lvl=0)
+     |  __deepcopy__(self, memodict={})
+     |      Create a deep copy of a property
+     |      
+     |      Properties have links to nodes, so we need to ensure that they are
+     |      cleared as part of a deep copy.
+     |  
+     |  __init__(self, name, number=-1, node=None, value=None, debug_lvl=0)
      |      Initialize self.  See help(type(self)) for accurate signature.
      |  
      |  __setattr__(self, name, value)
@@ -1775,7 +1878,7 @@ CLASSES
      |      Returns:
      |         LopperNode object or KeyError exception
      |  
-     |  __init__(self, fdt, snapshot=False, depth_first=True)
+     |  __init__(self, fdt=None, snapshot=False, depth_first=True)
      |      Initialize self.  See help(type(self)) for accurate signature.
      |  
      |  __iter__(self)
@@ -1858,7 +1961,7 @@ CLASSES
      |      Returns:
      |         LopperTree: returns self
      |  
-     |  add(self, node)
+     |  add(self, node, dont_sync=False)
      |      Add a node to a tree
      |      
      |      Supports adding a node to a tree through:
@@ -1870,6 +1973,8 @@ CLASSES
      |      
      |      Args:
      |         node (LopperNode): node to add
+     |         dont_sync (boolean, optional): don't invoke a tree wide sync when
+     |                                        complete
      |      
      |      Returns:
      |         LopperTree: returns self, raises Exception on invalid parameter
@@ -1975,6 +2080,18 @@ CLASSES
      |      
      |      Returns:
      |          Nothing
+     |  
+     |  lnodes(self, label)
+     |      Find nodes in a tree by label
+     |      
+     |      Safely (no exception raised) returns the node that can be found
+     |      at a given label value.
+     |      
+     |      Args:
+     |         label (string): node string  to check
+     |      
+     |      Returns:
+     |         list (LopperNode): the matching nodes if found, [] otherwise
      |  
      |  next(self)
      |      Returns the next node in a tree iteration
@@ -2113,7 +2230,7 @@ CLASSES
      |      Returns:
      |         list: returns a list of all subnodes (or matching subnodes)
      |  
-     |  sync(self, fdt=None)
+     |  sync(self, fdt=None, only_if_required=False)
      |      Sync a tree to a backing FDT
      |      
      |      This routine walks the FDT, and sync's changes from any LopperTree nodes
@@ -2125,6 +2242,8 @@ CLASSES
      |      Args:
      |         fdt (FDT,optional): the flattended device tree to sync to. If it isn't
      |                             passed, the stored FDT is use for sync.
+     |         only_if_required(boolean,optional): flag to indicate that we should only
+     |                                             sync if something is dirty
      |      
      |      Returns:
      |         Nothing
@@ -2158,7 +2277,7 @@ CLASSES
      |  
      |  Methods defined here:
      |  
-     |  __init__(self, fdt, snapshot=False, output=<_io.TextIOWrapper name='<stdout>' mode='w' encoding='UTF-8'>, debug=0)
+     |  __init__(self, fdt=None, snapshot=False, output=<_io.TextIOWrapper name='<stdout>' mode='w' encoding='UTF-8'>, debug=0)
      |      Initialize self.  See help(type(self)) for accurate signature.
      |  
      |  end(self, n, fdt)
@@ -2393,7 +2512,7 @@ CLASSES
      |      Returns:
      |         LopperTree: returns self
      |  
-     |  add(self, node)
+     |  add(self, node, dont_sync=False)
      |      Add a node to a tree
      |      
      |      Supports adding a node to a tree through:
@@ -2405,6 +2524,8 @@ CLASSES
      |      
      |      Args:
      |         node (LopperNode): node to add
+     |         dont_sync (boolean, optional): don't invoke a tree wide sync when
+     |                                        complete
      |      
      |      Returns:
      |         LopperTree: returns self, raises Exception on invalid parameter
@@ -2510,6 +2631,18 @@ CLASSES
      |      
      |      Returns:
      |          Nothing
+     |  
+     |  lnodes(self, label)
+     |      Find nodes in a tree by label
+     |      
+     |      Safely (no exception raised) returns the node that can be found
+     |      at a given label value.
+     |      
+     |      Args:
+     |         label (string): node string  to check
+     |      
+     |      Returns:
+     |         list (LopperNode): the matching nodes if found, [] otherwise
      |  
      |  next(self)
      |      Returns the next node in a tree iteration
@@ -2636,7 +2769,7 @@ CLASSES
      |      Returns:
      |         list: returns a list of all subnodes (or matching subnodes)
      |  
-     |  sync(self, fdt=None)
+     |  sync(self, fdt=None, only_if_required=False)
      |      Sync a tree to a backing FDT
      |      
      |      This routine walks the FDT, and sync's changes from any LopperTree nodes
@@ -2648,6 +2781,8 @@ CLASSES
      |      Args:
      |         fdt (FDT,optional): the flattended device tree to sync to. If it isn't
      |                             passed, the stored FDT is use for sync.
+     |         only_if_required(boolean,optional): flag to indicate that we should only
+     |                                             sync if something is dirty
      |      
      |      Returns:
      |         Nothing
@@ -2662,11 +2797,10 @@ CLASSES
      |      list of weak references to the object (if defined)
 
 DATA
-    LOPPER_VERSION = '2020.4-beta'
     MAX_RETRIES = 3
     QUIET_ALL = range(1, 18)
     QUIET_NOTFOUND = (1,)
-    lopper_directory = '/home/bruce/git/system-device-tree'
+    printable = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU...
 
 FILE
     /home/bruce/git/system-device-tree/lopper_tree.py
