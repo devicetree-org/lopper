@@ -1719,19 +1719,49 @@ class LopperSDT:
                         # if the value has a "&", it is a phandle, and we need
                         # to try and look it up.
                         if re.search( '&', modify_val ):
-                            phandle_node_name = re.sub( '&', '', modify_val )
+                            node = modify_val.split( '#' )[0]
+                            try:
+                                node_property =  modify_val.split( '#' )[1]
+                            except:
+                                node_property = None
+
+                            print( "node!! %s: property: %s" % (node,node_property))
+
+                            phandle_node_name = re.sub( '&', '', node )
                             pfnodes = tree.nodes( phandle_node_name )
                             if not pfnodes:
                                 pfnodes = tree.lnodes( phandle_node_name )
+                                if not pfnodes:
+                                    # was it a local phandle (i.e. in the lop tree?)
+                                    pfnodes = lops_tree.nodes( phandle_node_name )
+                                    if not pfnodes:
+                                        pfnodes = lops_tree.lnodes( phandle_node_name )
+
+                            if node_property:
+                                # there was a node property, that means we actualy need
+                                # to lookup the phandle and find a property within it. That's
+                                # the replacement value
+                                if pfnodes:
+                                    print( "looking to deref the node" )
+                                    try:
+                                        modify_val = pfnodes[0][node_property].value
+                                    except:
+                                        modify_val = pfnodes[0].phandle
+                                else:
+                                    modify_val = 0
+                            else:
                                 if pfnodes:
                                     phandle = pfnodes[0].phandle
                                 else:
                                     phandle = 0
 
-                            modify_val = phandle
+                                modify_val = phandle
 
                         for n in nodes:
-                            n[modify_prop] = [ modify_val ]
+                            if type( modify_val ) == list:
+                                n[modify_prop] = modify_val
+                            else:
+                                n[modify_prop] = [ modify_val ]
 
                         tree.sync()
                 else:

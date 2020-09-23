@@ -196,6 +196,8 @@ The following types of lops are currently valid:
 #                     - modify to "nothing", is a remove operation
 #                     - modify with no property is node operation (rename or remove)
 #
+#         To update complex/compound values, see the phandle#property notation in the
+#         examples below
 
                 lop_1 { 
                         compatible = "system-device-tree-v1,lop,modify";
@@ -231,10 +233,21 @@ The following types of lops are currently valid:
                        // note: nodes is legacy now. Just put the regex into the modify parameter
                        // nodes = "/amba/.*ethernet.*phy.*";
                 };
-                lop_13_2_1 {
+                lop_16 {
                        compatible = "system-device-tree-v1,lop,modify";
                        // moves the node reserved-memory under a new parent
                        modify = "/reserved-memory::/zynqmp-rpu/reserved-memory";
+                };
+                lop_17 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        # finds the target phandle (modify_val), which can either be in
+                        # this tree, or the system device tree, and looks up the property
+                        # following '#', that value is used as the replement. If no property
+                        # is provided, then the value is changed to the phandle target.
+                        modify = "/memory@800000000:reg:&modify_val#reg";
+                        modify_val {
+                            reg = <0x0 0x00000000 0x0 0x200000>;
+                        };
                 };
 
 # node add: copies the compiled node to the target device tree
