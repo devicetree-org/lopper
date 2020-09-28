@@ -63,7 +63,7 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
 
     # Yocto Machine to CPU compat mapping
     cpu_dict = {'cortexa53-zynqmp': 'arm,cortex-a53', 'cortexa72-versal':'arm,cortex-a72', 'cortexr5-zynqmp': 'arm,cortex-r5', 'cortexa9-zynq': 'arm,cortex-a9',
-                'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze'}
+                'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze', 'cortexr5-versal': 'arm,cortex-r5'}
     nodes = sdt.tree.nodes('/cpu.*')
     machine = options['args'][0]
     match_cpunodes = []
@@ -103,7 +103,10 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
                            if index == 0:
                                fd.write("\t{")
                            try:
-                               fd.write("\n\t\t%s" % hex(match_cpunodes[0][prop].value[0]))
+                               for i in range(0, len(match_cpunodes[0][prop].value)):
+                                   fd.write("\n\t\t%s" % hex(match_cpunodes[0][prop].value[i]))
+                                   if i != (len(match_cpunodes[0][prop].value) - 1):
+                                       fd.write(",")
                            except:
                                fd.write("\n\t\t 0")
                            if prop == prop_list[-1]:

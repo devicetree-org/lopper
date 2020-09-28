@@ -267,6 +267,38 @@ def get_stdin(sdt, chosen_node, node_list):
     match = [x for x in node_list if re.search(x.name, serial_node)]
     return match[0]
 
+def get_mapped_nodes(sdt, node_list, options):
+    # Yocto Machine to CPU compat mapping
+    cpu_dict = {'cortexa53-zynqmp': 'arm,cortex-a53', 'cortexa72-versal':'arm,cortex-a72', 'cortexr5-zynqmp': 'arm,cortex-r5', 'cortexa9-zynq': 'arm,cortex-a9',
+                'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze', 'cortexr5-versal': 'arm,cortex-r5'}
+    machine = options['args'][0]
+    nodes = sdt.tree.nodes('/cpu.*')
+    match_cpunodes = []
+    match = cpu_dict[machine]
+    for node in nodes:
+        try:
+            compat = node['compatible'].value[0]
+            match = cpu_dict[machine]
+            if compat == match:
+                match_cpunodes.append(node)
+        except KeyError:
+            pass
+
+    all_phandles = []
+    address_map = match_cpunodes[0].parent["address-map"].value
+    na = match_cpunodes[0].parent["#ranges-address-cells"].value[0]
+    ns = match_cpunodes[0].parent["#ranges-size-cells"].value[0]
+    cells = na + ns
+    tmp = na
+    while tmp < len(address_map):
+        all_phandles.append(address_map[tmp])
+        tmp = tmp + cells + na + 1
+    # Remove duplicate phandle
+    all_phandles = list(dict.fromkeys(all_phandles))
+
+    valid_nodes = [node for node in node_list for handle in all_phandles if handle == node.phandle]
+    return valid_nodes
+
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 # options: baremetal driver meta-data file path
@@ -286,10 +318,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         except:
            pass
 
-    src_dir = options['args'][0]
+    src_dir = options['args'][1]
     stdin = ""
     try:
-        stdin = options['args'][1]
+        stdin = options['args'][2]
         stdin_node = get_stdin(sdt, chosen_node, node_list)
     except IndexError:
         pass
@@ -327,6 +359,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
            if compat in compat_string:
                driver_nodes.append(node) 
 
+    driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
     # config file name: x<driver_name>_g.c 
     driver_name = yamlfile.split('/')[-1].split('.')[0]
     config_struct = str("X") + driver_name.capitalize() + str("_Config")
@@ -469,7 +502,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                 if len(prop_val) > 1:
                     plat.buf('\n\t\t{')
                     for k,item in enumerate(prop_val):
-                        drvprop_list.append(item)
+                        if isinstance(item, int):
+                            drvprop_list.append(hex(item))
+                        else:
+                            drvprop_list.append(item)
                         plat.buf('%s' % item)
                         if k != len(prop_val)-1:
                             plat.buf(',  ')
@@ -485,6 +521,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                 plat.buf(',')
                 plat.buf(' /* %s */' % prop)
         if index == len(driver_nodes)-1:
+            plat.buf('\n\t {\n\t\t NULL\n\t}')
             plat.buf('\n};')
 
         for i, prop in enumerate(driver_optproplist):
@@ -496,7 +533,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                     for k,p in enumerate(pad):
                         drvoptprop_list.append(child[1][p].value[0])
             else:
-                drvoptprop_list.append(node[prop].value[0])
+                try:
+                    drvoptprop_list.append(hex(node[prop].value[0]))
+                except KeyError:
+                    pass
 
         with open(cmake_file, 'a') as fd:
            fd.write("set(DRIVER_PROP_%s_LIST %s)\n" % (index, to_cmakelist(drvprop_list)))

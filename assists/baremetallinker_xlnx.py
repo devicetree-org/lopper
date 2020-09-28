@@ -55,7 +55,7 @@ def get_memranges(tgt_node, sdt, options):
 
     # Yocto Machine to CPU compat mapping
     cpu_dict = {'cortexa53-zynqmp': 'arm,cortex-a53', 'cortexa72-versal':'arm,cortex-a72', 'cortexr5-zynqmp': 'arm,cortex-r5', 'cortexa9-zynq': 'arm,cortex-a9',
-                'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze'}
+                'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze', 'cortexr5-versal': 'arm,cortex-r5'}
     machine = options['args'][0]
     nodes = sdt.tree.nodes('/cpu.*')
     match_cpunodes = []
@@ -101,10 +101,10 @@ def get_memranges(tgt_node, sdt, options):
                else:
                    addr_list.append(start[0])
 
-        na = node.parent["#address-cells"].value[0]
-        ns = node.parent["#size-cells"].value[0]
+        nac = node.parent["#address-cells"].value[0]
+        nsc = node.parent["#size-cells"].value[0]
         val = node['reg'].value
-        total_nodes = int(len(val)/(na+ns))
+        total_nodes = int(len(val)/(nac+nsc))
         name_list = [name.replace("_", "-") for name in list(xlnx_memipname.keys())]
         try:
             compat = node['compatible'].value[0]
@@ -166,7 +166,10 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             For R5 PSU DDR initial 1MB is reserved for tcm
             Adjust the size and start address accordingly.
             """
-            if "psu_ddr" in key and machine == "cortexr5-zynqmp":
+            if "psu_ddr" in key and machine == "cortexr5-zynqmp" and start == 0:
+                start = 1048576
+                size -= start
+            if "axi_noc" in key and machine == "cortexr5-versal" and start == 0:
                 start = 1048576
                 size -= start
             fd.write("\t%s : ORIGIN = %s, LENGTH = %s\n" % (key, hex(start), hex(size)))
