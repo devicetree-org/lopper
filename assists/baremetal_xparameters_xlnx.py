@@ -217,7 +217,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
 
                     plat.buf('\n\n/* Canonical definitions for peripheral %s */' % label_name)
                     for prop,val in sorted(canondef_dict.items(), key=lambda e: e[0][0], reverse=False):
-                        plat.buf('\n#define XPAR_%s_%s_%s %s' % (driver_name.upper(), index, prop.upper(), val))
+                        plat.buf('\n#define XPAR_X%s_%s_%s %s' % (driver_name.upper(), index, prop.upper(), val))
                     plat.buf('\n')
                                     
     # Generate Defines for Generic Nodes
