@@ -1,0 +1,80 @@
+/*
+ * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+ *
+ * Author:
+ *       Appana Durga Kedareswara Rao <appanad.durga.rao@xilinx.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1";
+        lops {
+                // compatible = "system-device-tree-v1,lop";
+                lop_0 {
+                        // node name modify
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/cpus_a72/::/cpus/";
+                };
+                lop_1 {
+                        // modify to "nothing", is a remove operation
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/cpus_r5::";
+                };
+                lop_2 {
+                        // modify to "nothing", is a remove operation
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/cpus_microblaze::";
+                };
+                lop_3 {
+                        // modify to "nothing", is a remove operation
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/amba_rpu::";
+                };
+                lop_4 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      // clear any old selections
+                      select_1;
+                      select_2 = "/cpus/.*:compatible:.*arm,cortex-a72.*";
+                      select_3 = "/.*:status:.*okay.*";
+                };
+                lop_5 {
+                        // modify to "nothing", is a remove operation
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/memory@fffc0000::";
+                };
+                lop_6 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                          node_list = []
+                          address_map = node.parent['address-map'].value
+                          na = node.parent['#ranges-address-cells'].value[0]
+                          ns = node.parent['#ranges-size-cells'].value[0]
+                          cells = na + ns
+                          phandles = []
+                          tmp = na
+                          while tmp < len(address_map):
+                              phandles.append(address_map[tmp])
+                              tmp = tmp + cells + na + 1
+                          phandles = list(dict.fromkeys(phandles))
+                          for s in tree.__selected__:
+                              if not re.search('cpu.*', s.abs_path):
+                                  node_list.append(s)
+                          # Delete the unmapped nodes for a72
+                          invalid_nodes = []
+                          for node1 in node_list:
+                              match = 0
+                              for handle in phandles:
+                                  if handle == node1.phandle:
+                                      if not re.search('xlnx,zynqmp-ipi-mailbox', node1['compatible'].value[0]):
+                                          match += 1
+                              if match == 0:
+                                  invalid_nodes.append(node1)
+                          for node1 in invalid_nodes:
+                              tree.delete(node1)
+                      ";
+                };
+        };
+};
