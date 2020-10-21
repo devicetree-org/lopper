@@ -355,9 +355,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     driver_nodes = []
     for compat in driver_compatlist:
         for node in node_list:
-           compat_string = node['compatible'].value[0]
-           if compat in compat_string:
-               driver_nodes.append(node) 
+           compat_string = node['compatible'].value
+           for compa in compat_string:
+               if compat in compa:
+                   driver_nodes.append(node)
 
     driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
     # config file name: x<driver_name>_g.c 
