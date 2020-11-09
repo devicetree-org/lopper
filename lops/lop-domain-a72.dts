@@ -26,26 +26,31 @@
                 lop_2 {
                         // modify to "nothing", is a remove operation
                         compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/cpus_microblaze::";
+                        modify = "/cpus_microblaze1::";
                 };
                 lop_3 {
                         // modify to "nothing", is a remove operation
                         compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/amba_rpu::";
+                        modify = "/cpus_microblaze2::";
                 };
                 lop_4 {
+                        // modify to "nothing", is a remove operation
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/amba_rpu::";
+                };
+                lop_5 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       // clear any old selections
                       select_1;
                       select_2 = "/cpus/.*:compatible:.*arm,cortex-a72.*";
                       select_3 = "/.*:status:.*okay.*";
                 };
-                lop_5 {
+                lop_6 {
                         // modify to "nothing", is a remove operation
                         compatible = "system-device-tree-v1,lop,modify";
                         modify = "/memory@fffc0000::";
                 };
-                lop_6 {
+                lop_7 {
                       compatible = "system-device-tree-v1,lop,code-v1";
                       code = "
                           node_list = []
