@@ -1257,7 +1257,7 @@ class LopperNode(object):
 
         return flat_list
 
-    def subnodes( self ):
+    def subnodes( self, depth=0, max_depth=None ):
         """Return all the subnodes of this node
 
         Gathers and returns all the reachable subnodes of the current node
@@ -1272,7 +1272,7 @@ class LopperNode(object):
         """
         all_kids = [ self ]
         for child_node in self.child_nodes.values():
-            all_kids = all_kids + child_node.subnodes()
+            all_kids = all_kids + child_node.subnodes( depth + 1, max_depth )
 
         return all_kids
 
