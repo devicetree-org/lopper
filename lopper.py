@@ -45,6 +45,8 @@ except:
 from lopper_fdt import Lopper
 from lopper_fdt import LopperFmt
 
+import lopper_rest
+
 try:
     from lopper_yaml import *
     yaml_support = True
@@ -1945,6 +1947,7 @@ def usage():
     print('  -S, --save-temps    don\'t remove temporary files' )
     print('  -h, --help          display this help and exit')
     print('  -O, --outdir        directory to use for output files')
+    print('    , --server        after processing, start a server for ReST API calls')
     print('    , --version       output the version and exit')
     print('')
 
@@ -1968,6 +1971,7 @@ def main():
     global module_name
     global module_args
     global debug
+    global server
 
     debug = False
     sdt = None
@@ -1984,8 +1988,9 @@ def main():
     enhanced_print = False
     outdir="./"
     load_paths = []
+    server = False
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:D", [ "debug", "assist-paths=", "outdir", "enhanced", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist="])
+        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:D", [ "debug", "assist-paths=", "outdir", "enhanced", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist=","server"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2023,6 +2028,8 @@ def main():
             dryrun=True
         elif o in ('--werror'):
             werror=True
+        elif o in ('--server'):
+            server=True
         elif o in ('-S', '--save-temps' ):
             save_temps=True
         elif o in ('--enhanced' ):
@@ -2151,5 +2158,12 @@ if __name__ == "__main__":
         device_tree.write( enhanced = device_tree.enhanced )
     else:
         print( "[INFO]: --dryrun was passed, output file %s not written" % output )
+
+    if server:
+        if verbose:
+            print( "[INFO]: starting WSGI server" )
+        lopper_rest.sdt = device_tree
+        lopper_rest.app.run()  # run our Flask app
+        sys.exit(1)
 
     device_tree.cleanup()
