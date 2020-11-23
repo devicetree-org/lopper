@@ -776,7 +776,7 @@ class LopperNode(object):
        - parent: a link to the parent LopperNode object
        - tree: the tree which contains this node
        - depth: the nodes depth in the backing FDT (0 is root, 1 for first level children)
-       - children: the list of child LopperNodes
+       - child_nodes: the list of child LopperNodes
        - phandle: the phandle in the backing FDT (optional)
        - type: the type of the node (based on 'compatible' property)
        - abs_path: the full/absolute path to this node in the backing FDT
@@ -808,6 +808,9 @@ class LopperNode(object):
         self.abs_path = abspath
 
         self._ref = 0
+
+        # currently this can be: "dts", "yaml" or "none"
+        self._source = "dts"
 
         # ordered dict, since we want properties to come back out in
         # the order we put them in (when we iterate).
@@ -854,6 +857,8 @@ class LopperNode(object):
         new_instance.label = copy.deepcopy( self.label, memodict )
         new_instance.type = copy.deepcopy( self.type, memodict )
         new_instance.abs_path = copy.deepcopy( self.abs_path, memodict )
+
+        new_instance._source = self._source
 
         new_instance.child_nodes = OrderedDict()
         for c in reversed(self.child_nodes.values()):
@@ -1328,6 +1333,17 @@ class LopperNode(object):
                     Lopper.node_setname( fdt, self.number, self.name )
                 except Exception as e:
                     print( "[WARNING]: could not set node name to %s (%s)" % (self.name,e))
+
+
+            fdt_phandle = Lopper.node_getphandle( fdt, self.number )
+            if fdt_phandle != self.phandle:
+                if self.__dbg__ > 2:
+                    print( "[DBG++]:    node sync: syncing phandle from %s to %s" % (fdt_phandle,self.phandle))
+                try:
+                    Lopper.property_set( fdt, self.number, "phandle", self.phandle )
+                    self.tree.__pnodes__[ self.phandle ] = self
+                except Exception as e:
+                    print( "[WARNING]: could not set node phandle to %s (%s)" % (self.phandle,e))
 
             # sync any modified properties to a device tree
             for p in self.__props__.values():
@@ -2049,6 +2065,37 @@ class LopperTree:
         # not currently supported
         pass
 
+    def phandles( self ):
+        """Utility function to get the active phandles in the tree
+
+        Args:
+           None
+
+        Returns:
+           list (numbers): list of in use phandles in the tree
+
+        """
+        return list(self.__pnodes__.keys())
+
+    def phandle_gen( self ):
+        """Generate a phandle for use in a node
+
+        Creates a unique phandle for a node. This is basic tracking and is
+        used since fdt_find_max_phandle is not fully exposed, and removes
+        a binding to libfdt.
+
+        Args:
+           None
+
+        Returns:
+           phandle number
+
+        """
+        sorted_phandles = sorted(list(self.__pnodes__.keys()))
+        highest_phandle = sorted_phandles[-1]
+
+        return highest_phandle + 1
+
     def ref_all( self, starting_node, parent_nodes=False ):
         """Increment the refcount for a node and its subnodes (and optionally parents)
 
@@ -2354,13 +2401,20 @@ class LopperTree:
 
             if not existing_node:
                 if self.__dbg__ > 2:
-                    print ( "[DBG+++]:     node add: adding child: %s (%s)" % (child,[child]))
+                    print ( "[DBG+++]:     node add: adding child: %s (%s)" % (child.abs_path,[child]))
                 # this mainly adjusts the path, since it hasn't been sync'd yet.
+                child.number = -1
+
+                # in case the node has properties that were previously sync'd, we
+                # need to resync them
+                for p in child.__props__.values():
+                    p.__pstate__ = "init"
+                    p.__modified__ = True
+
                 child.resolve( self.fdt )
                 self.add( child, True )
                 if self.__dbg__ > 2:
-                    print ( "[DBG+++]:     node add: child add complete: %s (%s)" % (child,[child]))
-
+                    print ( "[DBG+++]:     node add: child add complete: %s (%s)" % (child.abs_path,[child]))
 
         if self.__dbg__ > 1:
             print( "[DBG+][%s] node added: [%s] %s" % (self.fdt,[node],node.abs_path) )
@@ -3084,7 +3138,7 @@ class LopperTreePrinter( LopperTree ):
                 if n['lopper-label.*']:
                     plabel = n['lopper-label.*'].value[0]
             except:
-                pass
+                plabel = n.label
 
             if n.phandle != 0:
                 if plabel:

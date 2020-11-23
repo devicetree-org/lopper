@@ -8,6 +8,7 @@
 # */
 
 import yaml
+import json
 import sys
 
 from collections import OrderedDict
@@ -212,6 +213,66 @@ class LopperYAML():
                       yaml.dump(dct, file, default_flow_style=False)
 
 
+    def prop_expand( self, prop ):
+        """Expand a property into a format a device tree can represent
+
+        This routine is for use when json is not available as a serialization
+        mechanism for imported yaml. It expands lists and dictionaries into
+        a ":::" separate string, that can be carried in a device tree.
+
+        This is mostly obsolete, but is kept for compatibility
+
+        Args:
+           Anytree Property
+
+        Returns:
+           string: serialized representation of the property
+        """
+        # expands a complex property type into something a device tree
+        # can represent.
+        prop_list = []
+        if type(prop) == list:
+            for item in prop:
+                if type(item) == dict:
+                    prop_list.extend( self.prop_expand( item ) )
+                    if item != prop[-1]:
+                        prop_list.append( ":::" )
+                else:
+                    prop_list.append( item )
+
+            return prop_list
+        elif type(prop) == dict:
+            value_types = None
+            uniform_values = True
+            for k,v in prop.items():
+                if not value_types:
+                    value_types = type(v)
+                else:
+                    if value_types != type(v):
+                        uniform_values = False
+
+            # temporarily turning off uniform values, to see if it makes
+            # processing easier
+            uniform_values = False
+
+            for k,v in prop.items():
+                # expand again, in case the value is a dictionary ...
+                v_exp = self.prop_expand( v )
+                # unwind lists of one, only at this level
+                if type(v_exp) == list and len(v_exp) == 1:
+                    v_exp = v_exp[0]
+
+                if uniform_values:
+                    # type #2
+                    prop_list.append( v_exp )
+                else:
+                    # type #1
+                    prop_list.append( str(k) + ":" + str(v_exp) )
+
+            return prop_list
+        else:
+            return prop
+
     def to_tree( self ):
         """ Export LopperYAML to a LopperTree
 
@@ -228,6 +289,8 @@ class LopperYAML():
         lt = LopperTreePrinter()
 
         excluded_props = [ "name", "fdt_name" ]
+        serialize_json = True
+        verbose = 0
 
         for node in PreOrderIter(self.anytree):
             if node.name == "root":
@@ -236,24 +299,47 @@ class LopperYAML():
                 ln = LopperNode( -1, node.name )
                 ln.abs_path = self.path( node )
 
-            props = self.props( node )
+            if verbose:
+                lt.__dbg__ = 4
+                ln.__dbg__ = 4
+
+            ln._source = "yaml"
+
+            # add the node to the tree
             lt = lt + ln
 
+            props = self.props( node )
             for p in props:
-                if type(props[p]) == list:
-                    lp = LopperProp( p, -1, ln, props[p] )
-                    ln + lp
-                if type(props[p]) == bool:
-                    if props[p]:
-                        lp = LopperProp( p, -1, ln, [] )
+                if serialize_json:
+                    x = json.dumps(props[p])
+                    if not p in excluded_props:
+                        lp = LopperProp( p, -1, ln, x )
+                        # add the property to the node
+                        ln + lp
+                else:
+                    if type(props[p]) == list:
+                        # we need to check if there are embedded dictionaries, and if so, expand them.
+                        # since a dictionary doesn't map directly to device tree output.
+                        prop_list = self.prop_expand( props[p] )
+                        lp = LopperProp( p, -1, ln, prop_list )
+                        ln + lp
+                    elif type(props[p]) == bool:
+                        if props[p]:
+                            lp = LopperProp( p, -1, ln, [] )
+                            # add the prop the node
+                            ln + lp
+                        else:
+                            print( "[INFO]: not encoding false boolean type: %s" % p)
+                    elif type(props[p]) == dict:
+                        # we need to check if there are embedded dictionaries, and if so, expand them.
+                        # since a dictionary doesn't map directly to device tree output.
+                        prop_list = self.prop_expand( props[p] )
+                        lp = LopperProp( p, -1, ln, prop_list )
                         ln + lp
                     else:
-                        print( "[INFO]: not encoding false boolean type: %s" % p)
-                else:
-                    if not p in excluded_props:
-                        lp = LopperProp( p, -1, ln, props[p] )
-                        ln + lp
-
+                        if not p in excluded_props:
+                            lp = LopperProp( p, -1, ln, props[p] )
+                            ln + lp
 
         lt.resolve()
         lt.sync()
@@ -295,21 +381,7 @@ class LopperYAML():
                 # if we have a list, and the elements are a dictionary, we need
                 # to expand the dict and add them individually. If it is just a
                 # list, we add it by itself.
-                node_references = []
-                if type(node.__dict__[a]) == list:
-                    prop_list = node.__dict__[a]
-                    for sub_prop in node.__dict__[a]:
-                        if type(sub_prop) == dict:
-                            node_references.append( sub_prop )
-                            prop_list.remove( sub_prop )
-
-                    pdict[a] = prop_list
-                    # now iterate the node_refs, if any
-                    for n in node_references:
-                        for node_reference_prop in n:
-                             pdict[node_reference_prop] = n[node_reference_prop]
-                else:
-                    pdict[a] = node.__dict__[a]
+                pdict[a] = node.__dict__[a]
 
         return pdict
 

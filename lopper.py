@@ -247,6 +247,7 @@ class LopperSDT:
                     sys.exit(1)
 
         # is the sdt a dts ?
+        sdt_extended_trees = []
         if re.search( ".dts$", self.dts ):
             # do we have any extra sdt files to concatenate first ?
             fp = ""
@@ -259,8 +260,19 @@ class LopperSDT:
                 # compile
                 with open( fpp.name, 'wb') as wfd:
                     for f in sdt_files:
-                        with open(f,'rb') as fd:
-                            shutil.copyfileobj(fd, wfd)
+                        if re.search( ".dts$", f ):
+                            with open(f,'rb') as fd:
+                                shutil.copyfileobj(fd, wfd)
+
+                        elif re.search( ".yaml$", f ):
+                            # look for a special front end, for this or any file for that matter
+                            yaml = LopperYAML( f )
+                            yaml_tree = yaml.to_tree()
+
+                            # save the tree for future processing (and joining with the main
+                            # system device tree). No code after this needs to be concerned that
+                            # this came from yaml.
+                            sdt_extended_trees.append( yaml_tree )
 
                 fp = fpp.name
             else:
@@ -331,6 +343,9 @@ class LopperSDT:
 
                 fp = fp_enhanced
 
+            # note: input_files isn't actually used by dt_compile, otherwise, we'd need to
+            #       filter out non-dts files before the call .. we should probably still do
+            #       that.
             self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
                                           self.save_temps, self.verbose )
 
@@ -339,6 +354,15 @@ class LopperSDT:
             # this is not a snapshot, but a reference, so we'll see all changes to
             # the backing FDT.
             self.tree = lopper_tree.LopperTree( self.FDT )
+
+            # join any extended trees to the one we just created
+            for t in sdt_extended_trees:
+                for node in t:
+                    if node.abs_path != "/":
+                        # old: deep copy the node
+                        # new_node = node()
+                        # assign it to the main system device tree
+                        self.tree = self.tree + node
 
             fpp.close()
         elif re.search( ".yaml$", self.dts ):
@@ -364,6 +388,7 @@ class LopperSDT:
 
             yaml = LopperYAML( fp )
             lt = yaml.to_tree()
+
             self.dtb = None
             self.FDT = lt.fdt
             self.tree = lt
@@ -2085,8 +2110,8 @@ def main():
                         module_args.append( item )
 
     if module_name and verbose:
-        print( "module found: %s" % module_name )
-        print( "    args: %s" % module_args )
+        print( "[DBG]: module found: %s" % module_name )
+        print( "         args: %s" % module_args )
 
     if not sdt:
         print( "[ERROR]: no system device tree was supplied\n" )

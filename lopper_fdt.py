@@ -1525,6 +1525,9 @@ class Lopper:
         """
         output_dtb = ""
 
+        # Note: i_files is not currently used. They are typically concatenated
+        #       before calling this routine due to pecularities in include
+        #       processing
         # TODO: might need to make 'dts_file' absolute for the cpp call below
         dts_filename = os.path.basename( dts_file )
         dts_filename_noext = os.path.splitext(dts_filename)[0]
