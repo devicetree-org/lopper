@@ -1,0 +1,201 @@
+/*
+ * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+ *
+ * Author:
+ *	   Ben Levinsky <blevinsk@xilinx.com>
+ *
+ * this lop file will hold all the basic information for openamp use cases
+ *
+ * there should be reserved-mem, remoteproc driver code, interrupts,
+ * shared mem resources and specify remote's information
+ *
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+
+/dts-v1/;
+
+/ {
+	compatible = "system-device-tree-v1,lop";
+	lops {
+	/* common for both linux kernel or rpmsg userspace to rpus  */
+	/* handle linux kernel space to rpus case */
+
+		/* reserved memory for apu to rpu1 */
+		/* hold ipi message buffers for cases where remoteproc runs in kernel driver */
+		lop_3_0 {
+			// node add
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "zynqmp_ipi1";
+			node_dest = "/zynqmp_ipi1";
+			zynqmp_ipi1 {
+				compatible = "xlnx,zynqmp-ipi-mailbox";
+				interrupt-parent = <&gic_a72>;
+				interrupts = <0 33 4>;
+				xlnx,ipi-id = <5>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				ranges;
+			};
+		};
+		lop_3_1 {
+			// node add
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "mailbox@ff3f0ac0";
+			node_dest = "/zynqmp_ipi1/mailbox@ff3f0ac0";
+			ipi_mailbox_rpu0: mailbox@ff3f0ac0 {
+				reg = <0xff3f0ac0 0x20>,
+					  <0xff3f0ae0 0x20>,
+					  <0xff3f0740 0x20>,
+					  <0xff3f0760 0x20>;
+				reg-names = "local_request_region",
+						"local_response_region",
+						"remote_request_region",
+						"remote_response_region";
+				#mbox-cells = <1>;
+				xlnx,ipi-id = <3>;
+				phandle = <0x3ed>;
+			};
+		};
+		lop_3_2 {
+			// node add
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "mailbox@ff3f0b00";
+			node_dest = "/zynqmp_ipi1/mailbox@ff3f0b00";
+			ipi_mailbox_rpu1: mailbox@ff3f0b00 {
+				reg = <0xff3f0ac0 0x20>,
+					  <0xff3f0ae0 0x20>,
+					  <0xff3f0840 0x20>,
+					  <0xff3f0860 0x20>;
+				reg-names = "local_request_region",
+						"local_response_region",
+						"remote_request_region",
+						"remote_response_region";
+				#mbox-cells = <1>;
+				xlnx,ipi-id = <4>;
+				phandle = <0x3ee>;
+			 };
+		};
+
+		/* resource group for rpu0 <-> apu openamp channel for rpmsg in kernel space */
+		/* TODO move the global domains node to a separate lop file */
+		lop_4_0 {
+			// node add
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "domains";
+			node_dest = "/domains";
+			domains {
+				#address-cells = <0x2>;
+				#size-cells = <0x2>;
+			};
+		};
+                lop_4_0_1 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                      tcm_phandle_dict = {
+		        0xffe00000 : 0x3fd40,
+		        0xffe20000 : 0x3fd41,
+		        0xffe90000 : 0x3fd42,
+		        0xffeb0000 : 0x3fd43,
+		      }
+                      for node1 in node.subnodes():
+                        prop_val = node1.propval('compatible')
+                        if prop_val != ['']:
+                          for compat_str in prop_val:
+                            if 'xlnx,psv-tcm-global' in compat_str:
+                              newprop = LopperProp(name='phandle',value=tcm_phandle_dict[node1.propval('reg')[1]])
+                              node1.phandle = tcm_phandle_dict[node1.propval('reg')[1]]
+                              node1 + newprop
+                        ";
+                };
+
+		lop_4_1 {
+			// node add
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "resource_group@0";
+			node_dest = "/domains/resource_group@0";
+			resource_group0: resource_group@0 {
+				compatible = "openamp,remoteproc-v1", "openamp,group-v1";
+				memory = <0x0 0x3ed00000 0x0 0x40000>,
+					 <0x0 0x3ed40000 0x0 0x4000>,
+					 <0x0 0x3ed44000 0x0 0x4000>,
+					 <0x0 0x3ed48000 0x0 0x100000>;
+				access = <0x3fd40 0x0>, <0x3fd41 0x0>;
+				phandle = <0xacde>;
+			};
+
+		};
+
+		lop_4_2 {
+			// node add
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "resource_group@1";
+			node_dest = "/domains/resource_group@1";
+			resource_group1: resource_group@1 {
+				compatible = "openamp,remoteproc-v1", "openamp,group-v1";
+				memory = <0x0 0x3fd00000 0x0 0x40000>,
+					 <0x0 0x3fd40000 0x0 0x4000>,
+					 <0x0 0x3fd44000 0x0 0x4000>,
+					 <0x0 0x3fd48000 0x0 0x100000>;
+				access = <0x3fd42 0x0>, <0x3fd43 0x0>;
+				phandle = <0xacdf>;
+			};
+
+		};
+		lop_4_3 {
+			// node add
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "openamp_r5_cluster";
+			node_dest = "/domains/openamp_r5_cluster";
+			openamp_r5_cluster {
+				//cpus = <&cpus_r5 0x1 0xe0000000>; // lockstep 1 child
+				cpus = <&cpus_r5 0x3 0x80000000>; // split, 2 children
+				//cpus = <&cpus_r5 0x1 0x80000000>; // split,   r50
+				//cpus = <&cpus_r5 0x2 0x80000000>; // split,   r51
+			};
+		};
+		lop_4_3_1 {
+			// node add
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "openamp_r5_0";
+			node_dest = "/domains/openamp_r5_cluster/openamp_r5_0";
+			openamp_r5_0 {
+				cpus = <&cpus_r5 0x1 0x00000000>; // split,r50
+				include = <&resource_group0 0x0>;
+			};
+		};
+
+		lop_4_4 {
+			// node add
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "openamp_r5_1";
+			node_dest = "/domains/openamp_r5_cluster/openamp_r5_1";
+			openamp_r5_1 {
+				cpus = <&cpus_r5 0x2 0x00000000>; // split,r51
+				include = <&resource_group1 0x0>;
+			};
+		};
+
+		lop_4_5 {
+			// node add
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "openamp_a72_0";
+			node_dest = "/domains/openamp_a72_0";
+			openamp_a72_0 {
+				cpus = <&cpus_a72 0xf 0x2>;
+				access = <&ipi_mailbox_rpu0 0x13>,
+					 <&ipi_mailbox_rpu1 0x13>;
+				/* 0x1: master for 2 children*/
+				include = <&resource_group0 0x1>,<&resource_group1 0x1>;
+			};
+		};
+
+		lop_5_1 {
+			compatible = "system-device-tree-v1,lop,assist-v1";
+			node = "/domains/openamp_a72_0";
+			id = "openamp,xlnx-rpu";
+
+		};
+	};
+};
