@@ -546,7 +546,7 @@
 			phandle = <0x18>;
 		};
 
-		serial@ff000000 {
+		serial0: serial@ff000000 {
 			compatible = "arm,pl011", "arm,sbsa-uart";
 			status = "okay";
 			reg = <0x0 0xff000000 0x0 0x1000>;
@@ -560,7 +560,7 @@
 			port-number = <0x0>;
 		};
 
-		serial@ff010000 {
+		serial1: serial@ff010000 {
 			compatible = "arm,pl011", "arm,sbsa-uart";
 			status = "disabled";
 			reg = <0x0 0xff010000 0x0 0x1000>;
