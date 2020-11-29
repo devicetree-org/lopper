@@ -38,6 +38,5 @@
                         compatible = "system-device-tree-v1,lop,load";
                         load = "assists/openamp-xlnx-zynq.py";
                 };
-
         };
 };
