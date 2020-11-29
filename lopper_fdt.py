@@ -1363,7 +1363,7 @@ class Lopper:
                     # fail!
                     pass
         else:
-            print( "[WARNING]; unknown type was used: %s" % type(prop_val) )
+            print( "[WARNING]: %s: unknown type was used: %s" % (prop_name,type(prop_val)) )
 
     @staticmethod
     def property_remove( fdt, node_name, prop_name, verbose=0 ):

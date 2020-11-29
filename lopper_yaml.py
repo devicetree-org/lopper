@@ -311,11 +311,36 @@ class LopperYAML():
             props = self.props( node )
             for p in props:
                 if serialize_json:
-                    x = json.dumps(props[p])
-                    if not p in excluded_props:
-                        lp = LopperProp( p, -1, ln, x )
-                        # add the property to the node
-                        ln + lp
+                    print( "prop: %s (%s)" % (props[p],type(props[p]) ))
+
+                    use_json = False
+                    skip = False
+                    if type(props[p]) == list:
+                        for p2 in props[p]:
+                            if type(p2) == list or type(p2) == dict:
+                                use_json = True
+                    elif type(props[p]) == dict:
+                        for p2 in props[p].values():
+                            if type(p2) == list or type(p2) == dict:
+                                use_json = True
+                    elif type(props[p]) == bool:
+                        # don't encode false bool, and a true is just an empty list
+                        if props[p]:
+                            props[p] = None
+                        else:
+                            skip = True
+
+                    if use_json:
+                        x = json.dumps(props[p])
+                    else:
+                        x = props[p]
+
+                    if not skip:
+                        print( "jprop: %s (%s)" % (x,type(x)))
+                        if not p in excluded_props:
+                            lp = LopperProp( p, -1, ln, x )
+                            # add the property to the node
+                            ln + lp
                 else:
                     if type(props[p]) == list:
                         # we need to check if there are embedded dictionaries, and if so, expand them.
