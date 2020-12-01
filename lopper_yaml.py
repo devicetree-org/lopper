@@ -48,21 +48,85 @@ class LopperTreeImporter(object):
     def __import(self, node, parent=None, name=None):
         assert isinstance(node, LopperNode)
 
-        attrs = {}
-        for p in node.__props__:
-            attrs[p] = node.__props__[p].value
+        attrs = OrderedDict()
 
         name = node.name
         if not name:
             name = "root"
 
         attrs['name'] = name
+        for p in node.__props__:
+            # if the node is from a yaml source, it may have been json encoded,
+            # so try that first and otherwise assign it directly.
+            if node._source == "yaml":
+                # property with no value is an encoded boolean "true" as an
+                # empty list. So check for a value, try json, fallback to
+                # assignment.
+                if node.__props__[p].value:
+                    try:
+                        val = json.loads(node.__props__[p].value)
+                    except:
+                        val = node.__props__[p].value
+                else:
+                    val = True
+            else:
+                val = node.__props__[p].value
+
+            attrs[p] = val
 
         nnode = self.nodecls(parent=parent, **attrs)
+
         for child in node.child_nodes:
             self.__import(node.child_nodes[child], parent=nnode)
 
         return nnode
+
+# Extension of the default anytree DictExporter, since we don't want added
+# nodes like "root" and children to be in the export.
+class LopperDictExporter(DictExporter):
+    def export(self, node):
+        """Export tree starting at `node`."""
+        attriter = self.attriter or (lambda attr_values: attr_values)
+        return self.__export(node, self.dictcls, attriter, self.childiter)
+
+    def __export(self, node, dictcls, attriter, childiter, level=1, verbose = 0):
+        attr_values = attriter(self._iter_attr_values(node))
+        data = dictcls(attr_values)
+        maxlevel = self.maxlevel
+
+        try:
+            # if there's a name, its a node, but we don't want it in our output,
+            # so we delete it from the attrs. It'll show up in our dictionary as
+            # key instead.
+            name = data['name']
+            del data['name']
+        except:
+            name = None
+
+        if maxlevel is None or level < maxlevel:
+            children = [self.__export(child, dictcls, attriter, childiter, level=level + 1)
+                        for child in childiter(node.children)]
+            if children:
+                # if there are children returned, we merge them into a single dictionary, so
+                # that output can represent them as child nodes of the current one (see how
+                # we return data)
+                if verbose > 2:
+                    print( "[DBG+++]: node: %s has children: %s" % (name,children) )
+
+                new_dict = {}
+                for c in reversed(children):
+                    if verbose > 2:
+                        print( "[DBG+++]:        merging dict: %s" % c )
+                    new_dict.update( c )
+
+                data.update( new_dict )
+
+        # if the node is NOT the root node, we index the attributes by the node
+        # name, if root, we return the merged dictionary.
+        if name != "root":
+            return { name : data }
+        else:
+            return data
 
 class LopperDictImporter(object):
     def __init__(self, nodecls=AnyNode):
@@ -146,6 +210,17 @@ class LopperDictImporter(object):
 
         return node
 
+class LopperDumper(yaml.Dumper):
+    """Lopper specific dumper
+
+    Any simple formating changes to the yaml output are contained in
+    this class.
+
+    Currently it only increases the indent on yaml sequences, but may
+    container more adjustments in the future.
+    """
+    def increase_indent(self, flow=False, indentless=False):
+        return super(LopperDumper, self).increase_indent(flow, False)
 
 class LopperYAML():
     """YAML read/writer for Lopper
@@ -188,7 +263,7 @@ class LopperYAML():
         if self.tree:
             self.load_tree( self.tree )
 
-    def to_yaml( self, outfile = None ):
+    def to_yaml( self, outfile = None, verbose = 0 ):
         """ Export LopperYAML tree to a yaml output file
 
         Args:
@@ -198,19 +273,33 @@ class LopperYAML():
            Nothing
         """
         if self.anytree:
-            #dct = DictExporter(dictcls=OrderedDict, attriter=sorted).export(self.anytree)
-            dct = DictExporter(dictcls=OrderedDict).export(self.anytree)
-            #dct = DictExporter().export(self.anytree)
+            # if there's only one child, we use that, which allows us to skip the Anytree
+            # "root" node, without any tricks.
+            if len(self.anytree.children) == 1:
+                start_node = self.anytree.children[0]
+            else:
+                start_node = self.anytree
 
-            # print( "blah: %s" % dct )
-            # for d in dct:
-            #     print( "%s" % d )
+            # at high verbosity, use an ordered dict for debug reasons
+            if verbose > 2:
+                dcttype=OrderedDict
+            else:
+                dcttype=dict
+            dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
+
+            if verbose > 1:
+                print( "[DBG++]: dumping exporting dictionary" )
+                pprint( dct )
 
             if not outfile:
                 print(yaml.dump(dct, default_flow_style=False,default_style='"'))
             else:
+                if verbose > 1:
+                    print( "[DBG++]: dumping generated yaml to stdout:" )
+                    print(yaml.dump(dct, Dumper=Lopperumper, default_flow_style=False,tags=False))
+
                 with open( outfile, "w") as file:
-                      yaml.dump(dct, file, default_flow_style=False)
+                    yaml.dump(dct, file, Dumper=LopperDumper, default_flow_style=False,tags=False)
 
 
     def prop_expand( self, prop ):
@@ -311,8 +400,6 @@ class LopperYAML():
             props = self.props( node )
             for p in props:
                 if serialize_json:
-                    print( "prop: %s (%s)" % (props[p],type(props[p]) ))
-
                     use_json = False
                     skip = False
                     if type(props[p]) == list:
@@ -336,7 +423,6 @@ class LopperYAML():
                         x = props[p]
 
                     if not skip:
-                        print( "jprop: %s (%s)" % (x,type(x)))
                         if not p in excluded_props:
                             lp = LopperProp( p, -1, ln, x )
                             # add the property to the node
