@@ -31,7 +31,7 @@ import json
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,subsystem", compat_string_to_test):
-        return subsystem_expand
+        return subsystem
     return ""
 
 # tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
@@ -65,8 +65,9 @@ def val_as_bool( val ):
     elif val == "True":
         return True
 
+
 # sdt: is the system device tree
-def subsystem_expand( tgt_node, sdt, options ):
+def subsystem( tgt_node, sdt, options ):
     try:
         verbose = options['verbose']
     except:
@@ -78,16 +79,31 @@ def subsystem_expand( tgt_node, sdt, options ):
         args = []
 
     if verbose:
-        print( "[INFO]: cb: subsystem_expand( %s, %s, %s, %s )" % (tgt_node, sdt, verbose, args))
+        print( "[INFO]: cb: subsystem( %s, %s, %s, %s )" % (tgt_node, sdt, verbose, args))
 
-    node_regex = ""
-    if args:
-        tgt_regex = args[0]
-        if len(args) == 2:
-            node_regex = args[1]
+    if "generate" in args or "--generate" in args:
+        subsystem_generate( tgt_node, sdt, verbose )
+    else:
+        subsystem_expand( tgt_node, sdt, verbose )
 
-    if not node_regex:
-        node_regex = "/domains"
+    return True
+
+
+# sdt: is the system device tree
+def subsystem_generate( tgt_node, sdt, verbose = 0):
+    if verbose:
+        print( "[INFO]: cb: subsystem_generate( %s, %s )" % (tgt_node, sdt))
+
+    tree = sdt.tree
+    domain_node = tree["/domains"]
+
+
+    return True
+
+# sdt: is the system device tree
+def subsystem_expand( tgt_node, sdt, verbose = 0 ):
+    if verbose:
+        print( "[INFO]: cb: subsystem_expand( %s, %s )" % (tgt_node, sdt))
 
     tree = sdt.tree
 
