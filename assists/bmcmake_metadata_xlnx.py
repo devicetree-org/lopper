@@ -88,7 +88,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                                 depreg_list.append(hex(get_phandle_regprop(sdt, e, val)))
                         except KeyError:
                             val = 0
-                        if prop_val == val:
+                        if prop_val == val or prop_val == "phandle":
                             match_list.append(True)
                         else:
                             match_list.append(False)
