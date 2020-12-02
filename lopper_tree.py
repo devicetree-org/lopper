@@ -1647,10 +1647,6 @@ class LopperNode(object):
 
                             self.parent.child_nodes[self.abs_path] = self
 
-                            # if self.parent.abs_path == "/amba":
-                            #     print( "amba is my parent, adding %s" % self.abs_path )
-                            #     print( "   parent kids: %s" % self.parent.child_nodes.keys())
-
                     depth = len(re.findall( '/', self.abs_path ))
                 else:
                     depth = 0
@@ -1724,10 +1720,10 @@ class LopperNode(object):
                         self.__props__[p].resolve( fdt )
                         self.__props__[p].__modified__ = False
 
-                # 3rd pass: did we have any added, but not syn'd properites. They need
+                # 3rd pass: did we have any added, but not sync'd properites. They need
                 #           to be brought back into the main property dictionary.
                 for p in saved_props:
-                    if saved_props[p].__pstate__ == "init":
+                    if saved_props[p].__pstate__ != "deleted":
                         self.__props__[p] = saved_props[p]
                         self.__props__[p].node = self
 
