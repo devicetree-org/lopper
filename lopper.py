@@ -50,7 +50,8 @@ import lopper_rest
 try:
     from lopper_yaml import *
     yaml_support = True
-except:
+except Exception as e:
+    print( "[WARNING]: cant load yaml, disabling support: %s" % e )
     yaml_support = False
 
 import lopper_tree
