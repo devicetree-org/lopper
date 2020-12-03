@@ -7,7 +7,8 @@
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
 
-import yaml
+import ruamel.yaml as yaml
+
 import json
 import sys
 
@@ -292,14 +293,14 @@ class LopperYAML():
                 pprint( dct )
 
             if not outfile:
-                print(yaml.dump(dct, default_flow_style=False,default_style='"'))
+                print(yaml.dump(dct))
             else:
                 if verbose > 1:
                     print( "[DBG++]: dumping generated yaml to stdout:" )
                     print(yaml.dump(dct, Dumper=Lopperumper, default_flow_style=False,tags=False))
 
                 with open( outfile, "w") as file:
-                    yaml.dump(dct, file, Dumper=LopperDumper, default_flow_style=False,tags=False)
+                    yaml.dump(dct, file)
 
 
     def prop_expand( self, prop ):
@@ -569,7 +570,7 @@ class LopperYAML():
             print( "[ERROR]: no yaml source provided" )
 
         iny = open( in_name )
-        self.dct = yaml.load( iny )
+        self.dct = yaml.safe_load( iny )
 
         if not self.dct:
             print( "[ERROR]: no data available to load" )
