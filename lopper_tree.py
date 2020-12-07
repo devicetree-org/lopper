@@ -1491,9 +1491,6 @@ class LopperNode(object):
            LopperNode: returns self, Exception on invalid input
 
         """
-        if not isinstance( other, LopperProp ):
-            raise Exception( "LopperProp was not passed" )
-
         self.add( other )
 
         return self
@@ -1538,33 +1535,41 @@ class LopperNode(object):
         pass
 
     def add( self, prop ):
-        """Add a property to a node
+        """Add a property or subnode to a node
 
-        Supports adding a property to a node through
+        Supports adding a property or node to a node through
 
             node.add( prop )
 
-        After adding the property, the node is tagged as modified to it
+        After adding the new elelent, the node is tagged as modified to it
         can be sync'd in the future.
 
         Args:
-           prop (LopperProp): property to add
+           prop (LopperProp or LopperNode): element to add
 
         Returns:
            LopperNode: returns self, raises Exception on invalid parameter
 
         """
-        if not isinstance( prop, LopperProp ):
-            raise Exception( "LopperProp was not passed" )
+        if isinstance( prop, LopperProp ):
+            if self.__dbg__ > 2:
+                print( "[DBG++]: node %s adding property: %s" % (self.abs_path,prop.name) )
 
-        if self.__dbg__ > 2:
-            print( "[DBG++]: node %s adding property: %s" % (self.abs_path,prop.name) )
+            self.__props__[prop.name] = prop
+            prop.node = self
 
-        self.__props__[prop.name] = prop
-        prop.node = self
+            # indicates that we should be sync'd
+            self.__modified__ = True
+        elif isinstance( prop, LopperNode):
+            node = prop
+            if self.__dbg__ > 2:
+                print( "[DBG++]: node %s adding Node: %s" % (self.abs_path,node.name) )
 
-        # indicates that we should be sync'd
-        self.__modified__ = True
+            node.abs_path = self.abs_path + "/" + node.name
+            node.parent = self
+            node.tree = self.tree
+
+            self.child_nodes[node.abs_path] = node
 
         return self
 
