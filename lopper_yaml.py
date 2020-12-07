@@ -46,7 +46,7 @@ class LopperTreeImporter(object):
         """Import tree from `data`."""
         return self.__import(data)
 
-    def __import(self, node, parent=None, name=None):
+    def __import(self, node, parent=None, name=None, verbose=0):
         assert isinstance(node, LopperNode)
 
         attrs = OrderedDict()
@@ -59,14 +59,29 @@ class LopperTreeImporter(object):
         for p in node.__props__:
             # if the node is from a yaml source, it may have been json encoded,
             # so try that first and otherwise assign it directly.
-            if node._source == "yaml":
+            if node._source == "yaml" or node.__props__[p].pclass == "json":
                 # property with no value is an encoded boolean "true" as an
                 # empty list. So check for a value, try json, fallback to
                 # assignment.
                 if node.__props__[p].value:
                     try:
-                        val = json.loads(node.__props__[p].value)
-                    except:
+                        if verbose:
+                            print( "[DBG++]: LopperTreeImporter: json load for prop %s : %s" % (p,node.__props__[p].value))
+
+                        decode_val = ""
+                        val = []
+                        if type(node.__props__[p].value) == list and len(node.__props__[p].value) == 1:
+                            decode_val = node.__props__[p].value[0]
+                            val = json.loads(decode_val)
+                        else:
+                            if type(node.__props__[p].value) == list:
+                                for item in node.__props__[p].value:
+                                    val.append( json.loads(item) )
+                            else:
+                                decode_val = node.__props__[p].value
+                                val = json.loads(decode_val)
+
+                    except Exception as e:
                         val = node.__props__[p].value
                 else:
                     val = True
@@ -228,7 +243,7 @@ class LopperYAML():
 
     A Lopper "container" around a yaml input/output.
 
-    This class is capabable of reading a yaml inputfile, and
+    This class is capable of reading a yaml inputfile, and
     creating a LopperTree. It is also capabable of taking a
     LopperTree and creating a yaml description of that tree.
 
