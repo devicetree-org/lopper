@@ -26,6 +26,9 @@ from lopper import Lopper
 from lopper import LopperFmt
 from lopper_tree import LopperAction
 from lopper_tree import LopperProp
+from lopper_tree import LopperNode
+from lopper_tree import LopperTree
+from lopper_yaml import LopperYAML
 import lopper
 import json
 
@@ -95,19 +98,58 @@ def subsystem_generate( tgt_node, sdt, verbose = 0):
         print( "[INFO]: cb: subsystem_generate( %s, %s )" % (tgt_node, sdt))
 
     tree = sdt.tree
-    domain_node = tree["/domains"]
+    domain_tree = LopperTree()
 
+    try:
+        domain_node = tree["/domains"]
+    except:
+        domain_node = LopperNode( -1, "/domains" )
+
+    domain_tree.__dbg__ = 4
+    domain_tree = domain_tree + domain_node
+
+    subsystem_node = LopperNode( -1 )
+    subsystem_node.name = "subsystem1"
+
+    domain_node + subsystem_node
+
+    cpu_prop = None
+    for node in sdt.tree:
+        try:
+            compatibility = node['compatible']
+        except:
+            compatibility = None
+
+        if compatibility:
+            cpu_compat = re.findall(r"(?=("+'|'.join(compatibility.value)+r"))", "cpus,cluster")
+            if cpu_compat:
+                if not cpu_prop:
+                    # Note: The "mask" and "secure" entries are currently placeholders and will be
+                    #       calculated differently in the future.
+                    cpu_prop = LopperProp( "cpus", -1, subsystem_node,
+                                           [ json.dumps( { 'cluster': node.label, "cpu_mask" : 0x3, "mode": { 'secure': True } }) ])
+                    cpu_prop.pclass = "json"
+                    subsystem_node = subsystem_node + cpu_prop
+                else:
+                    cpu_prop.value.append( json.dumps( { 'cluster': node.label, "cpu_mask" : 0x3, "mode": { 'secure': True } } ) )
+
+    if verbose > 3:
+        tree.__dbg__ = 4
+
+    tree = tree + domain_node
+
+    if verbose > 2:
+        print( "[DBG++]: dumping yaml generated default subystem" )
+        yaml = LopperYAML( None, domain_tree )
+        yaml.to_yaml()
 
     return True
 
-# sdt: is the system device tree
 def subsystem_expand( tgt_node, sdt, verbose = 0 ):
     if verbose:
         print( "[INFO]: cb: subsystem_expand( %s, %s )" % (tgt_node, sdt))
 
     tree = sdt.tree
-
-    domain_node = tree["/domains"]
 
     # add the cells properties
     property_set( "#address-cells", 2, domain_node )
