@@ -151,6 +151,11 @@ def subsystem_expand( tgt_node, sdt, verbose = 0 ):
 
     tree = sdt.tree
 
+    try:
+        domain_node = tree["/domains"]
+    except:
+        domain_node = LopperNode( -1, "/domains" )
+
     # add the cells properties
     property_set( "#address-cells", 2, domain_node )
     property_set( "#size-cells", 2, domain_node )
