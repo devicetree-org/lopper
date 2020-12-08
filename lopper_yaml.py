@@ -441,6 +441,8 @@ class LopperYAML():
                     if not skip:
                         if not p in excluded_props:
                             lp = LopperProp( p, -1, ln, x )
+                            if use_json:
+                                lp.pclass = "json"
                             # add the property to the node
                             ln + lp
                 else:
