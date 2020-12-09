@@ -2540,7 +2540,7 @@ class LopperTree:
 
         return nodes
 
-    def exec_cmd( self, node, cmd, env = None ):
+    def exec_cmd( self, node, cmd, env = None, module_list=[] ):
         """Execute a (limited) code block against a node
 
         Execute a python clode block with the 'node' context set to the
@@ -2573,6 +2573,8 @@ class LopperTree:
             cmd (string): block of python code to execute
             env (dictionary,optional): values to make available as
                                        variables to the code block
+            module_list (list,optional): list of assists to load before
+                                         running the code block
 
         Returns:
             Return value from the execution of the code block
@@ -2624,6 +2626,13 @@ class LopperTree:
             for e in env:
                 safe_dict[e] = env[e]
 
+        if module_list:
+            mod_load = "import importlib\n"
+        else:
+            mod_load = ""
+        for m in module_list:
+            mod_load += "{} = importlib.import_module( '.{}', package='assists' )\n".format(m,m)
+
         tc = cmd
 
         # we wrap the test command to control the ins and outs
@@ -2631,7 +2640,7 @@ class LopperTree:
         # indent everything, its going in a function
         tc_indented = textwrap.indent( tc, '    ' )
         # define the function, add the body, call the function and grab the return value
-        tc_full_block = "def __node_test_block():" + tc_indented + "\n__nret = __node_test_block()"
+        tc_full_block = mod_load + "def __node_test_block():\n" + tc_indented + "\n__nret = __node_test_block()"
 
         if self.__dbg__ > 2:
            print( "[DBG+]: node exec cmd:\n%s" % tc_full_block )

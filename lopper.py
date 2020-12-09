@@ -1595,7 +1595,11 @@ class LopperSDT:
                 except Exception as e:
                     print( "[WARNING]: conditional false block had exception: %s" % e )
 
-        if re.search( ".*,lop,code.*$", lop_type ):
+        if re.search( ".*,lop,xlate.*$", lop_type ):
+            # execute a block of python code against a specified start_node
+            code = Lopper.property_get( lops_fdt, lop_node_number, "code" )
+
+        if re.search( ".*,lop,code.*$", lop_type ) or re.search( ".*,lop,xlate.*$", lop_type ):
             # execute a block of python code against a specified start_node
             code = Lopper.property_get( lops_fdt, lop_node_number, "code" )
 
@@ -1633,12 +1637,28 @@ class LopperSDT:
                 else:
                     start_node = "/"
 
+            try:
+                inherit_list = this_lop_node['inherit'].value[0].replace(" ","").split(",")
+            except:
+                inherit_list = []
+
             if self.verbose:
                 print ( "[DBG]: code lop found, node context: %s" % start_node )
 
-            ret = tree.exec_cmd( start_node, code, options )
-            # who knows what the command did, better sync!
-            tree.sync()
+            if re.search( ".*,lop,xlate.*$", lop_type ):
+                if tree.__selected__:
+                    node_list = tree.__selected__
+                else:
+                    node_list = [ "/" ]
+
+                for n in node_list:
+                    ret = tree.exec_cmd( n, code, options, inherit_list )
+                    # who knows what the command did, better sync!
+                    tree.sync()
+            else:
+                ret = tree.exec_cmd( start_node, code, options, inherit_list )
+                # who knows what the command did, better sync!
+                tree.sync()
 
             return ret
 
