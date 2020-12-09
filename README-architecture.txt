@@ -348,7 +348,11 @@ The following types of lops are currently valid:
 # False.
 #
 # Similarly, false blocks are executed when the conditions evaluate to false.
-
+#
+# Note: the "select" lop is a newer, and cleaner way to select a group of nodes
+#       for code operation. Conditional continues to work, but consider using
+#       select -> code lops instead.
+#
 # code: a block of python code to execute against a node
 #
 # Excute python code in a restricted environment. This can be used to test and
@@ -367,6 +371,16 @@ The following types of lops are currently valid:
 # Lopper will arrange for a variable to be available to the python code under
 # that name, with the specified value.
 #
+# Code blocks can also inherit Lopper assists, to facilitate code reuse.
+# The property "inherit" is a comma separate list of python
+# assists that should be loaded and made available to the code block
+# on execution.
+#
+# The python modules must be searchable by the python loader and in
+# an "assists" subdirectory. They will be loaded and made avaible under
+# their module name for direct use in the code block.
+#
+# See the 'xlate' lop for an example of 'inherit'
 #
 # See README.pydoc for details of the code execution environment
 
@@ -694,6 +708,52 @@ The following types of lops are currently valid:
                        outfile = "openamp-test-special.dts"; 
                        nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
                 };
+
+# xlate: translate a node / properties
+#
+# It is becoming more common that non dts compatible trees / properties
+# are carried along side of device tree ones (i.e. yaml), and those
+# properties often need to be translated / expanded to be device tree
+# format (since they are complex types).
+#
+# To make that easier, we have a translate "xlate" lopper operation.
+# This lop is expected to work in coordination with a select lop to
+# target specific nodes and properties that need translation. xlate is
+# very similar to "code", and in fact, you can do everything that xlate
+#  does with a code block (just more verbosely).
+#
+#    The differences (conveniences) from "code" are as follows:
+#
+#      - Automatic inheritance of lopper library functions (as: lopper_lib)
+#      - Automatic iteration over selected nodes
+#
+# See the description of the "code" lop for an explanation of 'inherit'
+
+                    lop_0_1 {
+                          compatible = "system-device-tree-v1,lop,select-v1";
+                          select_1;
+                          select_2 = "/domains/subsystem.*:cpus:.*";
+                    };
+                    lop_0_2 {
+                            compatible = "system-device-tree-v1,lop,xlate-v1";
+                            inherit = "subsystem";
+                            code = "
+                                 subsystem.cpu_expand( tree, node )
+                                 subsystem.memory_expand( tree, node )
+                                 subsystem.access_expand( tree, node )
+                            ";
+                    };
+
+# The impact of these two lops would be to run the code block in 0_2
+# against all nodes that match the selection criteria of 0_1. In this
+# case, it would be against any nodes under /domains/subsystem that have
+#  a 'cpus' property (that is set to anything).
+#
+# When the code block runs, the python module "subsystem" will be loaded
+# from the assists subdirectory and made available to the code block.
+# The calls to subsystem.<function> will leverage the transforms availble
+# in that assist (and in this case, will expand various properties in
+# in the node).
 
 Note: the lopper_sanity.py utility has an embedded lops file that can be
       used as a reference, as well as embedded LopperTree sanity tests.

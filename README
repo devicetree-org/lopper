@@ -23,8 +23,8 @@ In addition to the standard libraries, Lopper uses: cpp, dtc and libfdt for
 processing and manipulating device trees. These tools must be installed and
 on the PATH.
 
-For yaml file processing, lopper has an optional dependency on python's yaml as
-well as anytree for importing the contents of yaml files.
+For yaml file processing, lopper has an optional dependency on python's yaml
+and ruamel as well as anytree for importing the contents of yaml files.
 
 Make sure you have libfdt installed and available. If it is not in a standard
 location, make sure it is on PYTHONPATH:
