@@ -86,7 +86,12 @@ class LopperTreeImporter(object):
                 else:
                     val = True
             else:
-                val = node.__props__[p].value
+                # everything is a list in a LopperProp, if the length is one, just grab the
+                # element. We'll have better yaml in the end if this is done.
+                if type(node.__props__[p].value) == list and len(node.__props__[p].value) == 1:
+                    val = node.__props__[p].value[0]
+                else:
+                    val = node.__props__[p].value
 
             attrs[p] = val
 
@@ -291,16 +296,18 @@ class LopperYAML():
         if self.anytree:
             # if there's only one child, we use that, which allows us to skip the Anytree
             # "root" node, without any tricks.
-            if len(self.anytree.children) == 1:
-                start_node = self.anytree.children[0]
-            else:
-                start_node = self.anytree
+            no_root = False
+            start_node = self.anytree
+            if no_root:
+                if len(self.anytree.children) == 1:
+                    start_node = self.anytree.children[0]
 
             # at high verbosity, use an ordered dict for debug reasons
             if verbose > 2:
                 dcttype=OrderedDict
             else:
                 dcttype=dict
+
             dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
 
             if verbose > 1:
@@ -312,7 +319,7 @@ class LopperYAML():
             else:
                 if verbose > 1:
                     print( "[DBG++]: dumping generated yaml to stdout:" )
-                    print(yaml.dump(dct, Dumper=Lopperumper, default_flow_style=False,tags=False))
+                    print(yaml.dump(dct))
 
                 with open( outfile, "w") as file:
                     yaml.dump(dct, file)
@@ -415,6 +422,8 @@ class LopperYAML():
 
             props = self.props( node )
             for p in props:
+                if verbose:
+                    print( "[DBG+]: prop: %s" % p )
                 if serialize_json:
                     use_json = False
                     skip = False
@@ -594,7 +603,6 @@ class LopperYAML():
             sys.exit(1)
 
         self.anytree = LopperDictImporter(Node).import_(self.dct)
-
 
     def load_tree( self, tree = None ):
         """Load/Read a LopperTree into a YAML representation
