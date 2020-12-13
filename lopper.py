@@ -1333,7 +1333,10 @@ class LopperSDT:
                     sys.exit(1)
 
                 mod_file_abs = mod_file.resolve()
-
+                # append the directory of the located module onto the search
+                # path. This is needed if that module imports something from
+                # its own directory
+                sys.path.append( str(mod_file_abs.parent) )
                 try:
                     imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
                 except Exception as e:
@@ -1594,10 +1597,6 @@ class LopperSDT:
                                 break
                 except Exception as e:
                     print( "[WARNING]: conditional false block had exception: %s" % e )
-
-        if re.search( ".*,lop,xlate.*$", lop_type ):
-            # execute a block of python code against a specified start_node
-            code = Lopper.property_get( lops_fdt, lop_node_number, "code" )
 
         if re.search( ".*,lop,code.*$", lop_type ) or re.search( ".*,lop,xlate.*$", lop_type ):
             # execute a block of python code against a specified start_node
