@@ -64,6 +64,10 @@ The flow of lopper processing is broken into the following broad categories:
     If inconsistencies or other errors are detected, the user is notified and
     lopper exits.
 
+    Lopper can also stay resident after execution and offer a ReST API to
+    query the device tree. The details of the API are still in design, but will
+    be described in this document when complete.
+
   - cleanup
 
     As part of processing the input files, lopper generates temp or intermediate
@@ -82,6 +86,7 @@ tree:
        - LopperNode
        - LopperProp
        - LopperTreePrinter
+  - LopperYAML
   - LopperFile (internal use only)
   - LopperAssist (internal use only)
 
@@ -97,6 +102,11 @@ setup of the FDT (using dtc, cpp, etc, to compile it to a dtb), loading
 operations and assists, running operations, writing the default output and
 cleaning up any temporary files.
 
+LopperYAML is a reader/writer of YAML inputs, and it converts what is read to
+LopperTree format (and from tree -> YAML on write). The internals of LopperYAML
+are not significant, except for the routines to_yaml() and to_tree(), which are
+used to convert formats.
+
 LopperSDT uses the LopperTree + LopperNode + LopperProp classes to manipulate
 the underlying FDT without the details of those manipulations being throughout
 the classes. These classes provide python ways to iterate, access and write tree
@@ -108,6 +118,37 @@ the latest detailed information on lopper, execute the following:
   % pydoc3 ./lopper.py
   % pydoc3 ./lopper_tree.py
   % pydoc3 ./lopper_sdt.py
+
+Lopper Inputs / Outputs:
+------------------------
+
+Although most inputs and outputs from Lopper are dts files (or dtb in rare cases),
+YAML is also supported. While not everything can (or should) be expressed in
+YAML, both lops and device tree elements can be expressed in this format.
+
+Note: The core of Lopper, assists, lops, etc, are not aware of the input /
+output formats, but operate on the LopperTree/Lopper data structures. It is this
+separation that allows Lopper to abstract both the tree and convert between the
+various formats.
+
+To aid decoding and intepretation of properties carried in a LopperTree, if a
+node has been created from yaml, the LopperNode field '_source' is set to "yaml"
+(otherwise it is "dts"). 
+
+Lopper Tree and complex (non-dts) types:
+----------------------------------------
+
+Depending on the input format, complex data types or associated data are
+carried in the Lopper tree.
+
+As an example, yaml constructs can be mapped directly to device tree formats
+(strings, ints, etc), but other complex structures (maps, lists, mixed types)
+need to be interpreted / expanded by an assis or an xlate lop. 
+
+To ensure that the LopperTree is always compatible with dts/fdt, these complex
+types are json encoded and carried as a string in a LopperProp. When json
+encoding is used, the "pclass" of the LopperProp is set to "json", so that it
+can be loaded and expanded for processing.
 
 Lopper operations
 -----------------

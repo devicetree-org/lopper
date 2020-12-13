@@ -50,6 +50,7 @@ lopper.py --help
       -S, --save-temps    don't remove temporary files
       -h, --help          display this help and exit
       -O, --outdir        directory to use for output files
+        , --server        after processing, start a server for ReST API calls
         , --version       output the version and exit
 
 A few command line notes:
@@ -89,10 +90,8 @@ Limitations:
 -----------
 
  - This is beta version, internal interfaces are still subject to change
- - Not all errors are gracefully handled
 
 TODO:
 ----
 
  - Output device tree sanity checking / validation
- - TODO items in code base (grep for TODO in code)
