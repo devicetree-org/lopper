@@ -1344,6 +1344,26 @@ class Lopper:
                 pass
 
         elif type(prop_val) == list:
+
+            if len(prop_val) > 1:
+                val_to_sync = []
+                iseq = iter(prop_val)
+                first_type = type(next(iseq))
+                # check for a mixed type, we get "false" if it is not all the same, or
+                # the type otherwise
+                the_same = first_type if all( (type(x) is first_type) for x in iseq ) else False
+                if the_same == False:
+                    # convert everything to strings
+                    val_to_sync = []
+                    for v in prop_val:
+                        val_to_sync.append( str(v) )
+                else:
+                    val_to_sync = prop_val
+            else:
+                val_to_sync = prop_val
+
+            prop_val = val_to_sync
+
             # list is a compound value, or an empty one!
             if len(prop_val) >= 0:
                 try:
