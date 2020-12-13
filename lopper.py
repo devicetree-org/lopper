@@ -1645,6 +1645,8 @@ class LopperSDT:
                 print ( "[DBG]: code lop found, node context: %s" % start_node )
 
             if re.search( ".*,lop,xlate.*$", lop_type ):
+                inherit_list.append( "lopper_lib" )
+
                 if tree.__selected__:
                     node_list = tree.__selected__
                 else:
