@@ -824,7 +824,7 @@ class LopperSDT:
 
         return cb_func
 
-    def exec_lop( self, lops_fdt, lop_node_number, options = None ):
+    def exec_lop( self, lop_node, lops_tree, options = None ):
         """Executes a a lopper operation (lop)
 
         Runs a lopper operation against the system device tree.
@@ -843,25 +843,23 @@ class LopperSDT:
 
         """
 
-        lop = Lopper.property_get( lops_fdt, lop_node_number, "compatible", LopperFmt.COMPOUND )
-        lop_type = lop[0]
+        # TODO: stop using this and go to the searching in the lops processing loop.
+        lop_type = lop_node['compatible'].value[0]
+        # TODO: lop_args is really a "subtype"
         try:
-            lop_args = lop[1]
+            lop_args = op_node['compatible'].value[1]
         except:
             lop_args = ""
 
         if self.verbose > 1:
             print( "[DBG++]: executing lop: %s" % lop_type )
 
-        lops_tree = lopper_tree.LopperTree( lops_fdt )
-        this_lop_node = lops_tree[lop_node_number]
-
         if re.search( ".*,exec.*$", lop_type ):
             if self.verbose > 1:
                 print( "[DBG++]: code exec jump" )
             try:
                 try:
-                    node_spec = this_lop_node['node'].value[0]
+                    node_spec = lop_node['node'].value[0]
                 except:
                     if self.tree.__selected__:
                         node_spec = self.tree.__selected__[0]
@@ -872,7 +870,7 @@ class LopperSDT:
                     options = {}
 
                 try:
-                    options_spec = this_lop_node['options'].value
+                    options_spec = lop_node['options'].value
                 except:
                     options_spec = ""
 
@@ -882,7 +880,7 @@ class LopperSDT:
                         if opt_key:
                             options[opt_key] = opt_val
 
-                exec_tgt = this_lop_node['exec'].value[0]
+                exec_tgt = lop_node['exec'].value[0]
                 target_node = lops_tree.pnode( exec_tgt )
                 if self.verbose > 1:
                     print( "[DBG++]: exec phandle: %s target: %s" % (exec_tgt,target_node))
@@ -892,7 +890,7 @@ class LopperSDT:
                         if node_spec:
                             options['start_node'] = node_spec
 
-                        ret = self.exec_lop( lops_fdt, target_node.number, options )
+                        ret = self.exec_lop( target_node, lops_tree, options )
                     except Exception as e:
                         print( "[WARNING]: exec block caused exception: %s" % e )
                         ret = False
@@ -906,7 +904,7 @@ class LopperSDT:
                 return False
 
         if re.search( ".*,print.*$", lop_type ):
-            print_props = this_lop_node.props('print.*')
+            print_props = lop_node.props('print.*')
             for print_prop in print_props:
                 for line in print_prop.value:
                     if type(line) == str:
@@ -921,10 +919,10 @@ class LopperSDT:
                             print( "}" )
 
         if re.search( ".*,select.*$", lop_type ):
-            select_props = this_lop_node.props( 'select.*' )
+            select_props = lop_node.props( 'select.*' )
 
             try:
-                tree_name = this_lop_node['tree'].value[0]
+                tree_name = lop_node['tree'].value[0]
                 try:
                     tree = self.subtrees[tree_name]
                 except:
@@ -1028,12 +1026,12 @@ class LopperSDT:
                 if self.verbose > 1:
                     print( "[DBG++]: processing phandle meta data" )
                 Lopper.phandle_possible_prop_dict = OrderedDict()
-                for p in this_lop_node:
+                for p in lop_node:
                     Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
 
         if re.search( ".*,output$", lop_type ):
             try:
-                output_file_name = this_lop_node['outfile'].value[0]
+                output_file_name = lop_node['outfile'].value[0]
             except:
                 print( "[ERROR]: cannot get output file name from lop" )
                 sys.exit(1)
@@ -1042,7 +1040,7 @@ class LopperSDT:
                 print( "[DBG+]: outfile is: %s" % output_file_name )
 
             try:
-                tree_name = this_lop_node['tree'].value[0]
+                tree_name = lop_node['tree'].value[0]
                 try:
                     tree = self.subtrees[tree_name]
                 except:
@@ -1054,7 +1052,7 @@ class LopperSDT:
 
             output_nodes = []
             try:
-                output_regex = this_lop_node['nodes'].value
+                output_regex = lop_node['nodes'].value
             except:
                 output_regex = []
 
@@ -1147,7 +1145,7 @@ class LopperSDT:
         if re.search( ".*,tree$", lop_type ):
             # TODO: consolidate this with the output lop
             try:
-                tree_name = this_lop_node['tree'].value[0]
+                tree_name = lop_node['tree'].value[0]
             except:
                 print( "[ERROR]: cannot get tree name from lop" )
                 sys.exit(1)
@@ -1157,7 +1155,7 @@ class LopperSDT:
 
             tree_nodes = []
             try:
-                tree_regex = this_lop_node['nodes'].value
+                tree_regex = lop_node['nodes'].value
             except:
                 tree_regex = []
 
@@ -1256,15 +1254,15 @@ class LopperSDT:
             # particularly feasible or desireable.
             #
             try:
-                cb_tgt_node_name = this_lop_node['node'].value[0]
+                cb_tgt_node_name = lop_node['node'].value[0]
             except:
                 print( "[ERROR]: cannot find target node for the assist" )
                 sys.exit(1)
 
             try:
-                cb = this_lop_node.propval('assist')[0]
-                cb_id = this_lop_node.propval('id')[0]
-                cb_opts = this_lop_node.propval('options')[0]
+                cb = lop_node.propval('assist')[0]
+                cb_id = lop_node.propval('id')[0]
+                cb_opts = lop_node.propval('options')[0]
                 cb_opts = cb_opts.lstrip()
                 if cb_opts:
                     cb_opts = cb_opts.split( ' ' )
@@ -1314,7 +1312,7 @@ class LopperSDT:
             prop_extension = ""
 
             try:
-                load_prop = this_lop_node['load'].value[0]
+                load_prop = lop_node['load'].value[0]
             except:
                 load_prop = ""
 
@@ -1345,7 +1343,7 @@ class LopperSDT:
 
                 assist_properties = {}
                 try:
-                    props = this_lop_node['props'].value
+                    props = lop_node['props'].value
                 except:
                     # does the module have a "props" routine for extra querying ?
                     try:
@@ -1358,7 +1356,7 @@ class LopperSDT:
                     #       is ok as a proof of concept only
                     if p == "file_ext":
                         try:
-                            prop_extension = this_lop_node['file_ext'].value[0]
+                            prop_extension = lop_node['file_ext'].value[0]
                         except:
                             try:
                                 prop_extension = imported_module.file_ext()
@@ -1369,7 +1367,7 @@ class LopperSDT:
 
                     if p == "id":
                         try:
-                            prop_id = this_lop_node['id'].value[0]
+                            prop_id = lop_node['id'].value[0]
                         except:
                             try:
                                 prop_id = imported_module.id()
@@ -1401,13 +1399,13 @@ class LopperSDT:
                 print( "[INFO]: node add lop" )
 
             try:
-                src_node_name = this_lop_node['node_src'].value[0]
+                src_node_name = lop_node['node_src'].value[0]
             except:
                 print( "[ERROR]: node add detected, but no node name found" )
                 sys.exit(1)
 
             try:
-                tree_name = this_lop_node['tree'].value[0]
+                tree_name = lop_node['tree'].value[0]
                 try:
                     tree = self.subtrees[tree_name]
                 except:
@@ -1417,11 +1415,11 @@ class LopperSDT:
                 tree = self.tree
 
 
-            lops_node_path = this_lop_node.abs_path
+            lops_node_path = lop_node.abs_path
             src_node_path = lops_node_path + "/" + src_node_name
 
             try:
-                dest_node_path = this_lop_node["node_dest"].value[0]
+                dest_node_path = lop_node["node_dest"].value[0]
             except:
                 dest_node_path = "/" + src_node_name
 
@@ -1452,7 +1450,7 @@ class LopperSDT:
                 print( "[INFO]: conditional lop found" )
 
             try:
-                tree_name = this_lop_node['tree'].value[0]
+                tree_name = lop_node['tree'].value[0]
                 try:
                     tree = self.subtrees[tree_name]
                 except:
@@ -1461,19 +1459,19 @@ class LopperSDT:
             except:
                 tree = self.tree
 
-            this_lop_subnodes = this_lop_node.subnodes()
+            this_lop_subnodes = lop_node.subnodes()
             # the "cond_root" property of the lop node is the name of a node
             # under the same lop node that is the start of the conditional node
             # chain. If one wasn't provided, we start at '/'
             try:
-                root = this_lop_node["cond_root"].value[0]
+                root = lop_node["cond_root"].value[0]
             except:
                 root = "/"
 
             try:
-                conditional_start = lops_tree[this_lop_node.abs_path + "/" + root]
+                conditional_start = lops_tree[lop_node.abs_path + "/" + root]
             except:
-                print( "[INFO]: conditional node %s not found, returning" % this_lop_node.abs_path + "/" + root )
+                print( "[INFO]: conditional node %s not found, returning" % lop_node.abs_path + "/" + root )
                 return False
 
             # the subnodes of the conditional lop represent the set of conditions
@@ -1484,7 +1482,7 @@ class LopperSDT:
             # drop the path to the this conditional lop from the full path of
             # the last node in the chain. That's the path we'll look for in the
             # system device tree.
-            cond_path = re.sub( this_lop_node.abs_path, "", cond_last_node.abs_path)
+            cond_path = re.sub( lop_node.abs_path, "", cond_last_node.abs_path)
 
             sdt_tgt_nodes = tree.nodes(cond_path)
             if not sdt_tgt_nodes:
@@ -1561,7 +1559,7 @@ class LopperSDT:
                             try:
                                 # run the lop, passing the target node as an option (the lop may
                                 # or may not use it)
-                                ret = self.exec_lop( lops_fdt, n.number, { 'start_node' : tgt_match.abs_path } )
+                                ret = self.exec_lop( n, lops_tree, { 'start_node' : tgt_match.abs_path } )
                             except Exception as e:
                                 print( "[WARNING]: true block had an exception: %s" % e )
                                 ret = False
@@ -1585,7 +1583,7 @@ class LopperSDT:
                                 print( "[DBG++]: false subnode found with lop: %s" % (n['compatible'].value[0] ) )
 
                             try:
-                                ret = self.exec_lop( lops_fdt, n.number, { 'start_node' : tgt_match.abs_path } )
+                                ret = self.exec_lop( n, lops_tree, { 'start_node' : tgt_match.abs_path } )
                             except Exception as e:
                                 print( "[WARNING]: false block had an exception: %s" % e )
                                 ret = False
@@ -1600,18 +1598,18 @@ class LopperSDT:
 
         if re.search( ".*,lop,code.*$", lop_type ) or re.search( ".*,lop,xlate.*$", lop_type ):
             # execute a block of python code against a specified start_node
-            code = Lopper.property_get( lops_fdt, lop_node_number, "code" )
+            code = lop_node['code'].value[0]
 
             if not options:
                 options = {}
 
             try:
-                options_spec = this_lop_node['options'].value
+                options_spec = lop_node['options'].value
             except:
                 options_spec = ""
 
             try:
-                tree_name = this_lop_node['tree'].value[0]
+                tree_name = lop_node['tree'].value[0]
                 try:
                     tree = self.subtrees[tree_name]
                 except:
@@ -1637,7 +1635,7 @@ class LopperSDT:
                     start_node = "/"
 
             try:
-                inherit_list = this_lop_node['inherit'].value[0].replace(" ","").split(",")
+                inherit_list = lop_node['inherit'].value[0].replace(" ","").split(",")
             except:
                 inherit_list = []
 
@@ -1664,16 +1662,17 @@ class LopperSDT:
             return ret
 
         if re.search( ".*,lop,modify$", lop_type ):
-            node_name = lops_fdt.get_name( lop_node_number )
+            node_name = lop_node.name # lops_fdt.get_name( lop_node_number )
             if self.verbose:
                 print( "[INFO]: node %s is a compatible modify lop" % node_name )
             try:
-                prop = lops_fdt.getprop( lop_node_number, 'modify' ).as_str()
+                prop = lop_node["modify"].value[0]
+                # lops_fdt.getprop( lop_node_number, 'modify' ).as_str()
             except:
                 prop = ""
 
             try:
-                tree_name = this_lop_node['tree'].value[0]
+                tree_name = lop_node['tree'].value[0]
                 try:
                     tree = self.subtrees[tree_name]
                 except:
@@ -1683,7 +1682,11 @@ class LopperSDT:
                 tree = self.tree
 
             # was there a regex passed for node matching ?
-            nodes_selection = Lopper.property_get( lops_fdt, lop_node_number, "nodes" )
+            # nodes_selection = Lopper.property_get( lops_fdt, lop_node_number, "nodes" )
+            try:
+                nodes_selection = lop_node["nodes"].value[0]
+            except:
+                nodes_selection = ""
             if prop:
                 if self.verbose:
                     print( "[INFO]: modify property found: %s" % prop )
@@ -1935,27 +1938,37 @@ class LopperSDT:
                 else:
                     lops_fdt = x.fdt
 
-                # Get all the nodes with a lop property
-                lops_nodes = Lopper.nodes_with_property( lops_fdt, "compatible", "system-device-tree-v1,lop.*", "lops", False, 1 )
-                for n in lops_nodes:
-                    prop = lops_fdt.getprop( n, "compatible" )
-                    val = Lopper.property_get( lops_fdt, n, "compatible" )
-                    node_name = lops_fdt.get_name( n )
+                fdt_tree = LopperTree( lops_fdt )
+                lop_test = re.compile('system-device-tree-v1,lop.*')
+                lop_cond_test = re.compile('.*,lop,conditional.*$' )
+                skip_list = []
+                for f in fdt_tree:
+                    if not any(lop_test.match(i) for i in f.type):
+                        continue
 
-                    noexec = Lopper.property_get( lops_fdt, n, "noexec" )
-                    if noexec:
+                    # past here, we know the node is a lop variant, we need one
+                    # more check. Is the parent conditional ? if so, we don't
+                    # excute it directly.
+                    if any( lop_cond_test.match(i) for i in f.type):
+                        skip_list = f.subnodes()
+                        # for historical resons, the current node is in the subnodes
+                        # yank it out or we'll be skipped!
+                        skip_list.remove( f )
+
+                    try:
+                        noexec = f['noexec']
+                    except:
+                        noexec = False
+
+                    if noexec or f in skip_list:
                         if self.verbose > 1:
-                            print( "[DBG+]: noexec flag found, skipping lop" )
+                            print( "[DBG+]: noexec or skip set for: %s" % f.abs_path )
                         continue
 
                     if self.verbose:
-                        print( "[INFO]: ------> processing lop: %s" % val )
+                        print( "[INFO]: ------> processing lop: %s" % f.abs_path )
 
-                    if self.verbose > 2:
-                        print( "[DBG+]: prop: %s val: %s" % (prop.name, val ))
-                        print( "[DBG+]: node name: %s" % node_name )
-
-                    self.exec_lop( lops_fdt, n )
+                    self.exec_lop( f, fdt_tree )
 
 
 class LopperFile:
