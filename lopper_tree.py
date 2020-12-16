@@ -1050,6 +1050,21 @@ class LopperNode(object):
 
             return False
 
+    def __hash__(self):
+        """magic method for hasing a node
+
+        Used when searching for a node in a list (among other things). We return
+        the hash of a nodes absolute path as the identity value.
+
+        Args:
+            None
+
+        Returns:
+           Integer hash for the node
+
+        """
+        return hash((self.abs_path))
+
     def __next__(self):
         """magic method for iteration on a node
 
