@@ -348,6 +348,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         driver_compatlist = compat_list(schema)
         driver_proplist = schema['required']
         try:
+            config_struct = schema['config']
+        except KeyError:
+            config_struct = []
+        try:
             driver_optproplist = schema['optional']
         except KeyError:
             driver_optproplist = []
@@ -363,7 +367,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
     # config file name: x<driver_name>_g.c 
     driver_name = yamlfile.split('/')[-1].split('.')[0]
-    config_struct = str("X") + driver_name.capitalize() + str("_Config")
+    if not config_struct:
+        config_struct = str("X") + driver_name.capitalize() + str("_Config")
+    else:
+        config_struct = config_struct[0]
     outfile = str("x") + driver_name + str("_g.c")
 
     plat = DtbtoCStruct(outfile)
