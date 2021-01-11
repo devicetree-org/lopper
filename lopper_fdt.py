@@ -1185,7 +1185,7 @@ class Lopper:
             print( "[INFO]: dumping dtb: %s" % dtcargs )
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
-        if result.returncode is not 0:
+        if result.returncode != 0:
             print( "[ERROR]: unable to export a dts" )
             print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
 
@@ -1502,7 +1502,7 @@ class Lopper:
             print( "[INFO]: preprocessing dts_file: %s" % ppargs )
 
         result = subprocess.run( ppargs, check = True )
-        if result.returncode is not 0:
+        if result.returncode != 0:
             print( "[ERROR]: unable to preprocess dts file: %s" % ppargs )
             print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
             sys.exit(result.returncode)
@@ -1593,14 +1593,14 @@ class Lopper:
             print( "[INFO]: compiling dtb: %s" % dtcargs )
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
-        if result is not 0:
+        if result != 0:
             # force the dtb, we need to do processing
             dtcargs += [ "-f" ]
             if verbose:
                 print( "[INFO]: forcing dtb generation: %s" % dtcargs )
 
             result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
-            if result.returncode is not 0:
+            if result.returncode != 0:
                 print( "[ERROR]: unable to (force) compile %s" % dtcargs )
                 print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
                 sys.exit(1)
