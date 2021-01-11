@@ -8,6 +8,7 @@ flask = "*"
 flask-restful = "*"
 pandas = "*"
 "ruamel.yaml" = "*"
+anytree = "*"
 
 [dev-packages]
 
