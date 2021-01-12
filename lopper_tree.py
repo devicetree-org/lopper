@@ -2684,7 +2684,7 @@ class LopperTree:
         try:
             eval( b, m, m )
         except Exception as e:
-            print("[WARNING]: Exception (%s) raised by code block: %s" % (e,tc_full_block))
+            print("[WARNING]: Exception (%s) raised by code block:\n%s" % (e,tc_full_block))
             os._exit(1)
 
         if self.__dbg__ > 2:
