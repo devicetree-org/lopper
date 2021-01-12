@@ -445,7 +445,7 @@ class LopperSDT:
 
         self.assists_wrap()
 
-    def module_setup( self, module_name, module_args = [] ):
+    def assist_autorun_setup( self, module_name, module_args = [] ):
         sw = libfdt.Fdt.create_empty_tree( 2048 )
         sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
         sw.setprop_u32( 0, 'priority', 3)
@@ -1996,6 +1996,7 @@ def usage():
     print('  -a, --assist        load specified python assist (for node or output processing)' )
     print('  -A, --assist-paths  colon separated lists of paths to search for assist loading' )
     print('    , --enhanced      when writing output files, do enhanced processing (this includes phandle replacement, comments, etc' )
+    print('    . --auto          automatically run any assists passed via -a' )
     print('  -o, --output        output file')
     print('  -f, --force         force overwrite output file(s)')
     print('    , --werror        treat warnings as errors' )
@@ -2027,6 +2028,7 @@ def main():
     global module_args
     global debug
     global server
+    global auto_run
 
     debug = False
     sdt = None
@@ -2044,8 +2046,13 @@ def main():
     outdir="./"
     load_paths = []
     server = False
+    auto_run = False
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:D", [ "debug", "assist-paths=", "outdir", "enhanced", "save-temps", "version", "werror","target=", "dump", "force","verbose","help","input=","output=","dryrun","assist=","server"])
+        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:D",
+                                   [ "debug", "assist-paths=", "outdir", "enhanced",
+                                     "save-temps", "version", "werror","target=", "dump",
+                                     "force","verbose","help","input=","output=","dryrun",
+                                     "assist=","server", "auto"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2089,6 +2096,8 @@ def main():
             save_temps=True
         elif o in ('--enhanced' ):
             enhanced_print = True
+        elif o in ('--auto' ):
+            auto_run = True
         elif o in ('--version'):
             print( "%s" % LOPPER_VERSION )
             sys.exit(0)
@@ -2200,8 +2209,20 @@ if __name__ == "__main__":
     device_tree.setup( sdt, inputfiles, "", force )
     device_tree.assists_setup( cmdline_assists )
 
-    if module_name:
-        device_tree.module_setup( module_name, module_args )
+    if auto_run:
+        for a in cmdline_assists:
+            assist_args = []
+            if a == module_name:
+                assist_args = module_args
+
+            device_tree.assist_autorun_setup( a, assist_args )
+
+    else:
+        # a "module" is an assist passed after -- on the command line call to
+        # lopper.
+        if module_name:
+            # This sets the trigger node of "/", and makes it autorun
+            device_tree.assist_autorun_setup( module_name, module_args )
 
     if debug:
         import cProfile

@@ -44,6 +44,8 @@ lopper.py --help
       -i, --input         process supplied input device tree description
       -a, --assist        load specified python assist (for node or output processing)
       -A, --assist-paths  colon separated lists of paths to search for assist loading
+        , --enhanced      when writing output files, do enhanced processing (this includes phandle replacement, comments, etc
+        . --auto          automatically run any assists passed via -a
       -o, --output        output file
       -f, --force         force overwrite output file(s)
         , --werror        treat warnings as errors
