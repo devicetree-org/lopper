@@ -1,0 +1,89 @@
+/dts-v1/;
+/ {
+	compatible = "system-device-tree-v1,lop";
+	lops {
+
+
+		lop_2_1 {
+			compatible = "system-device-tree-v1,lop,add";
+			node_src = "domains";
+			node_dest = "/domains";
+			domains {
+				 #address-cells = <0x2>;
+				 #size-cells = <0x2>;
+			};
+		};
+
+		lop_2_3_0 {
+			compatible = "system-device-tree-v1,lop,code-v1";
+			code = "
+			devices = [
+			'/amba/pmcqspi@f1030000',
+			'/amba_pl/ai_engine@40000000',
+			'/amba/serial@ff000000', 
+			'/amba/serial@ff010000' ,
+			'/amba/mailbox@ff330000',
+			'/amba/mailbox@ff340000',
+			'/amba/mailbox@ff350000',
+			'/amba/mailbox@ff360000',
+			'/amba/mailbox@ff370000',
+			'/amba/mailbox@ff380000',
+			'/amba/mailbox@ff3a0000',
+			'/memory@fffc0000',
+			'/amba/psv_tcm_global@ffe00000',
+			'/amba/psv_tcm_global@ffe20000',
+			'/amba/psv_tcm_global@ffe90000',
+			'/amba/psv_tcm_global@ffeb0000',
+
+			'/cpus_a72/cpu@0',
+			'/cpus_a72/cpu@1',
+
+			'/amba/ethernet@ff0c0000',
+			'/amba/ethernet@ff0d0000',
+			'/amba/sdhci@f1040000'  , 
+			'/amba/sdhci@f1050000'   ,
+
+			'/amba/can@ff060000'     ,
+			'/amba/can@ff070000'     ,
+			'/amba/i2c@ff020000'     ,
+			'/amba/i2c@ff030000'     ,
+			'/amba/dma@ffaf0000',
+			'/amba/dma@ffae0000',
+			'/amba/dma@ffad0000',
+			'/amba/dma@ffac0000',
+			'/amba/dma@ffab0000',
+			'/amba/dma@ffaa0000',
+			'/amba/dma@ffa90000',
+			'/amba/dma@ffa80000',
+			'/memory@800000000' ,
+			'/amba/rtc@f12a0000',
+			'/amba/timer@ff0e0000',
+			'/amba/usb@ff9d0000'  ,
+			'/amba/watchdog@fd4d0000',
+			'/amba/gpio@ff0b0000',
+			'/amba/gpio@f1020000',
+			'/amba/spi@ff040000',
+			'/amba/spi@ff050000',
+			'/cpus_r5/cpu@4',
+			'/cpus_r5/cpu@5',
+			'/amba/timer@ff0f0000',
+			'/amba/timer@ff100000',
+			]
+
+			# for each device in nodes_to_update:
+			# find node in tree with name
+			# generate phandle for that node
+			root_node = node.tree['/']
+			for n in devices:
+				target_node = root_node.tree[n]
+				new_phandle = root_node.tree.phandle_gen()
+				newprop = LopperProp(name='phandle',value=new_phandle)
+				target_node.phandle = new_phandle
+				target_node + newprop
+				target_node.sync(root_node.tree.fdt)
+			";
+		};
+
+	};
+
+};

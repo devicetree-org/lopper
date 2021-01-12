@@ -3,6 +3,7 @@
 	compatible = "system-device-tree-v1,lop";
 	lops {
 
+
 		lop_2_2_1 {
 			compatible = "system-device-tree-v1,lop,add";
 			node_src = "rpu0_domain";
@@ -12,21 +13,8 @@
 				xilinx,subsystem = <0x1>;
 				#xilinx,config-cells = <2>;
 			
-				/* subsystem for split r5-0 */
-				cpus = <&cpus_r5 0x1 0x80000000>;
-			};
-		};
-		lop_2_2_2 {
-			compatible = "system-device-tree-v1,lop,add";
-			node_src = "rpu1_domain";
-			node_dest = "/domains/rpu1_domain";
-			rpu1_domain {
-				compatible = "openamp,domain-v1";
-				xilinx,subsystem = <0x1>;
-				#xilinx,config-cells = <2>;
-			
-				/* subsystem for split r5-1 */
-				cpus = <&cpus_r5 0x2 0x80000000>;
+				/* subsystem for lockstep r5 */
+				cpus = <&cpus_r5 0x3 0x80000000>;
 			};
 		};
 
@@ -44,11 +32,14 @@
 			'/amba/mailbox@ff370000':[0x4,0xfffff],
 			'/amba/mailbox@ff380000':[0x4,0xfffff],
 			'/amba/mailbox@ff3a0000':[0x4,0xfffff],
-			'/amba/timer@ff0f0000':[0x7,0x1],
-			'/amba/serial@ff010000':[ 0x8707, 0x2],
-			'/amba/watchdog@fd4d0000':[ 0x7, 0x2],
+			'/amba/timer@ff100000':[0x7,0x1],
+			'/amba/serial@ff010000':[ 0x8707, 0x6],
+			'/amba/watchdog@fd4d0000':[ 0x7, 0x6],
 			'/amba/psv_tcm_global@ffe00000':[0x8304,0xfffff],
 			'/amba/psv_tcm_global@ffe20000':[0x8304,0xfffff],
+			'/amba/psv_tcm_global@ffe90000':[0x8304,0xfffff],
+			'/amba/psv_tcm_global@ffeb0000':[0x8304,0xfffff],
+
 			'/amba/rtc@f12a0000':[ 0x4, 0xfffff],
 			'/cpus_r5/cpu@4':[ 0x8104, 0xfffff],
 			}
@@ -74,49 +65,6 @@
 			rpu0_domain_node.sync( rpu0_domain_node.tree.fdt )
 			";
 		};
-		lop_2_3_3_1 {
-			compatible = "system-device-tree-v1,lop,code-v1";
-			code = "
-			requirements = {
-			'/amba/pmcqspi@f1030000':[0x4,0xfffff],
-			'/amba/serial@ff000000':[0x5,0x38],
-			'/amba/mailbox@ff330000':[0x4,0xfffff],
-			'/amba/mailbox@ff340000':[0x4,0xfffff],
-			'/amba/mailbox@ff350000':[0x8104,0xfffff],
-			'/amba/mailbox@ff360000':[0x4,0xfffff],
-			'/amba/mailbox@ff370000':[0x4,0xfffff],
-			'/amba/mailbox@ff380000':[0x4,0xfffff],
-			'/amba/mailbox@ff3a0000':[0x4,0xfffff],
-			'/amba/timer@ff100000':[0x7,0x1],
-			'/amba/serial@ff010000':[ 0x8707, 0x4],
-			'/amba/watchdog@fd4d0000':[ 0x7, 0x4],
-			'/amba/psv_tcm_global@ffe90000':[0x8304,0xfffff],
-			'/amba/psv_tcm_global@ffeb0000':[0x8304,0xfffff],
-			'/amba/rtc@f12a0000':[ 0x4, 0xfffff],
-			'/cpus_r5/cpu@5':[ 0x8104, 0xfffff],
-			}
-
-			device_list = []
-
-			# set device list for apu domain
-			rpu1_domain_node = node.tree['/domains/rpu1_domain']
-		
-			# for each device in nodes_to_update:
-			# find node in tree with name
-			# generate phandle for that node
-			# add to prop the following: 'phandle nodes_to_update[info]'
-			for n in requirements.keys():
-				target_node = rpu1_domain_node.tree[n]
-				device_list.append(target_node.phandle)
-				device_list.append(requirements[n][0])
-				device_list.append(requirements[n][1])
-
-			device_list_prop = LopperProp(name='xilinx,subsystem-config',value=device_list)
-
-			rpu1_domain_node + device_list_prop
-			rpu1_domain_node.sync( rpu1_domain_node.tree.fdt )
-			";
-		};
 
 		lop_2_3_4 {
 			compatible = "system-device-tree-v1,lop,code-v1";
@@ -134,11 +82,6 @@
 			rpu0_domain_node_cpus[0] = new_phandle
 			rpu0_domain_node['cpus'].value = rpu0_domain_node_cpus
 
-			# set cpus to reference the new phandle
-			rpu1_domain_node = node.tree['/domains/rpu1_domain']
-			rpu1_domain_node_cpus = rpu1_domain_node.propval('cpus')
-			rpu1_domain_node_cpus[0] = new_phandle
-			rpu1_domain_node['cpus'].value = rpu1_domain_node_cpus
 			";
                 };
 	};
