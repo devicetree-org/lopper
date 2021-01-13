@@ -583,23 +583,6 @@ class LopperSDT:
                 if self.werror:
                     sys.exit(2)
 
-    @staticmethod
-    def phandle_safe_name( phandle_name ):
-        """Make the passed name safe to use as a phandle label/reference
-
-        Args:
-            phandle_name (string): the name to use for a phandle
-
-        Returns:
-            The modified phandle safe string
-        """
-
-        safe_name = phandle_name.replace( '@', '' )
-        safe_name = safe_name.replace( '-', "_" )
-
-        return safe_name
-
-
     def assist_find(self, assist_name, local_load_paths = []):
         """Locates a python module that matches assist_name
 
