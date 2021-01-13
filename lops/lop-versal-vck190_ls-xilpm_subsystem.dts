@@ -17,6 +17,18 @@
 				cpus = <&cpus_r5 0x3 0x80000000>;
 			};
 		};
+		lop_2_2_2 {
+			compatible = "system-device-tree-v1,lop,code-v1";
+			code = "
+			root_node = node.tree['/']
+			rpu0_domain_node = node.tree['/domains/rpu0_domain']
+			new_phandle = root_node.tree.phandle_gen()
+			newprop = LopperProp(name='phandle',value=new_phandle)
+			rpu0_domain_node.phandle = new_phandle
+			rpu0_domain_node + newprop
+			rpu0_domain_node.sync( root_node.tree.fdt )
+			";
+		};
 
 		lop_2_3_3 {
 			compatible = "system-device-tree-v1,lop,code-v1";
@@ -46,7 +58,7 @@
 
 			device_list = []
 
-			# set device list for apu domain
+			# set device list for rpu0 domain
 			rpu0_domain_node = node.tree['/domains/rpu0_domain']
 		
 			# for each device in nodes_to_update:

@@ -29,6 +29,26 @@
 				cpus = <&cpus_r5 0x2 0x80000000>;
 			};
 		};
+		lop_2_2_3 {
+			compatible = "system-device-tree-v1,lop,code-v1";
+			code = "
+			root_node = node.tree['/']
+
+			rpu0_domain_node = node.tree['/domains/rpu0_domain']
+			new_phandle = root_node.tree.phandle_gen()
+			newprop = LopperProp(name='phandle',value=new_phandle)
+			rpu0_domain_node.phandle = new_phandle
+			rpu0_domain_node + newprop
+			rpu0_domain_node.sync( root_node.tree.fdt )
+
+			rpu1_domain_node = node.tree['/domains/rpu1_domain']
+			new_phandle = root_node.tree.phandle_gen()
+			newprop = LopperProp(name='phandle',value=new_phandle)
+			rpu1_domain_node.phandle = new_phandle
+			rpu1_domain_node + newprop
+			rpu1_domain_node.sync( root_node.tree.fdt )
+			";
+		};
 
 		lop_2_3_3 {
 			compatible = "system-device-tree-v1,lop,code-v1";

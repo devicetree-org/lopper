@@ -67,7 +67,7 @@ def add_subsystem(domain_node, sdt, output):
 
       print("# subsystem_"+str(subsystem_num), file=output)
       print("pm_add_subsystem "+ hex(current_subsystem_id), file=output)
-      subsystems[cpu_node.name] = current_subsystem_id
+      subsystems[domain_node.name] = current_subsystem_id
       current_subsystem_id += 1
     else:
       print("ERROR: add_subsystem: cpu  not supported ",str(cpu_node))
@@ -82,9 +82,31 @@ def cdo_write_command(sub_num, sub_id, dev_str, dev_val, flag1, flag2, output):
   print("# subsystem_"+str(sub_num)+" "+dev_str,file=output)
   print("pm_add_requirement "+hex(sub_id)+" "+dev_val+" "+hex(flag1)+" "+hex(flag2),file=output)
 
+def add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node, target_pnode, operation):
+  root_node = domain_node.tree['/']
+  subsystem_id = subsystems[domain_node.name]
+  subsystem_num = subsystem_id & 0xF
+
+  target_domain_node = root_node.tree.pnode(target_pnode)
+  target_cpu_node_phandle = target_domain_node.propval("cpus")[0]
+
+  target_cpu_node = root_node.tree.pnode(target_cpu_node_phandle)
+  target_sub_id = subsystems[target_domain_node.name]
+  target_sub_num = target_sub_id & 0xF
+
+  cdo_comment = "# subsystem_"+str(subsystem_num)+ " can enact "
+  if operation > 7:
+    cdo_comment += "secure and "
+  cdo_comment += "non-secure ops upon subsystem_" + str(target_sub_num)
+  cdo_cmd = "pm_add_requirement "+hex(subsystem_id)+" "+hex(target_sub_id)+" "+hex(operation)
+
+  print(cdo_comment,file=output)
+  print(cdo_cmd,file=output)
+
+
 # add requirements that link devices to subsystems
-def add_requirement_for_devices(domain_node, cpu_node, sdt, output):
-  subsystem_id = subsystems[cpu_node.name]
+def add_requirements(domain_node, cpu_node, sdt, output):
+  subsystem_id = subsystems[domain_node.name]
   subsystem_num = subsystem_id & 0xF
 
   if "a72" in cpu_node.name:
@@ -102,7 +124,7 @@ def add_requirement_for_devices(domain_node, cpu_node, sdt, output):
       continue
     device_node = root_node.tree.pnode(device_phandle)
     if device_node == None:
-      print("ERROR: add_requirement_for_devices: invalid phandle: ",str(device_phandle), index, device_node)
+      print("ERROR: add_requirements: invalid phandle: ",str(device_phandle), index, device_node)
       return -1
 
     # there are multiple cases to handle
@@ -117,8 +139,12 @@ def add_requirement_for_devices(domain_node, cpu_node, sdt, output):
         else:
           key += "1"
       else:
-        print("add_requirement_for_devices: cores: TODO not covered: ",str(device_node))
+        print("add_requirements: cores: not covered: ",str(device_node))
         return -1
+    elif "domain" in device_node.name:
+      add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node,
+                                           device_list[index], device_list[index+1])
+      continue
     elif device_node.propval("power-domains") != [""]:
       cdo_write_command(subsystem_num, subsystem_id, 
                         xilinx_versal_device_names[device_node.propval("power-domains")[1]],
@@ -136,10 +162,10 @@ def add_requirement_for_devices(domain_node, cpu_node, sdt, output):
       elif device_node.propval("reg")[1] in memory_range_to_dev_name.keys():
         key = memory_range_to_dev_name[device_node.propval("reg")[1]]
       else:
-        print("add_requirement_for_devices: TODO: memory: ",str(device_node),hex(device_node.propval("reg")[1]))
+        print("add_requirements: memory: not covered: ",str(device_node),hex(device_node.propval("reg")[1]))
         return -1
     else:
-      print("add_requirement_for_devices: not covered: ",str(device_node))
+      print("add_requirements: not covered: ",str(device_node))
       return -1
     cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]),
                       device_list[index+1],device_list[index+2],output)
@@ -153,10 +179,8 @@ def cdo_write( domain_node, sdt, options ):
     except:
         verbose = 0
 
-    print( " node being processing: ", str(domain_node) )
     if (len(options["args"]) > 0):
       outfile = options["args"][0]
-      print("set cdo outfile to ",outfile)
     else:
       print("cdo header file name not provided.")
       return -1
@@ -175,11 +199,16 @@ def cdo_write( domain_node, sdt, options ):
 
     # given root domain node do the following:
     # add subsystem
+    domain_nodes = []
+    cpu_nodes = []
     for n in domain_node.subnodes():
       if n.propval('xilinx,subsystem-config') != ['']:
         cpu_node = add_subsystem(n, sdt, output)
-        add_requirement_for_devices(n, cpu_node, sdt, output)
-        # TODO permissions requirements
+        cpu_nodes.append(cpu_node)
+        domain_nodes.append(n)
+    # only parse requirements after all subsystems are loade
+    for i in range(len(domain_nodes)):
+      add_requirements(domain_nodes[i], cpu_nodes[i], sdt, output)
 
     return True
 
