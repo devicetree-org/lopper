@@ -712,7 +712,7 @@ class LopperSDT:
 
             self.lops.insert( 0, lop )
 
-    def domain_spec(self, tgt_domain):
+    def domain_spec(self, tgt_domain, tgt_domain_id = "openamp,domain-v1"):
         """generate a lop for a command line passed domain
 
         When a target domain is passed on the command line, we must generate
@@ -721,6 +721,8 @@ class LopperSDT:
 
         Args:
            tgt_domain (string): path to the node to use as the domain
+           tgt_domain_id (string): assist identifier to use for locating a
+                                   registered assist.
 
         Returns:
            Nothing
@@ -741,8 +743,8 @@ class LopperSDT:
         offset = sw.add_subnode( 0, 'lops' )
         offset = sw.add_subnode( offset, 'lop_0' )
         sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,assist-v1')
-        sw.setprop_str( offset, 'node', '/chosen/openamp_r5' )
-        sw.setprop_str( offset, 'id', 'openamp,domain-v1' )
+        sw.setprop_str( offset, 'node', tgt_domain )
+        sw.setprop_str( offset, 'id', tgt_domain_id )
         lop = LopperFile( 'commandline' )
         lop.dts = ""
         lop.dtb = ""
