@@ -1,0 +1,62 @@
+/dts-v1/;
+/ {
+	compatible = "system-device-tree-v1,lop";
+	lops {
+		/* for each domain, enable perms to the other domains */
+		lop_2_2_3 {
+			compatible = "system-device-tree-v1,lop,code-v1";
+			code = "
+			root_node = node.tree['/']
+			prop_name = 'xilinx,subsystem-config'
+
+			rpu0_domain_node = node.tree['/domains/rpu0_domain']
+			apu_domain_node = node.tree['/domains/apu_domain']
+
+			rpu0_prop = rpu0_domain_node[prop_name]
+			rpu0_reqs = rpu0_prop.value
+			rpu0_domain_node - rpu0_prop
+
+			apu_prop = apu_domain_node[prop_name]
+			apu_reqs = apu_prop.value
+			apu_domain_node - apu_prop
+
+
+			# split config for rpu
+			#rpu1_domain_node = node.tree['/domains/rpu1_domain']
+			#rpu1_prop = rpu1_domain_node[prop_name]
+			#rpu1_reqs = rpu1_prop.value
+			#rpu1_domain_node - rpu1_prop
+
+			#rpu0_reqs.append(rpu1_domain_node.phandle)
+			#rpu0_reqs.append(0x7) # non secure only
+			#rpu0_reqs.append(0x0) # expect third arg in lopper plugin
+			#rpu1_reqs.append(rpu0_domain_node.phandle)
+			#rpu1_reqs.append(0x7) # non secure only
+			#rpu1_reqs.append(0x0) # expect third arg in lopper plugin
+			#rpu1_reqs.append(apu_domain_node.phandle)
+			#rpu1_reqs.append(0x7) # non secure only
+			#rpu1_reqs.append(0x0) # expect third arg in lopper plugin
+
+			#rpu1_domain_node + LopperProp(prop_name, value = rpu1_reqs)
+			#rpu1_domain_node.sync( root_node.tree.fdt )
+
+
+			# apu to rpu0
+			rpu0_reqs.append(apu_domain_node.phandle)
+			rpu0_reqs.append(0x7) # non secure only
+			rpu0_reqs.append(0x0) # expect third arg in lopper plugin
+			apu_reqs.append(rpu0_domain_node.phandle)
+			apu_reqs.append(0x7) # non secure only
+			apu_reqs.append(0x0) # expect third arg in lopper plugin
+
+			apu_domain_node + LopperProp(prop_name, value = apu_reqs)
+			rpu0_domain_node + LopperProp(prop_name, value = rpu0_reqs)
+
+			rpu0_domain_node.sync( root_node.tree.fdt )
+			apu_domain_node.sync( root_node.tree.fdt )
+
+			";
+		};
+	};
+
+};

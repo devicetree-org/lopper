@@ -17,10 +17,25 @@
 			};
 		};
 
+		lop_2_2_1 {
+			compatible = "system-device-tree-v1,lop,code-v1";
+			code = "
+			root_node = node.tree['/']
+			apu_domain_node = node.tree['/domains/apu_domain']
+			new_phandle = root_node.tree.phandle_gen()
+			newprop = LopperProp(name='phandle',value=new_phandle)
+			apu_domain_node.phandle = new_phandle
+			apu_domain_node + newprop
+			apu_domain_node.sync( root_node.tree.fdt )
+			";
+		};
+
+
 		lop_2_3_1 {
 			compatible = "system-device-tree-v1,lop,code-v1";
 			code = "
 			requirements = {
+
 			'/amba/pmcqspi@f1030000':[0x4,0xfffff],
 			'/amba_pl/ai_engine@40000000':[0x4,0xfffff],
 			'/amba/serial@ff000000':[0x5,0x38],
