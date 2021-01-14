@@ -474,7 +474,10 @@ class LopperProp():
         # future .. convert to hex.
         prop_val = []
         for f in self.value:
-            prop_val.append( hex(f) )
+            if type(f) == str:
+                prop_val.append( f )
+            else:
+                prop_val.append( hex(f) )
 
         if not prop_val:
             return phandle_targets
@@ -499,6 +502,11 @@ class LopperProp():
                     lnode = self.node.tree.pnode( i )
                     if lnode:
                         phandle_targets.append( lnode )
+                    else:
+                        # was it a label ?
+                        lnode = self.node.tree.lnodes( re.escape(i) )
+                        if lnode:
+                            phandle_targets.append( lnode )
                 except:
                     pass
 
@@ -567,6 +575,7 @@ class LopperProp():
         self.ptype = prop_type
 
         phandle_idx, phandle_field_count = self.phandle_params()
+        phandle_tgts = self.resolve_phandles( fdt )
 
         if prop_type == "comment":
             outstring = ""
@@ -621,7 +630,11 @@ class LopperProp():
 
                 # is this a list of ints, or string ? Test the first
                 # item to know.
-                list_of_nums = False
+                if phandle_tgts:
+                    list_of_nums = True
+                else:
+                    list_of_nums = False
+
                 if type(prop_val[0]) == str:
                     # is it really a number, hiding as a string ?
                     base = 10
@@ -676,9 +689,9 @@ class LopperProp():
                                         if tgn == None:
                                             # if we couldn't find the target, maybe it is in
                                             # as a string. So let's check that way.
-                                            tgn2 = self.node.tree.nodes( i )
+                                            tgn2 = self.node.tree.nodes( re.escape(i) )
                                             if not tgn2:
-                                                tgn2 = self.node.tree.lnodes( i )
+                                                tgn2 = self.node.tree.lnodes( re.escape(i) )
 
                                             if tgn2:
                                                 tgn = tgn2[0]
