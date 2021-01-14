@@ -707,6 +707,9 @@ class LopperProp():
                                     if not phandle_tgt_name and tgn:
                                         phandle_tgt_name = Lopper.phandle_safe_name( tgn.name )
 
+                                    if not phandle_tgt_name:
+                                        raise ValueError( "phandle is not resolvable)" )
+
                                     if self.__dbg__ > 1:
                                         print( "[DBG+]: [%s:%s] phandle replacement of: %s with %s" %
                                                ( self.node.name, self.name, i, phandle_tgt_name))
@@ -717,7 +720,7 @@ class LopperProp():
                                                ( self.node.name, self.name, i, phandle_field_count))
 
                                     drop_record = True
-                                    if len(prop_val) == phandle_field_count:
+                                    if len(prop_val) == phandle_field_count or len(prop_val) < phandle_field_count:
                                         drop_all = True
 
                         # if we are on a "record" boundry, latch what we have (unless the drop
