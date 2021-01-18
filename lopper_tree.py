@@ -716,12 +716,18 @@ class LopperProp():
                                 except Exception as e:
                                     # we need to drop the entire record from the output, the phandle wasn't found
                                     if self.__dbg__ > 1:
-                                        print( "[DBG+]: [%s:%s] phandle: %s not found, dropping %s fields" %
-                                               ( self.node.name, self.name, i, phandle_field_count))
+                                        if self.node.tree.strict:
+                                            print( "[DBG+]: [%s:%s] phandle: %s not found, dropping %s fields" %
+                                                   ( self.node.name, self.name, i, phandle_field_count))
+                                        else:
+                                            print( "[DBG+]: [%s:%s] phandle: %s not found, but not dropping (permissive mode)" %
+                                                   ( self.node.name, self.name, i))
 
-                                    drop_record = True
-                                    if len(prop_val) == phandle_field_count or len(prop_val) < phandle_field_count:
-                                        drop_all = True
+
+                                    if self.node.tree.strict:
+                                        drop_record = True
+                                        if len(prop_val) == phandle_field_count or len(prop_val) < phandle_field_count:
+                                            drop_all = True
 
                         # if we are on a "record" boundry, latch what we have (unless the drop
                         # flag is set) and start gathering more
@@ -1816,6 +1822,7 @@ class LopperTree:
        - __node_iter__: The current iterator
        - start_tree_cb, start_node_cb, end_node_cb, property_cb, end_tree_cb: callbacks
        - depth_first: not currently implemented
+       - strict: Flag indicating if strict property resolution should be enforced
 
     """
     def __init__(self, fdt=None, snapshot = False, depth_first=True ):
@@ -1859,6 +1866,8 @@ class LopperTree:
 
         # type
         self.depth_first = depth_first
+
+        self.strict = True
 
         # resolve against the fdt
         self.resolve()
@@ -2447,6 +2456,12 @@ class LopperTree:
                 self.add( child, True )
                 if self.__dbg__ > 2:
                     print ( "[DBG+++]:     node add: child add complete: %s (%s)" % (child.abs_path,[child]))
+
+        # in case the node has properties that were previously sync'd, we
+        # need to resync them
+        for p in node.__props__.values():
+            p.__pstate__ = "init"
+            p.__modified__ = True
 
         if self.__dbg__ > 1:
             print( "[DBG+][%s] node added: [%s] %s" % (self.fdt,[node],node.abs_path) )

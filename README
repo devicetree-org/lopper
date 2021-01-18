@@ -46,6 +46,7 @@ lopper.py --help
       -A, --assist-paths  colon separated lists of paths to search for assist loading
         , --enhanced      when writing output files, do enhanced processing (this includes phandle replacement, comments, etc
         . --auto          automatically run any assists passed via -a
+        , --permissive    do not enforce fully validated properties (phandles, etc)
       -o, --output        output file
       -f, --force         force overwrite output file(s)
         , --werror        treat warnings as errors

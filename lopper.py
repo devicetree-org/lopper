@@ -122,6 +122,7 @@ class LopperSDT:
         self.outdir = "./"
         self.target_domain = ""
         self.load_paths = []
+        self.permissive = False
 
     def __comment_replacer(self,match):
         """private function to translate comments to device tree attributes"""
@@ -350,6 +351,7 @@ class LopperSDT:
             # this is not a snapshot, but a reference, so we'll see all changes to
             # the backing FDT.
             self.tree = lopper_tree.LopperTree( self.FDT )
+            self.tree.strict = not self.permissive
 
             # join any extended trees to the one we just created
             for t in sdt_extended_trees:
@@ -394,6 +396,7 @@ class LopperSDT:
             self.dts = sdt_file
             self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
             self.tree = lopper_tree.LopperTree( self.FDT )
+            self.tree.strict = not self.permissive
 
         if self.verbose:
             print( "" )
@@ -548,6 +551,7 @@ class LopperSDT:
                     sys.exit(1)
 
                 printer = lopper_tree.LopperTreePrinter( fdt_to_write, True, output_filename, self.verbose )
+                printer.strict = not self.permissive
                 printer.exec()
             else:
                 Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose, False )
@@ -568,6 +572,7 @@ class LopperSDT:
                 for cb_func in cb_funcs:
                     try:
                         out_tree = lopper_tree.LopperTreePrinter( fdt_to_write, True, output_filename, self.verbose )
+                        out_tree.strict = not self.permissive
                         if not cb_func( 0, out_tree, { 'outfile': output_filename, 'verbose' : self.verbose } ):
                             print( "[WARNING]: the assist returned false, check for errors ..." )
                     except Exception as e:
@@ -1057,6 +1062,7 @@ class LopperSDT:
                 # select some nodes!
                 if "*" in output_regex:
                     output_tree = lopper_tree.LopperTree( self.FDT, True )
+                    output_tree.strict = not self.permissive
                 else:
                     # we can gather the output nodes and unify with the selected
                     # copy below.
@@ -1110,6 +1116,7 @@ class LopperSDT:
 
                 if not output_tree and output_nodes:
                     output_tree = lopper_tree.LopperTreePrinter()
+                    output_tree.strict = not self.permissive
                     output_tree.__dbg__ = self.verbose
                     for on in output_nodes:
                         # make a deep copy of the selected node
@@ -1158,6 +1165,7 @@ class LopperSDT:
                 # select some nodes!
                 if "*" in tree_regex:
                     new_tree = lopper_tree.LopperTree( self.FDT, True )
+                    new_tree.strict = not self.permissive
                 else:
                     # we can gather the tree nodes and unify with the selected
                     # copy below.
@@ -1211,6 +1219,7 @@ class LopperSDT:
 
                 if not new_tree and tree_nodes:
                     new_tree = lopper_tree.LopperTreePrinter()
+                    new_tree.strict = not self.permissive
                     new_tree.__dbg__ = self.verbose
                     for on in tree_nodes:
                         # make a deep copy of the selected node
@@ -1982,6 +1991,7 @@ def usage():
     print('  -A, --assist-paths  colon separated lists of paths to search for assist loading' )
     print('    , --enhanced      when writing output files, do enhanced processing (this includes phandle replacement, comments, etc' )
     print('    . --auto          automatically run any assists passed via -a' )
+    print('    , --permissive    do not enforce fully validated properties (phandles, etc)' )
     print('  -o, --output        output file')
     print('  -f, --force         force overwrite output file(s)')
     print('    , --werror        treat warnings as errors' )
@@ -2014,6 +2024,7 @@ def main():
     global debug
     global server
     global auto_run
+    global permissive
 
     debug = False
     sdt = None
@@ -2032,12 +2043,13 @@ def main():
     load_paths = []
     server = False
     auto_run = False
+    permissive = False
     try:
         opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:D",
                                    [ "debug", "assist-paths=", "outdir", "enhanced",
                                      "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
-                                     "assist=","server", "auto"])
+                                     "assist=","server", "auto", "permissive"] )
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2083,6 +2095,8 @@ def main():
             enhanced_print = True
         elif o in ('--auto' ):
             auto_run = True
+        elif o in ('--permissive' ):
+            permissive = True
         elif o in ('--version'):
             print( "%s" % LOPPER_VERSION )
             sys.exit(0)
@@ -2190,6 +2204,7 @@ if __name__ == "__main__":
     device_tree.outdir = outdir
     device_tree.target_domain = target_domain
     device_tree.load_paths = load_paths
+    device_tree.permissive = permissive
 
     device_tree.setup( sdt, inputfiles, "", force )
     device_tree.assists_setup( cmdline_assists )
