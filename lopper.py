@@ -124,59 +124,6 @@ class LopperSDT:
         self.load_paths = []
         self.permissive = False
 
-    def __comment_replacer(self,match):
-        """private function to translate comments to device tree attributes"""
-        s = match.group(0)
-        if s.startswith('/'):
-            global count
-            count = count + 1
-            r1 = re.sub( '\"', '\\"', s )
-            r2 = "lopper-comment-{0} = \"{1}\";".format(count, r1)
-            return r2
-        else:
-            return s
-
-    def __comment_translate(self,text):
-        """private function used to match (and replace) comments in DTS files"""
-        global count
-        count = 0
-        pattern = re.compile(
-                r'//.*?$|/\*.*?\*/|\'(?:\\.|[^\\\'])*\'|"(?:\\.|[^\\"])*"',
-                re.DOTALL | re.MULTILINE
-            )
-        return re.sub(pattern, self.__comment_replacer, text)
-
-    def __label_replacer(self,match):
-        """private function to translate labels to device tree attributes"""
-        s = match.group(0)
-        s1 = match.group(1)
-        s2 = match.group(2)
-        #print( "   label group 0: %s" % s )
-        #print( "   label group 1: %s" % s1 )
-        #print( "   label group 2: %s" % s2 )
-        if s1 and s2:
-            #print( "      label match" )
-            global lcount
-            lcount = lcount + 1
-            r1 = s1.lstrip()
-            r1 = re.sub( ':', '', r1 )
-            r2 = "{0}\nlopper-label-{1} = \"{2}\";".format(s, lcount, r1)
-            return r2
-        else:
-            return s
-
-    def __label_translate(self,text):
-        """private function used to match (and replace) labels in DTS files"""
-        global lcount
-        lcount = 0
-        pattern2 = re.compile(
-            r'^\s*?\w*?\s*?\:', re.DOTALL
-        )
-        pattern = re.compile(
-            r'^\s*?(\w*?)\s*?\:(.*?)$', re.DOTALL | re.MULTILINE
-        )
-        return re.sub(pattern, self.__label_replacer, text)
-
     def setup(self, sdt_file, input_files, include_paths, force=False):
         """executes setup and initialization tasks for a system device tree
 
@@ -281,70 +228,11 @@ class LopperSDT:
                 sdt_files.append( sdt_file )
                 fp = sdt_file
 
-            if self.enhanced:
-                # we need to ensure comments are maintained by converting them
-                # into DTS attributes
-                fp_enhanced = fp + ".enhanced"
-                shutil.copyfile( fp, fp_enhanced )
-                fp = fp_enhanced
-
-                with open(fp_enhanced, 'r') as file:
-                    data = file.read()
-
-                # drop /dts-v1/; from the file, we'll add it back at the top first. but
-                # for now, we need it out of te way to look for any preamble to the main
-                # device tree nodes
-
-                dts_regex = re.compile( '\/dts-v1/;' )
-                if re.search( dts_regex, data ):
-                    # delete the dts opening, since we are going to capture everything
-                    # from the start of the file, to the opening of the device tree
-                    # nodes.
-                    data = re.sub( dts_regex, '', data )
-
-                # This captures everything at the start of the file (i.e. a comment block)
-                # and puts it into a special pre-mble property in the root node. If we don't
-                # do this, and let the comment substituion find it below, we have an invalid
-                # device tree.
-                #
-                # When printing the tree layer, we'll pop it out and put it back as an
-                # opening comment.
-                #
-                preamble_regex = re.compile( '(^.*?)(/ {)', re.MULTILINE | re.DOTALL )
-                preamble = re.search( preamble_regex, data )
-                if preamble:
-                    # is it a comment block ? if so, we want to mark it specially so
-                    # it can be put back at the header later.
-                    comment_regex = re.compile( '(/\*)(.*?)(\*/)', re.MULTILINE | re.DOTALL )
-                    comment = re.search( comment_regex, preamble.group(1) )
-                    if comment:
-                        comment = comment.group(2)
-                        if comment:
-                            comment = re.sub( "^\n", '', comment )
-                            comment = re.sub( "\n$", '', comment )
-                            comment = "    lopper-preamble = \"{0}\";".format( comment )
-
-                        data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data )
-
-                # put the dts start info back in
-                data = re.sub( '^', '/dts-v1/;\n\n', data )
-
-                # finally, do comment substitution
-                with open(fp_enhanced) as f:
-                    fp_comments_as_attributes = self.__comment_translate(data)
-                    fp_comments_and_labels_as_attributes = self.__label_translate(fp_comments_as_attributes)
-
-                f = open( fp_enhanced, 'w' )
-                f.write( fp_comments_and_labels_as_attributes )
-                f.close()
-
-                fp = fp_enhanced
-
             # note: input_files isn't actually used by dt_compile, otherwise, we'd need to
             #       filter out non-dts files before the call .. we should probably still do
             #       that.
             self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
-                                          self.save_temps, self.verbose )
+                                          self.save_temps, self.verbose, self.enhanced )
 
             self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
 
@@ -1765,8 +1653,6 @@ class LopperSDT:
                                 node_property =  modify_val.split( '#' )[1]
                             except:
                                 node_property = None
-
-                            print( "node!! %s: property: %s" % (node,node_property))
 
                             phandle_node_name = re.sub( '&', '', node )
                             pfnodes = tree.nodes( phandle_node_name )

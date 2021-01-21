@@ -219,13 +219,12 @@ class LopperProp():
            boolean: True there is a match, false otherwise
         """
         if self.__dbg__ > 1:
-            print( "[DBG++]: property compare compare (%s) vs (%s)" % (self,other_prop) )
+            print( "[DBG++]: property compare (%s) vs (%s)" % (self,other_prop) )
 
         ret_val = False
         invert_check  = ""
         if len(self.value) == 1:
             # single comparison value
-
             lop_compare_value = self.value[0]
 
             if len( other_prop.value ) == 1:

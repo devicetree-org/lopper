@@ -1434,6 +1434,63 @@ class Lopper:
 
         return True
 
+    @staticmethod
+    def __comment_replacer(match):
+        """private function to translate comments to device tree attributes"""
+        s = match.group(0)
+        if s.startswith('/'):
+            global count
+            count = count + 1
+            r1 = re.sub( '\"', '\\"', s )
+            r2 = "lopper-comment-{0} = \"{1}\";".format(count, r1)
+            return r2
+        else:
+            return s
+
+    @staticmethod
+    def __comment_translate(text):
+        """private function used to match (and replace) comments in DTS files"""
+        global count
+        count = 0
+        pattern = re.compile(
+                r'//.*?$|/\*.*?\*/|\'(?:\\.|[^\\\'])*\'|"(?:\\.|[^\\"])*"',
+                re.DOTALL | re.MULTILINE
+            )
+        return re.sub(pattern, Lopper.__comment_replacer, text)
+
+    @staticmethod
+    def __label_replacer(match):
+        """private function to translate labels to device tree attributes"""
+        s = match.group(0)
+        s1 = match.group(1)
+        s2 = match.group(2)
+        #print( "   label group 0: %s" % s )
+        #print( "   label group 1: %s" % s1 )
+        #print( "   label group 2: %s" % s2 )
+        if s1 and s2:
+            #print( "      label match" )
+            global lcount
+            lcount = lcount + 1
+            r1 = s1.lstrip()
+            r1 = re.sub( ':', '', r1 )
+            r2 = "{0}\nlopper-label-{1} = \"{2}\";".format(s, lcount, r1)
+            return r2
+        else:
+            return s
+
+    @staticmethod
+    def __label_translate(text):
+        """private function used to match (and replace) labels in DTS files"""
+        global lcount
+        lcount = 0
+        pattern2 = re.compile(
+            r'^\s*?\w*?\s*?\:', re.DOTALL
+        )
+        pattern = re.compile(
+            r'^\s*?(\w*?)\s*?\:(.*?)$', re.DOTALL | re.MULTILINE
+        )
+        return re.sub(pattern, Lopper.__label_replacer, text)
+
 
     @staticmethod
     def dt_preprocess( dts_file, includes, outdir="./", verbose=0 ):
@@ -1511,7 +1568,8 @@ class Lopper:
 
 
     @staticmethod
-    def dt_compile( dts_file, i_files, includes, force_overwrite=False, outdir="./", save_temps=False, verbose=0 ):
+    def dt_compile( dts_file, i_files, includes, force_overwrite=False, outdir="./",
+                    save_temps=False, verbose=0, enhanced = True ):
         """Compile a dts file to a dtb
 
         This routine takes a dts input file, other dts include files,
@@ -1564,6 +1622,68 @@ class Lopper:
         #       into why dtc can't handle the split directories and include
         #       files.
         preprocessed_name = Lopper.dt_preprocess( dts_file, includes, outdir, verbose )
+
+        if enhanced:
+            fp = preprocessed_name
+
+            # we need to ensure comments are maintained by converting them
+            # into DTS attributes
+            fp_enhanced = fp + ".enhanced"
+            shutil.copyfile( fp, fp_enhanced )
+            fp = fp_enhanced
+
+            with open(fp_enhanced, 'r') as file:
+                data = file.read()
+
+            # drop /dts-v1/; from the file, we'll add it back at the top first. but
+            # for now, we need it out of te way to look for any preamble to the main
+            # device tree nodes
+
+            dts_regex = re.compile( '\/dts-v1/;' )
+            if re.search( dts_regex, data ):
+                # delete the dts opening, since we are going to capture everything
+                # from the start of the file, to the opening of the device tree
+                # nodes.
+                data = re.sub( dts_regex, '', data )
+
+            # This captures everything at the start of the file (i.e. a comment block)
+            # and puts it into a special pre-mble property in the root node. If we don't
+            # do this, and let the comment substituion find it below, we have an invalid
+            # device tree.
+            #
+            # When printing the tree layer, we'll pop it out and put it back as an
+            # opening comment.
+            #
+            preamble_regex = re.compile( '(^.*?)(/ {)', re.MULTILINE | re.DOTALL )
+            preamble = re.search( preamble_regex, data )
+            if preamble:
+                # is it a comment block ? if so, we want to mark it specially so
+                # it can be put back at the header later.
+                comment_regex = re.compile( '(/\*)(.*?)(\*/)', re.MULTILINE | re.DOTALL )
+                comment = re.search( comment_regex, preamble.group(1) )
+                if comment:
+                    comment = comment.group(2)
+                    if comment:
+                        comment = re.sub( "^\n", '', comment )
+                        comment = re.sub( "\n$", '', comment )
+                        comment = "    lopper-preamble = \"{0}\";".format( comment )
+
+                    data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data )
+
+            # put the dts start info back in
+            data = re.sub( '^', '/dts-v1/;\n\n', data )
+
+            print( "doing enhanced processing on: %s" % fp_enhanced )
+            # finally, do comment substitution
+            with open(fp_enhanced) as f:
+                fp_comments_as_attributes = Lopper.__comment_translate(data)
+                fp_comments_and_labels_as_attributes = Lopper.__label_translate(fp_comments_as_attributes)
+
+            f = open( fp_enhanced, 'w' )
+            f.write( fp_comments_and_labels_as_attributes )
+            f.close()
+
+            preprocessed_name = fp_enhanced
 
         # step 2: compile the dtb
         #         dtc -O dtb -o test_tree1.dtb test_tree1.dts
