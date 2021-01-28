@@ -1678,37 +1678,52 @@ class Lopper:
             fp_comments_and_labels_as_attributes = Lopper.__label_translate(fp_comments_as_attributes)
 
             labeldict = {}
-            pattern = re.compile(r'lopper-label-([0-9]+) = "(.*?)"')
-            for (labelnum, label) in re.findall(pattern, fp_comments_and_labels_as_attributes):
-                try:
-                    existing_label = labeldict[label]
-                    # print( "[ERROR]: duplicate label '%s' detected, processing cannot continue" % label )
-                    # if verbose:
-                    #     print( "[DBG+]: Dumping label dictionary (as processed to error)" )
-                    #     for l in labeldict:
-                    #         print( "    %s" % l )
+            lopper_label_pattern = re.compile(r'lopper-label-([0-9]+) = "(.*?)"')
+            tree_block_pattern = re.compile( r'/ {' )
 
-                    #     print( "\n[DBG+]: Offending label lines with context:" )
-                    #     file_as_array = data.splitlines()
-                    #     pattern = re.compile( r'^\s*?({})\s*?\:(.*?)$'.format(label), re.DOTALL | re.MULTILINE )
-                    #     match_line = 0
-                    #     for i,f in enumerate(file_as_array):
-                    #         m = re.search( pattern, f )
-                    #         if m:
-                    #             try:
-                    #                 print( "    %s %s" % (i-2,file_as_array[i-2]) )
-                    #                 print( "    %s %s" % (i-1,file_as_array[i-1]) )
-                    #                 print( "    %s %s" % (i,file_as_array[i]) )
-                    #                 print( "    %s %s" % (i+1,file_as_array[i+1]) )
-                    #                 print( "    %s %s" % (i+2,file_as_array[i+2]) )
-                    #             except:
-                    #                 print( "    %s %s" % (i,file_as_array[i]) )
+            file_as_array = fp_comments_and_labels_as_attributes.splitlines()
+            for i,f in enumerate(file_as_array):
+                m = re.search( tree_block_pattern, f )
+                if m:
+                    labeldict = {}
 
-                    #             print( "\n" )
+                labelnum = 0
+                label = None
+                m = re.search( lopper_label_pattern, f )
+                if m:
+                    labelnum = m.group(1)
+                    label = m.group(2)
 
-                    # os._exit(1)
-                except:
-                    labeldict[label] = label
+                if label:
+                    try:
+                        existing_label = labeldict[label]
+                        print( "[ERROR]: duplicate label '%s' detected, processing cannot continue" % label )
+                        if verbose:
+                            print( "[DBG+]: Dumping label dictionary (as processed to error)" )
+                            for l in labeldict:
+                                print( "    %s" % l )
+
+                            print( "\n[DBG+]: Offending label lines with context:" )
+                            file_as_array = data.splitlines()
+                            pattern = re.compile( r'^\s*?({})\s*?\:(.*?)$'.format(label), re.DOTALL | re.MULTILINE )
+                            match_line = 0
+                            for i,f in enumerate(file_as_array):
+                                m = re.search( pattern, f )
+                                if m:
+                                    try:
+                                        print( "    %s %s" % (i-2,file_as_array[i-2]) )
+                                        print( "    %s %s" % (i-1,file_as_array[i-1]) )
+                                        print( "    %s %s" % (i,file_as_array[i]) )
+                                        print( "    %s %s" % (i+1,file_as_array[i+1]) )
+                                        print( "    %s %s" % (i+2,file_as_array[i+2]) )
+                                    except:
+                                        print( "    %s %s" % (i,file_as_array[i]) )
+
+                                    print( "\n" )
+                        os._exit(1)
+
+                    except:
+                        labeldict[label] = label
 
             f = open( fp_enhanced, 'w' )
             f.write( fp_comments_and_labels_as_attributes )
@@ -1744,7 +1759,7 @@ class Lopper:
             print( "[INFO]: compiling dtb: %s" % dtcargs )
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
-        if result != 0:
+        if result.returncode != 0:
             # force the dtb, we need to do processing
             dtcargs += [ "-f" ]
             if verbose:
