@@ -2134,6 +2134,10 @@ class LopperTree:
         sorted_phandles = sorted(list(self.__pnodes__.keys()))
         highest_phandle = sorted_phandles[-1]
 
+        # placeholder, so repeated calles with no sync() won't get the same
+        # phandle over and over again
+        # self.__pnodes__[highest_phandle + 1] = None
+
         return highest_phandle + 1
 
     def ref_all( self, starting_node, parent_nodes=False ):

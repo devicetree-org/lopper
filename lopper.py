@@ -852,7 +852,7 @@ class LopperSDT:
                                 selected_nodes_possible = tree.__selected__
 
                         if self.verbose > 1:
-                            print( "[DBG++]: selected potential nodes %s" % selected_nodes_possible )
+                            print( "[DBG++]: selected potential nodes:" )
                             for n in selected_nodes_possible:
                                 print( "       %s" % n )
 
@@ -891,8 +891,47 @@ class LopperSDT:
                                         if sl in selected_nodes:
                                             selected_nodes.remove( sl )
 
+                        if prop and not prop_val:
+                            # an empty property value means we are testing if the property exists
+
+                            # if the property name is "!<property>" and the val is empty, then we
+                            # are testing if it doesn't exist.
+
+                            prop_exists_test = True
+                            if re.search( "\!", prop ):
+                                print( "looking for the lack of a property" )
+                                prop_exists_test = False
+
+                            # remove any leading '!' from the name.
+                            prop = re.sub( '^\!', '', prop )
+
+                            for sl in list(selected_nodes_possible):
+                                try:
+                                    sl_prop = sl[prop]
+                                except Exception as e:
+                                    sl_prop = None
+
+                                if prop_exists_test:
+                                    if sl_prop:
+                                        if not sl in selected_nodes:
+                                            selected_nodes.append( sl )
+                                    else:
+                                        if sl in selected_nodes:
+                                            selected_nodes.remove( sl )
+                                else:
+                                    # we are looking for the *lack* of a property
+                                    if sl_prop:
+                                        if sl in selected_nodes:
+                                            selected_nodes.remove( sl )
+                                    else:
+                                        if not sl in selected_nodes:
+                                            selected_nodes.append( sl )
+
+                    # TODO: if the select is of the form: select_not_<number>, then we should invert the
+                    #       selection or if there is a "!" in the property name.
+
                     if self.verbose > 1:
-                        print( "[DBG++]: selected nodes %s" % selected_nodes )
+                        print( "[DBG++]: selected nodes:" )
                         for n in selected_nodes:
                             print( "    %s" % n )
 
