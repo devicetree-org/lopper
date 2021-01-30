@@ -65,6 +65,8 @@ def grep( tgt_node, sdt, options ):
     nodes = []
     try:
         nodes = sdt.tree.nodes(node_regex)
+        lnodes = sdt.tree.lnodes(node_regex)
+        nodes = nodes + lnodes
     except:
         print( "[ERROR]: grep: nodes %s not found" % node_regex )
         sys.exit(1)
@@ -73,12 +75,11 @@ def grep( tgt_node, sdt, options ):
     matches = {}
     for n in nodes:
         try:
-            #print( "looking for: %s in %s" % (tgt_regex,n) )
             match = n[tgt_regex]
             #print( "match: %s" % match )
             matches[n.abs_path] = match
             #print( "matches is now: %s" % matches )
-        except:
+        except Exception as e:
             pass
 
     if matches:

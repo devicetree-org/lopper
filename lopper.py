@@ -31,17 +31,6 @@ import textwrap
 from collections import UserDict
 from collections import OrderedDict
 
-try:
-    import libfdt
-    from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
-except:
-    import site
-    python_version_dir = "python{}.{}".format( sys.version_info[0], sys.version_info[1] )
-    site.addsitedir('vendor/lib/{}/site-packages'.format( python_version_dir ))
-
-    import libfdt
-    from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
-
 from lopper_fdt import Lopper
 from lopper_fdt import LopperFmt
 
@@ -155,7 +144,6 @@ class LopperSDT:
 
         self.use_libfdt = True
 
-        # self.FDT = libfdt.Fdt(open(self.dtb, mode='rb').read())
         current_dir = os.getcwd()
 
         lop_files = []
@@ -236,9 +224,11 @@ class LopperSDT:
 
             self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
 
-            # this is not a snapshot, but a reference, so we'll see all changes to
-            # the backing FDT.
-            self.tree = lopper_tree.LopperTree( self.FDT )
+            # we export the compiled fdt to a dictionary, and load it into our tree
+            dct = Lopper.export( self.FDT )
+            self.tree = lopper_tree.LopperTree()
+            self.tree.load( dct )
+
             self.tree.strict = not self.permissive
 
             # join any extended trees to the one we just created
@@ -276,14 +266,15 @@ class LopperSDT:
             lt = yaml.to_tree()
 
             self.dtb = None
-            self.FDT = lt.fdt
+            self.FDT = Lopper.fdt()
             self.tree = lt
         else:
             # the system device tree is a dtb
             self.dtb = sdt_file
             self.dts = sdt_file
             self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
-            self.tree = lopper_tree.LopperTree( self.FDT )
+            self.tree = lopper_tree.LopperTree()
+            self.tree.load( Lopper.export( self.FDT ) )
             self.tree.strict = not self.permissive
 
         if self.verbose:
@@ -317,7 +308,8 @@ class LopperSDT:
                 lop = LopperFile( ifile )
                 lop.dts = ""
                 lop.dtb = ""
-                lop.fdt = yaml_tree.fdt
+                lop.fdt = None
+                lop.tree = yaml_tree
                 self.lops.append( lop )
             elif re.search( ".dtb$", ifile ):
                 lop = LopperFile( ifile )
@@ -337,28 +329,38 @@ class LopperSDT:
         self.assists_wrap()
 
     def assist_autorun_setup( self, module_name, module_args = [] ):
-        sw = libfdt.Fdt.create_empty_tree( 2048 )
-        sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
-        sw.setprop_u32( 0, 'priority', 3)
-        offset = sw.add_subnode( 0, 'lops' )
+        lt = LopperTree()
+
+        lt['/']['compatible'] = [ 'system-device-tree-v1' ]
+        lt['/']['priority'] = [ 3 ]
+
+        ln = LopperNode()
+        ln.name = "lops"
 
         mod_count = 0
         lop_name = "lop_{}".format( mod_count )
-        offset = sw.add_subnode( offset, lop_name )
-        sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,assist-v1')
-        sw.setprop_str( offset, 'node', '/' )
+
+        lop_node = LopperNode()
+        lop_node.name = lop_name
+        lop_node['compatible'] = [ 'system-device-tree-v1,lop,assist-v1' ]
+        lop_node['node'] = [ '/' ]
 
         if module_args:
             module_arg_string = ""
             for m in module_args:
                 module_arg_string = module_arg_string + " " + m
-                sw.setprop_str( offset, 'options', module_arg_string )
+                lop_node['options'] = [ module_arg_string ]
 
-        sw.setprop_str( offset, 'id', "module," + module_name )
+        lop_node['id'] = [ "module," + module_name ]
+
+        ln = ln + lop_node
+        lt = lt + ln
+
         lop = LopperFile( 'commandline' )
         lop.dts = ""
         lop.dtb = ""
-        lop.fdt = sw
+        lop.fdt = None
+        lop.tree = lt
 
         if self.verbose > 1:
             print( "[INFO]: generated assist run for %s" % module_name )
@@ -429,7 +431,7 @@ class LopperSDT:
             fdt_to_write = self.FDT
 
         if re.search( ".dtb", output_filename ):
-            Lopper.write_fdt( fdt_to_write, output_filename, True, self.verbose )
+            Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose )
 
         elif re.search( ".dts", output_filename ):
             if enhanced:
@@ -438,8 +440,13 @@ class LopperSDT:
                     print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
                     sys.exit(1)
 
-                printer = lopper_tree.LopperTreePrinter( fdt_to_write, True, output_filename, self.verbose )
+                printer = lopper_tree.LopperTreePrinter( True, output_filename, self.verbose )
                 printer.strict = not self.permissive
+
+                # Note: the caller must ensure that all changes have been sync'd to
+                #        the fdt_to_write.
+
+                printer.load( Lopper.export( fdt_to_write ) )
                 printer.exec()
             else:
                 Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose, False )
@@ -459,10 +466,12 @@ class LopperSDT:
             if cb_funcs:
                 for cb_func in cb_funcs:
                     try:
-                        out_tree = lopper_tree.LopperTreePrinter( fdt_to_write, True, output_filename, self.verbose )
+                        out_tree = lopper_tree.LopperTreePrinter( True, output_filename, self.verbose )
+                        Lopper.sync( fdt_to_write, self.tree.export() )
+                        out_tree.load( Lopper.export( fdt_to_write ) )
                         out_tree.strict = not self.permissive
                         if not cb_func( 0, out_tree, { 'outfile': output_filename, 'verbose' : self.verbose } ):
-                            print( "[WARNING]: the assist returned false, check for errors ..." )
+                            print( "[WARNING]: output assist returned false, check for errors ..." )
                     except Exception as e:
                         print( "[WARNING]: output assist %s failed: %s" % (cb_func,e) )
                         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -474,6 +483,7 @@ class LopperSDT:
                 if self.verbose:
                     print( "[INFO]: no compatible output assist found, skipping" )
                 if self.werror:
+                    print( "[ERROR]: werror is enabled, and no compatible output assist found, exiting" )
                     sys.exit(2)
 
     def assist_find(self, assist_name, local_load_paths = []):
@@ -565,26 +575,37 @@ class LopperSDT:
 
         """
         if self.assists:
-            sw = libfdt.Fdt.create_empty_tree( 2048 )
-            sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
-            sw.setprop_u32( 0, 'priority', 1)
-            offset = sw.add_subnode( 0, 'lops' )
+            lt = LopperTree()
+
+            lt['/']['compatible'] = [ 'system-device-tree-v1' ]
+            lt['/']['priority'] = [ 1 ]
+
+            ln = LopperNode()
+            ln.name = "lops"
 
             assist_count = 0
             for a in set(self.assists):
                 lop_name = "lop_{}".format( assist_count )
-                offset = sw.add_subnode( offset, lop_name )
-                sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,load')
-                sw.setprop_str( offset, 'load', a.file )
-                lop = LopperFile( 'commandline' )
-                lop.dts = ""
-                lop.dtb = ""
-                lop.fdt = sw
+
+                lop_node = LopperNode()
+                lop_node.name = lop_name
+                lop_node['compatible'] = [ 'system-device-tree-v1,lop,load' ]
+                lop_node['load'] = [ a.file ]
+
+                ln = ln + lop_node
 
                 if self.verbose > 1:
                     print( "[INFO]: generated load lop for assist %s" % a )
 
                 assist_count = assist_count + 1
+
+            lt = lt + ln
+
+            lop = LopperFile( 'commandline' )
+            lop.dts = ""
+            lop.dtb = ""
+            lop.fdt = None
+            lop.tree = lt
 
             self.lops.insert( 0, lop )
 
@@ -614,27 +635,33 @@ class LopperSDT:
         # };
         # and then inject it into self.lops to run first
 
-        sw = libfdt.Fdt.create_empty_tree( 2048 )
-        sw.setprop_str( 0, 'compatible', 'system-device-tree-v1' )
-        offset = sw.add_subnode( 0, 'lops' )
-        offset = sw.add_subnode( offset, 'lop_0' )
-        sw.setprop_str( offset, 'compatible', 'system-device-tree-v1,lop,assist-v1')
-        sw.setprop_str( offset, 'node', tgt_domain )
-        sw.setprop_str( offset, 'id', tgt_domain_id )
+
+        lt = LopperTree()
+
+        lt['/']['compatible'] = [ 'system-device-tree-v1' ]
+        lt['/']['priority'] = [ 3 ]
+
+        ln = LopperNode()
+        ln.name = "lops"
+
+        mod_count = 0
+        lop_name = "lop_{}".format( mod_count )
+
+        lop_node = LopperNode()
+        lop_node.name = lop_name
+        lop_node['compatible'] = [ 'system-device-tree-v1,lop,assist-v1' ]
+        lop_node['id'] = [ tgt_domain_id ]
+
+        ln = ln + lop_node
+        lt = lt + ln
+
         lop = LopperFile( 'commandline' )
         lop.dts = ""
         lop.dtb = ""
-        lop.fdt = sw
+        lop.fdt = None
+        lop.tree = lt
 
         self.lops.insert( 0, lop )
-
-    def node_find( self, node_prefix ):
-        """Finds a node by its prefix
-
-        Wrapper around the Lopper routine of the same name, to abstract the
-        FDT that is part of the LopperSDT class.
-        """
-        return Lopper.node_find( self.FDT, node_prefix )
 
     def find_compatible_assist( self, cb_node = None, cb_id = "", mask = "" ):
         """Finds a registered assist that is compatible with a given ID
@@ -859,7 +886,7 @@ class LopperSDT:
                         if prop and prop_val:
                             # construct a test prop, so we can use the internal compare
                             test_prop = lopper_tree.LopperProp( prop, -1, None, [prop_val] )
-                            test_prop.resolve( None )
+                            test_prop.resolve()
 
                             # we need this list(), since the removes below will yank items out of
                             # our iterator if we aren't careful
@@ -899,7 +926,6 @@ class LopperSDT:
 
                             prop_exists_test = True
                             if re.search( "\!", prop ):
-                                print( "looking for the lack of a property" )
                                 prop_exists_test = False
 
                             # remove any leading '!' from the name.
@@ -988,13 +1014,13 @@ class LopperSDT:
                 output_nodes = []
                 # select some nodes!
                 if "*" in output_regex:
-                    output_tree = lopper_tree.LopperTree( self.FDT, True )
+                    output_tree = lopper_tree.LopperTree( True )
+                    output_tree.load( tree.export() )
                     output_tree.strict = not self.permissive
                 else:
                     # we can gather the output nodes and unify with the selected
                     # copy below.
                     for regex in output_regex:
-
                         split_node = regex.split(":")
                         o_node_regex = split_node[0]
                         o_prop_name = ""
@@ -1026,6 +1052,9 @@ class LopperSDT:
                                     pass
 
                             for o in o_nodes:
+                                if self.verbose > 2:
+                                    print( "[DBG++] output lop, checking node: %s" % o.abs_path )
+
                                 # we test for a property in the node if it was defined
                                 if o_prop_name:
                                     p = tree[o].propval(o_prop_name)
@@ -1040,6 +1069,12 @@ class LopperSDT:
 
                         except Exception as e:
                             print( "[WARNING]: except caught during output processing: %s" % e )
+
+                if output_regex:
+                    if self.verbose > 2:
+                        print( "[DBG++] output lop, final nodes:" )
+                        for oo in output_nodes:
+                            print( "       %s" % oo.abs_path )
 
                 if not output_tree and output_nodes:
                     output_tree = lopper_tree.LopperTreePrinter()
@@ -1057,7 +1092,16 @@ class LopperSDT:
             if not self.dryrun:
                 if output_tree:
                     output_file_full = self.outdir + "/" + output_file_name
-                    self.write( output_tree.fdt, output_file_full, True, self.enhanced )
+
+                    # create a FDT
+                    out_fdt = Lopper.fdt()
+                    # export it
+                    dct = output_tree.export()
+                    Lopper.sync( out_fdt, dct )
+
+                    # we should consider checking the type, and not doing the export
+                    # if going to dts, since that is already easily done with the tree.
+                    self.write( out_fdt, output_file_full, True, self.enhanced )
             else:
                 print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
@@ -1066,11 +1110,11 @@ class LopperSDT:
             try:
                 tree_name = lop_node['tree'].value[0]
             except:
-                print( "[ERROR]: cannot get tree name from lop" )
+                print( "[ERROR]: tree lop: cannot get tree name from lop" )
                 sys.exit(1)
 
             if self.verbose > 1:
-                print( "[DBG+]: tree is: %s" % tree_name )
+                print( "[DBG+]: tree lop: tree is: %s" % tree_name )
 
             tree_nodes = []
             try:
@@ -1083,7 +1127,7 @@ class LopperSDT:
                     tree_nodes = self.tree.__selected__
 
             if not tree_regex and not tree_nodes:
-                print( "[WARNING]: no nodes or regex proviced for tree, returning" )
+                print( "[WARNING]: tree lop: no nodes or regex proviced for tree, returning" )
                 return False
 
             new_tree = None
@@ -1091,7 +1135,8 @@ class LopperSDT:
                 tree_nodes = []
                 # select some nodes!
                 if "*" in tree_regex:
-                    new_tree = lopper_tree.LopperTree( self.FDT, True )
+                    new_tree = lopper_tree.LopperTree( True )
+                    new_tree.load( Lopper.export( self.FDT ) )
                     new_tree.strict = not self.permissive
                 else:
                     # we can gather the tree nodes and unify with the selected
@@ -1359,12 +1404,8 @@ class LopperSDT:
                 # add it to the tree, and this will adjust the children appropriately
                 tree + dst_node
             else:
-                if not Lopper.node_copy_from_path( lops_fdt, src_node_path, self.FDT, dest_node_path, self.verbose ):
-                    print( "[ERROR]: unable to copy node: %s" % src_node_name )
-                    sys.exit(1)
-                else:
-                    # self.FDT is backs the tree object, so we need to sync
-                    tree.sync()
+                print( "[ERROR]: unable to copy node: %s" % src_node_name )
+                sys.exit(1)
 
         if re.search( ".*,lop,conditional.*$", lop_type ):
             if self.verbose:
@@ -1583,12 +1624,11 @@ class LopperSDT:
             return ret
 
         if re.search( ".*,lop,modify$", lop_type ):
-            node_name = lop_node.name # lops_fdt.get_name( lop_node_number )
+            node_name = lop_node.name
             if self.verbose:
                 print( "[INFO]: node %s is a compatible modify lop" % node_name )
             try:
                 prop = lop_node["modify"].value[0]
-                # lops_fdt.getprop( lop_node_number, 'modify' ).as_str()
             except:
                 prop = ""
 
@@ -1602,8 +1642,6 @@ class LopperSDT:
             except:
                 tree = self.tree
 
-            # was there a regex passed for node matching ?
-            # nodes_selection = Lopper.property_get( lops_fdt, lop_node_number, "nodes" )
             try:
                 nodes_selection = lop_node["nodes"].value[0]
             except:
@@ -1638,7 +1676,9 @@ class LopperSDT:
                 else:
                     try:
                         nodes = tree.subnodes( tree[modify_path] )
-                    except:
+                    except Exception as e:
+                        if self.verbose > 1:
+                            print( "[DBG+] modify lop: node issue: %s" % e )
                         nodes = []
 
                 if modify_prop:
@@ -1649,10 +1689,8 @@ class LopperSDT:
 
                         try:
                             # TODO: make a special case of the property_modify_below
-
-                            # just to be sure that any other pending changes have been
-                            # written, since we need accurate node IDs
                             tree.sync()
+
                             for n in nodes:
                                 try:
                                     n.delete( modify_prop )
@@ -1661,15 +1699,17 @@ class LopperSDT:
                                         print( "[WARNING]: property %s not found, and not deleted" % modify_prop )
                                     # no big deal if it doesn't have the property
                                     pass
-                                tree.sync()
+
+                            tree.sync()
                         except Exception as e:
                             print( "[WARNING]: unable to remove property %s/%s (%s)" % (modify_path,modify_prop,e))
+                            sys.exit(1)
                     else:
                         if self.verbose:
                             print( "[INFO]: property modify operation detected" )
 
-                        # just to be sure that any other pending changes have been
-                        # written, since we need accurate node IDs
+                        # set the tree state to "syncd", so we'll be able to test for changed
+                        # state later.
                         tree.sync()
 
                         # we re-do the nodes fetch here, since there are slight behaviour/return
@@ -1708,7 +1748,6 @@ class LopperSDT:
                                 # to lookup the phandle and find a property within it. That's
                                 # the replacement value
                                 if pfnodes:
-                                    print( "looking to deref the node" )
                                     try:
                                         modify_val = pfnodes[0][node_property].value
                                     except:
@@ -1731,6 +1770,9 @@ class LopperSDT:
 
                         tree.sync()
                 else:
+                    if self.verbose > 1:
+                        print( "[DBG+]: modify lop, node operation" )
+
                     # drop the list, since if we are modifying a node, it is just one
                     # target node.
                     try:
@@ -1760,6 +1802,7 @@ class LopperSDT:
                             # deep copy the node
                             new_dst_node = node()
                             new_dst_node.abs_path = modify_val
+
                             tree + new_dst_node
 
                             # delete the old node
@@ -1774,9 +1817,28 @@ class LopperSDT:
 
                             modify_val = modify_val.replace( '/', '' )
                             try:
+
+                                # is there already a node at the new destination path ?
+                                try:
+                                    old_node = tree[str(modify_dest_path)]
+                                    if old_node:
+                                        # we can error, or we'd have to delete the old one, and
+                                        # then let the rename happen. But really, you can just
+                                        # write a lop that takes care of that before calling such
+                                        # a bad rename lop.
+                                        if self.verbose > 1:
+                                            print( "[NOTE]: node exists at rename target: %s"  % old_node.abs_path )
+                                            print( "        Deleting it, to allow rename to continue" )
+                                        tree.delete( old_node )
+                                except Exception as e:
+                                    # no node at the dest
+                                    pass
+
+
                                 # change the name of the node
                                 node.name = modify_val
                                 tree.sync()
+
                             except Exception as e:
                                 print( "[ERROR]:cannot rename node '%s' to '%s' (%s)" % (node.abs_path, modify_val, e))
                                 sys.exit(1)
@@ -1791,9 +1853,9 @@ class LopperSDT:
                         else:
                             try:
                                 tree.delete( node_to_remove )
-                                tree.sync( self.FDT )
+                                tree.sync()
                             except:
-                                print( "[WARNING]: could not remove node number: %s" % node_to_remove )
+                                print( "[WARNING]: could not remove node number: %s" % node_to_remove.abs_path )
 
         # if the lop didn't return, we return false by default
         return False
@@ -1834,14 +1896,30 @@ class LopperSDT:
 
         # iterate the lops, look for priority. If we find those, we'll run then first
         for x in self.lops:
-            if not x.fdt:
-                lops_fdt = libfdt.Fdt(open(x.dtb, mode='rb').read())
-                x.fdt = lops_fdt
-            else:
+            if x.fdt:
                 lops_fdt = x.fdt
+                lops_tree = None
+            elif x.dtb:
+                lops_fdt = Lopper.dt_to_fdt(x.dtb)
+                x.dtb = None
+                x.fdt = lops_fdt
+            elif x.tree:
+                lops_fdt = None
+                lops_tree = x.tree
 
-            lops_file_priority = Lopper.property_get( lops_fdt, 0, "priority" )
-            if not lops_file_priority:
+            if lops_fdt:
+                lops_tree = LopperTree()
+                lops_tree.load( Lopper.export( lops_fdt ) )
+                x.tree = lops_tree
+
+            if not lops_tree:
+                print( "[ERROR]: invalid lop file %s, cannot process" % x )
+                sys.exit(1)
+
+            try:
+                ln = lops_tree['/']
+                lops_file_priority = ln["priority"].value[0]
+            except Exception as e:
                 lops_file_priority = 5
 
             lops_runqueue[lops_file_priority].append(x)
@@ -1852,12 +1930,7 @@ class LopperSDT:
         # iterate over the lops (by lop-file priority)
         for pri in range(1,10):
             for x in lops_runqueue[pri]:
-                if not x.fdt:
-                    lops_fdt = libfdt.Fdt(open(x.dtb, mode='rb').read())
-                else:
-                    lops_fdt = x.fdt
-
-                fdt_tree = LopperTree( lops_fdt )
+                fdt_tree = x.tree
                 lop_test = re.compile('system-device-tree-v1,lop.*')
                 lop_cond_test = re.compile('.*,lop,conditional.*$' )
                 skip_list = []
@@ -2156,6 +2229,8 @@ if __name__ == "__main__":
         device_tree.perform_lops()
 
     if not dryrun:
+        # write any changes to the FDT, before we do our write
+        Lopper.sync( device_tree.FDT, device_tree.tree.export() )
         device_tree.write( enhanced = device_tree.enhanced )
     else:
         print( "[INFO]: --dryrun was passed, output file %s not written" % output )

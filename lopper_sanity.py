@@ -1130,7 +1130,8 @@ def tree_sanity_test( fdt, verbose=0 ):
     #  - test:
     #      - that we don't assert
     #      - that we have the right number of nodes
-    walker = LopperTree( fdt )
+    walker = LopperTree()
+    walker.load( Lopper.export( fdt ) )
 
     fpp = tempfile.NamedTemporaryFile( delete=True )
     fpw = open( fpp.name, 'w+')
@@ -1156,7 +1157,7 @@ def tree_sanity_test( fdt, verbose=0 ):
                 node_count += 1
 
     if node_count != 16:
-        test_failed( "node count is incorrect. Got %s, expected %s" % (node_count,15) )
+        test_failed( "fff node count is incorrect. Got %s, expected %s" % (node_count,15) )
     else:
         test_passed( "end: node walk passed\n" )
 
@@ -1166,7 +1167,8 @@ def tree_sanity_test( fdt, verbose=0 ):
     print( "[TEST]: start: tree print" )
     fpp = tempfile.NamedTemporaryFile( delete=True )
 
-    printer = LopperTreePrinter( fdt, True, fpp.name )
+    printer = LopperTreePrinter( True, fpp.name )
+    printer.load( Lopper.export( fdt ) )
     printer.exec()
 
     with open(fpp.name) as fp:
@@ -1230,7 +1232,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpp = tempfile.NamedTemporaryFile( delete=True )
 
-    printer.reset( fpp.name)
+    printer.reset( fpp.name )
 
     printer.__new_iteration__ = True
     printer.__current_node__ = "/amba_apu"
@@ -1361,7 +1363,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     refcount = 0
     root_found = False
     amba_found = False
-    all_refs = printer['/amba/interrupt-multiplex'].resolve_all_refs( printer.fdt )
+    all_refs = printer['/amba/interrupt-multiplex'].resolve_all_refs()
     for a in all_refs:
         if a.abs_path == "/":
             root_found = True
@@ -1597,7 +1599,8 @@ def tree_sanity_test( fdt, verbose=0 ):
     print( "[TEST]: end: tree re-resolve test\n" )
 
     print( "[TEST]: start: second tree test" )
-    print2 = LopperTreePrinter( printer.fdt )
+    print2 = LopperTreePrinter()
+    print2.load( printer.export() )
     if verbose:
         for n in print2:
             print( "2node: %s" % n )
@@ -1650,7 +1653,10 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     if verbose:
         print( "writing to: /tmp/tester-output.dts" )
-    LopperSDT(printer.fdt).write( printer.fdt, "/tmp/tester-output.dts", True, True )
+
+    ofdt = Lopper.fdt()
+    Lopper.sync( ofdt, printer.export() )
+    LopperSDT(ofdt).write( ofdt, "/tmp/tester-output.dts", True, True )
 
     # remove the 2nd property, re-write
     if verbose:
@@ -1658,7 +1664,9 @@ def tree_sanity_test( fdt, verbose=0 ):
     new_node - new_property2
     printer.sync()
 
-    LopperSDT(printer.fdt).write( printer.fdt, "/tmp/tester-output2.dts", True, True )
+    ofdt = Lopper.fdt()
+    Lopper.sync( ofdt, printer.export() )
+    LopperSDT(ofdt).write( ofdt, "/tmp/tester-output2.dts", True, True )
 
     if filecmp.cmp( "/tmp/tester-output.dts", "/tmp/tester-output2.dts", False ):
         test_failed( "node remove write should have differed" )
@@ -1670,7 +1678,8 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     print( "[TEST]: start: second tree test, node deep copy" )
 
-    tree2 = LopperTreePrinter( fdt, True )
+    tree2 = LopperTreePrinter( True )
+    tree2.load( Lopper.export( fdt ) )
     # new_node2 = LopperNode()
     # invokes a deep copy on the node
     new_node2 = new_node()
@@ -1702,7 +1711,10 @@ def tree_sanity_test( fdt, verbose=0 ):
         tree2.__dbg__ = 3
 
     tree2 + new_node2
-    LopperSDT(tree2.fdt).write( tree2.fdt, "/tmp/tester-output-tree2.dts", True, True )
+
+    ofdt = Lopper.fdt()
+    Lopper.sync( ofdt, tree2.export() )
+    LopperSDT( ofdt).write( ofdt, "/tmp/tester-output-tree2.dts", True, True )
 
     print( "[TEST]: end: second tree test, node deep copy\n" )
 
@@ -1711,7 +1723,9 @@ def tree_sanity_test( fdt, verbose=0 ):
     printer = printer - new_node
     #printer.delete( new_node )
 
-    LopperSDT(printer.fdt).write( printer.fdt, "/tmp/tester-output-node-removed.dts", True, True )
+    ofdt = Lopper.fdt()
+    Lopper.sync( ofdt, printer.export() )
+    LopperSDT(ofdt).write( ofdt, "/tmp/tester-output-node-removed.dts", True, True )
     print( "[TEST]: end: tree test, node remove" )
 
     if filecmp.cmp( "/tmp/tester-output-node-removed.dts", "/tmp/tester-output-tree2.dts", False ):
@@ -1744,7 +1758,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpp = tempfile.NamedTemporaryFile( delete=True )
 
-    new_tree = LopperTreePrinter( None, False, fpp.name )
+    new_tree = LopperTreePrinter( False, fpp.name )
     # make a copy of our existing node
     new_tree_new_node = new_node()
 
@@ -1791,55 +1805,55 @@ def lops_code_test( device_tree, lop_file, verbose ):
     else:
         test_failed( "enable-method, chained true block" )
 
-    c = len(re.findall( "\[FOUND\] cpu that does not match invalid a72", test_output ))
+    c = len(re.findall( "[^']\[FOUND\] cpu that does not match invalid a72", test_output ))
     if c == 3:
         test_passed( "compatible node, false block" )
     else:
         test_failed( "compatible node, false block" )
 
-    c = len(re.findall( "double condition a72 found", test_output ))
+    c = len(re.findall( "[^']\[INFO\] double condition a72 found", test_output ))
     if c == 2:
         test_passed( "double condition" )
     else:
         test_failed( "double condition" )
 
-    c = len(re.findall( "double condition a72 not found", test_output ))
+    c = len(re.findall( "[^']\[INFO\] double condition a72 not found", test_output ))
     if c == 2:
         test_passed( "double condition, false" )
     else:
         test_failed( "double condition, false" )
 
-    c = len(re.findall( "double condition inverted a72 found", test_output ))
+    c = len(re.findall( "[^']\[INFO\] double condition inverted a72 found", test_output ))
     if c == 2:
         test_passed( "double condition, inverted" )
     else:
         test_failed( "double condition, inverted" )
 
-    c = len(re.findall( "double condition list a72 found", test_output ))
+    c = len(re.findall( "[^']\[INFO\] double condition list a72 found", test_output ))
     if c == 1:
         test_passed( "double condition, list" )
     else:
         test_failed( "double condition, list" )
 
-    c = len(re.findall( "node tag:", test_output ))
+    c = len(re.findall( "[^']\[INFO\] node tag:", test_output ))
     if c == 3:
         test_passed( "data persistence" )
     else:
         test_failed( "data persistence" )
 
-    c = len(re.findall( "clock magic", test_output ))
+    c = len(re.findall( "[^']\[INFO\] clock magic", test_output ))
     if c == 1:
         test_passed( "data persistence 2" )
     else:
         test_failed( "data persistence 2" )
 
-    c = len(re.findall( "track: lopper library routine", test_output ))
+    c = len(re.findall( "[^']track: lopper library routine", test_output ))
     if c == 1:
         test_passed( "exec/library routine" )
     else:
         test_failed( "exec/library routine" )
 
-    c = len(re.findall( "print_test", test_output ))
+    c = len(re.findall( "[^']print_test", test_output ))
     if c == 2:
         test_passed( "print_test" )
     else:
@@ -1850,14 +1864,14 @@ def lops_code_test( device_tree, lop_file, verbose ):
     else:
         test_failed( "node print test" )
 
-    if re.search( "selected: /cpus/cpu@2" , test_output ):
+    if re.search( "[^']selected: /cpus/cpu@2" , test_output ):
         c = len(re.findall( "testprop: testvalue", test_output ))
         if c == 1:
             test_passed( "selection test (and)" )
         else:
             test_failed( "selection test (and)" )
 
-    c = len(re.findall( "selected2:", test_output ))
+    c = len(re.findall( "[^']selected2:", test_output ))
     if c == 4:
         test_passed( "selection test (or)" )
     else:
@@ -1867,9 +1881,14 @@ def lops_code_test( device_tree, lop_file, verbose ):
 
 def lops_sanity_test( device_tree, lop_file, verbose ):
     device_tree.setup( dt, [lop_file], "", True )
+
+
+    device_tree.verbose = 5
     device_tree.perform_lops()
 
     print( "[TEST]: writing to %s" % (device_tree.output_file))
+
+    Lopper.sync( device_tree.FDT, device_tree.tree.export() )
     device_tree.write( enhanced = True )
 
     print( "\n[TEST]: check lopper operations on: %s" % (device_tree.output_file))
@@ -1995,7 +2014,9 @@ def yaml_sanity_test( device_tree, yaml_file, outdir, verbose ):
     lt = yaml.to_tree()
 
     print( "[TEST]: writing dts from yaml to: %s" % outdir + "output_yaml_to_dts.dts" )
-    Lopper.write_fdt( lt.fdt, outdir + "output_yaml_to_dts.dts", True, 0, True )
+    out_fdt = Lopper.fdt()
+    Lopper.sync( out_fdt, lt.export() )
+    Lopper.write_fdt( out_fdt, outdir + "output_yaml_to_dts.dts", True, 0, True )
 
     print( "[TEST]: converting SDT to yaml" )
     yaml2 = LopperYAML( None, device_tree.tree )

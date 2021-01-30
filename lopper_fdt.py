@@ -31,10 +31,17 @@ from collections import OrderedDict
 
 from string import printable
 
+try:
+    import libfdt
+    from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
+except:
+    import site
+    python_version_dir = "python{}.{}".format( sys.version_info[0], sys.version_info[1] )
+    site.addsitedir('vendor/lib/{}/site-packages'.format( python_version_dir ))
 
+    import libfdt
+    from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
 
-import libfdt
-from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
 
 # used in encode/decode routines
 class LopperFmt(Enum):
@@ -543,12 +550,263 @@ class Lopper:
 
     @staticmethod
     def node_parent( fdt, node_number_or_path ):
+        """Get the parent offset / number of a node
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_number_or_path: (string or int): node number or full path to
+                                 the target node.
+
+        Returns:
+            int: the node number of the parent
+        """
         parent = -1
         node_number = Lopper.node_number( fdt, node_number_or_path )
         if node_number > 0:
             parent = fdt.parent_offset( node_number, QUIET_NOTFOUND )
 
         return parent
+
+    @staticmethod
+    def node_sync( fdt, node_in, parent = None, verbose = False ):
+        """Write a node description to a FDT
+
+        This routine takes an input dictionary, and writes the details to
+        the passed fdt.
+
+        The dictionary contains a set of internal properties, as well as
+        a list of standand properties to the node. Internal properties have
+        a __ suffix and __ prefix.
+
+        In particular:
+            - __path__ : is the absolute path fo the node, and is used to lookup
+                         the target node
+            - __fdt_name__ : is the name of the node and will be written to the
+                             fdt name property
+            - __fdt_phandle__ : is the phandle for the node
+
+        All other '/' leading, or '__' leading properties will be written to
+        the FDT as node properties.
+
+        If the node doesn't exist, it will be created. If the node exists, then
+        the existing properties are read, and any that are no present in the
+        passed dictionary are deleted.
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_in: (dictionary): Node description dictionary
+            parent (string,optional): path to the parent node
+            verbose (bool,optional): verbosity level
+
+        Returns:
+            Nothing
+        """
+        if verbose:
+            print( "[DBG]: lopper_fdt: node_sync: start: %s (%s)" % (node_in['__fdt_name__'],node_in['__path__'] ))
+
+        nn = Lopper.node_find( fdt, node_in['__path__'] )
+        if nn == -1:
+            # -1 means the node wasn't found
+            if verbose:
+                print( "[DBG]:    lopper_fdt: adding node: %s" % node_in['__path__'] )
+
+            nn = Lopper.node_add( fdt, node_in['__path__'], True )
+            if nn == -1:
+                print( "[ERROR]:    lopper_fdt: node could not be added, exiting" )
+                sys.exit(1)
+
+        nname = node_in['__fdt_name__']
+        Lopper.node_setname( fdt, nn, nname )
+
+        try:
+            ph = node_in['__fdt_phandle__']
+            if ph:
+                Lopper.property_set( fdt, nn, "phandle", ph )
+        except:
+            pass
+
+        props = Lopper.node_properties( fdt, nn )
+        props_to_delete = []
+        for p in props:
+            props_to_delete.append( p.name )
+
+        for prop, prop_val in node_in.items():
+            if re.search( "^__", prop ) or prop.startswith( '/' ):
+                if verbose:
+                    print( "          lopper_fdt: node sync: skipping internal property: %s" % prop)
+                continue
+            else:
+                if verbose:
+                    print( "          lopper_fdt: node sync: prop: %s val: %s" % (prop,prop_val) )
+
+                # We could supply a type hint via the __{}_type__ attribute
+                Lopper.property_set( fdt, nn, prop, prop_val, LopperFmt.COMPOUND )
+                if props_to_delete:
+                    try:
+                        props_to_delete.remove( prop )
+                    except:
+                        # if a node was added at the top of this routine, it
+                        # won't have anything in the props_to_delete, and this
+                        # would throw an exception. Since that's ok, we just
+                        # catch it and move on.
+                        pass
+
+        for p in props_to_delete:
+            if verbose:
+                print( "[DBG]:    lopper_fdt: node sync, deleting property: %s" % p )
+            Lopper.property_remove( fdt, nname, p )
+
+    @staticmethod
+    def sync( fdt, dct, verbose = False ):
+        """sync (write) a tree dictionary to a fdt
+
+        This routine takes an input dictionary, and writes the details to
+        the passed fdt.
+
+        The dictionary contains a set of internal properties, as well as
+        a list of standand properties to the node. Internal properties have
+        a __ suffix and __ prefix.
+
+        Child nodes are indexed by their absolute path. So any property that
+        starts with "/" and is a dictionary, represents another node in the
+        tree.
+
+        In particular:
+            - __path__ : is the absolute path fo the node, and is used to lookup
+                         the target node
+            - __fdt_name__ : is the name of the node and will be written to the
+                             fdt name property
+            - __fdt_phandle__ : is the phandle for the node
+
+        All other non  '/' leading, or '__' leading properties will be written to
+        the FDT as node properties.
+
+        Passed nodes will be synced via the node_sync() function, and will
+        be created if they don't exist. Existing nodes will have their properties
+        deleted if they are not in the corresponding dictionary.
+
+        All of the existing nodes in the FDT are read, if they aren not found
+        in the passed dictionary, they will be deleted.
+
+        Args:
+            fdt (fdt): flattened device tree object
+            node_in: (dictionary): Node description dictionary
+            parent (dictionary,optional): parent node description dictionary
+            verbose (bool,optional): verbosity level
+
+        Returns:
+            Nothing
+        """
+        # import a dictionary to a FDT
+
+        if verbose:
+            print( "[DBG]: lopper_fdt sync: start" )
+
+        # we have a list of: containing dict, value, parent
+        dwalk = [ [dct,dct,None]  ]
+        node_ordered_list = []
+        while dwalk:
+            firstitem = dwalk.pop()
+            if type(firstitem[1]) is OrderedDict:
+                node_ordered_list.append( [firstitem[1], firstitem[0]] )
+                for item,value in reversed(firstitem[1].items()):
+                    dwalk.append([firstitem[1],value,firstitem[0]])
+            else:
+                pass
+
+        # this gets us a list of absolute paths. If we walk through the
+        # dictionary passed in, and delete them from the list, we have the list
+        # of nodes to delete with whatever is left over, and the nodes to add if
+        # they aren't in the list.
+        nodes_to_remove = Lopper.nodes( fdt, "/" )
+        nodes_to_add = []
+        for n_item in node_ordered_list:
+            try:
+                nodes_to_remove.remove( n_item[0]['__path__'] )
+            except:
+                nodes_to_add.append( n_item )
+
+        for node in nodes_to_remove:
+            nn = Lopper.node_find( fdt, node )
+            if nn != -1:
+                if verbose:
+                    print( "[DBG]:    lopper_fdt: sync: removing: node %s" % node )
+                Lopper.node_remove( fdt, nn )
+            else:
+                if verbose:
+                    print( "[DBG]:    lopper_fdt: sync: node %s was not found, and could not be remove" % node )
+                # child nodes are removed with their parent, and follow in the
+                # list, so this isn't an error.
+                pass
+
+        for n_item in node_ordered_list:
+            node_in = n_item[0]
+            node_in_parent = n_item[1]
+            node_path = node_in['__path__']
+            abs_path = node_path
+            nn =  node_in['__fdt_number__']
+
+            Lopper.node_sync( fdt, node_in, node_in_parent )
+
+    @staticmethod
+    def export( fdt, start_node = "/", verbose = False ):
+        """export a FDT to a description / nested dictionary
+
+        This routine takes a FDT, a start node, and produces a nested dictionary
+        that describes the nodes and properties in the tree.
+
+        The dictionary contains a set of internal properties, as well as
+        a list of standand properties to the node. Internal properties have
+        a __ suffix and __ prefix.
+
+        Child nodes are indexed by their absolute path. So any property that
+        starts with "/" and is a dictionary, represents another node in the
+        tree.
+
+        In particular:
+            - __path__ : is the absolute path fo the node, and is used to lookup
+                         the target node
+            - __fdt_name__ : is the name of the node and will be written to the
+                             fdt name property
+            - __fdt_phandle__ : is the phandle for the node
+
+        All other "standard" properties are returned as entries in the dictionary.
+
+        Args:
+            fdt (fdt): flattened device tree object
+            start_node (string,optional): the starting node
+            verbose (bool,optional): verbosity level
+
+        Returns:
+            OrderedDict describing the tree
+        """
+        # export a FDT as a dictionary
+        dct = OrderedDict()
+
+        nodes = Lopper.node_subnodes( fdt, start_node )
+
+        dct["__path__"] = start_node
+
+        np = Lopper.node_properties_as_dict( fdt, start_node )
+        if np:
+            dct.update(np)
+
+        nn = Lopper.node_number( fdt, start_node )
+        dct["__fdt_number__"] = nn
+        dct["__fdt_name__"] = Lopper.node_getname( fdt, start_node )
+        dct["__fdt_phandle__"] = Lopper.node_getphandle( fdt, nn )
+
+        if verbose:
+            print( "[DBG]: lopper_fdt export: " )
+            print( "[DBG]:     [startnode: %s]: subnodes: %s" % (start_node,nodes ))
+            print( "[DBG]:          props: %s" % np )
+
+        for i,n in enumerate(nodes):
+            # Children are indexed by their path (/foo/bar), since properties
+            # cannot start with '/'
+            dct[n] = Lopper.export( fdt, n )
+
+        return dct
 
     @staticmethod
     def node_properties_as_dict( fdt, node, verbose=0 ):
@@ -584,10 +842,12 @@ class Lopper:
             print( "[WARNING]: could not find node %s" % node_path )
             return prop_dict
 
-        prop_list = Lopper.property_list( fdt, node_path )
+        prop_list = Lopper.node_properties( fdt, node_path )
         for p in prop_list:
-            property_val = Lopper.property_get( fdt, node_number, p, LopperFmt.COMPOUND )
-            prop_dict[p] = property_val
+            # print( "                      export as dict: read: %s" % p.name )
+            property_val = Lopper.property_get( fdt, node_number, p.name, LopperFmt.COMPOUND )
+            prop_dict[p.name] = property_val
+            prop_dict['__{}_type__'.format(p.name)] = Lopper.property_type_guess( p )
 
         return prop_dict
 
@@ -903,7 +1163,8 @@ class Lopper:
                 sys.exit(1)
 
             if enhanced:
-                printer = LopperTreePrinter( fdt_to_write, True, output_filename, verbose )
+                printer = LopperTreePrinter( True, output_filename, verbose )
+                printer.load( Lopper.export( fdt_to_write ) )
                 printer.exec()
             else:
                 # write the device tree to a temporary dtb

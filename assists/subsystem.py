@@ -60,7 +60,7 @@ def property_set( property_name, property_val, node, fdt=None ):
     newprop = LopperProp( property_name, -1, None, property_val )
     node += newprop
     if fdt:
-        node.sync( fdt )
+        node.sync()
 
 def val_as_bool( val ):
     if val == "False":
@@ -111,7 +111,7 @@ def access_expand( tree, subnode, verbose = 0 ):
             if dev_node:
                 if dev_node.phandle == 0:
                     dev_node.phandle = tree.phandle_gen()
-                    dev_node.sync( tree.fdt )
+                    dev_node.sync()
                     if verbose:
                         print( "[DBG]: generated phandle %s for node: %s" % (dev_node.phandle,dev_node.abs_path ))
 
@@ -200,7 +200,7 @@ def cpu_expand( tree, subnode, verbose = 0):
         if cluster_node:
             if cluster_node.phandle == 0:
                 cluster_node.phandle = tree.phandle_gen()
-                cluster_node.sync( tree.fdt )
+                cluster_node.sync()
                 if verbose:
                     print( "[DBG]: generated phandle %s for node: %s" % (cluster_node.phandle,cluster_node.abs_path ))
 
@@ -339,7 +339,7 @@ def subsystem_expand( tgt_node, sdt, verbose = 0 ):
     # add the cells properties
     property_set( "#address-cells", 2, domain_node )
     property_set( "#size-cells", 2, domain_node )
-    domain_node.sync( tree.fdt )
+    domain_node.sync()
 
     #domains = sdt.tree.nodes( "/domains/[^/]*$" )
     domain_count = 0
@@ -370,7 +370,7 @@ def subsystem_expand( tgt_node, sdt, verbose = 0 ):
             ## access processing
             access_expand( tree, subnode, verbose )
 
-            subnode.sync( tree.fdt )
+            subnode.sync()
 
         domain_count += 1
 

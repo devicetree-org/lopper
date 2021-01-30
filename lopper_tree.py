@@ -169,7 +169,6 @@ class LopperProp():
         """
         # a little helper to make sure that we keep up our list-ness!
         if name == "value":
-
             try:
                 old_value = self.__dict__[name]
             except:
@@ -183,9 +182,7 @@ class LopperProp():
             if Counter(old_value) != Counter(self.__dict__[name]):
                 self.__modified__ = True
 
-            # NOTE: this will not update phandle references, you need to
-            #       do a full resolve with a fdt for that.
-            self.resolve( None )
+            self.resolve()
         else:
             self.__dict__[name] = value
 
@@ -373,8 +370,6 @@ class LopperProp():
             for f in property_fields:
                 if re.search( '^#.*', f ):
                     try:
-                        # Looking into the node, is the same as:
-                        #      field_val = Lopper.property_get( fdt, nodeoffset, f, LopperFmt.SIMPLE )
                         field_val = self.node.__props__[f].value[0]
                     except:
                         field_val = 0
@@ -447,17 +442,25 @@ class LopperProp():
             print( "[DBG+++]: property sync: node: %s [%s], name: %s value: %s" %
                    ([self.node],self.node.number,self.name,self.value))
 
-        Lopper.property_set( fdt, self.node.number, self.name, self.value, LopperFmt.COMPOUND )
+        # TODO (possibly). This should just return the value as a dictionary entry,
+        #                  which is actually sync'd by some controller caller OR
+        #                  It really does sync by calling lopper with an exported
+        #                  dictionary entry.
+        #
+        # For now, it is here for compatibility with older assists, and simply updates
+        # the state of the property.
+        #
+
         self.__modified__ = False
         self.__pstate__ = "syncd"
 
         return True
 
-    def resolve_phandles( self, fdt ):
+    def resolve_phandles( self ):
         """Resolve the targets of any phandles in a property
 
         Args:
-            fdt (FDT): flattened device tree
+            None
 
         Returns:
             A list of all resolved phandle node numbers, [] if no phandles are present
@@ -513,15 +516,14 @@ class LopperProp():
 
         return phandle_targets
 
-    def resolve( self, fdt ):
-        """resolve (calculate) property details against a FDT
+    def resolve( self ):
+        """resolve (calculate) property details
 
         Some attributes of a property are not known at initialization
         time, or may change due to tree operations.
 
         This method calculates those values using information in the
-        property and in the passed FDT. If no FDT is passed only
-        partial resolution is done.
+        property and in the tree
 
         Fields resolved:
            - abs_path
@@ -530,8 +532,7 @@ class LopperProp():
            - __pstate__
 
         Args:
-           fdt (FDT): flattened device tree to sync to or None if no
-                      tree is available
+             None
 
         Returns:
            Nothing
@@ -540,23 +541,10 @@ class LopperProp():
 
         prop_val = self.value
 
-        if self.__dbg__ > 1:
-            print( "[DBG+]:         property resolve: %s (%s)" % (self.name,self.value) )
-
-        self.abs_path = ""
-        # we sometimes resolve against a zerod out fdt, i.e. when a
-        # property was assigned.
-        if fdt != None:
-            if self.node.number != 0:
-                try:
-                    self.abs_path = Lopper.node_abspath( fdt, self.node.number )
-                except Exception as e:
-                    print( "[WARNING]: exception %s triggered while resolving %s" % (e,self.name))
-                    # if something has gone wrong with node number, we can have
-                    # an exception
-                    self.abs_path = self.node.name + self.name
-
-        self.abs_path = self.abs_path + "/" + self.name
+        if self.node:
+            self.abs_path = self.node.abs_path + "/" + self.name
+        else:
+            self.abs_path = self.name
 
         if re.search( "lopper-comment.*", self.name ):
             prop_type = "comment"
@@ -568,13 +556,16 @@ class LopperProp():
             # we could make this smarter, and use the Lopper Guessed type
             prop_type = type(prop_val)
 
+        if self.__dbg__ > 1:
+            print( "[DBG+]: property [%s] resolve: %s val: %s" % (prop_type,self.name,self.value) )
+
         self.pclass = prop_type
         # this is the actual type of the elements (if a list, or the
         # value if not a list).
         self.ptype = prop_type
 
         phandle_idx, phandle_field_count = self.phandle_params()
-        phandle_tgts = self.resolve_phandles( fdt )
+        phandle_tgts = self.resolve_phandles()
 
         if prop_type == "comment":
             outstring = ""
@@ -639,11 +630,11 @@ class LopperProp():
                     base = 10
                     if re.search( "0x", prop_val[0] ):
                         base = 16
-                        try:
-                            i = int(prop_val[0],base)
-                            list_of_nums = True
-                        except:
-                            pass
+                    try:
+                        i = int(prop_val[0],base)
+                        list_of_nums = True
+                    except:
+                        pass
                 else:
                     list_of_nums = True
 
@@ -681,52 +672,50 @@ class LopperProp():
                         # if we we are on the phandle field, within the number of fields
                         # per element, then we need to look for a phandle replacement
                         if element_count in phandle_idxs:
-                            if fdt != None:
+                            try:
                                 try:
-                                    try:
-                                        tgn = self.node.tree.pnode( i )
-                                        if tgn == None:
-                                            # if we couldn't find the target, maybe it is in
-                                            # as a string. So let's check that way.
-                                            tgn2 = self.node.tree.nodes( re.escape(i) )
-                                            if not tgn2:
-                                                tgn2 = self.node.tree.lnodes( re.escape(i) )
+                                    tgn = self.node.tree.pnode( i )
+                                    if tgn == None:
+                                        # if we couldn't find the target, maybe it is in
+                                        # as a string. So let's check that way.
+                                        tgn2 = self.node.tree.nodes( re.escape(i) )
+                                        if not tgn2:
+                                            tgn2 = self.node.tree.lnodes( re.escape(i) )
 
-                                            if tgn2:
-                                                tgn = tgn2[0]
+                                        if tgn2:
+                                            tgn = tgn2[0]
 
-                                    except Exception as e:
-                                        tgn = 0
-
-                                    try:
-                                        phandle_tgt_name = tgn.label
-                                    except:
-                                        phandle_tgt_name = ""
-
-                                    if not phandle_tgt_name and tgn:
-                                        phandle_tgt_name = Lopper.phandle_safe_name( tgn.name )
-
-                                    if not phandle_tgt_name:
-                                        raise ValueError( "phandle is not resolvable)" )
-
-                                    if self.__dbg__ > 1:
-                                        print( "[DBG+]: [%s:%s] phandle replacement of: %s with %s" %
-                                               ( self.node.name, self.name, i, phandle_tgt_name))
                                 except Exception as e:
-                                    # we need to drop the entire record from the output, the phandle wasn't found
-                                    if self.__dbg__ > 1:
-                                        if self.node.tree.strict:
-                                            print( "[DBG+]: [%s:%s] phandle: %s not found, dropping %s fields" %
-                                                   ( self.node.name, self.name, i, phandle_field_count))
-                                        else:
-                                            print( "[DBG+]: [%s:%s] phandle: %s not found, but not dropping (permissive mode)" %
-                                                   ( self.node.name, self.name, i))
+                                    tgn = 0
 
+                                try:
+                                    phandle_tgt_name = tgn.label
+                                except:
+                                    phandle_tgt_name = ""
 
-                                    if self.node.tree.strict:
-                                        drop_record = True
-                                        if len(prop_val) == phandle_field_count or len(prop_val) < phandle_field_count:
-                                            drop_all = True
+                                if not phandle_tgt_name and tgn:
+                                    phandle_tgt_name = Lopper.phandle_safe_name( tgn.name )
+
+                                if not phandle_tgt_name:
+                                    raise ValueError( "phandle is not resolvable" )
+
+                                if self.__dbg__ > 1:
+                                    print( "[DBG+]: [%s:%s] phandle replacement of: %s with %s" %
+                                           ( self.node.name, self.name, i, phandle_tgt_name))
+                            except Exception as e:
+                                # we need to drop the entire record from the output, the phandle wasn't found
+                                if self.__dbg__ > 1:
+                                    if self.node and self.node.tree.strict:
+                                        print( "[DBG+]: [%s:%s] phandle: %s not found, dropping %s fields" %
+                                               ( self.node.name, self.name, i, phandle_field_count))
+                                    else:
+                                        print( "[DBG+]: [%s:%s] phandle: %s not found, but not dropping (permissive mode)" %
+                                               ( self.node.name, self.name, i))
+
+                                if self.node and self.node.tree.strict:
+                                    drop_record = True
+                                    if len(prop_val) == phandle_field_count or len(prop_val) < phandle_field_count:
+                                        drop_all = True
 
                         # if we are on a "record" boundry, latch what we have (unless the drop
                         # flag is set) and start gathering more
@@ -777,6 +766,8 @@ class LopperProp():
         self.string_val = outstring
         self.__pstate__ = "resolved"
 
+
+
 class LopperNode(object):
     """Class representing a device tree node
 
@@ -787,16 +778,16 @@ class LopperNode(object):
        - equality check (==): for comparison
        - ref counting: set, get, clear
        - property add, modify, delete (via methods and '-', '+')
-       - resolve(): to update/calculate properties against a FDT
-       - sync(): sync modified node elements (and properties) to a FDT
+       - resolve(): to update/calculate properties against the tree
+       - sync(): sync modified node elements (and properties)
        - deep node copy via LopperNode()
 
      Attributes:
-       - number: the node number in the backing FDT
-       - name: the node name in the backing FDT (this is not the node path)
+       - number: the node number in the backing structure
+       - name: the node name in the backing structure (this is not the node path)
        - parent: a link to the parent LopperNode object
        - tree: the tree which contains this node
-       - depth: the nodes depth in the backing FDT (0 is root, 1 for first level children)
+       - depth: the nodes depth in the backing structure (0 is root, 1 for first level children)
        - child_nodes: the list of child LopperNodes
        - phandle: the phandle in the backing FDT (optional)
        - type: the type of the node (based on 'compatible' property)
@@ -858,7 +849,7 @@ class LopperNode(object):
         """
 
         if self.__dbg__ > 1:
-            print( "[DBG++]: node deepcopy start: %s" % [self] )
+            print( "[DBG++]: node deepcopy start: %s" % [self.abs_path] )
 
         new_instance = LopperNode()
 
@@ -872,6 +863,8 @@ class LopperNode(object):
         new_instance.__props__ = OrderedDict()
         for p in reversed(self.__props__):
             new_instance[p] = copy.deepcopy( self.__props__[p], memodict )
+            new_instance[p].node = new_instance
+
         new_instance.name = copy.deepcopy( self.name, memodict )
         new_instance.number = -1 # copy.deepcopy( self.number, memodict )
         new_instance.depth = copy.deepcopy( self.depth, memodict )
@@ -880,6 +873,8 @@ class LopperNode(object):
         new_instance.abs_path = copy.deepcopy( self.abs_path, memodict )
 
         new_instance._source = self._source
+
+        new_instance.tree = None
 
         new_instance.child_nodes = OrderedDict()
         for c in reversed(self.child_nodes.values()):
@@ -1066,7 +1061,7 @@ class LopperNode(object):
         if not isinstance( other, LopperNode ):
             return False
         else:
-            if self.number == other.number:
+            if self.abs_path == other.abs_path:
                 return True
 
             return False
@@ -1194,7 +1189,7 @@ class LopperNode(object):
         else:
             np = LopperProp( key, -1, self, val, self.__dbg__ )
             self.__props__[key] = np
-            self.__props__[key].resolve( self.tree.fdt )
+            self.__props__[key].resolve()
 
             # throw an exception, since this is not a valid
             # thing to assign.
@@ -1227,7 +1222,7 @@ class LopperNode(object):
         else:
             self._ref = 0
 
-    def resolve_all_refs( self, fdt=None, property_mask=[] ):
+    def resolve_all_refs( self, property_mask=[] ):
         """Resolve and Return all references in a node
 
         Finds all the references starting from a given node. This includes:
@@ -1237,7 +1232,6 @@ class LopperNode(object):
            - Any phandle referenced nodes, and any nodes they reference, etc
 
         Args:
-           fdt (FDT,optional): The flattended device tree to use for resolution
            property_mask (list of regex): Any properties to exclude from reference
                                           tracking, "*" to exclude all properties
 
@@ -1245,10 +1239,6 @@ class LopperNode(object):
            A list of referenced nodes, or [] if no references are found
 
         """
-        resolve_fdt = fdt
-        if fdt == None:
-            resolve_fdt = self.tree.fdt
-
         property_mask_check = property_mask
         if type(property_mask) != list:
             property_mask_check = [ property_mask ]
@@ -1276,11 +1266,11 @@ class LopperNode(object):
 
             if not skip:
                 # process the property
-                phandle_nodes = p.resolve_phandles( resolve_fdt )
+                phandle_nodes = p.resolve_phandles()
                 for ph_node in phandle_nodes:
                     # don't call in for our own node, or we'll recurse forever
                     if ph_node.number != self.number:
-                        refs = ph_node.resolve_all_refs( resolve_fdt, property_mask_check )
+                        refs = ph_node.resolve_all_refs( property_mask_check )
                         if refs:
                             reference_list.append( refs )
 
@@ -1312,12 +1302,87 @@ class LopperNode(object):
 
         """
         all_kids = [ self ]
+
+        if depth and max_depth == depth:
+            return all_kids
+
         for child_node in self.child_nodes.values():
             all_kids = all_kids + child_node.subnodes( depth + 1, max_depth )
 
         return all_kids
 
-    def sync( self, fdt ):
+    def export( self ):
+        """Export node details as a dictionary
+
+        Export the details of a node in a dictionary. The format of the dictionary
+        is suitable for loading() into a LopperTree, or syncing() to a flattened
+        device tree by lopper_fdt.
+
+        Internal / FDT properties are prefixed/suffixed with __.
+
+        As part of exporting a node, if paths are detected as changed (a moved
+        node, a renamed node, etc), then the are adjusted in the tree and
+        exported in the dictionary.
+
+        Note: This is not recursive, so child nodes are not exported
+
+        Args:
+           None
+
+        Returns:
+           Ordered Dict Describing a node
+
+        """
+        # node export to a dictionary
+        dct = OrderedDict()
+
+        # is the node resolved ? if not, it may have been added since we read the
+        # tree and created things.
+        if self.__nstate__ != "resolved":
+            print( "[WARNING]: node export: unresolved node, not syncing" )
+        else:
+
+            dct['__fdt_number__'] = self.number
+            dct['__fdt_name__'] = self.name
+            dct['__fdt_phandle__'] = self.phandle
+
+            last_chunk_of_path = os.path.basename( self.abs_path )
+            if last_chunk_of_path != self.name:
+                if self.__dbg__ > 1:
+                    print( "[DBG+]: node export: name change detected, adjusting path" )
+                self.abs_path = os.path.dirname( self.abs_path ) + "/" + self.name
+
+            if self.parent:
+                parent_chunk_of_path = os.path.dirname( self.abs_path )
+                if parent_chunk_of_path != self.parent.abs_path:
+                    if self.__dbg__ > 1:
+                        print( "[DBG+]: node export: path component change detected, adjusting path" )
+                    self.abs_path = self.parent.abs_path + "/" + self.name
+
+            self.abs_path = self.abs_path.replace( "//", "/" )
+            if self.__dbg__ > 1:
+                print( "[DBG++]: node export: start: [%s][%s]" % (self.number,self.abs_path))
+
+            dct['__path__'] = self.abs_path
+
+            # property export
+            for p in self.__props__.values():
+                dct[p.name] = p.value
+                if p.binary:
+                    dct['__{}_type__'.format(p.name)] = LopperFmt.UINT8
+                else:
+                    dct['__{}_type__'.format(p.name)] = p.ptype
+
+                if self.__dbg__ > 2:
+                    print( "       node export: [%s] property: %s (state:%s)(type:%s)" %
+                           (p.ptype,p.name,p.__pstate__,dct['__{}_type__'.format(p.name)]) )
+
+            self.__modified__ = False
+
+        return dct
+
+
+    def sync( self, fdt = None ):
         """sync a LopperNode to a backing FDT
 
         This routine looks for changes to the LopperNode and writes them back
@@ -1341,8 +1406,11 @@ class LopperNode(object):
            boolean: True if the node was sync'd, False otherwise
 
         """
-        retval = False
+        retval = True
 
+        # TODO: this will either export a single node dictionary OR it will
+        #       export and call lopper to sync it directly. For now, it is
+        #       just marking everything sync'd, and is kept for compatibility
 
         # is the node resolved ? if not, it may have been added since we read the
         # tree and created things.
@@ -1351,68 +1419,6 @@ class LopperNode(object):
         else:
             if self.__dbg__ > 1:
                 print( "[DBG++]: node sync start: [%s][%s]" % (self.number,self.abs_path))
-
-            # check the FDT number and our number, and update as required
-            nn = Lopper.node_find( fdt, self.abs_path )
-            if nn != self.number:
-                if self.__dbg__ > 2:
-                    print( "[DBG++]: node sync: fdt and node number differ, updating node '%s' from %s to %s" %
-                           (self.abs_path,self.number,nn) )
-                self.number = nn
-
-            fdt_name = Lopper.node_getname( fdt, self.number )
-            if fdt_name != self.name:
-                try:
-                    if self.__dbg__ > 2:
-                        print( "[DBG++]:    node sync: syncing name from %s to %s" % (fdt_name,self.name))
-
-                    Lopper.node_setname( fdt, self.number, self.name )
-                except Exception as e:
-                    print( "[WARNING]: could not set node name to %s (%s)" % (self.name,e))
-
-
-            fdt_phandle = Lopper.node_getphandle( fdt, self.number )
-            if fdt_phandle != self.phandle:
-                if self.__dbg__ > 2:
-                    print( "[DBG++]:    node sync: syncing phandle from %s to %s" % (fdt_phandle,self.phandle))
-                try:
-                    Lopper.property_set( fdt, self.number, "phandle", self.phandle )
-                    self.tree.__pnodes__[ self.phandle ] = self
-                except Exception as e:
-                    print( "[WARNING]: could not set node phandle to %s (%s)" % (self.phandle,e))
-
-            # sync any modified properties to a device tree
-            for p in self.__props__.values():
-                if self.__dbg__ > 2:
-                    print( "[DBG++]:    node sync: syncing property: %s (state:%s)" % (p.name,p.__pstate__) )
-
-                if p.__modified__:
-                    if self.__dbg__ > 2:
-                        print( "[DBG++]:    node sync: property %s is modified, writing back" % p.name )
-                    try:
-                        p.sync( fdt )
-                        # this will have renumbered elements of the tree, we need to
-                        # flag for a full sync.
-                        self.tree.__must_sync__ = True
-                    except Exception as e:
-                        print( "[ERROR]: could not sync property: %s" % e )
-
-                    retval = True
-                if not p.__pstate__ == "syncd":
-                    if self.__dbg__ > 2:
-                        print( "[DBG++]:    node sync: property %s is not syncd, creating with value: %s" %
-                               (p.name,p.value) )
-                    p.sync( fdt )
-                    retval = True
-
-            for p in list(self.__props_pending_delete__.values()):
-                if p.__pstate__ == "deleted":
-                    if self.__dbg__ > 2:
-                        print( "[DBG++]:    node sync: pending property %s is delete, writing back" % p.name )
-
-                    Lopper.property_remove( fdt, self.name, p.name )
-                    del self.__props_pending_delete__[p.name]
-                    retval = True
 
             self.__modified__ = False
 
@@ -1598,8 +1604,11 @@ class LopperNode(object):
             self.__modified__ = True
         elif isinstance( prop, LopperNode):
             node = prop
-            if self.__dbg__ > 2:
-                print( "[DBG++]: node %s adding Node: %s" % (self.abs_path,node.name) )
+            # this isn't ideal. We don't have a path, but are getting
+            # subnodes added. So we assume that our path is /<name> and
+            # will adjust it later if that is wrong
+            if not self.abs_path:
+                self.abs_path = "/" + self.name
 
             node.abs_path = self.abs_path + "/" + node.name
             node.parent = self
@@ -1607,9 +1616,185 @@ class LopperNode(object):
 
             self.child_nodes[node.abs_path] = node
 
+            if self.__dbg__ > 2:
+                print( "[DBG++]: node %s added Node: %s" % (self.abs_path,node.name) )
+
         return self
 
-    def resolve( self, fdt ):
+    def load( self, dct, parent_path = None):
+        """load (calculate) node details against a property dictionary
+
+        Some attributes of a node are not known at initialization time, or may
+        change due to tree operations.
+
+        This method calculates those values using information in the node and in
+        the passed property dictionary
+
+        The only value that must be set in the node before resolve() is called
+        is the node number.
+
+        Fields resolved (see class for descriptions)
+           - name
+           - abs_path
+           - phandle
+           - depth
+           - children
+           - type
+           - __props__
+           - __nstate__
+           - __modified__
+
+        Args:
+           Property dictionary: Dictionary with the node details/properties
+           parent_path (Optional,string)
+
+        Returns:
+           Nothing
+
+        """
+        # resolve the rest of the references based on the passed device tree
+        # self.number must be set before calling this routine.
+        if self.__dbg__ > 2:
+            print( "[DBG++]: node load start [%s][%s]: %s" % (self,self.number,self.abs_path))
+
+        self.dct = dct
+
+        #
+        # tree add currently takes care of this, but it might be better if
+        # done here, since that way it is properly recursive and self contained.
+        # keeping this here as a reference / placeholder
+        #
+        # if self.child_nodes:
+        #     for p,c in list(self.child_nodes.items()):
+        #         print( "loading child node %s" % c.name )
+        #         # TODO: To be complete, we could add the properites of the node
+        #         #       into the dictionary when calling load, that way we don't
+        #         #       count on the current behaviour to not drop the properties.
+        #         c.load( { '__path__' : self.abs_path + c.name,
+        #                   '__fdt_name__' : c.name,
+        #                   '__fdt_phandle__' : 0 },
+        #                 self.abs_path )
+
+        if dct:
+            # we may not need to save this, temp.
+            self.dct = dct
+
+            self.abs_path = dct['__path__']
+
+            saved_props = self.__props__
+            self.__props__ = OrderedDict()
+
+            self.name = dct['__fdt_name__']
+            self.phandle = dct['__fdt_phandle__']
+
+            last_chunk_of_path = os.path.basename( self.abs_path )
+            if last_chunk_of_path != self.name:
+                self.abs_path = os.path.dirname( self.abs_path ) + "/" + self.name
+
+            # parent and depth
+            if self.number != 0:
+                if self.tree:
+                    try:
+                        self.parent = self.tree[parent_path]
+                    except:
+                        self.parent = None
+                    if self.parent:
+                        # the child dictionary is ordered. So we delete a
+                        # key and re-assign it to make sure ordering is up
+                        # to date
+                        try:
+                            if self.parent.child_nodes[self.abs_path]:
+                                del self.parent.child_nodes[self.abs_path]
+                        except:
+                            pass
+
+                        self.parent.child_nodes[self.abs_path] = self
+
+                depth = len(re.findall( '/', self.abs_path ))
+            else:
+                depth = 0
+
+            self.depth = depth
+
+            # First pass: we look at the properties in the FDT. If they were in our
+            # saved properties dictionary from above, we copy them back in. Re-resolving
+            # and decoding unchanged properties is slow, so we avoid that step where
+            # possible.
+            self.type = []
+            label_props = []
+
+            for prop, prop_val in dct.items():
+                if re.search( "^__", prop ) or prop.startswith( '/' ):
+                    # internal property, skip
+                    continue
+                else:
+                    if self.__dbg__ > 3:
+                        print( "[DBG++] node load: [%s] prop: %s val: %s" % (dct['__{}_type__'.format(prop)],
+                                                                             prop, prop_val ))
+
+                dtype = LopperFmt.UINT8
+                try:
+                    # see if we got a type hint as part of the input dictionary
+                    dtype = dct['__{}_type__'.format(prop)]
+                except Exception as e:
+                    pass
+
+                # special handling for 'compatible', we bubble it up as the node "type"
+                if prop == "compatible":
+                    self.type += prop_val
+
+                # create property objects, and resolve them
+                try:
+                    existing_prop = saved_props[prop]
+                except Exception as e:
+                    existing_prop = None
+
+                if existing_prop:
+                    # same prop name, same parent node .. it is the same. If this
+                    # somehow changes, we'll need to call resolve on this as well.
+                    self.__props__[prop] = existing_prop
+                else:
+                    self.__props__[prop] = LopperProp( prop, -1, self,
+                                                       prop_val, self.__dbg__ )
+                    if dtype == LopperFmt.UINT8:
+                        self.__props__[prop].binary = True
+
+                    self.__props__[prop].resolve()
+                    self.__props__[prop].__modified__ = False
+
+                    # if our node has a property of type label, we bubble it up to the node
+                    # for future use when replacing phandles, etc.
+                    if self.__props__[prop].pclass == "label":
+                        self.label = self.__props__[prop].value[0]
+                        label_props.append( self.__props__[prop] )
+
+
+            # second pass: re-resolve properties if we found some that had labels
+            if label_props:
+                # we had labels, some output strings in the properities may need to be
+                # update to reflect the new targets
+                for p in self.__props__:
+                    self.__props__[p].resolve()
+                    self.__props__[p].__modified__ = False
+
+            # 3rd pass: did we have any added, but not sync'd properites. They need
+            #           to be brought back into the main property dictionary.
+            for p in saved_props:
+                if saved_props[p].__pstate__ != "deleted":
+                    self.__props__[p] = saved_props[p]
+                    self.__props__[p].node = self
+
+            if not self.type:
+                self.type = [ "" ]
+
+            self.__nstate__ = "resolved"
+            self.__modified__ = False
+
+        if self.__dbg__ > 2:
+            print( "[DGB++]: node resolution end: %s" % self)
+
+
+    def resolve( self, fdt = None ):
         """resolve (calculate) node details against a FDT
 
         Some attributes of a node are not known at initialization time, or may
@@ -1644,135 +1829,14 @@ class LopperNode(object):
         # resolve the rest of the references based on the passed device tree
         # self.number must be set before calling this routine.
         if self.__dbg__ > 2:
-            print( "[DBG++]: node resolution start [fdt:%s][%s][%s]: %s" % (fdt,self,self.number,self.abs_path))
+            print( "[DBG++]: node resolution start [%s][%s]: %s" % (self,self.number,self.abs_path))
 
-        if fdt:
-            if self.number == -1:
-                # we aren't in the FDT yet. So we can only calcuate a few things.
-                # we could probably also test this by checking the path against the
-                # node prefix in Lopper FDT.
-                if self.parent:
-                    self.abs_path = self.parent.abs_path + "/" + self.name
+        ## This may be converted to a dictionary export -> call to lopper fdt
+        ## to do a partial sync. But for now, it is just changing the state as
+        ## the new load() function takes care of these details.
 
-            elif self.number >= 0:
-
-                saved_props = self.__props__
-                self.__props__ = OrderedDict()
-
-                self.name = Lopper.node_getname( fdt, self.number )
-                self.phandle = Lopper.node_getphandle( fdt, self.number )
-
-                if self.number > 0:
-                    self.abs_path = Lopper.node_abspath( fdt, self.number )
-                else:
-                    self.abs_path = "/"
-
-                if self.__dbg__ > 2:
-                    print( "[DBG++]:    node resolved: number: %s name: %s path: %s [fdt:%s]" %
-                           ( self.number, self.name, self.abs_path, fdt ) )
-
-                # parent and depth
-                if self.number > 0:
-                    parent_node_num = Lopper.node_parent( fdt, self.number )
-                    parent_path = Lopper.node_abspath( fdt, parent_node_num )
-                    if self.tree:
-                        self.parent = self.tree[parent_path]
-                        if self.parent:
-                            # the child dictionary is ordered. So we delete a key and
-                            # re-assign it to make sure ordering is up to date
-                            try:
-                                if self.parent.child_nodes[self.abs_path]:
-                                    del self.parent.child_nodes[self.abs_path]
-                            except:
-                                pass
-
-                            self.parent.child_nodes[self.abs_path] = self
-
-                    depth = len(re.findall( '/', self.abs_path ))
-                else:
-                    depth = 0
-
-                self.depth = depth
-
-                ## we may want to check if children[] isnt empty and their state is
-                ## "init", since that means we are adding nodes to the FDT.
-
-                # kept as reference: the children now add themselves to the parent
-                # tracking dictionary, but if we need top down control in the future,
-                # we'll need something like this:
-
-                # this reads the children from the FDT, but if they aren't there
-                # yet, we'll have to re-resolve later to get them.
-                # self.children = []
-                # subnodes = Lopper.node_subnodes( fdt, self.abs_path, False )
-                # for s in subnodes:
-                #     if self.abs_path != '/':
-                #         child_path2 = self.abs_path + '/' + s
-                #     else:
-                #         child_path2 = '/' + s
-                #     self.children.append(child_path2)
-
-                # First pass: we look at the properties in the FDT. If they were in our
-                # saved properties dictionary from above, we copy them back in. Re-resolving
-                # and decoding unchanged properties is slow, so we avoid that step where
-                # possible.
-                self.type = []
-                label_props = []
-                node_props = Lopper.node_properties( fdt, self.number )
-                for prop in node_props:
-                    prop_val = Lopper.property_get( fdt, self.number, prop.name, LopperFmt.COMPOUND )
-                    dtype = Lopper.property_type_guess( prop )
-
-                    # special handling for 'compatible', we bubble it up as the node "type"
-                    if prop.name == "compatible":
-                        self.type += prop_val
-
-                    # create property objects, and resolve them
-                    try:
-                        existing_prop = saved_props[prop.name]
-                    except Exception as e:
-                        existing_prop = None
-
-                    if existing_prop:
-                        # same prop name, same parent node .. it is the same. If this
-                        # somehow changes, we'll need to call resolve on this as well.
-                        self.__props__[prop.name] = existing_prop
-                    else:
-                        self.__props__[prop.name] = LopperProp( prop.name, -1, self,
-                                                                prop_val, self.__dbg__ )
-                        if dtype == LopperFmt.UINT8:
-                            self.__props__[prop.name].binary = True
-
-                        self.__props__[prop.name].resolve( fdt )
-                        self.__props__[prop.name].__modified__ = False
-
-                        # if our node has a property of type label, we bubble it up to the node
-                        # for future use when replacing phandles, etc.
-                        if self.__props__[prop.name].pclass == "label":
-                            self.label = self.__props__[prop.name].value[0]
-                            label_props.append( self.__props__[prop.name] )
-
-
-                # second pass: re-resolve properties if we found some that had labels
-                if label_props:
-                    # we had labels, some output strings in the properities may need to be
-                    # update to reflect the new targets
-                    for p in self.__props__:
-                        self.__props__[p].resolve( fdt )
-                        self.__props__[p].__modified__ = False
-
-                # 3rd pass: did we have any added, but not sync'd properites. They need
-                #           to be brought back into the main property dictionary.
-                for p in saved_props:
-                    if saved_props[p].__pstate__ != "deleted":
-                        self.__props__[p] = saved_props[p]
-                        self.__props__[p].node = self
-
-            if not self.type:
-                self.type = [ "" ]
-
-            self.__nstate__ = "resolved"
-            self.__modified__ = False
+        self.__nstate__ = "resolved"
+        self.__modified__ = False
 
         if self.__dbg__ > 2:
             print( "[DGB++]: node resolution end: %s" % self)
@@ -1784,23 +1848,26 @@ class LopperTree:
        - a node iterator
        - dictionary access to nodes by path or node number
        - a tree walker / exec() that has callbacks for: tree start, node start,
-                                                        property start, node end, tree end
+         property start, node end, tree end
        - debug level
        - tree wide reference tracking control: clear, get
        - sync(): to sync changes to a backing FDT
+       - export(): to export the tree description as a dictionary
        - node manipulatins: add, delete, filter, subnodes
        - phandle access to nodes
+       - label access to nodes
        - node search by regex
 
     A LopperTree object is instantiated for an easier/structure interface to a backing
-    device tree store (currently only a flattended device tree from libfdt). It provides
+    device tree store (currently only a flattened device tree from libfdt). It provides
     the ability to add/delete/manipulate nodes on a tree wide basis and can sync those
     changes to the backing store.
 
-    When initialized the tree is created as a snapshot or reference to a FDT. If the
-    changes made by the object are to be indepdendent, then a snapshot is used. If the
-    original FDT is to be updated, then a reference should be used. reference is the
-    default mode.
+    When initialized, the tree is created from an exported description of the
+    FDT. If the changes made by the tree  are to be indepdendent, then the FDT
+    should not be re-exported and loaded by the tree. But if other components are
+    changing the FDT, it can be reloaded to synchronize the tree and the backing
+    store.
 
     During the walking of a tree via exec(), callbacks are made (if set) at defined
     points in the process. This makes it easy to implement structured output of a
@@ -1824,17 +1891,9 @@ class LopperTree:
        - strict: Flag indicating if strict property resolution should be enforced
 
     """
-    def __init__(self, fdt=None, snapshot = False, depth_first=True ):
-        # copy the tree, so we'll remain valid if operations happen
-        # on the tree. This is unlike many of the other modes
-        if snapshot:
-            self.fdt = Lopper.fdt_copy( fdt )
-        else:
-            self.fdt = fdt
-
-        if self.fdt == None:
-            self.fdt = Lopper.fdt()
-
+    ## TODO: Should this take a dictionary as an argument, and call  "load"
+    ##       at the end ??
+    def __init__(self, snapshot = False, depth_first=True ):
         # nodes, indexed by abspath
         self.__nodes__ = OrderedDict()
         # nodes, indexed by node number
@@ -1858,18 +1917,24 @@ class LopperTree:
         # state
         self.__dbg__ = 0
         self.__must_sync__ = False
-        self.__current_node__ = 0
-        self.__start_node__ = 0
+        self.__current_node__ = "/"
+        self.__start_node__ = "/"
         self.__new_iteration__ = True
         self.__node_iter__ = None
+
+        self.dct = None
 
         # type
         self.depth_first = depth_first
 
         self.strict = True
 
-        # resolve against the fdt
-        self.resolve()
+        # ensure that we have a root node available immediately
+        i_dct = {  '__path__' : '/',
+                   '__fdt_name__' : "",
+                   '__fdt_number__' : 0,
+                   '__fdt_phandle__' : -1 }
+        self.load( i_dct, True)
 
     def __iter__(self):
         """magic method to support iteration
@@ -1902,8 +1967,8 @@ class LopperTree:
 
         """
         n = self.next()
-        if n.number == -1:
-            raise StopIteration
+        #if n.number == -1:
+        #    raise StopIteration
 
         return n
 
@@ -1926,13 +1991,21 @@ class LopperTree:
         Returns:
            Nothing
         """
-        # TODO: we could detect if fdt is assigned/writen and re-run a resolve()
+        # TODO: we could detect if dct is assigned/writen and re-run a load
         if name == "__current_node__" or name == "__start_node__":
             if type(value) == int:
-                self.__dict__[name] = value
+                try:
+                    node = self.__nnodes__[value]
+                    self.__dict__[name] = node.abs_path
+                except:
+                    self.__dict__[name] = "/"
             else:
-                nn = Lopper.node_number( self.fdt, value )
-                self.__dict__[name] = nn
+                # try:
+                #     nn = self.tree[value].number
+                # except:
+                #     nn = -1
+                # self.__dict__[name] = nn
+                self.__dict__[name] = value
                 # it's always a new iteration when you start via a path
                 self.__new_iteration__ = True
         elif name == "__dbg__":
@@ -1972,7 +2045,8 @@ class LopperTree:
         # nodes by name (but since most names are not valid python member names,
         # it isn't all that useful. more useful are the __*item*__ routines.
         try:
-            return object.__getattribute__(self, name)
+            x = object.__getattribute__(self, name)
+            return x
         except:
             try:
                 # a common mistake is to leave a trailing / on a node
@@ -2022,6 +2096,7 @@ class LopperTree:
             if access_name != "/":
                 # but if we rstrip just "/", we have nothing!
                 access_name = key.rstrip('/')
+
             return self.__nodes__[access_name]
         except Exception as e:
             # is it a label :
@@ -2157,7 +2232,7 @@ class LopperTree:
 
         """
         if parent_nodes:
-            refd_nodes = starting_node.resolve_all_refs( self.fdt, [".*"] )
+            refd_nodes = starting_node.resolve_all_refs( [".*"] )
 
         subnodes_to_ref = starting_node.subnodes()
 
@@ -2230,6 +2305,32 @@ class LopperTree:
 
         return ret_nodes
 
+
+    def export(self, start_path = "/" ):
+        if self.__dbg__ > 2:
+            print( "[DBG] tree export start: %s" % start_path )
+
+        # tree export to a nested dictionary!
+        start_node = self[start_path]
+
+        subnodes = start_node.subnodes( 0, 1 )
+
+        # we'll loop forever if we leave ourself in the subnodes
+        subnodes.remove( start_node )
+
+        dct = start_node.export()
+
+        for i,n in enumerate(subnodes):
+            # node_dct = self.export(n)
+            # dct[node_dct['__path__']] = node_dct
+            dct[n.abs_path] = self.export(n.abs_path)
+
+        return dct
+
+    def resolve( self ):
+        # kept for compatibility, the tree is always resolved now
+        pass
+
     def sync( self, fdt = None, only_if_required = False ):
         """Sync a tree to a backing FDT
 
@@ -2249,49 +2350,33 @@ class LopperTree:
            Nothing
 
         """
+
         if only_if_required:
             if not self.__must_sync__:
                 if self.__dbg__ > 2:
                     print( "[DBG+++]: not syncing, since __must_sync__ is not set" )
                 return
 
-        sync_fdt = fdt
-        if sync_fdt == None:
-            sync_fdt = self.fdt
 
         if self.__dbg__ > 2:
-            print( "[DBG++][%s]: tree sync start: %s" % (sync_fdt,self) )
+            print( "[DBG++][%s]: tree sync start: %s" % (fdt,self) )
 
-        # hmm. either we have to walk our nodes, and sync them and do it
-        # iteratively until no changes are detected, or do a 2nd loop to
-        # update the node numbers. OR we could walk the FDT, get the names
-        # of the nodes in order, lookup their node in our dict and do the
-        # sync that way....this 2nd way works, since we will get them in
-        # order and pickup any trickle down changes (as far as we know).
-
-        # technique b)
-
-        nodes = Lopper.nodes( sync_fdt, "/" )
-        for n in nodes:
-            try:
-                if self.__nodes__[n]:
-                    self.__nodes__[n].sync( sync_fdt )
-            except:
-                pass
-
-        # technique a), left for reference
-        # sync any modified properties to a device tree
-        # for n in self.__nodes__.values():
-        #     if self.__dbg__ > 2:
-        #         print( "[DBG++][%s]: tree sync node: %s" % (sync_fdt,n.name) )
-        #     n.sync( sync_fdt )
+        #
+        # This triggers the "load" operation on the entire tree. That block
+        # of code is responsible for fixing up paths, looking for renames,
+        # etc.
+        #
+        # Note: this no longer writes to the FDT, that should be done by the
+        #       Lopper.sync() call.
+        #
+        new_dct = self.export()
+        self.load( new_dct )
 
         if self.__dbg__ > 2:
-            print( "[DBG++][%s]: tree sync end: %s" % (sync_fdt,self) )
+            print( "[DBG++][%s]: tree sync end: %s" % (fdt,self) )
 
         # resolve and details that may have changed from the sync
         self.__must_sync__ = False
-        self.resolve()
 
 
     # in case someone wants to do "tree" - "node"
@@ -2330,6 +2415,7 @@ class LopperTree:
 
         """
         n = node
+
         # not a great idea to delete by number, but we support it as
         # a transitional step
         if type(node) == int:
@@ -2338,11 +2424,37 @@ class LopperTree:
 
         if n.__nstate__ == "resolved" and self.__must_sync__ == False:
             if self.__dbg__ > 1:
-                print( "[DBG+]: %s deleting node %s" % (self,n))
+                print( "[DBG+]: %s deleting [%s] node %s" % (self, [n], n.abs_path))
 
-            if Lopper.node_remove( self.fdt, n.number ):
-                self.sync()
-                return True
+            if n.child_nodes:
+                for cn_path,cn in list(n.child_nodes.items()):
+                    self.delete( cn  )
+
+            try:
+                del self.__nodes__[n.abs_path]
+            except:
+                pass
+
+            try:
+                del self.__pnodes__[n.phandle]
+            except:
+                pass
+
+            try:
+                del self.__lnodes__[n.label]
+            except:
+                pass
+
+            try:
+                del self.__nnodes__[n.number]
+            except:
+                pass
+
+            if n.parent:
+                del n.parent.child_nodes[n.abs_path]
+
+            n.__nstate__ = "deleted"
+            n.__modified__ = True
 
         return False
 
@@ -2396,16 +2508,17 @@ class LopperTree:
         # that's why this routine was called). If the nodes don't exist, we
         # need to add them, since that means we are trying to add a child
         # node
-        for p in os.path.split( node_full_path )[:-1]:
-            try:
-                existing_node = self.__nodes__[p]
-            except:
-                existing_node = None
+        if node_full_path != "/":
+            for p in os.path.split( node_full_path )[:-1]:
+                try:
+                    existing_node = self.__nodes__[p]
+                except:
+                    existing_node = None
 
-            if not existing_node:
-                # an intermediate node is missing, we need to add it
-                i_node = LopperNode( -1, p )
-                self.add( i_node, True )
+                if not existing_node:
+                    # an intermediate node is missing, we need to add it
+                    i_node = LopperNode( -1, p )
+                    self.add( i_node, True )
 
         # do we already have a node at this path ?
         try:
@@ -2418,36 +2531,62 @@ class LopperTree:
                 print( "[WARNING]: add: node: %s already exists" % node.abs_path )
             return self
 
-        node.number = Lopper.node_add( self.fdt, node.abs_path, True, self.__dbg__ )
-        if node.number == -1:
-            print( "[ERROR]: failed to add node %s to fdt: %s" % (node.abs_path,self.fdt))
-            sys.exit(1)
-
         node.tree = self
-
         node.__dbg__ = self.__dbg__
 
-        # put the new node in the nodes dictionary and resolve it. This is
-        # temporary, since it will be re-ordered and re-solved below, but they
-        # key off the dictionary, so we need it in the dict to be processed
-        node.resolve( self.fdt )
+        if node_full_path == "/":
+            node.number = 0
+
+        if not node.name:
+            node.name = os.path.basename( node.abs_path )
+
+        # pop one chunk off our path for the parent.
+        parent_path = os.path.dirname( node.abs_path )
+
+        # TODO: To be complete, we could add the properites of the node
+        #       into the dictionary when calling load, that way we don't
+        #       count on the current behaviour to not drop the properties.
+        node.load( { '__path__' : node.abs_path,
+                     '__fdt_name__' : node.name,
+                     '__fdt_phandle__' : 0 },
+                   parent_path )
+
+        if self.__dbg__ > 2:
+            print( "[DBG++]: node add: %s, after load. depth is :%s" % (node.abs_path,node.depth ))
 
         self.__nodes__[node.abs_path] = node
+
+        # note: this is similar to the the tree.load() code, it should be
+        #       consolidated
+        if node.number >= 0:
+            self.__nnodes__[node.number] = node
+        if node.phandle > 0:
+            self.__pnodes__[node.phandle] = node
+        if node.label:
+            self.__lnodes__[node.label] = node
 
         # Check to see if the node has any children. If it does, are they already in
         # our node dictionary ? If they aren't, it means we are not just adding one
         # node but a node + children.
-        for child in list(node.child_nodes.values()):
+
+        # we clear the node's child dict, since if they are new / valid, then
+        # they'll be re-added to the dictionary with adjusted paths, etc.
+        saved_child_nodes = list(node.child_nodes.values())
+        node.child_nodes = OrderedDict()
+        for child in saved_child_nodes:
             try:
-                existing_node = self.__nodes__[child.abs_path]
+                existing_node = self.__nodes__[node.abs_path + child.name]
             except:
                 existing_node = None
 
             if not existing_node:
                 if self.__dbg__ > 2:
                     print ( "[DBG+++]:     node add: adding child: %s (%s)" % (child.abs_path,[child]))
+
                 # this mainly adjusts the path, since it hasn't been sync'd yet.
                 child.number = -1
+                # Trying this ...
+                child.abs_path = node.abs_path + "/" + child.name
 
                 # in case the node has properties that were previously sync'd, we
                 # need to resync them
@@ -2455,35 +2594,42 @@ class LopperTree:
                     p.__pstate__ = "init"
                     p.__modified__ = True
 
-                child.resolve( self.fdt )
+                # Is this the problem now ?!?!?!?!?! it doesn't adjust paths like it used to
+                child.resolve()
+                # or will the add call below, do the load for us ??
+
                 self.add( child, True )
+
                 if self.__dbg__ > 2:
                     print ( "[DBG+++]:     node add: child add complete: %s (%s)" % (child.abs_path,[child]))
 
         # in case the node has properties that were previously sync'd, we
         # need to resync them
+        # TODO: we can likely drop this with the dictionary scheme
         for p in node.__props__.values():
             p.__pstate__ = "init"
             p.__modified__ = True
 
         if self.__dbg__ > 1:
-            print( "[DBG+][%s] node added: [%s] %s" % (self.fdt,[node],node.abs_path) )
+            print( "[DBG+] node added: [%s] %s" % ([node],node.abs_path) )
             if self.__dbg__ > 2:
                 for p in node:
                     print( "[DBG++]      property: %s %s (state:%s)" % (p.name,p.value,p.__pstate__) )
 
         # we can probably drop this by making the individual node sync's smarter and
         # more efficient when something doesn't need to be written
-        self.__must_sync__ = True
+        #self.__must_sync__ = True
+        self.__must_sync__ = False
         if dont_sync:
             if self.__dbg__ > 0:
-                print( "[DBG]: %s: %s/%s: treewide sync inhibited" %
+                print( "\n\n[DBG]: %s: %s/%s: treewide sync inhibited" %
                        ( self, sys._getframe(0).f_lineno, sys._getframe(0).f_code.co_name ) )
         else:
             if self.__dbg__ > 0:
-                print( "[DBG]: %s: %s/%s: treewide sync started" %
+                print( "\n\n[DBG]: %s: %s/%s: treewide sync started" %
                        ( self, sys._getframe(0).f_lineno, sys._getframe(0).f_code.co_name ) )
 
+            # Note: doesn't actually do anything except fixup states.
             self.sync()
 
         return self
@@ -2504,6 +2650,9 @@ class LopperTree:
            list: returns a list of all subnodes (or matching subnodes)
 
         """
+        # this is from the tree, the node has a confusingly similar
+        # function and implementation.
+
         # gets you a list of all looper nodes under starting node
         all_kids = [ start_node ]
         for n in start_node.child_nodes.values():
@@ -2517,6 +2666,10 @@ class LopperTree:
                     all_matching_kids.append( n )
         else:
             all_matching_kids = all_kids
+
+        kids_as_strings = ""
+        for i in all_matching_kids:
+            kids_as_strings += " " + i.abs_path
 
         return all_matching_kids
 
@@ -2630,7 +2783,7 @@ class LopperTree:
 
         """
         # only sync if required
-        self.sync( self.fdt, True )
+        self.sync( None, True )
 
         n = node
 
@@ -2652,7 +2805,7 @@ class LopperTree:
         safe_dict['print'] = print
         safe_dict['prop_get'] = Lopper.property_get
         safe_dict['getphandle'] = Lopper.node_getphandle
-        safe_dict['fdt'] = self.fdt
+        safe_dict['fdt'] = None
         safe_dict['verbose'] = self.__dbg__
         safe_dict['tree'] = self
 
@@ -2766,11 +2919,8 @@ class LopperTree:
             Nothing
 
         """
-        if fdt == None:
-            fdt = self.fdt
-
         # only sync if required
-        self.sync( self.fdt, True )
+        self.sync( fdt, True )
 
         if verbose:
             print( "[NOTE]: filtering nodes root: %s" % node_prefix )
@@ -2790,7 +2940,7 @@ class LopperTree:
         if verbose > 1:
             print( "[INFO]: filter: node list: ", end=" " )
             for nn in node_list:
-                print( "%s" % nn.abs_path, end="  " )
+                print( "    %s" % nn.abs_path, end="  " )
             print( "" )
 
         for n in node_list:
@@ -2833,7 +2983,7 @@ class LopperTree:
 
         """
         # only sync if required
-        self.sync( self.fdt, True )
+        self.sync( None, True )
 
         if self.__dbg__ > 4:
             print( "[DBG++++]: LopperTree exec start" )
@@ -2846,7 +2996,7 @@ class LopperTree:
 
             if n.number == 0:
                 if self.start_tree_cb:
-                    self.start_tree_cb( n, self.fdt )
+                    self.start_tree_cb( n )
 
             if n.child_nodes:
                 last_child = list(n.child_nodes.values())
@@ -2866,13 +3016,13 @@ class LopperTree:
                     print( "[DBG++++]: mapped chain close %s (%s) to %s" % (n.number,n.abs_path,last_child))
 
             if self.start_node_cb:
-                self.start_node_cb( n, self.fdt )
+                self.start_node_cb( n )
 
             # node stuff
             # i.e. iterate the properties and print them
             for p in n:
                 if self.property_cb:
-                    self.property_cb( p, self.fdt )
+                    self.property_cb( p )
 
             # check to see if we are closing the node.
             #if last_children and n.number == last_children[-1]:
@@ -2882,7 +3032,7 @@ class LopperTree:
 
                 # we are closing!
                 if self.end_node_cb:
-                    self.end_node_cb( n, self.fdt )
+                    self.end_node_cb( n )
 
                 # pop the last child
                 del last_children[-1]
@@ -2902,10 +3052,10 @@ class LopperTree:
                         del last_children[-1]
                         del chain_close_dict[cc_close]
                     else:
-                        print( "[WARNING]: INCONSISTENCY FOUND WALKING TREE" )
+                        print( "[WARNING]: tree exec: inconsistency found walking tree" )
 
                     if self.end_node_cb:
-                        self.end_node_cb( to_close, self.fdt )
+                        self.end_node_cb( to_close )
 
                     cc_close = to_close.abs_path
             elif not n.child_nodes:
@@ -2913,10 +3063,10 @@ class LopperTree:
                 if self.end_node_cb:
                     if self.__dbg__ > 4:
                         print( "[DBG++++]: no children, closing node" )
-                    self.end_node_cb( n, self.fdt )
+                    self.end_node_cb( n )
 
         if self.end_tree_cb:
-            self.end_tree_cb( -1, self.fdt )
+            self.end_tree_cb( -1 )
 
     def reset(self):
         """reset a tree
@@ -2934,24 +3084,62 @@ class LopperTree:
         self.__current_node__ = 0
         self.__new_iteration__ = True
 
-    def resolve(self):
-        """resolve a tree
+    def load(self, dct = None, xtra=False ):
+        """load a tree
 
-        Resolves the details around the nodes of a tree, and completes values
-        that are not possible at initialization time.
+        Loads the details around the nodes of a tree, and completes values that
+        are not possible at initialization time.
 
-        In particular, it updates the path, node and phandle ordered dictionaries
-        to reflect the backing FDT. This is often done after a node is added to
-        ensure that iterations will see the new node in tree order, versus added
-        order.
+        In particular, it updates the path, node and phandle ordered
+        dictionaries to reflect the dictionary. This is often done after a node
+        is added to ensure that iterations will see the new node in tree order,
+        versus added order.
 
         Args:
-           None
+           dct (Dictionary): dictionary from a lopper_fdt export, or a tree export
 
         Returns:
            Nothing
 
         """
+        if dct:
+            self.dct = dct
+        else:
+            dct = self.dct
+
+        # if type( dct ) == dict:
+        #     print( "converting dict to ordered Dict" )
+        #     dct = OrderedDict( dct )
+
+        # take the dictionary format, which is a series of nested dicts
+        # representing nodes and properties. We'd rather not recurse to do our
+        # processing below, so we unroll the recursion into an ordered list of
+        # nodes and properties.
+
+        # we have a list of: containing dict, value, parent
+        dwalk = [ [dct,dct,None]  ]
+        node_ordered_list = []
+        while dwalk:
+            firstitem = dwalk.pop()
+            # if xtra:
+            #     print( "type: %s" % type(firstitem[1]))
+            #     print( "load: dwalk: %s" % firstitem[1] )
+            #if type(firstitem[1]) == dict:
+            #    firstitem[1] = OrderedDict( firstitem[1] )
+            if type(firstitem[1]) is OrderedDict: # or type(firstitem[1]) is dict:
+                # if xtra:
+                #     print( "       adding it!" )
+                node_ordered_list.append( [firstitem[1], firstitem[0]] )
+                for item,value in reversed(firstitem[1].items()):
+                    dwalk.append([firstitem[1],value,firstitem[0]])
+            elif type(firstitem[1]) is dict:
+                node_ordered_list.append( [firstitem[1], firstitem[0]] )
+                for item,value in firstitem[1].items():
+                    dwalk.append([firstitem[1],value,firstitem[0]])
+            else:
+                # if xtra:
+                #     print( "       passing it up!" )
+                pass
 
         # We are checking the __must_sync__ flag. Since this routine will throw
         # away unsync'd nodes, due to the fact that it reads from the FDT
@@ -2959,7 +3147,7 @@ class LopperTree:
         # nodes in the "init" state, or with node number -1 and save them .. but
         # only if this check and exit starts catching valid use cases we can't fix
         if self.__must_sync__:
-            print( "[ERROR]: tree should be sync'd before resolving. Some nodes may be lost" )
+            print( "[ERROR]: tree should be sync'd before loading. Some nodes may be lost" )
             if self.__dbg__ > 2:
                 print( "[DBG++]:     caller: %s/%s" %( sys._getframe(1).f_lineno, sys._getframe(1).f_code.co_name ) )
             sys.exit(1)
@@ -2982,12 +3170,12 @@ class LopperTree:
             if self.__dbg__ > 2:
                 print( "[DGB+]: tree resolution start: %s" % self )
 
-            nn = 0
-
-            nodes = Lopper.nodes( self.fdt, "/" )
-            for node_path in nodes:
+            for n_item in node_ordered_list:
+                node_in = n_item[0]
+                node_in_parent = n_item[1]
+                node_path = node_in['__path__']
                 abs_path = node_path
-                nn = Lopper.node_number( self.fdt, node_path )
+                nn =  node_in['__fdt_number__']
                 try:
                     # we try and re-use the node if possible, since that keeps
                     # old references valid for adding more properties, etc
@@ -2998,12 +3186,13 @@ class LopperTree:
 
                 node.__dbg__ = self.__dbg__
 
-                # resolve the details against the fdt
-                node.resolve( self.fdt )
+                # resolve the details against the dictionary
+                node.load( node_in, node_in_parent['__path__'] )
+
                 try:
                     node_check = self.__nodes__[node.abs_path]
                     if node_check:
-                        print( "[ERROR]: tree inconsistency found, two nodes with the same path (%s)" % node_check )
+                        print( "[ERROR]: tree inconsistency found, two nodes with the same path (%s)" % node_check.abs_path )
                         # we need to exit the thread/backgound call AND the entire application, so
                         # hit is with a hammer.
                         os._exit(1)
@@ -3014,12 +3203,12 @@ class LopperTree:
                 # change after some tree ops, so make sure to check the state of
                 # a tree/node before using the number
                 self.__nodes__[node.abs_path] = node
+
                 self.__nnodes__[node.number] = node
                 if node.phandle > 0:
                     self.__pnodes__[node.phandle] = node
                 if node.label:
                     self.__lnodes__[node.label] = node
-
 
             for node_abs_path in nodes_saved:
                 # invalidate nodes, in case someone is holding a reference
@@ -3059,23 +3248,22 @@ class LopperTree:
         if self.__new_iteration__:
             self.__new_iteration__ = False
 
-            # by default, we'll just iterate the nodes as they went
-            # into our dictionary
-            self.__node_iter__ = iter( self.__nodes__.values() )
+            child_nodes = self.subnodes( self.__nodes__[ "/"] )
+            self.__node_iter__ = iter( child_nodes )
 
-            if self.__current_node__ == 0 and self.__start_node__ == 0:
+            if self.__current_node__ == "/" and self.__start_node__ == "/":
                 # just get the first node out of the default iterator
                 node = next(self.__node_iter__)
-            elif self.__start_node__ != 0:
+            elif self.__start_node__ != "/":
                 # this is a starting node, so we fast forward and then use
                 # the default iterator
                 node = next(self.__node_iter__)
-                while node.number != self.__start_node__:
+                while node and node.abs_path != self.__start_node__:
                     node = next(self.__node_iter__)
             else:
                 # non-zero current_node, that means we'll do a custom iteration
                 # of only the nodes that are underneath of the set current_node
-                child_nodes = self.subnodes( self.__nnodes__[self.__current_node__] )
+                child_nodes = self.subnodes( self.__nodes__[self.__current_node__] )
                 self.__node_iter__ = iter( child_nodes )
                 node = next(self.__node_iter__)
         else:
@@ -3107,9 +3295,9 @@ class LopperTreePrinter( LopperTree ):
        - output: output file name, if not passed stdout is used
 
     """
-    def __init__( self, fdt = None, snapshot = False, output=sys.stdout, debug=0 ):
+    def __init__( self, snapshot = False, output=sys.stdout, debug=0 ):
         # init the base walker.
-        super().__init__( fdt, snapshot )
+        super().__init__( snapshot )
 
         self.start_tree_cb = self.start
         self.start_node_cb = self.start_node
@@ -3158,14 +3346,13 @@ class LopperTreePrinter( LopperTree ):
         else:
             self.output = output_file
 
-    def start(self, n, fdt ):
+    def start(self, n ):
         """LopperTreePrinter start
 
         Prints the start / opening of a tree and handles the preamble.
 
         Args:
             n (LopperNode): the opening node of the tree
-            fdt (FDT): the FDT backing the tree
 
         Returns:
             Nothing
@@ -3177,14 +3364,13 @@ class LopperTreePrinter( LopperTree ):
 
         print( "/dts-v1/;\n\n/ {", file=self.output )
 
-    def start_node(self, n, fdt ):
+    def start_node(self, n ):
         """LopperTreePrinter node start
 
         Prints the start / opening of a node
 
         Args:
             n (LopperNode): the node being opened
-            fdt (FDT): the FDT backing the tree
 
         Returns:
             Nothing
@@ -3213,14 +3399,13 @@ class LopperTreePrinter( LopperTree ):
             print( "", file=self.output )
             print(outstring.rjust(len(outstring)+indent," " ), file=self.output )
 
-    def end_node(self, n, fdt):
+    def end_node(self, n):
         """LopperTreePrinter node end
 
         Prints the end / closing of a node
 
         Args:
             n (LopperNode): the node being closed
-            fdt (FDT): the FDT backing the tree
 
         Returns:
             Nothing
@@ -3229,14 +3414,13 @@ class LopperTreePrinter( LopperTree ):
         outstring = "};"
         print(outstring.rjust(len(outstring)+indent," " ), file=self.output)
 
-    def start_property(self, p, fdt):
+    def start_property(self, p):
         """LopperTreePrinter property print
 
         Prints a property
 
         Args:
             p (LopperProperty): the property to print
-            fdt (FDT): the FDT backing the tree
 
         Returns:
             Nothing
@@ -3244,7 +3428,7 @@ class LopperTreePrinter( LopperTree ):
         # do we really need this resolve here ? We are already tracking if they
         # are modified/dirty, and we have a global resync/resolve now. I think it
         # can go
-        p.resolve(fdt)
+        p.resolve()
 
         indent = (p.node.depth * 8) + 8
         outstring = str( p )
@@ -3263,14 +3447,13 @@ class LopperTreePrinter( LopperTree ):
         if outstring:
             print(outstring.rjust(len(outstring)+indent," " ), file=self.output)
 
-    def end(self, n,fdt):
+    def end(self, n):
         """LopperTreePrinter tree end
 
         Ends the walking of a tree
 
         Args:
             n (LopperNode): -1
-            fdt (FDT): the FDT backing the tree
 
         Returns:
             Nothing
