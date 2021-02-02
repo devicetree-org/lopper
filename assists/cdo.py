@@ -130,7 +130,9 @@ def add_requirements(domain_node, cpu_node, sdt, output):
     # there are multiple cases to handle
     if "cpu" in device_node.name:
       if "a72" in device_node.abs_path:
-        key = "dev_acpu_" + device_node.name[len(device_node.name)-1]
+        cdo_write_command(subsystem_num, subsystem_id, "dev_acpu_0", hex(existing_devices["dev_acpu_0"]), 0x4, 0xfffff, output)
+        cdo_write_command(subsystem_num, subsystem_id, "dev_acpu_1", hex(existing_devices["dev_acpu_1"]), 0x4, 0xfffff, output)
+        continue
       elif "r5" in  device_node.abs_path:
         key = "dev_rpu0_"
         if (domain_node.propval("cpus")[1] & 0x1) == 1:
@@ -142,9 +144,11 @@ def add_requirements(domain_node, cpu_node, sdt, output):
         print("add_requirements: cores: not covered: ",str(device_node))
         return -1
     elif "domain" in device_node.name:
-      add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node,
-                                           device_list[index], device_list[index+1])
-      continue
+      print("TODO add_subsystem_permission_requirement")
+      return -1
+      #add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node,
+      #                                     device_list[index], device_list[index+1])
+      #continue
     elif device_node.propval("power-domains") != [""]:
       cdo_write_command(subsystem_num, subsystem_id, 
                         xilinx_versal_device_names[device_node.propval("power-domains")[1]],
@@ -158,7 +162,6 @@ def add_requirements(domain_node, cpu_node, sdt, output):
         for key in ocm_bank_names:
           cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]),
                             device_list[index+1],device_list[index+2],output)
-
       elif device_node.propval("reg")[1] in memory_range_to_dev_name.keys():
         key = memory_range_to_dev_name[device_node.propval("reg")[1]]
       else:
