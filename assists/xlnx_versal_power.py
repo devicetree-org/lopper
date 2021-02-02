@@ -1,12 +1,12 @@
 # TODO ensure mapping is consistent and for correct for each core
 mailbox_devices = {
-  "mailbox@ff330000":"dev_ipi_0",
-  "mailbox@ff340000":"dev_ipi_1",
-  "mailbox@ff350000":"dev_ipi_2",
-  "mailbox@ff360000":"dev_ipi_3",
-  "mailbox@ff370000":"dev_ipi_4",
-  "mailbox@ff380000":"dev_ipi_5",
-  "mailbox@ff3a0000":"dev_ipi_6",
+  "mailbox@ff320000":"dev_ipi_0",
+  "mailbox@ff390000":"dev_ipi_1",
+  "mailbox@ff310000":"dev_ipi_2",
+  "mailbox@ff330000":"dev_ipi_3",
+  "mailbox@ff340000":"dev_ipi_4",
+  "mailbox@ff350000":"dev_ipi_5",
+  "mailbox@ff360000":"dev_ipi_6",
 }
 
 memory_range_to_dev_name = {
