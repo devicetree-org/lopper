@@ -185,11 +185,19 @@ def add_requirements(domain_node, cpu_node, sdt, output):
   device_list = domain_node.propval("xilinx,subsystem-config")
   num_params = domain_node.propval("#xilinx,config-cells")[0]
   include_list = domain_node.propval("include")
+  root_node = domain_node.tree['/']
 
   if include_list != [""]:
-    print(domain_node.name, str(include_list))
+    for phandle in include_list:
+      rsc_group_node = root_node.tree.pnode(phandle)
+      rsc_group_node_num_params = rsc_group_node.propval("#xilinx,config-cells")[0]
+      if rsc_group_node_num_params != num_params:
+        print("mismatch in requirements list between ", domain_node.name, " and ", rsc_group_node.name)
+        return -1
 
-  #TODO FIXME determine if resource group present. if so, append that as needed to device list
+      rsc_group_device_list = rsc_group_node.propval("xilinx,subsystem-config")
+      for i in rsc_group_device_list:
+        device_list.append(i)
 
   return add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, num_params)
 
