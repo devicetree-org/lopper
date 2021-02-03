@@ -147,11 +147,9 @@ def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, n
         print("add_requirements: cores: not covered: ",str(device_node))
         return -1
     elif "domain" in device_node.name:
-      print("TODO add_subsystem_permission_requirement")
-      return -1
-      #add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node,
-      #                                     device_list[index], device_list[index+1])
-      #continue
+      add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node,
+                                           device_list[index], device_list[index+1])
+      continue
     elif device_node.propval("power-domains") != [""]:
       cdo_write_command(subsystem_num, subsystem_id, 
                         xilinx_versal_device_names[device_node.propval("power-domains")[1]],
