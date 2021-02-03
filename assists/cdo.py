@@ -42,16 +42,14 @@ def is_compat( node, compat_id ):
         return cdo_write
     return ""
 
-current_subsystem_id = 0x1c000003
 subsystems = {}
 
 def add_subsystem(domain_node, sdt, output):
 
-  global current_subsystem_id
-  global subsystems
-
   # read cpus property
   if domain_node.propval("cpus") == [""]:
+    if "resource" in domain_node.name and "group" in domain_node.name:
+      return 0
     print("ERROR: add_subsystem: ",str(domain_node), "missing cpus property.")
     return -1
   else:
@@ -60,21 +58,33 @@ def add_subsystem(domain_node, sdt, output):
       print("add_subsystem: could not find corresponding core node")
       return -1
 
-    subsystem_num = current_subsystem_id & 0xF
+    current_subsystem_id = 0
+    cpu_key = ""
 
-    # if cpus_a72, then APU subsystem
-    if "a72" in cpu_node.name or "r5" in cpu_node.name:
-
-      print("# subsystem_"+str(subsystem_num), file=output)
-      print("pm_add_subsystem "+ hex(current_subsystem_id), file=output)
-      subsystems[domain_node.name] = current_subsystem_id
-      current_subsystem_id += 1
+    if "a72" in cpu_node.name:
+      cpu_key = "a72"
+    elif "r5" in cpu_node.name:
+      cpu_key = "r5_"
+      if (domain_node.propval("cpus")[1] & 0x3) == 0x3:
+        cpu_key += "lockstep"
+      elif (domain_node.propval("cpus")[1] & 0x2) == 0x2:
+        cpu_key += "1"
+      elif (domain_node.propval("cpus")[1] & 0x1) == 0x1:
+        cpu_key += "0"
+      else:
+        print ("add_subsystem: invalid cpu config for rpu: ",domain_node.propval("cpus"))
     else:
-      print("ERROR: add_subsystem: cpu  not supported ",str(cpu_node))
+      print( "unsupported domain node ", domain_node)
       return -1
 
+    current_subsystem_id = cpu_subsystem_map[cpu_key]
+    subsystem_num = current_subsystem_id & 0xF
+    print("# subsystem_"+str(subsystem_num), file=output)
+    print("pm_add_subsystem "+ hex(current_subsystem_id), file=output)
+    subsystems[domain_node.name] = current_subsystem_id
+
   # cpu_node can be used later, as some
-  # subsystems will have hard-coded requirements
+  # subsystems will have hard-coded requirements coming in from SDT
   return cpu_node
 
 
@@ -105,18 +115,9 @@ def add_subsystem_permission_requirement(output, cpu_node, domain_node, device_n
 
 
 # add requirements that link devices to subsystems
-def add_requirements(domain_node, cpu_node, sdt, output):
+def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, num_params):
   subsystem_id = subsystems[domain_node.name]
   subsystem_num = subsystem_id & 0xF
-
-  if "a72" in cpu_node.name:
-    cdo_write_command(subsystem_num, subsystem_id,"dev_l2_bank_0",hex(existing_devices["dev_l2_bank_0"]),0x4, 0xfffff, output)
-    cdo_write_command(subsystem_num, subsystem_id,"dev_ams_root",hex(existing_devices["dev_ams_root"]),0x4, 0xfffff, output)
-
-  # here parse the subsystem for device requirements
-  device_list = domain_node.propval("xilinx,subsystem-config")
-  num_params = domain_node.propval("#xilinx,config-cells")[0]
-
   root_node = domain_node.tree['/']
 
   for index,device_phandle in enumerate(device_list):
@@ -130,9 +131,11 @@ def add_requirements(domain_node, cpu_node, sdt, output):
     # there are multiple cases to handle
     if "cpu" in device_node.name:
       if "a72" in device_node.abs_path:
-        cdo_write_command(subsystem_num, subsystem_id, "dev_acpu_0", hex(existing_devices["dev_acpu_0"]), 0x4, 0xfffff, output)
-        cdo_write_command(subsystem_num, subsystem_id, "dev_acpu_1", hex(existing_devices["dev_acpu_1"]), 0x4, 0xfffff, output)
-        continue
+            cdo_write_command(subsystem_num, subsystem_id,"dev_l2_bank_0",hex(existing_devices["dev_l2_bank_0"]),0x4, 0xfffff, output)
+            cdo_write_command(subsystem_num, subsystem_id,"dev_ams_root",hex(existing_devices["dev_ams_root"]),0x4, 0xfffff, output)
+            cdo_write_command(subsystem_num, subsystem_id, "dev_acpu_0", hex(existing_devices["dev_acpu_0"]), 0x8104, 0xfffff, output)
+            cdo_write_command(subsystem_num, subsystem_id, "dev_acpu_1", hex(existing_devices["dev_acpu_1"]), 0x8104, 0xfffff, output)
+            continue
       elif "r5" in  device_node.abs_path:
         key = "dev_rpu0_"
         if (domain_node.propval("cpus")[1] & 0x1) == 1:
@@ -157,11 +160,10 @@ def add_requirements(domain_node, cpu_node, sdt, output):
       continue
     elif "mailbox" in device_node.name:
       key = mailbox_devices[device_node.name]
-    elif "memory" in device_node.name or "tcm" in device_node.name :
+    elif "memory" in device_node.name or "tcm" in device_node.name:
       if 0xfffc0000 == device_node.propval("reg")[1]:
         for key in ocm_bank_names:
-          cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]),
-                            device_list[index+1],device_list[index+2],output)
+          cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), device_list[index+1],device_list[index+2],output)
       elif device_node.propval("reg")[1] in memory_range_to_dev_name.keys():
         key = memory_range_to_dev_name[device_node.propval("reg")[1]]
       else:
@@ -170,11 +172,26 @@ def add_requirements(domain_node, cpu_node, sdt, output):
     else:
       print("add_requirements: not covered: ",str(device_node))
       return -1
-    cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]),
-                      device_list[index+1],device_list[index+2],output)
+    cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), device_list[index+1],device_list[index+2],output)
 
 
-  return 0
+
+# add requirements that link devices to subsystems
+def add_requirements(domain_node, cpu_node, sdt, output):
+  subsystem_id = subsystems[domain_node.name]
+  subsystem_num = subsystem_id & 0xF
+
+  # here parse the subsystem for device requirements
+  device_list = domain_node.propval("xilinx,subsystem-config")
+  num_params = domain_node.propval("#xilinx,config-cells")[0]
+  include_list = domain_node.propval("include")
+
+  if include_list != [""]:
+    print(domain_node.name, str(include_list))
+
+  #TODO FIXME determine if resource group present. if so, append that as needed to device list
+
+  return add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, num_params)
 
 def cdo_write( domain_node, sdt, options ):
     try:
@@ -207,9 +224,14 @@ def cdo_write( domain_node, sdt, options ):
     for n in domain_node.subnodes():
       if n.propval('xilinx,subsystem-config') != ['']:
         cpu_node = add_subsystem(n, sdt, output)
+        if cpu_node == -1:
+          print("invalid cpu node for add_subsystem")
+          return False
+        elif cpu_node == 0:
+          continue
+
         cpu_nodes.append(cpu_node)
         domain_nodes.append(n)
-    # only parse requirements after all subsystems are loade
     for i in range(len(domain_nodes)):
       add_requirements(domain_nodes[i], cpu_nodes[i], sdt, output)
 
