@@ -216,7 +216,7 @@ def add_requirements(domain_node, cpu_node, sdt, output):
   subsystem_num = subsystem_id & 0xF
 
   # here parse the subsystem for device requirements
-  device_list = domain_node.propval("xilinx,subsystem-config")
+  device_list = domain_node.propval("access")
   num_params = domain_node.propval("#xilinx,config-cells")[0]
   if num_params != 1:
     print("add_requirements: #xilinx,config-cells should be 1", domain_node.name, str(num_params))
@@ -233,7 +233,7 @@ def add_requirements(domain_node, cpu_node, sdt, output):
         print("mismatch in requirements list between ", domain_node.name, " and ", rsc_group_node.name)
         return -1
 
-      rsc_group_device_list = rsc_group_node.propval("xilinx,subsystem-config")
+      rsc_group_device_list = rsc_group_node.propval("access")
       for i in rsc_group_device_list:
         device_list.append(i)
 
@@ -268,7 +268,7 @@ def cdo_write( domain_node, sdt, options ):
     domain_nodes = []
     cpu_nodes = []
     for n in domain_node.subnodes():
-      if n.propval('xilinx,subsystem-config') != ['']:
+      if n.propval('access') != ['']:
         cpu_node = add_subsystem(n, sdt, output)
         if cpu_node == -1:
           print("invalid cpu node for add_subsystem")
