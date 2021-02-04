@@ -1,4 +1,134 @@
-# TODO ensure mapping is consistent and for correct for each core
+# if this bit combination is on for usage offset, the meaning is as described below
+req_usage_message = "Device usage policies"
+req_usage = {
+ 0 : "device accessible from all subsystem",
+ 1 : "device simultaneously shared between two or more subsystems",
+ 2 : "device exclusively reserved by one subsystem, always",
+ 3 : "device is time shared between two or more subsystems",
+}
+
+usage_mask = 0x3
+def usage(flags):
+  msg = "# usage: "
+  msg += hex(flags)
+  msg += " & usage_mask (0x3) --> "
+  msg += hex(flags & usage_mask)
+  msg += " "
+  msg += req_usage[flags & usage_mask]
+  return msg
+
+req_security_message = "Device/Memory region security status requirement per TrustZone."
+req_security = {
+ 0 : "Device/Memory region only allows access from secure masters",
+ 1 : "Device/Memory region allow both secure or non-secure masters",
+}
+security_mask = 0x4
+security_offset = 0x2
+def security(flags):
+  msg = "# security: ("
+  msg += hex(flags)
+  msg += " & security_mask(" + hex(security_mask)
+  msg += ") ) >> security_offset("
+  msg += hex(security_offset)
+  msg += ") --> "
+  msg += hex((flags & security_mask) >> security_offset)
+  msg += " "
+  msg += req_security[(flags & security_mask) >> security_offset]
+  return msg
+
+# this map is only applicable for memory regions
+req_rd_wr_message = "Read/Write access control policy"
+req_rd_wr = {
+  0 : "Transaction allowed",
+  1 : "Transaction not Allowed",
+}
+rd_policy_mask = 0x8
+rd_policy_offset = 0x3
+wr_policy_mask = 0x10
+wr_policy_offset = 0x4
+rw_message = "Read/Write access control policy."
+def read_policy(flags):
+  msg = "# read policy: ("
+  msg += hex(flags)
+  msg += " & rd_policy_mask(" + hex(rd_policy_mask)
+  msg += ") ) >> rd_policy_offset("
+  msg += hex(rd_policy_offset)
+  msg += ") --> "
+  msg += hex((flags & rd_policy_mask) >> rd_policy_offset)
+  msg += " "
+  msg += req_rd_wr[(flags & rd_policy_mask) >> rd_policy_offset]
+  return msg
+
+def write_policy(flags):
+  msg = "# write policy: ("
+  msg += hex(flags)
+  msg += " & wr_policy_mask(" + hex(wr_policy_mask)
+  msg += ") ) >> wr_policy_offset("
+  msg += hex(wr_policy_offset)
+  msg += ") --> "
+  msg += hex((flags & wr_policy_mask) >> wr_policy_offset)
+  msg += " "
+  msg += req_rd_wr[(flags & wr_policy_mask) >> wr_policy_offset]
+  return msg
+
+
+nsregn_check_mask = 0x20
+nsregn_check_offset = 0x5
+
+nsregn_message = "Non-secure memory region check type policy."
+nsregn = {
+  0 : "RELAXED",
+  1: "STRICT",
+}
+
+def nsregn_policy(flags):
+  msg = "# Non-secure memory region check type policy: ("
+  msg += hex(flags)
+  msg += " & nsregn_check_mask(" + hex(nsregn_check_mask)
+  msg += ") ) >> nsregn_check_offset("
+  msg += hex(nsregn_check_offset)
+  msg += ") --> "
+  msg += hex((flags & nsregn_check_mask) >> nsregn_check_offset)
+  msg += " "
+  msg += nsregn[(flags & nsregn_check_mask) >> nsregn_check_offset]
+  return msg
+
+capability_offset = 0x8
+capability_mask = 0x7F00
+
+cap_message = "capability: "
+def capability_policy(flags):
+  msg = "# Capability policy: ("
+  msg += hex(flags)
+  msg += " & capability_mask(" + hex(capability_mask)
+  msg += ") ) >> capability_offset("
+  msg += hex(capability_offset)
+  msg += ") --> "
+  msg += hex((flags & capability_mask) >> capability_offset)
+  return msg
+
+prealloc_offset = 0xf
+prealloc_mask = 0x8000
+
+prealloc = {
+  0:"prealloc not required",
+  1:"prealloc required",
+}
+
+prealloc_message = "prealloc policy "
+def prealloc_policy(flags):
+  msg = "# Preallocation policy: ("
+  msg += hex(flags)
+  msg += " & prealloc_mask(" + hex(prealloc_mask)
+  msg += ") ) >> prealloc_offset("
+  msg += hex(prealloc_offset)
+  msg += ") --> "
+  msg += hex((flags & prealloc_mask) >> prealloc_offset)
+  msg += " "
+  msg += prealloc[(flags & prealloc_mask) >> prealloc_offset]
+  return msg
+
+
 mailbox_devices = {
   "mailbox@ff320000":"dev_ipi_0",
   "mailbox@ff390000":"dev_ipi_1",
@@ -7,6 +137,13 @@ mailbox_devices = {
   "mailbox@ff340000":"dev_ipi_4",
   "mailbox@ff350000":"dev_ipi_5",
   "mailbox@ff360000":"dev_ipi_6",
+}
+
+apu_specific_reqs = {
+  "dev_l2_bank_0":  0x4,
+  "dev_ams_root":   0x4,
+  "dev_acpu_0":     0x8104,
+  "dev_acpu_1":     0x8104,
 }
 
 cpu_subsystem_map = {
