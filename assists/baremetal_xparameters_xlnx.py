@@ -101,11 +101,13 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                            node_list = [x for x in node_list if not(x.abs_path == node)]
                            if node1:
                                match_nodes.append(node1[0])
-                
+                match_nodes = get_mapped_nodes(sdt, match_nodes, options)
                 for index, node in enumerate(match_nodes):
                     label_name = get_label(sdt, symbol_node, node)
                     label_name = label_name.upper()
                     canondef_dict = {}
+                    if index == 0:
+                        plat.buf('\n#define XPAR_X%s_NUM_INSTANCES %s\n' % (driver_name.upper(), len(match_nodes)))
                     for i, prop in enumerate(driver_proplist):
                         pad = 0
                         phandle_prop = 0
