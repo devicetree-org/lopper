@@ -111,11 +111,11 @@ def get_memranges(tgt_node, sdt, options):
             match = [mem for mem in name_list if mem in compat]
             for i in range(total_nodes):
                 reg, size = scan_reg_size(node, val, i)
-                valid_range = [addr for addr in addr_list if reg == addr]
+                valid_range = [addr for addr in addr_list if reg == addr or addr > reg]
                 if valid_range:
                     key = match[0].replace("-", "_")
                     linker_secname = key + str("_") + str(xlnx_memipname[key])
-                    mem_ranges.update({linker_secname: [reg, size]})
+                    mem_ranges.update({linker_secname: [valid_range[0], size]})
                     xlnx_memipname[key] += 1
         except KeyError:
             pass
