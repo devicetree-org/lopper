@@ -119,18 +119,21 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             plat.buf('\n/* Definitions for peripheral %s */' % label_name)
 
                         if prop == "reg":
-                            val, size = scan_reg_size(node, node[prop].value, 0)
-                            plat.buf('\n#define XPAR_%s_BASEADDR %s' % (label_name, hex(val)))
-                            plat.buf('\n#define XPAR_%s_HIGHADDR %s' % (label_name, hex(val + size -1)))
-                            canondef_dict.update({"BASEADDR":hex(val)})
-                            canondef_dict.update({"HIGHADDR":hex(val + size - 1)})
-                            if pad:
-                                for j in range(1, pad):
-                                    try:
-                                        val, size = scan_reg_size(node, node[prop].value, j)
-                                        plat.buf('\n#define XPAR_%s_BASEADDR_%s %s' % (label_name, j, hex(val)))
-                                    except IndexError:
-                                        pass
+                            try:
+                                val, size = scan_reg_size(node, node[prop].value, 0)
+                                plat.buf('\n#define XPAR_%s_BASEADDR %s' % (label_name, hex(val)))
+                                plat.buf('\n#define XPAR_%s_HIGHADDR %s' % (label_name, hex(val + size -1)))
+                                canondef_dict.update({"BASEADDR":hex(val)})
+                                canondef_dict.update({"HIGHADDR":hex(val + size - 1)})
+                                if pad:
+                                    for j in range(1, pad):
+                                        try:
+                                            val, size = scan_reg_size(node, node[prop].value, j)
+                                            plat.buf('\n#define XPAR_%s_BASEADDR_%s %s' % (label_name, j, hex(val)))
+                                        except IndexError:
+                                            pass
+                            except KeyError:
+                                pass
                         elif prop == "compatible":
                             plat.buf('\n#define XPAR_%s_%s %s' % (label_name, prop.upper(), node[prop].value[0]))
                             canondef_dict.update({prop:node[prop].value[0]})
