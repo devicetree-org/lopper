@@ -55,9 +55,10 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
     driver_nodes = []
     for compat in driver_compatlist:
         for node in node_list:
-           compat_string = node['compatible'].value[0]
-           if compat in compat_string:
-               driver_nodes.append(node)
+           compatlist = node['compatible'].value
+           for compat_string in compatlist:
+               if compat in compat_string:
+                   driver_nodes.append(node)
 
     driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
     nodename_list = []
