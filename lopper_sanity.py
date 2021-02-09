@@ -2003,6 +2003,113 @@ def format_sanity_test( device_tree, verbose ):
     print( "[TEST]: writing to %s" % (device_tree.output_file))
     device_tree.write( enhanced = True )
 
+
+def fdt_sanity_test( device_tree, verbose ):
+
+    device_tree.setup( dt, [], "", True )
+    dct = Lopper.export( device_tree.FDT )
+
+    # we have a list of: containing dict, value, parent
+    dwalk = [ [dct,dct,None]  ]
+    node_ordered_list = []
+    while dwalk:
+        firstitem = dwalk.pop()
+        if type(firstitem[1]) is OrderedDict:
+            node_ordered_list.append( [firstitem[1], firstitem[0]] )
+            for item,value in reversed(firstitem[1].items()):
+                dwalk.append([firstitem[1],value,firstitem[0]])
+        else:
+            pass
+
+    print( "[INFO]: exported dictionary, node walk: " )
+    for n in node_ordered_list:
+        print( "    node: %s (parent: %s)" % (n[0]['__path__'],n[1]['__path__']) )
+        for i,v in n[0].items():
+            if type(v) != OrderedDict and i != "__path__":
+                print("         %s -> %s" % (i,v))
+
+    lt = lopper_tree.LopperTreePrinter()
+    lt.load( dct )
+
+    print( "[INFO]: printing loaded tree" )
+    lt.__dbg__ = 0
+    lt.exec()
+    print( "[INFO]: ending tree print" )
+
+    print( "[INFO]: starting tree print #2" )
+    dct2 = Lopper.export( device_tree.FDT )
+    lt.load( dct2 )
+    lt.__dbg__ = 0
+    lt.exec()
+    print( "[INFO]: ending tree print #2" )
+
+    print( "[INFO]: starting tree write" )
+    # lt.__dbg__= 5
+    dct2 = lt.export()
+    Lopper.sync( device_tree.FDT, dct2 )
+    print( "[INFO]: ending tree write" )
+
+
+    print( "[INFO]: reading tree back" )
+    dct3 = Lopper.export( device_tree.FDT )
+    lt3 = lopper_tree.LopperTreePrinter()
+    lt3.load( dct3 )
+
+    print( "[INFO]: starting re-read tree print" )
+    lt3.__dbg__ = 0
+    lt3.exec()
+    print( "[INFO]: ending re-read tree print" )
+
+    print( "[INFO]: deleting nodes" )
+    # drop a node
+    nd = lt3['/cpus/idle-states']
+    lt3.delete( nd )
+
+    nd = lt3['/cpus/cpu@0']
+    lt3.delete(nd)
+
+    nd = lt3['/cpus']
+    nd.delete( 'compatible' )
+
+    print( "[INFO]: adding nodes" )
+    new_node = LopperNode( -1, "/bruce" )
+    new_prop = LopperProp( "testing" )
+    new_prop.value = "1.2.3"
+
+    new_node = new_node + new_prop
+    lt3.__dbg__ = 4
+    lt3.add( new_node )
+
+    new_node = LopperNode( -1, "/cpus-cluster@0/cpu@1/bruce2" )
+    lt3.add( new_node )
+
+    print( "[INFO]: node dump" )
+    sub = lt3.subnodes( lt3.__nodes__["/"] )
+    for s in sub:
+        print( "nd1: %s" % s.abs_path )
+
+        print( "[INFO]: node dump2, new iterator" )
+    for n in lt3:
+        print("nd2: %s" % n.abs_path )
+
+    print( "[INFO]: nodes should be gone, one new one added (in memory copy only)" )
+    # reprint
+    lt3.__dbg__ = 0
+    lt3.exec()
+
+    # export, this should delete the node ..., and add the new ones
+    dct2 = lt3.export()
+    Lopper.sync( device_tree.FDT, dct2 )
+    dct3 = Lopper.export( device_tree.FDT )
+
+    print( "[INFO] second print. nodes gone, and new ones still present ")
+    lt3 = lopper_tree.LopperTreePrinter()
+    lt3.load( dct3 )
+    lt3.__dbg__ = 0
+    lt3.exec()
+
+
+
 def yaml_sanity_test( device_tree, yaml_file, outdir, verbose ):
     device_tree.setup( dt, [], "", True )
 
@@ -2044,6 +2151,7 @@ def main():
     global assists
     global format
     global continue_on_error
+    global fdttest
 
     verbose = 0
     force = False
@@ -2053,9 +2161,10 @@ def main():
     lops = False
     assists = False
     format = False
+    fdttest = False
     continue_on_error = False
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlh", [ "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlhd", [ "fdt", "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2085,6 +2194,8 @@ def main():
             assists=True
         elif o in ( '-f', '--format'):
             format=True
+        elif o in ( '-d', '--fdt' ):
+            fdttest = True
         elif o in ( '--continue' ):
             continue_on_error = True
         elif o in ('--version'):
@@ -2171,3 +2282,20 @@ if __name__ == "__main__":
         format_sanity_test( device_tree, verbose )
 
         yaml_sanity_test( device_tree, yt, outdir, verbose )
+
+    if fdttest:
+        dt = setup_system_device_tree( outdir )
+
+        device_tree = LopperSDT( dt )
+
+        device_tree.dryrun = False
+        device_tree.verbose = verbose
+        device_tree.werror = werror
+        device_tree.output_file = outdir + "/fdt-output.dts"
+        device_tree.cleanup_flag = True
+        device_tree.save_temps = False
+        device_tree.enhanced = True
+        device_tree.outdir = outdir
+
+        fdt_sanity_test( device_tree, verbose )
+
