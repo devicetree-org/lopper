@@ -28,7 +28,7 @@ from lopper_tree import *
 from re import *
 
 sys.path.append(os.path.dirname(__file__))
-from baremetalconfig_xlnx import scan_reg_size
+from baremetalconfig_xlnx import scan_reg_size, get_cpu_node
 from bmcmake_metadata_xlnx import to_cmakelist
 
 def is_compat( node, compat_string_to_test ):
@@ -54,20 +54,7 @@ def get_memranges(tgt_node, sdt, options):
            pass
 
     # Yocto Machine to CPU compat mapping
-    cpu_dict = {'cortexa53-zynqmp': 'arm,cortex-a53', 'cortexa72-versal':'arm,cortex-a72', 'cortexr5-zynqmp': 'arm,cortex-r5', 'cortexa9-zynq': 'arm,cortex-a9',
-                'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze', 'cortexr5-versal': 'arm,cortex-r5'}
-    machine = options['args'][0]
-    nodes = sdt.tree.nodes('/cpu.*')
-    match_cpunodes = []
-    match = cpu_dict[machine]
-    for node in nodes:
-        try:
-            compat = node['compatible'].value[0]
-            match = cpu_dict[machine]
-            if compat == match:
-                match_cpunodes.append(node)
-        except KeyError:
-            pass
+    match_cpunodes = get_cpu_node(sdt, options)
    
     address_map = match_cpunodes[0].parent["address-map"].value
     all_phandles = []
