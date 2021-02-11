@@ -64,18 +64,8 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
     # Yocto Machine to CPU compat mapping
     cpu_dict = {'cortexa53-zynqmp': 'arm,cortex-a53', 'cortexa72-versal':'arm,cortex-a72', 'cortexr5-zynqmp': 'arm,cortex-r5', 'cortexa9-zynq': 'arm,cortex-a9',
                 'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze', 'cortexr5-versal': 'arm,cortex-r5'}
-    nodes = sdt.tree.nodes('/cpu.*')
     machine = options['args'][0]
-    match_cpunodes = []
-    match = cpu_dict[machine]
-    for node in nodes:
-        try:
-            compat = node['compatible'].value[0]
-            match = cpu_dict[machine]
-            if compat == match:
-                match_cpunodes.append(node)
-        except KeyError:
-            pass
+    match_cpunodes = get_cpu_node(sdt, options)
 
     tmpdir = os.getcwd()
     os.chdir(options['args'][1])
