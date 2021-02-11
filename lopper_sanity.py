@@ -25,17 +25,6 @@ from collections import UserDict
 from collections import OrderedDict
 import copy
 
-try:
-    import libfdt
-    from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
-except:
-    import site
-    python_version_dir = "python{}.{}".format( sys.version_info[0], sys.version_info[1] )
-    site.addsitedir('vendor/lib/{}/site-packages'.format( python_version_dir ))
-
-    import libfdt
-    from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
-
 from lopper_tree import *
 from lopper import *
 from lopper_fdt import *
@@ -1102,8 +1091,8 @@ ocp:
 
 def setup_fdt( device_tree, outdir ):
     Lopper.dt_compile( device_tree, "", "", True, outdir )
-    return libfdt.Fdt(open( device_tree + ".dtb", mode='rb').read())
-
+    fdt = Lopper.dt_to_fdt( device_tree + ".dtb" )
+    return fdt
 
 def test_failed( error_msg ):
     print( "[TEST FAILED]: " + error_msg )
@@ -2137,6 +2126,7 @@ def usage():
     print('  -l, --lops          run lop tests' )
     print('  -a, --assists       run assist tests' )
     print('  -f, --format        run format tests (dts/yaml)' )
+    print('  -d, --fdt           run fdt abstraction tests' )
     print('    , --werror        treat warnings as errors' )
     print('  -h, --help          display this help and exit')
     print('')
