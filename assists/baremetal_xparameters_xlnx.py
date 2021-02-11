@@ -226,13 +226,16 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                     plat.buf('\n')
                                     
     # Generate Defines for Generic Nodes
+    node_list = get_mapped_nodes(sdt, node_list, options)
     for node in node_list:
         prop_dict = Lopper.node_properties_as_dict(sdt.FDT, node.abs_path)
         label_name = get_label(sdt, symbol_node, node)
         label_name = label_name.upper()
         try:
             val = scan_reg_size(node, node['reg'].value, 0)
+            plat.buf('\n/* Definitions for peripheral %s */' % label_name)
             plat.buf('\n#define XPAR_%s_BASEADDR %s\n' % (label_name, hex(val[0])))
+            plat.buf('#define XPAR_%s_HIGHADDR %s\n' % (label_name, hex(val[0] + val[1] - 1)))
         except KeyError:
             pass
 
