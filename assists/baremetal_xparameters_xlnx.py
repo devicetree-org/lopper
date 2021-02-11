@@ -255,6 +255,24 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
 
     if cci_en:
         plat.buf("\n#define XPAR_CACHE_COHERENT \n")
+
+    #CPU Freq related defines
+    match_cpunodes = get_cpu_node(sdt, options)
+    if re.search("microblaze", options['args'][0]):
+        try:
+            cpu_freq = match_cpunodes[0]['xlnx,freq'].value[0]
+            plat.buf('\n#define XPAR_CPU_CORE_CLOCK_FREQ_HZ %s\n' % cpu_freq)
+        except KeyError:
+            pass
+    else:
+        try:
+            cpu_freq = match_cpunodes[0]['xlnx,cpu-clk-freq-hz'].value[0]
+            plat.buf('\n\n#define XPAR_CPU_CORE_CLOCK_FREQ_HZ %s\n' % cpu_freq)
+            pss_ref = match_cpunodes[0]['xlnx,pss-ref-clk-freq'].value[0]
+            plat.buf('#define XPAR_PSU_PSS_REF_CLK_FREQ_HZ %s\n' % pss_ref)
+        except KeyError:
+            pass
+
     plat.buf('\n#endif  /* end of protection macro */')
     plat.out(''.join(plat.get_buf()))
 
