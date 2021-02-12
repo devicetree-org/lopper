@@ -406,9 +406,9 @@ class LopperYAML():
 
         for node in PreOrderIter(self.anytree):
             if node.name == "root":
-                #ln = lt["/"]
-                ln = LopperNode( -1, None )
-                ln.abs_path = "/"
+                ln = lt["/"]
+                #ln = LopperNode( -1, None )
+                #ln.abs_path = "/"
             else:
                 ln = LopperNode( -1, node.name )
                 ln.abs_path = self.path( node )
