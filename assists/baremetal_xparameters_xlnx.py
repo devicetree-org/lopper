@@ -35,7 +35,7 @@ def is_compat( node, compat_string_to_test ):
     return ""
 
 def get_label(sdt, symbol_node, node):
-    prop_dict = Lopper.node_properties_as_dict(sdt.FDT, symbol_node.abs_path)
+    prop_dict = Lopper.node_properties_as_dict(sdt.FDT, symbol_node.abs_path, False)
     match = [label for label,node_abs in prop_dict.items() if re.match(node_abs[0], node.abs_path) and len(node_abs[0]) == len(node.abs_path)]
     if match:
         return match[0]
