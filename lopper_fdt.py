@@ -809,7 +809,7 @@ class Lopper:
         return dct
 
     @staticmethod
-    def node_properties_as_dict( fdt, node, verbose=0 ):
+    def node_properties_as_dict( fdt, node, type_hints=True, verbose=0 ):
         """Create a dictionary populated with the nodes properties.
 
         Builds a dictionary that is propulated with a node's properties as
@@ -820,6 +820,7 @@ class Lopper:
         Args:
             fdt (fdt): flattened device tree object
             node (int or string): either a node number or node path
+            type_hints  (bool,optional): flag indicating if type hints should be returned
             verbose (int,optional): verbosity level. default is 0.
 
         Returns:
@@ -847,7 +848,8 @@ class Lopper:
             # print( "                      export as dict: read: %s" % p.name )
             property_val = Lopper.property_get( fdt, node_number, p.name, LopperFmt.COMPOUND )
             prop_dict[p.name] = property_val
-            prop_dict['__{}_type__'.format(p.name)] = Lopper.property_type_guess( p )
+            if type_hints:
+                prop_dict['__{}_type__'.format(p.name)] = Lopper.property_type_guess( p )
 
         return prop_dict
 
