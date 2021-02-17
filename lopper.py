@@ -33,7 +33,7 @@ from collections import OrderedDict
 
 from lopper_fdt import Lopper
 from lopper_fdt import LopperFmt
-from lopper_tree import LopperNode, LopperTree
+from lopper_tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
 
 import lopper_rest
 
@@ -227,7 +227,7 @@ class LopperSDT:
 
             # we export the compiled fdt to a dictionary, and load it into our tree
             dct = Lopper.export( self.FDT )
-            self.tree = lopper_tree.LopperTree()
+            self.tree = LopperTree()
             self.tree.load( dct )
 
             self.tree.strict = not self.permissive
@@ -274,7 +274,7 @@ class LopperSDT:
             self.dtb = sdt_file
             self.dts = sdt_file
             self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
-            self.tree = lopper_tree.LopperTree()
+            self.tree = LopperTree()
             self.tree.load( Lopper.export( self.FDT ) )
             self.tree.strict = not self.permissive
 
@@ -441,7 +441,7 @@ class LopperSDT:
                     print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
                     sys.exit(1)
 
-                printer = lopper_tree.LopperTreePrinter( True, output_filename, self.verbose )
+                printer = LopperTreePrinter( True, output_filename, self.verbose )
                 printer.strict = not self.permissive
 
                 # Note: the caller must ensure that all changes have been sync'd to
@@ -467,7 +467,7 @@ class LopperSDT:
             if cb_funcs:
                 for cb_func in cb_funcs:
                     try:
-                        out_tree = lopper_tree.LopperTreePrinter( True, output_filename, self.verbose )
+                        out_tree = LopperTreePrinter( True, output_filename, self.verbose )
                         Lopper.sync( fdt_to_write, self.tree.export() )
                         out_tree.load( Lopper.export( fdt_to_write ) )
                         out_tree.strict = not self.permissive
@@ -886,7 +886,7 @@ class LopperSDT:
 
                         if prop and prop_val:
                             # construct a test prop, so we can use the internal compare
-                            test_prop = lopper_tree.LopperProp( prop, -1, None, [prop_val] )
+                            test_prop = LopperProp( prop, -1, None, [prop_val] )
                             test_prop.resolve()
 
                             # we need this list(), since the removes below will yank items out of
@@ -1015,7 +1015,7 @@ class LopperSDT:
                 output_nodes = []
                 # select some nodes!
                 if "*" in output_regex:
-                    output_tree = lopper_tree.LopperTree( True )
+                    output_tree = LopperTree( True )
                     output_tree.load( tree.export() )
                     output_tree.strict = not self.permissive
                 else:
@@ -1078,7 +1078,7 @@ class LopperSDT:
                             print( "       %s" % oo.abs_path )
 
                 if not output_tree and output_nodes:
-                    output_tree = lopper_tree.LopperTreePrinter()
+                    output_tree = LopperTreePrinter()
                     output_tree.strict = not self.permissive
                     output_tree.__dbg__ = self.verbose
                     for on in output_nodes:
@@ -1136,7 +1136,7 @@ class LopperSDT:
                 tree_nodes = []
                 # select some nodes!
                 if "*" in tree_regex:
-                    new_tree = lopper_tree.LopperTree( True )
+                    new_tree = LopperTree( True )
                     new_tree.load( Lopper.export( self.FDT ) )
                     new_tree.strict = not self.permissive
                 else:
@@ -1191,7 +1191,7 @@ class LopperSDT:
                             print( "[WARNING]: except caught during tree processing: %s" % e )
 
                 if not new_tree and tree_nodes:
-                    new_tree = lopper_tree.LopperTreePrinter()
+                    new_tree = LopperTreePrinter()
                     new_tree.strict = not self.permissive
                     new_tree.__dbg__ = self.verbose
                     for on in tree_nodes:
