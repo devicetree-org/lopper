@@ -3084,7 +3084,7 @@ class LopperTree:
         self.__current_node__ = 0
         self.__new_iteration__ = True
 
-    def load(self, dct = None, xtra=False ):
+    def load(self, dct = None ):
         """load a tree
 
         Loads the details around the nodes of a tree, and completes values that
@@ -3107,10 +3107,6 @@ class LopperTree:
         else:
             dct = self.dct
 
-        # if type( dct ) == dict:
-        #     print( "converting dict to ordered Dict" )
-        #     dct = OrderedDict( dct )
-
         # take the dictionary format, which is a series of nested dicts
         # representing nodes and properties. We'd rather not recurse to do our
         # processing below, so we unroll the recursion into an ordered list of
@@ -3121,14 +3117,7 @@ class LopperTree:
         node_ordered_list = []
         while dwalk:
             firstitem = dwalk.pop()
-            # if xtra:
-            #     print( "type: %s" % type(firstitem[1]))
-            #     print( "load: dwalk: %s" % firstitem[1] )
-            #if type(firstitem[1]) == dict:
-            #    firstitem[1] = OrderedDict( firstitem[1] )
             if type(firstitem[1]) is OrderedDict: # or type(firstitem[1]) is dict:
-                # if xtra:
-                #     print( "       adding it!" )
                 node_ordered_list.append( [firstitem[1], firstitem[0]] )
                 for item,value in reversed(firstitem[1].items()):
                     dwalk.append([firstitem[1],value,firstitem[0]])
@@ -3137,8 +3126,6 @@ class LopperTree:
                 for item,value in firstitem[1].items():
                     dwalk.append([firstitem[1],value,firstitem[0]])
             else:
-                # if xtra:
-                #     print( "       passing it up!" )
                 pass
 
         # We are checking the __must_sync__ flag. Since this routine will throw
