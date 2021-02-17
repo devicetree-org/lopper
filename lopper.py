@@ -33,6 +33,7 @@ from collections import OrderedDict
 
 from lopper_fdt import Lopper
 from lopper_fdt import LopperFmt
+from lopper_tree import LopperNode, LopperTree
 
 import lopper_rest
 
