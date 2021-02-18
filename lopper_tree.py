@@ -1934,7 +1934,7 @@ class LopperTree:
                    '__fdt_name__' : "",
                    '__fdt_number__' : 0,
                    '__fdt_phandle__' : -1 }
-        self.load( i_dct, True)
+        self.load( i_dct )
 
     def __iter__(self):
         """magic method to support iteration
