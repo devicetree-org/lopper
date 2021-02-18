@@ -2289,3 +2289,4 @@ if __name__ == "__main__":
 
         fdt_sanity_test( device_tree, verbose )
 
+        device_tree.tree.print()

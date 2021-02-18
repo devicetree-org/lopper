@@ -516,6 +516,40 @@ class LopperProp():
 
         return phandle_targets
 
+    def print( self, output ):
+        """print a property
+
+        Print the resolved value of a property to the passed output
+        stream.
+
+        The property will be indented to match the depth of a node
+        in a tree.
+
+        Args:
+           output (output stream).
+
+        Returns:
+           Nothing
+
+        """
+        indent = (self.node.depth * 8) + 8
+        outstring = self.string_val
+
+        if self.pclass == "comment":
+            # we have to substitute \n for better indentation, since comments
+            # are multiline
+            dstring = ""
+            dstring = dstring.rjust(len(dstring) + indent + 1, " " )
+            outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
+
+        if self.pclass == "preamble":
+            # start tree peeked at this, so we do nothing
+            outstring = ""
+
+        if outstring:
+            print(outstring.rjust(len(outstring)+indent," " ), file=output)
+
+
     def resolve( self ):
         """resolve (calculate) property details
 
@@ -1310,6 +1344,76 @@ class LopperNode(object):
             all_kids = all_kids + child_node.subnodes( depth + 1, max_depth )
 
         return all_kids
+
+    def print( self, output=None ):
+        """print a node
+
+        Print a node to the passed output stream. If it isn't passed, then
+        the containg tree's output is used. If the tree has no output, stdout
+        is the final fallback.
+
+        The node  will be indented to match the depth of a node
+        in a tree.
+
+        Args:
+           output (optional, output stream).
+
+        Returns:
+           Nothing
+
+        """
+        if not output:
+            try:
+                output = self.tree.output
+            except:
+                output = sys.stdout
+
+        indent = self.depth * 8
+        nodename = self.name
+
+        if self.number != 0:
+            plabel = ""
+            try:
+                if n['lopper-label.*']:
+                    plabel = n['lopper-label.*'].value[0]
+            except:
+                plabel = self.label
+
+            if self.phandle != 0:
+                if plabel:
+                    outstring = plabel + ": " + nodename + " {"
+                else:
+                    outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
+            else:
+                if plabel:
+                    outstring = plabel + ": " + nodename + " {"
+                else:
+                    outstring = nodename + " {"
+
+            print( "", file=output )
+            print(outstring.rjust(len(outstring)+indent," " ), file=output )
+        else:
+            # root node
+            # peek ahead to handle the preamble
+            for p in self:
+                if p.pclass == "preamble":
+                    print( "%s" % p, file=output )
+
+            print( "/dts-v1/;\n\n/ {", file=output )
+
+        # now the properties
+        for p in self:
+            p.print( output )
+
+        # child nodes
+        for cn in self.child_nodes.values():
+            cn.print( output )
+
+        # end the node
+        outstring = "};"
+        print(outstring.rjust(len(outstring)+indent," " ), file=output)
+
+
 
     def export( self ):
         """Export node details as a dictionary
@@ -2326,6 +2430,28 @@ class LopperTree:
             dct[n.abs_path] = self.export(n.abs_path)
 
         return dct
+
+    def print(self, output = None):
+        """print the contents of a tree
+
+        Outputs the tree to the passed output stream, if not passed the tree's
+        output stream is used. If the tree has no output stream, stdout is the
+        final fallback.
+
+        Args:
+           output (optional,output stream).
+
+        Returns:
+           Nothing
+
+        """
+        if not output:
+            try:
+                output = self.output
+            except:
+                output = sys.stdout
+
+        self["/"].print( output )
 
     def resolve( self ):
         # kept for compatibility, the tree is always resolved now
