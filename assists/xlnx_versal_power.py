@@ -9,11 +9,7 @@ req_usage = {
 
 usage_mask = 0x3
 def usage(flags):
-  msg = "# usage: "
-  msg += hex(flags)
-  msg += " & usage_mask (0x3) --> "
-  msg += hex(flags & usage_mask)
-  msg += " "
+  msg = "#    usage: "
   msg += req_usage[flags & usage_mask]
   return msg
 
@@ -25,14 +21,7 @@ req_security = {
 security_mask = 0x4
 security_offset = 0x2
 def security(flags):
-  msg = "# security: ("
-  msg += hex(flags)
-  msg += " & security_mask(" + hex(security_mask)
-  msg += ") ) >> security_offset("
-  msg += hex(security_offset)
-  msg += ") --> "
-  msg += hex((flags & security_mask) >> security_offset)
-  msg += " "
+  msg = "#    security: "
   msg += req_security[(flags & security_mask) >> security_offset]
   return msg
 
@@ -48,26 +37,12 @@ wr_policy_mask = 0x10
 wr_policy_offset = 0x4
 rw_message = "Read/Write access control policy."
 def read_policy(flags):
-  msg = "# read policy: ("
-  msg += hex(flags)
-  msg += " & rd_policy_mask(" + hex(rd_policy_mask)
-  msg += ") ) >> rd_policy_offset("
-  msg += hex(rd_policy_offset)
-  msg += ") --> "
-  msg += hex((flags & rd_policy_mask) >> rd_policy_offset)
-  msg += " "
+  msg = "#    read policy: "
   msg += req_rd_wr[(flags & rd_policy_mask) >> rd_policy_offset]
   return msg
 
 def write_policy(flags):
-  msg = "# write policy: ("
-  msg += hex(flags)
-  msg += " & wr_policy_mask(" + hex(wr_policy_mask)
-  msg += ") ) >> wr_policy_offset("
-  msg += hex(wr_policy_offset)
-  msg += ") --> "
-  msg += hex((flags & wr_policy_mask) >> wr_policy_offset)
-  msg += " "
+  msg = "#    write policy: "
   msg += req_rd_wr[(flags & wr_policy_mask) >> wr_policy_offset]
   return msg
 
@@ -82,14 +57,7 @@ nsregn = {
 }
 
 def nsregn_policy(flags):
-  msg = "# Non-secure memory region check type policy: ("
-  msg += hex(flags)
-  msg += " & nsregn_check_mask(" + hex(nsregn_check_mask)
-  msg += ") ) >> nsregn_check_offset("
-  msg += hex(nsregn_check_offset)
-  msg += ") --> "
-  msg += hex((flags & nsregn_check_mask) >> nsregn_check_offset)
-  msg += " "
+  msg = "#    Non-secure memory region check type policy: "
   msg += nsregn[(flags & nsregn_check_mask) >> nsregn_check_offset]
   return msg
 
@@ -98,12 +66,7 @@ capability_mask = 0x7F00
 
 cap_message = "capability: "
 def capability_policy(flags):
-  msg = "# Capability policy: ("
-  msg += hex(flags)
-  msg += " & capability_mask(" + hex(capability_mask)
-  msg += ") ) >> capability_offset("
-  msg += hex(capability_offset)
-  msg += ") --> "
+  msg = "#    Capability policy: "
   msg += hex((flags & capability_mask) >> capability_offset)
   return msg
 
@@ -117,14 +80,7 @@ prealloc = {
 
 prealloc_message = "prealloc policy "
 def prealloc_policy(flags):
-  msg = "# Preallocation policy: ("
-  msg += hex(flags)
-  msg += " & prealloc_mask(" + hex(prealloc_mask)
-  msg += ") ) >> prealloc_offset("
-  msg += hex(prealloc_offset)
-  msg += ") --> "
-  msg += hex((flags & prealloc_mask) >> prealloc_offset)
-  msg += " "
+  msg = "#    Preallocation policy: "
   msg += prealloc[(flags & prealloc_mask) >> prealloc_offset]
   return msg
 

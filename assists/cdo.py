@@ -92,17 +92,30 @@ def cdo_write_command(sub_num, sub_id, dev_str, dev_val, flags, output):
   print("# subsystem_"+str(sub_num)+" "+dev_str,file=output)
   print("pm_add_requirement "+hex(sub_id)+" "+dev_val+" "+hex(flags)+" "+hex(0xfffff),file=output)
 
-def document_requirement_flags(sub_num, sub_id, dev_str, output, flags, mem_regn):
-  print("# subsystem_"+str(sub_num)+" "+hex(sub_id)+" requirements flags:",      file=output)
+def document_requirement_flags(subsystem_name, sub_num, sub_id, node_id, dev_str, output, flags, mem_regn):
+  print("#", file=output)
+  print("#", file=output)
+  print("# subsystem:", file=output)
+  print("#    name: "+ subsystem_name, file=output)
+  print("#    ID: "+hex(sub_id), file=output)
+  print("#", file=output)
+  print("# node:", file=output)
+  print("#    name: "+dev_str, file=output)
+  print("#    ID: "+hex(node_id), file=output)
+  print("#", file=output)
+  print("# requirements: arg 1: "+hex(flags), file=output)
+
   print(usage(flags),       file=output)
   print(security(flags),    file=output)
   print(capability_policy(flags),    file=output)
   print(prealloc_policy(flags), file=output)
 
+
   if mem_regn == 1:
     print(read_policy(flags), file=output)
     print(write_policy(flags), file=output)
     print(nsregn_policy(flags),file=output)
+  print("#", file=output)
 
 def add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node, target_pnode, operation):
   root_node = domain_node.tree['/']
@@ -128,14 +141,14 @@ def add_subsystem_permission_requirement(output, cpu_node, domain_node, device_n
 def add_requirements_mem(subsystem_num, subsystem_id, output, device_node, domain_node, requirement):
  if 0xfffc0000 == device_node.propval("reg")[1]:
    for key in ocm_bank_names:
-     document_requirement_flags(subsystem_num,subsystem_id,
-                                key, output, requirement, 1)
+     document_requirement_flags(domain_node.name, subsystem_num,subsystem_id,
+                                existing_devices[key], key, output, requirement, 1)
      cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), requirement,output)
    return 0
  elif device_node.propval("reg")[1] in memory_range_to_dev_name.keys():
    key = memory_range_to_dev_name[device_node.propval("reg")[1]]
-   document_requirement_flags(subsystem_num,subsystem_id,
-                              key, output, requirement, 1)
+   document_requirement_flags(domain_node.name, subsystem_num,subsystem_id,
+                              existing_devices[key], key, output, requirement,1)
    return key
  else:
    print("add_requirements: memory: not covered: ",str(device_node),hex(device_node.propval("reg")[1]))
@@ -144,7 +157,7 @@ def add_requirements_mem(subsystem_num, subsystem_id, output, device_node, domai
 def add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domain_node, requirement):
   if "a72" in device_node.name:
     for key in apu_specific_reqs.keys():
-      document_requirement_flags(subsystem_num, subsystem_id, key, output, requirement, 0)
+      document_requirement_flags(domain_node.name, subsystem_num, subsystem_id, existing_devices[key], key, output, requirement, 0)
       cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), apu_specific_reqs[key], output)
     return 0
   elif "r5" in  device_node.abs_path:
@@ -154,7 +167,7 @@ def add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domai
       key += "0"
     else:
       key += "1"
-    document_requirement_flags(subsystem_num,subsystem_id, key, output, requirement, 0)
+    document_requirement_flags(domain_node.name, subsystem_num,subsystem_id, existing_devices[key], key, output, requirement, 0)
     return key
   else:
     print("add_requirements: cores: not covered: ",str(device_node))
@@ -193,7 +206,7 @@ def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, n
     elif device_node.propval("power-domains") != [""]:
       xilpm_nodeid = device_node.propval("power-domains")[1]
       xilpm_dev_name = xilinx_versal_device_names[xilpm_nodeid]
-      document_requirement_flags(subsystem_num, subsystem_id, xilpm_dev_name,
+      document_requirement_flags(domain_node.name, subsystem_num, subsystem_id, xilpm_nodeid, xilpm_dev_name,
                                  output, device_list[index+1], 0)
       cdo_write_command(subsystem_num, subsystem_id, xilpm_dev_name,
                         hex(xilpm_nodeid),
@@ -206,7 +219,9 @@ def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, n
       print("add_requirements: not covered: ",str(device_node))
       return -1
 
-    document_requirement_flags(subsystem_num, subsystem_id, key, output,
+    document_requirement_flags(domain_node.name,
+                               subsystem_num, subsystem_id,
+                               existing_devices[key], key, output,
                                device_list[index+1], 0)
     cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), device_list[index+1],output)
 
