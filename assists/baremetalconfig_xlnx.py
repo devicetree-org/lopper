@@ -102,7 +102,7 @@ def scan_reg_size(node, value, idx):
             val = str(value[cells * idx + 1])
             pad = 8 - len(val)
             val = val.ljust(pad + len(val), '0')
-            reg = int((str(reg1) + val), base=16)
+            reg = int((str(hex(reg1)) + val), base=16)
         else:
             reg = value[cells * idx + 1]
 
@@ -216,8 +216,10 @@ def scan_ranges_size(node, value, idx):
 
     size1 = value[cells * idx + na + 2]
     if size1 != 0:
-        val = value[cells * idx + na + ns]
-        size = size1 + val
+        val = str(hex(value[cells * idx + na + 3]))[2:]
+        pad = 8 - len(str(hex(size1)))
+        val = val.ljust(pad + len(str(hex(size1))), '0')
+        size = int((str(hex(size1)) + val), base=16)
     else:
         size = value[cells * idx + na + ns + 1]
     return addr, size
