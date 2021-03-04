@@ -240,10 +240,14 @@ def get_clock_prop(sdt, value):
 def get_pci_ranges(node, value, pad):
     pci_ranges = []
     for i in range(pad):
-        reg, size = scan_ranges_size(node, value, i)
-        high_addr = reg + size - 1
-        pci_ranges.append(hex(reg))
-        pci_ranges.append(hex(high_addr))
+        try:
+            reg, size = scan_ranges_size(node, value, i)
+            high_addr = reg + size - 1
+            pci_ranges.append(hex(reg))
+            pci_ranges.append(hex(high_addr))
+        except IndexError:
+            pci_ranges.append(hex(0))
+            pci_ranges.append(hex(0))
     return pci_ranges
 
 class DtbtoCStruct(object):
