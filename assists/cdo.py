@@ -27,6 +27,7 @@ from lopper_tree import *
 
 sys.path.append(os.path.dirname(__file__))
 from xlnx_versal_power import *
+from cdo_topology import *
 
 def props():
     return ["id", "file_ext"]
@@ -261,7 +262,10 @@ def cdo_write( domain_node, sdt, options ):
         verbose = 0
 
     if (len(options["args"]) > 0):
-      outfile = options["args"][0]
+      if re.match(options["args"][0], "regulator"):
+        outfile = options["args"][1]
+      else:
+        outfile = options["args"][0]
     else:
       print("cdo header file name not provided.")
       return -1
@@ -282,17 +286,20 @@ def cdo_write( domain_node, sdt, options ):
     # add subsystem
     domain_nodes = []
     cpu_nodes = []
-    for n in domain_node.subnodes():
-      if n.propval('access') != ['']:
-        cpu_node = add_subsystem(n, sdt, output)
-        if cpu_node == -1:
-          print("invalid cpu node for add_subsystem")
-          return False
-        elif cpu_node == 0:
-          continue
+    if re.match(options["args"][0], "regulator"):
+        gen_board_topology( domain_node, sdt, output )
+    else:
+        for n in domain_node.subnodes():
+            if n.propval('access') != ['']:
+                cpu_node = add_subsystem(n, sdt, output)
+                if cpu_node == -1:
+                    print("invalid cpu node for add_subsystem")
+                    return False
+                elif cpu_node == 0:
+                    continue
 
-        cpu_nodes.append(cpu_node)
-        domain_nodes.append(n)
+                cpu_nodes.append(cpu_node)
+                domain_nodes.append(n)
     for i in range(len(domain_nodes)):
       add_requirements(domain_nodes[i], cpu_nodes[i], sdt, output)
 
