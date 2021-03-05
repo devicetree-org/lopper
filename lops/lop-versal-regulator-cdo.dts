@@ -1,0 +1,14 @@
+/dts-v1/;
+/ {
+	compatible = "system-device-tree-v1,lop";
+	lops {
+
+		lop_3_3 {
+			compatible = "system-device-tree-v1,lop,assist-v1";
+			node = "/";
+			id = "xlnx,output,cdo";
+			options = "regulator topology_board.cdo";
+		};
+	};
+
+};
