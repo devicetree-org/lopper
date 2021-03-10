@@ -156,7 +156,7 @@ def process_domain( tgt_node, sdt, options ):
     sdt.tree.ref( 0 )
 
     # do not consider address-map phandles as references
-    all_refs = domain_node.resolve_all_refs( None, [ ".*address-map.*" ] )
+    all_refs = domain_node.resolve_all_refs( [ ".*address-map.*" ] )
     for n in all_refs:
         n.ref = 1
 
