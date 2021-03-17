@@ -383,6 +383,8 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         config_struct = str("X") + driver_name.capitalize() + str("_Config")
     else:
         config_struct = config_struct[0]
+        driver_name = config_struct.split('_Config')[0].lower()
+        driver_name = driver_name[1:]
     outfile = str("x") + driver_name + str("_g.c")
 
     plat = DtbtoCStruct(outfile)
