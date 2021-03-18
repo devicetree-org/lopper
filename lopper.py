@@ -268,6 +268,11 @@ class LopperSDT:
             yaml = LopperYAML( fp )
             lt = yaml.to_tree()
 
+            # temp location. check to see if automatic translations are
+            # registered for the intput file type, and generate the lops
+
+            # or .. is this really input type necessary ?!
+
             self.dtb = None
             self.FDT = Lopper.fdt()
             self.tree = lt
@@ -2020,6 +2025,7 @@ def usage():
     print('    . --auto          automatically run any assists passed via -a' )
     print('    , --permissive    do not enforce fully validated properties (phandles, etc)' )
     print('  -o, --output        output file')
+    print('  -x. --xlate         run automatic translations on nodes for indicated input types (yaml,dts)' )
     print('  -f, --force         force overwrite output file(s)')
     print('    , --werror        treat warnings as errors' )
     print('  -S, --save-temps    don\'t remove temporary files' )
@@ -2052,6 +2058,7 @@ def main():
     global server
     global auto_run
     global permissive
+    global xlate
 
     debug = False
     sdt = None
@@ -2071,12 +2078,13 @@ def main():
     server = False
     auto_run = False
     permissive = False
+    xlate = []
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:D",
+        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:Dx:",
                                    [ "debug", "assist-paths=", "outdir", "enhanced",
                                      "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
-                                     "assist=","server", "auto", "permissive"] )
+                                     "assist=","server", "auto", "permissive", "xlate=" ] )
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2124,6 +2132,8 @@ def main():
             auto_run = True
         elif o in ('--permissive' ):
             permissive = True
+        elif o in ('-x', '--xlate'):
+            xlate.append(a)
         elif o in ('--version'):
             print( "%s" % LOPPER_VERSION )
             sys.exit(0)
@@ -2204,6 +2214,35 @@ def main():
             print( "[ERROR]: unrecognized input file type passed" )
             sys.exit(1)
 
+
+    if xlate:
+        for x in xlate:
+            # *x_lop gets all remaining splits. We don't always have the ":", so
+            # we need that flexibility.
+            x_type, *x_lop = x.split(":")
+
+            x_files = []
+            if x_lop:
+                x_files.append( x_lop[0] )
+            else:
+                # generate the lop name
+                extension = Path(x_type).suffix
+                extension = re.sub( "\.", "", extension )
+                x_lop_gen = "lop-xlate-{}.dts".format(extension)
+                x_files.append( x_lop_gen )
+
+        # check that the xlate files exist
+        print( "checking the xfiles %s" % x_files )
+        for x in x_files:
+            inf = Path(x)
+            if not inf.exists():
+                x = "lops/" + x
+                inf = Path( x )
+                if not inf.exists():
+                    print( "[ERROR]: input file %s does not exist" % x )
+                    sys.exit(1)
+
+            inputfiles.append( x )
 
 
 if __name__ == "__main__":
