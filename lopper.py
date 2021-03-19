@@ -885,6 +885,13 @@ class LopperSDT:
                                 print( "       %s" % n )
 
                         if prop and prop_val:
+                            invert_result = False
+                            if re.search( "\!", prop_val ):
+                                invert_result = True
+                                prop_val = re.sub( '^\!', '', prop_val )
+                                if self.verbose > 1:
+                                    print( "[DBG++]: select: inverting result" )
+
                             # construct a test prop, so we can use the internal compare
                             test_prop = LopperProp( prop, -1, None, [prop_val] )
                             test_prop.resolve()
@@ -903,6 +910,9 @@ class LopperSDT:
                                         test_prop.__dbg__ = self.verbose
 
                                     are_they_equal = test_prop.compare( sl_prop )
+                                    if invert_result:
+                                        are_they_equal = not are_they_equal
+
                                     if are_they_equal:
                                         if not sl in selected_nodes:
                                             selected_nodes.append( sl )
