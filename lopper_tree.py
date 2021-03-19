@@ -2890,6 +2890,7 @@ class LopperTree:
 
             tree : the LopperTree object containing the node
             node : the LopperNode being processed
+            __selected__ : the list of LopperNodes being processed
             node_name : the name of the node (as defined by the dts/dtb)
             node_number : the number of the node being processed
 
@@ -2949,6 +2950,7 @@ class LopperTree:
         safe_dict['node'] = n
         safe_dict['node_number'] = node_number
         safe_dict['node_name' ] = node_name
+        safe_dict['__selected__'] = self.__selected__
 
         if env:
             for e in env:
