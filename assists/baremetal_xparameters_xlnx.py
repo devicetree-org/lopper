@@ -50,8 +50,11 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     node_list = []
     # Traverse the tree and find the nodes having status=ok property
     symbol_node = ""
+    chosen_node = ""
     for node in root_sub_nodes:
         try:
+            if node.name == "chosen":
+                chosen_node = node
             if node.name == "__symbols__":
                 symbol_node = node
             status = node["status"].value
@@ -272,6 +275,13 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             plat.buf('#define XPAR_PSU_PSS_REF_CLK_FREQ_HZ %s\n' % pss_ref)
         except KeyError:
             pass
+
+    #Defines for STDOUT and STDIN Baseaddress
+    if chosen_node:
+        stdin_node = get_stdin(sdt, chosen_node, total_nodes)
+        val, size = scan_reg_size(stdin_node, stdin_node['reg'].value, 0)
+        plat.buf("\n#define STDOUT_BASEADDRESS %s" % hex(val))
+        plat.buf("\n#define STDIN_BASEADDRESS %s\n" % hex(val))
 
     plat.buf('\n#endif  /* end of protection macro */')
     plat.out(''.join(plat.get_buf()))
