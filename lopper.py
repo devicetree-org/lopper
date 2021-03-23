@@ -1773,6 +1773,9 @@ class LopperSDT:
 
                                 modify_val = phandle
 
+                        else:
+                            modify_val = Lopper.property_convert( modify_val )
+
                         for n in nodes:
                             if type( modify_val ) == list:
                                 n[modify_prop] = modify_val
