@@ -1483,6 +1483,74 @@ class Lopper:
         prop = fdt.get_phandle( node_number )
         return prop
 
+
+    @staticmethod
+    def property_convert( property_string ):
+        """utility command to convert a string to a list of property values
+
+        Takes a string formatted in device tree notation, and returns a list
+        of property values.
+
+        Formats of the following types will work, and be converted to their
+        base types in the returned list.
+
+              <0x1 0x2 0x3>
+              <0x1>
+              "string value"
+              "string value1","string value2"
+              10
+
+        Args:
+           property_string (string): device tree "style" string
+
+        Returns:
+           list: converted property values, empty string if cannot convert
+        """
+        retval = []
+        # if it starts with <, it is a list of numbers
+        if re.search( "^<", property_string ):
+            property_string = re.sub( "<", "", property_string )
+            property_string = re.sub( ">", "", property_string )
+            for n in property_string.split():
+                base = 10
+                if re.search( "0x", n ):
+                    base = 16
+                try:
+                    n_as_int = int(n,base)
+                    n = n_as_int
+                except Exception as e:
+                    print( "[ERROR]: cannot convert element %s to number (%s)" % (n,e) )
+                    sys.exit(1)
+
+                retval.append( n )
+
+        else:
+            # if it is quoted "" and separated by "," it is a list of numbers
+            quoted_regex = re.compile( r"(?P<quote>['\"])(?P<string>.*?)(?<!\\)(?P=quote)")
+            strings = quoted_regex.findall( property_string )
+
+            # we get a list of tuples back from the findall ( <type>, <value> ),
+            # where 'type' is the type of quotation used
+            if len( strings ) > 1:
+                for s in strings:
+                    sval = s[1]
+                    retval.append( sval )
+            else:
+                # single number or string
+                p = property_string
+                base = 10
+                if re.search( "0x", p ):
+                    base = 16
+                try:
+                    p_as_int = int(p,base)
+                    p = p_as_int
+                    retval.append (p )
+                except Exception as e:
+                    # it is a string
+                    retval.append( p )
+
+        return retval
+
     @staticmethod
     def property_get( fdt, node_number, prop_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
         """utility command to get a property (as a string) from a node
