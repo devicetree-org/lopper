@@ -210,6 +210,22 @@ def setup_lops( outdir ):
                         outfile = "linux-amba.dts";
                         nodes = ".*amba.*";
                  };
+                 lop_15_2 {
+                       compatible = "system-device-tree-v1,lop,modify";
+                       modify = "/cpus_a72/cpu@0:listval:<0xF 0x5>";
+                 };
+                 lop_15_3 {
+                       compatible = "system-device-tree-v1,lop,modify";
+                       modify = "/cpus_a72/cpu@0:liststring:'four','five'";
+                 };
+                 lop_15_4 {
+                       compatible = "system-device-tree-v1,lop,modify";
+                       modify = "/cpus_a72/cpu@0:singlestring:newcpu";
+                 };
+                 lop_15_5 {
+                       compatible = "system-device-tree-v1,lop,modify";
+                       modify = "/cpus_a72/cpu@0:singleval:<5>";
+                 };
         };
 };
             """)
@@ -770,6 +786,10 @@ def setup_system_device_tree( outdir ):
                         reg = <0x0>;
                         cpu-idle-states = <0x2>;
                         clocks = <0x3 0x4d>;
+                        listval = <0x1 0x3>;
+                        liststring = "one", "three";
+                        singlestring = "test";
+                        singleval = <0x4>;
                 };
 
                 cpu@1 {
@@ -1971,6 +1991,31 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
         test_passed( "subtree node move" )
     else:
         test_failed( "subtree node move" )
+
+    # test list modify lops
+    c = test_pattern_count( device_tree.output_file, "listval = <0xf 0x5>" )
+    if c == 1:
+        test_passed( "listval modify" )
+    else:
+        test_failed( "listval modify" )
+
+    c = test_pattern_count( device_tree.output_file, "liststring = \"four\",\"five\"" )
+    if c == 1:
+        test_passed( "liststring modify" )
+    else:
+        test_failed( "liststring modify" )
+
+    c = test_pattern_count( device_tree.output_file, "singlestring = \"newcpu\"" )
+    if c == 1:
+        test_passed( "single string modify" )
+    else:
+        test_failed( "single string modify" )
+
+    c = test_pattern_count( device_tree.output_file, "singleval = <0x5>" )
+    if c == 1:
+        test_passed( "single val modify" )
+    else:
+        test_failed( "single val modify" )
 
     device_tree.cleanup()
 
