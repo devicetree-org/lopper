@@ -1926,7 +1926,13 @@ class LopperSDT:
 
             if lops_fdt:
                 lops_tree = LopperTree()
-                lops_tree.load( Lopper.export( lops_fdt ) )
+                try:
+                    dct = Lopper.export( lops_fdt, strict=True )
+                except Exception as e:
+                    print( "[ERROR]: (%s) %s" % (x.dts,e) )
+                    sys.exit(1)
+                lops_tree.load( dct )
+
                 x.tree = lops_tree
 
             if not lops_tree:

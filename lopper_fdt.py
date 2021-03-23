@@ -749,7 +749,7 @@ class Lopper:
             Lopper.node_sync( fdt, node_in, node_in_parent )
 
     @staticmethod
-    def export( fdt, start_node = "/", verbose = False ):
+    def export( fdt, start_node = "/", verbose = False, strict = False ):
         """export a FDT to a description / nested dictionary
 
         This routine takes a FDT, a start node, and produces a nested dictionary
@@ -772,10 +772,15 @@ class Lopper:
 
         All other "standard" properties are returned as entries in the dictionary.
 
+        if strict is enabled, structural issues in the input tree will be
+        flagged and an error triggered. Currently, this is duplicate nodes, but
+        may be extended in the future
+
         Args:
             fdt (fdt): flattened device tree object
             start_node (string,optional): the starting node
             verbose (bool,optional): verbosity level
+            strict (bool,optional): toggle validity checking
 
         Returns:
             OrderedDict describing the tree
@@ -784,6 +789,10 @@ class Lopper:
         dct = OrderedDict()
 
         nodes = Lopper.node_subnodes( fdt, start_node )
+
+        if strict:
+            if len(nodes) != len(set(nodes)):
+                raise Exception( "lopper_fdt: duplicate node detected (%s)" % nodes )
 
         dct["__path__"] = start_node
 
@@ -804,7 +813,7 @@ class Lopper:
         for i,n in enumerate(nodes):
             # Children are indexed by their path (/foo/bar), since properties
             # cannot start with '/'
-            dct[n] = Lopper.export( fdt, n )
+            dct[n] = Lopper.export( fdt, n, verbose, strict )
 
         return dct
 
