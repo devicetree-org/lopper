@@ -892,8 +892,11 @@ class LopperSDT:
                                 if self.verbose > 1:
                                     print( "[DBG++]: select: inverting result" )
 
+                            # in case this is a formatted list, ask lopper to convert
+                            prop_val = Lopper.property_convert( prop_val )
+
                             # construct a test prop, so we can use the internal compare
-                            test_prop = LopperProp( prop, -1, None, [prop_val] )
+                            test_prop = LopperProp( prop, -1, None, prop_val )
                             test_prop.resolve()
 
                             # we need this list(), since the removes below will yank items out of
