@@ -1999,7 +1999,7 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
     else:
         test_failed( "listval modify" )
 
-    c = test_pattern_count( device_tree.output_file, "liststring = \"four\",\"five\"" )
+    c = test_pattern_count( device_tree.output_file, "liststring = \"four\", \"five\"" )
     if c == 1:
         test_passed( "liststring modify" )
     else:

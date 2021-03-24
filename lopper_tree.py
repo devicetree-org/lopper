@@ -456,7 +456,7 @@ class LopperProp():
 
         return True
 
-    def resolve_phandles( self ):
+    def resolve_phandles( self, tag_invalid = False ):
         """Resolve the targets of any phandles in a property
 
         Args:
@@ -465,7 +465,6 @@ class LopperProp():
         Returns:
             A list of all resolved phandle node numbers, [] if no phandles are present
         """
-
         phandle_targets = []
 
         idx, pfields = self.phandle_params()
@@ -505,12 +504,17 @@ class LopperProp():
                     if lnode:
                         phandle_targets.append( lnode )
                     else:
-                        # was it a label ?
+                        # was it a label ? If it was converted to an int above,
+                        # we'll throw an exception and catch it below for proper
+                        # processing. If it is a string, we'll try the lookup.
                         lnode = self.node.tree.lnodes( re.escape(i) )
                         if lnode:
                             phandle_targets.append( lnode )
-                except:
-                    pass
+                        else:
+                            phandle_targets.append( "#invalid" )
+                except Exception as e:
+                    if tag_invalid:
+                        phandle_targets.append( "#invalid" )
 
             element_count = element_count + 1
 
@@ -599,7 +603,7 @@ class LopperProp():
         self.ptype = prop_type
 
         phandle_idx, phandle_field_count = self.phandle_params()
-        phandle_tgts = self.resolve_phandles()
+        phandle_tgts = self.resolve_phandles( True )
 
         if prop_type == "comment":
             outstring = ""
@@ -637,24 +641,7 @@ class LopperProp():
 
                 # if the attribute was detected as potentially having a
                 # phandle, phandle_idx will be non zero.
-                #
-                # To more easily pick out the elements that we should
-                # check for phandle replacement, we generate a list of
-                # element numbers that are potential phandles.
-                #
-                # We generate that list by generating all indexes from 1
-                # to the number of elments in our list (+1), and then we
-                # slice the list. The slice starts at the phandle index
-                # - 1 (since our list starts at position 0), and grabs
-                # every "nth" item, where "n" is the number of fields in
-                # the element block (number of fields).
                 if phandle_idx != 0:
-                    phandle_idxs = list(range(1,len(prop_val) + 1))
-                    phandle_idxs = phandle_idxs[phandle_idx - 1::phandle_field_count]
-
-                # is this a list of ints, or string ? Test the first
-                # item to know.
-                if phandle_tgts:
                     list_of_nums = True
                 else:
                     list_of_nums = False
@@ -673,13 +660,11 @@ class LopperProp():
                     list_of_nums = True
 
                 if list_of_nums:
+                    # we shouldn't be changing this here, it should be done on the
+                    # load and never touched again.
                     self.ptype = LopperFmt.UINT32
-                    if self.binary:
-                        outstring_list += "["
-                    else:
-                        # we have to open with a '<', if this is a list of numbers
-                        outstring_list += "<"
                 else:
+                    # and we also shouldn't be changing this here.
                     self.ptype = LopperFmt.STRING
 
                 element_count = 1
@@ -688,112 +673,98 @@ class LopperProp():
                 drop_record = False
                 drop_all = False
 
-                for i in prop_val:
-                    if list_of_nums:
-                        base = 10
-                        if re.search( "0x", str(i) ):
-                            base = 16
-                        try:
-                            i_as_int = int(i,base)
-                            i = i_as_int
-                        except:
+                formatted_records = []
+                if phandle_field_count:
+                    records_to_iterate = [prop_val[i:i + phandle_field_count] for i in range(0, len(prop_val), phandle_field_count)]
+
+                    for rnum,r in enumerate(records_to_iterate):
+                        phandle_to_check = r[phandle_idx - 1]
+                        phandle_resolution = phandle_tgts.pop(0)
+
+                        if phandle_resolution == "#invalid":
+                            # drop the record
                             pass
-                    else:
-                        i_as_int = 0
+                        else:
+                            phandle_tgt_name = phandle_resolution.label
+                            if not phandle_tgt_name:
+                                phandle_tgt_name = Lopper.phandle_safe_name( phandle_resolution.name )
 
-                    phandle_tgt_name = ""
-                    if phandle_idx != 0:
-                        # if we we are on the phandle field, within the number of fields
-                        # per element, then we need to look for a phandle replacement
-                        if element_count in phandle_idxs:
-                            try:
-                                try:
-                                    tgn = self.node.tree.pnode( i )
-                                    if tgn == None:
-                                        # if we couldn't find the target, maybe it is in
-                                        # as a string. So let's check that way.
-                                        tgn2 = self.node.tree.nodes( re.escape(i) )
-                                        if not tgn2:
-                                            tgn2 = self.node.tree.lnodes( re.escape(i) )
+                            if self.binary:
+                                formatted_records.append( "[" )
+                            else:
+                                # we have to open with a '<', if this is a list of numbers
+                                formatted_records.append( "<" )
 
-                                        if tgn2:
-                                            tgn = tgn2[0]
+                            # keep the record
+                            for i,element in enumerate(r):
+                                if i == 0:
+                                    # first item, we don't want a leading space
+                                    pass
+                                else:
+                                    formatted_records.append( " " )
 
-                                except Exception as e:
-                                    tgn = 0
-
-                                try:
-                                    phandle_tgt_name = tgn.label
-                                except:
-                                    phandle_tgt_name = ""
-
-                                if not phandle_tgt_name and tgn:
-                                    phandle_tgt_name = Lopper.phandle_safe_name( tgn.name )
-
-                                if not phandle_tgt_name:
-                                    raise ValueError( "phandle is not resolvable" )
-
-                                if self.__dbg__ > 1:
-                                    print( "[DBG+]: [%s:%s] phandle replacement of: %s with %s" %
-                                           ( self.node.name, self.name, i, phandle_tgt_name))
-                            except Exception as e:
-                                # we need to drop the entire record from the output, the phandle wasn't found
-                                if self.__dbg__ > 1:
-                                    if self.node and self.node.tree.strict:
-                                        print( "[DBG+]: [%s:%s] phandle: %s not found, dropping %s fields" %
-                                               ( self.node.name, self.name, i, phandle_field_count))
+                                if element == r[phandle_idx - 1]:
+                                    formatted_records.append( "&{0}".format( phandle_tgt_name ) )
+                                else:
+                                    if self.binary:
+                                        formatted_records.append( "{0:02X}".format( element ) )
                                     else:
-                                        print( "[DBG+]: [%s:%s] phandle: %s not found, but not dropping (permissive mode)" %
-                                               ( self.node.name, self.name, i))
+                                        formatted_records.append( "{0}".format( hex(element) ) )
 
-                                if self.node and self.node.tree.strict:
-                                    drop_record = True
-                                    if len(prop_val) == phandle_field_count or len(prop_val) < phandle_field_count:
-                                        drop_all = True
-
-                        # if we are on a "record" boundry, latch what we have (unless the drop
-                        # flag is set) and start gathering more
-                        if element_count % phandle_field_count == 0 and element_count != 0:
-                            if not drop_record:
-                                outstring_list += outstring_record
-
-                            # reset for the next set of fields
-                            outstring_record = ""
-                            drop_record = False
-
-                    # is this the last item ?
-                    if element_count == element_total:
-                        # last item, semicolon to close
-                        if list_of_nums:
-                            if phandle_tgt_name:
-                                outstring_record += "&{0}>;".format( phandle_tgt_name )
+                            if self.binary:
+                                formatted_records.append( "]" )
                             else:
-                                if self.binary:
-                                    outstring_record += "{0:02X}];".format( i )
-                                else:
-                                    outstring_record += "{0}>;".format( hex(i) )
+                                formatted_records.append( ">" )
+
+                            # if we aren't the last item, we continue with a ,
+                            if rnum != len(records_to_iterate) - 1:
+                                formatted_records.append( ", " )
+                            else:
+                                formatted_records.append( ";" )
+                else:
+                    # no phandles
+                    if list_of_nums:
+                        if self.binary:
+                            formatted_records.append( "[" )
                         else:
-                            outstring_record += "\"{0}\";".format( i )
+                            # we have to open with a '<', if this is a list of numbers
+                            formatted_records.append( "<" )
+
+                    for n,i in enumerate(prop_val):
+                        if n == 0:
+                            # first item, we don't want a leading anything
+                            pass
+                        else:
+                            if list_of_nums:
+                                formatted_records.append( " " )
+                            else:
+                                formatted_records.append( ", " )
+
+                        if list_of_nums:
+                            if self.binary:
+                                formatted_records.append( "{0:02X}".format( i ) )
+                            else:
+                                formatted_records.append( "{0}".format( hex(i) ) )
+                        else:
+                            formatted_records.append( "\"{0}\"".format( i ) )
+
+                    if list_of_nums:
+                        if self.binary:
+                            formatted_records.append( "];" )
+                        else:
+                            formatted_records.append( ">;" );
                     else:
-                        # not the last item ..
-                        if list_of_nums:
-                            if phandle_tgt_name:
-                                outstring_record += "&{0} ".format( phandle_tgt_name )
-                            else:
-                                if self.binary:
-                                    outstring_record += "{0:02X} ".format( i )
-                                else:
-                                    outstring_record += "{0} ".format( hex(i) )
-                        else:
-                            outstring_record += "\"{0}\",".format( i )
+                        formatted_records.append( ";" )
 
-                    element_count = element_count + 1
+                if formatted_records:
+                    for i,r in enumerate(formatted_records):
+                        outstring_list += r
+                else:
+                    # all records were dropped, drop the property completely
+                    outstring_list = ""
 
-                # gather the last record
-                if not drop_all:
-                    outstring_list += outstring_record
-                    # add the lists string output to the overall output string
-                    outstring += outstring_list
+                outstring = outstring_list
+
         else:
             outstring = "{0} = \"{1}\";".format( self.name, prop_val )
 
@@ -2720,9 +2691,7 @@ class LopperTree:
                     p.__pstate__ = "init"
                     p.__modified__ = True
 
-                # Is this the problem now ?!?!?!?!?! it doesn't adjust paths like it used to
                 child.resolve()
-                # or will the add call below, do the load for us ??
 
                 self.add( child, True )
 
