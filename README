@@ -19,9 +19,14 @@ in python3, and requires that standard support libraries are installed. Current
 testing has been against python3.5.x, but no issues are expected on newer 3.x
 releases.
 
-In addition to the standard libraries, Lopper uses: cpp, dtc and libfdt for
+In addition to the standard libraries, Lopper uses: pcpp (or cpp), dtc and libfdt for
 processing and manipulating device trees. These tools must be installed and
 on the PATH.
+
+Note: (python cpp) pcpp is optional (available on PyPi), and if not available cpp
+      will be used for preprossing input files. If comments are to be maintained
+      through the processing flow, pcpp must be used since it has functionality to
+      not strip them during processing.
 
 For yaml file processing, lopper has an optional dependency on python's yaml
 and ruamel as well as anytree for importing the contents of yaml files.

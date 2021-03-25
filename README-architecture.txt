@@ -33,7 +33,7 @@ The flow of lopper processing is broken into the following broad categories:
   - input file normalization with standard tools
 
     Lopper processes input files by invoking a standard pipeline of processing
-    on dts files using standard tools. cpp is used for preprocessing and
+    on dts files using standard tools. pcpp (or cpp) is used for preprocessing and
     expansion, and dtc is used to compile dts inputs into dtbs. Lopper is
     somewhat tolerant of incomplete dts inputs, and will use forced dtc
     compilation to ensure that dtbs are generated (with the assumption that the
@@ -98,7 +98,7 @@ embedded in LopperSDT/LopperTree objects, or on loaded lopper operation files.
 
 The LopperSDT class is an abstraction around the loaded system device tree, and
 is the primary target of lopper operations. This class is responsible for the
-setup of the FDT (using dtc, cpp, etc, to compile it to a dtb), loading
+setup of the FDT (using dtc, pcpp (or cpp), etc, to compile it to a dtb), loading
 operations and assists, running operations, writing the default output and
 cleaning up any temporary files.
 
