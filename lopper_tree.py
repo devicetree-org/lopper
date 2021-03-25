@@ -653,7 +653,7 @@ class LopperProp():
                         base = 16
                     try:
                         i = int(prop_val[0],base)
-                        list_of_nums = True
+                        #list_of_nums = True
                     except:
                         pass
                 else:
