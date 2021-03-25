@@ -1782,6 +1782,7 @@ class Lopper:
             global count
             count = count + 1
             r1 = re.sub( '\"', '\\"', s )
+            #r2 = "lopper-comment-container-{0} {{ lopper-comment-{1} = \"{2}\";}};".format(count,count, r1)
             r2 = "lopper-comment-{0} = \"{1}\";".format(count, r1)
             return r2
         else:
@@ -1888,9 +1889,15 @@ class Lopper:
         includes += " "
         includes += os.getcwd()
 
-        ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp")).split()
-        # Note: might drop the -I include later
-        ppargs += "-nostdinc -I include -undef -x assembler-with-cpp ".split()
+        # try pcpp first
+        ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("pcpp")).split()
+        if ppargs:
+            ppargs += "--passthru-comments".split()
+        else:
+            ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp")).split()
+            # Note: might drop the -I include later
+            ppargs += "-nostdinc -I include -undef -x assembler-with-cpp ".split()
+
         ppargs += (os.environ.get('LOPPER_PPFLAGS') or "").split()
         for i in includes.split():
             ppargs.append("-I{0}".format(i))
@@ -1961,6 +1968,7 @@ class Lopper:
         #       writeable, then we'll have to either copy everything or look
         #       into why dtc can't handle the split directories and include
         #       files.
+
         preprocessed_name = Lopper.dt_preprocess( dts_file, includes, outdir, verbose )
 
         if enhanced:
@@ -2008,14 +2016,90 @@ class Lopper:
                         comment = re.sub( "\n$", '', comment )
                         comment = "    lopper-preamble = \"{0}\";".format( comment )
 
-                    data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data )
+                    data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data, count = 1 )
 
             # put the dts start info back in
             data = re.sub( '^', '/dts-v1/;\n\n', data )
 
-            # finally, do comment substitution
+            # Comment and label substitution
             fp_comments_as_attributes = Lopper.__comment_translate(data)
             fp_comments_and_labels_as_attributes = Lopper.__label_translate(fp_comments_as_attributes)
+
+            # now we need to potentially sort/drop some comments that are in bad places
+            #   - comments must preceed nodes
+            #   - comments cannot be in the middle of a sequence
+            #
+            # In the future we could always try and relocate them, but we've done our
+            # best at this pont, so we'll just delete them
+
+            lopper_comment_pattern = re.compile(r'lopper-comment-([0-9]+) = "(.*?)"', re.DOTALL | re.MULTILINE )
+            lopper_comment_pattern_with_context = re.compile(r'{(.*?)lopper-comment-([0-9]+) = "(.*?)"', re.DOTALL | re.MULTILINE )
+            lopper_comment_open_pattern = re.compile(r'lopper-comment-([0-9]+) = "(.*$)', re.DOTALL )
+
+            comments_to_delete = []
+            file_as_array = fp_comments_and_labels_as_attributes.splitlines()
+            file_boundary_index = 0
+            node_depth = 0
+            subnode_at_depth = { 0: False }
+            for i,f in enumerate(file_as_array):
+                # take note when we pass an included file boundary, we'll use it to scan back
+                # and look for structures.
+                ml = re.search( "^\#line.*\"(.*?)\"", f )
+                if ml:
+                    if verbose > 2:
+                        print( "[DBG++]: comment scan: include file boundary passed: %s" % ml.group(1) )
+                    file_boundary_index = i
+                    # clear the node tracking counts, we are into a new file
+                    subnode_at_depth = { 0: False }
+
+                mn = re.search( "^\s*(.*){", f )
+                if mn:
+                    node_depth += 1
+                    if verbose > 2:
+                        print( "[DBG++] comment scan: -> node depth inc: %s (%s)" % (node_depth,mn.group(1)) )
+                    subnode_at_depth[node_depth-1] = True
+                    subnode_at_depth[node_depth] = False
+
+                mn = re.search( "^\s*};", f )
+                if mn:
+                    if verbose > 2:
+                        print( "[DBG++] comment scan: -> node depth dec: %s" % node_depth )
+                    node_depth -= 1
+
+                m = re.search( lopper_comment_open_pattern, f )
+                if m:
+                    comment_number = m.group(1)
+                    if verbose > 2:
+                        print( "[DBG++]: comment scan: line %s has comment #%s [%s]" % (i,comment_number,m.group(2)) )
+
+                    if subnode_at_depth[node_depth]:
+                        if verbose > 1:
+                            print( "[DBG+]: comment scan: comment found after first subnode, tagging to delete" )
+                        comments_to_delete.append( comment_number )
+
+                    if node_depth == 0:
+                        if verbose > 1:
+                            print( "[DBG+]: comment scan: comment before any nodes, tagging to delete" )
+                        comments_to_delete.append( comment_number )
+
+                    m2 = re.search( "^\s*lopper-comment", file_as_array[i] )
+                    if not m2:
+                        m3 = re.search( "[{;]\s*lopper-comment", file_as_array[i] )
+                        if not m3:
+                            if verbose > 1:
+                                print( "[DBG+]: comment scan: comment embedded in property, tagging to delete" )
+                            comments_to_delete.append( comment_number )
+
+            # in case our comment fixups miss something, pull an env variable that is a list
+            # of comment numbers to delete.
+            extra_drops = os.environ.get('LOPPER_COMMENT_DROPLIST')
+            if extra_drops:
+                comments_to_delete.extend( extra_drops.split() )
+                if verbose > 1:
+                    print( "[DBG+]: comment scan: droplist: %s" % comments_to_delete )
+            for cnum in comments_to_delete:
+                lopper_comment_regex = re.compile( r'lopper-comment-{0} = ".*?";'.format(cnum), re.MULTILINE | re.DOTALL )
+                fp_comments_and_labels_as_attributes = re.sub( lopper_comment_regex, "", fp_comments_and_labels_as_attributes )
 
             labeldict = {}
             lopper_label_pattern = re.compile(r'lopper-label-([0-9]+) = "(.*?)"')
