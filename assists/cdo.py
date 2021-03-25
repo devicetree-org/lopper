@@ -45,6 +45,11 @@ def is_compat( node, compat_id ):
 
 subsystems = {}
 
+
+# db where key is node + subsystem and value is the requirement which contains
+# flags
+requirement_map = {}
+
 def add_subsystem(domain_node, sdt, output):
 
   # read cpus property
@@ -93,7 +98,7 @@ def cdo_write_command(sub_num, sub_id, dev_str, dev_val, flags, output):
   print("# subsystem_"+str(sub_num)+" "+dev_str,file=output)
   print("pm_add_requirement "+hex(sub_id)+" "+dev_val+" "+hex(flags)+" "+hex(0xfffff),file=output)
 
-def document_requirement_flags(subsystem_name, sub_num, sub_id, node_id, dev_str, output, flags, mem_regn):
+def validate_and_document_req_flags(subsystem_name, sub_num, sub_id, node_id, dev_str, output, flags, mem_regn):
   print("#", file=output)
   print("#", file=output)
   print("# subsystem:", file=output)
@@ -118,6 +123,24 @@ def document_requirement_flags(subsystem_name, sub_num, sub_id, node_id, dev_str
     print(nsregn_policy(flags),file=output)
   print("#", file=output)
 
+  req = Requirement(sub_id, node_id,
+                    ((flags & prealloc_mask) >> prealloc_offset),
+                    ((flags & capability_mask) >> capability_offset),
+                    ((flags & nsregn_check_mask) >> nsregn_check_offset),
+                    ((flags & rd_policy_mask) >> rd_policy_offset),
+                    ((flags & wr_policy_mask) >> wr_policy_offset),
+                    ((flags & security_mask) >> security_offset),
+                    (flags & usage_mask))
+  key = (sub_id, node_id)
+  # if there is already key report error
+  if key in requirement_map:
+    print ("ERROR: subsystem ",hex(sub_id)," has link with node ", hex(node_id) , "twice")
+    return -1
+
+  requirement_map[key] = req
+  return 0
+
+
 def add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node, target_pnode, operation):
   root_node = domain_node.tree['/']
   subsystem_id = subsystems[domain_node.name]
@@ -140,25 +163,28 @@ def add_subsystem_permission_requirement(output, cpu_node, domain_node, device_n
   print(cdo_cmd,file=output)
 
 def add_requirements_mem(subsystem_num, subsystem_id, output, device_node, domain_node, requirement):
- if 0xfffc0000 == device_node.propval("reg")[1]:
-   for key in ocm_bank_names:
-     document_requirement_flags(domain_node.name, subsystem_num,subsystem_id,
-                                existing_devices[key], key, output, requirement, 1)
-     cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), requirement,output)
-   return 0
- elif device_node.propval("reg")[1] in memory_range_to_dev_name.keys():
-   key = memory_range_to_dev_name[device_node.propval("reg")[1]]
-   document_requirement_flags(domain_node.name, subsystem_num,subsystem_id,
-                              existing_devices[key], key, output, requirement,1)
-   return key
- else:
-   print("add_requirements: memory: not covered: ",str(device_node),hex(device_node.propval("reg")[1]))
-   return -1
+  if 0xfffc0000 == device_node.propval("reg")[1]:
+    for key in ocm_bank_names:
+      if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num,subsystem_id,
+                                         existing_devices[key], key, output, requirement, 1):
+        return -1
+      cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), requirement,output)
+    return 0
+  elif device_node.propval("reg")[1] in memory_range_to_dev_name.keys():
+    key = memory_range_to_dev_name[device_node.propval("reg")[1]]
+    if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num,subsystem_id,
+                                       existing_devices[key], key, output, requirement,1):
+      return -1
+    return 0
+  else:
+    print("add_requirements: memory: not covered: ",str(device_node),hex(device_node.propval("reg")[1]))
+    return -1
 
 def add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domain_node, requirement):
   if "a72" in device_node.name:
     for key in apu_specific_reqs.keys():
-      document_requirement_flags(domain_node.name, subsystem_num, subsystem_id, existing_devices[key], key, output, requirement, 0)
+      if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num, subsystem_id, existing_devices[key], key, output, requirement, 0):
+        return -1
       cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), apu_specific_reqs[key], output)
     return 0
   elif "r5" in  device_node.abs_path:
@@ -168,8 +194,9 @@ def add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domai
       key += "0"
     else:
       key += "1"
-    document_requirement_flags(domain_node.name, subsystem_num,subsystem_id, existing_devices[key], key, output, requirement, 0)
-    return key
+    if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num,subsystem_id, existing_devices[key], key, output, requirement, 0):
+      return -1
+    return 0
   else:
     print("add_requirements: cores: not covered: ",str(device_node))
     return -1
@@ -187,7 +214,6 @@ def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, n
     if device_node == None:
       print("ERROR: add_requirements: invalid phandle: ",str(device_phandle), index, device_node)
       return -1
-
     if "domain" in device_node.name:
       add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node, device_list[index], device_list[index+1])
       continue
@@ -198,17 +224,16 @@ def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, n
       else:
         ret = add_requirements_mem(subsystem_num, subsystem_id, output, device_node, domain_node, device_list[index+1])
 
-      if ret == -1:
-        return ret
-      elif ret == 0:
+      if ret == 0:
         continue
       else:
-        key = ret        
+        return ret        
     elif device_node.propval("power-domains") != [""]:
       xilpm_nodeid = device_node.propval("power-domains")[1]
       xilpm_dev_name = xilinx_versal_device_names[xilpm_nodeid]
-      document_requirement_flags(domain_node.name, subsystem_num, subsystem_id, xilpm_nodeid, xilpm_dev_name,
-                                 output, device_list[index+1], 0)
+      if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num, subsystem_id, xilpm_nodeid, xilpm_dev_name,
+                                          output, device_list[index+1], 0):
+        return -1
       cdo_write_command(subsystem_num, subsystem_id, xilpm_dev_name,
                         hex(xilpm_nodeid),
                         device_list[index+1],
@@ -220,11 +245,13 @@ def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, n
       print("add_requirements: not covered: ",str(device_node))
       return -1
 
-    document_requirement_flags(domain_node.name,
-                               subsystem_num, subsystem_id,
-                               existing_devices[key], key, output,
-                               device_list[index+1], 0)
+    if -1 == validate_and_document_req_flags(domain_node.name,
+                                        subsystem_num, subsystem_id,
+                                        existing_devices[key], key, output,
+                                        device_list[index+1], 0):
+      return -1
     cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), device_list[index+1],output)
+  return 0
 
 # add requirements that link devices to subsystems
 def add_requirements(domain_node, cpu_node, sdt, output):
@@ -254,6 +281,56 @@ def add_requirements(domain_node, cpu_node, sdt, output):
         device_list.append(i)
 
   return add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, num_params)
+
+def validate_requirements():
+
+
+
+  # generate maps for each susbsystem
+  subsystem_requirements = {}
+  
+  for s_key,s_value in subsystems.items():
+    current_subsystem_reqs = []
+    subsystem_key = s_value
+    
+    for r_key,r_value in requirement_map.items():
+      if r_key[0] == subsystem_key:
+        current_subsystem_reqs.append(r_value)
+    subsystem_requirements[subsystem_key] = current_subsystem_reqs
+
+  # check other subsystem maps for mis-aligned req's
+  for current_sub, current_reqs in subsystem_requirements.items():
+    for other_sub, other_reqs in subsystem_requirements.items():
+      # do not check intra requirements. that was already validated
+      if current_sub == other_sub:
+        continue
+      for current_req in current_reqs:
+        for other_req in other_reqs:
+          if current_req.node == other_req.node:
+            # if exclusive or non-shared then make sure only 1 req. is present
+            # for that node
+            if current_req.usage == REQ_USAGE.REQ_NONSHARED:
+              print("current requirement with node ",hex(current_req.node),
+                    "is linked between 2 subsystems: ", hex(current_req.subsystem), " and ", hex(other_req.subsystem),
+                    "and one requirement has this as non shared.")
+              return False
+
+
+            # timeshared — all req’s have to be time shared.
+            if current_req.usage == REQ_USAGE.REQ_TIME_SHARED and other_req.usage != REQ_USAGE.REQ_TIME_SHARED:
+              print("current requirement with node ",hex(current_req.node),
+                    "is linked between 2 subsystems: ", hex(current_req.subsystem), " and ", hex(other_req.subsystem),
+                    "and only one has usage as time shared")
+              return False
+
+            # Same for simultaneously shared
+            if current_req.usage == REQ_USAGE.REQ_SHARED and other_req.usage != REQ_USAGE.REQ_SHARED:
+              print("current requirement with node ",hex(current_req.node),
+                    "is linked between 2 subsystems: ", hex(current_req.subsystem), " and ", hex(other_req.subsystem),
+                    "and only one has usage as shared")
+              return False
+
+  return True
 
 def cdo_write( domain_node, sdt, options ):
     try:
@@ -301,9 +378,8 @@ def cdo_write( domain_node, sdt, options ):
                 cpu_nodes.append(cpu_node)
                 domain_nodes.append(n)
     for i in range(len(domain_nodes)):
-      add_requirements(domain_nodes[i], cpu_nodes[i], sdt, output)
+      ret = add_requirements(domain_nodes[i], cpu_nodes[i], sdt, output)
+      if ret != 0:
+        return ret
 
-    return True
-
-
-
+    return validate_requirements()
