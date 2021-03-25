@@ -83,8 +83,24 @@ def add_subsystem(domain_node, sdt, output):
       print( "unsupported domain node ", domain_node)
       return -1
 
-    current_subsystem_id = cpu_subsystem_map[cpu_key]
-    subsystem_num = current_subsystem_id & 0xF
+    subsystem_compat = False
+    for compat_str in domain_node.propval("compatible"):
+      if "xilinx,subsystem" in compat_str:
+        subsystem_compat = True
+        break
+    if subsystem_compat == False:
+      print("subsystem missing compat string.")
+      return -1
+
+    if domain_node.propval("id") == [""]:
+      print("domain does not have subsystem ID")
+      return -1
+
+    subsystem_num = domain_node.propval("id")[0]
+    if subsystem_num >= 0xF:
+      print("invalid subsystem string for ", str(domain_node))
+      return -1
+    current_subsystem_id = 0x1C000000 + subsystem_num
     print("# subsystem_"+str(subsystem_num), file=output)
     print("pm_add_subsystem "+ hex(current_subsystem_id), file=output)
     subsystems[domain_node.name] = current_subsystem_id
