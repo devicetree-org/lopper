@@ -139,13 +139,6 @@ apu_specific_reqs = {
   "dev_acpu_1":     0x8104,
 }
 
-cpu_subsystem_map = {
-  "a72" :       0x1c000003,
-  "r5_lockstep":0x1c000004,
-  "r5_0":       0x1c000005,
-  "r5_1":       0x1c000006,
-}
-
 memory_range_to_dev_name = {
  0xffe00000:"dev_tcm_0_a",
  0xffe20000:"dev_tcm_0_b",
