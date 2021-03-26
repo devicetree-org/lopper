@@ -554,7 +554,7 @@ class LopperProp():
             print(outstring.rjust(len(outstring)+indent," " ), file=output)
 
 
-    def resolve( self ):
+    def resolve( self, strict = True ):
         """resolve (calculate) property details
 
         Some attributes of a property are not known at initialization
@@ -602,8 +602,13 @@ class LopperProp():
         # value if not a list).
         self.ptype = prop_type
 
-        phandle_idx, phandle_field_count = self.phandle_params()
-        phandle_tgts = self.resolve_phandles( True )
+        if strict:
+            phandle_idx, phandle_field_count = self.phandle_params()
+            phandle_tgts = self.resolve_phandles( True )
+        else:
+            phandle_idx = 0
+            phandle_field_count  = 0
+            phandle_tgts = []
 
         if prop_type == "comment":
             outstring = ""
@@ -1751,6 +1756,8 @@ class LopperNode(object):
         #                 self.abs_path )
 
         if dct:
+            strict = True
+
             # we may not need to save this, temp.
             self.dct = dct
 
@@ -1817,6 +1824,9 @@ class LopperNode(object):
                 # special handling for 'compatible', we bubble it up as the node "type"
                 if prop == "compatible":
                     self.type += prop_val
+                    for p in prop_val:
+                        if re.search( "phandle-desc.*", p ):
+                            strict = False
 
                 # create property objects, and resolve them
                 try:
@@ -1834,7 +1844,7 @@ class LopperNode(object):
                     if dtype == LopperFmt.UINT8:
                         self.__props__[prop].binary = True
 
-                    self.__props__[prop].resolve()
+                    self.__props__[prop].resolve( strict )
                     self.__props__[prop].__modified__ = False
 
                     # if our node has a property of type label, we bubble it up to the node
@@ -1849,7 +1859,7 @@ class LopperNode(object):
                 # we had labels, some output strings in the properities may need to be
                 # update to reflect the new targets
                 for p in self.__props__:
-                    self.__props__[p].resolve()
+                    self.__props__[p].resolve( strict )
                     self.__props__[p].__modified__ = False
 
             # 3rd pass: did we have any added, but not sync'd properites. They need
