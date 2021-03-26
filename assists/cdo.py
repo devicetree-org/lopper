@@ -212,6 +212,7 @@ def add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domai
       key += "1"
     if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num,subsystem_id, existing_devices[key], key, output, requirement, 0):
       return -1
+    cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), requirement, output)
     return 0
   else:
     print("add_requirements: cores: not covered: ",str(device_node))
