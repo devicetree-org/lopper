@@ -897,7 +897,7 @@ class LopperSDT:
 
                             # construct a test prop, so we can use the internal compare
                             test_prop = LopperProp( prop, -1, None, prop_val )
-                            test_prop.resolve()
+                            test_prop.ptype = test_prop.property_type_guess( True )
 
                             # we need this list(), since the removes below will yank items out of
                             # our iterator if we aren't careful

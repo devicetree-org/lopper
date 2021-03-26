@@ -66,11 +66,6 @@ class LopperProp():
         self.name = name
         self.node = node
         self.number = number
-        if value == None:
-            self.value = []
-        else:
-            # we want to avoid the overriden __setattr__ below
-            self.__dict__["value"] = value
 
         self.string_val = "**unresolved**"
         self.pclass = ""
@@ -78,6 +73,13 @@ class LopperProp():
         self.binary = False
 
         self.abs_path = ""
+
+        if value == None:
+            self.value = []
+        else:
+            # we want to avoid the overriden __setattr__ below
+            self.__dict__["value"] = value
+
 
     def __deepcopy__(self, memodict={}):
         """ Create a deep copy of a property
@@ -553,6 +555,95 @@ class LopperProp():
         if outstring:
             print(outstring.rjust(len(outstring)+indent," " ), file=output)
 
+    def property_type_guess( self, force = False ):
+        """'guess' the type of a property
+
+        For properties that aren't created from a fdt, we can either
+        explicitly set the type (if we know it), or we can run this routine
+        to look at the values and give us the best guess.
+
+        This routine does NOT update the property type, that is the
+        responsibility of the caller.
+
+        Args:
+           force: if the property already has a type, ignore it and guess anyway
+
+        Returns:
+           type of the propery (LopperFmt)
+
+        """
+        # this is used for properties that we aren't sure of the value during
+        # the creation process.
+        if not force:
+            if self.ptype:
+                return self.ptype
+
+        # force was passed, or we didn't have a ptype already assigned
+        ptype = None
+
+        # one good way to know the type, is to check if we've defined this
+        # as a phandle containing property, then it must be a UINT32
+        phandle_tgts = self.resolve_phandles()
+        if phandle_tgts:
+            ptype = LopperFmt.UINT32
+
+        # we still don't know! Another easy thing to check is, if the binary
+        # flag it set, this is UINT8.
+        if not ptype:
+            if self.binary:
+                ptype = LopperFmt.UINT8
+
+        # still nothing. let's poke at the value itself
+        if not ptype:
+            python_type = type(self.value)
+            if python_type == list:
+                # we need to look a the elements
+                list_ptype = None
+                mixed_types = False
+                for p in self.value:
+                    if mixed_types:
+                        continue
+
+                    if type(p) == str:
+                        # search of 0x in the string, since it is likely
+                        # a number hiding as a string.
+                        base = 10
+                        if re.search( "0x", p ):
+                            base = 16
+                        try:
+                            i = int(p, base)
+                            list_element_ptype = LopperFmt.UINT32
+                        except:
+                            list_element_ptype = LopperFmt.STRING
+                    else:
+                        list_element_ptype = LopperFmt.UINT32
+
+                    if list_ptype:
+                        if list_element_ptype != list_ptype:
+                            mixed_types = True
+                        # if mixed, it is a string formatted list
+                        list_ptype = LopperFmt.STRING
+                    else:
+                        list_ptype = list_element_ptype
+
+                ptype = list_ptype
+
+            elif python_type == int:
+                ptype = LopperFmt.UINT32
+            elif python_type == str:
+                ptype = LopperFmt.STRING
+                # search of 0x in the string, since it is likely
+                # a number hiding as a string.
+                base = 10
+                if re.search( "0x", self.value ):
+                    base = 16
+                try:
+                    i = int(self.value, base)
+                    ptype = LopperFmt.UINT32
+                except:
+                    pass
+
+        return ptype
 
     def resolve( self, strict = True ):
         """resolve (calculate) property details
@@ -600,7 +691,9 @@ class LopperProp():
         self.pclass = prop_type
         # this is the actual type of the elements (if a list, or the
         # value if not a list).
-        self.ptype = prop_type
+        # hmm, this is likely better elsewhere. we shouldn't be just assigning this
+        # blindly.
+        # self.ptype = prop_type
 
         if strict:
             phandle_idx, phandle_field_count = self.phandle_params()
@@ -658,6 +751,9 @@ class LopperProp():
                         base = 16
                     try:
                         i = int(prop_val[0],base)
+                        # non fdt properties were relying on this.
+                        # we need to track down, and fix their typing, since
+                        # the ptype changes below based on this.
                         #list_of_nums = True
                     except:
                         pass
@@ -772,6 +868,11 @@ class LopperProp():
 
         else:
             outstring = "{0} = \"{1}\";".format( self.name, prop_val )
+
+
+        if not self.ptype:
+            self.ptype = self.property_type_guess()
+            print( "[NOTE]: guessing type for: %s [%s]" % (self.name,self.ptype) )
 
         self.string_val = outstring
         self.__pstate__ = "resolved"
@@ -1843,6 +1944,9 @@ class LopperNode(object):
                                                        prop_val, self.__dbg__ )
                     if dtype == LopperFmt.UINT8:
                         self.__props__[prop].binary = True
+
+                    ## CAN WE JUST ASSIGN THE TYPE HERE ??
+                    self.__props__[prop].ptype = dtype
 
                     self.__props__[prop].resolve( strict )
                     self.__props__[prop].__modified__ = False
