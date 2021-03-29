@@ -31,6 +31,8 @@ import textwrap
 from collections import UserDict
 from collections import OrderedDict
 
+import humanfriendly
+
 from lopper_fdt import Lopper
 from lopper_fdt import LopperFmt
 from lopper_tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
@@ -847,6 +849,7 @@ class LopperSDT:
             #    select_2 = ":prop2:val2";
             #
             selected_nodes = []
+            selected_nodes_possible = []
             for sel in select_props:
                 if sel.value == ['']:
                     if self.verbose > 1:
@@ -857,8 +860,7 @@ class LopperSDT:
                     # select = "foo","bar","blah", they are always AND conditions.
                     for s in sel.value:
                         if self.verbose > 1:
-                            print( "[DBG++]: running node selection: %s" % s )
-
+                            print( "[DBG++]: running node selection: %s (%s)" % (s,selected_nodes_possible) )
                         try:
                             node_regex, prop, prop_val = s.split(":")
                         except:
@@ -867,10 +869,10 @@ class LopperSDT:
                             prop_val = ""
 
                         if node_regex:
-                            # if selected_nodes:
-                            #     selected_nodes_possible = selected_nodes
-                            # else:
-                            selected_nodes_possible = tree.nodes( node_regex )
+                            if selected_nodes_possible:
+                                selected_nodes_possible = selected_nodes_possible + tree.nodes( node_regex )
+                            else:
+                                selected_nodes_possible = tree.nodes( node_regex )
                         else:
                             # if the node_regex is empty, we operate on previously
                             # selected nodes.
@@ -967,8 +969,9 @@ class LopperSDT:
                                         if not sl in selected_nodes:
                                             selected_nodes.append( sl )
 
-                    # TODO: if the select is of the form: select_not_<number>, then we should invert the
-                    #       selection or if there is a "!" in the property name.
+                        if not prop and not prop_val:
+                            selected_nodes = selected_nodes_possible
+
 
                     if self.verbose > 1:
                         print( "[DBG++]: selected nodes:" )
