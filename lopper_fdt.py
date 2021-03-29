@@ -1890,11 +1890,11 @@ class Lopper:
         includes += os.getcwd()
 
         # try pcpp first
-        ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("pcpp")).split()
+        ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("pcpp") or "").split()
         if ppargs:
             ppargs += "--passthru-comments".split()
         else:
-            ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp")).split()
+            ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp") or "").split()
             # Note: might drop the -I include later
             ppargs += "-nostdinc -I include -undef -x assembler-with-cpp ".split()
 
