@@ -31,6 +31,7 @@ from lopper_tree import LopperTree
 from lopper_yaml import LopperYAML
 import lopper
 import json
+import humanfriendly
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,subsystem", compat_string_to_test):
@@ -149,7 +150,7 @@ def access_expand( tree, subnode, verbose = 0 ):
     property_set( "access", access_list, subnode )
 
 
-def memory_expand( tree, subnode, verbose = 0 ):
+def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
     # /*
     # * 1:1 map, it should match the memory regions
     # * specified under access below.
@@ -162,12 +163,25 @@ def memory_expand( tree, subnode, verbose = 0 ):
         mem = json.loads(mem)
         mem_list = []
         for m in mem:
-            start = m['start']
-            size = m['size']
+            try:
+                start = str(m['start'])
+            except:
+                start = str(int(memory_start))
+            try:
+                size = str(m['size'])
+            except:
+                size = str(int(0xbeef))
+
+            print( "memory expand: start/size as read: %s/%s" % (start,size))
+            start = humanfriendly.parse_size( start, True )
+            size = humanfriendly.parse_size( size, True )
+            print( "memory expand: start/size as converted: %s/%s" % (start,size))
+
             mem_list.append(int(start))
             mem_list.append(int(size))
 
     except Exception as e:
+        print( "   exception %s" % e )
         mem_list = [0xdead, 0xffff ]
 
     if verbose:
