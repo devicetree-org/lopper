@@ -160,6 +160,8 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
     # */
     try:
         mem = subnode.props( "memory" )[0].value
+        if type( mem ) == list:
+            mem = mem[0]
         mem = json.loads(mem)
         mem_list = []
         for m in mem:
@@ -172,10 +174,10 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
             except:
                 size = str(int(0xbeef))
 
-            print( "memory expand: start/size as read: %s/%s" % (start,size))
+            #print( "memory expand: start/size as read: %s/%s" % (start,size))
             start = humanfriendly.parse_size( start, True )
             size = humanfriendly.parse_size( size, True )
-            print( "memory expand: start/size as converted: %s/%s" % (start,size))
+            #print( "memory expand: start/size as converted: %s/%s" % (start,size))
 
             mem_list.append(int(start))
             mem_list.append(int(size))
