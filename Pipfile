@@ -9,6 +9,7 @@ flask-restful = "*"
 pandas = "*"
 "ruamel.yaml" = "*"
 anytree = "*"
+humanfriendly = "*"
 
 [dev-packages]
 
