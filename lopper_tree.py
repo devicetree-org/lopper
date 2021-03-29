@@ -872,7 +872,8 @@ class LopperProp():
 
         if not self.ptype:
             self.ptype = self.property_type_guess()
-            print( "[NOTE]: guessing type for: %s [%s]" % (self.name,self.ptype) )
+            if self.__dbg__ > 3:
+                print( "[NOTE]: guessing type for: %s [%s]" % (self.name,self.ptype) )
 
         self.string_val = outstring
         self.__pstate__ = "resolved"

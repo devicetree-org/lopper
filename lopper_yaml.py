@@ -452,6 +452,7 @@ class LopperYAML():
                     if not skip:
                         if not p in excluded_props:
                             lp = LopperProp( p, -1, ln, x )
+                            lp.resolve()
                             if use_json:
                                 lp.pclass = "json"
                             # add the property to the node
@@ -462,10 +463,12 @@ class LopperYAML():
                         # since a dictionary doesn't map directly to device tree output.
                         prop_list = self.prop_expand( props[p] )
                         lp = LopperProp( p, -1, ln, prop_list )
+                        lp.resolve()
                         ln + lp
                     elif type(props[p]) == bool:
                         if props[p]:
                             lp = LopperProp( p, -1, ln, [] )
+                            lp.resolve()
                             # add the prop the node
                             ln + lp
                         else:
@@ -475,10 +478,12 @@ class LopperYAML():
                         # since a dictionary doesn't map directly to device tree output.
                         prop_list = self.prop_expand( props[p] )
                         lp = LopperProp( p, -1, ln, prop_list )
+                        lp.resolve()
                         ln + lp
                     else:
                         if not p in excluded_props:
                             lp = LopperProp( p, -1, ln, props[p] )
+                            lp.resolve()
                             ln + lp
 
         lt.resolve()
