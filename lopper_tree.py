@@ -686,21 +686,18 @@ class LopperProp():
             prop_type = type(prop_val)
 
         if self.__dbg__ > 1:
-            print( "[DBG+]: property [%s] resolve: %s val: %s" % (prop_type,self.name,self.value) )
+            print( "[DBG+]: strict: %s property [%s] resolve: %s val: %s" % (strict,prop_type,self.name,self.value) )
 
         self.pclass = prop_type
-        # this is the actual type of the elements (if a list, or the
-        # value if not a list).
-        # hmm, this is likely better elsewhere. we shouldn't be just assigning this
-        # blindly.
-        # self.ptype = prop_type
 
-        if strict:
-            phandle_idx, phandle_field_count = self.phandle_params()
-            phandle_tgts = self.resolve_phandles( True )
-        else:
+        phandle_idx, phandle_field_count = self.phandle_params()
+        phandle_tgts = self.resolve_phandles( True )
+
+        if phandle_field_count and len(prop_val) % phandle_field_count != 0:
+            # if the property values and the expected field counts do not match
+            # zero phandles out to avoid processing below.
             phandle_idx = 0
-            phandle_field_count  = 0
+            phandle_field_count = 0
             phandle_tgts = []
 
         if prop_type == "comment":
@@ -740,6 +737,10 @@ class LopperProp():
                 # if the attribute was detected as potentially having a
                 # phandle, phandle_idx will be non zero.
                 if phandle_idx != 0:
+                    # we should consider a test to see if the type is string AND
+                    # we have a non-zero phandle index.
+                    # test if the string can be converted to a number, if not,
+                    # don't change the list type here.
                     list_of_nums = True
                 else:
                     list_of_nums = False
@@ -754,19 +755,19 @@ class LopperProp():
                         # non fdt properties were relying on this.
                         # we need to track down, and fix their typing, since
                         # the ptype changes below based on this.
-                        #list_of_nums = True
+                        # list_of_nums = True
                     except:
                         pass
                 else:
                     list_of_nums = True
 
-                if list_of_nums:
-                    # we shouldn't be changing this here, it should be done on the
-                    # load and never touched again.
-                    self.ptype = LopperFmt.UINT32
-                else:
-                    # and we also shouldn't be changing this here.
-                    self.ptype = LopperFmt.STRING
+                # if list_of_nums:
+                #     # we shouldn't be changing this here, it should be done on the
+                #     # load and never touched again.
+                #     self.ptype = LopperFmt.UINT32
+                # else:
+                #     # and we also shouldn't be changing this here.
+                #     self.ptype = LopperFmt.STRING
 
                 element_count = 1
                 element_total = len(prop_val)
@@ -779,49 +780,65 @@ class LopperProp():
                     records_to_iterate = [prop_val[i:i + phandle_field_count] for i in range(0, len(prop_val), phandle_field_count)]
 
                     for rnum,r in enumerate(records_to_iterate):
-                        phandle_to_check = r[phandle_idx - 1]
-                        phandle_resolution = phandle_tgts.pop(0)
+                        try:
+                            phandle_resolution = phandle_tgts.pop(0)
+                        except:
+                            phandle_resolution = "#invalid"
 
                         if phandle_resolution == "#invalid":
-                            # drop the record
-                            pass
+                            # drop the record, if strict
+                            if not strict:
+                                # phandle_tgt_name = r[phandle_idx - 1]
+                                phandle_tgt_name = "invalid_phandle"
+                            else:
+                                # strict and an invalid phandle, jump to the next record
+                                continue
                         else:
                             phandle_tgt_name = phandle_resolution.label
                             if not phandle_tgt_name:
                                 phandle_tgt_name = Lopper.phandle_safe_name( phandle_resolution.name )
 
-                            if self.binary:
-                                formatted_records.append( "[" )
+                        if self.binary:
+                            formatted_records.append( "[" )
+                        else:
+                            # we have to open with a '<', if this is a list of numbers
+                            formatted_records.append( "<" )
+
+                        # keep the record
+                        for i,element in enumerate(r):
+                            if i == 0:
+                                # first item, we don't want a leading space
+                                pass
                             else:
-                                # we have to open with a '<', if this is a list of numbers
-                                formatted_records.append( "<" )
+                                formatted_records.append( " " )
 
-                            # keep the record
-                            for i,element in enumerate(r):
-                                if i == 0:
-                                    # first item, we don't want a leading space
-                                    pass
-                                else:
-                                    formatted_records.append( " " )
-
+                            phandle_replacement_flag = False
+                            try:
                                 if element == r[phandle_idx - 1]:
-                                    formatted_records.append( "&{0}".format( phandle_tgt_name ) )
+                                    phandle_replacement_flag = True
+                            except:
+                                pass
+
+                            if phandle_replacement_flag:
+                                formatted_records.append( "&{0}".format( phandle_tgt_name ) )
+                            else:
+                                if self.binary:
+                                    formatted_records.append( "{0:02X}".format( element ) )
                                 else:
-                                    if self.binary:
-                                        formatted_records.append( "{0:02X}".format( element ) )
-                                    else:
+                                    try:
                                         formatted_records.append( "{0}".format( hex(element) ) )
+                                    except:
+                                        formatted_records.append( "{0}".format( element ) )
+                        if self.binary:
+                            formatted_records.append( "]" )
+                        else:
+                            formatted_records.append( ">" )
 
-                            if self.binary:
-                                formatted_records.append( "]" )
-                            else:
-                                formatted_records.append( ">" )
-
-                            # if we aren't the last item, we continue with a ,
-                            if rnum != len(records_to_iterate) - 1:
-                                formatted_records.append( ", " )
-                            else:
-                                formatted_records.append( ";" )
+                        # if we aren't the last item, we continue with a ,
+                        if rnum != len(records_to_iterate) - 1:
+                            formatted_records.append( ", " )
+                        else:
+                            formatted_records.append( ";" )
                 else:
                     # no phandles
                     if list_of_nums:
@@ -1858,7 +1875,7 @@ class LopperNode(object):
         #                 self.abs_path )
 
         if dct:
-            strict = True
+            strict = self.tree.strict
 
             # we may not need to save this, temp.
             self.dct = dct
@@ -1946,7 +1963,6 @@ class LopperNode(object):
                     if dtype == LopperFmt.UINT8:
                         self.__props__[prop].binary = True
 
-                    ## CAN WE JUST ASSIGN THE TYPE HERE ??
                     self.__props__[prop].ptype = dtype
 
                     self.__props__[prop].resolve( strict )
@@ -3627,7 +3643,7 @@ class LopperTreePrinter( LopperTree ):
         # do we really need this resolve here ? We are already tracking if they
         # are modified/dirty, and we have a global resync/resolve now. I think it
         # can go
-        p.resolve()
+        p.resolve( self.strict )
 
         indent = (p.node.depth * 8) + 8
         outstring = str( p )
