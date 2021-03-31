@@ -1576,6 +1576,10 @@ class LopperNode(object):
                     print( "       node export: [%s] property: %s (state:%s)(type:%s)" %
                            (p.ptype,p.name,p.__pstate__,dct['__{}_type__'.format(p.name)]) )
 
+
+            if self.label:
+                dct['lopper-label-0'] = [ self.label ]
+
             self.__modified__ = False
 
         return dct
