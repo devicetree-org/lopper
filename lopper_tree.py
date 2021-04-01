@@ -757,7 +757,7 @@ class LopperProp():
                         # the ptype changes below based on this.
                         # list_of_nums = True
                     except:
-                        pass
+                        list_of_nums = False
                 else:
                     list_of_nums = True
 
@@ -788,8 +788,8 @@ class LopperProp():
                         if phandle_resolution == "#invalid":
                             # drop the record, if strict
                             if not strict:
-                                # phandle_tgt_name = r[phandle_idx - 1]
-                                phandle_tgt_name = "invalid_phandle"
+                                phandle_tgt_name = r[phandle_idx - 1]
+                                #phandle_tgt_name = "invalid_phandle"
                             else:
                                 # strict and an invalid phandle, jump to the next record
                                 continue
@@ -1093,8 +1093,27 @@ class LopperNode(object):
         else:
             # we do it this way, otherwise the property "ref" breaks
             super().__setattr__(name, value)
+
+            if name == "phandle":
+                # someone is assigning a phandle, the tree's pnodes need to
+                # be updated
+                if self.tree:
+                    # only non-zero phandles need update
+                    if value > 0:
+                        # this really should be interal to the tree, and will
+                        # be in the future. We need some sort of Node "update"
+                        # since the pnode assignemnt is only done in the add()
+                        # (same with label updates).
+                        #
+                        # if strict is set, we could check to see if a phandle
+                        # is already mapped and warn/error.
+                        #
+                        self.tree.__pnodes__[value] = self
+
             # we could restrict this to only some attributes in the future
             self.__dict__["__modified__"] = True
+
+
 
     def __getattribute__(self, name):
         """magic method around object attribute access
@@ -1508,7 +1527,31 @@ class LopperNode(object):
         outstring = "};"
         print(outstring.rjust(len(outstring)+indent," " ), file=output)
 
+    def phandle_or_create( self ):
+        """Access (and generate) a phandle for this node
 
+        Invoked the containing tree (if available), ad creates a unique phandle
+        for a node. This is basic tracking and is used since
+        fdt_find_max_phandle is not fully exposed, and removes a binding to
+        libfdt.
+
+        Args:
+           None
+
+        Returns:
+           phandle number
+
+        """
+        if not self.tree:
+            return 0
+
+        if self.phandle > 0:
+            return self.phandle
+
+        new_ph = self.tree.phandle_gen()
+        self.phandle = new_ph
+
+        return new_ph
 
     def export( self ):
         """Export node details as a dictionary
@@ -1540,7 +1583,6 @@ class LopperNode(object):
         if self.__nstate__ != "resolved":
             print( "[WARNING]: node export: unresolved node, not syncing" )
         else:
-
             dct['__fdt_number__'] = self.number
             dct['__fdt_name__'] = self.name
             dct['__fdt_phandle__'] = self.phandle
@@ -1857,8 +1899,6 @@ class LopperNode(object):
         """
         # resolve the rest of the references based on the passed device tree
         # self.number must be set before calling this routine.
-        if self.__dbg__ > 2:
-            print( "[DBG++]: node load start [%s][%s]: %s" % (self,self.number,self.abs_path))
 
         self.dct = dct
 
@@ -1886,10 +1926,15 @@ class LopperNode(object):
 
             self.abs_path = dct['__path__']
 
+
+            if self.__dbg__ > 2:
+                print( "[DBG++]: node load start [%s][%s]: %s" % (self,self.number,self.abs_path))
+
             saved_props = self.__props__
             self.__props__ = OrderedDict()
 
             self.name = dct['__fdt_name__']
+
             self.phandle = dct['__fdt_phandle__']
 
             last_chunk_of_path = os.path.basename( self.abs_path )
@@ -2416,11 +2461,13 @@ class LopperTree:
            phandle number
 
         """
-        sorted_phandles = sorted(list(self.__pnodes__.keys()))
-        highest_phandle = sorted_phandles[-1]
+        if self.__pnodes__:
+            sorted_phandles = sorted(list(self.__pnodes__.keys()))
+            highest_phandle = sorted_phandles[-1]
+        else:
+            # no phandles at all yet!
+            highest_phandle = 0
 
-        # placeholder, so repeated calles with no sync() won't get the same
-        # phandle over and over again
         # self.__pnodes__[highest_phandle + 1] = None
 
         return highest_phandle + 1

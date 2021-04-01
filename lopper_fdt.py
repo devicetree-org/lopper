@@ -628,7 +628,12 @@ class Lopper:
         props = Lopper.node_properties( fdt, nn )
         props_to_delete = []
         for p in props:
-            props_to_delete.append( p.name )
+            if node_in['__fdt_phandle__'] and p.name == "phandle":
+                # we just added this, it won't be in the node_in items under
+                # the name name
+                pass
+            else:
+                props_to_delete.append( p.name )
 
         for prop, prop_val in node_in.items():
             if re.search( "^__", prop ) or prop.startswith( '/' ):
