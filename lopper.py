@@ -755,7 +755,7 @@ class LopperSDT:
         lop_type = lop_node['compatible'].value[0]
         # TODO: lop_args is really a "subtype"
         try:
-            lop_args = op_node['compatible'].value[1]
+            lop_args = lop_node['compatible'].value[1]
         except:
             lop_args = ""
 
@@ -987,7 +987,10 @@ class LopperSDT:
                     print( "[DBG++]: processing phandle meta data" )
                 Lopper.phandle_possible_prop_dict = OrderedDict()
                 for p in lop_node:
-                    Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
+                    # we skip compatible, since that is actually the compatibility value
+                    # of the node, not a meta data entry. Everything else is though
+                    if p.name != "compatible":
+                        Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
 
         if re.search( ".*,output$", lop_type ):
             try:
