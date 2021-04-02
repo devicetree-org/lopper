@@ -1436,7 +1436,7 @@ class LopperNode(object):
 
         return flat_list
 
-    def subnodes( self, depth=0, max_depth=None ):
+    def subnodes( self, depth=0, max_depth=None, children_only = False ):
         """Return all the subnodes of this node
 
         Gathers and returns all the reachable subnodes of the current node
@@ -1449,13 +1449,17 @@ class LopperNode(object):
            A list of child LopperNodes
 
         """
-        all_kids = [ self ]
+        if children_only:
+            all_kids = []
+        else:
+            all_kids = [ self ]
+
 
         if depth and max_depth == depth:
             return all_kids
 
         for child_node in self.child_nodes.values():
-            all_kids = all_kids + child_node.subnodes( depth + 1, max_depth )
+            all_kids = all_kids + child_node.subnodes( depth + 1, max_depth  )
 
         return all_kids
 
@@ -1926,6 +1930,9 @@ class LopperNode(object):
 
             self.abs_path = dct['__path__']
 
+            # children will find their way back during the load process, so clear
+            # the existing ones
+            self.child_nodes = OrderedDict()
 
             if self.__dbg__ > 2:
                 print( "[DBG++]: node load start [%s][%s]: %s" % (self,self.number,self.abs_path))
@@ -2680,7 +2687,7 @@ class LopperTree:
 
         return self
 
-    def delete( self, node ):
+    def delete( self, node, delete_from_parent = True ):
         """delete a node from a tree
 
         If a node is resolved and syncd to the FDT, this routine deletes it
@@ -2688,6 +2695,8 @@ class LopperTree:
 
         Args:
            node (int or LopperNode): the node to delete
+           delete_fom_parent (bool): flag indicating if the node should be
+                                     removed from the parent node.
 
         Returns:
            Boolean: True if deleted, False otherwise. KeyError if node is not found
@@ -2707,7 +2716,7 @@ class LopperTree:
 
             if n.child_nodes:
                 for cn_path,cn in list(n.child_nodes.items()):
-                    self.delete( cn  )
+                    self.delete( cn, False )
 
             try:
                 del self.__nodes__[n.abs_path]
@@ -2729,7 +2738,16 @@ class LopperTree:
             except:
                 pass
 
-            if n.parent:
+            # snip the link if we are the first call, otherwise, the
+            # recursive call above, will clear the delete flag. Otherwise, we
+            # can't snip a node + subnodes and maintain them for another
+            # location in the tree.
+
+            # but the dictionary deletes above will ensure that the subnodes
+            # are not accessibly directly fom the main tree dictionaries and
+            # are hence still fundamentally deleted. As does the flagging as
+            # state "deleted" below
+            if n.parent and delete_from_parent:
                 del n.parent.child_nodes[n.abs_path]
 
             n.__nstate__ = "deleted"
@@ -3434,7 +3452,7 @@ class LopperTree:
             self.__lnodes__ = OrderedDict()
 
             if self.__dbg__ > 2:
-                print( "[DGB+]: tree resolution start: %s" % self )
+                print( "[DGB+]: tree load start: %s" % self )
 
             for n_item in node_ordered_list:
                 node_in = n_item[0]
