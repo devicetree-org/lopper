@@ -99,7 +99,7 @@ def scan_reg_size(node, value, idx):
     if cells > 2:
         reg1 = value[cells * idx]
         if reg1 != 0:
-            val = str(value[cells * idx + 1])
+            val = str(hex(value[cells * idx + 1]))[2:]
             pad = 8 - len(val)
             val = val.ljust(pad + len(val), '0')
             reg = int((str(hex(reg1)) + val), base=16)
