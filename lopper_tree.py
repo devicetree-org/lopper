@@ -788,8 +788,10 @@ class LopperProp():
                         if phandle_resolution == "#invalid":
                             # drop the record, if strict
                             if not strict:
-                                phandle_tgt_name = r[phandle_idx - 1]
-                                #phandle_tgt_name = "invalid_phandle"
+                                if type(r[phandle_idx - 1]) == str:
+                                    phandle_tgt_name = r[phandle_idx - 1]
+                                else:
+                                    phandle_tgt_name = "invalid_phandle"
                             else:
                                 # strict and an invalid phandle, jump to the next record
                                 continue
@@ -814,7 +816,7 @@ class LopperProp():
 
                             phandle_replacement_flag = False
                             try:
-                                if element == r[phandle_idx - 1]:
+                                if i == phandle_idx - 1:
                                     phandle_replacement_flag = True
                             except:
                                 pass
@@ -885,7 +887,6 @@ class LopperProp():
 
         else:
             outstring = "{0} = \"{1}\";".format( self.name, prop_val )
-
 
         if not self.ptype:
             self.ptype = self.property_type_guess()
