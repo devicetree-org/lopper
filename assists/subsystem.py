@@ -111,8 +111,7 @@ def access_expand( tree, subnode, verbose = 0 ):
 
             if dev_node:
                 if dev_node.phandle == 0:
-                    dev_node.phandle = tree.phandle_gen()
-                    dev_node.sync()
+                    dev_node.phandle_or_create()
                     if verbose:
                         print( "[DBG]: generated phandle %s for node: %s" % (dev_node.phandle,dev_node.abs_path ))
 
@@ -211,14 +210,16 @@ def cpu_expand( tree, subnode, verbose = 0):
         try:
             cluster_node = tree.lnodes( cluster )[0]
         except:
-            cluster_node = None
+            try:
+                cluster_node = tree.nodes( cluster )[0]
+            except:
+                cluster_node = None
 
         if cluster_node:
             if cluster_node.phandle == 0:
-                cluster_node.phandle = tree.phandle_gen()
-                cluster_node.sync()
+                ph = cluster_node.phandle_or_create()
                 if verbose:
-                    print( "[DBG]: generated phandle %s for node: %s" % (cluster_node.phandle,cluster_node.abs_path ))
+                    print( "[DBG]: subsystem assist: generated phandle %s for node: %s" % (cluster_node.phandle,cluster_node.abs_path ))
 
             cluster_handle = cluster_node.phandle
         else:
@@ -263,7 +264,8 @@ def cpu_expand( tree, subnode, verbose = 0):
         cpus_list.extend( [cluster_handle, int(mask), mode_mask ] )
 
     if cpus_list:
-        property_set( "cpus", cpus_list, subnode )
+        # property_set( "cpus", cpus_list, subnode )
+        cpus[0].value = cpus_list
 
 # sdt: is the system device tree
 def subsystem( tgt_node, sdt, options ):
