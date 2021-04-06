@@ -69,6 +69,94 @@ def val_as_bool( val ):
     elif val == "True":
         return True
 
+def firewall_expand( tree, subnode, verbose = 0 ):
+    firewall_cfg = subnode.props( "firewallconf" )
+
+    if firewall_cfg:
+        firewall_chunks = json.loads(firewall_cfg[0].value)
+        firewall_domain = ""
+        firewall_block = ""
+    else:
+        firewall_domain = subnode.props( "domain" )
+        if firewall_domain:
+            firewall_domain = firewall_domain[0].value
+        firewall_block = subnode.props( "block" )
+        # block can be a priority number (hex), or a string value
+        if firewall_block:
+            firewall_block = firewall_block[0].value
+            try:
+                firewall_block = int(firewall_block)
+            except Exception as e:
+                pass
+
+    if verbose:
+        print( "[DBG]: firewall expand: %s cfg: domain: %s block: %s" % (subnode.abs_path,firewall_domain,firewall_block))
+
+
+    # The first cell is a link to a node of a bus mastering device (or a domain).
+    #
+    # The second cell is the action, values can be allow (1), block (0), and block-desirable (2):
+    #
+    #  block [0]: access is blocked
+    #  allow [1]: access is allowed
+    #  block-desirable [2]: "block if you can"
+    #
+    # The third cell is a priority number: the priority of the rule when block-desirable is specified, otherwise unused.
+
+    if firewall_block and not firewall_domain:
+        if verbose:
+            print( "[DBG]: firewall: block and no domain, generating firewallconf-default" )
+
+        # the first item is "block" (0) and the second is the priority (default 0), so
+        # we use <0 0>
+        firewall_prop = LopperProp( "firewallconfig-default", -1, subnode.parent, [ 0, 0 ] )
+        subnode.parent + firewall_prop
+        # delete our node, it has been converted to a property
+        subnode.tree - subnode
+
+    elif firewall_block and firewall_domain:
+        if verbose:
+            print( "[DBG]: firewall: block and domain, generating firewallconf" )
+
+        try:
+            tgt_node = tree.lnodes( firewall_domain )[0]
+        except:
+            if verbose:
+                print( "[DBG]: WARNING: could not find node %s" % firewall_domain )
+            tgt_node = None
+
+        firewall_priority = 0
+
+        tgt_node_phandle = 0xdeadbeef
+        if tgt_node:
+            if tgt_node.phandle == 0:
+                tgt_node_phandle = tgt_node.phandle_or_create()
+                if verbose:
+                    print( "[DBG]: generated phandle %s for node: %s" % (tgt_node.phandle,tgt_node.abs_path ))
+
+        if firewall_block:
+            if type(firewall_block) == int:
+                # print( " ID for firewall block" )
+                # priority was passed
+                firewall_priority = firewall_block
+                # block
+                firewall_block = 0
+            else:
+                # print( "string for firewall block" )
+                if re.search( "always", firewall_block ):
+                    firewall_block = 0
+                elif re.search( "never", firewall_block ):
+                    firewall_block = 1
+
+
+        firewall_prop = LopperProp( "firewallconf", -1, subnode.parent, [ tgt_node_phandle, firewall_block, firewall_priority ] )
+        subnode.parent + firewall_prop
+        # delete our node, it has been converted to a property
+        subnode.tree - subnode
+
+
+
+
 def access_expand( tree, subnode, verbose = 0 ):
     ## access processing
     # /*
