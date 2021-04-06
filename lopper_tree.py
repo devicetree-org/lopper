@@ -2840,6 +2840,10 @@ class LopperTree:
 
         # pop one chunk off our path for the parent.
         parent_path = os.path.dirname( node.abs_path )
+        # save the child nodes, they are cleared by load (and the
+        # load routine is not recursive yet), so we'll need them
+        # later.
+        saved_child_nodes = list(node.child_nodes.values())
 
         # TODO: To be complete, we could add the properites of the node
         #       into the dictionary when calling load, that way we don't
@@ -2869,7 +2873,7 @@ class LopperTree:
 
         # we clear the node's child dict, since if they are new / valid, then
         # they'll be re-added to the dictionary with adjusted paths, etc.
-        saved_child_nodes = list(node.child_nodes.values())
+        # saved_child_nodes = list(node.child_nodes.values())
         node.child_nodes = OrderedDict()
         for child in saved_child_nodes:
             try:
