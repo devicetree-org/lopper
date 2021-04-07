@@ -99,6 +99,8 @@ def openamp_process_cpus( sdt, domain_node, verbose = 0 ):
     ref_nodes = sdt.tree.refd( "/cpus.*/cpu.*" )
     if verbose:
         print( "[INFO]: openamp: referenced cpus are: %s" % ref_nodes )
+        for r in ref_nodes:
+            print( "         %s" % r.abs_path )
 
     # The following filter code will check for nodes that are compatible to
     # cpus,cluster and if they haven't been referenced, delete them.
