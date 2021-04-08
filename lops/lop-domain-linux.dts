@@ -12,8 +12,24 @@
 / {
         compatible = "system-device-tree-v1";
         lops {
-                // compatible = "system-device-tree-v1,lop";
+                compatible = "system-device-tree-v1,lop";
+                lop_0_0 {
+                        compatible = "system-device-tree-v1,lop,meta-v1","phandle-desc-v1";
+                        address-map = "#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells";
+                        interrupt-parent = "phandle";
+                        iommus = "phandle field";
+                        interrupt-map = "#interrupt-cells phandle #interrupt-cells";
+                        access = "phandle flags";
+                        cpus = "phandle mask mode";
+                        include = "phandle mask";
+                        firewallconf = "phandle type priority";
+                };
                 lop_0 {
+                        compatible = "system-device-tree-v1,lop,assist-v1";
+                        node = "/domains/domain@0";
+                        id = "access-domain,domain-v1";
+                };
+                lop_0_1 {
                         compatible = "system-device-tree-v1,lop,assist-v1";
                         node = "/domains/domain@0";
                         id = "openamp,domain-v1";

@@ -28,9 +28,11 @@
                         compatible = "system-device-tree-v1,lop,assist-v1";
                         node = "/domains/domain@1";
                         id = "openamp,domain-v1";
-			// if uncommented the noexec property means the lop can be
-			// present but skipped. useful for debug
-			// noexec;
+                };
+                lop_0_1 {
+                        compatible = "system-device-tree-v1,lop,assist-v1";
+                        node = "/domains/domain@1";
+                        id = "access-domain,domain-v1";
                 };
                 lop_2 {
                         // node name modify
