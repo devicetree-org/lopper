@@ -1,0 +1,194 @@
+/*
+ * Copyright (c) 2021 Xilinx Inc. All rights reserved.
+ *
+ * Author:
+ *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1,lop";
+        lops {
+                compatible = "system-device-tree-v1,lop";
+                lop_0_0 {
+                        compatible = "system-device-tree-v1,lop,meta-v1","phandle-desc-v1";
+                        address-map = "#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells";
+                        interrupt-parent = "phandle";
+                        iommus = "phandle field";
+                        interrupt-map = "#interrupt-cells phandle #interrupt-cells";
+                        access = "phandle flags";
+                        cpus = "phandle mask mode";
+                        include = "phandle";
+                        firewallconf = "phandle type priority";
+                };
+                lop_0_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/domains/subsystem\\w*$:cpus:.*";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+                                    for n in __selected__:
+                                        n['compatible'] = 'xilinx,subsystem-config'
+                        ";
+                      };
+                };
+                lop_0_2 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/domains/.*:memory:";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+                                    import humanfriendly
+                                    for n in __selected__:
+                                        # print( '  domain: %s' % n.abs_path )
+                                        n['#address-cells'] = [2]
+                                        n['#size-cells'] = [2]
+                                        memory_val = n['memory']
+                                        # print( 'memory value: %s' % memory_val )
+                                        # print( 'memory class: %s' % memory_val.pclass )
+
+                                        subsystem.memory_expand( tree, n )
+
+                        ";
+                      };
+                };
+                lop_0_3 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      // select_2 = "/domains/subsystem./domains$::";
+                      // select_3 = "/domains/subsystem./domains/xen/domains$::";
+                      select_2 = "/.*/domains/.*:id:";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+                                    for i,d in enumerate(__selected__):
+                                        d['compatible'] = 'openamp,domain-v1';
+                                        name = d.name
+                                        # flip the name and label
+                                        d.label = name
+                                        d.name = 'domain@{}'.format(i)
+
+                        ";
+                      };
+                };
+                lop_0_4 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/resource_groups::";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+                                    domain_node = tree['/domains']
+                                    for d in __selected__:
+                                        for i,n in enumerate(d.child_nodes.values()):
+                                            ng = n()
+
+                                            name = ng.name
+                                            ng.abs_path = '/domains/' + name
+                                            # flip the name and label
+                                            ng.label = name
+                                            ng.name = 'resourcegroup@{}'.format(i)
+                                            ng['compatible'] = ['openamp,remoteproc-v1', 'openamp,group-v1' ]
+                                            tree + ng
+                                            subsystem.memory_expand( tree, ng )
+
+                                        # we've re-homed the resource groups. delete the outer one
+                                        # and the children ('node' is the first of __selected__)
+                                        tree - node
+
+                        ";
+                      };
+                };
+                lop_0_5 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/.*:include:";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+                                    for d in __selected__:
+                                        included_resource = d['include'].value[0]
+                                        try:
+                                            tgt_node = tree[included_resource]
+                                            if not tgt_node.phandle:
+                                                ph = tgt_node.phandle_or_create()
+
+                                            d['include'].value = [ tgt_node.phandle ]
+
+                                        except Exception as e:
+                                            print( '[WARNING]: target %s not found (%s)' % (included_resource,e))
+                        ";
+                      };
+                };
+                lop_0_6 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/.*?/.*domains$:!compatible:";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+                                    for d in __selected__:
+                                        parent = d.parent
+                                        subnodes = d.child_nodes.values()
+                                        for sn in list(subnodes):
+                                            tree - sn
+                                            sn.abs_path = parent.abs_path + '/' + sn.name
+                                            tree + sn
+                                        # delete the old, containing domain
+                                        tree - d
+                        ";
+                      };
+                };
+                lop_0_7 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/.*:cpus:";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+                                    for d in __selected__:
+                                        subsystem.cpu_expand( tree, d, 0 )
+                        ";
+                      };
+                };
+                lop_0_8 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/.*:access:";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+                                    for d in __selected__:
+                                        subsystem.access_expand( tree, d, 0 )
+                        ";
+                      };
+                };
+                lop_0_9 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      //select_2 = "/.*:firewallconf:";
+                      select_3 = "/.*/firewallconf::";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+                                    for d in __selected__:
+                                        subsystem.firewall_expand( tree, d, 0 )
+                        ";
+                      };
+                };
+        };
+};
