@@ -2232,7 +2232,6 @@ def main():
                 x_files.append( x_lop_gen )
 
         # check that the xlate files exist
-        print( "checking the xfiles %s" % x_files )
         for x in x_files:
             inf = Path(x)
             if not inf.exists():
