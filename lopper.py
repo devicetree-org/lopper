@@ -1285,7 +1285,7 @@ class LopperSDT:
             if cb_funcs:
                 for cb_func in cb_funcs:
                     try:
-                        if not cb_func( cb_node, self, { 'verbose' : self.verbose, 'args': cb_opts } ):
+                        if not cb_func( cb_node, self, { 'verbose' : self.verbose, 'outdir' : self.outdir, 'args': cb_opts } ):
                             print( "[WARNING]: the assist returned false, check for errors ..." )
                     except Exception as e:
                         print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )
