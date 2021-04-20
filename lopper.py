@@ -1296,7 +1296,8 @@ class LopperSDT:
                         if self.werror:
                             sys.exit(1)
             else:
-                print( "[INFO]: no compatible assist found, skipping" )
+                if self.verbose:
+                    print( "[INFO]: no compatible assist found, skipping: %s %s" % (cb_tgt_node_name,cb))
 
         if re.search( ".*,lop,load$", lop_type ):
             prop_id = ""
