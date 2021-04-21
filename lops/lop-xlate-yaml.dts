@@ -33,7 +33,7 @@
                               inherit = "subsystem";
                               code = "
                                     for n in __selected__:
-                                        n['compatible'] = 'xilinx,subsystem-config'
+                                        n['compatible'] = [ 'xilinx,subsystem-v1', 'openamp,domain-v1' ]
                         ";
                       };
                 };
