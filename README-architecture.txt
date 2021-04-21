@@ -133,7 +133,7 @@ various formats.
 
 To aid decoding and intepretation of properties carried in a LopperTree, if a
 node has been created from yaml, the LopperNode field '_source' is set to "yaml"
-(otherwise it is "dts"). 
+(otherwise it is "dts").
 
 Lopper Tree and complex (non-dts) types:
 ----------------------------------------
@@ -143,7 +143,7 @@ carried in the Lopper tree.
 
 As an example, yaml constructs can be mapped directly to device tree formats
 (strings, ints, etc), but other complex structures (maps, lists, mixed types)
-need to be interpreted / expanded by an assis or an xlate lop. 
+need to be interpreted / expanded by an assist or an xlate lop.
 
 To ensure that the LopperTree is always compatible with dts/fdt, these complex
 types are json encoded and carried as a string in a LopperProp. When json
@@ -165,12 +165,12 @@ A lopper operations (lops) file has the following structure:
         compatible = "system-device-tree-v1";
         // optional priority, normally not specified
         priority = <1>;
-        lops {  
-                lop_<number> { 
+        lops {
+                lop_<number> {
                         compatible = "system-device-tree-v1,lop,<lop type>";
                         <lop specific properties>;
                 };
-                lop_<number> { 
+                lop_<number> {
                         compatible = "system-device-tree-v1,lop,<lop type>";
                         <lop specific properties>;
                 };
@@ -184,7 +184,7 @@ so that it will be recognized as a lop file.
 
   compatible = "system-device-tree-v1";
 
-The lops can then have a specified priority, with <1> being the highest 
+The lops can then have a specified priority, with <1> being the highest
 priority and <10> being the lowest. This is used to broadly order operations
 such that preparation lops (such as loading a module) can be run before
 dependent operations.
@@ -240,12 +240,12 @@ The following types of lops are currently valid:
 #         To update complex/compound values, see the phandle#property notation in the
 #         examples below
 
-                lop_1 { 
+                lop_1 {
                         compatible = "system-device-tree-v1,lop,modify";
-                        // node name modify. rename /cpus_r5/ to /cpus/
+                        // node name modify. Rename /cpus_r5/ to /cpus/
                         modify = "/cpus_r5/::/cpus/";
                 };
-                lop_2 { 
+                lop_2 {
                         compatible = "system-device-tree-v1,lop,modify";
                         // remove access property from /cpus/ node
                         modify = "/cpus/:access:";
@@ -294,11 +294,11 @@ The following types of lops are currently valid:
 # node add: copies the compiled node to the target device tree
 #
 # Additional operations or assists can modify this node just as if it was
-# compiled into the original device tree. in this example the __...__ values
+# compiled into the original device tree. In this example the __...__ values
 # will be filled in by an assist routine.
 #
 
-                lop_7 { 
+                lop_7 {
                         // node add
                         compatible = "system-device-tree-v1,lop,add";
                         // name of the embedded node
@@ -396,9 +396,9 @@ The following types of lops are currently valid:
 #
 # code: a block of python code to execute against a node
 #
-# Excute python code in a restricted environment. This can be used to test and
+# Execute python code in a restricted environment. This can be used to test and
 # produce special output without needing to write an assist. Changes made to a node
-# are peristent and hence collection of data can be done, as the following examples
+# are persistent and hence collection of data can be done, as the following examples
 # show.
 #
 # The 'code' property contains the block of python code to be executed. Note, that
@@ -418,7 +418,7 @@ The following types of lops are currently valid:
 # on execution.
 #
 # The python modules must be searchable by the python loader and in
-# an "assists" subdirectory. They will be loaded and made avaible under
+# an "assists" subdirectory. They will be loaded and made available under
 # their module name for direct use in the code block.
 #
 # See the 'xlate' lop for an example of 'inherit'
@@ -594,7 +594,7 @@ The following types of lops are currently valid:
 
 # exec: execute another lop
 #
-# Commonly used in combination with a conditional lop to avoid code dupblication
+# Commonly used in combination with a conditional lop to avoid code duplication
 # and execute another lopper operation. i.e. renaming a node, deleting a property
 # running code, etc.
 #
@@ -653,7 +653,7 @@ The following types of lops are currently valid:
 # Once selected, other lopper operations will use the nodes if no
 # override is supplied in their lop.
 #
-#    - code, exec: The selected node is the default node contex of the block
+#    - code, exec: The selected node is the default node context of the block
 #                  And all selected nodes are available in the tree variable
 #                  __selected__
 #    - modify: If no node regex is supplied, the selected nodes are used
@@ -714,7 +714,7 @@ The following types of lops are currently valid:
 # tree: create a subtree from specified nodes
 #
 # To allow for nodes to not only be collected for output, but also for
-# modificaton, we have the "tree" lop.
+# modification, we have the "tree" lop.
 #
 # This lop follows the same syntax as "output". If no nodes are specified
 # in the lop itself, previously selected ones via "select" are used
@@ -746,7 +746,7 @@ The following types of lops are currently valid:
                 lop_13_3 {
                        compatible = "system-device-tree-v1,lop,output";
                        tree = "openamp-test";
-                       outfile = "openamp-test-special.dts"; 
+                       outfile = "openamp-test-special.dts";
                        nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
                 };
 
@@ -792,7 +792,7 @@ The following types of lops are currently valid:
 #
 # When the code block runs, the python module "subsystem" will be loaded
 # from the assists subdirectory and made available to the code block.
-# The calls to subsystem.<function> will leverage the transforms availble
+# The calls to subsystem.<function> will leverage the transforms available
 # in that assist (and in this case, will expand various properties in
 # in the node).
 
@@ -857,7 +857,7 @@ catches it and reports the error to the user.
 Command line assists:
 --------------------
 
-Commonly we want to run a assist against the loaded system device tree and exit.
+Commonly we want to run an assist against the loaded system device tree and exit.
 
 That assist doesn't need to be run in order with other lopper operations or is
 the only action to be taken.
@@ -917,16 +917,16 @@ execution samples:
 # Notes: -v -v: verbosity level 2
 #        -f: force overwrite files if they exist
 #        -i: module load lop
-#        -i: main lop file for modyfing system device tree (with a unified chosen node in this example)
+#        -i: main lop file for modifying system device tree (with a unified chosen node in this example)
 #        foo.dts: output file (dts format)
-# 
+#
 lopper.py -f -v -v -i lop-load.dts -i xform-domain-r5.dts system-device-tree-domains.dts foo.dts
 
 # testing with binary transform
 lopper.py -f -v -v -i xform-load.dts -i xform-domain-r5.dts -i xform-bin.dtb system-device-tree-domains.dts foo.dts
 
 # testing with split chosen node
-lopper.py -f --werror -v -v -v -v -i lop-load.dts -i lop-domain-r5.dts -i lop-bin.dtb -i system-device-tree-chosen.dts system-device-tree-domains.dts foo.dts 
+lopper.py -f --werror -v -v -v -v -i lop-load.dts -i lop-domain-r5.dts -i lop-bin.dtb -i system-device-tree-chosen.dts system-device-tree-domains.dts foo.dts
 lopper.py -f --werror -v -v -v -v -i lop-load.dts -i lop-domain-a53.dts -i lop-bin.dtb -i system-device-tree-chosen.dts system-device-tree-domains.dts foo.dts
 
 # dump a dtb to console as a "dts"
