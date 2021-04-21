@@ -425,7 +425,7 @@ class LopperYAML():
             props = self.props( node )
             for p in props:
                 if verbose:
-                    print( "[DBG+]: prop: %s" % p )
+                    print( "[DBG+]: prop: %s (%s)" % (p,props[p]) )
                 if serialize_json:
                     use_json = False
                     skip = False

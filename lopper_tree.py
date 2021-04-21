@@ -90,6 +90,7 @@ class LopperProp():
         """
         if self.__dbg__ > 1:
             print( "[DBG++]: property '%s' deepcopy start: %s" % (self.name,[self]) )
+            print( "         value type: %s value len: %s value: %s" % (type(self.value),len(self.value),self.value ))
 
         new_instance = LopperProp(self.name)
 
@@ -98,12 +99,18 @@ class LopperProp():
         # copying and undoing.
         #      new_instance.__dict__.update(self.__dict__)
         new_instance.__dbg__ = copy.deepcopy( self.number, memodict )
-        new_instance.value = copy.deepcopy( self.value, memodict )
+        # we use __dict__ for the value assignemnt to avoid any object level
+        # wrapping of the assignement (i.e. making a list, etc)
+        new_instance.__dict__["value"] = copy.deepcopy( self.value, memodict )
         new_instance.__pstate__ = "init"
         new_instance.node = None
 
+        new_instance.pclass = self.pclass
+        new_instance.ptype = self.ptype
+        new_instance.binary = self.binary
+
         if self.__dbg__ > 1:
-            print( "[DBG++]: property deep copy done: %s" % [self] )
+            print( "[DBG++]: property deep copy done: %s (%s)(%s)" % ([self],type(new_instance.value),new_instance.value) )
 
         return new_instance
 
