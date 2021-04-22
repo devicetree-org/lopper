@@ -24,6 +24,11 @@ from collections import Counter
 import copy
 import json
 
+from lopper_fmt import LopperFmt
+
+# must be set to the Lopper class to call
+global Lopper
+
 # used in node_filter
 class LopperAction(Enum):
     """Enum class to define the actions available in Lopper's node_filter function
@@ -33,7 +38,6 @@ class LopperAction(Enum):
     WHITELIST = 3
     BLACKLIST = 4
     NONE = 5
-
 
 class LopperProp():
     """Class representing a device tree property
@@ -3274,8 +3278,6 @@ class LopperTree:
         safe_dict = dict([ (k, locals().get(k, None)) for k in safe_list ])
         safe_dict['len'] = len
         safe_dict['print'] = print
-        safe_dict['prop_get'] = Lopper.property_get
-        safe_dict['getphandle'] = Lopper.node_getphandle
         safe_dict['fdt'] = None
         safe_dict['verbose'] = self.__dbg__
         safe_dict['tree'] = self
@@ -3920,6 +3922,3 @@ class LopperTreePrinter( LopperTree ):
 
         if self.output != sys.stdout:
             self.output.close()
-
-
-from lopper_fdt import *

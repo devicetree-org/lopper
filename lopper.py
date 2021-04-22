@@ -33,9 +33,13 @@ from collections import OrderedDict
 
 import humanfriendly
 
-from lopper_fdt import Lopper
-from lopper_fdt import LopperFmt
+from lopper_fmt import LopperFmt
+import lopper_fdt
+import lopper_dt
+import lopper
+
 from lopper_tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
+import lopper_tree
 
 import lopper_rest
 
@@ -45,8 +49,6 @@ try:
 except Exception as e:
     print( "[WARNING]: cant load yaml, disabling support: %s" % e )
     yaml_support = False
-
-import lopper_tree
 
 LOPPER_VERSION = "2020.4-beta"
 
@@ -66,6 +68,14 @@ def at_exit_cleanup():
         device_tree.cleanup()
     else:
         pass
+
+def lopper_type(cls):
+    global Lopper
+    Lopper = cls
+    lopper_tree.Lopper = cls
+
+# default to FDT front/backend
+lopper_type(lopper_fdt.LopperFDT)
 
 class LopperAssist:
     """Internal class to contain the details of a lopper assist
@@ -116,7 +126,7 @@ class LopperSDT:
         self.load_paths = []
         self.permissive = False
 
-    def setup(self, sdt_file, input_files, include_paths, force=False):
+    def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True):
         """executes setup and initialization tasks for a system device tree
 
         setup validates the inputs, and calls the appropriate routines to
@@ -133,8 +143,9 @@ class LopperSDT:
            Nothing
 
         """
-        if self.verbose:
+        if self.verbose and libfdt:
             print( "[INFO]: loading dtb and using libfdt to manipulate tree" )
+
 
         # check for required support applications
         support_bins = ["dtc", "cpp" ]
@@ -145,7 +156,7 @@ class LopperSDT:
                 print( "[ERROR]: support application '%s' not found, exiting" % s )
                 sys.exit(2)
 
-        self.use_libfdt = True
+        self.use_libfdt = libfdt
 
         current_dir = os.getcwd()
 
@@ -219,24 +230,34 @@ class LopperSDT:
                 sdt_files.append( sdt_file )
                 fp = sdt_file
 
-            # note: input_files isn't actually used by dt_compile, otherwise, we'd need to
-            #       filter out non-dts files before the call .. we should probably still do
-            #       that.
-            sdt_file = Path( sdt_file )
-            sdt_file_abs = sdt_file.resolve( True )
+            if self.use_libfdt:
+                # note: input_files isn't actually used by dt_compile, otherwise, we'd need to
+                #       filter out non-dts files before the call .. we should probably still do
+                #       that.
+                sdt_file = Path( sdt_file )
+                sdt_file_abs = sdt_file.resolve( True )
 
-            # we need the original location of the main SDT file on the search path
-            # in case there are dtsi files, etc.
-            include_paths += " " + str(sdt_file.parent) + " "
-            self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
-                                          self.save_temps, self.verbose, self.enhanced )
-            self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
+                # we need the original location of the main SDT file on the search path
+                # in case there are dtsi files, etc.
+                include_paths += " " + str(sdt_file.parent) + " "
+                self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
+                                              self.save_temps, self.verbose, self.enhanced )
 
-            # we export the compiled fdt to a dictionary, and load it into our tree
-            dct = Lopper.export( self.FDT )
+                self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
+
+                # we export the compiled fdt to a dictionary, and load it into our tree
+                dct = Lopper.export( self.FDT )
+            else:
+                if self.verbose:
+                    print( "[INFO]: using python devicetree for parsing" )
+
+                dt = Lopper.dt_compile( fp )
+                # TODO: "FDT" should now be "token" or something equally generic
+                self.FDT = dt
+                dct = Lopper.export( dt )
+
             self.tree = LopperTree()
             self.tree.strict = not self.permissive
-
             self.tree.load( dct )
 
             # join any extended trees to the one we just created
@@ -444,7 +465,10 @@ class LopperSDT:
             fdt_to_write = self.FDT
 
         if re.search( ".dtb", output_filename ):
-            Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose )
+            if self.use_libfdt:
+                Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose )
+            else:
+                print( "[ERROR]: dtb output selected (%s), but libfdt is not enabled" % output_filename )
 
         elif re.search( ".dts", output_filename ):
             if enhanced:
@@ -2032,6 +2056,7 @@ def usage():
     print('    , --permissive    do not enforce fully validated properties (phandles, etc)' )
     print('  -o, --output        output file')
     print('  -x. --xlate         run automatic translations on nodes for indicated input types (yaml,dts)' )
+    print('    , --no-libfdt     don\'t use dtc/libfdt for parsing/compiling device trees' )
     print('  -f, --force         force overwrite output file(s)')
     print('    , --werror        treat warnings as errors' )
     print('  -S, --save-temps    don\'t remove temporary files' )
@@ -2065,6 +2090,7 @@ def main():
     global auto_run
     global permissive
     global xlate
+    global libfdt
 
     debug = False
     sdt = None
@@ -2084,13 +2110,15 @@ def main():
     server = False
     auto_run = False
     permissive = False
+    libfdt = True
     xlate = []
     try:
         opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:Dx:",
                                    [ "debug", "assist-paths=", "outdir", "enhanced",
                                      "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
-                                     "assist=","server", "auto", "permissive", "xlate=" ] )
+                                     "assist=","server", "auto", "permissive", "xlate=",
+                                     "no-libfdt" ] )
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2132,6 +2160,8 @@ def main():
             server=True
         elif o in ('-S', '--save-temps' ):
             save_temps=True
+        elif o in ('--no-libfdt' ):
+            libfdt=False
         elif o in ('--enhanced' ):
             enhanced_print = True
         elif o in ('--auto' ):
@@ -2256,6 +2286,9 @@ if __name__ == "__main__":
     # use below
     main()
 
+    if not libfdt:
+        Lopper = lopper_dt.LopperDT
+
     if dump_dtb:
         Lopper.dtb_dts_export( sdt, verbose )
         sys.exit(0)
@@ -2277,7 +2310,7 @@ if __name__ == "__main__":
     device_tree.load_paths = load_paths
     device_tree.permissive = permissive
 
-    device_tree.setup( sdt, inputfiles, "", force )
+    device_tree.setup( sdt, inputfiles, "", force, libfdt )
     device_tree.assists_setup( cmdline_assists )
 
     if auto_run:

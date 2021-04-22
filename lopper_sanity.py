@@ -26,8 +26,9 @@ from collections import OrderedDict
 import copy
 
 from lopper_tree import *
+
 from lopper import *
-from lopper_fdt import *
+import lopper
 from lopper_yaml import *
 
 from io import StringIO
@@ -1664,9 +1665,11 @@ def tree_sanity_test( fdt, verbose=0 ):
         print( "writing to: /tmp/tester-output.dts" )
 
     ofdt = Lopper.fdt()
-    Lopper.sync( ofdt, printer.export() )
-    LopperSDT(ofdt).write( ofdt, "/tmp/tester-output.dts", True, True )
 
+    Lopper.sync( ofdt, printer.export() )
+    LopperSDT(None).write( ofdt, "/tmp/tester-output.dts", True, True )
+
+    sys.exit(1)
     # remove the 2nd property, re-write
     if verbose:
         print( "writing to: /tmp/tester-output2.dts (with one less property)" )
@@ -1923,8 +1926,8 @@ def lops_code_test( device_tree, lop_file, verbose ):
 def lops_sanity_test( device_tree, lop_file, verbose ):
     device_tree.setup( dt, [lop_file], "", True )
 
-
     device_tree.verbose = 5
+
     device_tree.perform_lops()
 
     print( "[TEST]: writing to %s" % (device_tree.output_file))
@@ -2239,6 +2242,7 @@ def main():
     global format
     global continue_on_error
     global fdttest
+    global libfdt
 
     verbose = 0
     force = False
@@ -2250,8 +2254,9 @@ def main():
     format = False
     fdttest = False
     continue_on_error = False
+    libfdt = True
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlhd", [ "all", "fdt", "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlhd", [ "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2283,6 +2288,8 @@ def main():
             format=True
         elif o in ( '-d', '--fdt' ):
             fdttest = True
+        elif o in ( '--no-libfdt' ):
+            libfdt = False
         elif o in ( '--all' ):
             tree = True
             lops = True
@@ -2301,6 +2308,13 @@ def main():
 if __name__ == "__main__":
 
     main()
+
+    if libfdt:
+        lopper.lopper_type(lopper_fdt.LopperFDT)
+    else:
+        lopper.lopper_type(lopper_dt.LopperDT)
+
+    Lopper = lopper.Lopper
 
     if tree:
         dt = setup_device_tree( outdir )
