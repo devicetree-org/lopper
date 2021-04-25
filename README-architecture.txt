@@ -18,7 +18,7 @@ format of the files, and libraries to manipulate the tree can change in the
 future without the inputs and outputs differing.
 
 Currently, Lopper operates on dtb files. It does not parse or otherwise
-manipulate source dts files (except for preprocessing). Lopper uses libfdt for
+manipulate source dts files (except for pre-processing). Lopper uses libfdt for
 operations on these files, and uses the standard dtc tools to prepare the files
 for manipulation.
 
@@ -33,7 +33,7 @@ The flow of lopper processing is broken into the following broad categories:
   - input file normalization with standard tools
 
     Lopper processes input files by invoking a standard pipeline of processing
-    on dts files using standard tools. pcpp (or cpp) is used for preprocessing and
+    on dts files using standard tools. pcpp (or cpp) is used for pre-processing and
     expansion, and dtc is used to compile dts inputs into dtbs. Lopper is
     somewhat tolerant of incomplete dts inputs, and will use forced dtc
     compilation to ensure that dtbs are generated (with the assumption that the
@@ -44,7 +44,7 @@ The flow of lopper processing is broken into the following broad categories:
 
     Note that lopper operations file can be passed directly as dtb files, and
     applied to the tree, but the system device tree and other device tree
-    fragments must be source (so they can be preprocessed and concatenated
+    fragments must be source (so they can be pre-processed and concatenated
     as needed).
 
   - operation runqueue execution
@@ -131,7 +131,7 @@ output formats, but operate on the LopperTree/Lopper data structures. It is this
 separation that allows Lopper to abstract both the tree and convert between the
 various formats.
 
-To aid decoding and intepretation of properties carried in a LopperTree, if a
+To aid decoding and interpretation of properties carried in a LopperTree, if a
 node has been created from yaml, the LopperNode field '_source' is set to "yaml"
 (otherwise it is "dts").
 
@@ -283,7 +283,7 @@ The following types of lops are currently valid:
                         compatible = "system-device-tree-v1,lop,modify";
                         # finds the target phandle (modify_val), which can either be in
                         # this tree, or the system device tree, and looks up the property
-                        # following '#', that value is used as the replement. If no property
+                        # following '#', that value is used as the replacement. If no property
                         # is provided, then the value is changed to the phandle target.
                         modify = "/memory@800000000:reg:&modify_val#reg";
                         modify_val {
