@@ -236,7 +236,7 @@ def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, n
       add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node, device_list[index], device_list[index+1])
       continue
     # there are multiple cases to handle
-    elif "cpu" in device_node.name or "memory" in device_node.name or "tcm" in device_node.name:
+    elif "cpu" in device_node.name or "memory" in device_node.name or "tcm" in device_node.name or "_ram_" in device_node.name:
       if "cpu" in device_node.name:
         ret = add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domain_node, device_list[index+1])
       else:
