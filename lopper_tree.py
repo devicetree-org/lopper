@@ -1471,7 +1471,7 @@ class LopperNode(object):
 
         return all_kids
 
-    def print( self, output=None ):
+    def print( self, output=None, strict=None ):
         """print a node
 
         Print a node to the passed output stream. If it isn't passed, then
@@ -1496,6 +1496,13 @@ class LopperNode(object):
 
         indent = self.depth * 8
         nodename = self.name
+
+        # we test for None, not "if strict", since we don't want an
+        # explicitly passed "False" to not take us into the check.
+        resolve_props = False
+        if strict != None:
+            if self.tree.strict != strict:
+                resolve_props = True
 
         if self.number != 0:
             plabel = ""
@@ -1529,6 +1536,9 @@ class LopperNode(object):
 
         # now the properties
         for p in self:
+            if resolve_props:
+                p.resolve( strict )
+
             p.print( output )
 
         # child nodes
@@ -2104,6 +2114,9 @@ class LopperNode(object):
         ## This may be converted to a dictionary export -> call to lopper fdt
         ## to do a partial sync. But for now, it is just changing the state as
         ## the new load() function takes care of these details.
+
+        ## We also may use this as recursive subnode resolve() call, so we
+        ## can apply changes to a nodes properties and all subnode properties
 
         self.__nstate__ = "resolved"
         self.__modified__ = False
