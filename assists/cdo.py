@@ -66,7 +66,7 @@ def add_subsystem(domain_node, sdt, output):
 
     current_subsystem_id = 0
     cpu_key = ""
-
+    # based on APU, RPU domain, add subsystem CDO command
     if "a72" in cpu_node.name:
       cpu_key = "a72"
     elif "r5" in cpu_node.name:
@@ -95,7 +95,8 @@ def add_subsystem(domain_node, sdt, output):
     if domain_node.propval("id") == [""]:
       print("domain does not have subsystem ID")
       return -1
-
+    # For now, take in subsystem as 0x1 - 0xE ID. will update this later
+    # TODO fix this
     subsystem_num = domain_node.propval("id")[0]
     if subsystem_num >= 0xF:
       print("invalid subsystem string for ", str(domain_node))
@@ -109,11 +110,12 @@ def add_subsystem(domain_node, sdt, output):
   # subsystems will have hard-coded requirements coming in from SDT
   return cpu_node
 
-
+# write CDO requirement to file
 def cdo_write_command(sub_num, sub_id, dev_str, dev_val, flags, output):
   print("# subsystem_"+str(sub_num)+" "+dev_str,file=output)
   print("pm_add_requirement "+hex(sub_id)+" "+dev_val+" "+hex(flags)+" "+hex(0xfffff),file=output)
 
+# docment requirement bits
 def validate_and_document_req_flags(subsystem_name, sub_num, sub_id, node_id, dev_str, output, flags, mem_regn):
   print("#", file=output)
   print("#", file=output)
@@ -156,7 +158,7 @@ def validate_and_document_req_flags(subsystem_name, sub_num, sub_id, node_id, de
   requirement_map[key] = req
   return 0
 
-
+# subsystem to subsystem perimssions CDO requirement
 def add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node, target_pnode, operation):
   root_node = domain_node.tree['/']
   subsystem_id = subsystems[domain_node.name]
@@ -179,25 +181,30 @@ def add_subsystem_permission_requirement(output, cpu_node, domain_node, device_n
   print(cdo_cmd,file=output)
 
 def add_requirements_mem(subsystem_num, subsystem_id, output, device_node, domain_node, requirement):
-  if 0xfffc0000 == device_node.propval("reg")[1]:
+  base_addr = device_node.propval("reg")[1]
+
+  # check if base addr is in list of xilpm mem nodes 
+  if 0xfffc0000 == base_addr:
     for key in ocm_bank_names:
       if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num,subsystem_id,
                                          existing_devices[key], key, output, requirement, 1):
         return -1
       cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), requirement,output)
     return 0
-  elif device_node.propval("reg")[1] in memory_range_to_dev_name.keys():
-    key = memory_range_to_dev_name[device_node.propval("reg")[1]]
+  elif base_addr in memory_range_to_dev_name.keys():
+    key = memory_range_to_dev_name[base_addr]
     if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num,subsystem_id,
                                        existing_devices[key], key, output, requirement,1):
       return -1
     cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), requirement,output)
     return 0
   else:
-    print("add_requirements: memory: not covered: ",str(device_node),hex(device_node.propval("reg")[1]))
+    print("add_requirements: memory: not covered: ",str(device_node),hex(base_addr))
     return -1
 
+# map device tree node to xilpm core node (r5-X, a72-x, etc)
 def add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domain_node, requirement):
+  # apu cores
   if "a72" in device_node.name:
     for key in apu_specific_reqs.keys():
       if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num, subsystem_id, existing_devices[key], key, output, requirement, 0):
@@ -205,7 +212,9 @@ def add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domai
       cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), apu_specific_reqs[key], output)
     return 0
   elif "r5" in  device_node.abs_path:
+    # r5 cores
     key = "dev_rpu0_"
+    # based on spec, r5 configuration (r5-0, r5-1, lockstep) based on second arg
     if (domain_node.propval("cpus")[1] & 0x1) == 1:
       # if cpus second arg has rightmost bit on, then this is either lockstep or r5-0
       key += "0"
@@ -225,6 +234,8 @@ def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, n
   subsystem_num = subsystem_id & 0xF
   root_node = domain_node.tree['/']
 
+  # for now this is done with access list of syntax <dev reqs>
+  # so here just iterate based on the dev arg
   for index,device_phandle in enumerate(device_list):
     if index % 2 != 0:
       continue
@@ -232,37 +243,46 @@ def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, n
     if device_node == None:
       print("ERROR: add_requirements: invalid phandle: ",str(device_phandle), index, device_node)
       return -1
-    if "domain" in device_node.name:
+    if "domain" in device_node.name: # subsystem - subsytem permissions
       add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node, device_list[index], device_list[index+1])
       continue
     # there are multiple cases to handle
+    # handle mem and core xilpm dev nodes
     elif "cpu" in device_node.name or "memory" in device_node.name or "tcm" in device_node.name or "_ram_" in device_node.name:
       if "cpu" in device_node.name:
+        # core nodes
         ret = add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domain_node, device_list[index+1])
       else:
+        # mem nodes
         ret = add_requirements_mem(subsystem_num, subsystem_id, output, device_node, domain_node, device_list[index+1])
 
       if ret == 0:
         continue
       else:
-        return ret        
+        return ret 
+    # here is the 'cleanest' case
+    # there exists a power-domains property in this node that has the xilpm ID
+    # use this if present
+    # then reverse lookup the xilpm node ID and get the name for documentation/debugging purposes
     elif device_node.propval("power-domains") != [""]:
       xilpm_nodeid = device_node.propval("power-domains")[1]
       xilpm_dev_name = xilinx_versal_device_names[xilpm_nodeid]
       if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num, subsystem_id, xilpm_nodeid, xilpm_dev_name,
                                           output, device_list[index+1], 0):
         return -1
+      # write CDO command to output
       cdo_write_command(subsystem_num, subsystem_id, xilpm_dev_name,
                         hex(xilpm_nodeid),
                         device_list[index+1],
                         output)
       continue
     elif "mailbox" in device_node.name:
+      # in input, mailbox nodes correspond to xilpm dev IPI nodes
       key = mailbox_devices[device_node.name]
     else:
       print("add_requirements: not covered: ",str(device_node))
       return -1
-
+    # report error if there is misalignment of requirements. E.g. timeshared and exclusive between 2 reqs
     if -1 == validate_and_document_req_flags(domain_node.name,
                                         subsystem_num, subsystem_id,
                                         existing_devices[key], key, output,
@@ -283,6 +303,8 @@ def add_requirements(domain_node, cpu_node, sdt, output):
     print("add_requirements: #xilinx,config-cells should be 1", domain_node.name, str(num_params))
     return -1
 
+
+  # here check for included resource groups
   include_list = domain_node.propval("include")
   root_node = domain_node.tree['/']
 
