@@ -704,6 +704,9 @@ class Lopper:
         """
         # import a dictionary to a FDT
 
+        if not fdt:
+            return
+
         if verbose:
             print( "[DBG]: lopper_fdt sync: start" )
 
