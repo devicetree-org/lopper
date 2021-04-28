@@ -230,9 +230,9 @@ class LopperSDT:
             # we export the compiled fdt to a dictionary, and load it into our tree
             dct = Lopper.export( self.FDT )
             self.tree = LopperTree()
-            self.tree.load( dct )
-
             self.tree.strict = not self.permissive
+
+            self.tree.load( dct )
 
             # join any extended trees to the one we just created
             for t in sdt_extended_trees:
