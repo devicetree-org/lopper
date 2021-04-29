@@ -380,7 +380,7 @@ class LopperProp():
                 if re.search( '^#.*', f ):
                     try:
                         field_val = self.node.__props__[f].value[0]
-                    except:
+                    except Exception as e:
                         field_val = 0
 
                     if not field_val:

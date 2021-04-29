@@ -181,6 +181,16 @@ def access_expand( tree, subnode, verbose = 0 ):
     access_chunks = json.loads(access_node[0].value)
     access_list = []
 
+    ap = access_node[0]
+    try:
+        access_field_count = subnode['#access-flags-cells']
+        if not type(field_count.value) == list:
+            field_count.value = [field_count.value]
+    except:
+        pass
+
+    x,field_count = ap.phandle_params()
+
     for a in access_chunks:
         dev = a['dev']
         try:
@@ -228,13 +238,15 @@ def access_expand( tree, subnode, verbose = 0 ):
         # save the <phandle> <flags> to the list of values to write
         access_list.append( dev_handle )
         access_list.append( flags_value )
-
+        if access_field_count > 2:
+            for i in range(2,field_count):
+                access_list.append( 0xff )
 
     if verbose:
         # dump the memory as hex
         print( '[DBG] setting access: [{}]'.format(', '.join(hex(x) for x in access_list)) )
 
-    property_set( "access", access_list, subnode )
+    ap.value = access_list
 
 
 def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
