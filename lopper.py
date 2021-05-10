@@ -222,9 +222,14 @@ class LopperSDT:
             # note: input_files isn't actually used by dt_compile, otherwise, we'd need to
             #       filter out non-dts files before the call .. we should probably still do
             #       that.
+            sdt_file = Path( sdt_file )
+            sdt_file_abs = sdt_file.resolve( True )
+
+            # we need the original location of the main SDT file on the search path
+            # in case there are dtsi files, etc.
+            include_paths += " " + str(sdt_file.parent) + " "
             self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
                                           self.save_temps, self.verbose, self.enhanced )
-
             self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
 
             # we export the compiled fdt to a dictionary, and load it into our tree
