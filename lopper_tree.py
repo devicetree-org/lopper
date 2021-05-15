@@ -22,6 +22,7 @@ from collections import UserDict
 from collections import OrderedDict
 from collections import Counter
 import copy
+import json
 
 # used in node_filter
 class LopperAction(Enum):
@@ -102,6 +103,16 @@ class LopperProp():
         # we use __dict__ for the value assignemnt to avoid any object level
         # wrapping of the assignement (i.e. making a list, etc)
         new_instance.__dict__["value"] = copy.deepcopy( self.value, memodict )
+
+        try:
+            new_instance.__dict__["struct_value"] = copy.deepcopy( self.struct_value, memodict )
+        except:
+            pass
+        try:
+            new_instance.__dict__["list_value"] = copy.deepcopy( self.list_value, memodict )
+        except:
+            pass
+
         new_instance.__pstate__ = "init"
         new_instance.node = None
 
@@ -130,6 +141,102 @@ class LopperProp():
            string
         """
         return self.string_val
+
+    def __getitem__(self, key):
+        """Access a property's value by key
+
+        Allows the property's value to be access by 'index', since
+        properties are normally lists of value.
+
+        If the property is a special type, i.e. a json pclass, then
+        the value is expanded and indexed. Otherwise, the value list
+        is simply indexed
+
+        Non-integer keys return None. Unless "value" is used as a key
+        and you get the raw/entire value list.
+
+        Normal list exceptions are raised if you index outside of the
+        range of the value
+
+        Args:
+          Key (int or "value")
+
+        Returns:
+          The item at the specified index
+
+        """
+        if type(key) == int:
+            if self.pclass == 'json':
+                loaded_j = json.loads( self.value )
+                return loaded_j[key]
+            else:
+                if type(self.value) == list:
+                    return self.value[key]
+                else:
+                    return self.value
+        else:
+            if key == "value":
+                return self.value
+
+            return None
+
+    def __len__(self):
+        """Get the length of a property
+
+        When using the __getitem__ access to property values, knowing
+        the length is important.
+
+        if the property is a special class (i.e. json), the lenght of
+        the loaded list is returned.
+
+        if the values are a list, the lenght of that list is returned
+
+        if the value is a single item, 0 is returned
+
+        Args:
+           None
+
+        Returns:
+           Int: The lenght of the list
+
+        """
+        if self.pclass == 'json':
+            loaded_j = json.loads( self.value )
+            return len(loaded_j)
+        else:
+            if type(self.value) == list:
+                return len(self.value)
+            else:
+                return 0
+
+    def __iter__(self):
+        """magic method to support iteration
+
+        This allows the values of a property to be iterated, which
+        isn't very useful. But it is useful that functions like dict()
+        take this iterator and create a usable dictionary for the
+        caller.
+
+        If the property is special, like json, then you get an
+        keyed return of 'value' and the loaded value
+
+        if the property is standard, you get a keyed return of
+        'value' and the value list
+
+        Args:
+            None
+
+        Returns:
+           iterator for use in dict()
+        """
+        if self.pclass == 'json':
+            loaded_j = json.loads( self.value )
+            yield 'value', loaded_j
+        else:
+            if type( self.value ) == list:
+                yield 'value', self.value
+            else:
+                yield 'value', [self.value]
 
     def int(self):
         """Get the property value as a list of integers
@@ -188,7 +295,10 @@ class LopperProp():
             else:
                 self.__dict__[name] = value
 
-            if Counter(old_value) != Counter(self.__dict__[name]):
+            try:
+                if Counter(old_value) != Counter(self.__dict__[name]):
+                    self.__modified__ = True
+            except:
                 self.__modified__ = True
 
             self.resolve()
@@ -244,24 +354,26 @@ class LopperProp():
                         # don't use it for the lookup.
                         if re.search( '&', lop_compare_value ):
                             lop_compare_value = re.sub( '&', '', lop_compare_value )
+
+                            # this is a phandle, but is currently a string, we need to
+                            # resolve the value.
+                            nodes = other_prop.node.tree.nodes( lop_compare_value )
+                            if not nodes:
+                                nodes = other_prop.node.tree.lnodes( lop_compare_value )
+
+                            if nodes:
+                                phandle = nodes[0].phandle
+                            else:
+                                phandle = 0
+
+                            # update our value so the rest of the code can stay the same
+                            self.ptype = LopperFmt.UINT32
+                            self.value[0] = phandle
+
                         else:
-                            print( "[ERROR]: phandle is being compared, and target node does not start with &" )
-                            sys.exit(1)
-
-                        # this is a phandle, but is currently a string, we need to
-                        # resolve the value.
-                        nodes = other_prop.node.tree.nodes( lop_compare_value )
-                        if not nodes:
-                            nodes = other_prop.node.tree.lnodes( lop_compare_value )
-
-                        if nodes:
-                            phandle = nodes[0].phandle
-                        else:
-                            phandle = 0
-
-                        # update our value so the rest of the code can stay the same
-                        self.ptype = LopperFmt.UINT32
-                        self.value[0] = phandle
+                            pass
+                            #print( "[ERROR]: phandle is being compared, and target node does not start with & (%s)" % lop_compare_value )
+                            #sys.exit(1)
 
                 # single -> single: single must be in or equal the other
                 lop_compare_value = self.value[0]
@@ -269,7 +381,7 @@ class LopperProp():
 
                 if other_prop.ptype == LopperFmt.STRING or \
                              self.ptype == LopperFmt.STRING: # type(lop_compare_value) == str:
-                    constructed_condition = "{0} re.search(\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
+                    constructed_condition = "{0} re.search(\"{1}\",'{2}')".format(invert_check,lop_compare_value,tgt_node_compare_value)
                 elif other_prop.ptype == LopperFmt.UINT32: # type(lop_compare_value) == int:
                     constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
 
@@ -690,7 +802,16 @@ class LopperProp():
             prop_type = "label"
         else:
             # we could make this smarter, and use the Lopper Guessed type
-            prop_type = type(prop_val)
+
+            # if the class was json, only change the type if the value is
+            # no longer a string .. since if it is still a string, is is
+            # json encoded and should be left alone.
+            if self.pclass == "json":
+                prop_type = self.pclass
+                if type(self.value) != str:
+                    prop_type = type(prop_val)
+            else:
+                prop_type = type(prop_val)
 
         if self.__dbg__ > 1:
             print( "[DBG+]: strict: %s property [%s] resolve: %s val: %s" % (strict,prop_type,self.name,self.value) )
@@ -1753,7 +1874,7 @@ class LopperNode(object):
         return pmatches
 
     # a safe (i.e. no exception) way to fetch a propery value
-    def propval( self, pname ):
+    def propval( self, pname, ptype=None ):
         """Access the value of a property
 
         This is a safe (no Exception) way to access the value of a named property,
@@ -1761,16 +1882,29 @@ class LopperNode(object):
 
         Args:
            name (string): property name
+           ptype(Optional): the format of the returned value
 
         Returns:
            list: list of values for the property, or [""] if the property name is invalid
 
         """
-        try:
-            prop = self.__props__[pname]
-            return prop.value
-        except:
-            return [""]
+        if not ptype:
+            try:
+                prop = self.__props__[pname]
+                return prop.value
+            except:
+                return [""]
+        else:
+            try:
+                # we are doing a type cast
+                if ptype == dict:
+                    return dict(self.__props__[pname])
+                elif ptype == list:
+                    list(self.__props__[pname])
+                else:
+                    self.__props__[pname].value
+            except:
+                return [""]
 
     def reset(self):
         """reset the iterator of the node
