@@ -11,6 +11,7 @@
 
 / {
         compatible = "system-device-tree-v1,lop";
+        priority = <2>;
         lops {
                 compatible = "system-device-tree-v1,lop";
                 lop_0_0 {
@@ -23,6 +24,16 @@
                         cpus = "phandle mask mode";
                         include = "phandle";
                         firewallconf = "phandle type priority";
+                };
+
+                lop_0_0_1 {
+                        compatible = "system-device-tree-v1,lop,code-v1";
+                        inherit = "lopper_lib";
+                        code = "
+                                for n in tree:
+                                    if n._source == 'yaml':
+                                        lopper_lib.json_expand( n )
+                              ";
                 };
                 lop_0_1 {
                       compatible = "system-device-tree-v1,lop,select-v1";
