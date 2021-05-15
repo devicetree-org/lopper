@@ -182,14 +182,19 @@ def access_expand( tree, subnode, verbose = 0 ):
     access_list = []
 
     ap = access_node[0]
-    try:
-        access_field_count = subnode['#access-flags-cells']
-        if not type(field_count.value) == list:
-            field_count.value = [field_count.value]
-    except:
-        pass
-
     x,field_count = ap.phandle_params()
+
+    try:
+        # is there a property that gives us a field count hint ?
+        access_field_count = subnode['#access-flags-cells']
+        # if it isn't a list, make it one (using the fact that any direct
+        # assignming to a property.value is made into a list
+        if not type(access_field_count.value) == list:
+            access_field_count.value = access_field_count.value
+
+        access_field_count = access_field_count.value[0]
+    except Exception as e:
+        access_field_count = field_count
 
     for a in access_chunks:
         dev = a['dev']
@@ -239,7 +244,7 @@ def access_expand( tree, subnode, verbose = 0 ):
         access_list.append( dev_handle )
         access_list.append( flags_value )
         if access_field_count > 2:
-            for i in range(2,field_count):
+            for i in range(2,access_field_count):
                 access_list.append( 0xff )
 
     if verbose:
@@ -261,6 +266,8 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
         mem = subnode.props( "memory" )[0].value
         if type( mem ) == list:
             mem = mem[0]
+        # we shouldn't assume this, but the only caller are json
+        # nodes at the moment
         mem = json.loads(mem)
         mem_list = []
         for m in mem:
@@ -282,7 +289,6 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
             mem_list.append(int(size))
 
     except Exception as e:
-        print( "   exception %s" % e )
         mem_list = [0xdead, 0xffff ]
 
     if verbose:
@@ -296,7 +302,8 @@ def cpu_expand( tree, subnode, verbose = 0):
     ## cpu processing
     cpus = subnode.props( "cpus" )
 
-    cpus_chunks = json.loads(cpus[0].value)
+    # cpus_chunks = json.loads(cpus[0].value)
+    cpus_chunks = [cpus[0][0]]
     cpus_list = []
     for c in cpus_chunks:
         if verbose:
