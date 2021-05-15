@@ -52,6 +52,55 @@ def chunks(l, n):
         # Create an index range for l of n items:
         yield l[i:i+n]
 
+
+def json_expand( node ):
+    debug = False
+    if debug:
+        print( "[DBG]: ========> json expanding node: %s" % node.name )
+    for p in node:
+        if p.pclass == 'json':
+            # save the original json, we may need it again
+            p.value_json = p.value
+
+            # this converts it to a list, but that's causing some
+            # issues with assumptions in the various _expand routines, so
+            # not doing this for now.
+            # p.value = p.value
+
+            phandle_index,field_count = p.phandle_params()
+            if debug:
+                print( '   -- json property: [%s] %s [%s]' % ([p],p.name,p.value) )
+                print( '        phandle info: %s %s' % (phandle_index,field_count) )
+
+            loaded_j = json.loads( p.value_json )
+            p.struct_value = loaded_j
+
+            p.list_value = []
+            if field_count:
+                for j in loaded_j:
+                    if type(j) == list:
+                        p.list_value = p.list_value + j
+                    elif type(j) == dict:
+                        vals = list(j.values())
+                        p.list_list = p.list_value + vals
+                    else:
+                        p.list_value.append(j)
+
+            # dump the json elements
+            if debug:
+                print( "        [%s] %s" % (type(loaded_j),loaded_j) )
+                for j in loaded_j:
+                    if type(j) == list:
+                        for jj in j:
+                            print("        json list element: %s" % jj )
+                    elif type(j) == dict:
+                        for jj,kk in j.items():
+                            print("        json dict element: key: %s: value: %s" % (jj,kk) )
+                            if type(kk) == dict:
+                                print( "              nested dict" )
+                    else:
+                        print( "       non-list: %s"  % j )
+
 def property_set( property_name, property_val, node, fdt=None ):
     newprop = LopperProp( property_name, -1, None, property_val )
     node += newprop
