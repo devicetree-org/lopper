@@ -70,28 +70,22 @@ def val_as_bool( val ):
         return True
 
 def firewall_expand( tree, subnode, verbose = 0 ):
-    firewall_cfg = subnode.props( "firewallconf" )
+    try:
+        firewall_domain = subnode["domain"][0]
+    except:
+        firewall_domain = None
 
-    if firewall_cfg:
-        firewall_chunks = json.loads(firewall_cfg[0].value)
-        firewall_domain = ""
-        firewall_block = ""
-    else:
-        firewall_domain = subnode.props( "domain" )
-        if firewall_domain:
-            firewall_domain = firewall_domain[0].value
-        firewall_block = subnode.props( "block" )
-        # block can be a priority number (hex), or a string value
-        if firewall_block:
-            firewall_block = firewall_block[0].value
-            try:
-                firewall_block = int(firewall_block)
-            except Exception as e:
-                pass
+    try:
+        firewall_block = subnode["block"][0]
+        try:
+            firewall_block = int(firewall_block)
+        except Exception as e:
+            pass
+    except:
+        firewall_block = 0
 
     if verbose:
         print( "[DBG]: firewall expand: %s cfg: domain: %s block: %s" % (subnode.abs_path,firewall_domain,firewall_block))
-
 
     # The first cell is a link to a node of a bus mastering device (or a domain).
     #
@@ -177,11 +171,14 @@ def access_expand( tree, subnode, verbose = 0 ):
     # * - tcm RW
     # * - ethernet card at 0xff0c0000
     # */
-    access_node = subnode.props( "access" )
-    access_chunks = json.loads(access_node[0].value)
+    access_props = subnode.props( "access" )
+    # the loop below used to use json.loads, which always returns a list,
+    # so we drop this in a list to avoid needing to change for the property
+    # direct access case.
+    access_chunks = [access_props[0][0]]
     access_list = []
 
-    ap = access_node[0]
+    ap = access_props[0]
     x,field_count = ap.phandle_params()
 
     try:
@@ -263,12 +260,7 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
     # * memory = <address size address size ...>
     # */
     try:
-        mem = subnode.props( "memory" )[0].value
-        if type( mem ) == list:
-            mem = mem[0]
-        # we shouldn't assume this, but the only caller are json
-        # nodes at the moment
-        mem = json.loads(mem)
+        mem = [subnode.props( "memory" )[0][0]]
         mem_list = []
         for m in mem:
             try:
@@ -302,7 +294,6 @@ def cpu_expand( tree, subnode, verbose = 0):
     ## cpu processing
     cpus = subnode.props( "cpus" )
 
-    # cpus_chunks = json.loads(cpus[0].value)
     cpus_chunks = [cpus[0][0]]
     cpus_list = []
     for c in cpus_chunks:
