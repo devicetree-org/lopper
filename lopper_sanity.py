@@ -1787,6 +1787,38 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     test_passed( "new tree test" )
 
+    # property access tests
+    prop_tree = LopperTree()
+    prop_tree.load( Lopper.export( fdt ) )
+
+    cpu_node = prop_tree["/cpus/cpu@0"]
+    cpu_prop = cpu_node["compatible"]
+    compat1 = cpu_prop[0]
+    compat2 = cpu_prop[1]
+
+    if compat1 == "arm,cortex-a72" and \
+       compat2 == "arm,armv8":
+        test_passed( "simple property index access" )
+    else:
+        test_failed( "simple property index access" )
+
+    prop_dict = dict(cpu_prop)
+    if prop_dict['value'] == ['arm,cortex-a72', 'arm,armv8']:
+        test_passed( "property dict access" )
+    else:
+        test_failed( "property dict access" )
+
+    if len(cpu_prop) == 2:
+        test_passed( "property length" )
+    else:
+        test_failed( "property length" )
+
+    pp = cpu_node.propval( "compatible", dict )
+    if pp['value'] == ['arm,cortex-a72', 'arm,armv8']:
+        test_passed( "propval dict access" )
+    else:
+        test_failed( "propval dict access" )
+
 
 def lops_code_test( device_tree, lop_file, verbose ):
     device_tree.setup( dt, [lop_file], "", True )
@@ -2162,6 +2194,25 @@ def yaml_sanity_test( device_tree, yaml_file, outdir, verbose ):
     print( "[TEST]: converting SDT to yaml" )
     yaml2 = LopperYAML( None, device_tree.tree )
     yaml2.dump()
+
+    print( "\n\n\n" )
+    ocp_node = lt["/ocp"]
+    ocp_node.print()
+
+    timer_node = lt[ "/ocp/TIMER4" ]
+    gpio = timer_node["gpio" ]
+
+    gpio_compat = gpio[0]
+    print( gpio_compat )
+    if type(gpio_compat) == dict:
+        test_passed( "yaml complex property access" )
+    else:
+        test_failed( "yaml complex property access" )
+
+    if gpio[0]['compatible'] == "ti,omap4-gpio":
+        test_passed( "yaml complex struct access" )
+    else:
+        test_failed( "yaml complex struct access" )
 
 def usage():
     prog = os.path.basename(sys.argv[0])
