@@ -59,26 +59,7 @@ def add_subsystem(domain_node, sdt, output):
     print("ERROR: add_subsystem: ",str(domain_node), "missing cpus property.")
     return -1
   else:
-
-    cpu_prop = domain_node["cpus"]
-    if type( cpu_prop[0] ) == dict:
-        print( "complex property" )
-        print( "cluster is: %s" % cpu_prop[0]["cluster"] )
-        # look up via the path/label/nodename
-
-        c2 = dict(cpu_prop)
-        print( "cpu_prop dict: %s" % c2 )
-        cluster = c2['value'][0]['cluster']
-        c3 = list(cpu_prop)
-        print( "cpu_prop as list: %s" % c3 )
-        c4 = cpu_prop[0]
-        print( "cpu_prop, list access: %s" % c4 )
-
-        cpu_node = None
-    else:
-        print( "simple property: %s" % cpu_prop[0] )
-        cpu_node = sdt.tree.pnode(cpu_prop[0])
-
+    cpu_node = sdt.tree.pnode(domain_node.propval("cpus")[0])
     if cpu_node == None:
       print("add_subsystem: could not find corresponding core node")
       return -1
