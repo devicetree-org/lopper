@@ -82,6 +82,8 @@ CLASSES
      |  __init__(self, sdt_file)
      |      Initialize self.  See help(type(self)) for accurate signature.
      |  
+     |  assist_autorun_setup(self, module_name, module_args=[])
+     |  
      |  assist_find(self, assist_name, local_load_paths=[])
      |      Locates a python module that matches assist_name
      |      
@@ -129,7 +131,7 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
-     |  domain_spec(self, tgt_domain)
+     |  domain_spec(self, tgt_domain, tgt_domain_id='openamp,domain-v1')
      |      generate a lop for a command line passed domain
      |      
      |      When a target domain is passed on the command line, we must generate
@@ -138,11 +140,13 @@ CLASSES
      |      
      |      Args:
      |         tgt_domain (string): path to the node to use as the domain
+     |         tgt_domain_id (string): assist identifier to use for locating a
+     |                                 registered assist.
      |      
      |      Returns:
      |         Nothing
      |  
-     |  exec_lop(self, lops_fdt, lop_node_number, options=None)
+     |  exec_lop(self, lop_node, lops_tree, options=None)
      |      Executes a a lopper operation (lop)
      |      
      |      Runs a lopper operation against the system device tree.
@@ -181,14 +185,6 @@ CLASSES
      |      
      |      Returns:
      |          function reference: the callback routine, or "", if no compatible routine found
-     |  
-     |  module_setup(self, module_name, module_args=[])
-     |  
-     |  node_find(self, node_prefix)
-     |      Finds a node by its prefix
-     |      
-     |      Wrapper around the Lopper routine of the same name, to abstract the
-     |      FDT that is part of the LopperSDT class.
      |  
      |  perform_lops(self)
      |      Execute all loaded lops
@@ -246,18 +242,6 @@ CLASSES
      |          Nothing
      |  
      |  ----------------------------------------------------------------------
-     |  Static methods defined here:
-     |  
-     |  phandle_safe_name(phandle_name)
-     |      Make the passed name safe to use as a phandle label/reference
-     |      
-     |      Args:
-     |          phandle_name (string): the name to use for a phandle
-     |      
-     |      Returns:
-     |          The modified phandle safe string
-     |  
-     |  ----------------------------------------------------------------------
      |  Data descriptors defined here:
      |  
      |  __dict__
@@ -277,13 +261,2008 @@ FUNCTIONS
 
 DATA
     LOPPER_VERSION = '2020.4-beta'
-    QUIET_ALL = range(1, 18)
-    QUIET_NOTFOUND = (1,)
     lopper_directory = '/home/bruce/git/system-device-tree'
     yaml_support = True
 
 FILE
     /home/bruce/git/system-device-tree/lopper.py
+
+
+Help on module lopper_tree:
+
+NAME
+    lopper_tree
+
+DESCRIPTION
+    #/*
+    # * Copyright (c) 2019,2020 Xilinx Inc. All rights reserved.
+    # *
+    # * Author:
+    # *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+    # *
+    # * SPDX-License-Identifier: BSD-3-Clause
+    # */
+
+CLASSES
+    builtins.object
+        LopperNode
+        LopperProp
+        LopperTree
+            LopperTreePrinter
+    enum.Enum(builtins.object)
+        LopperAction
+    
+    class LopperAction(enum.Enum)
+     |  Enum class to define the actions available in Lopper's node_filter function
+     |  
+     |  Method resolution order:
+     |      LopperAction
+     |      enum.Enum
+     |      builtins.object
+     |  
+     |  Data and other attributes defined here:
+     |  
+     |  BLACKLIST = <LopperAction.BLACKLIST: 4>
+     |  
+     |  DELETE = <LopperAction.DELETE: 1>
+     |  
+     |  NONE = <LopperAction.NONE: 5>
+     |  
+     |  REPORT = <LopperAction.REPORT: 2>
+     |  
+     |  WHITELIST = <LopperAction.WHITELIST: 3>
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors inherited from enum.Enum:
+     |  
+     |  name
+     |      The name of the Enum member.
+     |  
+     |  value
+     |      The value of the Enum member.
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors inherited from enum.EnumMeta:
+     |  
+     |  __members__
+     |      Returns a mapping of member name->value.
+     |      
+     |      This mapping lists all enum members, including aliases. Note that this
+     |      is a read-only view of the internal mapping.
+    
+    class LopperNode(builtins.object)
+     |  Class representing a device tree node
+     |  
+     |  This class implements:
+     |     - a property iterator
+     |     - dictionary access to properties
+     |     - str(): string cast
+     |     - equality check (==): for comparison
+     |     - ref counting: set, get, clear
+     |     - property add, modify, delete (via methods and '-', '+')
+     |     - resolve(): to update/calculate properties against the tree
+     |     - sync(): sync modified node elements (and properties)
+     |     - deep node copy via LopperNode()
+     |  
+     |   Attributes:
+     |     - number: the node number in the backing structure
+     |     - name: the node name in the backing structure (this is not the node path)
+     |     - parent: a link to the parent LopperNode object
+     |     - tree: the tree which contains this node
+     |     - depth: the nodes depth in the backing structure (0 is root, 1 for first level children)
+     |     - child_nodes: the list of child LopperNodes
+     |     - phandle: the phandle in the backing FDT (optional)
+     |     - type: the type of the node (based on 'compatible' property)
+     |     - abs_path: the full/absolute path to this node in the backing FDT
+     |     - _ref: the refcount for this node
+     |     - __props__: ordered dictionary of LopperProp
+     |     - __current_property__: place holder for property iterator
+     |     - __dbg__: debug level for the node
+     |     - __nstate__: the state of the node ("init", "resolved" )
+     |     - __modified__: flag indicating if the node has been modified
+     |  
+     |  Methods defined here:
+     |  
+     |  __add__(self, other)
+     |      magic method for adding a property to a node
+     |      
+     |      Supports adding a property to a node through "+"
+     |      
+     |          node + <LopperProp object>
+     |      
+     |      Args:
+     |         other (LopperProp): property to add
+     |      
+     |      Returns:
+     |         LopperNode: returns self, Exception on invalid input
+     |  
+     |  __call__(self, othernode=None)
+     |      Callable implementation for the node class
+     |      
+     |      When used, this creates a deep copy of the current node, versus
+     |      a reference. This allows a node to be cloned and used in a secondary
+     |      tree, free from changes to the original node.
+     |      
+     |      Two modes are supported:
+     |         A) <LopperNode Object>()
+     |         B) <LopperNode Object>( <other node> )
+     |      
+     |      When no other node is passed (mode A) a copy of the existing node is
+     |      made, including properties with the state is set to "init", this node
+     |      should then be resolved to fill in missing information.
+     |      
+     |      When mode B is used, the current node is updated using copies of the
+     |      values from the other node. This is used on a newly created node, to
+     |      initalize it with values from an existing node.
+     |      
+     |      Args:
+     |         othernode (LopperNode,optional): node to use for initalization values
+     |      
+     |      Returns:
+     |         The copied node, or self (if updating).
+     |  
+     |  __deepcopy__(self, memodict={})
+     |      Create a deep copy of a node
+     |      
+     |      Only certain parts of a node need to be copied, we also have to
+     |      trigger deep copies of properties, since they have references
+     |      to nodes.
+     |      
+     |      We leave most values as the defaults on the new node instance,
+     |      since the copied node needs to be added to a tree, where they'll
+     |      be filled in.
+     |  
+     |  __delitem__(self, key)
+     |      magic method for removing a property from a node dictionary style
+     |      
+     |      ** Not currently implemented **, overridden to prevent use
+     |      
+     |      Supports removing a property from a node through "del"
+     |      
+     |          del <node>[prop]
+     |      
+     |      Args:
+     |         key (LopperProp): property/index to remove
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  __eq__(self, other)
+     |      magic method for node comparision
+     |      
+     |      Support LopperNode comparisons: nodea == nodeb
+     |      
+     |      If the node numbers of two nodes match, we consider them equal.
+     |      
+     |      Args:
+     |          other: LopperNode
+     |      
+     |      Returns:
+     |         LopperNode object: self
+     |  
+     |  __getattribute__(self, name)
+     |      magic method around object attribute access
+     |      
+     |      This method first attempts to access the objects inherent attributes and
+     |      returns the value if one exists matching the passed name.
+     |      
+     |      If one is not found, then the properties dictionary is checked, and that
+     |      value returned.
+     |      
+     |      This allows access like:
+     |      
+     |          <LopperNode Object>.compatible
+     |      
+     |      To get the compatible LopperProperty value.
+     |      
+     |      In practice, this is only of limited use, since many property names are
+     |      not valid python attribute names.
+     |      
+     |      Args:
+     |         name: attribute name
+     |      
+     |      Returns:
+     |         The attribute value, or AttributeError if it doesn't exist.
+     |  
+     |  __getitem__(self, key)
+     |      magic method for accessing LopperNode properties like a dictionary
+     |      
+     |      Allow accessing of properties as a dictionary:
+     |      
+     |          <Lopper Node Object>[<property name>]
+     |      
+     |      This abstracts the storage of the properties and allows direct access
+     |      by name. Either the string name of the property may be used, or a
+     |      LopperProp object itself.
+     |      
+     |      The standard KeyError exception is raised if the property is not valid for
+     |      a node.
+     |      
+     |      For an exception free way of checking for a property, see the propval()
+     |      method.
+     |      
+     |      Args:
+     |          key: string or LopperProp
+     |      
+     |      Returns:
+     |         LopperProp object or KeyError exception
+     |  
+     |  __hash__(self)
+     |      magic method for hasing a node
+     |      
+     |      Used when searching for a node in a list (among other things). We return
+     |      the hash of a nodes absolute path as the identity value.
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         Integer hash for the node
+     |  
+     |  __init__(self, number=-1, abspath='', tree=None, phandle=-1, name='', debug=0)
+     |      Initialize self.  See help(type(self)) for accurate signature.
+     |  
+     |  __int__(self)
+     |      magic method for int type conversion of LopperNode
+     |      
+     |      If a LopperNode is converted to an int, we use the node number
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         int: the node number
+     |  
+     |  __iter__(self)
+     |      magic method to support iteration
+     |      
+     |      For iterating the properties of a LopperNode, we are the iterator.
+     |      This is required by the iterator protocol.
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         LopperNode object: self
+     |  
+     |  __next__(self)
+     |      magic method for iteration on a node
+     |      
+     |      This routine uses the __current_property__ attribute to move
+     |      through the properties of a node.
+     |      
+     |      If there are no properties, or we have iterated all properties,
+     |      StopIteration is raised (as is required by the iterator protocol).
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         LopperProp object or StopIteration exception
+     |  
+     |  __setattr__(self, name, value)
+     |      magic method to check the setting of a LopperNode attribute
+     |      
+     |      If the attribute being set is the debug level (__dbg__), this wrapper
+     |      chains the setting to any LopperProps of the node.
+     |      
+     |      If the attribute is any other, we set the value and tag the node as
+     |      modified, so it can be sync'd later.
+     |      
+     |      Args:
+     |         name: attribute name
+     |         value: attribute value
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  __setitem__(self, key, val)
+     |      magic method for setting LopperNode properties like a dictionary
+     |      
+     |      Allow setting of properties as a dictionary:
+     |      
+     |          <Lopper Node Object>[<property name>] = <LopperProperty Object>
+     |      
+     |             or
+     |      
+     |          <Lopper Node Object>[<property name>] = [list of property values]
+     |      
+     |      
+     |      This abstracts the storage of the properties and allows direct access
+     |      by name.
+     |      
+     |      If a LopperProp is passed as 'val', it is directly assigned. If a list
+     |      of values is passed, a LopperProp object is created, the values assigned
+     |      and then placed in the property dictionary.
+     |      
+     |      Args:
+     |          key: string
+     |          val: LopperProp or string
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  __str__(self)
+     |      magic method for string type conversion of LopperNode
+     |      
+     |      If a LopperNode is converted to a string, we use the absolute (full) path
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         string: the abs path
+     |  
+     |  __sub__(self, other)
+     |      magic method for removing a property from a node
+     |      
+     |      Supports removing a property from a node through "-"
+     |      
+     |          node - <LopperProp object>
+     |      
+     |      Args:
+     |         other (LopperProp): property to remove
+     |      
+     |      Returns:
+     |         LopperNode: returns self
+     |  
+     |  add(self, prop)
+     |      Add a property or subnode to a node
+     |      
+     |      Supports adding a property or node to a node through
+     |      
+     |          node.add( prop )
+     |      
+     |      After adding the new elelent, the node is tagged as modified to it
+     |      can be sync'd in the future.
+     |      
+     |      Args:
+     |         prop (LopperProp or LopperNode): element to add
+     |      
+     |      Returns:
+     |         LopperNode: returns self, raises Exception on invalid parameter
+     |  
+     |  delete(self, prop)
+     |      delete a property from a node
+     |      
+     |      Queues a property for deletion on the next sync of a node.
+     |      
+     |      Takes a property name or LopperProp object as the parameter, and if
+     |      it is a valid property, queues it for deletion.
+     |      
+     |      The node is marked as modified, so on the next sync, it will be remove.
+     |      
+     |      Args:
+     |         prop (string or LopperProp): the property to delete
+     |      
+     |      Returns:
+     |         Nothing. KeyError if property is not found
+     |  
+     |  export(self)
+     |      Export node details as a dictionary
+     |      
+     |      Export the details of a node in a dictionary. The format of the dictionary
+     |      is suitable for loading() into a LopperTree, or syncing() to a flattened
+     |      device tree by lopper_fdt.
+     |      
+     |      Internal / FDT properties are prefixed/suffixed with __.
+     |      
+     |      As part of exporting a node, if paths are detected as changed (a moved
+     |      node, a renamed node, etc), then the are adjusted in the tree and
+     |      exported in the dictionary.
+     |      
+     |      Note: This is not recursive, so child nodes are not exported
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         Ordered Dict Describing a node
+     |  
+     |  load(self, dct, parent_path=None)
+     |      load (calculate) node details against a property dictionary
+     |      
+     |      Some attributes of a node are not known at initialization time, or may
+     |      change due to tree operations.
+     |      
+     |      This method calculates those values using information in the node and in
+     |      the passed property dictionary
+     |      
+     |      The only value that must be set in the node before resolve() is called
+     |      is the node number.
+     |      
+     |      Fields resolved (see class for descriptions)
+     |         - name
+     |         - abs_path
+     |         - phandle
+     |         - depth
+     |         - children
+     |         - type
+     |         - __props__
+     |         - __nstate__
+     |         - __modified__
+     |      
+     |      Args:
+     |         Property dictionary: Dictionary with the node details/properties
+     |         parent_path (Optional,string)
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  phandle_or_create(self)
+     |      Access (and generate) a phandle for this node
+     |      
+     |      Invoked the containing tree (if available), ad creates a unique phandle
+     |      for a node. This is basic tracking and is used since
+     |      fdt_find_max_phandle is not fully exposed, and removes a binding to
+     |      libfdt.
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         phandle number
+     |  
+     |  print(self, output=None, strict=None)
+     |      print a node
+     |      
+     |      Print a node to the passed output stream. If it isn't passed, then
+     |      the containg tree's output is used. If the tree has no output, stdout
+     |      is the final fallback.
+     |      
+     |      The node  will be indented to match the depth of a node
+     |      in a tree.
+     |      
+     |      Args:
+     |         output (optional, output stream).
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  props(self, name)
+     |      Access a property or list of properties described by a name/regex
+     |      
+     |      Looks through the properties of a node and returns any that match
+     |      the name or regex passed to the routine.
+     |      
+     |      Args:
+     |         name (string): property name or property regex
+     |      
+     |      Returns:
+     |         list: list of LopperProp objects that match the name/regex, or [] if none match
+     |  
+     |  propval(self, pname, ptype=None)
+     |      Access the value of a property
+     |      
+     |      This is a safe (no Exception) way to access the value of a named property,
+     |      versus access it through the dictionary accessors.
+     |      
+     |      Args:
+     |         name (string): property name
+     |         ptype(Optional): the format of the returned value
+     |      
+     |      Returns:
+     |         list: list of values for the property, or [""] if the property name is invalid
+     |  
+     |  reset(self)
+     |      reset the iterator of the node
+     |      
+     |      Sets the node iteration index to the starting value.
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         None
+     |  
+     |  resolve(self, fdt=None)
+     |      resolve (calculate) node details against a FDT
+     |      
+     |      Some attributes of a node are not known at initialization time, or may
+     |      change due to tree operations.
+     |      
+     |      This method calculates those values using information in the node and in
+     |      the passed FDT. If no FDT is passed only partial resolution is done.
+     |      
+     |      The only value that must be set in the node before resolve() is called
+     |      is the node number. Which simply means it should have been added to the
+     |      FDT first (see LopperTree.add()) and then resolved.
+     |      
+     |      Fields resolved (see class for descriptions)
+     |         - name
+     |         - abs_path
+     |         - phandle
+     |         - depth
+     |         - children
+     |         - type
+     |         - __props__
+     |         - __nstate__
+     |         - __modified__
+     |      
+     |      Args:
+     |         fdt (FDT): flattened device tree to sync to or None if no
+     |                    tree is available
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  resolve_all_refs(self, property_mask=[])
+     |      Resolve and Return all references in a node
+     |      
+     |      Finds all the references starting from a given node. This includes:
+     |      
+     |         - The node itself
+     |         - The parent nodes
+     |         - Any phandle referenced nodes, and any nodes they reference, etc
+     |      
+     |      Args:
+     |         property_mask (list of regex): Any properties to exclude from reference
+     |                                        tracking, "*" to exclude all properties
+     |      
+     |      Returns:
+     |         A list of referenced nodes, or [] if no references are found
+     |  
+     |  subnodes(self, depth=0, max_depth=None, children_only=False)
+     |      Return all the subnodes of this node
+     |      
+     |      Gathers and returns all the reachable subnodes of the current node
+     |      (this includes nodes of children, etc).
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         A list of child LopperNodes
+     |  
+     |  sync(self, fdt=None)
+     |      sync a LopperNode to a backing FDT
+     |      
+     |      This routine looks for changes to the LopperNode and writes them back
+     |      to the passed FDT.
+     |      
+     |      For the node itself, this is primarily a write back of a changed name.
+     |      
+     |      As part of the sync process, the node's number in the backing FDT is
+     |      checked and the stored number changed to match as appropriate.
+     |      
+     |      We also check fo modified properties and sync them to the FDT.
+     |      
+     |      Removed properties are deleted from the FDT.
+     |      
+     |      And finally, the __modified__ flag is set to False.
+     |      
+     |      Args:
+     |         fdt (FDT): device tree to sync against
+     |      
+     |      Returns:
+     |         boolean: True if the node was sync'd, False otherwise
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors defined here:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+     |  
+     |  ref
+     |      Node reference count getter
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         int: The node refcount
+    
+    class LopperProp(builtins.object)
+     |  Class representing a device tree property
+     |  
+     |  This class implements:
+     |     - resolve(): to update information / state against a device tree
+     |     - sync(): to write changes back to the device tree
+     |     - utility routines for easy access and iteration of the values
+     |  
+     |  Attributes:
+     |     - __modified__: Flag to indicate if the property has been changed
+     |     - __pstate__: The state of the property. For internal use only.
+     |                   Values can be: "init", "resolved", "syncd" or "deleted"
+     |     - __dbg__: The debug/verbosity level of property operations. 0 is no
+     |                debug, and levels increase from there.
+     |  
+     |     - name: The property name
+     |     - value: The property value (always as a list of values)
+     |     - node: The node that contains this property
+     |     - number: The property offset within the containing node (rarely used)
+     |     - string_val: The enhanced printed string representation of a property
+     |     - type: The type of a property, "comment", "preamble" or "list"
+     |     - abs_path: The absolute device tree path to this property
+     |  
+     |  Methods defined here:
+     |  
+     |  __deepcopy__(self, memodict={})
+     |      Create a deep copy of a property
+     |      
+     |      Properties have links to nodes, so we need to ensure that they are
+     |      cleared as part of a deep copy.
+     |  
+     |  __getitem__(self, key)
+     |      Access a property's value by key
+     |      
+     |      Allows the property's value to be access by 'index', since
+     |      properties are normally lists of value.
+     |      
+     |      If the property is a special type, i.e. a json pclass, then
+     |      the value is expanded and indexed. Otherwise, the value list
+     |      is simply indexed
+     |      
+     |      Non-integer keys return None. Unless "value" is used as a key
+     |      and you get the raw/entire value list.
+     |      
+     |      Normal list exceptions are raised if you index outside of the
+     |      range of the value
+     |      
+     |      Args:
+     |        Key (int or "value")
+     |      
+     |      Returns:
+     |        The item at the specified index
+     |  
+     |  __init__(self, name, number=-1, node=None, value=None, debug_lvl=0)
+     |      Initialize self.  See help(type(self)) for accurate signature.
+     |  
+     |  __iter__(self)
+     |      magic method to support iteration
+     |      
+     |      This allows the values of a property to be iterated, which
+     |      isn't very useful. But it is useful that functions like dict()
+     |      take this iterator and create a usable dictionary for the
+     |      caller.
+     |      
+     |      If the property is special, like json, then you get an
+     |      keyed return of 'value' and the loaded value
+     |      
+     |      if the property is standard, you get a keyed return of
+     |      'value' and the value list
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         iterator for use in dict()
+     |  
+     |  __len__(self)
+     |      Get the length of a property
+     |      
+     |      When using the __getitem__ access to property values, knowing
+     |      the length is important.
+     |      
+     |      if the property is a special class (i.e. json), the lenght of
+     |      the loaded list is returned.
+     |      
+     |      if the values are a list, the lenght of that list is returned
+     |      
+     |      if the value is a single item, 0 is returned
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         Int: The lenght of the list
+     |  
+     |  __setattr__(self, name, value)
+     |      magic method to check the setting of a LopperProp attribute
+     |      
+     |      If the attribute being set is "value" (i.e. LopperProp.value), this
+     |      method makes sure that it is stored as a list, that the property is
+     |      marked as modified (for future write backs) and triggers a resolve()
+     |      of the property value.
+     |      
+     |      Args:
+     |         name: attribute name
+     |         value: attribute value
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  __str__(self)
+     |      The string representation of the property
+     |      
+     |      Returns the enhanced printed property when str() is used to access
+     |      an object.
+     |      
+     |      The string_val is composed in the resolv() function, and takes the
+     |      format of:  <property name> = <property value>;
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         string
+     |  
+     |  compare(self, other_prop)
+     |      Compare one property to another
+     |      
+     |      Due to the complexity of property representations, this compare is
+     |      not a strict 1:1 value equality. It looks through various elements
+     |      of the source and comparision properties to decide if they have
+     |      common components.
+     |      
+     |      The following metrics are used, where "single" means a property with
+     |      a single value (string or number) and "list" is a property with
+     |      multiple strings or integer properties.
+     |      
+     |        comparison types:
+     |             single -> list:   single must be somewhere in the list
+     |                                  - for strings, single may be a regex
+     |             single -> single: single must be in or equal the other
+     |                                  - for strings, single may be a regex
+     |             list -> single:   any value in list must match single
+     |                                  - for strings, list elements can be regexs
+     |             list -> list:     all individual elements must match
+     |                                  - NO regexs allowed
+     |      
+     |      Args:
+     |         other_prop (LopperProp): comparison target
+     |         value: attribute value
+     |      
+     |      Returns:
+     |         boolean: True there is a match, false otherwise
+     |  
+     |  hex(self)
+     |      Get the property value as a list of hex formatted numbers
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         list: hex formatted property value
+     |  
+     |  int(self)
+     |      Get the property value as a list of integers
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         list: integer formatted property value
+     |  
+     |  phandle_params(self)
+     |      Determines the phandle elements/params of a property
+     |      
+     |      Takes a property name and returns where to find a phandle in
+     |      that property.
+     |      
+     |      Both the index of the phandle, and the number of fields in
+     |      the property are returned.
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |          The the phandle index and number of fields, if the node can't
+     |          be found 0, 0 are returned.
+     |  
+     |  print(self, output)
+     |      print a property
+     |      
+     |      Print the resolved value of a property to the passed output
+     |      stream.
+     |      
+     |      The property will be indented to match the depth of a node
+     |      in a tree.
+     |      
+     |      Args:
+     |         output (output stream).
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  property_type_guess(self, force=False)
+     |      'guess' the type of a property
+     |      
+     |      For properties that aren't created from a fdt, we can either
+     |      explicitly set the type (if we know it), or we can run this routine
+     |      to look at the values and give us the best guess.
+     |      
+     |      This routine does NOT update the property type, that is the
+     |      responsibility of the caller.
+     |      
+     |      Args:
+     |         force: if the property already has a type, ignore it and guess anyway
+     |      
+     |      Returns:
+     |         type of the propery (LopperFmt)
+     |  
+     |  resolve(self, strict=True)
+     |      resolve (calculate) property details
+     |      
+     |      Some attributes of a property are not known at initialization
+     |      time, or may change due to tree operations.
+     |      
+     |      This method calculates those values using information in the
+     |      property and in the tree
+     |      
+     |      Fields resolved:
+     |         - abs_path
+     |         - type
+     |         - string_val (with phandles resolved)
+     |         - __pstate__
+     |      
+     |      Args:
+     |           None
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  resolve_phandles(self, tag_invalid=False)
+     |      Resolve the targets of any phandles in a property
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |          A list of all resolved phandle node numbers, [] if no phandles are present
+     |  
+     |  sync(self, fdt)
+     |      sync the property to a backing FDT
+     |      
+     |      Writes the property value to the backing flattended device tree. After
+     |      write, the state is set to  "syncd" and the modified flat is cleared.
+     |      
+     |      Args:
+     |         fdt (FDT): flattened device tree to sync to
+     |      
+     |      Returns:
+     |         boolean: True if the property was sync'd, otherwise False
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors defined here:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+    
+    class LopperTree(builtins.object)
+     |  Class for walking a device tree, and providing callbacks at defined points
+     |  
+     |  This class implements:
+     |     - a node iterator
+     |     - dictionary access to nodes by path or node number
+     |     - a tree walker / exec() that has callbacks for: tree start, node start,
+     |       property start, node end, tree end
+     |     - debug level
+     |     - tree wide reference tracking control: clear, get
+     |     - sync(): to sync changes to a backing FDT
+     |     - export(): to export the tree description as a dictionary
+     |     - node manipulatins: add, delete, filter, subnodes
+     |     - phandle access to nodes
+     |     - label access to nodes
+     |     - node search by regex
+     |  
+     |  A LopperTree object is instantiated for an easier/structure interface to a backing
+     |  device tree store (currently only a flattened device tree from libfdt). It provides
+     |  the ability to add/delete/manipulate nodes on a tree wide basis and can sync those
+     |  changes to the backing store.
+     |  
+     |  When initialized, the tree is created from an exported description of the
+     |  FDT. If the changes made by the tree  are to be indepdendent, then the FDT
+     |  should not be re-exported and loaded by the tree. But if other components are
+     |  changing the FDT, it can be reloaded to synchronize the tree and the backing
+     |  store.
+     |  
+     |  During the walking of a tree via exec(), callbacks are made (if set) at defined
+     |  points in the process. This makes it easy to implement structured output of a
+     |  tree, without the need to have deep encoding/understanding of the underlying
+     |  structure.
+     |  
+     |  Callbacks are functions of the form: <fn>( <node or property>, FDT )
+     |  
+     |  Attributes:
+     |     - __nodes__: The nodes of the tree, ordered by absolute path indexing
+     |     - __nnodes__: The nodes of the tree, ordered by node number
+     |     - __pnodes__: The nodes of the tree, ordered by phandle
+     |     - __dbg__: treewide debug level
+     |     - __must_sync__: flag, true when the tree must be syncd to the FDT
+     |     - __current_node__: The current node in an iteration
+     |     - __start_node__: The starting node for an iteration
+     |     - __new_iteration__: Flag set to start a new iteration
+     |     - __node_iter__: The current iterator
+     |     - start_tree_cb, start_node_cb, end_node_cb, property_cb, end_tree_cb: callbacks
+     |     - depth_first: not currently implemented
+     |     - strict: Flag indicating if strict property resolution should be enforced
+     |  
+     |  Methods defined here:
+     |  
+     |  __add__(self, other)
+     |      magic method for adding a node to a tree
+     |      
+     |      Supports adding a node to a tree through "+"
+     |      
+     |          tree + <LopperNode object>
+     |      
+     |      Args:
+     |         other (LopperNode): node to add
+     |      
+     |      Returns:
+     |         LopperTree: returns self, Exception on invalid input
+     |  
+     |  __delitem__(self, key)
+     |      magic method for removing a property from a tree dictionary style
+     |      
+     |      ** Not currently implemented **, overridden to prevent use
+     |      
+     |      Supports removing a node from a tree through "del"
+     |      
+     |          del <tree>[node]
+     |      
+     |      Args:
+     |         key (LopperNode): node/index to remove
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  __getattribute__(self, name)
+     |      magic method around object attribute access
+     |      
+     |      This method first attempts to access the objects inherent attributes and
+     |      returns the value if one exists matching the passed name.
+     |      
+     |      If one is not found, then the node dictionary is checked, and that
+     |      value returned.
+     |      
+     |      This allows access like:
+     |      
+     |          <LopperTree Object>.path_to_node
+     |      
+     |      To get the LopperNode at that path
+     |      
+     |      In practice, this is only of limited use, since many node paths are
+     |      not valid python attribute names.
+     |      
+     |      Args:
+     |         name: attribute name
+     |      
+     |      Returns:
+     |         The attribute value, or AttributeError if it doesn't exist.
+     |  
+     |  __getitem__(self, key)
+     |      magic method for accessing LopperTree nodes like a dictionary
+     |      
+     |      Allow accessing of nodes as a dictionary:
+     |      
+     |          <Lopper Tree Object>[<node path>]
+     |      
+     |      This abstracts the storage of nodesand allows direct access by name,
+     |      by number or by node regex.
+     |      
+     |      Either the string name of the node path, the node number, a LopperNode
+     |      object, or a node path with a regex can be used to access a node.
+     |      
+     |      Note that on a regex search, the first match is returned. For multiple
+     |      node returns, use the nodes() method.
+     |      
+     |      The standard KeyError exception is raised if the node is not valid for
+     |      a tree
+     |      
+     |      Args:
+     |          key: string, int or LopperNode
+     |      
+     |      Returns:
+     |         LopperNode object or KeyError exception
+     |  
+     |  __init__(self, snapshot=False, depth_first=True)
+     |      Initialize self.  See help(type(self)) for accurate signature.
+     |  
+     |  __iter__(self)
+     |      magic method to support iteration
+     |      
+     |      For iterating the nodes of a LopperTree, we are the iterator.
+     |      This is required by the iterator protocol.
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         LopperTree object: self
+     |  
+     |  __next__(self)
+     |      magic method for iteration on a tree
+     |      
+     |      This routine uses the next() method to move through the nodes of a
+     |      tree.
+     |      
+     |      If there are no nodes, or we have iterated all nodes, StopIteration is
+     |      raised (as is required by the iterator protocol).
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         LopperNode object or StopIteration exception
+     |  
+     |  __setattr__(self, name, value)
+     |      magic method to check the setting of a LopperTree attribute
+     |      
+     |      If the attribute being set is __current_node__ or __start_node__
+     |      then the new iteration flag is set to trigger the start of a new
+     |      iteration. When setting these attributes, value can either be a
+     |      node number or a node name. When it is a name, it is internally
+     |      converted to a number on behalf of the caller.
+     |      
+     |      If the attribute is __dbg__, then the debug setting is chained
+     |      to contained nodes.
+     |      
+     |      Args:
+     |         name: attribute name
+     |         value: attribute value
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  __setitem__(self, key, val)
+     |      magic method for setting LopperTree nodes like a dictionary
+     |      
+     |              Allow setting of properties as a dictionary:
+     |      
+     |                  <Lopper Tree Object>[<node name>] = <LopperNode Object>
+     |      
+     |                     or
+     |      
+     |                  <Lopper Tree Object>[<node number>] =  <LopperNode Object>
+     |      
+     |              During assignment of the node, access is created by name, number and
+     |              phandle as appropriate
+     |      
+     |              Args:
+     |                  key: string or int
+     |                  val: LopperNode
+     |      
+     |              Returns:
+     |      ;           Nothing, raises TypeError on invalid parameters
+     |  
+     |  __sub__(self, other)
+     |      magic method for removing a node from a tree
+     |      
+     |      Supports removing a node from a tree through "-"
+     |      
+     |          tree - <LopperNode object>
+     |      
+     |      Args:
+     |         other (LopperNode): Node to remove
+     |      
+     |      Returns:
+     |         LopperTree: returns self
+     |  
+     |  add(self, node, dont_sync=False)
+     |      Add a node to a tree
+     |      
+     |      Supports adding a node to a tree through:
+     |      
+     |          tree.add( <node> )
+     |      
+     |      The node is added to the FDT, resolved and syncd. It is then available
+     |      for use in any tree operations.
+     |      
+     |      Args:
+     |         node (LopperNode): node to add
+     |         dont_sync (boolean, optional): don't invoke a tree wide sync when
+     |                                        complete
+     |      
+     |      Returns:
+     |         LopperTree: returns self, raises Exception on invalid parameter
+     |  
+     |  delete(self, node, delete_from_parent=True)
+     |      delete a node from a tree
+     |      
+     |      If a node is resolved and syncd to the FDT, this routine deletes it
+     |      from the FDT and the LopperTree structure.
+     |      
+     |      Args:
+     |         node (int or LopperNode): the node to delete
+     |         delete_fom_parent (bool): flag indicating if the node should be
+     |                                   removed from the parent node.
+     |      
+     |      Returns:
+     |         Boolean: True if deleted, False otherwise. KeyError if node is not found
+     |  
+     |  exec(self)
+     |      Start a tree walk execution, with callbacks executed as required
+     |      
+     |      Starts walking the tree, beginning at the preamble, and then through a depth
+     |      first walking of the nodes.
+     |      
+     |      If the tree has registered callbacks, they are executed before the walk
+     |      starts, at the start/end of each node, at each property and at the end of
+     |      the tree.
+     |      
+     |      See the class description for details on the callbacks
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  exec_cmd(self, node, cmd, env=None, module_list=[])
+     |      Execute a (limited) code block against a node
+     |      
+     |      Execute a python clode block with the 'node' context set to the
+     |      value passed to this routine.
+     |      
+     |      The "cmd" python code, runs in a constructed/safe environment to ensure
+     |      that the code won't cause harmful sideffects to the execution
+     |      environment.
+     |      
+     |      The following functions and variables are currently available in the
+     |      safe_dict:
+     |      
+     |          len
+     |          print
+     |          verbose
+     |      
+     |      When executing in the code context, the following variables are
+     |      available to the python code block.
+     |      
+     |          tree : the LopperTree object containing the node
+     |          node : the LopperNode being processed
+     |          __selected__ : the list of LopperNodes being processed
+     |          node_name : the name of the node (as defined by the dts/dtb)
+     |          node_number : the number of the node being processed
+     |      
+     |      The return value of the block is sent to the caller, so it can act
+     |      accordingly.
+     |      
+     |      Args:
+     |          node (LopperNode or string): starting node
+     |          cmd (string): block of python code to execute
+     |          env (dictionary,optional): values to make available as
+     |                                     variables to the code block
+     |          module_list (list,optional): list of assists to load before
+     |                                       running the code block
+     |      
+     |      Returns:
+     |          Return value from the execution of the code block
+     |  
+     |  export(self, start_path='/')
+     |  
+     |  filter(self, node_prefix, action, test_cmd, fdt=None, verbose=0)
+     |      Filter tree nodes and perform an action
+     |      
+     |      Starting from the supplied path (node_prefix), this function walks
+     |      the device tree and executes a block of python code to test each
+     |      node.
+     |      
+     |      If the block of code (test_cmd) returns True, then the action is
+     |      taken. If false, nothing is done.
+     |      
+     |      Currently defined actions:
+     |      
+     |         - delete: delete the node
+     |         - report: (not currently implemented)
+     |         - whitelist: (not currently implemented)
+     |         - blacklist: (not currently implemented)
+     |      
+     |      The "test_cmd" python code, runs in a constructed/safe environment to
+     |      ensure that the code won't cause harmful sideffects to the execution
+     |      environment. See the exec_cmd method for details of the command
+     |      execution.
+     |      
+     |      A standard python "return True" and "return False" should be used to
+     |      indicate the result of the test.
+     |      
+     |      Args:
+     |          node_prefix (string): starting node path
+     |          action (LopperAction): action to take in the True condition
+     |          test_cmd (string): block of python code to test against each node
+     |          fdt (FDT,optional): flattended device tree for reference
+     |          verbose (int,optional): verbosity level to use.
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  lnodes(self, label)
+     |      Find nodes in a tree by label
+     |      
+     |      Safely (no exception raised) returns the node that can be found
+     |      at a given label value.
+     |      
+     |      Args:
+     |         label (string): node string  to check
+     |      
+     |      Returns:
+     |         list (LopperNode): the matching nodes if found, [] otherwise
+     |  
+     |  load(self, dct=None)
+     |      load a tree
+     |      
+     |      Loads the details around the nodes of a tree, and completes values that
+     |      are not possible at initialization time.
+     |      
+     |      In particular, it updates the path, node and phandle ordered
+     |      dictionaries to reflect the dictionary. This is often done after a node
+     |      is added to ensure that iterations will see the new node in tree order,
+     |      versus added order.
+     |      
+     |      Args:
+     |         dct (Dictionary): dictionary from a lopper_fdt export, or a tree export
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  next(self)
+     |      Returns the next node in a tree iteration
+     |      
+     |      This method maintains the iteration state of a tree and returns
+     |      the next LopperNode in the iteration.
+     |      
+     |      Three types of iterations are common:
+     |      
+     |        - full iteration: a depth first walk of every node in the tree
+     |        - subnode iteration: a depth first walk of all nodes under a given
+     |                             starting point
+     |        - startnode iteration: A depth first walk starting at a given node
+     |                               and continuing to the end of the tree
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         LopperNode
+     |  
+     |  nodes(self, nodename)
+     |      Get nodes that match a given name or regex
+     |      
+     |      Looks for a node at a name/path, or nodes that match a regex.
+     |      
+     |      Args:
+     |         nodename (string): node name or regex
+     |      
+     |      Returns:
+     |         list: a list all nodes that match the name or regex
+     |  
+     |  phandle_gen(self)
+     |      Generate a phandle for use in a node
+     |      
+     |      Creates a unique phandle for a node. This is basic tracking and is
+     |      used since fdt_find_max_phandle is not fully exposed, and removes
+     |      a binding to libfdt.
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         phandle number
+     |  
+     |  phandles(self)
+     |      Utility function to get the active phandles in the tree
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         list (numbers): list of in use phandles in the tree
+     |  
+     |  pnode(self, phandle)
+     |      Find a node in a tree by phandle
+     |      
+     |      Safely (no exception raised) returns the node that can be found
+     |      at a given phandle value.
+     |      
+     |      Args:
+     |         phandle (int): node phandle to check
+     |      
+     |      Returns:
+     |         LopperNode: the matching node if found, None otherwise
+     |  
+     |  print(self, output=None)
+     |      print the contents of a tree
+     |      
+     |      Outputs the tree to the passed output stream, if not passed the tree's
+     |      output stream is used. If the tree has no output stream, stdout is the
+     |      final fallback.
+     |      
+     |      Args:
+     |         output (optional,output stream).
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  ref(self, value, node_regex=None)
+     |      Tree wide setting of a refcount
+     |      
+     |      Sets a refcount for all nodes in the tree, or a regex contained set
+     |      of nodes.
+     |      
+     |      Calling this routine with zero, is a treewide reset of all refcounts.
+     |      
+     |      If a regex is passed, only matching nodes will be set/cleared.
+     |      
+     |      Args:
+     |         value (int): refcount value by which to increment
+     |         node_regex (string,optional): node path regex to restrict scope of
+     |                                       refcount operations
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  ref_all(self, starting_node, parent_nodes=False)
+     |      Increment the refcount for a node and its subnodes (and optionally parents)
+     |      
+     |      Creates a reference to a node and its subnodes.
+     |      
+     |      If parent_nodes is set to True, parent nodes will be also referenced.
+     |      
+     |      Args:
+     |         starting_node (LopperNode): node to reference
+     |         parent_nodes (boolean,optional): flag to indicate if parent nodes
+     |                                          should be referenced
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  refd(self, node_regex='')
+     |      Get a list of referenced nodes
+     |      
+     |      When refcounting is enabled, this routine returns the list of nodes
+     |      that have been referenced.
+     |      
+     |      We use the name, rather than the offset, since the offset can change if
+     |      something is deleted from the tree. But we need to use the full path so
+     |      we can find it later.
+     |      
+     |      Args:
+     |         node_regex: limit returned nodes to those that match the regex, which
+     |                     is applied to the path of the nodes.
+     |      
+     |      Returns:
+     |         list (strings): list of referenced nodes, or [] if there are no referenced nodes
+     |  
+     |  reset(self)
+     |      reset a tree
+     |      
+     |      Resets certain parts of the tree to their initial values. Specifically
+     |      it resets the tree for a new iteration.
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  resolve(self)
+     |  
+     |  subnodes(self, start_node, node_regex=None)
+     |      return the subnodes of a node
+     |      
+     |      Returns a list of all subnodes from a given starting node.
+     |      
+     |      If a node regex is passed, those nodes that do not match the
+     |      regex are removed from the returned value.
+     |      
+     |      Args:
+     |         start_node (LopperNode): the starting node
+     |         node_regex (string,optional): node mask
+     |      
+     |      Returns:
+     |         list: returns a list of all subnodes (or matching subnodes)
+     |  
+     |  sync(self, fdt=None, only_if_required=False)
+     |      Sync a tree to a backing FDT
+     |      
+     |      This routine walks the FDT, and sync's changes from any LopperTree nodes
+     |      into the backing store.
+     |      
+     |      Once complete, all nodes are resolved() to ensure their attributes reflect
+     |      the FDT status.
+     |      
+     |      Args:
+     |         fdt (FDT,optional): the flattended device tree to sync to. If it isn't
+     |                             passed, the stored FDT is use for sync.
+     |         only_if_required(boolean,optional): flag to indicate that we should only
+     |                                             sync if something is dirty
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors defined here:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+    
+    class LopperTreePrinter(LopperTree)
+     |  SubClass for enhanced printing a lopper tree
+     |  
+     |  This class implements:
+     |     - routines to print the start of a tree, nodes, properties and end of a tree
+     |       to DTS format.
+     |  
+     |  Enhanced printing is done by implementing callbacks that the base LopperTree
+     |  class will call during a tree walk.
+     |  
+     |  Attributes:
+     |     - output: output file name, if not passed stdout is used
+     |  
+     |  Method resolution order:
+     |      LopperTreePrinter
+     |      LopperTree
+     |      builtins.object
+     |  
+     |  Methods defined here:
+     |  
+     |  __init__(self, snapshot=False, output=<_io.TextIOWrapper name='<stdout>' mode='w' encoding='UTF-8'>, debug=0)
+     |      Initialize self.  See help(type(self)) for accurate signature.
+     |  
+     |  end(self, n)
+     |      LopperTreePrinter tree end
+     |      
+     |      Ends the walking of a tree
+     |      
+     |      Args:
+     |          n (LopperNode): -1
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  end_node(self, n)
+     |      LopperTreePrinter node end
+     |      
+     |      Prints the end / closing of a node
+     |      
+     |      Args:
+     |          n (LopperNode): the node being closed
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  reset(self, output_file=<_io.TextIOWrapper name='<stdout>' mode='w' encoding='UTF-8'>)
+     |      reset the output of a printer
+     |      
+     |      closes the existing output_file (if not stdout) and opens a new
+     |      output_file (if not stdout)
+     |      
+     |      Args:
+     |          output_file (string,optional): name of file to open for output, default is stdout
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  start(self, n)
+     |      LopperTreePrinter start
+     |      
+     |      Prints the start / opening of a tree and handles the preamble.
+     |      
+     |      Args:
+     |          n (LopperNode): the opening node of the tree
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  start_node(self, n)
+     |      LopperTreePrinter node start
+     |      
+     |      Prints the start / opening of a node
+     |      
+     |      Args:
+     |          n (LopperNode): the node being opened
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  start_property(self, p)
+     |      LopperTreePrinter property print
+     |      
+     |      Prints a property
+     |      
+     |      Args:
+     |          p (LopperProperty): the property to print
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from LopperTree:
+     |  
+     |  __add__(self, other)
+     |      magic method for adding a node to a tree
+     |      
+     |      Supports adding a node to a tree through "+"
+     |      
+     |          tree + <LopperNode object>
+     |      
+     |      Args:
+     |         other (LopperNode): node to add
+     |      
+     |      Returns:
+     |         LopperTree: returns self, Exception on invalid input
+     |  
+     |  __delitem__(self, key)
+     |      magic method for removing a property from a tree dictionary style
+     |      
+     |      ** Not currently implemented **, overridden to prevent use
+     |      
+     |      Supports removing a node from a tree through "del"
+     |      
+     |          del <tree>[node]
+     |      
+     |      Args:
+     |         key (LopperNode): node/index to remove
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  __getattribute__(self, name)
+     |      magic method around object attribute access
+     |      
+     |      This method first attempts to access the objects inherent attributes and
+     |      returns the value if one exists matching the passed name.
+     |      
+     |      If one is not found, then the node dictionary is checked, and that
+     |      value returned.
+     |      
+     |      This allows access like:
+     |      
+     |          <LopperTree Object>.path_to_node
+     |      
+     |      To get the LopperNode at that path
+     |      
+     |      In practice, this is only of limited use, since many node paths are
+     |      not valid python attribute names.
+     |      
+     |      Args:
+     |         name: attribute name
+     |      
+     |      Returns:
+     |         The attribute value, or AttributeError if it doesn't exist.
+     |  
+     |  __getitem__(self, key)
+     |      magic method for accessing LopperTree nodes like a dictionary
+     |      
+     |      Allow accessing of nodes as a dictionary:
+     |      
+     |          <Lopper Tree Object>[<node path>]
+     |      
+     |      This abstracts the storage of nodesand allows direct access by name,
+     |      by number or by node regex.
+     |      
+     |      Either the string name of the node path, the node number, a LopperNode
+     |      object, or a node path with a regex can be used to access a node.
+     |      
+     |      Note that on a regex search, the first match is returned. For multiple
+     |      node returns, use the nodes() method.
+     |      
+     |      The standard KeyError exception is raised if the node is not valid for
+     |      a tree
+     |      
+     |      Args:
+     |          key: string, int or LopperNode
+     |      
+     |      Returns:
+     |         LopperNode object or KeyError exception
+     |  
+     |  __iter__(self)
+     |      magic method to support iteration
+     |      
+     |      For iterating the nodes of a LopperTree, we are the iterator.
+     |      This is required by the iterator protocol.
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         LopperTree object: self
+     |  
+     |  __next__(self)
+     |      magic method for iteration on a tree
+     |      
+     |      This routine uses the next() method to move through the nodes of a
+     |      tree.
+     |      
+     |      If there are no nodes, or we have iterated all nodes, StopIteration is
+     |      raised (as is required by the iterator protocol).
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         LopperNode object or StopIteration exception
+     |  
+     |  __setattr__(self, name, value)
+     |      magic method to check the setting of a LopperTree attribute
+     |      
+     |      If the attribute being set is __current_node__ or __start_node__
+     |      then the new iteration flag is set to trigger the start of a new
+     |      iteration. When setting these attributes, value can either be a
+     |      node number or a node name. When it is a name, it is internally
+     |      converted to a number on behalf of the caller.
+     |      
+     |      If the attribute is __dbg__, then the debug setting is chained
+     |      to contained nodes.
+     |      
+     |      Args:
+     |         name: attribute name
+     |         value: attribute value
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  __setitem__(self, key, val)
+     |      magic method for setting LopperTree nodes like a dictionary
+     |      
+     |              Allow setting of properties as a dictionary:
+     |      
+     |                  <Lopper Tree Object>[<node name>] = <LopperNode Object>
+     |      
+     |                     or
+     |      
+     |                  <Lopper Tree Object>[<node number>] =  <LopperNode Object>
+     |      
+     |              During assignment of the node, access is created by name, number and
+     |              phandle as appropriate
+     |      
+     |              Args:
+     |                  key: string or int
+     |                  val: LopperNode
+     |      
+     |              Returns:
+     |      ;           Nothing, raises TypeError on invalid parameters
+     |  
+     |  __sub__(self, other)
+     |      magic method for removing a node from a tree
+     |      
+     |      Supports removing a node from a tree through "-"
+     |      
+     |          tree - <LopperNode object>
+     |      
+     |      Args:
+     |         other (LopperNode): Node to remove
+     |      
+     |      Returns:
+     |         LopperTree: returns self
+     |  
+     |  add(self, node, dont_sync=False)
+     |      Add a node to a tree
+     |      
+     |      Supports adding a node to a tree through:
+     |      
+     |          tree.add( <node> )
+     |      
+     |      The node is added to the FDT, resolved and syncd. It is then available
+     |      for use in any tree operations.
+     |      
+     |      Args:
+     |         node (LopperNode): node to add
+     |         dont_sync (boolean, optional): don't invoke a tree wide sync when
+     |                                        complete
+     |      
+     |      Returns:
+     |         LopperTree: returns self, raises Exception on invalid parameter
+     |  
+     |  delete(self, node, delete_from_parent=True)
+     |      delete a node from a tree
+     |      
+     |      If a node is resolved and syncd to the FDT, this routine deletes it
+     |      from the FDT and the LopperTree structure.
+     |      
+     |      Args:
+     |         node (int or LopperNode): the node to delete
+     |         delete_fom_parent (bool): flag indicating if the node should be
+     |                                   removed from the parent node.
+     |      
+     |      Returns:
+     |         Boolean: True if deleted, False otherwise. KeyError if node is not found
+     |  
+     |  exec(self)
+     |      Start a tree walk execution, with callbacks executed as required
+     |      
+     |      Starts walking the tree, beginning at the preamble, and then through a depth
+     |      first walking of the nodes.
+     |      
+     |      If the tree has registered callbacks, they are executed before the walk
+     |      starts, at the start/end of each node, at each property and at the end of
+     |      the tree.
+     |      
+     |      See the class description for details on the callbacks
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  exec_cmd(self, node, cmd, env=None, module_list=[])
+     |      Execute a (limited) code block against a node
+     |      
+     |      Execute a python clode block with the 'node' context set to the
+     |      value passed to this routine.
+     |      
+     |      The "cmd" python code, runs in a constructed/safe environment to ensure
+     |      that the code won't cause harmful sideffects to the execution
+     |      environment.
+     |      
+     |      The following functions and variables are currently available in the
+     |      safe_dict:
+     |      
+     |          len
+     |          print
+     |          verbose
+     |      
+     |      When executing in the code context, the following variables are
+     |      available to the python code block.
+     |      
+     |          tree : the LopperTree object containing the node
+     |          node : the LopperNode being processed
+     |          __selected__ : the list of LopperNodes being processed
+     |          node_name : the name of the node (as defined by the dts/dtb)
+     |          node_number : the number of the node being processed
+     |      
+     |      The return value of the block is sent to the caller, so it can act
+     |      accordingly.
+     |      
+     |      Args:
+     |          node (LopperNode or string): starting node
+     |          cmd (string): block of python code to execute
+     |          env (dictionary,optional): values to make available as
+     |                                     variables to the code block
+     |          module_list (list,optional): list of assists to load before
+     |                                       running the code block
+     |      
+     |      Returns:
+     |          Return value from the execution of the code block
+     |  
+     |  export(self, start_path='/')
+     |  
+     |  filter(self, node_prefix, action, test_cmd, fdt=None, verbose=0)
+     |      Filter tree nodes and perform an action
+     |      
+     |      Starting from the supplied path (node_prefix), this function walks
+     |      the device tree and executes a block of python code to test each
+     |      node.
+     |      
+     |      If the block of code (test_cmd) returns True, then the action is
+     |      taken. If false, nothing is done.
+     |      
+     |      Currently defined actions:
+     |      
+     |         - delete: delete the node
+     |         - report: (not currently implemented)
+     |         - whitelist: (not currently implemented)
+     |         - blacklist: (not currently implemented)
+     |      
+     |      The "test_cmd" python code, runs in a constructed/safe environment to
+     |      ensure that the code won't cause harmful sideffects to the execution
+     |      environment. See the exec_cmd method for details of the command
+     |      execution.
+     |      
+     |      A standard python "return True" and "return False" should be used to
+     |      indicate the result of the test.
+     |      
+     |      Args:
+     |          node_prefix (string): starting node path
+     |          action (LopperAction): action to take in the True condition
+     |          test_cmd (string): block of python code to test against each node
+     |          fdt (FDT,optional): flattended device tree for reference
+     |          verbose (int,optional): verbosity level to use.
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  lnodes(self, label)
+     |      Find nodes in a tree by label
+     |      
+     |      Safely (no exception raised) returns the node that can be found
+     |      at a given label value.
+     |      
+     |      Args:
+     |         label (string): node string  to check
+     |      
+     |      Returns:
+     |         list (LopperNode): the matching nodes if found, [] otherwise
+     |  
+     |  load(self, dct=None)
+     |      load a tree
+     |      
+     |      Loads the details around the nodes of a tree, and completes values that
+     |      are not possible at initialization time.
+     |      
+     |      In particular, it updates the path, node and phandle ordered
+     |      dictionaries to reflect the dictionary. This is often done after a node
+     |      is added to ensure that iterations will see the new node in tree order,
+     |      versus added order.
+     |      
+     |      Args:
+     |         dct (Dictionary): dictionary from a lopper_fdt export, or a tree export
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  next(self)
+     |      Returns the next node in a tree iteration
+     |      
+     |      This method maintains the iteration state of a tree and returns
+     |      the next LopperNode in the iteration.
+     |      
+     |      Three types of iterations are common:
+     |      
+     |        - full iteration: a depth first walk of every node in the tree
+     |        - subnode iteration: a depth first walk of all nodes under a given
+     |                             starting point
+     |        - startnode iteration: A depth first walk starting at a given node
+     |                               and continuing to the end of the tree
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         LopperNode
+     |  
+     |  nodes(self, nodename)
+     |      Get nodes that match a given name or regex
+     |      
+     |      Looks for a node at a name/path, or nodes that match a regex.
+     |      
+     |      Args:
+     |         nodename (string): node name or regex
+     |      
+     |      Returns:
+     |         list: a list all nodes that match the name or regex
+     |  
+     |  phandle_gen(self)
+     |      Generate a phandle for use in a node
+     |      
+     |      Creates a unique phandle for a node. This is basic tracking and is
+     |      used since fdt_find_max_phandle is not fully exposed, and removes
+     |      a binding to libfdt.
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         phandle number
+     |  
+     |  phandles(self)
+     |      Utility function to get the active phandles in the tree
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |         list (numbers): list of in use phandles in the tree
+     |  
+     |  pnode(self, phandle)
+     |      Find a node in a tree by phandle
+     |      
+     |      Safely (no exception raised) returns the node that can be found
+     |      at a given phandle value.
+     |      
+     |      Args:
+     |         phandle (int): node phandle to check
+     |      
+     |      Returns:
+     |         LopperNode: the matching node if found, None otherwise
+     |  
+     |  print(self, output=None)
+     |      print the contents of a tree
+     |      
+     |      Outputs the tree to the passed output stream, if not passed the tree's
+     |      output stream is used. If the tree has no output stream, stdout is the
+     |      final fallback.
+     |      
+     |      Args:
+     |         output (optional,output stream).
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  ref(self, value, node_regex=None)
+     |      Tree wide setting of a refcount
+     |      
+     |      Sets a refcount for all nodes in the tree, or a regex contained set
+     |      of nodes.
+     |      
+     |      Calling this routine with zero, is a treewide reset of all refcounts.
+     |      
+     |      If a regex is passed, only matching nodes will be set/cleared.
+     |      
+     |      Args:
+     |         value (int): refcount value by which to increment
+     |         node_regex (string,optional): node path regex to restrict scope of
+     |                                       refcount operations
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  ref_all(self, starting_node, parent_nodes=False)
+     |      Increment the refcount for a node and its subnodes (and optionally parents)
+     |      
+     |      Creates a reference to a node and its subnodes.
+     |      
+     |      If parent_nodes is set to True, parent nodes will be also referenced.
+     |      
+     |      Args:
+     |         starting_node (LopperNode): node to reference
+     |         parent_nodes (boolean,optional): flag to indicate if parent nodes
+     |                                          should be referenced
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  refd(self, node_regex='')
+     |      Get a list of referenced nodes
+     |      
+     |      When refcounting is enabled, this routine returns the list of nodes
+     |      that have been referenced.
+     |      
+     |      We use the name, rather than the offset, since the offset can change if
+     |      something is deleted from the tree. But we need to use the full path so
+     |      we can find it later.
+     |      
+     |      Args:
+     |         node_regex: limit returned nodes to those that match the regex, which
+     |                     is applied to the path of the nodes.
+     |      
+     |      Returns:
+     |         list (strings): list of referenced nodes, or [] if there are no referenced nodes
+     |  
+     |  resolve(self)
+     |  
+     |  subnodes(self, start_node, node_regex=None)
+     |      return the subnodes of a node
+     |      
+     |      Returns a list of all subnodes from a given starting node.
+     |      
+     |      If a node regex is passed, those nodes that do not match the
+     |      regex are removed from the returned value.
+     |      
+     |      Args:
+     |         start_node (LopperNode): the starting node
+     |         node_regex (string,optional): node mask
+     |      
+     |      Returns:
+     |         list: returns a list of all subnodes (or matching subnodes)
+     |  
+     |  sync(self, fdt=None, only_if_required=False)
+     |      Sync a tree to a backing FDT
+     |      
+     |      This routine walks the FDT, and sync's changes from any LopperTree nodes
+     |      into the backing store.
+     |      
+     |      Once complete, all nodes are resolved() to ensure their attributes reflect
+     |      the FDT status.
+     |      
+     |      Args:
+     |         fdt (FDT,optional): the flattended device tree to sync to. If it isn't
+     |                             passed, the stored FDT is use for sync.
+     |         only_if_required(boolean,optional): flag to indicate that we should only
+     |                                             sync if something is dirty
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors inherited from LopperTree:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+
+DATA
+    MAX_RETRIES = 3
+    QUIET_ALL = range(1, 18)
+    QUIET_NOTFOUND = (1,)
+    printable = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU...
+    python_version_dir = 'python3.6'
+
+FILE
+    /home/bruce/git/system-device-tree/lopper_tree.py
 
 
 Help on module lopper_fdt:
@@ -315,7 +2294,7 @@ CLASSES
      |  
      |  Static methods defined here:
      |  
-     |  dt_compile(dts_file, i_files, includes, force_overwrite=False, outdir='./', save_temps=False, verbose=0)
+     |  dt_compile(dts_file, i_files, includes, force_overwrite=False, outdir='./', save_temps=False, verbose=0, enhanced=True)
      |      Compile a dts file to a dtb
      |      
      |      This routine takes a dts input file, other dts include files,
@@ -408,6 +2387,42 @@ CLASSES
      |      
      |      Returns:
      |         byte array: the encoded byte array
+     |  
+     |  export(fdt, start_node='/', verbose=False, strict=False)
+     |      export a FDT to a description / nested dictionary
+     |      
+     |      This routine takes a FDT, a start node, and produces a nested dictionary
+     |      that describes the nodes and properties in the tree.
+     |      
+     |      The dictionary contains a set of internal properties, as well as
+     |      a list of standand properties to the node. Internal properties have
+     |      a __ suffix and __ prefix.
+     |      
+     |      Child nodes are indexed by their absolute path. So any property that
+     |      starts with "/" and is a dictionary, represents another node in the
+     |      tree.
+     |      
+     |      In particular:
+     |          - __path__ : is the absolute path fo the node, and is used to lookup
+     |                       the target node
+     |          - __fdt_name__ : is the name of the node and will be written to the
+     |                           fdt name property
+     |          - __fdt_phandle__ : is the phandle for the node
+     |      
+     |      All other "standard" properties are returned as entries in the dictionary.
+     |      
+     |      if strict is enabled, structural issues in the input tree will be
+     |      flagged and an error triggered. Currently, this is duplicate nodes, but
+     |      may be extended in the future
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          start_node (string,optional): the starting node
+     |          verbose (bool,optional): verbosity level
+     |          strict (bool,optional): toggle validity checking
+     |      
+     |      Returns:
+     |          OrderedDict describing the tree
      |  
      |  fdt(size=None, other_fdt=None)
      |      Create a new FDT
@@ -615,6 +2630,15 @@ CLASSES
      |          string: node number, or -1 if the node doesn't exist
      |  
      |  node_parent(fdt, node_number_or_path)
+     |      Get the parent offset / number of a node
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          node_number_or_path: (string or int): node number or full path to
+     |                               the target node.
+     |      
+     |      Returns:
+     |          int: the node number of the parent
      |  
      |  node_prop_check(fdt, node_name, property_name)
      |      Check if a node contains a property
@@ -646,7 +2670,7 @@ CLASSES
      |      Returns:
      |          list (FDT prop): The properties of the node [] if no props
      |  
-     |  node_properties_as_dict(fdt, node, verbose=0)
+     |  node_properties_as_dict(fdt, node, type_hints=True, verbose=0)
      |      Create a dictionary populated with the nodes properties.
      |      
      |      Builds a dictionary that is propulated with a node's properties as
@@ -657,6 +2681,7 @@ CLASSES
      |      Args:
      |          fdt (fdt): flattened device tree object
      |          node (int or string): either a node number or node path
+     |          type_hints  (bool,optional): flag indicating if type hints should be returned
      |          verbose (int,optional): verbosity level. default is 0.
      |      
      |      Returns:
@@ -712,6 +2737,39 @@ CLASSES
      |      
      |      Returns:
      |          list (strings): The subnodes, [] if no subnodes
+     |  
+     |  node_sync(fdt, node_in, parent=None, verbose=False)
+     |      Write a node description to a FDT
+     |      
+     |      This routine takes an input dictionary, and writes the details to
+     |      the passed fdt.
+     |      
+     |      The dictionary contains a set of internal properties, as well as
+     |      a list of standand properties to the node. Internal properties have
+     |      a __ suffix and __ prefix.
+     |      
+     |      In particular:
+     |          - __path__ : is the absolute path fo the node, and is used to lookup
+     |                       the target node
+     |          - __fdt_name__ : is the name of the node and will be written to the
+     |                           fdt name property
+     |          - __fdt_phandle__ : is the phandle for the node
+     |      
+     |      All other '/' leading, or '__' leading properties will be written to
+     |      the FDT as node properties.
+     |      
+     |      If the node doesn't exist, it will be created. If the node exists, then
+     |      the existing properties are read, and any that are no present in the
+     |      passed dictionary are deleted.
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          node_in: (dictionary): Node description dictionary
+     |          parent (string,optional): path to the parent node
+     |          verbose (bool,optional): verbosity level
+     |      
+     |      Returns:
+     |          Nothing
      |  
      |  node_type(fdt, node_offset, verbose=0)
      |      Utility function to get the "type" of a node
@@ -810,6 +2868,27 @@ CLASSES
      |      
      |      Returns:
      |          The modified phandle safe string
+     |  
+     |  property_convert(property_string)
+     |      utility command to convert a string to a list of property values
+     |      
+     |      Takes a string formatted in device tree notation, and returns a list
+     |      of property values.
+     |      
+     |      Formats of the following types will work, and be converted to their
+     |      base types in the returned list.
+     |      
+     |            <0x1 0x2 0x3>
+     |            <0x1>
+     |            "string value"
+     |            "string value1","string value2"
+     |            10
+     |      
+     |      Args:
+     |         property_string (string): device tree "style" string
+     |      
+     |      Returns:
+     |         list: converted property values, empty string if cannot convert
      |  
      |  property_get(fdt, node_number, prop_name, ftype=<LopperFmt.SIMPLE: 1>, encode=<LopperFmt.DEC: 4>)
      |      utility command to get a property (as a string) from a node
@@ -979,6 +3058,46 @@ CLASSES
      |      Returns:
      |         boolean: True if the property looks like a string
      |  
+     |  sync(fdt, dct, verbose=False)
+     |      sync (write) a tree dictionary to a fdt
+     |      
+     |      This routine takes an input dictionary, and writes the details to
+     |      the passed fdt.
+     |      
+     |      The dictionary contains a set of internal properties, as well as
+     |      a list of standand properties to the node. Internal properties have
+     |      a __ suffix and __ prefix.
+     |      
+     |      Child nodes are indexed by their absolute path. So any property that
+     |      starts with "/" and is a dictionary, represents another node in the
+     |      tree.
+     |      
+     |      In particular:
+     |          - __path__ : is the absolute path fo the node, and is used to lookup
+     |                       the target node
+     |          - __fdt_name__ : is the name of the node and will be written to the
+     |                           fdt name property
+     |          - __fdt_phandle__ : is the phandle for the node
+     |      
+     |      All other non  '/' leading, or '__' leading properties will be written to
+     |      the FDT as node properties.
+     |      
+     |      Passed nodes will be synced via the node_sync() function, and will
+     |      be created if they don't exist. Existing nodes will have their properties
+     |      deleted if they are not in the corresponding dictionary.
+     |      
+     |      All of the existing nodes in the FDT are read, if they aren not found
+     |      in the passed dictionary, they will be deleted.
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          node_in: (dictionary): Node description dictionary
+     |          parent (dictionary,optional): parent node description dictionary
+     |          verbose (bool,optional): verbosity level
+     |      
+     |      Returns:
+     |          Nothing
+     |  
      |  write_fdt(fdt_to_write, output_filename, overwrite=True, verbose=0, enhanced=False)
      |      Write a system device tree to a file
      |      
@@ -1070,1739 +3189,9 @@ DATA
     QUIET_ALL = range(1, 18)
     QUIET_NOTFOUND = (1,)
     printable = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU...
+    python_version_dir = 'python3.6'
 
 FILE
     /home/bruce/git/system-device-tree/lopper_fdt.py
-
-
-Help on module lopper_tree:
-
-NAME
-    lopper_tree
-
-DESCRIPTION
-    #/*
-    # * Copyright (c) 2019,2020 Xilinx Inc. All rights reserved.
-    # *
-    # * Author:
-    # *       Bruce Ashfield <bruce.ashfield@xilinx.com>
-    # *
-    # * SPDX-License-Identifier: BSD-3-Clause
-    # */
-
-CLASSES
-    builtins.object
-        LopperNode
-        LopperProp
-        LopperTree
-            LopperTreePrinter
-    enum.Enum(builtins.object)
-        LopperAction
-    
-    class LopperAction(enum.Enum)
-     |  Enum class to define the actions available in Lopper's node_filter function
-     |  
-     |  Method resolution order:
-     |      LopperAction
-     |      enum.Enum
-     |      builtins.object
-     |  
-     |  Data and other attributes defined here:
-     |  
-     |  BLACKLIST = <LopperAction.BLACKLIST: 4>
-     |  
-     |  DELETE = <LopperAction.DELETE: 1>
-     |  
-     |  NONE = <LopperAction.NONE: 5>
-     |  
-     |  REPORT = <LopperAction.REPORT: 2>
-     |  
-     |  WHITELIST = <LopperAction.WHITELIST: 3>
-     |  
-     |  ----------------------------------------------------------------------
-     |  Data descriptors inherited from enum.Enum:
-     |  
-     |  name
-     |      The name of the Enum member.
-     |  
-     |  value
-     |      The value of the Enum member.
-     |  
-     |  ----------------------------------------------------------------------
-     |  Data descriptors inherited from enum.EnumMeta:
-     |  
-     |  __members__
-     |      Returns a mapping of member name->value.
-     |      
-     |      This mapping lists all enum members, including aliases. Note that this
-     |      is a read-only view of the internal mapping.
-    
-    class LopperNode(builtins.object)
-     |  Class representing a device tree node
-     |  
-     |  This class implements:
-     |     - a property iterator
-     |     - dictionary access to properties
-     |     - str(): string cast
-     |     - equality check (==): for comparison
-     |     - ref counting: set, get, clear
-     |     - property add, modify, delete (via methods and '-', '+')
-     |     - resolve(): to update/calculate properties against a FDT
-     |     - sync(): sync modified node elements (and properties) to a FDT
-     |     - deep node copy via LopperNode()
-     |  
-     |   Attributes:
-     |     - number: the node number in the backing FDT
-     |     - name: the node name in the backing FDT (this is not the node path)
-     |     - parent: a link to the parent LopperNode object
-     |     - tree: the tree which contains this node
-     |     - depth: the nodes depth in the backing FDT (0 is root, 1 for first level children)
-     |     - children: the list of child LopperNodes
-     |     - phandle: the phandle in the backing FDT (optional)
-     |     - type: the type of the node (based on 'compatible' property)
-     |     - abs_path: the full/absolute path to this node in the backing FDT
-     |     - _ref: the refcount for this node
-     |     - __props__: ordered dictionary of LopperProp
-     |     - __current_property__: place holder for property iterator
-     |     - __dbg__: debug level for the node
-     |     - __nstate__: the state of the node ("init", "resolved" )
-     |     - __modified__: flag indicating if the node has been modified
-     |  
-     |  Methods defined here:
-     |  
-     |  __add__(self, other)
-     |      magic method for adding a property to a node
-     |      
-     |      Supports adding a property to a node through "+"
-     |      
-     |          node + <LopperProp object>
-     |      
-     |      Args:
-     |         other (LopperProp): property to add
-     |      
-     |      Returns:
-     |         LopperNode: returns self, Exception on invalid input
-     |  
-     |  __call__(self, othernode=None)
-     |      Callable implementation for the node class
-     |      
-     |      When used, this creates a deep copy of the current node, versus
-     |      a reference. This allows a node to be cloned and used in a secondary
-     |      tree, free from changes to the original node.
-     |      
-     |      Two modes are supported:
-     |         A) <LopperNode Object>()
-     |         B) <LopperNode Object>( <other node> )
-     |      
-     |      When no other node is passed (mode A) a copy of the existing node is
-     |      made, including properties with the state is set to "init", this node
-     |      should then be resolved to fill in missing information.
-     |      
-     |      When mode B is used, the current node is updated using copies of the
-     |      values from the other node. This is used on a newly created node, to
-     |      initalize it with values from an existing node.
-     |      
-     |      Args:
-     |         othernode (LopperNode,optional): node to use for initalization values
-     |      
-     |      Returns:
-     |         The copied node, or self (if updating).
-     |  
-     |  __deepcopy__(self, memodict={})
-     |      Create a deep copy of a node
-     |      
-     |      Only certain parts of a node need to be copied, we also have to
-     |      trigger deep copies of properties, since they have references
-     |      to nodes.
-     |      
-     |      We leave most values as the defaults on the new node instance,
-     |      since the copied node needs to be added to a tree, where they'll
-     |      be filled in.
-     |  
-     |  __delitem__(self, key)
-     |      magic method for removing a property from a node dictionary style
-     |      
-     |      ** Not currently implemented **, overridden to prevent use
-     |      
-     |      Supports removing a property from a node through "del"
-     |      
-     |          del <node>[prop]
-     |      
-     |      Args:
-     |         key (LopperProp): property/index to remove
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  __eq__(self, other)
-     |      magic method for node comparision
-     |      
-     |      Support LopperNode comparisons: nodea == nodeb
-     |      
-     |      If the node numbers of two nodes match, we consider them equal.
-     |      
-     |      Args:
-     |          other: LopperNode
-     |      
-     |      Returns:
-     |         LopperNode object: self
-     |  
-     |  __getattribute__(self, name)
-     |      magic method around object attribute access
-     |      
-     |      This method first attempts to access the objects inherent attributes and
-     |      returns the value if one exists matching the passed name.
-     |      
-     |      If one is not found, then the properties dictionary is checked, and that
-     |      value returned.
-     |      
-     |      This allows access like:
-     |      
-     |          <LopperNode Object>.compatible
-     |      
-     |      To get the compatible LopperProperty value.
-     |      
-     |      In practice, this is only of limited use, since many property names are
-     |      not valid python attribute names.
-     |      
-     |      Args:
-     |         name: attribute name
-     |      
-     |      Returns:
-     |         The attribute value, or AttributeError if it doesn't exist.
-     |  
-     |  __getitem__(self, key)
-     |      magic method for accessing LopperNode properties like a dictionary
-     |      
-     |      Allow accessing of properties as a dictionary:
-     |      
-     |          <Lopper Node Object>[<property name>]
-     |      
-     |      This abstracts the storage of the properties and allows direct access
-     |      by name. Either the string name of the property may be used, or a
-     |      LopperProp object itself.
-     |      
-     |      The standard KeyError exception is raised if the property is not valid for
-     |      a node.
-     |      
-     |      For an exception free way of checking for a property, see the propval()
-     |      method.
-     |      
-     |      Args:
-     |          key: string or LopperProp
-     |      
-     |      Returns:
-     |         LopperProp object or KeyError exception
-     |  
-     |  __init__(self, number=-1, abspath='', tree=None, phandle=-1, name='', debug=0)
-     |      Initialize self.  See help(type(self)) for accurate signature.
-     |  
-     |  __int__(self)
-     |      magic method for int type conversion of LopperNode
-     |      
-     |      If a LopperNode is converted to an int, we use the node number
-     |      
-     |      Args:
-     |          None
-     |      
-     |      Returns:
-     |         int: the node number
-     |  
-     |  __iter__(self)
-     |      magic method to support iteration
-     |      
-     |      For iterating the properties of a LopperNode, we are the iterator.
-     |      This is required by the iterator protocol.
-     |      
-     |      Args:
-     |          None
-     |      
-     |      Returns:
-     |         LopperNode object: self
-     |  
-     |  __next__(self)
-     |      magic method for iteration on a node
-     |      
-     |      This routine uses the __current_property__ attribute to move
-     |      through the properties of a node.
-     |      
-     |      If there are no properties, or we have iterated all properties,
-     |      StopIteration is raised (as is required by the iterator protocol).
-     |      
-     |      Args:
-     |          None
-     |      
-     |      Returns:
-     |         LopperProp object or StopIteration exception
-     |  
-     |  __setattr__(self, name, value)
-     |      magic method to check the setting of a LopperNode attribute
-     |      
-     |      If the attribute being set is the debug level (__dbg__), this wrapper
-     |      chains the setting to any LopperProps of the node.
-     |      
-     |      If the attribute is any other, we set the value and tag the node as
-     |      modified, so it can be sync'd later.
-     |      
-     |      Args:
-     |         name: attribute name
-     |         value: attribute value
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  __setitem__(self, key, val)
-     |      magic method for setting LopperNode properties like a dictionary
-     |      
-     |      Allow setting of properties as a dictionary:
-     |      
-     |          <Lopper Node Object>[<property name>] = <LopperProperty Object>
-     |      
-     |             or
-     |      
-     |          <Lopper Node Object>[<property name>] = [list of property values]
-     |      
-     |      
-     |      This abstracts the storage of the properties and allows direct access
-     |      by name.
-     |      
-     |      If a LopperProp is passed as 'val', it is directly assigned. If a list
-     |      of values is passed, a LopperProp object is created, the values assigned
-     |      and then placed in the property dictionary.
-     |      
-     |      Args:
-     |          key: string
-     |          val: LopperProp or string
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  __str__(self)
-     |      magic method for string type conversion of LopperNode
-     |      
-     |      If a LopperNode is converted to a string, we use the absolute (full) path
-     |      
-     |      Args:
-     |          None
-     |      
-     |      Returns:
-     |         string: the abs path
-     |  
-     |  __sub__(self, other)
-     |      magic method for removing a property from a node
-     |      
-     |      Supports removing a property from a node through "-"
-     |      
-     |          node - <LopperProp object>
-     |      
-     |      Args:
-     |         other (LopperProp): property to remove
-     |      
-     |      Returns:
-     |         LopperNode: returns self
-     |  
-     |  add(self, prop)
-     |      Add a property to a node
-     |      
-     |      Supports adding a property to a node through
-     |      
-     |          node.add( prop )
-     |      
-     |      After adding the property, the node is tagged as modified to it
-     |      can be sync'd in the future.
-     |      
-     |      Args:
-     |         prop (LopperProp): property to add
-     |      
-     |      Returns:
-     |         LopperNode: returns self, raises Exception on invalid parameter
-     |  
-     |  delete(self, prop)
-     |      delete a property from a node
-     |      
-     |      Queues a property for deletion on the next sync of a node.
-     |      
-     |      Takes a property name or LopperProp object as the parameter, and if
-     |      it is a valid property, queues it for deletion.
-     |      
-     |      The node is marked as modified, so on the next sync, it will be remove.
-     |      
-     |      Args:
-     |         prop (string or LopperProp): the property to delete
-     |      
-     |      Returns:
-     |         Nothing. KeyError if property is not found
-     |  
-     |  props(self, name)
-     |      Access a property or list of properties described by a name/regex
-     |      
-     |      Looks through the properties of a node and returns any that match
-     |      the name or regex passed to the routine.
-     |      
-     |      Args:
-     |         name (string): property name or property regex
-     |      
-     |      Returns:
-     |         list: list of LopperProp objects that match the name/regex, or [] if none match
-     |  
-     |  propval(self, pname)
-     |      Access the value of a property
-     |      
-     |      This is a safe (no Exception) way to access the value of a named property,
-     |      versus access it through the dictionary accessors.
-     |      
-     |      Args:
-     |         name (string): property name
-     |      
-     |      Returns:
-     |         list: list of values for the property, or [""] if the property name is invalid
-     |  
-     |  reset(self)
-     |      reset the iterator of the node
-     |      
-     |      Sets the node iteration index to the starting value.
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         None
-     |  
-     |  resolve(self, fdt)
-     |      resolve (calculate) node details against a FDT
-     |      
-     |      Some attributes of a node are not known at initialization time, or may
-     |      change due to tree operations.
-     |      
-     |      This method calculates those values using information in the node and in
-     |      the passed FDT. If no FDT is passed only partial resolution is done.
-     |      
-     |      The only value that must be set in the node before resolve() is called
-     |      is the node number. Which simply means it should have been added to the
-     |      FDT first (see LopperTree.add()) and then resolved.
-     |      
-     |      Fields resolved (see class for descriptions)
-     |         - name
-     |         - abs_path
-     |         - phandle
-     |         - depth
-     |         - children
-     |         - type
-     |         - __props__
-     |         - __nstate__
-     |         - __modified__
-     |      
-     |      Args:
-     |         fdt (FDT): flattened device tree to sync to or None if no
-     |                    tree is available
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  resolve_all_refs(self, fdt=None, property_mask=[])
-     |      Resolve and Return all references in a node
-     |      
-     |      Finds all the references starting from a given node. This includes:
-     |      
-     |         - The node itself
-     |         - The parent nodes
-     |         - Any phandle referenced nodes, and any nodes they reference, etc
-     |      
-     |      Args:
-     |         fdt (FDT,optional): The flattended device tree to use for resolution
-     |         property_mask (list of regex): Any properties to exclude from reference
-     |                                        tracking, "*" to exclude all properties
-     |      
-     |      Returns:
-     |         A list of referenced nodes, or [] if no references are found
-     |  
-     |  subnodes(self)
-     |      Return all the subnodes of this node
-     |      
-     |      Gathers and returns all the reachable subnodes of the current node
-     |      (this includes nodes of children, etc).
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         A list of child LopperNodes
-     |  
-     |  sync(self, fdt)
-     |      sync a LopperNode to a backing FDT
-     |      
-     |      This routine looks for changes to the LopperNode and writes them back
-     |      to the passed FDT.
-     |      
-     |      For the node itself, this is primarily a write back of a changed name.
-     |      
-     |      As part of the sync process, the node's number in the backing FDT is
-     |      checked and the stored number changed to match as appropriate.
-     |      
-     |      We also check fo modified properties and sync them to the FDT.
-     |      
-     |      Removed properties are deleted from the FDT.
-     |      
-     |      And finally, the __modified__ flag is set to False.
-     |      
-     |      Args:
-     |         fdt (FDT): device tree to sync against
-     |      
-     |      Returns:
-     |         boolean: True if the node was sync'd, False otherwise
-     |  
-     |  ----------------------------------------------------------------------
-     |  Data descriptors defined here:
-     |  
-     |  __dict__
-     |      dictionary for instance variables (if defined)
-     |  
-     |  __weakref__
-     |      list of weak references to the object (if defined)
-     |  
-     |  ref
-     |      Node reference count getter
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         int: The node refcount
-     |  
-     |  ----------------------------------------------------------------------
-     |  Data and other attributes defined here:
-     |  
-     |  __hash__ = None
-    
-    class LopperProp(builtins.object)
-     |  Class representing a device tree property
-     |  
-     |  This class implements:
-     |     - resolve(): to update information / state against a device tree
-     |     - sync(): to write changes back to the device tree
-     |     - utility routines for easy access and iteration of the values
-     |  
-     |  Attributes:
-     |     - __modified__: Flag to indicate if the property has been changed
-     |     - __pstate__: The state of the property. For internal use only.
-     |                   Values can be: "init", "resolved", "syncd" or "deleted"
-     |     - __dbg__: The debug/verbosity level of property operations. 0 is no
-     |                debug, and levels increase from there.
-     |  
-     |     - name: The property name
-     |     - value: The property value (always as a list of values)
-     |     - node: The node that contains this property
-     |     - number: The property offset within the containing node (rarely used)
-     |     - string_val: The enhanced printed string representation of a property
-     |     - type: The type of a property, "comment", "preamble" or "list"
-     |     - abs_path: The absolute device tree path to this property
-     |  
-     |  Methods defined here:
-     |  
-     |  __deepcopy__(self, memodict={})
-     |      Create a deep copy of a property
-     |      
-     |      Properties have links to nodes, so we need to ensure that they are
-     |      cleared as part of a deep copy.
-     |  
-     |  __init__(self, name, number=-1, node=None, value=None, debug_lvl=0)
-     |      Initialize self.  See help(type(self)) for accurate signature.
-     |  
-     |  __setattr__(self, name, value)
-     |      magic method to check the setting of a LopperProp attribute
-     |      
-     |      If the attribute being set is "value" (i.e. LopperProp.value), this
-     |      method makes sure that it is stored as a list, that the property is
-     |      marked as modified (for future write backs) and triggers a resolve()
-     |      of the property value.
-     |      
-     |      Args:
-     |         name: attribute name
-     |         value: attribute value
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  __str__(self)
-     |      The string representation of the property
-     |      
-     |      Returns the enhanced printed property when str() is used to access
-     |      an object.
-     |      
-     |      The string_val is composed in the resolv() function, and takes the
-     |      format of:  <property name> = <property value>;
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         string
-     |  
-     |  compare(self, other_prop)
-     |      Compare one property to another
-     |      
-     |      Due to the complexity of property representations, this compare is
-     |      not a strict 1:1 value equality. It looks through various elements
-     |      of the source and comparision properties to decide if they have
-     |      common components.
-     |      
-     |      The following metrics are used, where "single" means a property with
-     |      a single value (string or number) and "list" is a property with
-     |      multiple strings or integer properties.
-     |      
-     |        comparison types:
-     |             single -> list:   single must be somewhere in the list
-     |                                  - for strings, single may be a regex
-     |             single -> single: single must be in or equal the other
-     |                                  - for strings, single may be a regex
-     |             list -> single:   any value in list must match single
-     |                                  - for strings, list elements can be regexs
-     |             list -> list:     all individual elements must match
-     |                                  - NO regexs allowed
-     |      
-     |      Args:
-     |         other_prop (LopperProp): comparison target
-     |         value: attribute value
-     |      
-     |      Returns:
-     |         boolean: True there is a match, false otherwise
-     |  
-     |  hex(self)
-     |      Get the property value as a list of hex formatted numbers
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         list: hex formatted property value
-     |  
-     |  int(self)
-     |      Get the property value as a list of integers
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         list: integer formatted property value
-     |  
-     |  phandle_params(self)
-     |      Determines the phandle elements/params of a property
-     |      
-     |      Takes a property name and returns where to find a phandle in
-     |      that property.
-     |      
-     |      Both the index of the phandle, and the number of fields in
-     |      the property are returned.
-     |      
-     |      Args:
-     |          None
-     |      
-     |      Returns:
-     |          The the phandle index and number of fields, if the node can't
-     |          be found 0, 0 are returned.
-     |  
-     |  resolve(self, fdt)
-     |      resolve (calculate) property details against a FDT
-     |      
-     |      Some attributes of a property are not known at initialization
-     |      time, or may change due to tree operations.
-     |      
-     |      This method calculates those values using information in the
-     |      property and in the passed FDT. If no FDT is passed only
-     |      partial resolution is done.
-     |      
-     |      Fields resolved:
-     |         - abs_path
-     |         - type
-     |         - string_val (with phandles resolved)
-     |         - __pstate__
-     |      
-     |      Args:
-     |         fdt (FDT): flattened device tree to sync to or None if no
-     |                    tree is available
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  resolve_phandles(self, fdt)
-     |      Resolve the targets of any phandles in a property
-     |      
-     |      Args:
-     |          fdt (FDT): flattened device tree
-     |      
-     |      Returns:
-     |          A list of all resolved phandle node numbers, [] if no phandles are present
-     |  
-     |  sync(self, fdt)
-     |      sync the property to a backing FDT
-     |      
-     |      Writes the property value to the backing flattended device tree. After
-     |      write, the state is set to  "syncd" and the modified flat is cleared.
-     |      
-     |      Args:
-     |         fdt (FDT): flattened device tree to sync to
-     |      
-     |      Returns:
-     |         boolean: True if the property was sync'd, otherwise False
-     |  
-     |  ----------------------------------------------------------------------
-     |  Data descriptors defined here:
-     |  
-     |  __dict__
-     |      dictionary for instance variables (if defined)
-     |  
-     |  __weakref__
-     |      list of weak references to the object (if defined)
-    
-    class LopperTree(builtins.object)
-     |  Class for walking a device tree, and providing callbacks at defined points
-     |  
-     |  This class implements:
-     |     - a node iterator
-     |     - dictionary access to nodes by path or node number
-     |     - a tree walker / exec() that has callbacks for: tree start, node start,
-     |                                                      property start, node end, tree end
-     |     - debug level
-     |     - tree wide reference tracking control: clear, get
-     |     - sync(): to sync changes to a backing FDT
-     |     - node manipulatins: add, delete, filter, subnodes
-     |     - phandle access to nodes
-     |     - node search by regex
-     |  
-     |  A LopperTree object is instantiated for an easier/structure interface to a backing
-     |  device tree store (currently only a flattended device tree from libfdt). It provides
-     |  the ability to add/delete/manipulate nodes on a tree wide basis and can sync those
-     |  changes to the backing store.
-     |  
-     |  When initialized the tree is created as a snapshot or reference to a FDT. If the
-     |  changes made by the object are to be indepdendent, then a snapshot is used. If the
-     |  original FDT is to be updated, then a reference should be used. reference is the
-     |  default mode.
-     |  
-     |  During the walking of a tree via exec(), callbacks are made (if set) at defined
-     |  points in the process. This makes it easy to implement structured output of a
-     |  tree, without the need to have deep encoding/understanding of the underlying
-     |  structure.
-     |  
-     |  Callbacks are functions of the form: <fn>( <node or property>, FDT )
-     |  
-     |  Attributes:
-     |     - __nodes__: The nodes of the tree, ordered by absolute path indexing
-     |     - __nnodes__: The nodes of the tree, ordered by node number
-     |     - __pnodes__: The nodes of the tree, ordered by phandle
-     |     - __dbg__: treewide debug level
-     |     - __must_sync__: flag, true when the tree must be syncd to the FDT
-     |     - __current_node__: The current node in an iteration
-     |     - __start_node__: The starting node for an iteration
-     |     - __new_iteration__: Flag set to start a new iteration
-     |     - __node_iter__: The current iterator
-     |     - start_tree_cb, start_node_cb, end_node_cb, property_cb, end_tree_cb: callbacks
-     |     - depth_first: not currently implemented
-     |  
-     |  Methods defined here:
-     |  
-     |  __add__(self, other)
-     |      magic method for adding a node to a tree
-     |      
-     |      Supports adding a node to a tree through "+"
-     |      
-     |          tree + <LopperNode object>
-     |      
-     |      Args:
-     |         other (LopperNode): node to add
-     |      
-     |      Returns:
-     |         LopperTree: returns self, Exception on invalid input
-     |  
-     |  __delitem__(self, key)
-     |      magic method for removing a property from a tree dictionary style
-     |      
-     |      ** Not currently implemented **, overridden to prevent use
-     |      
-     |      Supports removing a node from a tree through "del"
-     |      
-     |          del <tree>[node]
-     |      
-     |      Args:
-     |         key (LopperNode): node/index to remove
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  __getattribute__(self, name)
-     |      magic method around object attribute access
-     |      
-     |      This method first attempts to access the objects inherent attributes and
-     |      returns the value if one exists matching the passed name.
-     |      
-     |      If one is not found, then the node dictionary is checked, and that
-     |      value returned.
-     |      
-     |      This allows access like:
-     |      
-     |          <LopperTree Object>.path_to_node
-     |      
-     |      To get the LopperNode at that path
-     |      
-     |      In practice, this is only of limited use, since many node paths are
-     |      not valid python attribute names.
-     |      
-     |      Args:
-     |         name: attribute name
-     |      
-     |      Returns:
-     |         The attribute value, or AttributeError if it doesn't exist.
-     |  
-     |  __getitem__(self, key)
-     |      magic method for accessing LopperTree nodes like a dictionary
-     |      
-     |      Allow accessing of nodes as a dictionary:
-     |      
-     |          <Lopper Tree Object>[<node path>]
-     |      
-     |      This abstracts the storage of nodesand allows direct access by name,
-     |      by number or by node regex.
-     |      
-     |      Either the string name of the node path, the node number, a LopperNode
-     |      object, or a node path with a regex can be used to access a node.
-     |      
-     |      Note that on a regex search, the first match is returned. For multiple
-     |      node returns, use the nodes() method.
-     |      
-     |      The standard KeyError exception is raised if the node is not valid for
-     |      a tree
-     |      
-     |      Args:
-     |          key: string, int or LopperNode
-     |      
-     |      Returns:
-     |         LopperNode object or KeyError exception
-     |  
-     |  __init__(self, fdt=None, snapshot=False, depth_first=True)
-     |      Initialize self.  See help(type(self)) for accurate signature.
-     |  
-     |  __iter__(self)
-     |      magic method to support iteration
-     |      
-     |      For iterating the nodes of a LopperTree, we are the iterator.
-     |      This is required by the iterator protocol.
-     |      
-     |      Args:
-     |          None
-     |      
-     |      Returns:
-     |         LopperTree object: self
-     |  
-     |  __next__(self)
-     |      magic method for iteration on a tree
-     |      
-     |      This routine uses the next() method to move through the nodes of a
-     |      tree.
-     |      
-     |      If there are no nodes, or we have iterated all nodes, StopIteration is
-     |      raised (as is required by the iterator protocol).
-     |      
-     |      Args:
-     |          None
-     |      
-     |      Returns:
-     |         LopperNode object or StopIteration exception
-     |  
-     |  __setattr__(self, name, value)
-     |      magic method to check the setting of a LopperTree attribute
-     |      
-     |      If the attribute being set is __current_node__ or __start_node__
-     |      then the new iteration flag is set to trigger the start of a new
-     |      iteration. When setting these attributes, value can either be a
-     |      node number or a node name. When it is a name, it is internally
-     |      converted to a number on behalf of the caller.
-     |      
-     |      If the attribute is __dbg__, then the debug setting is chained
-     |      to contained nodes.
-     |      
-     |      Args:
-     |         name: attribute name
-     |         value: attribute value
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  __setitem__(self, key, val)
-     |      magic method for setting LopperTree nodes like a dictionary
-     |      
-     |              Allow setting of properties as a dictionary:
-     |      
-     |                  <Lopper Tree Object>[<node name>] = <LopperNode Object>
-     |      
-     |                     or
-     |      
-     |                  <Lopper Tree Object>[<node number>] =  <LopperNode Object>
-     |      
-     |              During assignment of the node, access is created by name, number and
-     |              phandle as appropriate
-     |      
-     |              Args:
-     |                  key: string or int
-     |                  val: LopperNode
-     |      
-     |              Returns:
-     |      ;           Nothing, raises TypeError on invalid parameters
-     |  
-     |  __sub__(self, other)
-     |      magic method for removing a node from a tree
-     |      
-     |      Supports removing a node from a tree through "-"
-     |      
-     |          tree - <LopperNode object>
-     |      
-     |      Args:
-     |         other (LopperNode): Node to remove
-     |      
-     |      Returns:
-     |         LopperTree: returns self
-     |  
-     |  add(self, node, dont_sync=False)
-     |      Add a node to a tree
-     |      
-     |      Supports adding a node to a tree through:
-     |      
-     |          tree.add( <node> )
-     |      
-     |      The node is added to the FDT, resolved and syncd. It is then available
-     |      for use in any tree operations.
-     |      
-     |      Args:
-     |         node (LopperNode): node to add
-     |         dont_sync (boolean, optional): don't invoke a tree wide sync when
-     |                                        complete
-     |      
-     |      Returns:
-     |         LopperTree: returns self, raises Exception on invalid parameter
-     |  
-     |  delete(self, node)
-     |      delete a node from a tree
-     |      
-     |      If a node is resolved and syncd to the FDT, this routine deletes it
-     |      from the FDT and the LopperTree structure.
-     |      
-     |      Args:
-     |         node (int or LopperNode): the node to delete
-     |      
-     |      Returns:
-     |         Boolean: True if deleted, False otherwise. KeyError if node is not found
-     |  
-     |  exec(self)
-     |      Start a tree walk execution, with callbacks executed as required
-     |      
-     |      Starts walking the tree, beginning at the preamble, and then through a depth
-     |      first walking of the nodes.
-     |      
-     |      If the tree has registered callbacks, they are executed before the walk
-     |      starts, at the start/end of each node, at each property and at the end of
-     |      the tree.
-     |      
-     |      See the class description for details on the callbacks
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  exec_cmd(self, node, cmd, env=None)
-     |      Execute a (limited) code block against a node
-     |      
-     |      Execute a python clode block with the 'node' context set to the
-     |      value passed to this routine.
-     |      
-     |      The "cmd" python code, runs in a constructed/safe environment to ensure
-     |      that the code won't cause harmful sideffects to the execution
-     |      environment.
-     |      
-     |      The following functions and variables are currently available in the
-     |      safe_dict:
-     |      
-     |          len
-     |          print
-     |          verbose
-     |      
-     |      When executing in the code context, the following variables are
-     |      available to the python code block.
-     |      
-     |          tree : the LopperTree object containing the node
-     |          node : the LopperNode being processed
-     |          node_name : the name of the node (as defined by the dts/dtb)
-     |          node_number : the number of the node being processed
-     |      
-     |      The return value of the block is sent to the caller, so it can act
-     |      accordingly.
-     |      
-     |      Args:
-     |          node (LopperNode or string): starting node
-     |          cmd (string): block of python code to execute
-     |          env (dictionary,optional): values to make available as
-     |                                     variables to the code block
-     |      
-     |      Returns:
-     |          Return value from the execution of the code block
-     |  
-     |  filter(self, node_prefix, action, test_cmd, fdt=None, verbose=0)
-     |      Filter tree nodes and perform an action
-     |      
-     |      Starting from the supplied path (node_prefix), this function walks
-     |      the device tree and executes a block of python code to test each
-     |      node.
-     |      
-     |      If the block of code (test_cmd) returns True, then the action is
-     |      taken. If false, nothing is done.
-     |      
-     |      Currently defined actions:
-     |      
-     |         - delete: delete the node
-     |         - report: (not currently implemented)
-     |         - whitelist: (not currently implemented)
-     |         - blacklist: (not currently implemented)
-     |      
-     |      The "test_cmd" python code, runs in a constructed/safe environment to
-     |      ensure that the code won't cause harmful sideffects to the execution
-     |      environment. See the exec_cmd method for details of the command
-     |      execution.
-     |      
-     |      A standard python "return True" and "return False" should be used to
-     |      indicate the result of the test.
-     |      
-     |      Args:
-     |          node_prefix (string): starting node path
-     |          action (LopperAction): action to take in the True condition
-     |          test_cmd (string): block of python code to test against each node
-     |          fdt (FDT,optional): flattended device tree for reference
-     |          verbose (int,optional): verbosity level to use.
-     |      
-     |      Returns:
-     |          Nothing
-     |  
-     |  lnodes(self, label)
-     |      Find nodes in a tree by label
-     |      
-     |      Safely (no exception raised) returns the node that can be found
-     |      at a given label value.
-     |      
-     |      Args:
-     |         label (string): node string  to check
-     |      
-     |      Returns:
-     |         list (LopperNode): the matching nodes if found, [] otherwise
-     |  
-     |  next(self)
-     |      Returns the next node in a tree iteration
-     |      
-     |      This method maintains the iteration state of a tree and returns
-     |      the next LopperNode in the iteration.
-     |      
-     |      Three types of iterations are common:
-     |      
-     |        - full iteration: a depth first walk of every node in the tree
-     |        - subnode iteration: a depth first walk of all nodes under a given
-     |                             starting point
-     |        - startnode iteration: A depth first walk starting at a given node
-     |                               and continuing to the end of the tree
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         LopperNode
-     |  
-     |  nodes(self, nodename)
-     |      Get nodes that match a given name or regex
-     |      
-     |      Looks for a node at a name/path, or nodes that match a regex.
-     |      
-     |      Args:
-     |         nodename (string): node name or regex
-     |      
-     |      Returns:
-     |         list: a list all nodes that match the name or regex
-     |  
-     |  pnode(self, phandle)
-     |      Find a node in a tree by phandle
-     |      
-     |      Safely (no exception raised) returns the node that can be found
-     |      at a given phandle value.
-     |      
-     |      Args:
-     |         phandle (int): node phandle to check
-     |      
-     |      Returns:
-     |         LopperNode: the matching node if found, None otherwise
-     |  
-     |  ref(self, value, node_regex=None)
-     |      Tree wide setting of a refcount
-     |      
-     |      Sets a refcount for all nodes in the tree, or a regex contained set
-     |      of nodes.
-     |      
-     |      Calling this routine with zero, is a treewide reset of all refcounts.
-     |      
-     |      If a regex is passed, only matching nodes will be set/cleared.
-     |      
-     |      Args:
-     |         value (int): refcount value by which to increment
-     |         node_regex (string,optional): node path regex to restrict scope of
-     |                                       refcount operations
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  ref_all(self, starting_node, parent_nodes=False)
-     |      Increment the refcount for a node and its subnodes (and optionally parents)
-     |      
-     |      Creates a reference to a node and its subnodes.
-     |      
-     |      If parent_nodes is set to True, parent nodes will be also referenced.
-     |      
-     |      Args:
-     |         starting_node (LopperNode): node to reference
-     |         parent_nodes (boolean,optional): flag to indicate if parent nodes
-     |                                          should be referenced
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  refd(self, node_regex='')
-     |      Get a list of referenced nodes
-     |      
-     |      When refcounting is enabled, this routine returns the list of nodes
-     |      that have been referenced.
-     |      
-     |      We use the name, rather than the offset, since the offset can change if
-     |      something is deleted from the tree. But we need to use the full path so
-     |      we can find it later.
-     |      
-     |      Args:
-     |         node_regex: limit returned nodes to those that match the regex, which
-     |                     is applied to the path of the nodes.
-     |      
-     |      Returns:
-     |         list (strings): list of referenced nodes, or [] if there are no referenced nodes
-     |  
-     |  reset(self)
-     |      reset a tree
-     |      
-     |      Resets certain parts of the tree to their initial values. Specifically
-     |      it resets the tree for a new iteration.
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  resolve(self)
-     |      resolve a tree
-     |      
-     |      Resolves the details around the nodes of a tree, and completes values
-     |      that are not possible at initialization time.
-     |      
-     |      In particular, it updates the path, node and phandle ordered dictionaries
-     |      to reflect the backing FDT. This is often done after a node is added to
-     |      ensure that iterations will see the new node in tree order, versus added
-     |      order.
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  subnodes(self, start_node, node_regex=None)
-     |      return the subnodes of a node
-     |      
-     |      Returns a list of all subnodes from a given starting node.
-     |      
-     |      If a node regex is passed, those nodes that do not match the
-     |      regex are removed from the returned value.
-     |      
-     |      Args:
-     |         start_node (LopperNode): the starting node
-     |         node_regex (string,optional): node mask
-     |      
-     |      Returns:
-     |         list: returns a list of all subnodes (or matching subnodes)
-     |  
-     |  sync(self, fdt=None, only_if_required=False)
-     |      Sync a tree to a backing FDT
-     |      
-     |      This routine walks the FDT, and sync's changes from any LopperTree nodes
-     |      into the backing store.
-     |      
-     |      Once complete, all nodes are resolved() to ensure their attributes reflect
-     |      the FDT status.
-     |      
-     |      Args:
-     |         fdt (FDT,optional): the flattended device tree to sync to. If it isn't
-     |                             passed, the stored FDT is use for sync.
-     |         only_if_required(boolean,optional): flag to indicate that we should only
-     |                                             sync if something is dirty
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  ----------------------------------------------------------------------
-     |  Data descriptors defined here:
-     |  
-     |  __dict__
-     |      dictionary for instance variables (if defined)
-     |  
-     |  __weakref__
-     |      list of weak references to the object (if defined)
-    
-    class LopperTreePrinter(LopperTree)
-     |  SubClass for enhanced printing a lopper tree
-     |  
-     |  This class implements:
-     |     - routines to print the start of a tree, nodes, properties and end of a tree
-     |       to DTS format.
-     |  
-     |  Enhanced printing is done by implementing callbacks that the base LopperTree
-     |  class will call during a tree walk.
-     |  
-     |  Attributes:
-     |     - output: output file name, if not passed stdout is used
-     |  
-     |  Method resolution order:
-     |      LopperTreePrinter
-     |      LopperTree
-     |      builtins.object
-     |  
-     |  Methods defined here:
-     |  
-     |  __init__(self, fdt=None, snapshot=False, output=<_io.TextIOWrapper name='<stdout>' mode='w' encoding='UTF-8'>, debug=0)
-     |      Initialize self.  See help(type(self)) for accurate signature.
-     |  
-     |  end(self, n, fdt)
-     |      LopperTreePrinter tree end
-     |      
-     |      Ends the walking of a tree
-     |      
-     |      Args:
-     |          n (LopperNode): -1
-     |          fdt (FDT): the FDT backing the tree
-     |      
-     |      Returns:
-     |          Nothing
-     |  
-     |  end_node(self, n, fdt)
-     |      LopperTreePrinter node end
-     |      
-     |      Prints the end / closing of a node
-     |      
-     |      Args:
-     |          n (LopperNode): the node being closed
-     |          fdt (FDT): the FDT backing the tree
-     |      
-     |      Returns:
-     |          Nothing
-     |  
-     |  reset(self, output_file=<_io.TextIOWrapper name='<stdout>' mode='w' encoding='UTF-8'>)
-     |      reset the output of a printer
-     |      
-     |      closes the existing output_file (if not stdout) and opens a new
-     |      output_file (if not stdout)
-     |      
-     |      Args:
-     |          output_file (string,optional): name of file to open for output, default is stdout
-     |      
-     |      Returns:
-     |          Nothing
-     |  
-     |  start(self, n, fdt)
-     |      LopperTreePrinter start
-     |      
-     |      Prints the start / opening of a tree and handles the preamble.
-     |      
-     |      Args:
-     |          n (LopperNode): the opening node of the tree
-     |          fdt (FDT): the FDT backing the tree
-     |      
-     |      Returns:
-     |          Nothing
-     |  
-     |  start_node(self, n, fdt)
-     |      LopperTreePrinter node start
-     |      
-     |      Prints the start / opening of a node
-     |      
-     |      Args:
-     |          n (LopperNode): the node being opened
-     |          fdt (FDT): the FDT backing the tree
-     |      
-     |      Returns:
-     |          Nothing
-     |  
-     |  start_property(self, p, fdt)
-     |      LopperTreePrinter property print
-     |      
-     |      Prints a property
-     |      
-     |      Args:
-     |          p (LopperProperty): the property to print
-     |          fdt (FDT): the FDT backing the tree
-     |      
-     |      Returns:
-     |          Nothing
-     |  
-     |  ----------------------------------------------------------------------
-     |  Methods inherited from LopperTree:
-     |  
-     |  __add__(self, other)
-     |      magic method for adding a node to a tree
-     |      
-     |      Supports adding a node to a tree through "+"
-     |      
-     |          tree + <LopperNode object>
-     |      
-     |      Args:
-     |         other (LopperNode): node to add
-     |      
-     |      Returns:
-     |         LopperTree: returns self, Exception on invalid input
-     |  
-     |  __delitem__(self, key)
-     |      magic method for removing a property from a tree dictionary style
-     |      
-     |      ** Not currently implemented **, overridden to prevent use
-     |      
-     |      Supports removing a node from a tree through "del"
-     |      
-     |          del <tree>[node]
-     |      
-     |      Args:
-     |         key (LopperNode): node/index to remove
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  __getattribute__(self, name)
-     |      magic method around object attribute access
-     |      
-     |      This method first attempts to access the objects inherent attributes and
-     |      returns the value if one exists matching the passed name.
-     |      
-     |      If one is not found, then the node dictionary is checked, and that
-     |      value returned.
-     |      
-     |      This allows access like:
-     |      
-     |          <LopperTree Object>.path_to_node
-     |      
-     |      To get the LopperNode at that path
-     |      
-     |      In practice, this is only of limited use, since many node paths are
-     |      not valid python attribute names.
-     |      
-     |      Args:
-     |         name: attribute name
-     |      
-     |      Returns:
-     |         The attribute value, or AttributeError if it doesn't exist.
-     |  
-     |  __getitem__(self, key)
-     |      magic method for accessing LopperTree nodes like a dictionary
-     |      
-     |      Allow accessing of nodes as a dictionary:
-     |      
-     |          <Lopper Tree Object>[<node path>]
-     |      
-     |      This abstracts the storage of nodesand allows direct access by name,
-     |      by number or by node regex.
-     |      
-     |      Either the string name of the node path, the node number, a LopperNode
-     |      object, or a node path with a regex can be used to access a node.
-     |      
-     |      Note that on a regex search, the first match is returned. For multiple
-     |      node returns, use the nodes() method.
-     |      
-     |      The standard KeyError exception is raised if the node is not valid for
-     |      a tree
-     |      
-     |      Args:
-     |          key: string, int or LopperNode
-     |      
-     |      Returns:
-     |         LopperNode object or KeyError exception
-     |  
-     |  __iter__(self)
-     |      magic method to support iteration
-     |      
-     |      For iterating the nodes of a LopperTree, we are the iterator.
-     |      This is required by the iterator protocol.
-     |      
-     |      Args:
-     |          None
-     |      
-     |      Returns:
-     |         LopperTree object: self
-     |  
-     |  __next__(self)
-     |      magic method for iteration on a tree
-     |      
-     |      This routine uses the next() method to move through the nodes of a
-     |      tree.
-     |      
-     |      If there are no nodes, or we have iterated all nodes, StopIteration is
-     |      raised (as is required by the iterator protocol).
-     |      
-     |      Args:
-     |          None
-     |      
-     |      Returns:
-     |         LopperNode object or StopIteration exception
-     |  
-     |  __setattr__(self, name, value)
-     |      magic method to check the setting of a LopperTree attribute
-     |      
-     |      If the attribute being set is __current_node__ or __start_node__
-     |      then the new iteration flag is set to trigger the start of a new
-     |      iteration. When setting these attributes, value can either be a
-     |      node number or a node name. When it is a name, it is internally
-     |      converted to a number on behalf of the caller.
-     |      
-     |      If the attribute is __dbg__, then the debug setting is chained
-     |      to contained nodes.
-     |      
-     |      Args:
-     |         name: attribute name
-     |         value: attribute value
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  __setitem__(self, key, val)
-     |      magic method for setting LopperTree nodes like a dictionary
-     |      
-     |              Allow setting of properties as a dictionary:
-     |      
-     |                  <Lopper Tree Object>[<node name>] = <LopperNode Object>
-     |      
-     |                     or
-     |      
-     |                  <Lopper Tree Object>[<node number>] =  <LopperNode Object>
-     |      
-     |              During assignment of the node, access is created by name, number and
-     |              phandle as appropriate
-     |      
-     |              Args:
-     |                  key: string or int
-     |                  val: LopperNode
-     |      
-     |              Returns:
-     |      ;           Nothing, raises TypeError on invalid parameters
-     |  
-     |  __sub__(self, other)
-     |      magic method for removing a node from a tree
-     |      
-     |      Supports removing a node from a tree through "-"
-     |      
-     |          tree - <LopperNode object>
-     |      
-     |      Args:
-     |         other (LopperNode): Node to remove
-     |      
-     |      Returns:
-     |         LopperTree: returns self
-     |  
-     |  add(self, node, dont_sync=False)
-     |      Add a node to a tree
-     |      
-     |      Supports adding a node to a tree through:
-     |      
-     |          tree.add( <node> )
-     |      
-     |      The node is added to the FDT, resolved and syncd. It is then available
-     |      for use in any tree operations.
-     |      
-     |      Args:
-     |         node (LopperNode): node to add
-     |         dont_sync (boolean, optional): don't invoke a tree wide sync when
-     |                                        complete
-     |      
-     |      Returns:
-     |         LopperTree: returns self, raises Exception on invalid parameter
-     |  
-     |  delete(self, node)
-     |      delete a node from a tree
-     |      
-     |      If a node is resolved and syncd to the FDT, this routine deletes it
-     |      from the FDT and the LopperTree structure.
-     |      
-     |      Args:
-     |         node (int or LopperNode): the node to delete
-     |      
-     |      Returns:
-     |         Boolean: True if deleted, False otherwise. KeyError if node is not found
-     |  
-     |  exec(self)
-     |      Start a tree walk execution, with callbacks executed as required
-     |      
-     |      Starts walking the tree, beginning at the preamble, and then through a depth
-     |      first walking of the nodes.
-     |      
-     |      If the tree has registered callbacks, they are executed before the walk
-     |      starts, at the start/end of each node, at each property and at the end of
-     |      the tree.
-     |      
-     |      See the class description for details on the callbacks
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  exec_cmd(self, node, cmd, env=None)
-     |      Execute a (limited) code block against a node
-     |      
-     |      Execute a python clode block with the 'node' context set to the
-     |      value passed to this routine.
-     |      
-     |      The "cmd" python code, runs in a constructed/safe environment to ensure
-     |      that the code won't cause harmful sideffects to the execution
-     |      environment.
-     |      
-     |      The following functions and variables are currently available in the
-     |      safe_dict:
-     |      
-     |          len
-     |          print
-     |          verbose
-     |      
-     |      When executing in the code context, the following variables are
-     |      available to the python code block.
-     |      
-     |          tree : the LopperTree object containing the node
-     |          node : the LopperNode being processed
-     |          node_name : the name of the node (as defined by the dts/dtb)
-     |          node_number : the number of the node being processed
-     |      
-     |      The return value of the block is sent to the caller, so it can act
-     |      accordingly.
-     |      
-     |      Args:
-     |          node (LopperNode or string): starting node
-     |          cmd (string): block of python code to execute
-     |          env (dictionary,optional): values to make available as
-     |                                     variables to the code block
-     |      
-     |      Returns:
-     |          Return value from the execution of the code block
-     |  
-     |  filter(self, node_prefix, action, test_cmd, fdt=None, verbose=0)
-     |      Filter tree nodes and perform an action
-     |      
-     |      Starting from the supplied path (node_prefix), this function walks
-     |      the device tree and executes a block of python code to test each
-     |      node.
-     |      
-     |      If the block of code (test_cmd) returns True, then the action is
-     |      taken. If false, nothing is done.
-     |      
-     |      Currently defined actions:
-     |      
-     |         - delete: delete the node
-     |         - report: (not currently implemented)
-     |         - whitelist: (not currently implemented)
-     |         - blacklist: (not currently implemented)
-     |      
-     |      The "test_cmd" python code, runs in a constructed/safe environment to
-     |      ensure that the code won't cause harmful sideffects to the execution
-     |      environment. See the exec_cmd method for details of the command
-     |      execution.
-     |      
-     |      A standard python "return True" and "return False" should be used to
-     |      indicate the result of the test.
-     |      
-     |      Args:
-     |          node_prefix (string): starting node path
-     |          action (LopperAction): action to take in the True condition
-     |          test_cmd (string): block of python code to test against each node
-     |          fdt (FDT,optional): flattended device tree for reference
-     |          verbose (int,optional): verbosity level to use.
-     |      
-     |      Returns:
-     |          Nothing
-     |  
-     |  lnodes(self, label)
-     |      Find nodes in a tree by label
-     |      
-     |      Safely (no exception raised) returns the node that can be found
-     |      at a given label value.
-     |      
-     |      Args:
-     |         label (string): node string  to check
-     |      
-     |      Returns:
-     |         list (LopperNode): the matching nodes if found, [] otherwise
-     |  
-     |  next(self)
-     |      Returns the next node in a tree iteration
-     |      
-     |      This method maintains the iteration state of a tree and returns
-     |      the next LopperNode in the iteration.
-     |      
-     |      Three types of iterations are common:
-     |      
-     |        - full iteration: a depth first walk of every node in the tree
-     |        - subnode iteration: a depth first walk of all nodes under a given
-     |                             starting point
-     |        - startnode iteration: A depth first walk starting at a given node
-     |                               and continuing to the end of the tree
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         LopperNode
-     |  
-     |  nodes(self, nodename)
-     |      Get nodes that match a given name or regex
-     |      
-     |      Looks for a node at a name/path, or nodes that match a regex.
-     |      
-     |      Args:
-     |         nodename (string): node name or regex
-     |      
-     |      Returns:
-     |         list: a list all nodes that match the name or regex
-     |  
-     |  pnode(self, phandle)
-     |      Find a node in a tree by phandle
-     |      
-     |      Safely (no exception raised) returns the node that can be found
-     |      at a given phandle value.
-     |      
-     |      Args:
-     |         phandle (int): node phandle to check
-     |      
-     |      Returns:
-     |         LopperNode: the matching node if found, None otherwise
-     |  
-     |  ref(self, value, node_regex=None)
-     |      Tree wide setting of a refcount
-     |      
-     |      Sets a refcount for all nodes in the tree, or a regex contained set
-     |      of nodes.
-     |      
-     |      Calling this routine with zero, is a treewide reset of all refcounts.
-     |      
-     |      If a regex is passed, only matching nodes will be set/cleared.
-     |      
-     |      Args:
-     |         value (int): refcount value by which to increment
-     |         node_regex (string,optional): node path regex to restrict scope of
-     |                                       refcount operations
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  ref_all(self, starting_node, parent_nodes=False)
-     |      Increment the refcount for a node and its subnodes (and optionally parents)
-     |      
-     |      Creates a reference to a node and its subnodes.
-     |      
-     |      If parent_nodes is set to True, parent nodes will be also referenced.
-     |      
-     |      Args:
-     |         starting_node (LopperNode): node to reference
-     |         parent_nodes (boolean,optional): flag to indicate if parent nodes
-     |                                          should be referenced
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  refd(self, node_regex='')
-     |      Get a list of referenced nodes
-     |      
-     |      When refcounting is enabled, this routine returns the list of nodes
-     |      that have been referenced.
-     |      
-     |      We use the name, rather than the offset, since the offset can change if
-     |      something is deleted from the tree. But we need to use the full path so
-     |      we can find it later.
-     |      
-     |      Args:
-     |         node_regex: limit returned nodes to those that match the regex, which
-     |                     is applied to the path of the nodes.
-     |      
-     |      Returns:
-     |         list (strings): list of referenced nodes, or [] if there are no referenced nodes
-     |  
-     |  resolve(self)
-     |      resolve a tree
-     |      
-     |      Resolves the details around the nodes of a tree, and completes values
-     |      that are not possible at initialization time.
-     |      
-     |      In particular, it updates the path, node and phandle ordered dictionaries
-     |      to reflect the backing FDT. This is often done after a node is added to
-     |      ensure that iterations will see the new node in tree order, versus added
-     |      order.
-     |      
-     |      Args:
-     |         None
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  subnodes(self, start_node, node_regex=None)
-     |      return the subnodes of a node
-     |      
-     |      Returns a list of all subnodes from a given starting node.
-     |      
-     |      If a node regex is passed, those nodes that do not match the
-     |      regex are removed from the returned value.
-     |      
-     |      Args:
-     |         start_node (LopperNode): the starting node
-     |         node_regex (string,optional): node mask
-     |      
-     |      Returns:
-     |         list: returns a list of all subnodes (or matching subnodes)
-     |  
-     |  sync(self, fdt=None, only_if_required=False)
-     |      Sync a tree to a backing FDT
-     |      
-     |      This routine walks the FDT, and sync's changes from any LopperTree nodes
-     |      into the backing store.
-     |      
-     |      Once complete, all nodes are resolved() to ensure their attributes reflect
-     |      the FDT status.
-     |      
-     |      Args:
-     |         fdt (FDT,optional): the flattended device tree to sync to. If it isn't
-     |                             passed, the stored FDT is use for sync.
-     |         only_if_required(boolean,optional): flag to indicate that we should only
-     |                                             sync if something is dirty
-     |      
-     |      Returns:
-     |         Nothing
-     |  
-     |  ----------------------------------------------------------------------
-     |  Data descriptors inherited from LopperTree:
-     |  
-     |  __dict__
-     |      dictionary for instance variables (if defined)
-     |  
-     |  __weakref__
-     |      list of weak references to the object (if defined)
-
-DATA
-    MAX_RETRIES = 3
-    QUIET_ALL = range(1, 18)
-    QUIET_NOTFOUND = (1,)
-    printable = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU...
-
-FILE
-    /home/bruce/git/system-device-tree/lopper_tree.py
 
 
