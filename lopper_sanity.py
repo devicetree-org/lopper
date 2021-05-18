@@ -2224,6 +2224,7 @@ def usage():
     print('  -f, --format        run format tests (dts/yaml)' )
     print('  -d, --fdt           run fdt abstraction tests' )
     print('    , --werror        treat warnings as errors' )
+    print('    , --all           run all sanity tests' )
     print('  -h, --help          display this help and exit')
     print('')
 
@@ -2250,7 +2251,7 @@ def main():
     fdttest = False
     continue_on_error = False
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlhd", [ "fdt", "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlhd", [ "all", "fdt", "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2282,6 +2283,12 @@ def main():
             format=True
         elif o in ( '-d', '--fdt' ):
             fdttest = True
+        elif o in ( '--all' ):
+            tree = True
+            lops = True
+            assists = True
+            fdttest = True
+            format = True
         elif o in ( '--continue' ):
             continue_on_error = True
         elif o in ('--version'):
