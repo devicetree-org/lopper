@@ -207,7 +207,7 @@ class LopperProp():
             if type(self.value) == list:
                 return len(self.value)
             else:
-                return 0
+                return 1
 
     def __iter__(self):
         """magic method to support iteration
@@ -630,7 +630,7 @@ class LopperProp():
                         # processing. If it is a string, we'll try the lookup.
                         lnode = self.node.tree.lnodes( re.escape(i) )
                         if lnode:
-                            phandle_targets.append( lnode )
+                            phandle_targets.extend( lnode )
                         else:
                             phandle_targets.append( "#invalid" )
                 except Exception as e:
@@ -906,7 +906,6 @@ class LopperProp():
                 formatted_records = []
                 if phandle_field_count:
                     records_to_iterate = [prop_val[i:i + phandle_field_count] for i in range(0, len(prop_val), phandle_field_count)]
-
                     for rnum,r in enumerate(records_to_iterate):
                         try:
                             phandle_resolution = phandle_tgts.pop(0)
@@ -1748,6 +1747,7 @@ class LopperNode(object):
                 print( "[DBG++]: node export: start: [%s][%s]" % (self.number,self.abs_path))
 
             dct['__path__'] = self.abs_path
+            dct['__nodesrc__'] = self._source
 
             # property export
             for p in self.__props__.values():
@@ -1756,6 +1756,8 @@ class LopperNode(object):
                     dct['__{}_type__'.format(p.name)] = LopperFmt.UINT8
                 else:
                     dct['__{}_type__'.format(p.name)] = p.ptype
+
+                dct['__{}_pclass__'.format(p.name)] = p.pclass
 
                 if self.__dbg__ > 2:
                     print( "       node export: [%s] property: %s (state:%s)(type:%s)" %
@@ -2136,10 +2138,6 @@ class LopperNode(object):
                 if re.search( "^__", prop ) or prop.startswith( '/' ):
                     # internal property, skip
                     continue
-                else:
-                    if self.__dbg__ > 3:
-                        print( "[DBG++] node load: [%s] prop: %s val: %s" % (dct['__{}_type__'.format(prop)],
-                                                                             prop, prop_val ))
 
                 dtype = LopperFmt.UINT8
                 try:
@@ -2147,6 +2145,20 @@ class LopperNode(object):
                     dtype = dct['__{}_type__'.format(prop)]
                 except Exception as e:
                     pass
+
+                if self.__dbg__ > 3:
+                    print( "[DBG++] node load: [%s] prop: %s val: %s" % (dtype, prop, prop_val ))
+
+                try:
+                    # see if we got a property class as part of the input dictionary
+                    pclass = dct['__{}_pclass__'.format(prop)]
+                except Exception as e:
+                    pclass = ""
+
+                try:
+                    node_source = dct['__nodesrc__']
+                except:
+                    node_source = None
 
                 # special handling for 'compatible', we bubble it up as the node "type"
                 if prop == "compatible":
@@ -2172,6 +2184,10 @@ class LopperNode(object):
                         self.__props__[prop].binary = True
 
                     self.__props__[prop].ptype = dtype
+                    self.__props__[prop].pclass = pclass
+
+                    if node_source:
+                        self._source = node_source
 
                     self.__props__[prop].resolve( strict )
                     self.__props__[prop].__modified__ = False

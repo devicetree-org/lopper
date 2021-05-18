@@ -172,6 +172,10 @@ def access_expand( tree, subnode, verbose = 0 ):
     # * - ethernet card at 0xff0c0000
     # */
     access_props = subnode.props( "access" )
+
+    if not access_props:
+        return
+
     # the loop below used to use json.loads, which always returns a list,
     # so we drop this in a list to avoid needing to change for the property
     # direct access case.
@@ -293,17 +297,23 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
 def cpu_expand( tree, subnode, verbose = 0):
     ## cpu processing
     cpus = subnode.props( "cpus" )
+    if not cpus:
+        return
 
     cpus_chunks = [cpus[0][0]]
     cpus_list = []
     for c in cpus_chunks:
         if verbose:
             print( "[DBG]: cpu: %s" % c )
-            print( "         cluster: %s" % c['cluster'] )
-            print( "         cpumask: %s" % c['cpumask'] )
-            print( "         mode: %s" % c['mode'] )
+            if type(c) == dict:
+                print( "         cluster: %s" % c['cluster'] )
+                print( "         cpumask: %s" % c['cpumask'] )
+                print( "         mode: %s" % c['mode'] )
 
-        cluster = c['cluster']
+        if type(c) == dict:
+            cluster = c['cluster']
+        else:
+            cluster = c
 
         try:
             cluster_node = tree.lnodes( cluster )[0]
@@ -333,25 +343,29 @@ def cpu_expand( tree, subnode, verbose = 0):
         # * bit 30: lockstep (lockstep enabled == 1)
         # * bit 31: secure mode / normal mode (secure mode == 1)
         # */
-        mode_mask = 0
-        mode = c['mode']
-        if mode:
-            try:
-                secure = mode['secure']
-                if secure:
-                    mode_mask = set_bit( mode_mask, 31 )
-            except:
-                pass
+        if type(c) == dict:
+            mode_mask = 0
+            mode = c['mode']
+            if mode:
+                try:
+                    secure = mode['secure']
+                    if secure:
+                        mode_mask = set_bit( mode_mask, 31 )
+                except:
+                    pass
 
-            try:
-                el = mode['el']
-                if el:
-                    mode_mask = set_bit( mode_mask, 0 )
-                    mode_mask = set_bit( mode_mask, 1 )
-            except:
-                pass
+                try:
+                    el = mode['el']
+                    if el:
+                        mode_mask = set_bit( mode_mask, 0 )
+                        mode_mask = set_bit( mode_mask, 1 )
+                except:
+                    pass
 
-        mask = c['cpumask']
+            mask = c['cpumask']
+        else:
+            mode_mask = 0x0
+            mask = 0x0
 
         # cpus is <phandle> <mask> <mode>
         if verbose:
