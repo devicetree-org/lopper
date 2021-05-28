@@ -11,6 +11,7 @@ import ruamel.yaml as yaml
 
 import json
 import sys
+import copy
 
 from collections import OrderedDict
 
@@ -190,21 +191,39 @@ class LopperDictImporter(object):
         assert isinstance(data, dict)
         assert "parent" not in data
         attrs = dict(data)
+        verbose = 0
+
+        if verbose:
+            print( "[DBG]: ===> __import (%s)" % name )
+            print( "            attrs: %s" % attrs )
 
         if name:
             attrs['name'] = name
 
         children = []
-        for k in list(attrs):
+        to_delete = []
+        for k in attrs:
             if type(attrs[k]) == dict:
+
                 # This is a child, name it
-                cdict = attrs[k]
+                # we need this deepcopy, since if the yaml has an alias and
+                # reference, changing one dictionary changes the other. We
+                # need a safe/full copy so we can assign the name safely.
+                cdict = copy.deepcopy(attrs[k])
                 cdict['name'] = k
                 cdict['fdt_name'] = k
+
+                if verbose:
+                    print( "[DBG]      queuing child node: name: %s props: %s" % (k,cdict))
+
                 children.append( cdict )
-                # remove it, since we don't want the child attributes to be
-                # stored in the parent node
-                del attrs[k]
+                # queue it for removal, since we don't want the child attributes to be
+                # stored in the parent node. We don't remove it here, since the iterator
+                # will change and we'll error
+                to_delete.append( k )
+
+        for d in to_delete:
+            del attrs[d]
 
         # if we didn't find a dictionary, look for a specially named "children"
         # attribute. This is for compatibility with anytree exported yaml.
@@ -224,6 +243,9 @@ class LopperDictImporter(object):
                 first_key = list(attrs)[0]
                 first_val = attrs[first_key]
                 attrs['name'] = first_val
+
+        if verbose:
+            print( "[DBG]      creating node with attrs: %s" % attrs )
 
         node = self.nodecls(parent=parent, **attrs)
         for child in children:
@@ -403,6 +425,7 @@ class LopperYAML():
         excluded_props = [ "name", "fdt_name" ]
         serialize_json = True
         verbose = 0
+        boolean_encode_as_int = True
 
         for node in PreOrderIter(self.anytree):
             if node.name == "root":
@@ -440,9 +463,15 @@ class LopperYAML():
                     elif type(props[p]) == bool:
                         # don't encode false bool, and a true is just an empty list
                         if props[p]:
-                            props[p] = None
+                            if boolean_encode_as_int:
+                                props[p] = 1
+                            else:
+                                props[p] = None
                         else:
-                            skip = True
+                            if boolean_encode_as_int:
+                                props[p] = 0
+                            else:
+                                skip = True
 
                     if use_json:
                         x = json.dumps(props[p])
