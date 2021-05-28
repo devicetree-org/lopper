@@ -51,6 +51,7 @@ class LopperTreeImporter(object):
         assert isinstance(node, LopperNode)
 
         attrs = OrderedDict()
+        boolean_encode_as_int = False
 
         name = node.name
         if not name:
@@ -64,7 +65,16 @@ class LopperTreeImporter(object):
                 # property with no value is an encoded boolean "true" as an
                 # empty list. So check for a value, try json, fallback to
                 # assignment.
-                if node.__props__[p].value:
+                decode = False
+                if boolean_encode_as_int:
+                    decode = True
+                else:
+                    if node.__props__[p].value:
+                        decode = True
+                    else:
+                        decode = False
+
+                if decode:
                     try:
                         if verbose:
                             print( "[DBG++]: LopperTreeImporter: json load for prop %s : %s" % (p,node.__props__[p].value))
@@ -84,6 +94,12 @@ class LopperTreeImporter(object):
 
                     except Exception as e:
                         val = node.__props__[p].value
+
+                    if type(val) == int:
+                        if val == 1:
+                            val = True
+                        else:
+                            val = False
                 else:
                     val = True
             else:
@@ -425,7 +441,7 @@ class LopperYAML():
         excluded_props = [ "name", "fdt_name" ]
         serialize_json = True
         verbose = 0
-        boolean_encode_as_int = True
+        boolean_encode_as_int = False
 
         for node in PreOrderIter(self.anytree):
             if node.name == "root":
