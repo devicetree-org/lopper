@@ -20,7 +20,7 @@
                         interrupt-parent = "phandle";
                         iommus = "phandle field";
                         interrupt-map = "#interrupt-cells phandle #interrupt-cells";
-                        access = "phandle #access-flags-cells";
+                        access = "phandle";
                         cpus = "phandle mask mode";
                         include = "phandle";
                         firewallconf = "phandle type priority";
@@ -45,28 +45,6 @@
                               code = "
                                     for n in __selected__:
                                         n['compatible'] = [ 'xilinx,subsystem-v1', 'openamp,domain-v1' ]
-                        ";
-                      };
-                };
-                lop_0_2 {
-                      compatible = "system-device-tree-v1,lop,select-v1";
-                      select_1;
-                      select_2 = "/domains/.*:memory:";
-                      lop_0_2 {
-                              compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
-                              code = "
-                                    import humanfriendly
-                                    for n in __selected__:
-                                        # print( '  domain: %s' % n.abs_path )
-                                        n['#address-cells'] = [2]
-                                        n['#size-cells'] = [2]
-                                        memory_val = n['memory']
-                                        # print( 'memory value: %s' % memory_val )
-                                        # print( 'memory class: %s' % memory_val.pclass )
-
-                                        subsystem.memory_expand( tree, n )
-
                         ";
                       };
                 };
@@ -110,7 +88,6 @@
                                             ng.name = 'resourcegroup@{}'.format(i)
                                             ng['compatible'] = ['openamp,remoteproc-v1', 'openamp,group-v1' ]
                                             tree + ng
-                                            subsystem.memory_expand( tree, ng )
 
                                         # we've re-homed the resource groups. delete the outer one
                                         # and the children ('node' is the first of __selected__)
@@ -128,16 +105,17 @@
                               inherit = "subsystem";
                               code = "
                                     for d in __selected__:
-                                        included_resource = d['include'].value[0]
-                                        try:
-                                            tgt_node = tree[included_resource]
-                                            if not tgt_node.phandle:
-                                                ph = tgt_node.phandle_or_create()
+                                        included_resources = d['include'].value
+                                        for index,included_resource in enumerate(included_resources):
+                                            try:
+                                                tgt_node = tree[included_resource]
+                                                if not tgt_node.phandle:
+                                                    ph = tgt_node.phandle_or_create()
 
-                                            d['include'].value = [ tgt_node.phandle ]
+                                                d['include'].value[index] = tgt_node.phandle
 
-                                        except Exception as e:
-                                            print( '[WARNING]: target %s not found (%s)' % (included_resource,e))
+                                            except Exception as e:
+                                                print( '[WARNING]: target %s not found (%s)' % (included_resource,e))
                         ";
                       };
                 };
@@ -177,19 +155,6 @@
                 lop_0_8 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
-                      select_2 = "/.*:access:";
-                      lop_0_2 {
-                              compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
-                              code = "
-                                    for d in __selected__:
-                                        subsystem.access_expand( tree, d, 0 )
-                        ";
-                      };
-                };
-                lop_0_9 {
-                      compatible = "system-device-tree-v1,lop,select-v1";
-                      select_1;
                       //select_2 = "/.*:firewallconf:";
                       select_3 = "/.*/firewallconf::";
                       lop_0_2 {
@@ -201,5 +166,29 @@
                         ";
                       };
                 };
+                lop_0_10 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/domains";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+
+                                    for n in __selected__[0].subnodes():
+
+                                        if n.propval('access') != [''] and 'flags' not in n.abs_path:
+                                            subsystem.access_expand( tree, n, 0 )
+
+                                        if n.propval('memory') != ['']:
+                                            subsystem.memory_expand( tree, n )
+                                        if n.propval('sram') != ['']:
+                                            subsystem.memory_expand( tree, n, prop_name = 'sram' )
+
+                        ";
+                      };
+                };
+
+
         };
 };
