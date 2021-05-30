@@ -90,8 +90,8 @@ def capability_policy(flags):
   msg += hex((flags & capability_mask) >> capability_offset)
   return msg
 
-prealloc_offset = 0xf
-prealloc_mask = 0x8000
+prealloc_offset = 6
+prealloc_mask = (0x1 << 6)
 
 class PREALLOC(IntEnum):
   NOT_REQUIRED = 0
@@ -108,6 +108,23 @@ def prealloc_policy(flags):
   msg += prealloc[(flags & prealloc_mask) >> prealloc_offset]
   return msg
 
+def prealloc_detailed_policy(flags):
+  msg = "#    Preallocation detailed: "
+  caps = [
+    "full access",
+    "preserve context",
+    "emit wake interrupts",
+    "not usable",
+    "secure access",
+    "coherent access",
+    "virtualized access"
+  ]
+  for index,s in enumerate(caps):
+    match =  ((0x1 << index) & flags) >> index
+    if match == 1:
+      msg += " " + s
+  return msg
+
 class Requirement:
   def __init__(self, subsystem, node, prealloc, capability, nsregn_policy,
                read_policy, write_policy, security, usage):
@@ -122,7 +139,7 @@ class Requirement:
     self.node           = node
 
 
-mailbox_devices = {
+misc_devices = {
   "mailbox@ff320000":"dev_ipi_0",
   "mailbox@ff390000":"dev_ipi_1",
   "mailbox@ff310000":"dev_ipi_2",
@@ -130,14 +147,12 @@ mailbox_devices = {
   "mailbox@ff340000":"dev_ipi_4",
   "mailbox@ff350000":"dev_ipi_5",
   "mailbox@ff360000":"dev_ipi_6",
+  "watchdog@ff120000":"PM_DEV_SWDT_LPD",
 }
 
-apu_specific_reqs = {
-  "dev_l2_bank_0":  0x4,
-  "dev_ams_root":   0x4,
-  "dev_acpu_0":     0x8104,
-  "dev_acpu_1":     0x8104,
-}
+apu_specific_devs = [  "dev_l2_bank_0",    "dev_ams_root"]
+
+apu_specific_req = [0x4, 0xfffff, 0x0, 0x64 ]
 
 memory_range_to_dev_name = {
  0xffe00000:"dev_tcm_0_a",
@@ -178,6 +193,7 @@ existing_devices = {
   "dev_ipi_6":0x18224043 ,
   "dev_l2_bank_0": 0x1831c00f,
   "dev_ams_root": 0x18224055,
+  "PM_DEV_SWDT_LPD":0x18224028,
 }
 
 # map xilpm IDs to strings
@@ -186,6 +202,21 @@ device_lookup = { 0x1831c00f : "dev_l2_bank_0" ,
 }
 
 xilinx_versal_device_names = {
+        0x1831800b      :   "PM_DEV_TCM_0_A"            ,
+        0x1831800c      :   "PM_DEV_TCM_0_B"            ,
+        0x1831800d      :   "PM_DEV_TCM_1_A"            ,
+        0x1831800e      :   "PM_DEV_TCM_1_B"            ,
+        0x18314007      :   "PM_DEV_OCM_0"              ,
+        0x18314008      :   "PM_DEV_OCM_1"              ,
+        0x18314009      :   "PM_DEV_OCM_2"              ,
+        0x1831400A      :   "PM_DEV_OCM_3"              ,
+        0x18320010      :   "PM_DEV_DDR_0"              ,
+        0x1810c003      :   "PM_DEV_ACPU_0"             ,
+        0x1810c004      :   "PM_DEV_ACPU_1"             ,
+        0x18110005      :   "PM_DEV_RPU0_0"             ,
+        0x18110006      :   "PM_DEV_RPU0_1"             ,
+
+        0x18224028      :   "PM_DEV_SWDT_LPD"           ,
 	0x18224018	:   "PM_DEV_USB_0"		,
 	0x18224019	:   "PM_DEV_GEM_0"		,
 	0x1822401a	:   "PM_DEV_GEM_1"		,
@@ -217,5 +248,12 @@ xilinx_versal_device_names = {
 	0x1822403a	:   "PM_DEV_ADMA_5"	,		
 	0x1822403b	:   "PM_DEV_ADMA_6"	,		
 	0x1822403c	:   "PM_DEV_ADMA_7"	,		
-	0x18224072	:   "PM_DEV_AI"	
+	0x18224072	:   "PM_DEV_AI"	        ,
+        0x1822403d	:   "PM_DEV_IPI_0"	        ,
+        0x1822403e	:   "PM_DEV_IPI_1"	        ,
+        0x1822403f	:   "PM_DEV_IPI_2"	        ,
+        0x18224040	:   "PM_DEV_IPI_3"	        ,
+        0x18224041	:   "PM_DEV_IPI_4"	        ,
+        0x18224042	:   "PM_DEV_IPI_5"	        ,
+        0x18224043	:   "PM_DEV_IPI_6"	        ,
 }
