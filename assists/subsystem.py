@@ -176,10 +176,7 @@ def access_expand( tree, subnode, verbose = 0 ):
     if not access_props:
         return
 
-    # the loop below used to use json.loads, which always returns a list,
-    # so we drop this in a list to avoid needing to change for the property
-    # direct access case.
-    access_chunks = [access_props[0][0]]
+    access_chunks = json.loads(access_props[0].value)
     access_list = []
 
     ap = access_props[0]
@@ -196,6 +193,9 @@ def access_expand( tree, subnode, verbose = 0 ):
         access_field_count = access_field_count.value[0]
     except Exception as e:
         access_field_count = field_count
+
+    access_field_count = 1
+    flag_list = []
 
     for a in access_chunks:
         dev = a['dev']
@@ -243,19 +243,18 @@ def access_expand( tree, subnode, verbose = 0 ):
 
         # save the <phandle> <flags> to the list of values to write
         access_list.append( dev_handle )
-        access_list.append( flags_value )
-        if access_field_count > 2:
-            for i in range(2,access_field_count):
-                access_list.append( 0xff )
+        flag_list.append(flags)
+
 
     if verbose:
         # dump the memory as hex
         print( '[DBG] setting access: [{}]'.format(', '.join(hex(x) for x in access_list)) )
 
     ap.value = access_list
+    subnode + LopperProp(name='access-flags-names',value=flag_list)
 
-
-def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
+# handle either sram or memory with use of prop_name arg
+def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', verbose = 0 ):
     # /*
     # * 1:1 map, it should match the memory regions
     # * specified under access below.
@@ -264,7 +263,9 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
     # * memory = <address size address size ...>
     # */
     try:
-        mem = [subnode.props( "memory" )[0][0]]
+        mem = [subnode.props( prop_name )[0][0]]
+
+
         mem_list = []
         for m in mem:
             try:
@@ -275,6 +276,23 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
                 size = str(m['size'])
             except:
                 size = str(int(0xbeef))
+
+            if 'flags' in m.keys():
+                flags = str(m['flags'])
+                flag_node = LopperNode(-1, subnode.abs_path+'/flags')
+                tree.add(flag_node)
+
+                flag_reference_name = flag_node.abs_path+"/"+str(flags)
+                flag_reference_node = LopperNode(-1, flag_reference_name )
+                tree.add(flag_reference_node)
+
+                flags_cells = LopperProp(name='#flags-cells',value=0x1)
+                flags_prop =  LopperProp(name='flags',value=0x0)
+                flags_names = LopperProp('flags-names',value = str(flags))
+
+                subnode + flags_cells
+                subnode + flags_prop
+                subnode + flags_names
 
             #print( "memory expand: start/size as read: %s/%s" % (start,size))
             start = humanfriendly.parse_size( start, True )
@@ -291,7 +309,7 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, verbose = 0 ):
         # dump the memory as hex
         print( '[DBG] memory: [{}]'.format(', '.join(hex(x) for x in mem_list)) )
 
-    property_set( "memory", mem_list, subnode )
+    property_set( prop_name, mem_list, subnode )
 
 
 def cpu_expand( tree, subnode, verbose = 0):
