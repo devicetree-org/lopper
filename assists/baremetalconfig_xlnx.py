@@ -309,7 +309,48 @@ def get_mapped_nodes(sdt, node_list, options):
     all_phandles = list(dict.fromkeys(all_phandles))
 
     valid_nodes = [node for node in node_list for handle in all_phandles if handle == node.phandle]
-    return valid_nodes
+
+    # Get Access or Domain list for the given CPU/Machine
+    root_node = sdt.tree['/']
+    root_sub_nodes = root_node.subnodes()
+    domain_nodes = []
+    for node in root_sub_nodes:
+        try:
+            is_subsystem = node["cpus"].value
+            if is_subsystem:
+                domain_nodes.append(node)
+        except:
+            pass
+
+    if domain_nodes:
+        # Get Matched Domains for a given cpu cluster
+        cpu_phandle = match_cpunodes[0].parent.phandle
+        domain_node = [node for node in domain_nodes if node["cpus"].value[0]  == cpu_phandle]
+
+        if domain_node:
+            # Get valid node list by reading access property
+            access_phandle_list = domain_node[0]["access"].value
+
+            # Check whether Domain node has any shared resource group
+            try:
+               rsrc_grp_phandle = domain_node[0]["include"].value[0]
+               node = [node for node in sdt.tree['/'].subnodes() if node.phandle == rsrc_grp_phandle]
+               rsrc_grp_phanlde = node[0]["access"].value
+               access_phandle_list.extend(rsrc_grp_phanlde)
+            except KeyError:
+               pass
+
+            mapped_phandle = [handle for handle in access_phandle_list for phandle in all_phandles if handle == phandle]
+            if len(access_phandle_list) != len(mapped_phandle):
+               wrong_mapped_handle = [handle for handle in access_phandle_list if handle not in mapped_phandle]
+               wrong_nodes = [node.name for node in sdt.tree['/'].subnodes() for handle in wrong_mapped_handle if handle == node.phandle]
+               if wrong_nodes:
+                  print("[WARNING]: invalid node %s reference mentioned in access property please delete the references" % ','.join(wrong_nodes))
+
+            valid_nodes = [node for node in node_list for handle in mapped_phandle if handle == node.phandle]
+        return valid_nodes
+    else:
+        return valid_nodes
 
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
