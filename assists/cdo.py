@@ -28,6 +28,11 @@ from lopper_tree import *
 sys.path.append(os.path.dirname(__file__))
 from xlnx_versal_power import *
 from cdo_topology import *
+from collections import OrderedDict
+from subsystem import *
+import json
+import humanfriendly
+
 
 def props():
     return ["id", "file_ext"]
@@ -43,312 +48,507 @@ def is_compat( node, compat_id ):
         return cdo_write
     return ""
 
-subsystems = {}
+
+class Device():
+    def __init__(self, nodes, node_id, flags):
+        self.nodes = nodes
+        self.node_id = node_id
+        self.flags = flags
+        self.pm_reqs = [0, 0, 0, 0]
 
 
-# db where key is node + subsystem and value is the requirement which contains
-# flags
-requirement_map = {}
+class Subsystem():
+    def __init__(self, sub_node):
+        self.flag_references = {}
+        self.dev_dict = {}
+        self.sub_node = sub_node
 
-def add_subsystem(domain_node, sdt, output):
 
-  # read cpus property
-  if domain_node.propval("cpus") == [""]:
-    if "resource" in domain_node.name and "group" in domain_node.name:
-      return 0
-    print("ERROR: add_subsystem: ",str(domain_node), "missing cpus property.")
-    return -1
-  else:
-    cpu_node = sdt.tree.pnode(domain_node.propval("cpus")[0])
+def valid_subsystems(domain_node, sdt, options):
+    # return list of valid Xilinx subsystems
+    subsystems = []
+
+    # a node is a Xilinx subsystem if:
+    # one of the top level domain nodes
+    # has compatible string: "xilinx,subsystem-v1"
+    # has id property
+    for node in domain_node.subnodes():
+        if node.parent != domain_node:
+            continue
+        if node.propval("id") == ['']:
+            continue
+
+        if node.propval("compatible") == ['']:
+            continue
+
+        compat = node.propval("compatible")
+        for c in compat:
+            if c == 'xilinx,subsystem-v1':
+                subsystems.append(Subsystem(node))
+
+    return subsystems
+
+
+def usage_no_restrictions(node):
+    firewallconfig_default = node.propval("firewallconfig-default")
+    return  (firewallconfig_default != [''] and firewallconfig_default[0] == 0 and firewallconfig_default[1] == 0)
+
+
+def find_cpu_ids(node, sdt):
+    # given a node that has a cpus property, return list of  corresponding
+    # XilPM Node IDs for the core node
+    cpu_phandle = node.propval('cpus')[0]
+    cpu_mask = node.propval('cpus')[1]
+    dev_str = "dev_"
+    cpu_xilpm_ids = []
+
+    cpu_node = sdt.tree.pnode(cpu_phandle)
     if cpu_node == None:
-      print("add_subsystem: could not find corresponding core node")
-      return -1
+        return cpu_xilpm_ids
 
-    current_subsystem_id = 0
-    cpu_key = ""
 
-    if "a72" in cpu_node.name:
-      cpu_key = "a72"
-    elif "r5" in cpu_node.name:
-      cpu_key = "r5_"
-      if (domain_node.propval("cpus")[1] & 0x3) == 0x3:
-        cpu_key += "lockstep"
-      elif (domain_node.propval("cpus")[1] & 0x2) == 0x2:
-        cpu_key += "1"
-      elif (domain_node.propval("cpus")[1] & 0x1) == 0x1:
-        cpu_key += "0"
-      else:
-        print ("add_subsystem: invalid cpu config for rpu: ",domain_node.propval("cpus"))
+    # based on cpu arg cpumask we can determine which cores are used
+    if 'a72' in cpu_node.name:
+        dev_str += "acpu"
+        cpu_xilpm_ids.append(existing_devices["dev_ams_root"])
+        cpu_xilpm_ids.append(existing_devices["dev_l2_bank_0"])
+        cpu_xilpm_ids.append(existing_devices["dev_aie"])
+
+
+    elif 'r5' in cpu_node.name:
+        dev_str += "rpu0"
     else:
-      print( "unsupported domain node ", domain_node)
-      return -1
+        # for now only a72 or r5 are cores described in Xilinx subsystems
+        return cpu_xilpm_ids
 
-    subsystem_compat = False
-    for compat_str in domain_node.propval("compatible"):
-      if "xilinx,subsystem" in compat_str:
-        subsystem_compat = True
-        break
-    if subsystem_compat == False:
-      print("subsystem missing compat string.")
-      return -1
+    if cpu_mask & 0x1:
+        cpu_xilpm_ids.append(existing_devices[dev_str+"_0"])
+    if cpu_mask & 0x2:
+        cpu_xilpm_ids.append(existing_devices[dev_str+"_1"])
 
-    if domain_node.propval("id") == [""]:
-      print("domain does not have subsystem ID")
-      return -1
-
-    subsystem_num = domain_node.propval("id")[0]
-    if subsystem_num >= 0xF:
-      print("invalid subsystem string for ", str(domain_node))
-      return -1
-    current_subsystem_id = 0x1C000000 + subsystem_num
-    print("# subsystem_"+str(subsystem_num), file=output)
-    print("pm_add_subsystem "+ hex(current_subsystem_id), file=output)
-    subsystems[domain_node.name] = current_subsystem_id
-
-  # cpu_node can be used later, as some
-  # subsystems will have hard-coded requirements coming in from SDT
-  return cpu_node
+    return cpu_xilpm_ids
 
 
-def cdo_write_command(sub_num, sub_id, dev_str, dev_val, flags, output):
-  print("# subsystem_"+str(sub_num)+" "+dev_str,file=output)
-  print("pm_add_requirement "+hex(sub_id)+" "+dev_val+" "+hex(flags)+" "+hex(0xfffff),file=output)
-
-def validate_and_document_req_flags(subsystem_name, sub_num, sub_id, node_id, dev_str, output, flags, mem_regn):
-  print("#", file=output)
-  print("#", file=output)
-  print("# subsystem:", file=output)
-  print("#    name: "+ subsystem_name, file=output)
-  print("#    ID: "+hex(sub_id), file=output)
-  print("#", file=output)
-  print("# node:", file=output)
-  print("#    name: "+dev_str, file=output)
-  print("#    ID: "+hex(node_id), file=output)
-  print("#", file=output)
-  print("# requirements: arg 1: "+hex(flags), file=output)
-
-  print(usage(flags),       file=output)
-  print(security(flags),    file=output)
-  print(capability_policy(flags),    file=output)
-  print(prealloc_policy(flags), file=output)
-
-
-  if mem_regn == 1:
-    print(read_policy(flags), file=output)
-    print(write_policy(flags), file=output)
-    print(nsregn_policy(flags),file=output)
-  print("#", file=output)
-
-  req = Requirement(sub_id, node_id,
-                    ((flags & prealloc_mask) >> prealloc_offset),
-                    ((flags & capability_mask) >> capability_offset),
-                    ((flags & nsregn_check_mask) >> nsregn_check_offset),
-                    ((flags & rd_policy_mask) >> rd_policy_offset),
-                    ((flags & wr_policy_mask) >> wr_policy_offset),
-                    ((flags & security_mask) >> security_offset),
-                    (flags & usage_mask))
-  key = (sub_id, node_id)
-  # if there is already key report error
-  if key in requirement_map:
-    print ("ERROR: subsystem ",hex(sub_id)," has link with node ", hex(node_id) , "twice")
-    return -1
-
-  requirement_map[key] = req
-  return 0
-
-
-def add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node, target_pnode, operation):
-  root_node = domain_node.tree['/']
-  subsystem_id = subsystems[domain_node.name]
-  subsystem_num = subsystem_id & 0xF
-
-  target_domain_node = root_node.tree.pnode(target_pnode)
-  target_cpu_node_phandle = target_domain_node.propval("cpus")[0]
-
-  target_cpu_node = root_node.tree.pnode(target_cpu_node_phandle)
-  target_sub_id = subsystems[target_domain_node.name]
-  target_sub_num = target_sub_id & 0xF
-
-  cdo_comment = "# subsystem_"+str(subsystem_num)+ " can enact "
-  if operation > 7:
-    cdo_comment += "secure and "
-  cdo_comment += "non-secure ops upon subsystem_" + str(target_sub_num)
-  cdo_cmd = "pm_add_requirement "+hex(subsystem_id)+" "+hex(target_sub_id)+" "+hex(operation)
-
-  print(cdo_comment,file=output)
-  print(cdo_cmd,file=output)
-
-def add_requirements_mem(subsystem_num, subsystem_id, output, device_node, domain_node, requirement):
-  if 0xfffc0000 == device_node.propval("reg")[1]:
-    for key in ocm_bank_names:
-      if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num,subsystem_id,
-                                         existing_devices[key], key, output, requirement, 1):
-        return -1
-      cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), requirement,output)
-    return 0
-  elif device_node.propval("reg")[1] in memory_range_to_dev_name.keys():
-    key = memory_range_to_dev_name[device_node.propval("reg")[1]]
-    if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num,subsystem_id,
-                                       existing_devices[key], key, output, requirement,1):
-      return -1
-    cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), requirement,output)
-    return 0
-  else:
-    print("add_requirements: memory: not covered: ",str(device_node),hex(device_node.propval("reg")[1]))
-    return -1
-
-def add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domain_node, requirement):
-  if "a72" in device_node.name:
-    for key in apu_specific_reqs.keys():
-      if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num, subsystem_id, existing_devices[key], key, output, requirement, 0):
-        return -1
-      cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), apu_specific_reqs[key], output)
-    return 0
-  elif "r5" in  device_node.abs_path:
-    key = "dev_rpu0_"
-    if (domain_node.propval("cpus")[1] & 0x1) == 1:
-      # if cpus second arg has rightmost bit on, then this is either lockstep or r5-0
-      key += "0"
+def prelim_flag_processing(node):
+    # return preliminary processing of flags
+    flags = ''
+    if node.propval('flags-names') == ['']:
+        flags = 'default'
     else:
-      key += "1"
-    if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num,subsystem_id, existing_devices[key], key, output, requirement, 0):
-      return -1
-    cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), requirement, output)
-    return 0
-  else:
-    print("add_requirements: cores: not covered: ",str(device_node))
+        flags =  node.propval('flags-names')
+
+    if usage_no_restrictions(node):
+        flags +='::no-restrictions'
+
+    return flags
+
+
+
+def find_mem_ids(node, sdt):
+    # given a node that has a memory or sram property, return list of  corresponding
+    # XilPM Node IDs for the mem/sram node
+    flags = prelim_flag_processing(node)
+
+    mem_xilpm_ids = []
+    if node.propval('memory') != ['']:
+        xilpm_id = mem_xilpm_ids.append( (existing_devices['dev_ddr_0'], flags) )
+    return mem_xilpm_ids
+
+
+def find_sram_ids(node, sdt):
+    sram_base = node.propval('sram')[0]
+    sram_end = node.propval('sram')[1] + sram_base
+    mem_xilpm_ids = []
+    id_with_flags = []
+    flags = prelim_flag_processing(node)
+
+    ocm_len = 0xFFFFF
+    if 0xFFFC0000 <= sram_base <= 0xFFFFFFFF:
+        # OCM
+        if sram_base <=  0xFFFC0000 + ocm_len:
+            mem_xilpm_ids.append("dev_ocm_bank_0")
+        if sram_base < 0xFFFDFFFF  and sram_end > 0xFFFD0000:
+            mem_xilpm_ids.append("dev_ocm_bank_1")
+        if sram_base < 0xFFFEFFFF  and sram_end > 0xFFFE0000:
+            mem_xilpm_ids.append("dev_ocm_bank_2")
+        if sram_base < 0xFFFFFFFF and sram_end > 0xFFFF0000:
+            mem_xilpm_ids.append("dev_ocm_bank_3")
+    elif 0xFFE00000 <= sram_base <= 0xFFEBFFFF:
+        # TCM
+        if sram_base <  0xFFE1FFFF:
+            mem_xilpm_ids.append("dev_tcm_0_a")
+        if sram_base <= 0xFFE2FFFF and sram_end > 0xFFE20000:
+            mem_xilpm_ids.append("dev_tcm_0_b")
+        if sram_base <= 0xFFE9FFFF and sram_end > 0xFFE90000:
+            mem_xilpm_ids.append("dev_tcm_1_a")
+        if sram_base <= 0xFFEBFFFF and sram_end > 0xFFEB0000:
+            mem_xilpm_ids.append("dev_tcm_1_b")
+
+    for i in mem_xilpm_ids:
+        id_with_flags.append((existing_devices[i], flags))
+
+    return id_with_flags
+
+
+def xilpm_id_from_devnode(subnode):
+    power_domains = subnode.propval('power-domains')
+    if power_domains != [''] and power_domains[1] in xilinx_versal_device_names.keys():
+        return power_domains[1]
+
+    elif subnode.name in misc_devices:
+        if misc_devices[subnode.name] != None:
+            mailbox_xilpm_id = existing_devices[misc_devices[subnode.name] ]
+            if mailbox_xilpm_id != None:
+                return mailbox_xilpm_id
     return -1
 
-# add requirements that link devices to subsystems
-def add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, num_params):
-  subsystem_id = subsystems[domain_node.name]
-  subsystem_num = subsystem_id & 0xF
-  root_node = domain_node.tree['/']
 
-  for index,device_phandle in enumerate(device_list):
-    if index % 2 != 0:
-      continue
-    device_node = root_node.tree.pnode(device_phandle)
-    if device_node == None:
-      print("ERROR: add_requirements: invalid phandle: ",str(device_phandle), index, device_node)
-      return -1
-    if "domain" in device_node.name:
-      add_subsystem_permission_requirement(output, cpu_node, domain_node, device_node, device_list[index], device_list[index+1])
-      continue
-    # there are multiple cases to handle
-    elif "cpu" in device_node.name or "memory" in device_node.name or "tcm" in device_node.name or "_ram_" in device_node.name:
-      if "cpu" in device_node.name:
-        ret = add_requirements_cpu(subsystem_num, subsystem_id, output, device_node, domain_node, device_list[index+1])
-      else:
-        ret = add_requirements_mem(subsystem_num, subsystem_id, output, device_node, domain_node, device_list[index+1])
+def process_acccess(subnode, sdt, options):
+    # return list of node ids and corresponding flags
+    access_list = []
+    access_flag_names =  subnode.propval('access-flags-names')
+    access_phandles = subnode.propval('access')
+    f = ''
+    if usage_no_restrictions(subnode):
+        f += '::no-restrictions'
 
-      if ret == 0:
-        continue
-      else:
-        return ret        
-    elif device_node.propval("power-domains") != [""]:
-      xilpm_nodeid = device_node.propval("power-domains")[1]
-      xilpm_dev_name = xilinx_versal_device_names[xilpm_nodeid]
-      if -1 == validate_and_document_req_flags(domain_node.name, subsystem_num, subsystem_id, xilpm_nodeid, xilpm_dev_name,
-                                          output, device_list[index+1], 0):
-        return -1
-      cdo_write_command(subsystem_num, subsystem_id, xilpm_dev_name,
-                        hex(xilpm_nodeid),
-                        device_list[index+1],
-                        output)
-      continue
-    elif "mailbox" in device_node.name:
-      key = mailbox_devices[device_node.name]
-    else:
-      print("add_requirements: not covered: ",str(device_node))
-      return -1
+    if len(access_flag_names) != len(access_phandles):
+        print("WARNING: subnode: ", subnode, " has length of access and access-flags-names mismatch: ", access_phandles, access_flag_names)
+        return access_list
 
-    if -1 == validate_and_document_req_flags(domain_node.name,
-                                        subsystem_num, subsystem_id,
-                                        existing_devices[key], key, output,
-                                        device_list[index+1], 0):
-      return -1
-    cdo_write_command(subsystem_num, subsystem_id, key, hex(existing_devices[key]), device_list[index+1],output)
-  return 0
+    for index,phandle in enumerate(access_phandles):
+        dev_node = sdt.tree.pnode(phandle)
+        if dev_node == None:
+            print("WARNING: acccess list device phandle does not have matching device in tree: ", hex(phandle), " for node: ", subnode)
+            return access_list
 
-# add requirements that link devices to subsystems
-def add_requirements(domain_node, cpu_node, sdt, output):
-  subsystem_id = subsystems[domain_node.name]
-  subsystem_num = subsystem_id & 0xF
+        xilpm_id = xilpm_id_from_devnode(dev_node)
+        if xilpm_id == -1:
+            print("WARNING: no xilpm ID for node: ",dev_node)
+            continue
 
-  # here parse the subsystem for device requirements
-  device_list = domain_node.propval("access")
-  num_params = domain_node.propval("#xilinx,config-cells")[0]
-  if num_params != 1:
-    print("add_requirements: #xilinx,config-cells should be 1", domain_node.name, str(num_params))
-    return -1
-
-  include_list = domain_node.propval("include")
-  root_node = domain_node.tree['/']
-
-  if include_list != [""]:
-    for phandle in include_list:
-      rsc_group_node = root_node.tree.pnode(phandle)
-      rsc_group_node_num_params = rsc_group_node.propval("#xilinx,config-cells")[0]
-      if rsc_group_node_num_params != num_params:
-        print("mismatch in requirements list between ", domain_node.name, " and ", rsc_group_node.name)
-        return -1
-
-      rsc_group_device_list = rsc_group_node.propval("access")
-      for i in rsc_group_device_list:
-        device_list.append(i)
-
-  return add_requirements_internal(domain_node, cpu_node, sdt, output, device_list, num_params)
-
-def validate_requirements():
+        access_list.append(   (xilpm_id, access_flag_names[index] + f+'::access')   )
+    return access_list
 
 
+def document_requirement(output, subsystem, device): 
+    subsystem_name = "subsystem_"+ str(subsystem.sub_node.propval("id"))
+    cdo_sub_id = hex(0x1c000000 | subsystem.sub_node.propval("id"))
+    flags_arg = device.pm_reqs[0]
 
-  # generate maps for each susbsystem
-  subsystem_requirements = {}
-  
-  for s_key,s_value in subsystems.items():
-    current_subsystem_reqs = []
-    subsystem_key = s_value
+    print("#", file=output)
+    print("#", file=output)
+    print("# subsystem:", file=output)
+    print("#    name: "+ subsystem_name, file=output)
+    print("#    ID: "  + cdo_sub_id, file=output)
+    print("#", file=output)
+    print("# node:", file=output)
+    print("#    name: " + xilinx_versal_device_names[device.node_id] , file=output)
+    print("#    ID: "+hex(device.node_id), file=output)
+    print("#", file=output)
+    arg_names = { 0 : "flags", 1 : "XPPU Aperture Permission Mask", 2 : "Prealloc capabilities", 3: "Quality of Service" }
+    for index, flag in enumerate(device.pm_reqs):
+        print("# requirements: ", arg_names[index]  ,": "+hex(flag), file=output)
+
+    print(usage(flags_arg),       file=output)
+    print(security(flags_arg),    file=output)
+    print(prealloc_policy(flags_arg), file=output)
+
+    if ( (flags_arg & prealloc_mask) >> prealloc_offset == PREALLOC.REQUIRED):
+        # detail prealloc if enabled
+        print(prealloc_detailed_policy(device.pm_reqs[3]), file=output)
+
+    if mem_regn_node(device.node_id):
+        print(read_policy   ( flags_arg) , file=output)
+        print(write_policy  ( flags_arg) , file=output)
+        print(nsregn_policy ( flags_arg) ,file=output)
+        print("#", file=output)
+
+
+def process_subsystem(subsystem, subsystem_node, sdt, options):
+    # given a device tree node
+    # traverse for devices that are either implicitly
+    # or explicitly lnked to the device tree node
+    # this includes either Xilinx subsystem nodes or nodes that are
+    # resource group included nodes
+
+    #
+    # In addition, for each device, identify the flag reference that
+    # corresponds.
+
+
+    # collect nodes, xilpm IDs, flag strings here
+    for node in subsystem_node.subnodes():
+        device_flags = []
+
+        # skip flag references
+        if 'flags' in node.abs_path:
+            continue
+
+        if node.propval('cpus') != ['']:
+            f = 'default'
+            f +='::no-restrictions' # by default, cores are not restricted
+            for xilpm_id in find_cpu_ids(node, sdt):
+                device_flags.append( (xilpm_id, f) )
+
+        if node.propval('memory') != ['']:
+            device_flags.extend(  find_mem_ids(node, sdt) )
+        if node.propval('sram') != ['']:
+            device_flags.extend(  find_sram_ids(node, sdt) )
+        if node.propval('access') != ['']:
+            device_flags.extend( process_acccess(node, sdt, options) )
+
+        if node.propval('include') != ['']:
+            for included_phandle in node.propval('include'):
+                included_node = sdt.tree.pnode(included_phandle)
+                if included_node == None:
+                    print("WARNING: included_phandle: ", hex(included_phandle), " does not have corresponding node in tree.")
+                else:
+                    # recursive base case for handling resource group
+                    process_subsystem(subsystem, included_node, sdt, options)
+
+        # after collecting a device tree node's devices, add this to subsystem's device nodes collection
+        # if current node is resource group, recurse 1 time
+        for xilpm_id, flags in device_flags:
+            if 'resourcegroup' in subsystem_node.name:
+                flags += "::included-from-"+subsystem_node.name
+                # strip out access. as this is used for non-sharing purposes
+                # if a device is in a resource group, it should not show as 'non-shared'
+                flags.replace('access','')
+            if xilpm_id not in subsystem.dev_dict.keys():
+                subsystem.dev_dict[xilpm_id] = Device([node], xilpm_id, [flags])
+            else:
+                device = subsystem.dev_dict[xilpm_id]
+                device.nodes.append(node)
+                device.flags.append(flags)
+
+
+def construct_flag_references(subsystem):
+
+    for n in subsystem.sub_node.subnodes():
+        # flags references are translated into their own nodes in the YAML front-end parsing
+        # translate flag references to xilpm requirement information to be used later
+        # when resolving a device's flag definition being referenced
+        if subsystem.sub_node.abs_path+'/flags/' in n.abs_path and n.depth == subsystem.sub_node.depth + 2:
+            ref_flags = [0x0, 0x0, 0x0, 0x0]
+            first_keywords = {  'allow-secure':2, 'read-only':4, 'requested':6 }
+            third_keywords = { 'access':0, 'context':1, 'wakeup':2, 'unusable':3, 'requested-secure':4, 'coherent':5, 'virtualized':6 }
+
+            # 1st word
+            allow_sec = False
+            read_only = False
+            for key in (list(first_keywords.keys())):
+                if n.propval(key) != ['']:
+                    if key == 'allow-secure' or key == 'read-only':
+                        # if true then set to low, as per spec: "0: secure master only."
+                        # write should be low if read-only
+                        ref_flags[0] = ref_flags[0] & ~(0x1 << first_keywords[key])
+                        if key == 'allow-secure':
+                          allow_sec = True
+                        elif key == 'read-only':
+                          read_only = True
+                        continue
+
+
+                    ref_flags[0] |= (0x1 << first_keywords[key])
+
+
+            # 1st word read policy always allowed
+            #ref_flags[0] = ref_flags[0] | (0x1 << 3)
+
     
-    for r_key,r_value in requirement_map.items():
-      if r_key[0] == subsystem_key:
-        current_subsystem_reqs.append(r_value)
-    subsystem_requirements[subsystem_key] = current_subsystem_reqs
+            # 1st word: if allow-secure is false, then raise corresponding bit
+            if allow_sec == False:
+                ref_flags[0] |= (0x1 << first_keywords['allow-secure'])
+            # 1st word: if read only  is false, then raise corresponding bit
+            if read_only == False:
+                ref_flags[0] |= (0x1 << first_keywords['read-only'])
 
-  # check other subsystem maps for mis-aligned req's
-  for current_sub, current_reqs in subsystem_requirements.items():
-    for other_sub, other_reqs in subsystem_requirements.items():
-      # do not check intra requirements. that was already validated
-      if current_sub == other_sub:
-        continue
-      for current_req in current_reqs:
-        for other_req in other_reqs:
-          if current_req.node == other_req.node:
-            # if exclusive or non-shared then make sure only 1 req. is present
-            # for that node
-            if current_req.usage == REQ_USAGE.REQ_NONSHARED:
-              print("current requirement with node ",hex(current_req.node),
-                    "is linked between 2 subsystems: ", hex(current_req.subsystem), " and ", hex(other_req.subsystem),
-                    "and one requirement has this as non shared.")
-              return False
+            # 1st word time share
+            if n.propval('timeshare') != ['']:
+                ref_flags[0] |= 0x3
+
+            # 2nd word is derived
+            ref_flags[1] = 0xfffff
+
+            # 3rd word
+            for key in third_keywords.keys():
+                if n.propval(key) != ['']:
+                    # this can only be set if prealloc is set too
+                    if key == 'requested-secure':
+                        if ref_flags[0] & (0x1 << first_keywords['requested']) == 0:
+                            continue
+
+                    ref_flags[2] |= 0x1 << third_keywords[key]
+
+            # 4th word
+            qos = n.propval('qos')
+            if qos != [''] and isinstance(qos,int):
+                ref_flags[3] = qos
+
+            subsystem.flag_references[n.name] = ref_flags
 
 
-            # timeshared — all req’s have to be time shared.
-            if current_req.usage == REQ_USAGE.REQ_TIME_SHARED and other_req.usage != REQ_USAGE.REQ_TIME_SHARED:
-              print("current requirement with node ",hex(current_req.node),
-                    "is linked between 2 subsystems: ", hex(current_req.subsystem), " and ", hex(other_req.subsystem),
-                    "and only one has usage as time shared")
-              return False
+def determine_inclusion(device_flags, other_device_flags):
+    included = 0x0
+    for f in device_flags:
+        if 'include' in f:
+            included |= 0x1
+        if 'access' in f and 'include' not in f:
+            included |= 0x2
+        if 'timeshare' in f:
+            included |= 16
+    for f in other_device_flags:
+        if 'include' in f:
+            included |= 0x8
+        if 'access' in f and 'include' not in f:
+            included |= 0x4
+        if 'timeshare' in f:
+            included |= 32
 
-            # Same for simultaneously shared
-            if current_req.usage == REQ_USAGE.REQ_SHARED and other_req.usage != REQ_USAGE.REQ_SHARED:
-              print("current requirement with node ",hex(current_req.node),
-                    "is linked between 2 subsystems: ", hex(current_req.subsystem), " and ", hex(other_req.subsystem),
-                    "and only one has usage as shared")
-              return False
+    return included
 
-  return True
+
+def set_dev_pm_reqs(sub, device, usage):
+    new_dev_flags = device.flags[0].split("::")[0]
+
+    if new_dev_flags not in sub.flag_references.keys():
+        new_dev_flags = 'default'
+
+    new_dev_flags = copy.deepcopy(sub.flag_references[new_dev_flags])
+    if new_dev_flags[0] & 0x3 != 0x3: # save time share
+        new_dev_flags[0] &= 0xFC # wipe out usage bits
+        new_dev_flags[0] |= usage # set them from passed in value
+
+    device.pm_reqs = new_dev_flags
+
+
+def construct_pm_reqs(subsystems):
+    # given list of all subsystems,
+    # for each device
+    #    look for device in other domains
+    #        if found via include, update usage
+    #        if found otherwise report as error
+    #        else set as non shared
+    #
+    #    set rest of flags per relevant reference housed in subsystem
+    for sub in subsystems:
+        for device in sub.dev_dict.values():
+            usage = 0x2 # non-shared
+            included = 0x0
+            for other_sub in subsystems:
+                if sub == other_sub:
+                    continue
+
+                if device.node_id in other_sub.dev_dict.keys():
+                    other_device = other_sub.dev_dict[device.node_id]
+                    included = determine_inclusion(device.flags, other_device.flags)
+
+                    # this means neither reference this via include so raise error
+                    if included & 0x6 != 0x0:
+                        print('WARNING: ', hex(device.node_id), 'found in multiple domains without includes ',
+                              sub.sub_node, other_sub.sub_node, included, usage)
+                        return
+                    if included & 0x16 != 0x0 and included & 0x32 == 0:
+                        print('WARNING: ', hex(device.node_id), 'found in multiple domains with mismatch of timeshare',
+                              sub.sub_node, other_sub.sub_node, included, usage)
+                        return
+
+                    if included == 0x1 or included == 0x8 or included == 0x9:
+                        usage = 0x1 # update to shared
+                else:
+                    # if from resource group in only domain should still be shared
+                    included = determine_inclusion(device.flags, [])
+                    if included == 0x1:
+                        usage = 0x1
+
+            for f in device.flags:
+                if 'no-restrictions' in f:
+                    usage = 0x0
+                
+
+            set_dev_pm_reqs(sub, device, usage)
+
+
+# TODO hard coded for now. need to add this to spec, YAML, etc
+def sub_operations_allowed(subsystems, output):
+    for sub in subsystems:
+
+        host_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
+        host_sub_id = 0x1c000000 | sub.sub_node.propval("id")
+
+        for other_sub in subsystems:
+            if sub == other_sub:
+                continue
+
+
+            other_sub_str = "subsystem_"+ str(other_sub.sub_node.propval("id"))
+            other_sub_id = 0x1c000000 | other_sub.sub_node.propval("id")
+
+            cdo_str = "# " + host_sub_str + " can  enact only non-secure ops upon " + other_sub_str
+            cdo_cmd = "pm_add_requirement "+hex(host_sub_id) + " "
+            cdo_cmd += hex(other_sub_id) + " " + hex(0x7)
+
+            print(cdo_str, file=output)
+            print(cdo_cmd, file=output)
+
+
+# TODO hard coded for now. need to add this to spec, YAML, etc
+def sub_ggs_perms(sub, output):
+    cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
+    cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
+
+    for i in range(0x18248000, 0x18248003):
+        dev_str = "ggs_" + hex(i & 0x7).replace('0x','')
+        dev_id = hex(i)
+
+        cdo_str = "# " +cdo_sub_str + " can perform non-secure read/write "
+        cdo_str += dev_str
+
+        cdo_cmd = "pm_add_requirement "+hex(cdo_sub_id)+ " "
+        cdo_cmd += dev_id + " "
+        cdo_cmd += hex(0x3)
+        print( cdo_str, file=output)
+        print( cdo_cmd, file=output)
+
+
+# TODO hard coded for now. need to add this to spec, YAML, etc
+def sub_pggs_perms(sub, output):
+    cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
+    cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
+
+    for i in range(0x1824c004, 0x1824c007):
+        dev_str = "pggs_" + hex((i & 0x7) - 0x4).replace('0x','')
+        dev_id = hex(i)
+
+        cdo_str = "# " +cdo_sub_str + " can perform non-secure read/write "
+        cdo_str += dev_str
+
+        cdo_cmd = "pm_add_requirement "+hex(cdo_sub_id)+ " "
+        cdo_cmd += dev_id + " "
+        cdo_cmd += hex(0x3)
+        print( cdo_str, file=output)
+        print( cdo_cmd, file=output)
+
+
+# TODO hard coded for now. need to add this to spec, YAML, etc
+def sub_reset_perms(sub, output):
+    cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
+    cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
+
+    print("#",cdo_sub_str, " can enact only non-secure system-reset (rst_pmc)", file=output)
+    print("pm_add_requirement "+hex(cdo_sub_id)+ " 0xc410002 0x1", file=output)
+
+
+def sub_perms(subsystems, output):
+    # add cdo commands for sub-sub permissions, reset perms and xGGS perms
+    sub_operations_allowed(subsystems, output)
+
+    for sub in subsystems:
+        sub_ggs_perms(sub, output)
+        sub_pggs_perms(sub, output)
+        sub_reset_perms(sub, output)
+
 
 def cdo_write( domain_node, sdt, options ):
     try:
@@ -356,48 +556,65 @@ def cdo_write( domain_node, sdt, options ):
     except:
         verbose = 0
 
+    subs_data = []
+
+    subsystems = valid_subsystems(domain_node, sdt, options)
+
+    for sub in subsystems:
+        # collect device tree flags, nodes, xilpm IDs for each device linked to a subsystem
+        process_subsystem(sub, sub.sub_node, sdt, options)
+        construct_flag_references(sub)
+
+    # generate xilpm reqs for each device
+    construct_pm_reqs(subsystems)
+
     if (len(options["args"]) > 0):
-      if re.match(options["args"][0], "regulator"):
-        outfile = options["args"][1]
-      else:
-        outfile = options["args"][0]
+        if re.match(options["args"][0], "regulator"):
+            outfile = options["args"][1]
+            gen_board_topology( domain_node, sdt, output )
+        else:
+            outfile = options["args"][0]
     else:
-      print("cdo header file name not provided.")
-      return -1
+        outfile = "subsystem.cdo"
 
-    # todo: we could have a force flag and not overwrite this if it exists
-    if outfile != sys.stdout:
-        output = open( outfile, "w")
-    else:
-      print("stdout provided as outfile")
-
-    if verbose > 1:
-        print( "[INFO]: cdo write: {}".format(outfile) )
-
+    output = open( outfile, "w")
     print( "# Lopper CDO export", file=output )
     print( "version 2.0", file=output )
+    for sub in subsystems:
+        # determine subsystem ID
+        cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
+        cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
+        # add subsystem
+        print( "# "+cdo_sub_str, file=output)
+        print( "pm_add_subsystem "+hex(cdo_sub_id), file=output )
 
-    # given root domain node do the following:
-    # add subsystem
-    domain_nodes = []
-    cpu_nodes = []
-    if re.match(options["args"][0], "regulator"):
-        gen_board_topology( domain_node, sdt, output )
-    else:
-        for n in domain_node.subnodes():
-            if n.propval('access') != ['']:
-                cpu_node = add_subsystem(n, sdt, output)
-                if cpu_node == -1:
-                    print("invalid cpu node for add_subsystem")
-                    return False
-                elif cpu_node == 0:
-                    continue
+    # add CDO commands for permissions
+    sub_perms(subsystems, output)
 
-                cpu_nodes.append(cpu_node)
-                domain_nodes.append(n)
-    for i in range(len(domain_nodes)):
-      ret = add_requirements(domain_nodes[i], cpu_nodes[i], sdt, output)
-      if ret != 0:
-        return ret
+    for sub in subsystems:
+         # determine subsystem ID
+        cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
+        cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
 
-    return validate_requirements()
+        # add reqs
+        for device in sub.dev_dict.values():
+            if device.node_id not in xilinx_versal_device_names.keys():
+                print("WARNING: ",hex(device.node_id),' not found in xilinx_versal_device_names')
+                return
+
+            # put comments describing CDO above the actual command
+            if verbose > 0:
+                document_requirement(output, sub, device)
+            req_description = "# "+cdo_sub_str+' '+xilinx_versal_device_names[device.node_id]
+
+            # form CDO flags in string for python
+            req_str = 'pm_add_requirement ' + hex(cdo_sub_id) + ' ' + hex(device.node_id)
+            for req in device.pm_reqs:
+                req_str += ' ' + hex(req)
+
+            # write CDO
+            print(req_description, file=output)
+            print(req_str, file=output)
+
+    return True
+
