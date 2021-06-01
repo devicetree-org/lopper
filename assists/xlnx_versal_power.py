@@ -139,6 +139,10 @@ class Requirement:
     self.node           = node
 
 
+def mem_regn_node(node_id):
+    return ( (0x3F << 20) & node_id ) == 0x300000
+
+
 misc_devices = {
   "mailbox@ff320000":"dev_ipi_0",
   "mailbox@ff390000":"dev_ipi_1",
