@@ -417,6 +417,8 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                if compat in compa:
                    driver_nodes.append(node)
 
+    # Remove duplicate nodes
+    driver_nodes = list(dict.fromkeys(driver_nodes))
     driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
     # config file name: x<driver_name>_g.c 
     driver_name = yamlfile.split('/')[-1].split('.')[0]
