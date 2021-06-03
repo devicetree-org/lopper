@@ -498,7 +498,7 @@ def sub_ggs_perms(sub, output):
     cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
     cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
 
-    for i in range(0x18248000, 0x18248003):
+    for i in range(0x18248000, 0x18248003+1):
         dev_str = "ggs_" + hex(i & 0x7).replace('0x','')
         dev_id = hex(i)
 
@@ -517,7 +517,7 @@ def sub_pggs_perms(sub, output):
     cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
     cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
 
-    for i in range(0x1824c004, 0x1824c007):
+    for i in range(0x1824c004, 0x1824c007+1):
         dev_str = "pggs_" + hex((i & 0x7) - 0x4).replace('0x','')
         dev_id = hex(i)
 
