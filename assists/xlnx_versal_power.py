@@ -198,6 +198,7 @@ existing_devices = {
   "dev_l2_bank_0": 0x1831c00f,
   "dev_ams_root": 0x18224055,
   "PM_DEV_SWDT_LPD":0x18224028,
+  "dev_aie": 0x18224072,
 }
 
 # map xilpm IDs to strings
@@ -206,6 +207,7 @@ device_lookup = { 0x1831c00f : "dev_l2_bank_0" ,
 }
 
 xilinx_versal_device_names = {
+        0x18224055      :   "PM_DEV_AMS_ROOT"           ,
         0x1831800b      :   "PM_DEV_TCM_0_A"            ,
         0x1831800c      :   "PM_DEV_TCM_0_B"            ,
         0x1831800d      :   "PM_DEV_TCM_1_A"            ,
@@ -260,4 +262,5 @@ xilinx_versal_device_names = {
         0x18224041	:   "PM_DEV_IPI_4"	        ,
         0x18224042	:   "PM_DEV_IPI_5"	        ,
         0x18224043	:   "PM_DEV_IPI_6"	        ,
+        0x1831c00f      :   "PM_DEV_L2_BANK_0"          ,
 }
