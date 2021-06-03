@@ -68,6 +68,27 @@
                         ";
                       };
                 };
+                lop_0_3_2 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      // select_2 = "/domains/subsystem./domains$::";
+                      // select_3 = "/domains/subsystem./domains/xen/domains$::";
+                      select_2 = "/.*/domains/sub*/.*:id:";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              code = "
+                                    for i,d in enumerate(__selected__):
+                                        d['compatible'] = 'openamp,domain-v1';
+                                        name = d.name
+                                        # flip the name and label
+                                        d.label = name
+                                        d.name = 'domain@{}'.format(i)
+
+                        ";
+                      };
+                };
+
                 lop_0_4 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
