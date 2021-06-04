@@ -136,9 +136,11 @@ def prelim_flag_processing(node):
         flags = 'default'
     else:
         flags =  node.propval('flags-names')
+        if isinstance(flags, list):
+            flags = flags[0]
 
     if usage_no_restrictions(node):
-        flags +='::no-restrictions'
+        flags = flags + '::no-restrictions'
 
     return flags
 
@@ -152,6 +154,7 @@ def find_mem_ids(node, sdt):
     mem_xilpm_ids = []
     if node.propval('memory') != ['']:
         xilpm_id = mem_xilpm_ids.append( (existing_devices['dev_ddr_0'], flags) )
+
     return mem_xilpm_ids
 
 
@@ -233,7 +236,13 @@ def process_acccess(subnode, sdt, options):
 
 def document_requirement(output, subsystem, device): 
     subsystem_name = "subsystem_"+ str(subsystem.sub_node.propval("id"))
-    cdo_sub_id = hex(0x1c000000 | subsystem.sub_node.propval("id"))
+    sub_id = sub.sub_node.propval("id")
+    if isinstance(sub_id, list):
+        sub_id = sub_id[0]
+    cdo_sub_str = "subsystem_"+ hex(sub_id)
+
+    cdo_sub_id = hex(0x1c000000 | sub_id)
+
     flags_arg = device.pm_reqs[0]
 
     print("#", file=output)
@@ -311,10 +320,15 @@ def process_subsystem(subsystem, subsystem_node, sdt, options):
         # if current node is resource group, recurse 1 time
         for xilpm_id, flags in device_flags:
             if 'resourcegroup' in subsystem_node.name:
-                flags += "::included-from-"+subsystem_node.name
+                if isinstance(flags, list):
+                    flags = flags[0]
+                flags = flags + "::included-from-"+subsystem_node.name
+
                 # strip out access. as this is used for non-sharing purposes
                 # if a device is in a resource group, it should not show as 'non-shared'
                 flags.replace('access','')
+
+            # add to subsystem's list of xilpm nodes
             if xilpm_id not in subsystem.dev_dict.keys():
                 subsystem.dev_dict[xilpm_id] = Device([node], xilpm_id, [flags])
             else:
@@ -338,17 +352,18 @@ def construct_flag_references(subsystem):
             allow_sec = False
             read_only = False
             for key in (list(first_keywords.keys())):
-                if n.propval(key) != ['']:
+                if n.propval(key) != [''] or key in n.__props__.keys():
                     if key == 'allow-secure' or key == 'read-only':
                         # if true then set to low, as per spec: "0: secure master only."
                         # write should be low if read-only
                         ref_flags[0] = ref_flags[0] & ~(0x1 << first_keywords[key])
                         if key == 'allow-secure':
                           allow_sec = True
+                          continue
                         elif key == 'read-only':
+                          print('      ##### read-only set to true')
                           read_only = True
-                        continue
-
+                          continue
 
                     ref_flags[0] |= (0x1 << first_keywords[key])
 
@@ -373,10 +388,11 @@ def construct_flag_references(subsystem):
 
             # 3rd word
             for key in third_keywords.keys():
-                if n.propval(key) != ['']:
+                if n.propval(key) != [''] or key in n.__props__.keys():
+
                     # this can only be set if prealloc is set too
                     if key == 'requested-secure':
-                        if ref_flags[0] & (0x1 << first_keywords['requested']) == 0:
+                        if (ref_flags[0] & (0x1 << first_keywords['requested'])) == 0:
                             continue
 
                     ref_flags[2] |= 0x1 << third_keywords[key]
@@ -473,17 +489,23 @@ def construct_pm_reqs(subsystems):
 # TODO hard coded for now. need to add this to spec, YAML, etc
 def sub_operations_allowed(subsystems, output):
     for sub in subsystems:
+        sub_id = sub.sub_node.propval("id")
+        if isinstance(sub_id, list):
+            sub_id = sub_id[0]
 
-        host_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
-        host_sub_id = 0x1c000000 | sub.sub_node.propval("id")
+        host_sub_str = "subsystem_"+ str(sub_id)
+        host_sub_id = 0x1c000000 | sub_id
 
         for other_sub in subsystems:
             if sub == other_sub:
                 continue
 
+            other_sub_id = other_sub.sub_node.propval("id")
+            if isinstance(other_sub_id, list):
+                other_sub_id = other_sub_id[0]
 
-            other_sub_str = "subsystem_"+ str(other_sub.sub_node.propval("id"))
-            other_sub_id = 0x1c000000 | other_sub.sub_node.propval("id")
+            other_sub_str = "subsystem_" + hex(other_sub_id)
+            other_sub_id = 0x1c000000 | other_sub_id
 
             cdo_str = "# " + host_sub_str + " can  enact only non-secure ops upon " + other_sub_str
             cdo_cmd = "pm_add_requirement "+hex(host_sub_id) + " "
@@ -495,8 +517,13 @@ def sub_operations_allowed(subsystems, output):
 
 # TODO hard coded for now. need to add this to spec, YAML, etc
 def sub_ggs_perms(sub, output):
-    cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
-    cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
+    sub_id = sub.sub_node.propval("id")
+    if isinstance(sub_id, list):
+        sub_id = sub_id[0]
+
+    cdo_sub_str = "subsystem_"+ str(sub_id)
+    cdo_sub_id = 0x1c000000 | sub_id
+
 
     for i in range(0x18248000, 0x18248003+1):
         dev_str = "ggs_" + hex(i & 0x7).replace('0x','')
@@ -514,8 +541,13 @@ def sub_ggs_perms(sub, output):
 
 # TODO hard coded for now. need to add this to spec, YAML, etc
 def sub_pggs_perms(sub, output):
-    cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
-    cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
+    sub_id = sub.sub_node.propval("id")
+    if isinstance(sub_id, list):
+        sub_id = sub_id[0]
+
+    cdo_sub_str = "subsystem_"+ str(sub_id)
+    cdo_sub_id = 0x1c000000 | sub_id
+
 
     for i in range(0x1824c004, 0x1824c007+1):
         dev_str = "pggs_" + hex((i & 0x7) - 0x4).replace('0x','')
@@ -533,8 +565,12 @@ def sub_pggs_perms(sub, output):
 
 # TODO hard coded for now. need to add this to spec, YAML, etc
 def sub_reset_perms(sub, output):
-    cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
-    cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
+    sub_id = sub.sub_node.propval("id")
+    if isinstance(sub_id, list):
+        sub_id = sub_id[0]
+
+    cdo_sub_str = "subsystem_"+ str(sub_id)
+    cdo_sub_id = 0x1c000000 | sub_id
 
     print("#",cdo_sub_str, " can enact only non-secure system-reset (rst_pmc)", file=output)
     print("pm_add_requirement "+hex(cdo_sub_id)+ " 0xc410002 0x1", file=output)
@@ -582,8 +618,11 @@ def cdo_write( domain_node, sdt, options ):
     print( "version 2.0", file=output )
     for sub in subsystems:
         # determine subsystem ID
-        cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
-        cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
+        sub_id = sub.sub_node.propval("id")
+        if isinstance(sub_id, list):
+            sub_id = sub_id[0]
+        cdo_sub_str = "subsystem_"+ hex(sub_id)
+        cdo_sub_id = 0x1c000000 | sub_id
         # add subsystem
         print( "# "+cdo_sub_str, file=output)
         print( "pm_add_subsystem "+hex(cdo_sub_id), file=output )
@@ -593,9 +632,11 @@ def cdo_write( domain_node, sdt, options ):
 
     for sub in subsystems:
          # determine subsystem ID
-        cdo_sub_str = "subsystem_"+ str(sub.sub_node.propval("id"))
-        cdo_sub_id = 0x1c000000 | sub.sub_node.propval("id")
-
+        sub_id = sub.sub_node.propval("id")
+        if isinstance(sub_id, list):
+            sub_id = sub_id[0]
+        cdo_sub_str = "subsystem_"+ hex(sub_id)
+        cdo_sub_id = 0x1c000000 | sub_id
         # add reqs
         for device in sub.dev_dict.values():
             if device.node_id not in xilinx_versal_device_names.keys():
