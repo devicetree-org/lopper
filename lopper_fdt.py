@@ -1249,7 +1249,7 @@ class Lopper:
                     "interrupt-parent" : [ 'phandle', 0 ],
                     "iommus" : [ 'phandle field' ],
                     "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
-                    "access" : [ 'phandle flags' ],
+                    "access" : [ 'phandle' ],
                     "cpus" : [ 'phandle mask mode' ],
                     "clocks" : [ 'phandle:#clock-cells' ],
                 }
