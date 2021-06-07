@@ -274,7 +274,7 @@ def document_requirement(output, subsystem, device):
         print("#", file=output)
 
 
-def process_subsystem(subsystem, subsystem_node, sdt, options):
+def process_subsystem(subsystem, subsystem_node, sdt, options, included = False):
     # given a device tree node
     # traverse for devices that are either implicitly
     # or explicitly lnked to the device tree node
@@ -314,12 +314,12 @@ def process_subsystem(subsystem, subsystem_node, sdt, options):
                     print("WARNING: included_phandle: ", hex(included_phandle), " does not have corresponding node in tree.")
                 else:
                     # recursive base case for handling resource group
-                    process_subsystem(subsystem, included_node, sdt, options)
+                    process_subsystem(subsystem, included_node, sdt, options, included = True)
 
         # after collecting a device tree node's devices, add this to subsystem's device nodes collection
         # if current node is resource group, recurse 1 time
         for xilpm_id, flags in device_flags:
-            if 'resourcegroup' in subsystem_node.name:
+            if included:
                 if isinstance(flags, list):
                     flags = flags[0]
                 flags = flags + "::included-from-"+subsystem_node.name
@@ -361,7 +361,6 @@ def construct_flag_references(subsystem):
                           allow_sec = True
                           continue
                         elif key == 'read-only':
-                          print('      ##### read-only set to true')
                           read_only = True
                           continue
 
@@ -463,7 +462,7 @@ def construct_pm_reqs(subsystems):
                     # this means neither reference this via include so raise error
                     if included & 0x6 != 0x0:
                         print('WARNING: ', hex(device.node_id), 'found in multiple domains without includes ',
-                              sub.sub_node, other_sub.sub_node, included, usage)
+                              sub.sub_node, other_sub.sub_node, included, usage, device.flags, other_device.flags)
                         return
                     if included & 0x16 != 0x0 and included & 0x32 == 0:
                         print('WARNING: ', hex(device.node_id), 'found in multiple domains with mismatch of timeshare',
