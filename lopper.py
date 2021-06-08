@@ -230,31 +230,29 @@ class LopperSDT:
                 sdt_files.append( sdt_file )
                 fp = sdt_file
 
+            # note: input_files isn't actually used by dt_compile, otherwise, we'd need to
+            #       filter out non-dts files before the call .. we should probably still do
+            #       that.
+            sdt_file = Path( sdt_file )
+            sdt_file_abs = sdt_file.resolve( True )
+
+            # we need the original location of the main SDT file on the search path
+            # in case there are dtsi files, etc.
+            include_paths += " " + str(sdt_file.parent) + " "
+            self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
+                                          self.save_temps, self.verbose, self.enhanced )
+
             if self.use_libfdt:
-                # note: input_files isn't actually used by dt_compile, otherwise, we'd need to
-                #       filter out non-dts files before the call .. we should probably still do
-                #       that.
-                sdt_file = Path( sdt_file )
-                sdt_file_abs = sdt_file.resolve( True )
-
-                # we need the original location of the main SDT file on the search path
-                # in case there are dtsi files, etc.
-                include_paths += " " + str(sdt_file.parent) + " "
-                self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
-                                              self.save_temps, self.verbose, self.enhanced )
-
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
-
-                # we export the compiled fdt to a dictionary, and load it into our tree
-                dct = Lopper.export( self.FDT )
             else:
                 if self.verbose:
                     print( "[INFO]: using python devicetree for parsing" )
 
-                dt = Lopper.dt_compile( fp )
                 # TODO: "FDT" should now be "token" or something equally generic
-                self.FDT = dt
-                dct = Lopper.export( dt )
+                self.FDT = self.dtb
+                self.dtb = ""
+
+            dct = Lopper.export( self.FDT )
 
             self.tree = LopperTree()
             self.tree.strict = not self.permissive
@@ -306,6 +304,9 @@ class LopperSDT:
             # the system device tree is a dtb
             self.dtb = sdt_file
             self.dts = sdt_file
+            if not self.use_libfdt:
+                print( "[ERROR]: dtb system device tree passed (%s), and libfdt is disabled" % self.dts )
+                sys.exit(1)
             self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
             self.tree = LopperTree()
             self.tree.load( Lopper.export( self.FDT ) )
@@ -333,7 +334,16 @@ class LopperSDT:
                 if not compiled_file:
                     print( "[ERROR]: could not compile file %s" % ifile )
                     sys.exit(1)
-                lop.dtb = compiled_file
+
+                if self.use_libfdt:
+                    lop.dtb = compiled_file
+                else:
+                    lop.dtb = ""
+                    lop.fdt = None
+                    dct = Lopper.export( compiled_file )
+                    lop.tree = LopperTree()
+                    lop.tree.load( dct )
+
                 self.lops.append( lop )
             elif re.search( ".yaml$", ifile ):
                 yaml = LopperYAML( ifile )
@@ -469,6 +479,7 @@ class LopperSDT:
                 Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose )
             else:
                 print( "[ERROR]: dtb output selected (%s), but libfdt is not enabled" % output_filename )
+                sys.exit(1)
 
         elif re.search( ".dts", output_filename ):
             if enhanced:
@@ -478,6 +489,7 @@ class LopperSDT:
                     sys.exit(1)
 
                 printer = LopperTreePrinter( True, output_filename, self.verbose )
+
                 printer.strict = not self.permissive
 
                 # Note: the caller must ensure that all changes have been sync'd to

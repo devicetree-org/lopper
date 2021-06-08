@@ -45,9 +45,12 @@ class LopperDT(lopper_base.lopper_base):
     def dt_compile( dts_file, i_files ="", includes="", force_overwrite=False, outdir="./",
                     save_temps=False, verbose=0, enhanced = True ):
 
+
+        preprocessed_name = LopperDT.dt_preprocess( dts_file, includes, outdir, verbose )
+
         # we don't really 'compile' with dtlib, but it read/parses the source
         # file and creates an object.
-        dt = dtlib.DT( dts_file )
+        dt = dtlib.DT( preprocessed_name )
 
         # if we get a schema in the future:
         # dt = edtlib.DT( dts_file )
