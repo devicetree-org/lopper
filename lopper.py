@@ -148,7 +148,11 @@ class LopperSDT:
 
 
         # check for required support applications
-        support_bins = ["dtc", "cpp" ]
+        if libfdt:
+            support_bins = [ "dtc", "cpp" ]
+        else:
+            support_bins = [ "cpp" ]
+
         for s in support_bins:
             if self.verbose:
                 print( "[INFO]: checking for support binary: %s" % s )
