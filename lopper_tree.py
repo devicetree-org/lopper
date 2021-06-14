@@ -2028,7 +2028,15 @@ class LopperNode(object):
 
         return self
 
-    def load( self, dct, parent_path = None):
+    def merge( self, other_node ):
+        # export the dictionary (properties)
+        o_export = other_node.export()
+
+        # load them into the node, keep children intact, this is a single
+        # node operation
+        self.load( o_export, clear_children = False )
+
+    def load( self, dct, parent_path = None, clear_children = True):
         """load (calculate) node details against a property dictionary
 
         Some attributes of a node are not known at initialization time, or may
@@ -2088,9 +2096,10 @@ class LopperNode(object):
 
             self.abs_path = dct['__path__']
 
-            # children will find their way back during the load process, so clear
-            # the existing ones
-            self.child_nodes = OrderedDict()
+            if clear_children:
+                # children will find their way back during the load process, so clear
+                # the existing ones
+                self.child_nodes = OrderedDict()
 
             if self.__dbg__ > 2:
                 print( "[DBG++]: node load start [%s][%s]: %s" % (self,self.number,self.abs_path))
@@ -2951,7 +2960,7 @@ class LopperTree:
 
         return self
 
-    def add( self, node, dont_sync = False ):
+    def add( self, node, dont_sync = False, merge = False ):
         """Add a node to a tree
 
         Supports adding a node to a tree through:
@@ -2990,7 +2999,7 @@ class LopperTree:
                 if not existing_node:
                     # an intermediate node is missing, we need to add it
                     i_node = LopperNode( -1, p )
-                    self.add( i_node, True )
+                    self.add( i_node, True, merge )
 
         # do we already have a node at this path ?
         try:
@@ -2999,9 +3008,15 @@ class LopperTree:
             existing_node = None
 
         if existing_node:
-            if self.__dbg__ > 2:
-                print( "[WARNING]: add: node: %s already exists" % node.abs_path )
-            return self
+            if not merge:
+                if self.__dbg__ > 2:
+                    print( "[WARNING]: add: node: %s already exists" % node.abs_path )
+                return self
+            else:
+                if self.__dbg__ > 2:
+                    print( "[INFO]: add: node: %s exists, merging properties" % node.abs_path )
+                existing_node.merge( node )
+                return self
 
         node.tree = self
         node.__dbg__ = self.__dbg__

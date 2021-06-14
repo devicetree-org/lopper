@@ -125,6 +125,7 @@ class LopperSDT:
         self.target_domain = ""
         self.load_paths = []
         self.permissive = False
+        self.merge = False
 
     def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True):
         """executes setup and initialization tasks for a system device tree
@@ -269,7 +270,7 @@ class LopperSDT:
                         # old: deep copy the node
                         # new_node = node()
                         # assign it to the main system device tree
-                        self.tree = self.tree + node
+                        self.tree = self.tree.add( node, merge=self.merge )
 
             fpp.close()
         elif re.search( ".yaml$", self.dts ):
@@ -2071,6 +2072,7 @@ def usage():
     print('    . --auto          automatically run any assists passed via -a' )
     print('    , --permissive    do not enforce fully validated properties (phandles, etc)' )
     print('  -o, --output        output file')
+    print('    , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes' )
     print('  -x. --xlate         run automatic translations on nodes for indicated input types (yaml,dts)' )
     print('    , --no-libfdt     don\'t use dtc/libfdt for parsing/compiling device trees' )
     print('  -f, --force         force overwrite output file(s)')
@@ -2107,6 +2109,7 @@ def main():
     global permissive
     global xlate
     global libfdt
+    global overlay
 
     debug = False
     sdt = None
@@ -2128,13 +2131,14 @@ def main():
     permissive = False
     libfdt = True
     xlate = []
+    overlay = False
     try:
         opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:Dx:",
                                    [ "debug", "assist-paths=", "outdir", "enhanced",
                                      "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
                                      "assist=","server", "auto", "permissive", "xlate=",
-                                     "no-libfdt" ] )
+                                     "no-libfdt", "overlay" ] )
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2184,6 +2188,8 @@ def main():
             auto_run = True
         elif o in ('--permissive' ):
             permissive = True
+        elif o in ('--overlay' ):
+            overlay = True
         elif o in ('-x', '--xlate'):
             xlate.append(a)
         elif o in ('--version'):
@@ -2325,6 +2331,7 @@ if __name__ == "__main__":
     device_tree.target_domain = target_domain
     device_tree.load_paths = load_paths
     device_tree.permissive = permissive
+    device_tree.merge = overlay
 
     device_tree.setup( sdt, inputfiles, "", force, libfdt )
     device_tree.assists_setup( cmdline_assists )
