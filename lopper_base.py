@@ -17,6 +17,39 @@ from pathlib import Path
 from pathlib import PurePath
 
 class lopper_base:
+    """Class representing the common device tree front / backend interface
+
+    The functions that make up this class represent the interface between the
+    core of processing and the front/back end for import and export of source
+    files.
+
+    This class implements:
+       - dt_preprocess:
+       - property_value_decode:
+       - property_type_guess:
+       - property_convert
+       - phandle_possible_properties
+       - phandle_safe_name
+       - encode_byte_array
+       - encode_byte_array_from_strings
+       - string_test
+       - input_file_type
+       - _comment_replacer
+       - _comment_translate
+       - _label_replacer
+       - _label_translate
+
+    This class has the base function for (and subclasses must implement):
+       - export
+       - sync
+       - node_properties_as_dict
+       - dt_compile
+
+    Attributes:
+       - phandle_possible_prop_dict: class variable holding the phandle
+                                     locations in properties
+
+    """
 
     ### --- class variables
     phandle_possible_prop_dict = {}

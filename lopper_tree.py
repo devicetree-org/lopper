@@ -2029,14 +2029,28 @@ class LopperNode(object):
         return self
 
     def merge( self, other_node ):
+        """merge a secondary node into the target
+
+        This routine updates the target node with the properties of secondary.
+
+        It is additive/modification only, no properties are removed as part of
+        the processing.
+
+        Args:
+           other_node (LopperNode): The other to merge
+
+        Returns:
+           Nothing
+
+        """
         # export the dictionary (properties)
         o_export = other_node.export()
 
         # load them into the node, keep children intact, this is a single
         # node operation
-        self.load( o_export, clear_children = False )
+        self.load( o_export, clear_children = False, update_props = True )
 
-    def load( self, dct, parent_path = None, clear_children = True):
+    def load( self, dct, parent_path = None, clear_children = True, update_props = False):
         """load (calculate) node details against a property dictionary
 
         Some attributes of a node are not known at initialization time, or may
@@ -2045,8 +2059,15 @@ class LopperNode(object):
         This method calculates those values using information in the node and in
         the passed property dictionary
 
-        The only value that must be set in the node before resolve() is called
-        is the node number.
+        If clear_children is set to True (the default), children nodes will be
+        dropped with the expectation that they will be re-added when the children
+        themselves are loaded. When set to False, the children are not modified,
+        and this is used when updating a node from a dictionary.
+
+        If update_props is set to True (the default is False), then existing
+        properties will be updated with the contents of the passed dictionary.
+        This is set to true when a dictionary should override all values in
+        a node.
 
         Fields resolved (see class for descriptions)
            - name
@@ -2062,6 +2083,8 @@ class LopperNode(object):
         Args:
            Property dictionary: Dictionary with the node details/properties
            parent_path (Optional,string)
+           clear_children (Optional,boolean): default is True
+           update_props (Optional,boolean): default is False
 
         Returns:
            Nothing
@@ -2190,6 +2213,13 @@ class LopperNode(object):
                     # same prop name, same parent node .. it is the same. If this
                     # somehow changes, we'll need to call resolve on this as well.
                     self.__props__[prop] = existing_prop
+                    if update_props:
+                        if self.__props__[prop].value != prop_val:
+                            if self.__dbg__ > 3:
+                                print( "[DBG+++]: existing prop detected (%s), updating value: %s -> %s" %
+                                       (self.__props__[prop].name,self.__props__[prop].value,prop_val))
+                            self.__props__[prop].value = prop_val
+
                 else:
                     self.__props__[prop] = LopperProp( prop, -1, self,
                                                        prop_val, self.__dbg__ )
