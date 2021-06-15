@@ -35,7 +35,6 @@ import humanfriendly
 
 from lopper_fmt import LopperFmt
 import lopper_fdt
-import lopper_dt
 import lopper
 
 from lopper_tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
@@ -2309,7 +2308,8 @@ if __name__ == "__main__":
     main()
 
     if not libfdt:
-        Lopper = lopper_dt.LopperDT
+        import lopper_dt
+        lopper_type(lopper_dt.LopperDT)
 
     if dump_dtb:
         Lopper.dtb_dts_export( sdt, verbose )
