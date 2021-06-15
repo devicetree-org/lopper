@@ -108,8 +108,10 @@ def scan_reg_size(node, value, idx):
 
         size1 = value[cells * idx + na]
         if size1 != 0:
-            val = value[cells * idx + ns + 1]
-            size = size1 + val
+            val = str(hex(value[cells * idx + ns + 1]))[2:]
+            pad = 8 - len(val)
+            val = val.ljust(pad + len(val), '0')
+            size = int((str(hex(size1)) + val), base=16)
         else:
             size = value[cells * idx + ns + 1]
     elif cells == 2:
