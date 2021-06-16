@@ -642,9 +642,6 @@ def cdo_write( domain_node, sdt, options ):
                 print("WARNING: ",hex(device.node_id),' not found in xilinx_versal_device_names')
                 return
 
-            # put comments describing CDO above the actual command
-            if verbose > 0:
-                document_requirement(output, sub, device)
             req_description = "# "+cdo_sub_str+' '+xilinx_versal_device_names[device.node_id]
 
             # form CDO flags in string for python
