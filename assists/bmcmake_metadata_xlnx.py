@@ -61,6 +61,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                    driver_nodes.append(node)
 
     driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
+    driver_nodes = list(dict.fromkeys(driver_nodes))
     nodename_list = []
     reg_list = []
     example_dict = {}
@@ -91,6 +92,11 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                             val = 0
                         if prop_val == val or prop_val == "phandle":
                             match_list.append(True)
+                        elif isinstance(val, list):
+                            if prop_val == val[0]:
+                                match_list.append(True)
+                            else:
+                                match_list.append(False)
                         else:
                             match_list.append(False)
                 else:
@@ -131,6 +137,7 @@ def getmatch_nodes(sdt, node_list, yamlfile, options):
                driver_nodes.append(node)
 
     driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
+    driver_nodes = list(dict.fromkeys(driver_nodes))
     return driver_nodes
 
 def getxlnx_phytype(sdt, value):
