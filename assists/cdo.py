@@ -404,22 +404,41 @@ def construct_flag_references(subsystem):
             subsystem.flag_references[n.name] = ref_flags
 
 
-def determine_inclusion(device_flags, other_device_flags):
+def determine_inclusion(device_flags, other_device_flags, sub, other_sub):
+
+    # look for time share in the flags defined by each subsystem that correspond
+    # to the device
+
+    # first get current device
+    dev_timeshare = device_flags[0].split("::")[0]
+    if dev_timeshare not in sub.flag_references.keys():
+        dev_timeshare = 'default'
+
+    dev_timeshare = copy.deepcopy(sub.flag_references[dev_timeshare])
+
+    # second get time share of other device
+    other_dev_timeshare = device_flags[0].split("::")[0]
+    if other_dev_timeshare not in other_sub.flag_references.keys():
+        other_dev_timeshare = 'default'
+
+    other_dev_timeshare = copy.deepcopy(other_sub.flag_references[other_dev_timeshare])
     included = 0x0
     for f in device_flags:
         if 'include' in f:
             included |= 0x1
         if 'access' in f and 'include' not in f:
             included |= 0x2
-        if 'timeshare' in f:
-            included |= 16
     for f in other_device_flags:
         if 'include' in f:
             included |= 0x8
         if 'access' in f and 'include' not in f:
             included |= 0x4
-        if 'timeshare' in f:
-            included |= 32
+
+    # determine if timeshare present in one of the flags for a device-subsystem link
+    if dev_timeshare[0] & 0x3 == 0x3:
+        included |= 16
+    if other_dev_timeshare[0] & 0x3 == 0x3:
+        included |= 32
 
     return included
 
@@ -431,11 +450,10 @@ def set_dev_pm_reqs(sub, device, usage):
         new_dev_flags = 'default'
 
     new_dev_flags = copy.deepcopy(sub.flag_references[new_dev_flags])
-    if new_dev_flags[0] & 0x3 != 0x3: # save time share
-        new_dev_flags[0] &= 0xFC # wipe out usage bits
-        new_dev_flags[0] |= usage # set them from passed in value
 
     device.pm_reqs = new_dev_flags
+
+    device.pm_reqs[0] |= usage
 
 
 def construct_pm_reqs(subsystems):
@@ -457,14 +475,14 @@ def construct_pm_reqs(subsystems):
 
                 if device.node_id in other_sub.dev_dict.keys():
                     other_device = other_sub.dev_dict[device.node_id]
-                    included = determine_inclusion(device.flags, other_device.flags)
+                    included = determine_inclusion(device.flags, other_device.flags, sub, other_sub)
 
                     # this means neither reference this via include so raise error
                     if included & 0x6 != 0x0:
                         print('WARNING: ', hex(device.node_id), 'found in multiple domains without includes ',
                               sub.sub_node, other_sub.sub_node, included, usage, device.flags, other_device.flags)
                         return
-                    if included & 0x16 != 0x0 and included & 0x32 == 0:
+                    if (included & 16 != 0) and (included & 32 == 0):
                         print('WARNING: ', hex(device.node_id), 'found in multiple domains with mismatch of timeshare',
                               sub.sub_node, other_sub.sub_node, included, usage)
                         return
@@ -473,7 +491,7 @@ def construct_pm_reqs(subsystems):
                         usage = 0x1 # update to shared
                 else:
                     # if from resource group in only domain should still be shared
-                    included = determine_inclusion(device.flags, [])
+                    included = determine_inclusion(device.flags, [], sub, other_sub)
                     if included == 0x1:
                         usage = 0x1
 
