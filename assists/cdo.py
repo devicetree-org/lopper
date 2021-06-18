@@ -603,13 +603,21 @@ def sub_perms(subsystems, output):
         sub_reset_perms(sub, output)
 
 
-def cdo_write( domain_node, sdt, options ):
+def cdo_write( root_node, sdt, options ):
     try:
         verbose = options['verbose']
     except:
         verbose = 0
 
     subs_data = []
+
+    domain_node = None
+    try:
+        domain_node = root_node.tree["/domains"]
+    except KeyError:
+        if verbose > 0:
+            print("[DBG++]: CDO plugin unable to find domains node")
+        return True
 
     subsystems = valid_subsystems(domain_node, sdt, options)
 
