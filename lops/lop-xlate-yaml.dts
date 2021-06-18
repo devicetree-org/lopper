@@ -97,7 +97,12 @@
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
-                                    domain_node = tree['/domains']
+                                    try:
+                                        domain_node = tree['/domains']
+                                    except KeyError:
+                                        print('[INFO]: no domain node to translate from in YAML.')
+                                        return
+
                                     for d in __selected__:
                                         for i,n in enumerate(d.child_nodes.values()):
                                             ng = n()
@@ -195,6 +200,8 @@
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
+                                    if __selected__ == []:
+                                        return
 
                                     for n in __selected__[0].subnodes():
 
