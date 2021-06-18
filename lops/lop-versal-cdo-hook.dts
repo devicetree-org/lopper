@@ -5,7 +5,7 @@
 
 		lop_3_3 {
 			compatible = "system-device-tree-v1,lop,assist-v1";
-			node = "/domains";
+			node = "/";
 			id = "xlnx,output,cdo";
 			options = "subsystem.cdo";
 		};
