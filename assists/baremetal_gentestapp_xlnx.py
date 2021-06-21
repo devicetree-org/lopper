@@ -129,7 +129,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                                             except KeyError:
                                                 has_hwdep = 0
 
-                                            if not os.path.isfile(destination) and not has_hwdep:
+                                            if not has_hwdep:
                                                 shutil.copyfile(filename, destination)
                                                 file_fd.write(destination)
                                                 file_fd.write("\n")
@@ -138,7 +138,6 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                                                     content.insert(0, "#define TESTAPP_GEN\n")
                                                     fd.seek(0, 0)
                                                     fd.writelines(content)
-                                            if not has_hwdep:
                                                 dec.append(testapp_schema[app]['declaration'])
                                         testapp_data.update({label_name:dec})
                                         testapp_name.update({label_name:drvname})
@@ -176,6 +175,11 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     plat.buf('\treturn 0;\n')
     plat.buf('}')
     os.chdir(tmpdir)
+    # Remove duplicate lines
+    with open('file_list.txt', 'r') as f:
+        unique_lines = set(f.readlines())
+    with open('file_list.txt', 'w') as f:
+        f.writelines(unique_lines)
     plat.out(''.join(plat.get_buf()))
 
     return True
