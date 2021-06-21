@@ -1549,7 +1549,7 @@ class LopperNode(object):
                 phandle_nodes = p.resolve_phandles()
                 for ph_node in phandle_nodes:
                     # don't call in for our own node, or we'll recurse forever
-                    if ph_node.number != self.number:
+                    if ph_node.abs_path != self.abs_path:
                         refs = ph_node.resolve_all_refs( property_mask_check )
                         if refs:
                             reference_list.append( refs )
