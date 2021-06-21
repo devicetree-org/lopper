@@ -31,6 +31,7 @@ from collections import OrderedDict
 
 from lopper_fmt import LopperFmt
 import lopper_base
+from lopper_tree import LopperTreePrinter
 
 from string import printable
 
