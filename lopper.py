@@ -446,7 +446,7 @@ class LopperSDT:
         #       not cleaning up the concatenated compiled. pp file, since
         #       it is created with mktmp()
 
-    def write( self, fdt = None, output_filename = None, overwrite = True, enhanced = False ):
+    def write( self, tree = None, output_filename = None, overwrite = True, enhanced = False ):
         """Write a system device tree to a file
 
         Write a fdt (or system device tree) to an output file. This routine uses
@@ -459,7 +459,7 @@ class LopperSDT:
         it is called to write the file, otherwise, a warning or error is raised.
 
         Args:
-            fdt (fdt,optional): source flattened device tree to write
+            tree (LopperTree,optional): LopperTree to write
             output_filename (string,optional): name of the output file to create
             overwrite (bool,optional): Should existing files be overwritten. Default is True.
             enhanced(bool,optional): whether enhanced printing should be performed. Default is False
@@ -474,35 +474,29 @@ class LopperSDT:
         if not output_filename:
             return
 
-        fdt_to_write = fdt
-        if not fdt_to_write:
-            fdt_to_write = self.FDT
+        tree_to_write = tree
+        if not tree_to_write:
+            tree_to_write = self.tree
 
         if re.search( ".dtb", output_filename ):
             if self.use_libfdt:
-                Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose )
+                fdt = Lopper.fdt()
+                Lopper.sync( fdt, tree_to_write.export() )
+                Lopper.write_fdt( fdt, output_filename, overwrite, self.verbose )
             else:
                 print( "[ERROR]: dtb output selected (%s), but libfdt is not enabled" % output_filename )
                 sys.exit(1)
 
         elif re.search( ".dts", output_filename ):
-            if enhanced:
-                o = Path(output_filename)
-                if o.exists() and not overwrite:
-                    print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
-                    sys.exit(1)
+            o = Path(output_filename)
+            if o.exists() and not overwrite:
+                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                sys.exit(1)
 
-                printer = LopperTreePrinter( True, output_filename, self.verbose )
-
-                printer.strict = not self.permissive
-
-                # Note: the caller must ensure that all changes have been sync'd to
-                #        the fdt_to_write.
-
-                printer.load( Lopper.export( fdt_to_write ) )
-                printer.exec()
-            else:
-                Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose, False )
+            printer = LopperTreePrinter( True, output_filename, self.verbose )
+            printer.strict = not self.permissive
+            printer.load( tree_to_write.export() )
+            printer.exec()
 
         elif re.search( ".yaml", output_filename ):
             o = Path(output_filename)
@@ -520,8 +514,7 @@ class LopperSDT:
                 for cb_func in cb_funcs:
                     try:
                         out_tree = LopperTreePrinter( True, output_filename, self.verbose )
-                        Lopper.sync( fdt_to_write, self.tree.export() )
-                        out_tree.load( Lopper.export( fdt_to_write ) )
+                        out_tree.load( tree_to_write.export() )
                         out_tree.strict = not self.permissive
                         if not cb_func( 0, out_tree, { 'outfile': output_filename, 'verbose' : self.verbose } ):
                             print( "[WARNING]: output assist returned false, check for errors ..." )
@@ -1163,15 +1156,15 @@ class LopperSDT:
                 if output_tree:
                     output_file_full = self.outdir + "/" + output_file_name
 
-                    # create a FDT
-                    out_fdt = Lopper.fdt()
-                    # export it
-                    dct = output_tree.export()
-                    Lopper.sync( out_fdt, dct )
+                    if self.use_libfdt:
+                        # create a FDT
+                        dct = output_tree.export()
+                        out_fdt = Lopper.fdt()
+                        Lopper.sync( out_fdt, dct )
 
                     # we should consider checking the type, and not doing the export
                     # if going to dts, since that is already easily done with the tree.
-                    self.write( out_fdt, output_file_full, True, self.enhanced )
+                    self.write( output_tree, output_file_full, True, self.enhanced )
             else:
                 print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
