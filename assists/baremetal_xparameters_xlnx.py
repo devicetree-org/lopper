@@ -212,6 +212,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             except KeyError:
                                 prop_val = [0]
 
+                            if ('/bits/' in prop_val):
+                                prop_val = [int(prop_val[-1][3:-1], base=16)]
                             prop = prop.replace("-", "_")
                             prop = prop.replace("xlnx,", "")
                             if len(prop_val) > 1:

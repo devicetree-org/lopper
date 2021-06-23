@@ -566,6 +566,9 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                 except KeyError:
                     prop_val = [0]
 
+                if ('/bits/' in prop_val):
+                    prop_val = [int(prop_val[-1][3:-1], base=16)]
+
                 if len(prop_val) > 1:
                     plat.buf('\n\t\t{')
                     for k,item in enumerate(prop_val):
