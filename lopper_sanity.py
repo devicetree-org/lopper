@@ -25,11 +25,11 @@ from collections import UserDict
 from collections import OrderedDict
 import copy
 
-from lopper_tree import *
+from lopper.tree import *
 
 from lopper import *
 import lopper
-from lopper_yaml import *
+from lopper.yaml import *
 
 from io import StringIO
 import sys
@@ -1453,7 +1453,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     if verbose:
         print( "amba node raw: %s" % printer.__nodes__['/amba'] )
-    if re.search( "<lopper_tree.LopperNode.*", str(printer.__nodes__['/amba']) ):
+    if re.search( "<lopper.tree.LopperNode.*", str(printer.__nodes__['/amba']) ):
         test_passed( "__str__ raw" )
     else:
         test_failed( "__str__ raw" )
@@ -2144,7 +2144,7 @@ def fdt_sanity_test( device_tree, verbose ):
             if type(v) != OrderedDict and i != "__path__":
                 print("         %s -> %s" % (i,v))
 
-    lt = lopper_tree.LopperTreePrinter()
+    lt = lopper.tree.LopperTreePrinter()
     lt.load( dct )
 
     print( "[INFO]: printing loaded tree" )
@@ -2168,7 +2168,7 @@ def fdt_sanity_test( device_tree, verbose ):
 
     print( "[INFO]: reading tree back" )
     dct3 = Lopper.export( device_tree.FDT )
-    lt3 = lopper_tree.LopperTreePrinter()
+    lt3 = lopper.tree.LopperTreePrinter()
     lt3.load( dct3 )
 
     print( "[INFO]: starting re-read tree print" )
@@ -2219,7 +2219,7 @@ def fdt_sanity_test( device_tree, verbose ):
     dct3 = Lopper.export( device_tree.FDT )
 
     print( "[INFO] second print. nodes gone, and new ones still present ")
-    lt3 = lopper_tree.LopperTreePrinter()
+    lt3 = lopper.tree.LopperTreePrinter()
     lt3.load( dct3 )
     lt3.__dbg__ = 0
     lt3.exec()
@@ -2355,10 +2355,10 @@ if __name__ == "__main__":
     main()
 
     if libfdt:
-        lopper.lopper_type(lopper_fdt.LopperFDT)
+        lopper.lopper_type(lopper.fdt.LopperFDT)
     else:
-        import lopper_dt
-        lopper.lopper_type(lopper_dt.LopperDT)
+        import lopper.dt
+        lopper.lopper_type(lopper.dt.LopperDT)
 
     Lopper = lopper.Lopper
 

@@ -27,7 +27,7 @@ import contextlib
 import importlib
 from lopper import Lopper
 import lopper
-from lopper_tree import *
+from lopper.tree import *
 from xlnx import subsystem
 
 sys.path.append(os.path.dirname(__file__))

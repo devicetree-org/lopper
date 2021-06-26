@@ -24,7 +24,7 @@ import contextlib
 import importlib
 from lopper import Lopper
 import lopper
-from lopper_tree import *
+from lopper.tree import *
 
 sys.path.append(os.path.dirname(__file__))
 from topology_headr import *

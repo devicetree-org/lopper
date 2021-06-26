@@ -11,7 +11,7 @@ import re
 import os
 import shutil
 import subprocess
-from lopper_fmt import LopperFmt
+from lopper.fmt import LopperFmt
 from string import printable
 from pathlib import Path
 from pathlib import PurePath

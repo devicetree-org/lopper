@@ -18,7 +18,7 @@ from pathlib import PurePath
 from lopper import Lopper
 from lopper import LopperFmt
 import lopper
-from lopper_tree import *
+from lopper.tree import *
 from re import *
 import yaml
 import glob

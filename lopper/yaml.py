@@ -15,10 +15,10 @@ import copy
 
 from collections import OrderedDict
 
-from lopper_tree import LopperTree
-from lopper_tree import LopperTreePrinter
-from lopper_tree import LopperNode
-from lopper_tree import LopperProp
+from lopper.tree import LopperTree
+from lopper.tree import LopperTreePrinter
+from lopper.tree import LopperNode
+from lopper.tree import LopperProp
 
 from anytree.importer import DictImporter
 from anytree.exporter import DictExporter

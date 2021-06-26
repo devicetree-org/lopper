@@ -24,7 +24,7 @@ import importlib
 from lopper import Lopper
 from lopper import LopperFmt
 import lopper
-from lopper_tree import *
+from lopper.tree import *
 from re import *
 
 sys.path.append(os.path.dirname(__file__))
