@@ -42,32 +42,6 @@ def usage():
     print('')
 
 def main():
-    global inputfiles
-    global output
-    global output_file
-    global sdt
-    global sdt_file
-    global verbose
-    global force
-    global dump_dtb
-    global target_domain
-    global dryrun
-    global cmdline_assists
-    global werror
-    global save_temps
-    global enhanced_print
-    global outdir
-    global load_paths
-    global module_name
-    global module_args
-    global debug
-    global server
-    global auto_run
-    global permissive
-    global xlate
-    global libfdt
-    global overlay
-
     debug = False
     sdt = None
     verbose = 0
@@ -258,72 +232,70 @@ def main():
 
             inputfiles.append( x )
 
-# Main processes the command line, and sets some global variables we
-# use below
+    if not libfdt:
+        import lopper.dt
+        lopper_type(lopper.dt.LopperDT)
+
+    if dump_dtb:
+        Lopper.dtb_dts_export( sdt, verbose )
+        sys.exit(0)
+
+    device_tree = LopperSDT( sdt )
+
+    atexit.register(at_exit_cleanup)
+
+    # set some flags before we process the tree.
+    device_tree.dryrun = dryrun
+    device_tree.verbose = verbose
+    device_tree.werror = werror
+    device_tree.output_file = output
+    device_tree.cleanup_flag = True
+    device_tree.save_temps = save_temps
+    device_tree.enhanced = enhanced_print
+    device_tree.outdir = outdir
+    device_tree.target_domain = target_domain
+    device_tree.load_paths = load_paths
+    device_tree.permissive = permissive
+    device_tree.merge = overlay
+
+    device_tree.setup( sdt, inputfiles, "", force, libfdt )
+    device_tree.assists_setup( cmdline_assists )
+
+    if auto_run:
+        for a in cmdline_assists:
+            assist_args = []
+            if a == module_name:
+                assist_args = module_args
+
+            device_tree.assist_autorun_setup( a, assist_args )
+
+    else:
+        # a "module" is an assist passed after -- on the command line call to
+        # lopper.
+        if module_name:
+            # This sets the trigger node of "/", and makes it autorun
+            device_tree.assist_autorun_setup( module_name, module_args )
+
+    if debug:
+        import cProfile
+        cProfile.run( 'device_tree.perform_lops()' )
+    else:
+        device_tree.perform_lops()
+
+    if not dryrun:
+        # write any changes to the FDT, before we do our write
+        Lopper.sync( device_tree.FDT, device_tree.tree.export() )
+        device_tree.write( enhanced = device_tree.enhanced )
+    else:
+        print( "[INFO]: --dryrun was passed, output file %s not written" % output )
+
+    if server:
+        if verbose:
+            print( "[INFO]: starting WSGI server" )
+        lopper.rest.sdt = device_tree
+        lopper.rest.app.run()  # run our Flask app
+        sys.exit(1)
+
+    device_tree.cleanup()
+
 main()
-
-if not libfdt:
-    import lopper.dt
-    lopper_type(lopper.dt.LopperDT)
-
-if dump_dtb:
-    Lopper.dtb_dts_export( sdt, verbose )
-    sys.exit(0)
-
-device_tree = LopperSDT( sdt )
-
-atexit.register(at_exit_cleanup)
-
-# set some flags before we process the tree.
-device_tree.dryrun = dryrun
-device_tree.verbose = verbose
-device_tree.werror = werror
-device_tree.output_file = output
-device_tree.cleanup_flag = True
-device_tree.save_temps = save_temps
-device_tree.enhanced = enhanced_print
-device_tree.outdir = outdir
-device_tree.target_domain = target_domain
-device_tree.load_paths = load_paths
-device_tree.permissive = permissive
-device_tree.merge = overlay
-
-device_tree.setup( sdt, inputfiles, "", force, libfdt )
-device_tree.assists_setup( cmdline_assists )
-
-if auto_run:
-    for a in cmdline_assists:
-        assist_args = []
-        if a == module_name:
-            assist_args = module_args
-
-        device_tree.assist_autorun_setup( a, assist_args )
-
-else:
-    # a "module" is an assist passed after -- on the command line call to
-    # lopper.
-    if module_name:
-        # This sets the trigger node of "/", and makes it autorun
-        device_tree.assist_autorun_setup( module_name, module_args )
-
-if debug:
-    import cProfile
-    cProfile.run( 'device_tree.perform_lops()' )
-else:
-    device_tree.perform_lops()
-
-if not dryrun:
-    # write any changes to the FDT, before we do our write
-    Lopper.sync( device_tree.FDT, device_tree.tree.export() )
-    device_tree.write( enhanced = device_tree.enhanced )
-else:
-    print( "[INFO]: --dryrun was passed, output file %s not written" % output )
-
-if server:
-    if verbose:
-        print( "[INFO]: starting WSGI server" )
-    lopper.rest.sdt = device_tree
-    lopper.rest.app.run()  # run our Flask app
-    sys.exit(1)
-
-device_tree.cleanup()
