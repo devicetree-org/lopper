@@ -33,17 +33,17 @@ from collections import OrderedDict
 
 import humanfriendly
 
-from lopper_fmt import LopperFmt
-import lopper_fdt
+from lopper.fmt import LopperFmt
+import lopper.fdt
 import lopper
 
-from lopper_tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
-import lopper_tree
+from lopper.tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
+import lopper.tree
 
-import lopper_rest
+import lopper.rest
 
 try:
-    from lopper_yaml import *
+    from lopper.yaml import *
     yaml_support = True
 except Exception as e:
     print( "[WARNING]: cant load yaml, disabling support: %s" % e )
@@ -71,10 +71,10 @@ def at_exit_cleanup():
 def lopper_type(cls):
     global Lopper
     Lopper = cls
-    lopper_tree.Lopper = cls
+    lopper.tree.Lopper = cls
 
 # default to FDT front/backend
-lopper_type(lopper_fdt.LopperFDT)
+lopper_type(lopper.fdt.LopperFDT)
 
 class LopperAssist:
     """Internal class to contain the details of a lopper assist
@@ -2301,8 +2301,8 @@ if __name__ == "__main__":
     main()
 
     if not libfdt:
-        import lopper_dt
-        lopper_type(lopper_dt.LopperDT)
+        import lopper.dt
+        lopper_type(lopper.dt.LopperDT)
 
     if dump_dtb:
         Lopper.dtb_dts_export( sdt, verbose )
@@ -2360,8 +2360,8 @@ if __name__ == "__main__":
     if server:
         if verbose:
             print( "[INFO]: starting WSGI server" )
-        lopper_rest.sdt = device_tree
-        lopper_rest.app.run()  # run our Flask app
+        lopper.rest.sdt = device_tree
+        lopper.rest.app.run()  # run our Flask app
         sys.exit(1)
 
     device_tree.cleanup()

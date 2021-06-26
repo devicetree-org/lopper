@@ -33,11 +33,11 @@ from string import printable
 
 from devicetree import dtlib
 from devicetree import edtlib
-from lopper_fmt import LopperFmt
+from lopper.fmt import LopperFmt
 
-import lopper_base
+import lopper.base
 
-class LopperDT(lopper_base.lopper_base):
+class LopperDT(lopper.base.lopper_base):
     """The Lopper Class contains static methods for manipulating DT
     """
 
@@ -238,7 +238,7 @@ class LopperDT(lopper_base.lopper_base):
             dct["__fdt_phandle__"] = -1
 
         if verbose:
-            print( "[DBG]: lopper_dt export: " )
+            print( "[DBG]: lopper.dt export: " )
             print( "[DBG]:     nodes: %s" % (nodes) )
             print( "[DBG]:          props: %s" % np )
 

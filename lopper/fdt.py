@@ -29,9 +29,9 @@ import textwrap
 from collections import UserDict
 from collections import OrderedDict
 
-from lopper_fmt import LopperFmt
-import lopper_base
-from lopper_tree import LopperTreePrinter
+from lopper.fmt import LopperFmt
+import lopper.base
+from lopper.tree import LopperTreePrinter
 
 from string import printable
 
@@ -49,7 +49,7 @@ except:
 # general retry count
 MAX_RETRIES = 3
 
-class LopperFDT(lopper_base.lopper_base):
+class LopperFDT(lopper.base.lopper_base):
     """The Lopper Class contains static methods for manipulating device trees
 
     Use the lopper methods when manipulating device trees (in particular
@@ -589,17 +589,17 @@ class LopperFDT(lopper_base.lopper_base):
             Nothing
         """
         if verbose:
-            print( "[DBG]: lopper_fdt: node_sync: start: %s (%s)" % (node_in['__fdt_name__'],node_in['__path__'] ))
+            print( "[DBG]: lopper.fdt: node_sync: start: %s (%s)" % (node_in['__fdt_name__'],node_in['__path__'] ))
 
         nn = LopperFDT.node_find( fdt, node_in['__path__'] )
         if nn == -1:
             # -1 means the node wasn't found
             if verbose:
-                print( "[DBG]:    lopper_fdt: adding node: %s" % node_in['__path__'] )
+                print( "[DBG]:    lopper.fdt: adding node: %s" % node_in['__path__'] )
 
             nn = LopperFDT.node_add( fdt, node_in['__path__'], True )
             if nn == -1:
-                print( "[ERROR]:    lopper_fdt: node could not be added, exiting" )
+                print( "[ERROR]:    lopper.fdt: node could not be added, exiting" )
                 sys.exit(1)
 
         nname = node_in['__fdt_name__']
@@ -625,11 +625,11 @@ class LopperFDT(lopper_base.lopper_base):
         for prop, prop_val in node_in.items():
             if re.search( "^__", prop ) or prop.startswith( '/' ):
                 if verbose:
-                    print( "          lopper_fdt: node sync: skipping internal property: %s" % prop)
+                    print( "          lopper.fdt: node sync: skipping internal property: %s" % prop)
                 continue
             else:
                 if verbose:
-                    print( "          lopper_fdt: node sync: prop: %s val: %s" % (prop,prop_val) )
+                    print( "          lopper.fdt: node sync: prop: %s val: %s" % (prop,prop_val) )
 
                 # We could supply a type hint via the __{}_type__ attribute
                 LopperFDT.property_set( fdt, nn, prop, prop_val, LopperFmt.COMPOUND )
@@ -645,7 +645,7 @@ class LopperFDT(lopper_base.lopper_base):
 
         for p in props_to_delete:
             if verbose:
-                print( "[DBG]:    lopper_fdt: node sync, deleting property: %s" % p )
+                print( "[DBG]:    lopper.fdt: node sync, deleting property: %s" % p )
             LopperFDT.property_remove( fdt, nname, p )
 
     @staticmethod
@@ -695,7 +695,7 @@ class LopperFDT(lopper_base.lopper_base):
             return
 
         if verbose:
-            print( "[DBG]: lopper_fdt sync: start" )
+            print( "[DBG]: lopper.fdt sync: start" )
 
         # we have a list of: containing dict, value, parent
         dwalk = [ [dct,dct,None]  ]
@@ -725,11 +725,11 @@ class LopperFDT(lopper_base.lopper_base):
             nn = LopperFDT.node_find( fdt, node )
             if nn != -1:
                 if verbose:
-                    print( "[DBG]:    lopper_fdt: sync: removing: node %s" % node )
+                    print( "[DBG]:    lopper.fdt: sync: removing: node %s" % node )
                 LopperFDT.node_remove( fdt, nn )
             else:
                 if verbose:
-                    print( "[DBG]:    lopper_fdt: sync: node %s was not found, and could not be remove" % node )
+                    print( "[DBG]:    lopper.fdt: sync: node %s was not found, and could not be remove" % node )
                 # child nodes are removed with their parent, and follow in the
                 # list, so this isn't an error.
                 pass
@@ -787,7 +787,7 @@ class LopperFDT(lopper_base.lopper_base):
 
         if strict:
             if len(nodes) != len(set(nodes)):
-                raise Exception( "lopper_fdt: duplicate node detected (%s)" % nodes )
+                raise Exception( "lopper.fdt: duplicate node detected (%s)" % nodes )
 
         dct["__path__"] = start_node
 
@@ -801,7 +801,7 @@ class LopperFDT(lopper_base.lopper_base):
         dct["__fdt_phandle__"] = LopperFDT.node_getphandle( fdt, nn )
 
         if verbose:
-            print( "[DBG]: lopper_fdt export: " )
+            print( "[DBG]: lopper.fdt export: " )
             print( "[DBG]:     [startnode: %s]: subnodes: %s" % (start_node,nodes ))
             print( "[DBG]:          props: %s" % np )
 

@@ -23,7 +23,7 @@ import contextlib
 import importlib
 from lopper import Lopper
 from lopper import LopperFmt
-from lopper_tree import LopperAction
+from lopper.tree import LopperAction
 import lopper
 
 def is_compat( node, compat_string_to_test ):

@@ -11,7 +11,7 @@ import importlib
 from lopper import Lopper
 from lopper import LopperFmt
 import lopper
-from lopper_tree import *
+from lopper.tree import *
 from re import *
 import numpy as np
 

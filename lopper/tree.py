@@ -24,7 +24,7 @@ from collections import Counter
 import copy
 import json
 
-from lopper_fmt import LopperFmt
+from lopper.fmt import LopperFmt
 
 # must be set to the Lopper class to call
 global Lopper
@@ -1704,7 +1704,7 @@ class LopperNode(object):
 
         Export the details of a node in a dictionary. The format of the dictionary
         is suitable for loading() into a LopperTree, or syncing() to a flattened
-        device tree by lopper_fdt.
+        device tree by lopper.fdt.
 
         Internal / FDT properties are prefixed/suffixed with __.
 
@@ -3615,7 +3615,7 @@ class LopperTree:
         versus added order.
 
         Args:
-           dct (Dictionary): dictionary from a lopper_fdt export, or a tree export
+           dct (Dictionary): dictionary from a lopper.fdt export, or a tree export
 
         Returns:
            Nothing
