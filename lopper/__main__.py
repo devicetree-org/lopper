@@ -45,33 +45,6 @@ def usage():
     print('')
 
 def main():
-    global inputfiles
-    global output
-    global output_file
-    global sdt
-    global sdt_file
-    global verbose
-    global force
-    global dump_dtb
-    global target_domain
-    global dryrun
-    global cmdline_assists
-    global werror
-    global save_temps
-    global enhanced_print
-    global outdir
-    global load_paths
-    global module_name
-    global module_args
-    global debug
-    global server
-    global auto_run
-    global permissive
-    global xlate
-    global libfdt
-    global overlay
-    global config
-
     debug = False
     sdt = None
     verbose = 0
@@ -304,13 +277,6 @@ def main():
 
             inputfiles.append( x )
 
-
-if __name__ == "__main__":
-
-    # Main processes the command line, and sets some global variables we
-    # use below
-    main()
-
     if not libfdt:
         import lopper.dt
         lopper_type(lopper.dt.LopperDT)
@@ -371,6 +337,7 @@ if __name__ == "__main__":
     if server:
         if verbose:
             print( "[INFO]: starting WSGI server" )
+
         try:
             import lopper.rest
             rest_support = True
@@ -385,3 +352,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     device_tree.cleanup()
+
+main()
+
