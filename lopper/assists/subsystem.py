@@ -24,11 +24,11 @@ import contextlib
 import importlib
 from lopper import Lopper
 from lopper import LopperFmt
-from lopper_tree import LopperAction
-from lopper_tree import LopperProp
-from lopper_tree import LopperNode
-from lopper_tree import LopperTree
-from lopper_yaml import LopperYAML
+from lopper.tree import LopperAction
+from lopper.tree import LopperProp
+from lopper.tree import LopperNode
+from lopper.tree import LopperTree
+from lopper.yaml import LopperYAML
 import lopper
 import json
 import humanfriendly

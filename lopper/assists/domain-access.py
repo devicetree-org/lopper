@@ -23,7 +23,7 @@ import contextlib
 import importlib
 from lopper import Lopper
 from lopper import LopperFmt
-from lopper_tree import LopperAction
+from lopper.tree import LopperAction
 import lopper
 import lopper_lib
 from itertools import chain
