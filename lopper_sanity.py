@@ -24,6 +24,7 @@ import textwrap
 from collections import UserDict
 from collections import OrderedDict
 import copy
+import getopt
 
 from lopper.tree import *
 
