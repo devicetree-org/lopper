@@ -11,10 +11,12 @@ import getopt
 import os
 import sys
 import atexit
+from pathlib import Path
 
 import lopper.rest
 
-LOPPER_VERSION = "2020.4-beta"
+with open(Path(__file__).parent / 'VERSION', 'r') as f:
+    LOPPER_VERSION = f.read().strip()
 
 def usage():
     prog = os.path.basename(sys.argv[0])
