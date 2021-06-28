@@ -1,2 +1,5 @@
 __pycache__*
 *.swp
+dist/*
+build/*
+lopper.egg-info/
