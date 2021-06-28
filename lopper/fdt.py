@@ -41,7 +41,7 @@ try:
 except:
     import site
     python_version_dir = "python{}.{}".format( sys.version_info[0], sys.version_info[1] )
-    site.addsitedir('vendor/lib/{}/site-packages'.format( python_version_dir ))
+    site.addsitedir((Path(__file__).parent.parent / 'vendor/lib/{}/site-packages'.format( python_version_dir )).resolve())
 
     import libfdt
     from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
