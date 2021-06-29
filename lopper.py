@@ -40,8 +40,6 @@ import lopper
 from lopper_tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
 import lopper_tree
 
-import lopper_rest
-
 try:
     from lopper_yaml import *
     yaml_support = True
@@ -2360,8 +2358,17 @@ if __name__ == "__main__":
     if server:
         if verbose:
             print( "[INFO]: starting WSGI server" )
-        lopper_rest.sdt = device_tree
-        lopper_rest.app.run()  # run our Flask app
+        try:
+            import lopper_rest
+            rest_support = True
+        except Exception as e:
+            print( "[ERROR]: rest support is not loaded, check dependencies: %s" % e )
+            rest_support = False
+
+        if rest_support:
+            lopper_rest.sdt = device_tree
+            lopper_rest.app.run()  # run our Flask app
+
         sys.exit(1)
 
     device_tree.cleanup()
