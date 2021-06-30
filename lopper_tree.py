@@ -663,17 +663,25 @@ class LopperProp():
         """
         indent = (self.node.depth * 8) + 8
         outstring = self.string_val
+        only_align_comments = False
 
-        if self.pclass == "comment":
-            # we have to substitute \n for better indentation, since comments
-            # are multiline
-            dstring = ""
-            dstring = dstring.rjust(len(dstring) + indent + 1, " " )
-            outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
-
-        if self.pclass == "preamble":
+        if p.pclass == "preamble":
             # start tree peeked at this, so we do nothing
             outstring = ""
+        else:
+            # p.pclass == "comment"
+            # we have to substitute \n for better indentation, since comments
+            # are multiline
+
+            do_indent = True
+            if only_align_comments:
+                if p.pclass != "comment":
+                    do_indent = False
+
+            if do_indent:
+                dstring = ""
+                dstring = dstring.rjust(len(dstring) + indent + 1, " " )
+                outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
         if outstring:
             print(outstring.rjust(len(outstring)+indent," " ), file=output)
@@ -969,7 +977,7 @@ class LopperProp():
 
                         # if we aren't the last item, we continue with a ,
                         if rnum != len(records_to_iterate) - 1:
-                            formatted_records.append( ", " )
+                            formatted_records.append( ",\n" )
                         else:
                             formatted_records.append( ";" )
                 else:
@@ -3938,17 +3946,25 @@ class LopperTreePrinter( LopperTree ):
 
         indent = (p.node.depth * 8) + 8
         outstring = str( p )
-
-        if p.pclass == "comment":
-            # we have to substitute \n for better indentation, since comments
-            # are multiline
-            dstring = ""
-            dstring = dstring.rjust(len(dstring) + indent + 1, " " )
-            outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
+        only_align_comments = False
 
         if p.pclass == "preamble":
             # start tree peeked at this, so we do nothing
             outstring = ""
+        else:
+            # p.pclass == "comment"
+            # we have to substitute \n for better indentation, since comments
+            # are multiline
+
+            do_indent = True
+            if only_align_comments:
+                if p.pclass != "comment":
+                    do_indent = False
+
+            if do_indent:
+                dstring = ""
+                dstring = dstring.rjust(len(dstring) + indent + 1, " " )
+                outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
         if outstring:
             print(outstring.rjust(len(outstring)+indent," " ), file=self.output)
