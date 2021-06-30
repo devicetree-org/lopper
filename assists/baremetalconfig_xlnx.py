@@ -349,7 +349,10 @@ def get_mapped_nodes(sdt, node_list, options):
                if wrong_nodes:
                   print("[WARNING]: invalid node %s reference mentioned in access property please delete the references" % ','.join(wrong_nodes))
 
-            valid_nodes = [node for node in node_list for handle in mapped_phandle if handle == node.phandle]
+            domain_valid_nodes = [node for node in node_list for handle in mapped_phandle if handle == node.phandle]
+            valid_nodes.extend(domain_valid_nodes)
+            # Remove duplicate nodes
+            valid_nodes = list(dict.fromkeys(valid_nodes))
         return valid_nodes
     else:
         return valid_nodes
