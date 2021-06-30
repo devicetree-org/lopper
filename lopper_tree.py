@@ -3513,7 +3513,7 @@ class LopperTree:
             if self.__dbg__ > 4:
                 print( "[DBG++++]: node: %s:%s [%s] parent: %s children: %s" % (n.name, n.number, n.phandle, n.parent, n.child_nodes))
 
-            if n.number == 0:
+            if n.number == 0 or n.abs_path == "/":
                 if self.start_tree_cb:
                     self.start_tree_cb( n )
 

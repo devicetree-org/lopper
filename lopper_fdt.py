@@ -47,7 +47,7 @@ except:
     from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
 
 # general retry count
-MAX_RETRIES = 3
+MAX_RETRIES = 10
 
 class LopperFDT(lopper_base.lopper_base):
     """The Lopper Class contains static methods for manipulating device trees
@@ -1406,7 +1406,7 @@ class LopperFDT(lopper_base.lopper_base):
                         break
                 else:
                     # fail!
-                    pass
+                    print( "[WARNING]: lopper_fdt: unable to write property '%s' to fdt" % prop_name )
         else:
             print( "[WARNING]: %s: unknown type was used: %s" % (prop_name,type(prop_val)) )
 
