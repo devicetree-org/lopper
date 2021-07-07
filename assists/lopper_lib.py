@@ -177,18 +177,16 @@ def node_accesses( tree, node ):
 
 
 # process cpus, and update their references appropriately
-def cpu_refs( tree, cpu_node, verbose = 0 ):
+def cpu_refs( tree, cpu_prop, verbose = 0 ):
     refd_cpus = []
 
-    if not cpu_node:
-        return refd_cpus
+    if not cpu_prop:
+        return refd_cpus, refd_cpus
 
     if verbose:
-        print( "[DBG]: lopper_lib: cpu_refs: processing %s" % cpu_node.abs_path )
+        print( "[DBG]: lopper_lib: cpu_refs: processing %s" % cpu_prop )
 
-    cpu_prop_values = cpu_node.value
-
-    cpu_prop_list = list( chunks(cpu_prop_values,3) )
+    cpu_prop_list = list( chunks(cpu_prop.value,3) )
     sub_cpus_all = []
 
     # loop through the nodes, we want to refcount the sub-cpu nodes
