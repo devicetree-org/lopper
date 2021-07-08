@@ -178,6 +178,13 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     src_dir = os.path.dirname(src_dir)
     appname = src_dir.rsplit('/', 1)[-1]
     cmake_file = appname.capitalize() + str("Example.cmake")
+
+    ## To inline with existing tools point default ddr for linker to lower DDR
+    lower_ddrs = ["axi_noc_0", "psu_ddr_0", "ps7_ddr_0"]
+    has_ddr = [x for x in mem_ranges.keys() for ddr in lower_ddrs if re.search(ddr, x)]
+    if has_ddr:
+        default_ddr = has_ddr[0]
+
     with open(cmake_file, 'a') as fd:
         fd.write("set(DDR %s)\n" % default_ddr)
         memip_list = []
