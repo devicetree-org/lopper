@@ -249,13 +249,13 @@ def find_cpu_ids(node, sdt):
     return cpu_xilpm_ids
 
 
-def prelim_flag_processing(node):
+def prelim_flag_processing(node, prefix):
     # return preliminary processing of flags
     flags = ''
-    if node.propval('flags-names') == ['']:
+    if node.propval(prefix+'-flags-names') == ['']:
         flags = 'default'
     else:
-        flags =  node.propval('flags-names')
+        flags =  node.propval(prefix+'-flags-names')
         if isinstance(flags, list):
             flags = flags[0]
 
@@ -269,7 +269,7 @@ def prelim_flag_processing(node):
 def find_mem_ids(node, sdt):
     # given a node that has a memory or sram property, return list of  corresponding
     # XilPM Node IDs for the mem/sram node
-    flags = prelim_flag_processing(node)
+    flags = prelim_flag_processing(node, 'memory')
 
     mem_xilpm_ids = []
     if node.propval('memory') != ['']:
@@ -283,7 +283,7 @@ def find_sram_ids(node, sdt):
     sram_end = node.propval('sram')[1] + sram_base
     mem_xilpm_ids = []
     id_with_flags = []
-    flags = prelim_flag_processing(node)
+    flags = prelim_flag_processing(node, 'sram')
 
     ocm_len = 0xFFFFF
     if 0xFFFC0000 <= sram_base <= 0xFFFFFFFF:
@@ -410,10 +410,6 @@ def process_subsystem(subsystem, subsystem_node, sdt, options, included = False)
     for node in subsystem_node.subnodes():
         device_flags = []
 
-        # skip flag references
-        if 'flags' in node.abs_path:
-            continue
-
         if node.propval('cpus') != ['']:
             f = 'default'
             f +='::no-restrictions' # by default, cores are not restricted
@@ -458,70 +454,15 @@ def process_subsystem(subsystem, subsystem_node, sdt, options, included = False)
 
 
 def construct_flag_references(subsystem):
+    flags_list = subsystem.sub_node.propval("flags")
+    for index, flags_name in enumerate(subsystem.sub_node.propval("flags-names")):
+        ref_flags = [0x0, 0x0, 0x0, 0x0]
 
-    for n in subsystem.sub_node.subnodes():
-        # flags references are translated into their own nodes in the YAML front-end parsing
-        # translate flag references to xilpm requirement information to be used later
-        # when resolving a device's flag definition being referenced
-        if subsystem.sub_node.abs_path+'/flags/' in n.abs_path and n.depth == subsystem.sub_node.depth + 2:
-            ref_flags = [0x0, 0x0, 0x0, 0x0]
-            first_keywords = {  'allow-secure':2, 'read-only':4, 'requested':6 }
-            third_keywords = { 'access':0, 'context':1, 'wakeup':2, 'unusable':3, 'requested-secure':4, 'coherent':5, 'virtualized':6 }
+        current_base = index * 4 # 4 elements per requirement of device
+        for i in range(0,3):
+            ref_flags[i] = flags_list[current_base + i]
 
-            # 1st word
-            allow_sec = False
-            read_only = False
-            for key in (list(first_keywords.keys())):
-                if n.propval(key) != [''] or key in n.__props__.keys():
-                    if key == 'allow-secure' or key == 'read-only':
-                        # if true then set to low, as per spec: "0: secure master only."
-                        # write should be low if read-only
-                        ref_flags[0] = ref_flags[0] & ~(0x1 << first_keywords[key])
-                        if key == 'allow-secure':
-                          allow_sec = True
-                          continue
-                        elif key == 'read-only':
-                          read_only = True
-                          continue
-
-                    ref_flags[0] |= (0x1 << first_keywords[key])
-
-
-            # 1st word read policy always allowed
-            #ref_flags[0] = ref_flags[0] | (0x1 << 3)
-
-    
-            # 1st word: if allow-secure is false, then raise corresponding bit
-            if allow_sec == False:
-                ref_flags[0] |= (0x1 << first_keywords['allow-secure'])
-            # 1st word: if read only  is false, then raise corresponding bit
-            if read_only == False:
-                ref_flags[0] |= (0x1 << first_keywords['read-only'])
-
-            # 1st word time share
-            if n.propval('timeshare') != ['']:
-                ref_flags[0] |= 0x3
-
-            # 2nd word is derived
-            ref_flags[1] = 0xfffff
-
-            # 3rd word
-            for key in third_keywords.keys():
-                if n.propval(key) != [''] or key in n.__props__.keys():
-
-                    # this can only be set if prealloc is set too
-                    if key == 'requested-secure':
-                        if (ref_flags[0] & (0x1 << first_keywords['requested'])) == 0:
-                            continue
-
-                    ref_flags[2] |= 0x1 << third_keywords[key]
-
-            # 4th word
-            qos = n.propval('qos')
-            if qos != [''] and isinstance(qos,int):
-                ref_flags[3] = qos
-
-            subsystem.flag_references[n.name] = ref_flags
+        subsystem.flag_references[flags_name] = ref_flags
 
 
 def determine_inclusion(device_flags, other_device_flags, sub, other_sub):
@@ -741,13 +682,13 @@ def cdo_write( root_node, sdt, options ):
 
     subsystems = valid_subsystems(domain_node, sdt, options)
 
-    #for sub in subsystems:
+    for sub in subsystems:
         # collect device tree flags, nodes, xilpm IDs for each device linked to a subsystem
-        #process_subsystem(sub, sub.sub_node, sdt, options)
-        #construct_flag_references(sub)
+        process_subsystem(sub, sub.sub_node, sdt, options)
+        construct_flag_references(sub)
 
     # generate xilpm reqs for each device
-    #construct_pm_reqs(subsystems)
+    construct_pm_reqs(subsystems)
 
     if (len(options["args"]) > 0):
         if re.match(options["args"][0], "regulator"):
@@ -757,7 +698,7 @@ def cdo_write( root_node, sdt, options ):
             outfile = options["args"][0]
     else:
         outfile = "subsystem.cdo"
-    x = '''
+
     output = open( outfile, "w")
     print( "# Lopper CDO export", file=output )
     print( "version 2.0", file=output )
@@ -771,11 +712,10 @@ def cdo_write( root_node, sdt, options ):
         # add subsystem
         print( "# "+cdo_sub_str, file=output)
         print( "pm_add_subsystem "+hex(cdo_sub_id), file=output )
-    '''
 
     # add CDO commands for permissions
-    #sub_perms(subsystems, output)
-    x = '''
+    sub_perms(subsystems, output)
+
     for sub in subsystems:
          # determine subsystem ID
         sub_id = sub.sub_node.propval("id")
@@ -799,7 +739,7 @@ def cdo_write( root_node, sdt, options ):
             # write CDO
             print(req_description, file=output)
             print(req_str, file=output)
-    '''
+
 
     return True
 
