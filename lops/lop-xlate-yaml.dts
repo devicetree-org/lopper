@@ -213,6 +213,9 @@
                                         if n.propval('sram') != ['']:
                                             subsystem.memory_expand( tree, n, prop_name = 'sram' )
 
+                                        for child_n in n.subnodes():
+                                            if child_n.abs_path.endswith('/flags') and child_n.depth == n.depth + 1:
+                                                subsystem.flags_expand( tree, n)
                         ";
                       };
                 };
