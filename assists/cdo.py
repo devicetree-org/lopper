@@ -29,7 +29,6 @@ sys.path.append(os.path.dirname(__file__))
 from xlnx_versal_power import *
 from cdo_topology import *
 from collections import OrderedDict
-from subsystem import *
 import json
 import humanfriendly
 
@@ -47,6 +46,127 @@ def is_compat( node, compat_id ):
     if re.search( "xlnx,output,cdo", compat_id):
         return cdo_write
     return ""
+
+
+def do_expand_cdo_flags(tgt_node):
+    if 'xilinx,subsystem-v1' in tgt_node.propval("compatible"):
+        return True
+    return False
+
+
+def expand_cdo_flags(tgt_node):
+    flags_names = []
+    flags = []
+    # find default flags
+    for n in tgt_node.subnodes():
+       if n.depth == tgt_node.depth + 2 and n.abs_path == tgt_node.abs_path + "/flags/default":
+               default_flags = n
+               break
+
+    # for each flag reference
+    # update flags' bits along with using default
+    for n in tgt_node.subnodes():
+        if n.depth == tgt_node.depth + 2:
+            #    set all bits according to what is provided
+            flags.extend( expand_cdo_flags_bits(n, default_flags) )
+            flags_names.append( n.name )
+
+    flags_cells = 4
+    return [flags_names, flags, flags_cells]
+
+def expand_cdo_flags_bits_first_word(flags_node, ref_flags, default_flags_node):
+    first_keywords = {  'allow-secure':2, 'read-only':4, 'requested':6 }
+
+    allow_sec = False
+    read_only = False
+    for key in (list(first_keywords.keys())):
+
+        # determine which node to read flags info from for this bit
+        in_flags = flags_node.propval(key) != [''] or key in flags_node.__props__.keys()
+        in_default = key in default_flags_node.__props__.keys()
+        node = None
+        if in_flags == True:
+            node = flags_node
+        elif in_flags == False and in_default == True:
+            node = default_flags_node
+        else:
+            continue
+
+        if node.propval(key) != [''] or key in node.__props__.keys():
+            if key == 'allow-secure' or key == 'read-only':
+                # if true then set to low, as per spec: "0: secure master only."
+                # write should be low if read-only
+                ref_flags[0] = ref_flags[0] & ~(0x1 << first_keywords[key])
+                if key == 'allow-secure':
+                  allow_sec = True
+                  continue
+                elif key == 'read-only':
+                  read_only = True
+                  continue
+
+            ref_flags[0] |= (0x1 << first_keywords[key])
+
+    # 1st word read policy always allowed
+    #ref_flags[0] = ref_flags[0] | (0x1 << 3)
+
+    # 1st word: if allow-secure is false, then raise corresponding bit
+    if allow_sec == False:
+        ref_flags[0] |= (0x1 << first_keywords['allow-secure'])
+    # 1st word: if read only  is false, then raise corresponding bit
+    if read_only == False:
+        ref_flags[0] |= (0x1 << first_keywords['read-only'])
+
+    # 1st word time share
+    if flags_node.propval('timeshare') != ['']:
+        ref_flags[0] |= 0x3
+
+
+def expand_cdo_flags_bits_third_word(flags_node, ref_flags, default_flags_node):
+    third_keywords = { 'access':0, 'context':1, 'wakeup':2, 'unusable':3, 'requested-secure':4, 'coherent':5, 'virtualized':6 }
+
+    for key in third_keywords.keys():
+        # determine which node to read flags info from for this bit
+        in_flags = flags_node.propval(key) != [''] or key in flags_node.__props__.keys()
+        in_default = key in default_flags_node.__props__.keys()
+
+        node = None
+        if in_flags == True:
+            node = flags_node
+        elif in_flags == False and in_default == True:
+            node = default_flags_node
+        else:
+            continue
+
+        if node.propval(key) != [''] or key in node.__props__.keys():
+
+            # this can only be set if prealloc is set too
+            if key == 'requested-secure':
+                if (ref_flags[0] & (0x1 << first_keywords['requested'])) == 0:
+                    continue
+
+            ref_flags[2] |= 0x1 << third_keywords[key]
+
+
+# given flags node, return int that is bitmask of relevant bits
+def expand_cdo_flags_bits(flags_node, default_flags_node):
+    ref_flags = [0x0, 0x0, 0x0, 0x0]
+
+    expand_cdo_flags_bits_first_word(flags_node, ref_flags, default_flags_node)
+
+    # 2nd word is derived
+    ref_flags[1] = 0xfffff
+
+    expand_cdo_flags_bits_third_word(flags_node, ref_flags, default_flags_node)
+
+    # 4th word
+    qos = 0x0
+    if flags_node.propval('qos') != [''] and isinstance(qos,int):
+        qos = flags_node.propval('qos')
+    elif default_flags_node.propval('qos') != [''] and isinstance(qos,int):
+        qos = default_flags_node.propval('qos')
+    ref_flags[3] = qos
+
+    return ref_flags
 
 
 class Device():
@@ -621,13 +741,13 @@ def cdo_write( root_node, sdt, options ):
 
     subsystems = valid_subsystems(domain_node, sdt, options)
 
-    for sub in subsystems:
+    #for sub in subsystems:
         # collect device tree flags, nodes, xilpm IDs for each device linked to a subsystem
-        process_subsystem(sub, sub.sub_node, sdt, options)
-        construct_flag_references(sub)
+        #process_subsystem(sub, sub.sub_node, sdt, options)
+        #construct_flag_references(sub)
 
     # generate xilpm reqs for each device
-    construct_pm_reqs(subsystems)
+    #construct_pm_reqs(subsystems)
 
     if (len(options["args"]) > 0):
         if re.match(options["args"][0], "regulator"):
@@ -637,7 +757,7 @@ def cdo_write( root_node, sdt, options ):
             outfile = options["args"][0]
     else:
         outfile = "subsystem.cdo"
-
+    x = '''
     output = open( outfile, "w")
     print( "# Lopper CDO export", file=output )
     print( "version 2.0", file=output )
@@ -651,10 +771,11 @@ def cdo_write( root_node, sdt, options ):
         # add subsystem
         print( "# "+cdo_sub_str, file=output)
         print( "pm_add_subsystem "+hex(cdo_sub_id), file=output )
+    '''
 
     # add CDO commands for permissions
-    sub_perms(subsystems, output)
-
+    #sub_perms(subsystems, output)
+    x = '''
     for sub in subsystems:
          # determine subsystem ID
         sub_id = sub.sub_node.propval("id")
@@ -678,6 +799,7 @@ def cdo_write( root_node, sdt, options ):
             # write CDO
             print(req_description, file=output)
             print(req_str, file=output)
+    '''
 
     return True
 

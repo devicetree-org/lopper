@@ -32,6 +32,7 @@ from lopper_yaml import LopperYAML
 import lopper
 import json
 import humanfriendly
+from cdo import *
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,subsystem", compat_string_to_test):
@@ -265,7 +266,6 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
     try:
         mem = [subnode.props( prop_name )[0][0]]
 
-
         mem_list = []
         for m in mem:
             try:
@@ -279,19 +279,7 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
 
             if 'flags' in m.keys():
                 flags = str(m['flags'])
-                flag_node = LopperNode(-1, subnode.abs_path+'/flags')
-                tree.add(flag_node)
-
-                flag_reference_name = flag_node.abs_path+"/"+str(flags)
-                flag_reference_node = LopperNode(-1, flag_reference_name )
-                tree.add(flag_reference_node)
-
-                flags_cells = LopperProp(name='#flags-cells',value=0x1)
-                flags_prop =  LopperProp(name='flags',value=0x0)
-                flags_names = LopperProp('flags-names',value = str(flags))
-
-                subnode + flags_cells
-                subnode + flags_prop
+                flags_names = LopperProp(prop_name+'-flags-names',value = str(flags))
                 subnode + flags_names
 
             #print( "memory expand: start/size as read: %s/%s" % (start,size))
@@ -472,6 +460,31 @@ def subsystem_generate( tgt_node, sdt, verbose = 0):
         yaml.to_yaml()
 
     return True
+
+def flags_expand(tree, tgt_node, verbose = 0 ):
+
+    default_flags = None
+    flags_names = []
+    flags = []
+    flags_cells = 1
+
+    if do_expand_cdo_flags(tgt_node):
+        [flags_names, flags, flags_cells]  = expand_cdo_flags(tgt_node)
+    else:
+        # default expansion of flags
+        for n in tgt_node.subnodes():
+            if n.depth == tgt_node.depth + 2:
+                flags_names.append(n.name)
+                flags.append(0x0)
+
+    property_set( "flags-cells", flags_cells, tgt_node, )
+    property_set( "flags", flags, tgt_node )
+    property_set( "flags-names", flags_names, tgt_node )
+
+    tree - tree[tgt_node.abs_path + "/flags"]
+
+    return True
+
 
 def subsystem_expand( tgt_node, sdt, verbose = 0 ):
     if verbose:
