@@ -31,6 +31,15 @@ class Subsystem():
         self.sub_node = sub_node
 
 
+def get_sub_id_and_str(subsys_node):
+    sub_id = subsys_node.propval("id")
+    if isinstance(sub_id, list):
+        sub_id = sub_id[0]
+    s_str = "subsystem_" + str(sub_id)
+    s_id = 0x1c000000 | sub_id
+    return s_str, s_id
+
+
 def valid_subsystems(domain_node, sdt, options):
     # return list of valid Xilinx subsystems
     subsystems = []
@@ -206,20 +215,14 @@ def process_acccess(subnode, sdt, options):
 
 def document_requirement(output, subsystem, device):
     subsystem_name = "subsystem_" + str(subsystem.sub_node.propval("id"))
-    sub_id = sub.sub_node.propval("id")
-    if isinstance(sub_id, list):
-        sub_id = sub_id[0]
-    cdo_sub_str = "subsystem_" + hex(sub_id)
-
-    cdo_sub_id = hex(0x1c000000 | sub_id)
-
+    cdo_sub_str, cdo_sub_id = get_sub_id_and_str(subsystem.sub_node)
     flags_arg = device.pm_reqs[0]
 
     print("#", file=output)
     print("#", file=output)
     print("# subsystem:", file=output)
     print("#    name: " + subsystem_name, file=output)
-    print("#    ID: " + cdo_sub_id, file=output)
+    print("#    ID: " + hex(cdo_sub_id), file=output)
     print("#", file=output)
     print("# node:", file=output)
     print("#    name: " + xilinx_versal_device_names[device.node_id],
@@ -443,12 +446,7 @@ def construct_pm_reqs(subsystems):
 # TODO hard coded for now. need to add this to spec, YAML, etc
 def sub_operations_allowed(subsystems, output):
     for sub in subsystems:
-        sub_id = sub.sub_node.propval("id")
-        if isinstance(sub_id, list):
-            sub_id = sub_id[0]
-
-        host_sub_str = "subsystem_" + str(sub_id)
-        host_sub_id = 0x1c000000 | sub_id
+        host_sub_str, host_sub_id = get_sub_id_and_str(sub.sub_node)
 
         for other_sub in subsystems:
             if sub == other_sub:
@@ -471,12 +469,7 @@ def sub_operations_allowed(subsystems, output):
 
 # TODO hard coded for now. need to add this to spec, YAML, etc
 def sub_ggs_perms(sub, output):
-    sub_id = sub.sub_node.propval("id")
-    if isinstance(sub_id, list):
-        sub_id = sub_id[0]
-
-    cdo_sub_str = "subsystem_" + str(sub_id)
-    cdo_sub_id = 0x1c000000 | sub_id
+    cdo_sub_str, cdo_sub_id = get_sub_id_and_str(sub.sub_node)
 
     for i in range(0x18248000, 0x18248003 + 1):
         dev_str = "ggs_" + hex(i & 0x7).replace('0x', '')
@@ -494,12 +487,7 @@ def sub_ggs_perms(sub, output):
 
 # TODO hard coded for now. need to add this to spec, YAML, etc
 def sub_pggs_perms(sub, output):
-    sub_id = sub.sub_node.propval("id")
-    if isinstance(sub_id, list):
-        sub_id = sub_id[0]
-
-    cdo_sub_str = "subsystem_" + str(sub_id)
-    cdo_sub_id = 0x1c000000 | sub_id
+    cdo_sub_str, cdo_sub_id = get_sub_id_and_str(sub.sub_node)
 
     for i in range(0x1824c004, 0x1824c007 + 1):
         dev_str = "pggs_" + hex((i & 0x7) - 0x4).replace('0x', '')
@@ -517,13 +505,7 @@ def sub_pggs_perms(sub, output):
 
 # TODO hard coded for now. need to add this to spec, YAML, etc
 def sub_reset_perms(sub, output):
-    sub_id = sub.sub_node.propval("id")
-    if isinstance(sub_id, list):
-        sub_id = sub_id[0]
-
-    cdo_sub_str = "subsystem_" + str(sub_id)
-    cdo_sub_id = 0x1c000000 | sub_id
-
+    cdo_sub_str, cdo_sub_id = get_sub_id_and_str(sub.sub_node)
     print("#",
           cdo_sub_str,
           " can enact only non-secure system-reset (rst_pmc)",
@@ -550,11 +532,7 @@ def write_to_cdo(subsystems, outfile, verbose):
 
         for sub in subsystems:
             # determine subsystem ID
-            sub_id = sub.sub_node.propval("id")
-            if isinstance(sub_id, list):
-                sub_id = sub_id[0]
-            cdo_sub_str = "subsystem_" + hex(sub_id)
-            cdo_sub_id = 0x1c000000 | sub_id
+            cdo_sub_str, cdo_sub_id = get_sub_id_and_str(sub.sub_node)
             # add subsystem
             print("# " + cdo_sub_str, file=output)
             print("pm_add_subsystem " + hex(cdo_sub_id), file=output)
@@ -564,11 +542,7 @@ def write_to_cdo(subsystems, outfile, verbose):
 
         for sub in subsystems:
             # determine subsystem ID
-            sub_id = sub.sub_node.propval("id")
-            if isinstance(sub_id, list):
-                sub_id = sub_id[0]
-            cdo_sub_str = "subsystem_" + hex(sub_id)
-            cdo_sub_id = 0x1c000000 | sub_id
+            cdo_sub_str, cdo_sub_id = get_sub_id_and_str(sub.sub_node)
             # add reqs
             for device in sub.dev_dict.values():
                 if device.node_id not in xilinx_versal_device_names.keys():
