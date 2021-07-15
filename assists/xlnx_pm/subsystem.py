@@ -540,3 +540,67 @@ def sub_perms(subsystems, output):
         sub_ggs_perms(sub, output)
         sub_pggs_perms(sub, output)
         sub_reset_perms(sub, output)
+
+
+def write_to_cdo(subsystems, outfile, verbose):
+    # generate output cdo
+    with open(outfile, "w") as output:
+        print("# Lopper CDO export", file=output)
+        print("version 2.0", file=output)
+
+        for sub in subsystems:
+            # determine subsystem ID
+            sub_id = sub.sub_node.propval("id")
+            if isinstance(sub_id, list):
+                sub_id = sub_id[0]
+            cdo_sub_str = "subsystem_" + hex(sub_id)
+            cdo_sub_id = 0x1c000000 | sub_id
+            # add subsystem
+            print("# " + cdo_sub_str, file=output)
+            print("pm_add_subsystem " + hex(cdo_sub_id), file=output)
+
+        # add CDO commands for permissions
+        sub_perms(subsystems, output)
+
+        for sub in subsystems:
+            # determine subsystem ID
+            sub_id = sub.sub_node.propval("id")
+            if isinstance(sub_id, list):
+                sub_id = sub_id[0]
+            cdo_sub_str = "subsystem_" + hex(sub_id)
+            cdo_sub_id = 0x1c000000 | sub_id
+            # add reqs
+            for device in sub.dev_dict.values():
+                if device.node_id not in xilinx_versal_device_names.keys():
+                    print("WARNING: ", hex(device.node_id),
+                          ' not found in xilinx_versal_device_names')
+                    return
+
+                req_description = "# " + cdo_sub_str + ' ' + \
+                    xilinx_versal_device_names[device.node_id]
+
+                # form CDO flags in string for python
+                req_str = 'pm_add_requirement ' + hex(cdo_sub_id) + ' ' + hex(
+                    device.node_id)
+                for req in device.pm_reqs:
+                    req_str += ' ' + hex(req)
+
+                # write CDO
+                print(req_description, file=output)
+                print(req_str, file=output)
+
+
+def generate_cdo(domain_node, sdt, outfile, verbose, options):
+    subsystems = valid_subsystems(domain_node, sdt, options)
+
+    for sub in subsystems:
+        # collect device tree flags, nodes, xilpm IDs for each device linked to
+        # a subsystem
+        process_subsystem(sub, sub.sub_node, sdt, options)
+        construct_flag_references(sub)
+
+    # generate xilpm reqs for each device
+    construct_pm_reqs(subsystems)
+
+    # write the output
+    write_to_cdo(subsystems, outfile, verbose)

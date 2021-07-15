@@ -7,7 +7,7 @@
 			compatible = "system-device-tree-v1,lop,assist-v1";
 			node = "/";
 			id = "xlnx,output,cdo";
-			options = "subsystem.cdo";
+			options = "subsystem subsystem.cdo";
 		};
 	};
 
