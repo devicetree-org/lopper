@@ -74,6 +74,7 @@ def cdo_write(root_node, sdt, options):
             gen_board_topology(domain_node, sdt, output)
         elif re.match(options["args"][0], "subsystem"):
             outfile = options["args"][1]
-            subsystem.generate_cdo(domain_node, sdt, outfile, verbose, options)
+            subsystem.generate_cdo(root_node, domain_node,
+                                   sdt, outfile, verbose, options)
 
     return True
