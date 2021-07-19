@@ -160,10 +160,10 @@ def get_phandle_regprop(sdt, prop, value):
     reg, size = scan_reg_size(parent_node[0], parent_node[0]['reg'].value, 0)
     # Special handling for Soft Ethernet(1/2.5G, and 10G/25G MAC) axistream-connected property
     if prop == "axistream-connected":
-        compat = parent_node[0]['compatible'].value[0]
-        axi_fifo = re.search("xlnx,axi-fifo", compat)
-        axi_dma = re.search("xlnx,eth-dma", compat)
-        axi_mcdma = re.search("xlnx,eth-mcdma", compat)
+        compat = parent_node[0]['compatible'].value
+        axi_fifo = [item for item in compat if "xlnx,axi-fifo" in item]
+        axi_dma = [item for item in compat if "xlnx,eth-dma" in item]
+        axi_mcdma = [item for item in compat if "xlnx,eth-mcdma" in item]
         if axi_fifo:
             reg += 1
         elif axi_dma:
