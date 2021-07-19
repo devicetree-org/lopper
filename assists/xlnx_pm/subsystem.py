@@ -1,5 +1,5 @@
 # /*
-# * Copyright (c) 2019,2020 Xilinx Inc. All rights reserved.
+# * Copyright (c) 2019,2020,2021 Xilinx Inc. All rights reserved.
 # *
 # * Author:
 # *     Ben Levinsky <ben.levinsky@xilinx.com>
@@ -12,15 +12,20 @@ from lopper import Lopper
 import lopper
 from lopper_tree import *
 from xlnx_versal_power import *
+import functools
 
 sys.path.append(os.path.dirname(__file__))
 
+import protections
+import xppu
+
 
 class Device():
-    def __init__(self, nodes, node_id, flags):
+    def __init__(self, nodes, node_id, flags, firewall={}):
         self.nodes = nodes
         self.node_id = node_id
         self.flags = flags
+        self.firewall = firewall
         self.pm_reqs = [0, 0, 0, 0]
 
 
@@ -66,9 +71,9 @@ def valid_subsystems(domain_node, sdt, options):
 
 
 def usage_no_restrictions(node):
-    firewallconfig_default = node.propval("firewallconfig-default")
-    return (firewallconfig_default != [''] and firewallconfig_default[0] == 0
-            and firewallconfig_default[1] == 0)
+    firewallconf_default = node.propval("firewallconf-default")
+    return (firewallconf_default != [''] and firewallconf_default[0] == 0
+            and firewallconf_default[1] == 0)
 
 
 def find_cpu_ids(node, sdt):
@@ -120,19 +125,20 @@ def prelim_flag_processing(node, prefix):
     return flags
 
 
-def find_mem_ids(node, sdt):
+def find_mem_ids(node, sdt, fw_config={}):
     # given a node that has a memory or sram property, return list of  corresponding
     # XilPM Node IDs for the mem/sram node
     flags = prelim_flag_processing(node, 'memory')
 
     mem_xilpm_ids = []
     if node.propval('memory') != ['']:
-        xilpm_id = mem_xilpm_ids.append((existing_devices['dev_ddr_0'], flags))
+        xilpm_id = mem_xilpm_ids.append(
+            (existing_devices['dev_ddr_0'], flags, fw_config))
 
     return mem_xilpm_ids
 
 
-def find_sram_ids(node, sdt):
+def find_sram_ids(node, sdt, fw_config={}):
     sram_base = node.propval('sram')[0]
     sram_end = node.propval('sram')[1] + sram_base
     mem_xilpm_ids = []
@@ -162,7 +168,7 @@ def find_sram_ids(node, sdt):
             mem_xilpm_ids.append("dev_tcm_1_b")
 
     for i in mem_xilpm_ids:
-        id_with_flags.append((existing_devices[i], flags))
+        id_with_flags.append((existing_devices[i], flags, fw_config))
 
     return id_with_flags
 
@@ -180,7 +186,7 @@ def xilpm_id_from_devnode(subnode):
     return -1
 
 
-def process_acccess(subnode, sdt, options):
+def process_acccess(subnode, sdt, options, fw_config={}):
     # return list of node ids and corresponding flags
     access_list = []
     access_flag_names = subnode.propval('access-flags-names')
@@ -209,7 +215,7 @@ def process_acccess(subnode, sdt, options):
             continue
 
         access_list.append(
-            (xilpm_id, access_flag_names[index] + f + '::access'))
+            (xilpm_id, access_flag_names[index] + f + '::access', fw_config))
     return access_list
 
 
@@ -256,33 +262,180 @@ def document_requirement(output, subsystem, device):
         print("#", file=output)
 
 
-def process_subsystem(subsystem, subsystem_node, sdt, options, included=False):
+def devid_to_devname(devid):
+    try:
+        name = xilinx_versal_device_names[devid]
+    except:
+        name = ''
+    return name
+
+
+def get_dev_firewall_config(node,
+                            sdt,
+                            options,
+                            included=False,
+                            parent=None,
+                            subsys_node=None):
+    # list of tuples, e.g. [(domain1, 0, (domain0, 3)..]
+    fw_dev = {}
+    for key in ['block', 'allow']:
+        fw_dev[key] = []
+
+    # check for firewallconf/firewallconf-default links
+    fw = node.propval('firewallconf')
+    if fw != ['']:
+        if len(fw) % 3 != 0:  # firewallconf = <<link> <b/a/bd> <p>, ...>
+            print("[WARNING] Invalid format for firewallconf {} for node {}".
+                  format(fw, node.name))
+            return fw_dev
+
+        # retrieve device firewall links
+        for f in protections.chunks(fw, 3):
+            target_node = sdt.tree.pnode(f[0]).name
+            if f[1] in [0, 2]:  # block/block-desirable
+                fw_dev['block'].append((target_node, f[2]))
+            elif f[1] in [1]:  # allow
+                fw_dev['allow'].append((target_node, f[2]))
+            else:
+                print(
+                    "[WARNING] Unsupported attribute at firewallconf {} for node {}"
+                    .format(fw, node.name))
+
+    fw_def = node.propval('firewallconf-default')
+    if fw_def != ['']:
+        if len(fw_def) != 2:  # firewallconf-default = <<b/a/bd> <p>>
+            print(
+                "[WARNING] Invalid format for firewallconf-default {} for node {}"
+                .format(fw_def, node.name))
+            return fw_dev
+
+        # retrieve device firewall links
+        for f in protections.chunks(fw_def, 2):
+            if f[0] in [0, 2]:  # block/block-desirable
+                fw_dev['block'].append(("rest", f[1]))
+            elif f[0] in [1]:  # allow
+                fw_dev['allow'].append(("rest", f[1]))
+            else:
+                print(
+                    "[WARNING] Unsupported attribute at firewallconf-default {} for node {}"
+                    .format(fw_def, node.name))
+
+    # for non-resource-group nodes, allow bus-master-ids from the node
+    # for resource group nodes, allow bus-master-ids from the parent where
+    # it is included
+    if parent is not None and subsys_node is not None:
+        if parent.name == subsys_node.name:
+            fw_dev['allow'].append((parent.name, 0))
+        else:
+            fw_dev['allow'].append((parent.name, 0))
+            fw_dev['allow'].append((subsys_node.name, 0))
+    elif parent is not None:
+        fw_dev['allow'].append((parent.name, 0))
+    elif subsys_node is not None:
+        fw_dev['allow'].append((subsys_node.name, 0))
+
+    return fw_dev
+
+
+def get_aperture_mask(device):
+    outmask = 0xfffff
+    if device is None or device.firewall is None:
+        return outmask
+
+    default = [ action
+               for action, masters in device.firewall.items()
+               for m in masters
+               if m[0] == "rest" ]
+
+    if len(default) > 1:
+        print("[WARNING] Conflicting default firewall configs for {}".format(
+            devid_to_devname(device.node_id)))
+        return outmask
+
+    if default != []:
+        default = default[0]
+
+    if default == "allow":
+        outmask = outmask & ~(0x3 << 18)  # Slot 19 and 20 is for ANY RO, RW
+    elif default == "block" or default == []:
+        outmask = 0x0
+
+    # build up the aperture mask
+    mask = {}
+    for action, masters in device.firewall.items():
+        mask[action] = 0
+        for m in masters:
+            if m[0] != "rest":
+                mask[action] = \
+                    mask[action] | protections.prot_map.derive_ss_mask(m[0])
+
+    # set allowed masters and clear out blocked masters
+    newmask = outmask | mask['allow'] & ~mask['block']
+
+    return newmask
+
+
+def is_domain_or_subsys(node):
+    for compat in node.propval("compatible"):
+        if compat in ["xilinx,subsystem-v1", "openamp,domain-v1"]:
+            return True
+    return False
+
+
+def process_subsystem(subsystem,
+                      subsystem_node,
+                      sdt,
+                      options,
+                      included=False,
+                      included_from=None):
     # given a device tree node
     # traverse for devices that are either implicitly
     # or explicitly lnked to the device tree node
     # this includes either Xilinx subsystem nodes or nodes that are
     # resource group included nodes
 
-    #
     # In addition, for each device, identify the flag reference that
     # corresponds.
 
     # collect nodes, xilpm IDs, flag strings here
     for node in subsystem_node.subnodes():
         device_flags = []
+        parent_domain = None
+
+        # skip flag references
+        if 'flags' in node.abs_path:
+            continue
+
+        # retrieve firewallconf/firewallconf-def links for this node
+        if is_domain_or_subsys(node) is True:
+            # add to sub/dom -> bus master id map
+            protections.setup_dom_to_bus_mids(node, sdt)
+            fw_links = get_dev_firewall_config(node,
+                                               sdt,
+                                               options,
+                                               included=False,
+                                               parent=node,
+                                               subsys_node=subsystem.sub_node)
+        else:
+            fw_links = get_dev_firewall_config(node,
+                                               sdt,
+                                               options,
+                                               included=included,
+                                               parent=included_from,
+                                               subsys_node=subsystem.sub_node)
 
         if node.propval('cpus') != ['']:
             f = 'default'
             f += '::no-restrictions'  # by default, cores are not restricted
             for xilpm_id in find_cpu_ids(node, sdt):
-                device_flags.append((xilpm_id, f))
+                device_flags.append((xilpm_id, f, fw_links))
 
         if node.propval('memory') != ['']:
-            device_flags.extend(find_mem_ids(node, sdt))
+            device_flags.extend(find_mem_ids(node, sdt, fw_links))
         if node.propval('sram') != ['']:
-            device_flags.extend(find_sram_ids(node, sdt))
+            device_flags.extend(find_sram_ids(node, sdt, fw_links))
         if node.propval('access') != ['']:
-            device_flags.extend(process_acccess(node, sdt, options))
+            device_flags.extend(process_acccess(node, sdt, options, fw_links))
 
         if node.propval('include') != ['']:
             for included_phandle in node.propval('include'):
@@ -296,25 +449,26 @@ def process_subsystem(subsystem, subsystem_node, sdt, options, included=False):
                                       included_node,
                                       sdt,
                                       options,
-                                      included=True)
+                                      included=True,
+                                      included_from=node)
 
-        # after collecting a device tree node's devices, add this to subsystem's device nodes collection
+        # after collecting a device tree node's devices,
+        # add this to subsystem's device nodes collection
         # if current node is resource group, recurse 1 time
-        for xilpm_id, flags in device_flags:
+        for xilpm_id, flags, firewall_config in device_flags:
             if included:
                 if isinstance(flags, list):
                     flags = flags[0]
                 flags = flags + "::included-from-" + subsystem_node.name
 
                 # strip out access. as this is used for non-sharing purposes
-                # if a device is in a resource group, it should not show as
-                # 'non-shared'
+                # if a device is in a resource group, it should not show as 'non-shared'
                 flags.replace('access', '')
 
             # add to subsystem's list of xilpm nodes
             if xilpm_id not in subsystem.dev_dict.keys():
                 subsystem.dev_dict[xilpm_id] = Device([node], xilpm_id,
-                                                      [flags])
+                                                      [flags], firewall_config)
             else:
                 device = subsystem.dev_dict[xilpm_id]
                 device.nodes.append(node)
@@ -377,15 +531,13 @@ def determine_inclusion(device_flags, other_device_flags, sub, other_sub):
 
 def set_dev_pm_reqs(sub, device, usage):
     new_dev_flags = device.flags[0].split("::")[0]
-
     if new_dev_flags not in sub.flag_references.keys():
         new_dev_flags = 'default'
-
     new_dev_flags = copy.deepcopy(sub.flag_references[new_dev_flags])
-
     device.pm_reqs = new_dev_flags
 
     device.pm_reqs[0] |= usage
+    device.pm_reqs[1] = get_aperture_mask(device)
 
 
 def construct_pm_reqs(subsystems):
@@ -529,6 +681,7 @@ def write_to_cdo(subsystems, outfile, verbose):
     with open(outfile, "w") as output:
         print("# Lopper CDO export", file=output)
         print("version 2.0", file=output)
+        print("marker", hex(0x64), '"Subsystem"', file=output)
 
         for sub in subsystems:
             # determine subsystem ID
@@ -562,10 +715,15 @@ def write_to_cdo(subsystems, outfile, verbose):
                 # write CDO
                 print(req_description, file=output)
                 print(req_str, file=output)
+        # Subsystem end
+        print("marker", hex(0x65), '"Subsystem"', file=output)
 
 
-def generate_cdo(domain_node, sdt, outfile, verbose, options):
+def generate_cdo(root_node, domain_node, sdt, outfile, verbose, options):
     subsystems = valid_subsystems(domain_node, sdt, options)
+
+    # prot:: setup protection nodes and mapping
+    protections.setup_node_to_prot_map(root_node, sdt, options)
 
     for sub in subsystems:
         # collect device tree flags, nodes, xilpm IDs for each device linked to
@@ -573,8 +731,14 @@ def generate_cdo(domain_node, sdt, outfile, verbose, options):
         process_subsystem(sub, sub.sub_node, sdt, options)
         construct_flag_references(sub)
 
+    # prot:: setup prot to bus mids map
+    # protections.prot_map.print_ss_to_bus_mids_map()
+
     # generate xilpm reqs for each device
     construct_pm_reqs(subsystems)
 
     # write the output
     write_to_cdo(subsystems, outfile, verbose)
+
+    # prot:: write protection output
+    protections.write_cdo(outfile, verbose)
