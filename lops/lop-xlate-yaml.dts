@@ -43,8 +43,12 @@
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
-                                    for n in __selected__:
-                                        n['compatible'] = [ 'xilinx,subsystem-v1', 'openamp,domain-v1' ]
+                                    for i, d in enumerate(__selected__):
+                                        d['compatible'] = [ 'xilinx,subsystem-v1', 'openamp,domain-v1' ]
+                                        name = d.name
+                                        # flip the name and label
+                                        d.label = name
+                                        d.name = 'subsystem@{}'.format(i)
                         ";
                       };
                 };
