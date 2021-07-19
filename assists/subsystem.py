@@ -103,7 +103,7 @@ def firewall_expand( tree, subnode, verbose = 0 ):
 
         # the first item is "block" (0) and the second is the priority (default 0), so
         # we use <0 0>
-        firewall_prop = LopperProp( "firewallconfig-default", -1, subnode.parent, [ 0, 0 ] )
+        firewall_prop = LopperProp( "firewallconf-default", -1, subnode.parent, [ 0, 0 ] )
         subnode.parent + firewall_prop
         # delete our node, it has been converted to a property
         subnode.tree - subnode
