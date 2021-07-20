@@ -16,26 +16,26 @@ from lopper_tree import *
 sys.path.append(os.path.dirname(__file__))
 
 
-class XppuNode():
+class XppuNode:
     def __init__(self, name, node):
         self.name = name
         self.node = node
         self.hw_instance = xppu.init_xppu(node.label)
 
 
-class ModuleNode():
+class ModuleNode:
     def __init__(self, name, node):
         self.name = name
         self.node = node
 
 
-class BusMid():
+class BusMid:
     def __init__(self, name, node):
         self.name = name
         self.node = node
 
 
-class FirewallToModuleMap():
+class FirewallToModuleMap:
     def __init__(self):
         self.ss_or_dom = {}
         self.ppus = {}
@@ -64,7 +64,7 @@ class FirewallToModuleMap():
             print("[WARNING] Trying to add {} instance again".format(name))
 
     def add_bus_mid(self, name, node, parents):
-        """ parents -> tuple of (<firewall-name, smid>) """
+        """parents -> tuple of (<firewall-name, smid>)"""
         if name not in self.bus_mids:
             self.bus_mids[name] = BusMid(name, node)
         # Add MIDs for ppu instances
@@ -74,8 +74,8 @@ class FirewallToModuleMap():
             self.ppu_to_mid_map[ppu].append((name, smid))
 
     def add_ss_to_bus_mids(self, ss_or_dom_name, ss_or_dom_node, bus_mid_node):
-        """ subsystem/domain to bus_mid node map
-            bus_mid_node -> tuple of (<bus_mid_node_name smid>)
+        """subsystem/domain to bus_mid node map
+        bus_mid_node -> tuple of (<bus_mid_node_name smid>)
         """
         if ss_or_dom_name not in self.ss_or_dom:
             # (node, [bus_mids])
@@ -84,7 +84,7 @@ class FirewallToModuleMap():
             self.ss_or_dom[ss_or_dom_name][1].append(bus_mid_node)
 
     def derive_ss_mask(self, ss_or_dom_name):
-        """ Must execute after all ppus and ss/dom -> bus mids are added """
+        """Must execute after all ppus and ss/dom -> bus mids are added"""
         mask = 0
         # ss_bus_mids is a list of tuples
         if ss_or_dom_name not in self.ss_or_dom:
@@ -93,7 +93,7 @@ class FirewallToModuleMap():
         mid_list = [n[1] for n in ss_bus_mids[1]]
         # FIXME:: derive masks for each unit
         for m in mid_list:
-            idx = self.ppus['xppu@f1310000'].hw_instance.get_master_by_smid(m)
+            idx = self.ppus["xppu@f1310000"].hw_instance.get_master_by_smid(m)
             mask = mask | (1 << idx)
         return mask
 
@@ -117,8 +117,9 @@ class FirewallToModuleMap():
     def print_ss_to_bus_mids_map(self):
         for ss, bus_mid_nodes in self.ss_or_dom.items():
             mid_list = [(n[0], hex(n[1])) for n in bus_mid_nodes[1]]
-            print("{} -> {} [Mask: {}]".format(ss, mid_list,
-                                               hex(self.derive_ss_mask(ss))))
+            print(
+                "{} -> {} [Mask: {}]".format(ss, mid_list, hex(self.derive_ss_mask(ss)))
+            )
 
 
 # Global PPU <-> Peripherals Map
@@ -126,9 +127,9 @@ prot_map = FirewallToModuleMap()
 
 
 def chunks(list_of_elements, num):
-    """ Yield successive num-sized chunks from input list """
+    """Yield successive num-sized chunks from input list"""
     for i in range(0, len(list_of_elements), num):
-        yield list_of_elements[i:i + num]
+        yield list_of_elements[i : i + num]
 
 
 def setup_firewall_nodes(root_tree):
@@ -164,7 +165,7 @@ def setup_mid_nodes(root_tree):
 
 def setup_dom_to_bus_mids(sub_or_dom_node, sdt):
     cpus_fields = sub_or_dom_node.propval("cpus")
-    if cpus_fields != ['']:
+    if cpus_fields != [""]:
         cpu_node = sdt.tree.pnode(cpus_fields[0])
         mask = cpus_fields[1]
     else:
@@ -172,50 +173,53 @@ def setup_dom_to_bus_mids(sub_or_dom_node, sdt):
 
     # cpu smid map
     cpu_map = {
-        'a72': {
-            0x1: 0x260,
-            0x2: 0x261
-        },
-        'r5': {
-            0x1: 0x200,
-            0x2: 0x204
-        },
+        "a72": {0x1: 0x260, 0x2: 0x261},
+        "r5": {0x1: 0x200, 0x2: 0x204},
     }
 
     for substr in cpu_map:
         if substr in cpu_node.name:
             if cpu_node.name not in prot_map.bus_mids:
                 print(
-                    "[WARNING] Node {} is missing from prot map bus master IDs"
-                    .format(cpu_node.name))
+                    "[WARNING] Node {} is missing from prot map bus master IDs".format(
+                        cpu_node.name
+                    )
+                )
                 return None
             # check for cores, add appropriately
             if (mask & 0x1) in cpu_map[substr]:
                 prot_map.add_ss_to_bus_mids(
-                    sub_or_dom_node.name, sub_or_dom_node,
-                    (cpu_node.name, cpu_map[substr][mask & 0x1]))
+                    sub_or_dom_node.name,
+                    sub_or_dom_node,
+                    (cpu_node.name, cpu_map[substr][mask & 0x1]),
+                )
             if (mask & 0x2) in cpu_map[substr]:
                 prot_map.add_ss_to_bus_mids(
-                    sub_or_dom_node.name, sub_or_dom_node,
-                    (cpu_node.name, cpu_map[substr][mask & 0x2]))
+                    sub_or_dom_node.name,
+                    sub_or_dom_node,
+                    (cpu_node.name, cpu_map[substr][mask & 0x2]),
+                )
 
 
 def write_cdo(filep, verbose):
-    with open(filep, 'a') as fp:
+    with open(filep, "a") as fp:
         for ppu_name, ppu_obj in prot_map.ppus.items():
             xppu_instance = ppu_obj.hw_instance
             xppu_label = ppu_obj.node.label
             if verbose > 1:
-                print("[INFO]: Generating configuration for {0} XPPU ({1})".
-                      format(xppu_label, filep))
+                print(
+                    "[INFO]: Generating configuration for {0} XPPU ({1})".format(
+                        xppu_label, filep
+                    )
+                )
             cdogen.write_xppu(xppu_instance, fp)
 
 
 def setup_node_to_prot_map(root_node, sdt, options):
-    '''
+    """
     Setup a map with relationships between a node and its corresponding
     firewall controller (xppu + xmpu)
-    '''
+    """
     # FIXME:: Do for XMPU
     root = root_node.tree["/"]
 
