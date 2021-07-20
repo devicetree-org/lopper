@@ -19,6 +19,17 @@ TZ = True       # Set trustzone true for default masters
 RO = 1          # read only
 RW = 0          # read/write okay
 
+# Interrupts
+Interrupts = {
+    "IEN_APER_PARITY" : [True, 7],	# Enable Parity Error Interrupt
+    "IEN_APER_TZ" :     [True, 6],	# Enable TrustZone Violation Interrupt.
+    "IEN_APER_PERM" :   [True, 5],	# Enable Master ID Access Violation Interrupt.
+    "IEN_MID_PARITY" :  [True, 3],	# Enable Master ID Parity Error Interrupt.
+    "IEN_MID_RO" :      [True, 2],	# Enable Read permission Violation Interrupt.
+    "IEN_MID_MISS" :    [True, 1],	# Enable Master ID MISS Interrupt.
+    "IEN_INV_APB" :     [True, 0],	# Enable APB Register Access Error Interrupt.
+}
+
 # Aper size constants
 SIZE_64K = 64 * 1024        # 64k
 SIZE_1MB = 1024 * 1024      # 1MB
@@ -228,8 +239,9 @@ class Xppu():
 
     def get_master_by_smid(self, mid):
         for m in self.masters:
-            if h2i(self.masters[m].mid) == mid:
-                return int((m - mid_offset_start)/4)
+            if self.masters[m] is not None:
+                if h2i(self.masters[m].mid) == mid:
+                    return int((m - mid_offset_start)/4)
         return None
 
     def get_master_addr(self, idx):
@@ -247,6 +259,13 @@ class Xppu():
 
     def get_ctrl_reg_val(self):
         return hex((APER_PARITY << 2) | (MID_PARITY << 1))
+
+    def get_ien_reg_addr_val(self):
+        reg_addr = h2i(self.baseaddr) + 0x18
+        reg_val = 0
+        for istr, ival in Interrupts.items():
+            reg_val = reg_val | (ival[0] << ival[1])
+        return hex(reg_addr), hex(reg_val)
 
     def get_aperture(self, master_list):
         aperture = 0
@@ -282,15 +301,15 @@ def init_masters(xppu):
     xppu.set_master(0,  mid('PSM',       RW, MID_PARITY))  # PSM
     xppu.set_master(1,  mid('RPU0',      RW, MID_PARITY))  # RPU0
     xppu.set_master(2,  mid('RPU1',      RW, MID_PARITY))  # RPU1
-    xppu.set_master(3,  mid('APU',       RW, MID_PARITY))  # APU
-    xppu.set_master(4,  mid('APU0',      RW, MID_PARITY))  # APU0
-    xppu.set_master(5,  mid('APU1',      RW, MID_PARITY))  # APU1
-    xppu.set_master(6,  mid('HSDP_DPC',  RW, MID_PARITY))  # HSDP_DPC
-    xppu.set_master(7,  mid('DAP',       RW, MID_PARITY))  # DAP
-    xppu.set_master(8,  mid('PPU1',      RW, MID_PARITY))  # PPU1 (PMC)
-    xppu.set_master(9,  mid('PPU0',      RW, MID_PARITY))  # PPU0
-    xppu.set_master(10, mid('PMC_DMA0',  RW, MID_PARITY))  # PMC DMA0
-    xppu.set_master(11, mid('PMC_DMA1',  RW, MID_PARITY))  # PMC DMA1
+    #xppu.set_master(3,  mid('APU',       RW, MID_PARITY))  # APU
+    xppu.set_master(3,  mid('APU0',      RW, MID_PARITY))  # APU0
+    xppu.set_master(4,  mid('APU1',      RW, MID_PARITY))  # APU1
+    xppu.set_master(5,  mid('HSDP_DPC',  RW, MID_PARITY))  # HSDP_DPC
+    xppu.set_master(6,  mid('DAP',       RW, MID_PARITY))  # DAP
+    xppu.set_master(7,  mid('PPU1',      RW, MID_PARITY))  # PPU1 (PMC)
+    xppu.set_master(8,  mid('PPU0',      RW, MID_PARITY))  # PPU0
+    xppu.set_master(9,  mid('PMC_DMA0',  RW, MID_PARITY))  # PMC DMA0
+    xppu.set_master(10, mid('PMC_DMA1',  RW, MID_PARITY))  # PMC DMA1
     # Skip -- the middle entries for now
     xppu.set_master(18, mid('ANY_RO',  RO, MID_PARITY))  # Any master (RO)
     xppu.set_master(19, mid('ANY_RW',  RW, MID_PARITY))  # Any master (RW)

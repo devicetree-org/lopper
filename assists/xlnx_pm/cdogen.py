@@ -74,6 +74,15 @@ def write_ctrl_reg(x, fp=None):
     print(cmd, file=fp)
 
 
+def write_ien_reg(x, fp=None):
+    cmt = '# Interrupt Enable\n'
+    for istr, ival in xppu.Interrupts.items():
+        cmt += '# {0} = {1}\n'.format(istr.upper(), ival[0])
+    addr, val = x.get_ien_reg_addr_val()
+    cmd = write_cmd(addr, val)
+    print(cmt + cmd, file=fp)
+
+
 def write_enable_xppu_cmd(x, fp=None):
     cmt = '# Enable {0} XPPU\n'.format(x.name)
     cmt += '# Initialize all apertures with default aperture value\n'
@@ -87,5 +96,6 @@ def write_xppu(x, fp=None):
     write_header(x, fp)
     write_mid_list(x, fp)
     write_ctrl_reg(x, fp)
+    write_ien_reg(x, fp)
     write_enable_xppu_cmd(x, fp)
     write_footer(x, fp)
