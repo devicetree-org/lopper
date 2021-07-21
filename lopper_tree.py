@@ -3269,7 +3269,7 @@ class LopperTree:
 
         return nodes
 
-    def exec_cmd( self, node, cmd, env = None, module_list=[] ):
+    def exec_cmd( self, node, cmd, env = None, module_list=[], module_load_paths=[] ):
         """Execute a (limited) code block against a node
 
         Execute a python clode block with the 'node' context set to the
@@ -3305,6 +3305,8 @@ class LopperTree:
                                        variables to the code block
             module_list (list,optional): list of assists to load before
                                          running the code block
+            module_load_paths (list,optional): additional load paths to use
+                                               when loading modules
 
         Returns:
             Return value from the execution of the code block
@@ -3356,9 +3358,13 @@ class LopperTree:
                 safe_dict[e] = env[e]
 
         if module_list:
-            mod_load = "import importlib\n"
+            mod_load = "sys.path.append('./assists/')\n"
+            for m in module_load_paths:
+                mod_load += "sys.path.append('{}')\n".format( m )
+            mod_load += "import importlib\n"
         else:
             mod_load = ""
+
         for m in module_list:
             mod_load += "{} = importlib.import_module( '.{}', package='assists' )\n".format(m,m)
 

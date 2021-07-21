@@ -1675,11 +1675,11 @@ class LopperSDT:
                     node_list = [ "/" ]
 
                 for n in node_list:
-                    ret = tree.exec_cmd( n, code, options, inherit_list )
+                    ret = tree.exec_cmd( n, code, options, inherit_list, self.load_paths )
                     # who knows what the command did, better sync!
                     tree.sync()
             else:
-                ret = tree.exec_cmd( start_node, code, options, inherit_list )
+                ret = tree.exec_cmd( start_node, code, options, inherit_list, self.load_paths )
                 # who knows what the command did, better sync!
                 tree.sync()
 
