@@ -176,6 +176,24 @@ def node_accesses( tree, node ):
     return accessed_nodes
 
 
+# returns True if a node is compatible with the passed string
+# (or list of strings)
+def is_compat( node, compat_string ):
+    try:
+        node_compat = node['compatible'].value
+    except:
+        return None
+
+    if type(compat_string) == list:
+        x = None
+        for c in compat_string:
+            if not x:
+                x = [item for item in node_compat if c in item]
+    else:
+        x = [item for item in node_compat if compat_string in item]
+
+    return x != []
+
 # process cpus, and update their references appropriately
 def cpu_refs( tree, cpu_prop, verbose = 0 ):
     refd_cpus = []
