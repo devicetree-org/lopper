@@ -665,7 +665,7 @@ class LopperProp():
         outstring = self.string_val
         only_align_comments = False
 
-        if p.pclass == "preamble":
+        if self.pclass == "preamble":
             # start tree peeked at this, so we do nothing
             outstring = ""
         else:
@@ -675,7 +675,7 @@ class LopperProp():
 
             do_indent = True
             if only_align_comments:
-                if p.pclass != "comment":
+                if self.pclass != "comment":
                     do_indent = False
 
             if do_indent:
@@ -1636,7 +1636,7 @@ class LopperNode(object):
             if self.tree.strict != strict:
                 resolve_props = True
 
-        if self.number != 0:
+        if self.abs_path != "/":
             plabel = ""
             try:
                 if n['lopper-label.*']:
