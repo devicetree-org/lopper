@@ -3358,7 +3358,8 @@ class LopperTree:
                 safe_dict[e] = env[e]
 
         if module_list:
-            mod_load = "sys.path.append('./assists/')\n"
+            mod_load = "assist_dir = os.path.dirname(os.path.realpath(__file__)) + '/assists/'\n"
+            mod_load += "sys.path.append(assist_dir)\n"
             for m in module_load_paths:
                 mod_load += "sys.path.append('{}')\n".format( m )
             mod_load += "import importlib\n"
