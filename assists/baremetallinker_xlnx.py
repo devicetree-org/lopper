@@ -53,6 +53,8 @@ def get_memranges(tgt_node, sdt, options):
         except:
            pass
 
+    versal_noc_ch_ranges =  {"DDR_CH_1": "0x50000000000", "DDR_CH_2": "0x60000000000", "DDR_CH_3": "0x70000000000"}
+
     # Yocto Machine to CPU compat mapping
     match_cpunodes = get_cpu_node(sdt, options)
    
@@ -101,9 +103,19 @@ def get_memranges(tgt_node, sdt, options):
                 valid_range = [addr for addr in addr_list if reg == addr or addr > reg]
                 if valid_range:
                     key = match[0].replace("-", "_")
-                    linker_secname = key + str("_") + str(xlnx_memipname[key])
+                    is_valid_noc_ch = 0
+                    if "axi_noc" in key:
+                        for ch_name, ran in sorted(versal_noc_ch_ranges.items(), reverse=True):
+                            if ran <= hex(valid_range[0]):
+                                is_valid_noc_ch = ch_name
+                                break
+
+                    if is_valid_noc_ch:
+                        linker_secname = key + str("_") + is_valid_noc_ch
+                    else:
+                        linker_secname = key + str("_") + str(xlnx_memipname[key])
+                        xlnx_memipname[key] += 1
                     mem_ranges.update({linker_secname: [valid_range[0], size]})
-                    xlnx_memipname[key] += 1
         except KeyError:
             pass
 
@@ -166,6 +178,13 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     src_dir = os.path.dirname(src_dir)
     appname = src_dir.rsplit('/', 1)[-1]
     cmake_file = appname.capitalize() + str("Example.cmake")
+
+    ## To inline with existing tools point default ddr for linker to lower DDR
+    lower_ddrs = ["axi_noc_0", "psu_ddr_0", "ps7_ddr_0"]
+    has_ddr = [x for x in mem_ranges.keys() for ddr in lower_ddrs if re.search(ddr, x)]
+    if has_ddr:
+        default_ddr = has_ddr[0]
+
     with open(cmake_file, 'a') as fd:
         fd.write("set(DDR %s)\n" % default_ddr)
         memip_list = []

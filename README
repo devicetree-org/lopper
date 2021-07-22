@@ -24,7 +24,7 @@ processing and manipulating device trees. These tools must be installed and
 on the PATH.
 
 Note: (python cpp) pcpp is optional (available on PyPi), and if not available cpp
-      will be used for preprossing input files. If comments are to be maintained
+      will be used for pre-processing input files. If comments are to be maintained
       through the processing flow, pcpp must be used since it has functionality to
       not strip them during processing.
 
@@ -79,11 +79,11 @@ This flag indicates that lopper should perform pre-processing and output phandle
 mapping to restore both comments, labels and symbolic phandles to the final
 output.
 
-Note: By default Lopper puts preprocessed files (.pp) into the same directory as
+Note: By default Lopper puts pre-processed files (.pp) into the same directory as
 the system device tree. This is required, since in some cases when the .pp files
 and device tree are not in the same directory, dtc cannot resolve labels from
 include files, and will error. That being said, if the -O option is used to
-specify an output directory, the preprocessed file will be placed there. If we
+specify an output directory, the pre-processed file will be placed there. If we
 get into a mode where the system device tree's directory is not writeable, or
 the -O option is breaking symbol resolution, then we'll have to either copy
 everything to the output directory, or look into why dtc can't handle the split

@@ -61,6 +61,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                    driver_nodes.append(node)
 
     driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
+    driver_nodes = list(dict.fromkeys(driver_nodes))
     nodename_list = []
     reg_list = []
     example_dict = {}
@@ -78,6 +79,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
             for p in prop:
                 if isinstance(p, dict):
                     for e,prop_val in p.items():
+                        valid_phandle = 0
                         try:
                             val = node[e].value
                             if '' in val:
@@ -87,10 +89,18 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                                 val = reg & 0xF
                             if prop_val == "phandle":
                                 depreg_list.append(hex(get_phandle_regprop(sdt, e, val)))
+                                valid_phandle = 1
                         except KeyError:
                             val = 0
-                        if prop_val == val or prop_val == "phandle":
+                        if prop_val == val:
                             match_list.append(True)
+                        elif prop_val == "phandle" and valid_phandle == 1:
+                            match_list.append(True)
+                        elif isinstance(val, list):
+                            if prop_val == val[0]:
+                                match_list.append(True)
+                            else:
+                                match_list.append(False)
                         else:
                             match_list.append(False)
                 else:
@@ -131,6 +141,7 @@ def getmatch_nodes(sdt, node_list, yamlfile, options):
                driver_nodes.append(node)
 
     driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
+    driver_nodes = list(dict.fromkeys(driver_nodes))
     return driver_nodes
 
 def getxlnx_phytype(sdt, value):

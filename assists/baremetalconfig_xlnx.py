@@ -108,8 +108,10 @@ def scan_reg_size(node, value, idx):
 
         size1 = value[cells * idx + na]
         if size1 != 0:
-            val = value[cells * idx + ns + 1]
-            size = size1 + val
+            val = str(hex(value[cells * idx + ns + 1]))[2:]
+            pad = 8 - len(val)
+            val = val.ljust(pad + len(val), '0')
+            size = int((str(hex(size1)) + val), base=16)
         else:
             size = value[cells * idx + ns + 1]
     elif cells == 2:
@@ -158,10 +160,10 @@ def get_phandle_regprop(sdt, prop, value):
     reg, size = scan_reg_size(parent_node[0], parent_node[0]['reg'].value, 0)
     # Special handling for Soft Ethernet(1/2.5G, and 10G/25G MAC) axistream-connected property
     if prop == "axistream-connected":
-        compat = parent_node[0]['compatible'].value[0]
-        axi_fifo = re.search("xlnx,axi-fifo", compat)
-        axi_dma = re.search("xlnx,eth-dma", compat)
-        axi_mcdma = re.search("xlnx,eth-mcdma", compat)
+        compat = parent_node[0]['compatible'].value
+        axi_fifo = [item for item in compat if "xlnx,axi-fifo" in item]
+        axi_dma = [item for item in compat if "xlnx,eth-dma" in item]
+        axi_mcdma = [item for item in compat if "xlnx,eth-mcdma" in item]
         if axi_fifo:
             reg += 1
         elif axi_dma:
@@ -347,7 +349,10 @@ def get_mapped_nodes(sdt, node_list, options):
                if wrong_nodes:
                   print("[WARNING]: invalid node %s reference mentioned in access property please delete the references" % ','.join(wrong_nodes))
 
-            valid_nodes = [node for node in node_list for handle in mapped_phandle if handle == node.phandle]
+            domain_valid_nodes = [node for node in node_list for handle in mapped_phandle if handle == node.phandle]
+            valid_nodes.extend(domain_valid_nodes)
+            # Remove duplicate nodes
+            valid_nodes = list(dict.fromkeys(valid_nodes))
         return valid_nodes
     else:
         return valid_nodes
@@ -563,6 +568,9 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                         prop_val = [1]
                 except KeyError:
                     prop_val = [0]
+
+                if ('/bits/' in prop_val):
+                    prop_val = [int(prop_val[-1][3:-1], base=16)]
 
                 if len(prop_val) > 1:
                     plat.buf('\n\t\t{')

@@ -26,8 +26,9 @@ from collections import OrderedDict
 import copy
 
 from lopper_tree import *
+
 from lopper import *
-from lopper_fdt import *
+import lopper
 from lopper_yaml import *
 
 from io import StringIO
@@ -670,6 +671,14 @@ def setup_device_tree( outdir ):
                         };
                 };
 
+                gic_r5: interrupt-controller@f9f00000 {
+                        compatible = "arm,gic-v3";
+                        #interrupt-cells = <0x3>;
+                        #address-cells = <0x2>;
+                        #size-cells = <0x2>;
+                        ranges;
+                };
+
                 iommu: smmu@fd800000 {
                     compatible = "arm,mmu-500";
                     status = "okay";
@@ -716,7 +725,7 @@ def setup_device_tree( outdir ):
                          * bit 31: secure mode / normal mode (secure mode == 1)
                          */
                         /* cpus = <&cpus_r5 0x2 0x80000000>, <&cpus 0x3 0x80000000>; */
-                        cpus = <&cpus_r5 0x2 0x80000000>;
+                        cpus = <&cpus 0x2 0x80000000>;
                         /*
                          * Access specifies which resources this domain
                          * has access to.
@@ -740,9 +749,15 @@ def setup_device_tree( outdir ):
                 };
         };
 
-        memory: memory@00000000 {
+        memory_r5: memory@00000000 {
                 device_type = "memory";
                 reg = <0x0 0x0 0x0 0x80000000>;
+        };
+        tcm: tcm {
+                device_type = "memory";
+        };
+        ethernet0: ethernet0 {
+                device_type = "eth";
         };
 };
 """)
@@ -845,6 +860,14 @@ def setup_system_device_tree( outdir ):
                         /* child address cells, child interrupt cells, parent, parent interrupt cells */
                         interrupt-map = <0x0 0x0 0x0 &gic_a72 0x0 0x0 0x0>,
                                         <0x0 0x0 0x0 &gic_r5 0x0 0x0 0x0>;
+                };
+
+                gic_r5: interrupt-controller@f9f00000 {
+                        compatible = "arm,gic-v3";
+                        #interrupt-cells = <0x3>;
+                        #address-cells = <0x2>;
+                        #size-cells = <0x2>;
+                        ranges;
                 };
 
                 ethernet0: ethernet@ff0c0000 {
@@ -1021,9 +1044,12 @@ def setup_system_device_tree( outdir ):
                 };
         };
 
-        memory: memory@00000000 {
+        memory_r5: memory@00000000 {
                 device_type = "memory";
                 reg = <0x0 0x0 0x0 0x80000000>;
+        };
+        tcm: tcm {
+                device_type = "memory";
         };
 };
 """)
@@ -1110,8 +1136,13 @@ ocp:
 
 
 def setup_fdt( device_tree, outdir ):
-    Lopper.dt_compile( device_tree, "", "", True, outdir )
-    fdt = Lopper.dt_to_fdt( device_tree + ".dtb" )
+    dt = Lopper.dt_compile( device_tree, "", "", True, outdir )
+
+    if libfdt:
+        fdt = Lopper.dt_to_fdt( device_tree + ".dtb" )
+    else:
+        fdt = dt
+
     return fdt
 
 def test_failed( error_msg ):
@@ -1165,8 +1196,8 @@ def tree_sanity_test( fdt, verbose=0 ):
             if re.search( "node:", line ):
                 node_count += 1
 
-    if node_count != 16:
-        test_failed( "fff node count is incorrect. Got %s, expected %s" % (node_count,15) )
+    if node_count != 19:
+        test_failed( "fffggfff node count is incorrect. Got %s, expected %s" % (node_count,19) )
     else:
         test_passed( "end: node walk passed\n" )
 
@@ -1186,8 +1217,8 @@ def tree_sanity_test( fdt, verbose=0 ):
             if re.search( "{", line ):
                 node_count += 1
 
-    if node_count != 16:
-        test_failed( "node count is incorrect (%s expected %s)" % (node_count, 15) )
+    if node_count != 19:
+        test_failed( "node count is incorrect (%s expected %s)" % (node_count, 19) )
     else:
         test_passed( "end: tree print passed\n")
     fpw.close()
@@ -1239,7 +1270,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     # iteration tests
     print( "[TEST]: start: custom node lists" )
 
-    fpp = tempfile.NamedTemporaryFile( delete=True )
+    fpp = tempfile.NamedTemporaryFile( delete=False )
 
     printer.reset( fpp.name )
 
@@ -1248,10 +1279,10 @@ def tree_sanity_test( fdt, verbose=0 ):
     printer.exec()
 
     c = test_pattern_count( fpp.name, "{" )
-    if c == 5:
+    if c == 6:
         test_passed( "custom node print" )
     else:
-        test_failed( "custom node print (%s vs %s)" % (c,5) )
+        test_failed( "custom node print (%s vs %s)" % (c,6) )
 
     # shouldn't break anything: random re-resolves
     printer.resolve()
@@ -1266,7 +1297,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpw.close()
     c = test_pattern_count( fpp.name, ".*node:" )
-    if c == 16:
+    if c == 19:
         test_passed( "full walk, after restricted walk" )
     else:
         test_failed( "full walk, after restricted walk" )
@@ -1303,10 +1334,10 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( "       starting node test: node: %s" % p )
         count += 1
 
-    if count == 10:
+    if count == 13:
         test_passed( "start -> end walk" )
     else:
-        test_failed( "start -> end walk (%s vs %s)" % (count,10))
+        test_failed( "start -> end walk (%s vs %s)" % (count,13))
 
     print( "[SUB TEST]: start node -> end of tree walk\n" )
 
@@ -1347,10 +1378,10 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( "    node: %s" % k.abs_path )
         subnodecount += 1
 
-    if subnodecount == 16:
+    if subnodecount == 19:
         test_passed( "full tree subnode" )
     else:
-        test_failed( "full tree subnode (%s vs %s)" % (subnodecount,16))
+        test_failed( "full tree subnode (%s vs %s)" % (subnodecount,19))
 
     subnodecount = 0
     kiddies = printer.subnodes( printer['/'], ".*amba.*" )
@@ -1361,10 +1392,10 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( "    node: %s" % k.abs_path )
         subnodecount += 1
 
-    if subnodecount == 7:
+    if subnodecount == 8:
         test_passed( "regex subnode" )
     else:
-        test_failed( "regex subnode (%s vs %s)" % (subnodecount,7))
+        test_failed( "regex subnode (%s vs %s)" % (subnodecount,8))
 
     print( "[TEST]: end: subnode calls\n" )
 
@@ -1372,6 +1403,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     refcount = 0
     root_found = False
     amba_found = False
+
     all_refs = printer['/amba/interrupt-multiplex'].resolve_all_refs()
     for a in all_refs:
         if a.abs_path == "/":
@@ -1384,10 +1416,10 @@ def tree_sanity_test( fdt, verbose=0 ):
 
         refcount += 1
 
-    if refcount == 5:
+    if refcount == 6:
         test_passed( "resolve" )
     else:
-        test_failed( "resolve (%s vs %s)" % (refcount,5))
+        test_failed( "resolve (%s vs %s)" % (refcount,6))
 
     if root_found and amba_found:
         test_passed( "parent nodes found" )
@@ -1466,7 +1498,7 @@ def tree_sanity_test( fdt, verbose=0 ):
         if verbose:
             print( "    match: %s [%s]" % (m.abs_path, m) )
 
-    if count == 7 and multiplex:
+    if count == 8 and multiplex:
         test_passed( "regex node match 2" )
     else:
         test_failed( "regex node match 2" )
@@ -1663,19 +1695,14 @@ def tree_sanity_test( fdt, verbose=0 ):
     if verbose:
         print( "writing to: /tmp/tester-output.dts" )
 
-    ofdt = Lopper.fdt()
-    Lopper.sync( ofdt, printer.export() )
-    LopperSDT(ofdt).write( ofdt, "/tmp/tester-output.dts", True, True )
+    LopperSDT(None).write( printer, "/tmp/tester-output.dts", True, True )
 
     # remove the 2nd property, re-write
     if verbose:
         print( "writing to: /tmp/tester-output2.dts (with one less property)" )
     new_node - new_property2
     printer.sync()
-
-    ofdt = Lopper.fdt()
-    Lopper.sync( ofdt, printer.export() )
-    LopperSDT(ofdt).write( ofdt, "/tmp/tester-output2.dts", True, True )
+    LopperSDT(None).write( printer, "/tmp/tester-output2.dts", True, True )
 
     if filecmp.cmp( "/tmp/tester-output.dts", "/tmp/tester-output2.dts", False ):
         test_failed( "node remove write should have differed" )
@@ -1721,9 +1748,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     tree2 + new_node2
 
-    ofdt = Lopper.fdt()
-    Lopper.sync( ofdt, tree2.export() )
-    LopperSDT( ofdt).write( ofdt, "/tmp/tester-output-tree2.dts", True, True )
+    LopperSDT(None).write( tree2, "/tmp/tester-output-tree2.dts", True, True )
 
     print( "[TEST]: end: second tree test, node deep copy\n" )
 
@@ -1732,9 +1757,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     printer = printer - new_node
     #printer.delete( new_node )
 
-    ofdt = Lopper.fdt()
-    Lopper.sync( ofdt, printer.export() )
-    LopperSDT(ofdt).write( ofdt, "/tmp/tester-output-node-removed.dts", True, True )
+    LopperSDT(None).write( printer, "/tmp/tester-output-node-removed.dts", True, True )
     print( "[TEST]: end: tree test, node remove" )
 
     if filecmp.cmp( "/tmp/tester-output-node-removed.dts", "/tmp/tester-output-tree2.dts", False ):
@@ -1821,7 +1844,8 @@ def tree_sanity_test( fdt, verbose=0 ):
 
 
 def lops_code_test( device_tree, lop_file, verbose ):
-    device_tree.setup( dt, [lop_file], "", True )
+
+    device_tree.setup( dt, [lop_file], "", True, libfdt = libfdt )
 
     with Capturing() as output:
         device_tree.perform_lops()
@@ -1921,10 +1945,13 @@ def lops_code_test( device_tree, lop_file, verbose ):
     output.reset()
 
 def lops_sanity_test( device_tree, lop_file, verbose ):
-    device_tree.setup( dt, [lop_file], "", True )
+    if not libfdt:
+        return
 
+    device_tree.setup( dt, [lop_file], "", True, libfdt=libfdt )
 
     device_tree.verbose = 5
+
     device_tree.perform_lops()
 
     print( "[TEST]: writing to %s" % (device_tree.output_file))
@@ -2052,7 +2079,7 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
     device_tree.cleanup()
 
 def assists_sanity_test( device_tree, lop_file, verbose ):
-    device_tree.setup( dt, [lop_file], "", True )
+    device_tree.setup( dt, [lop_file], "", True, libfdt = libfdt )
     device_tree.assists_setup( [ "domain-access.py" ] )
 
     print( "[TEST]: running assist against tree" )
@@ -2064,7 +2091,7 @@ def assists_sanity_test( device_tree, lop_file, verbose ):
     device_tree.cleanup()
 
 def format_sanity_test( device_tree, verbose ):
-    device_tree.setup( dt, [], "", True )
+    device_tree.setup( dt, [], "", True, libfdt = libfdt )
 
     print( "[TEST]: writing to %s" % (device_tree.output_file))
     device_tree.write( enhanced = True )
@@ -2072,7 +2099,7 @@ def format_sanity_test( device_tree, verbose ):
 
 def fdt_sanity_test( device_tree, verbose ):
 
-    device_tree.setup( dt, [], "", True )
+    device_tree.setup( dt, [], "", True, libfdt = libfdt )
     dct = Lopper.export( device_tree.FDT )
 
     # we have a list of: containing dict, value, parent
@@ -2177,7 +2204,7 @@ def fdt_sanity_test( device_tree, verbose ):
 
 
 def yaml_sanity_test( device_tree, yaml_file, outdir, verbose ):
-    device_tree.setup( dt, [], "", True )
+    device_tree.setup( dt, [], "", True, libfdt = libfdt )
 
     yaml = LopperYAML( yaml_file )
 
@@ -2187,9 +2214,7 @@ def yaml_sanity_test( device_tree, yaml_file, outdir, verbose ):
     lt = yaml.to_tree()
 
     print( "[TEST]: writing dts from yaml to: %s" % outdir + "output_yaml_to_dts.dts" )
-    out_fdt = Lopper.fdt()
-    Lopper.sync( out_fdt, lt.export() )
-    Lopper.write_fdt( out_fdt, outdir + "output_yaml_to_dts.dts", True, 0, True )
+    LopperSDT(None).write( lt, outdir + "output_yaml_to_dts.dts", True, True )
 
     print( "[TEST]: converting SDT to yaml" )
     yaml2 = LopperYAML( None, device_tree.tree )
@@ -2239,6 +2264,7 @@ def main():
     global format
     global continue_on_error
     global fdttest
+    global libfdt
 
     verbose = 0
     force = False
@@ -2250,8 +2276,9 @@ def main():
     format = False
     fdttest = False
     continue_on_error = False
+    libfdt = True
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlhd", [ "all", "fdt", "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlhd", [ "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2283,6 +2310,8 @@ def main():
             format=True
         elif o in ( '-d', '--fdt' ):
             fdttest = True
+        elif o in ( '--no-libfdt' ):
+            libfdt = False
         elif o in ( '--all' ):
             tree = True
             lops = True
@@ -2301,6 +2330,14 @@ def main():
 if __name__ == "__main__":
 
     main()
+
+    if libfdt:
+        lopper.lopper_type(lopper_fdt.LopperFDT)
+    else:
+        import lopper_dt
+        lopper.lopper_type(lopper_dt.LopperDT)
+
+    Lopper = lopper.Lopper
 
     if tree:
         dt = setup_device_tree( outdir )
@@ -2322,6 +2359,7 @@ if __name__ == "__main__":
         device_tree.save_temps = False
         device_tree.enhanced = True
         device_tree.outdir = outdir
+        device_tree.use_libfdt = libfdt
 
         lops_sanity_test( device_tree, lop_file, verbose )
 
@@ -2337,7 +2375,7 @@ if __name__ == "__main__":
         device_tree.save_temps = False
         device_tree.enhanced = True
         device_tree.outdir = outdir
-
+        device_tree.use_libfdt = libfdt
 
         lops_code_test( device_tree, lop_file_2, verbose )
 
@@ -2355,6 +2393,7 @@ if __name__ == "__main__":
         device_tree.save_temps = False
         device_tree.enhanced = True
         device_tree.outdir = outdir
+        device_tree.use_libfdt = libfdt
 
         assists_sanity_test( device_tree, lop_file, verbose )
 
@@ -2371,6 +2410,7 @@ if __name__ == "__main__":
         device_tree.save_temps = False
         device_tree.enhanced = True
         device_tree.outdir = outdir
+        device_tree.use_libfdt = libfdt
 
         format_sanity_test( device_tree, verbose )
 
@@ -2389,6 +2429,7 @@ if __name__ == "__main__":
         device_tree.save_temps = False
         device_tree.enhanced = True
         device_tree.outdir = outdir
+        device_tree.libfdt = libfdt
 
         fdt_sanity_test( device_tree, verbose )
 

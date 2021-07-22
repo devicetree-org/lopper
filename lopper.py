@@ -33,11 +33,12 @@ from collections import OrderedDict
 
 import humanfriendly
 
-from lopper_fdt import Lopper
-from lopper_fdt import LopperFmt
-from lopper_tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
+from lopper_fmt import LopperFmt
+import lopper_fdt
+import lopper
 
-import lopper_rest
+from lopper_tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
+import lopper_tree
 
 try:
     from lopper_yaml import *
@@ -45,8 +46,6 @@ try:
 except Exception as e:
     print( "[WARNING]: cant load yaml, disabling support: %s" % e )
     yaml_support = False
-
-import lopper_tree
 
 LOPPER_VERSION = "2020.4-beta"
 
@@ -66,6 +65,14 @@ def at_exit_cleanup():
         device_tree.cleanup()
     else:
         pass
+
+def lopper_type(cls):
+    global Lopper
+    Lopper = cls
+    lopper_tree.Lopper = cls
+
+# default to FDT front/backend
+lopper_type(lopper_fdt.LopperFDT)
 
 class LopperAssist:
     """Internal class to contain the details of a lopper assist
@@ -115,8 +122,9 @@ class LopperSDT:
         self.target_domain = ""
         self.load_paths = []
         self.permissive = False
+        self.merge = False
 
-    def setup(self, sdt_file, input_files, include_paths, force=False):
+    def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True):
         """executes setup and initialization tasks for a system device tree
 
         setup validates the inputs, and calls the appropriate routines to
@@ -133,11 +141,16 @@ class LopperSDT:
            Nothing
 
         """
-        if self.verbose:
+        if self.verbose and libfdt:
             print( "[INFO]: loading dtb and using libfdt to manipulate tree" )
 
+
         # check for required support applications
-        support_bins = ["dtc", "cpp" ]
+        if libfdt:
+            support_bins = [ "dtc", "cpp" ]
+        else:
+            support_bins = [ "cpp" ]
+
         for s in support_bins:
             if self.verbose:
                 print( "[INFO]: checking for support binary: %s" % s )
@@ -145,7 +158,7 @@ class LopperSDT:
                 print( "[ERROR]: support application '%s' not found, exiting" % s )
                 sys.exit(2)
 
-        self.use_libfdt = True
+        self.use_libfdt = libfdt
 
         current_dir = os.getcwd()
 
@@ -230,13 +243,21 @@ class LopperSDT:
             include_paths += " " + str(sdt_file.parent) + " "
             self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
                                           self.save_temps, self.verbose, self.enhanced )
-            self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
 
-            # we export the compiled fdt to a dictionary, and load it into our tree
+            if self.use_libfdt:
+                self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
+            else:
+                if self.verbose:
+                    print( "[INFO]: using python devicetree for parsing" )
+
+                # TODO: "FDT" should now be "token" or something equally generic
+                self.FDT = self.dtb
+                self.dtb = ""
+
             dct = Lopper.export( self.FDT )
+
             self.tree = LopperTree()
             self.tree.strict = not self.permissive
-
             self.tree.load( dct )
 
             # join any extended trees to the one we just created
@@ -246,7 +267,7 @@ class LopperSDT:
                         # old: deep copy the node
                         # new_node = node()
                         # assign it to the main system device tree
-                        self.tree = self.tree + node
+                        self.tree = self.tree.add( node, merge=self.merge )
 
             fpp.close()
         elif re.search( ".yaml$", self.dts ):
@@ -285,6 +306,9 @@ class LopperSDT:
             # the system device tree is a dtb
             self.dtb = sdt_file
             self.dts = sdt_file
+            if not self.use_libfdt:
+                print( "[ERROR]: dtb system device tree passed (%s), and libfdt is disabled" % self.dts )
+                sys.exit(1)
             self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
             self.tree = LopperTree()
             self.tree.load( Lopper.export( self.FDT ) )
@@ -312,7 +336,16 @@ class LopperSDT:
                 if not compiled_file:
                     print( "[ERROR]: could not compile file %s" % ifile )
                     sys.exit(1)
-                lop.dtb = compiled_file
+
+                if self.use_libfdt:
+                    lop.dtb = compiled_file
+                else:
+                    lop.dtb = ""
+                    lop.fdt = None
+                    dct = Lopper.export( compiled_file )
+                    lop.tree = LopperTree()
+                    lop.tree.load( dct )
+
                 self.lops.append( lop )
             elif re.search( ".yaml$", ifile ):
                 yaml = LopperYAML( ifile )
@@ -411,7 +444,7 @@ class LopperSDT:
         #       not cleaning up the concatenated compiled. pp file, since
         #       it is created with mktmp()
 
-    def write( self, fdt = None, output_filename = None, overwrite = True, enhanced = False ):
+    def write( self, tree = None, output_filename = None, overwrite = True, enhanced = False ):
         """Write a system device tree to a file
 
         Write a fdt (or system device tree) to an output file. This routine uses
@@ -424,7 +457,7 @@ class LopperSDT:
         it is called to write the file, otherwise, a warning or error is raised.
 
         Args:
-            fdt (fdt,optional): source flattened device tree to write
+            tree (LopperTree,optional): LopperTree to write
             output_filename (string,optional): name of the output file to create
             overwrite (bool,optional): Should existing files be overwritten. Default is True.
             enhanced(bool,optional): whether enhanced printing should be performed. Default is False
@@ -439,30 +472,29 @@ class LopperSDT:
         if not output_filename:
             return
 
-        fdt_to_write = fdt
-        if not fdt_to_write:
-            fdt_to_write = self.FDT
+        tree_to_write = tree
+        if not tree_to_write:
+            tree_to_write = self.tree
 
         if re.search( ".dtb", output_filename ):
-            Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose )
+            if self.use_libfdt:
+                fdt = Lopper.fdt()
+                Lopper.sync( fdt, tree_to_write.export() )
+                Lopper.write_fdt( fdt, output_filename, overwrite, self.verbose )
+            else:
+                print( "[ERROR]: dtb output selected (%s), but libfdt is not enabled" % output_filename )
+                sys.exit(1)
 
         elif re.search( ".dts", output_filename ):
-            if enhanced:
-                o = Path(output_filename)
-                if o.exists() and not overwrite:
-                    print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
-                    sys.exit(1)
+            o = Path(output_filename)
+            if o.exists() and not overwrite:
+                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                sys.exit(1)
 
-                printer = LopperTreePrinter( True, output_filename, self.verbose )
-                printer.strict = not self.permissive
-
-                # Note: the caller must ensure that all changes have been sync'd to
-                #        the fdt_to_write.
-
-                printer.load( Lopper.export( fdt_to_write ) )
-                printer.exec()
-            else:
-                Lopper.write_fdt( fdt_to_write, output_filename, overwrite, self.verbose, False )
+            printer = LopperTreePrinter( True, output_filename, self.verbose )
+            printer.strict = not self.permissive
+            printer.load( tree_to_write.export() )
+            printer.exec()
 
         elif re.search( ".yaml", output_filename ):
             o = Path(output_filename)
@@ -480,8 +512,7 @@ class LopperSDT:
                 for cb_func in cb_funcs:
                     try:
                         out_tree = LopperTreePrinter( True, output_filename, self.verbose )
-                        Lopper.sync( fdt_to_write, self.tree.export() )
-                        out_tree.load( Lopper.export( fdt_to_write ) )
+                        out_tree.load( tree_to_write.export() )
                         out_tree.strict = not self.permissive
                         if not cb_func( 0, out_tree, { 'outfile': output_filename, 'verbose' : self.verbose } ):
                             print( "[WARNING]: output assist returned false, check for errors ..." )
@@ -1123,15 +1154,15 @@ class LopperSDT:
                 if output_tree:
                     output_file_full = self.outdir + "/" + output_file_name
 
-                    # create a FDT
-                    out_fdt = Lopper.fdt()
-                    # export it
-                    dct = output_tree.export()
-                    Lopper.sync( out_fdt, dct )
+                    if self.use_libfdt:
+                        # create a FDT
+                        dct = output_tree.export()
+                        out_fdt = Lopper.fdt()
+                        Lopper.sync( out_fdt, dct )
 
                     # we should consider checking the type, and not doing the export
                     # if going to dts, since that is already easily done with the tree.
-                    self.write( out_fdt, output_file_full, True, self.enhanced )
+                    self.write( output_tree, output_file_full, True, self.enhanced )
             else:
                 print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
@@ -1644,11 +1675,11 @@ class LopperSDT:
                     node_list = [ "/" ]
 
                 for n in node_list:
-                    ret = tree.exec_cmd( n, code, options, inherit_list )
+                    ret = tree.exec_cmd( n, code, options, inherit_list, self.load_paths )
                     # who knows what the command did, better sync!
                     tree.sync()
             else:
-                ret = tree.exec_cmd( start_node, code, options, inherit_list )
+                ret = tree.exec_cmd( start_node, code, options, inherit_list, self.load_paths )
                 # who knows what the command did, better sync!
                 tree.sync()
 
@@ -2031,7 +2062,9 @@ def usage():
     print('    . --auto          automatically run any assists passed via -a' )
     print('    , --permissive    do not enforce fully validated properties (phandles, etc)' )
     print('  -o, --output        output file')
+    print('    , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes' )
     print('  -x. --xlate         run automatic translations on nodes for indicated input types (yaml,dts)' )
+    print('    , --no-libfdt     don\'t use dtc/libfdt for parsing/compiling device trees' )
     print('  -f, --force         force overwrite output file(s)')
     print('    , --werror        treat warnings as errors' )
     print('  -S, --save-temps    don\'t remove temporary files' )
@@ -2065,6 +2098,8 @@ def main():
     global auto_run
     global permissive
     global xlate
+    global libfdt
+    global overlay
 
     debug = False
     sdt = None
@@ -2084,13 +2119,16 @@ def main():
     server = False
     auto_run = False
     permissive = False
+    libfdt = True
     xlate = []
+    overlay = False
     try:
         opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:Dx:",
                                    [ "debug", "assist-paths=", "outdir", "enhanced",
                                      "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
-                                     "assist=","server", "auto", "permissive", "xlate=" ] )
+                                     "assist=","server", "auto", "permissive", "xlate=",
+                                     "no-libfdt", "overlay" ] )
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2132,12 +2170,16 @@ def main():
             server=True
         elif o in ('-S', '--save-temps' ):
             save_temps=True
+        elif o in ('--no-libfdt' ):
+            libfdt=False
         elif o in ('--enhanced' ):
             enhanced_print = True
         elif o in ('--auto' ):
             auto_run = True
         elif o in ('--permissive' ):
             permissive = True
+        elif o in ('--overlay' ):
+            overlay = True
         elif o in ('-x', '--xlate'):
             xlate.append(a)
         elif o in ('--version'):
@@ -2256,6 +2298,10 @@ if __name__ == "__main__":
     # use below
     main()
 
+    if not libfdt:
+        import lopper_dt
+        lopper_type(lopper_dt.LopperDT)
+
     if dump_dtb:
         Lopper.dtb_dts_export( sdt, verbose )
         sys.exit(0)
@@ -2276,8 +2322,9 @@ if __name__ == "__main__":
     device_tree.target_domain = target_domain
     device_tree.load_paths = load_paths
     device_tree.permissive = permissive
+    device_tree.merge = overlay
 
-    device_tree.setup( sdt, inputfiles, "", force )
+    device_tree.setup( sdt, inputfiles, "", force, libfdt )
     device_tree.assists_setup( cmdline_assists )
 
     if auto_run:
@@ -2311,8 +2358,17 @@ if __name__ == "__main__":
     if server:
         if verbose:
             print( "[INFO]: starting WSGI server" )
-        lopper_rest.sdt = device_tree
-        lopper_rest.app.run()  # run our Flask app
+        try:
+            import lopper_rest
+            rest_support = True
+        except Exception as e:
+            print( "[ERROR]: rest support is not loaded, check dependencies: %s" % e )
+            rest_support = False
+
+        if rest_support:
+            lopper_rest.sdt = device_tree
+            lopper_rest.app.run()  # run our Flask app
+
         sys.exit(1)
 
     device_tree.cleanup()

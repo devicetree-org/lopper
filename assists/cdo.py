@@ -29,7 +29,6 @@ sys.path.append(os.path.dirname(__file__))
 from xlnx_versal_power import *
 from cdo_topology import *
 from collections import OrderedDict
-from subsystem import *
 import json
 import humanfriendly
 
@@ -47,6 +46,127 @@ def is_compat( node, compat_id ):
     if re.search( "xlnx,output,cdo", compat_id):
         return cdo_write
     return ""
+
+
+def do_expand_cdo_flags(tgt_node):
+    if 'xilinx,subsystem-v1' in tgt_node.propval("compatible"):
+        return True
+    return False
+
+
+def expand_cdo_flags(tgt_node):
+    flags_names = []
+    flags = []
+    # find default flags
+    for n in tgt_node.subnodes():
+       if n.depth == tgt_node.depth + 2 and n.abs_path == tgt_node.abs_path + "/flags/default":
+               default_flags = n
+               break
+
+    # for each flag reference
+    # update flags' bits along with using default
+    for n in tgt_node.subnodes():
+        if n.depth == tgt_node.depth + 2:
+            #    set all bits according to what is provided
+            flags.extend( expand_cdo_flags_bits(n, default_flags) )
+            flags_names.append( n.name )
+
+    flags_cells = 4
+    return [flags_names, flags, flags_cells]
+
+def expand_cdo_flags_bits_first_word(flags_node, ref_flags, default_flags_node):
+    first_keywords = {  'allow-secure':2, 'read-only':4, 'requested':6 }
+
+    allow_sec = False
+    read_only = False
+    for key in (list(first_keywords.keys())):
+
+        # determine which node to read flags info from for this bit
+        in_flags = flags_node.propval(key) != [''] or key in flags_node.__props__.keys()
+        in_default = key in default_flags_node.__props__.keys()
+        node = None
+        if in_flags == True:
+            node = flags_node
+        elif in_flags == False and in_default == True:
+            node = default_flags_node
+        else:
+            continue
+
+        if node.propval(key) != [''] or key in node.__props__.keys():
+            if key == 'allow-secure' or key == 'read-only':
+                # if true then set to low, as per spec: "0: secure master only."
+                # write should be low if read-only
+                ref_flags[0] = ref_flags[0] & ~(0x1 << first_keywords[key])
+                if key == 'allow-secure':
+                  allow_sec = True
+                  continue
+                elif key == 'read-only':
+                  read_only = True
+                  continue
+
+            ref_flags[0] |= (0x1 << first_keywords[key])
+
+    # 1st word read policy always allowed
+    #ref_flags[0] = ref_flags[0] | (0x1 << 3)
+
+    # 1st word: if allow-secure is false, then raise corresponding bit
+    if allow_sec == False:
+        ref_flags[0] |= (0x1 << first_keywords['allow-secure'])
+    # 1st word: if read only  is false, then raise corresponding bit
+    if read_only == False:
+        ref_flags[0] |= (0x1 << first_keywords['read-only'])
+
+    # 1st word time share
+    if flags_node.propval('timeshare') != ['']:
+        ref_flags[0] |= 0x3
+
+
+def expand_cdo_flags_bits_third_word(flags_node, ref_flags, default_flags_node):
+    third_keywords = { 'access':0, 'context':1, 'wakeup':2, 'unusable':3, 'requested-secure':4, 'coherent':5, 'virtualized':6 }
+
+    for key in third_keywords.keys():
+        # determine which node to read flags info from for this bit
+        in_flags = flags_node.propval(key) != [''] or key in flags_node.__props__.keys()
+        in_default = key in default_flags_node.__props__.keys()
+
+        node = None
+        if in_flags == True:
+            node = flags_node
+        elif in_flags == False and in_default == True:
+            node = default_flags_node
+        else:
+            continue
+
+        if node.propval(key) != [''] or key in node.__props__.keys():
+
+            # this can only be set if prealloc is set too
+            if key == 'requested-secure':
+                if (ref_flags[0] & (0x1 << first_keywords['requested'])) == 0:
+                    continue
+
+            ref_flags[2] |= 0x1 << third_keywords[key]
+
+
+# given flags node, return int that is bitmask of relevant bits
+def expand_cdo_flags_bits(flags_node, default_flags_node):
+    ref_flags = [0x0, 0x0, 0x0, 0x0]
+
+    expand_cdo_flags_bits_first_word(flags_node, ref_flags, default_flags_node)
+
+    # 2nd word is derived
+    ref_flags[1] = 0xfffff
+
+    expand_cdo_flags_bits_third_word(flags_node, ref_flags, default_flags_node)
+
+    # 4th word
+    qos = 0x0
+    if flags_node.propval('qos') != [''] and isinstance(qos,int):
+        qos = flags_node.propval('qos')
+    elif default_flags_node.propval('qos') != [''] and isinstance(qos,int):
+        qos = default_flags_node.propval('qos')
+    ref_flags[3] = qos
+
+    return ref_flags
 
 
 class Device():
@@ -129,13 +249,13 @@ def find_cpu_ids(node, sdt):
     return cpu_xilpm_ids
 
 
-def prelim_flag_processing(node):
+def prelim_flag_processing(node, prefix):
     # return preliminary processing of flags
     flags = ''
-    if node.propval('flags-names') == ['']:
+    if node.propval(prefix+'-flags-names') == ['']:
         flags = 'default'
     else:
-        flags =  node.propval('flags-names')
+        flags =  node.propval(prefix+'-flags-names')
         if isinstance(flags, list):
             flags = flags[0]
 
@@ -149,7 +269,7 @@ def prelim_flag_processing(node):
 def find_mem_ids(node, sdt):
     # given a node that has a memory or sram property, return list of  corresponding
     # XilPM Node IDs for the mem/sram node
-    flags = prelim_flag_processing(node)
+    flags = prelim_flag_processing(node, 'memory')
 
     mem_xilpm_ids = []
     if node.propval('memory') != ['']:
@@ -163,7 +283,7 @@ def find_sram_ids(node, sdt):
     sram_end = node.propval('sram')[1] + sram_base
     mem_xilpm_ids = []
     id_with_flags = []
-    flags = prelim_flag_processing(node)
+    flags = prelim_flag_processing(node, 'sram')
 
     ocm_len = 0xFFFFF
     if 0xFFFC0000 <= sram_base <= 0xFFFFFFFF:
@@ -290,10 +410,6 @@ def process_subsystem(subsystem, subsystem_node, sdt, options, included = False)
     for node in subsystem_node.subnodes():
         device_flags = []
 
-        # skip flag references
-        if 'flags' in node.abs_path:
-            continue
-
         if node.propval('cpus') != ['']:
             f = 'default'
             f +='::no-restrictions' # by default, cores are not restricted
@@ -338,88 +454,52 @@ def process_subsystem(subsystem, subsystem_node, sdt, options, included = False)
 
 
 def construct_flag_references(subsystem):
+    flags_list = subsystem.sub_node.propval("flags")
+    for index, flags_name in enumerate(subsystem.sub_node.propval("flags-names")):
+        ref_flags = [0x0, 0x0, 0x0, 0x0]
 
-    for n in subsystem.sub_node.subnodes():
-        # flags references are translated into their own nodes in the YAML front-end parsing
-        # translate flag references to xilpm requirement information to be used later
-        # when resolving a device's flag definition being referenced
-        if subsystem.sub_node.abs_path+'/flags/' in n.abs_path and n.depth == subsystem.sub_node.depth + 2:
-            ref_flags = [0x0, 0x0, 0x0, 0x0]
-            first_keywords = {  'allow-secure':2, 'read-only':4, 'requested':6 }
-            third_keywords = { 'access':0, 'context':1, 'wakeup':2, 'unusable':3, 'requested-secure':4, 'coherent':5, 'virtualized':6 }
+        current_base = index * 4 # 4 elements per requirement of device
+        for i in range(0,3):
+            ref_flags[i] = flags_list[current_base + i]
 
-            # 1st word
-            allow_sec = False
-            read_only = False
-            for key in (list(first_keywords.keys())):
-                if n.propval(key) != [''] or key in n.__props__.keys():
-                    if key == 'allow-secure' or key == 'read-only':
-                        # if true then set to low, as per spec: "0: secure master only."
-                        # write should be low if read-only
-                        ref_flags[0] = ref_flags[0] & ~(0x1 << first_keywords[key])
-                        if key == 'allow-secure':
-                          allow_sec = True
-                          continue
-                        elif key == 'read-only':
-                          read_only = True
-                          continue
-
-                    ref_flags[0] |= (0x1 << first_keywords[key])
+        subsystem.flag_references[flags_name] = ref_flags
 
 
-            # 1st word read policy always allowed
-            #ref_flags[0] = ref_flags[0] | (0x1 << 3)
+def determine_inclusion(device_flags, other_device_flags, sub, other_sub):
 
-    
-            # 1st word: if allow-secure is false, then raise corresponding bit
-            if allow_sec == False:
-                ref_flags[0] |= (0x1 << first_keywords['allow-secure'])
-            # 1st word: if read only  is false, then raise corresponding bit
-            if read_only == False:
-                ref_flags[0] |= (0x1 << first_keywords['read-only'])
+    # look for time share in the flags defined by each subsystem that correspond
+    # to the device
 
-            # 1st word time share
-            if n.propval('timeshare') != ['']:
-                ref_flags[0] |= 0x3
+    # first get current device
+    dev_timeshare = device_flags[0].split("::")[0]
+    if dev_timeshare not in sub.flag_references.keys():
+        dev_timeshare = 'default'
 
-            # 2nd word is derived
-            ref_flags[1] = 0xfffff
+    dev_timeshare = copy.deepcopy(sub.flag_references[dev_timeshare])
 
-            # 3rd word
-            for key in third_keywords.keys():
-                if n.propval(key) != [''] or key in n.__props__.keys():
+    # second get time share of other device
+    other_dev_timeshare = device_flags[0].split("::")[0]
+    if other_dev_timeshare not in other_sub.flag_references.keys():
+        other_dev_timeshare = 'default'
 
-                    # this can only be set if prealloc is set too
-                    if key == 'requested-secure':
-                        if (ref_flags[0] & (0x1 << first_keywords['requested'])) == 0:
-                            continue
-
-                    ref_flags[2] |= 0x1 << third_keywords[key]
-
-            # 4th word
-            qos = n.propval('qos')
-            if qos != [''] and isinstance(qos,int):
-                ref_flags[3] = qos
-
-            subsystem.flag_references[n.name] = ref_flags
-
-
-def determine_inclusion(device_flags, other_device_flags):
+    other_dev_timeshare = copy.deepcopy(other_sub.flag_references[other_dev_timeshare])
     included = 0x0
     for f in device_flags:
         if 'include' in f:
             included |= 0x1
         if 'access' in f and 'include' not in f:
             included |= 0x2
-        if 'timeshare' in f:
-            included |= 16
     for f in other_device_flags:
         if 'include' in f:
             included |= 0x8
         if 'access' in f and 'include' not in f:
             included |= 0x4
-        if 'timeshare' in f:
-            included |= 32
+
+    # determine if timeshare present in one of the flags for a device-subsystem link
+    if dev_timeshare[0] & 0x3 == 0x3:
+        included |= 16
+    if other_dev_timeshare[0] & 0x3 == 0x3:
+        included |= 32
 
     return included
 
@@ -431,11 +511,10 @@ def set_dev_pm_reqs(sub, device, usage):
         new_dev_flags = 'default'
 
     new_dev_flags = copy.deepcopy(sub.flag_references[new_dev_flags])
-    if new_dev_flags[0] & 0x3 != 0x3: # save time share
-        new_dev_flags[0] &= 0xFC # wipe out usage bits
-        new_dev_flags[0] |= usage # set them from passed in value
 
     device.pm_reqs = new_dev_flags
+
+    device.pm_reqs[0] |= usage
 
 
 def construct_pm_reqs(subsystems):
@@ -457,14 +536,14 @@ def construct_pm_reqs(subsystems):
 
                 if device.node_id in other_sub.dev_dict.keys():
                     other_device = other_sub.dev_dict[device.node_id]
-                    included = determine_inclusion(device.flags, other_device.flags)
+                    included = determine_inclusion(device.flags, other_device.flags, sub, other_sub)
 
                     # this means neither reference this via include so raise error
                     if included & 0x6 != 0x0:
                         print('WARNING: ', hex(device.node_id), 'found in multiple domains without includes ',
                               sub.sub_node, other_sub.sub_node, included, usage, device.flags, other_device.flags)
                         return
-                    if included & 0x16 != 0x0 and included & 0x32 == 0:
+                    if (included & 16 != 0) and (included & 32 == 0):
                         print('WARNING: ', hex(device.node_id), 'found in multiple domains with mismatch of timeshare',
                               sub.sub_node, other_sub.sub_node, included, usage)
                         return
@@ -473,7 +552,7 @@ def construct_pm_reqs(subsystems):
                         usage = 0x1 # update to shared
                 else:
                     # if from resource group in only domain should still be shared
-                    included = determine_inclusion(device.flags, [])
+                    included = determine_inclusion(device.flags, [], sub, other_sub)
                     if included == 0x1:
                         usage = 0x1
 
@@ -585,13 +664,21 @@ def sub_perms(subsystems, output):
         sub_reset_perms(sub, output)
 
 
-def cdo_write( domain_node, sdt, options ):
+def cdo_write( root_node, sdt, options ):
     try:
         verbose = options['verbose']
     except:
         verbose = 0
 
     subs_data = []
+
+    domain_node = None
+    try:
+        domain_node = root_node.tree["/domains"]
+    except KeyError:
+        if verbose > 0:
+            print("[DBG++]: CDO plugin unable to find domains node")
+        return True
 
     subsystems = valid_subsystems(domain_node, sdt, options)
 
@@ -642,9 +729,6 @@ def cdo_write( domain_node, sdt, options ):
                 print("WARNING: ",hex(device.node_id),' not found in xilinx_versal_device_names')
                 return
 
-            # put comments describing CDO above the actual command
-            if verbose > 0:
-                document_requirement(output, sub, device)
             req_description = "# "+cdo_sub_str+' '+xilinx_versal_device_names[device.node_id]
 
             # form CDO flags in string for python
@@ -655,6 +739,7 @@ def cdo_write( domain_node, sdt, options ):
             # write CDO
             print(req_description, file=output)
             print(req_str, file=output)
+
 
     return True
 

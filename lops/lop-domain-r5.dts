@@ -22,14 +22,6 @@
                         access = "phandle flags";
                         cpus = "phandle mask mode";
                 };
-                lop_0 {
-                        compatible = "system-device-tree-v1,lop,assist-v1";
-                        node = "/domains/openamp_r5";
-                        id = "openamp,domain-v1";
-			// if uncommented the noexec property means the lop can be
-			// present but skipped. useful for debug
-			//noexec;
-                };
                 lop_2 {
                         // node name modify
                         compatible = "system-device-tree-v1,lop,modify";
@@ -49,85 +41,6 @@
                         compatible = "system-device-tree-v1,lop,modify";
                         modify = "/cpus:no-access:";
                 };
-                lop_7 {
-                        // node add
-                        compatible = "system-device-tree-v1,lop,add";
-                        node_src = "zynqmp-rpu";
-                        node_dest = "/zynqmp-rpu";
-                        zynqmp-rpu {
-                            compatible = "xlnx,zynqmp-r5-remoteproc-1.0","test2ndtype";
-                            #address-cells = <2>;
-                            #size-cells = <2>;
-                            ranges;
-                            core_conf = "__core_conf__";
-                            r5_0: __cpu__ {
-                                  // #address-cells = <2>;
-                                  // #size-cells = <2>;
-                                  // <0xF> indicates that it must be replaced
-                                  #address-cells = <0xF>;
-                                  #size-cells = <0xF>;
-                                  ranges;
-                                  // memory-region = <&rproc_0_reserved>, <&rproc_0_dma>;
-                                  memory-region = <&__memory_access__>;
-                                  pnode-id = <0x7>;
-                                  // mboxes = <&ipi_mailbox_rpu0 0>, <&ipi_mailbox_rpu0 1>;
-                                  mboxes = <&__mailbox_ipi__>;
-                                  // mbox-names = "tx", "rx";
-                                  mbox-names = "__mbox_names__";
-                                  tcm_0_a: tcm_0@0 {
-                                           reg = <0x0 0xFFE00000 0x0 0x10000>;
-                                           pnode-id = <0xf>;
-                                  };
-                                  tcm_0_b: tcm_0@1 {
-                                         reg = <0x0 0xFFE20000 0x0 0x10000>;
-                                         pnode-id = <0x10>;
-                                  };
-                            };
-                        };
-                  };
-                  lop_10 {
-                          // optionally execute a routine in a loaded module. If the routine
-                          // isn't found, this is NOT a failure. Since we don't want to tightly
-                          // couple these transforms and loaded modules
-                          compatible = "system-device-tree-v1,lop,assist-v1";
-                          id = "openamp,xlnx-rpu";
-                          node = "/domains/openamp_r5";
-                          options = "openamp_channel_info.h";
-                  };
-                  lop_13_1 {
-                         compatible = "system-device-tree-v1,lop,tree";
-                         tree = "openamp-test";
-                         nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
-                  };
-                  lop_13_2 {
-                         compatible = "system-device-tree-v1,lop,modify";
-                         tree = "openamp-test";
-                         modify = "/reserved-memory:#size-cells:3";
-                  };
-                  lop_13_2_1 {
-                         compatible = "system-device-tree-v1,lop,modify";
-                         tree = "openamp-test";
-                         modify = "/reserved-memory::/zynqmp-rpu/reserved-memory";
-                  };
-                  lop_13_3 {
-                         compatible = "system-device-tree-v1,lop,output";
-                         tree = "openamp-test";
-                         outfile = "openamp-test-foo.dts"; 
-                         nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
-                  };
-                  lop_13 {
-                         compatible = "system-device-tree-v1,lop,output";
-                         outfile = "openamp-test.dts";
-                         // nodes = "/reserved-memory", "/zynqmp-rpu", "/zynqmp_ipi1", "/chosen/resource_group_1";
-                         // list of nodes to select and output
-                         nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
-                  };
-                  lop_14 {
-                         compatible = "system-device-tree-v1,lop,output";
-                         outfile = "linux.dtb";
-                         // * is "all nodes"
-                         nodes = "*";
-                  };
                   lop_15 {
                          compatible = "system-device-tree-v1,lop,output";
                          outfile = "r5.dts";
@@ -153,31 +66,5 @@
                          compatible = "system-device-tree-v1,lop,modify";
                          modify = "/bus@f1000000:testprop:testvalue";
                   };
-		  lop_19 {
-			 compatible = "system-device-tree-v1,lop,output";
-			 outfile = "linux-partial.dts";
-			 // * is "all nodes"
-			 nodes = "bus@f1000000.*";
-		  };
-		  lop_20 {
-			 compatible = "system-device-tree-v1,lop,output";
-			 outfile = "plm.cdo";
-			 // * is "all nodes"
-			 nodes = "*";
-			 id = "xlnx,output,cdo";
-		  };
-		  lop_21 {
-			 compatible = "system-device-tree-v1,lop,output";
-			 outfile = "linux-special-props.dts";
-			 // nodes (regex), with a property that must be set
-			 nodes = "bus.*:testprop:testvalue";
-		  };
-		  lop_22 {
-			 compatible = "system-device-tree-v1,lop,output";
-			 outfile = "linux-labels.dts";
-			 // select nodes labelled "amba*"
-			 nodes = "amba.*";
-		  };
-
         };
 };

@@ -24,6 +24,11 @@ from collections import Counter
 import copy
 import json
 
+from lopper_fmt import LopperFmt
+
+# must be set to the Lopper class to call
+global Lopper
+
 # used in node_filter
 class LopperAction(Enum):
     """Enum class to define the actions available in Lopper's node_filter function
@@ -33,7 +38,6 @@ class LopperAction(Enum):
     WHITELIST = 3
     BLACKLIST = 4
     NONE = 5
-
 
 class LopperProp():
     """Class representing a device tree property
@@ -659,17 +663,25 @@ class LopperProp():
         """
         indent = (self.node.depth * 8) + 8
         outstring = self.string_val
-
-        if self.pclass == "comment":
-            # we have to substitute \n for better indentation, since comments
-            # are multiline
-            dstring = ""
-            dstring = dstring.rjust(len(dstring) + indent + 1, " " )
-            outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
+        only_align_comments = False
 
         if self.pclass == "preamble":
             # start tree peeked at this, so we do nothing
             outstring = ""
+        else:
+            # p.pclass == "comment"
+            # we have to substitute \n for better indentation, since comments
+            # are multiline
+
+            do_indent = True
+            if only_align_comments:
+                if self.pclass != "comment":
+                    do_indent = False
+
+            if do_indent:
+                dstring = ""
+                dstring = dstring.rjust(len(dstring) + indent + 1, " " )
+                outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
         if outstring:
             print(outstring.rjust(len(outstring)+indent," " ), file=output)
@@ -965,7 +977,7 @@ class LopperProp():
 
                         # if we aren't the last item, we continue with a ,
                         if rnum != len(records_to_iterate) - 1:
-                            formatted_records.append( ", " )
+                            formatted_records.append( ",\n" )
                         else:
                             formatted_records.append( ";" )
                 else:
@@ -1545,7 +1557,7 @@ class LopperNode(object):
                 phandle_nodes = p.resolve_phandles()
                 for ph_node in phandle_nodes:
                     # don't call in for our own node, or we'll recurse forever
-                    if ph_node.number != self.number:
+                    if ph_node.abs_path != self.abs_path:
                         refs = ph_node.resolve_all_refs( property_mask_check )
                         if refs:
                             reference_list.append( refs )
@@ -1624,7 +1636,7 @@ class LopperNode(object):
             if self.tree.strict != strict:
                 resolve_props = True
 
-        if self.number != 0:
+        if self.abs_path != "/":
             plabel = ""
             try:
                 if n['lopper-label.*']:
@@ -2024,7 +2036,29 @@ class LopperNode(object):
 
         return self
 
-    def load( self, dct, parent_path = None):
+    def merge( self, other_node ):
+        """merge a secondary node into the target
+
+        This routine updates the target node with the properties of secondary.
+
+        It is additive/modification only, no properties are removed as part of
+        the processing.
+
+        Args:
+           other_node (LopperNode): The other to merge
+
+        Returns:
+           Nothing
+
+        """
+        # export the dictionary (properties)
+        o_export = other_node.export()
+
+        # load them into the node, keep children intact, this is a single
+        # node operation
+        self.load( o_export, clear_children = False, update_props = True )
+
+    def load( self, dct, parent_path = None, clear_children = True, update_props = False):
         """load (calculate) node details against a property dictionary
 
         Some attributes of a node are not known at initialization time, or may
@@ -2033,8 +2067,15 @@ class LopperNode(object):
         This method calculates those values using information in the node and in
         the passed property dictionary
 
-        The only value that must be set in the node before resolve() is called
-        is the node number.
+        If clear_children is set to True (the default), children nodes will be
+        dropped with the expectation that they will be re-added when the children
+        themselves are loaded. When set to False, the children are not modified,
+        and this is used when updating a node from a dictionary.
+
+        If update_props is set to True (the default is False), then existing
+        properties will be updated with the contents of the passed dictionary.
+        This is set to true when a dictionary should override all values in
+        a node.
 
         Fields resolved (see class for descriptions)
            - name
@@ -2050,6 +2091,8 @@ class LopperNode(object):
         Args:
            Property dictionary: Dictionary with the node details/properties
            parent_path (Optional,string)
+           clear_children (Optional,boolean): default is True
+           update_props (Optional,boolean): default is False
 
         Returns:
            Nothing
@@ -2084,9 +2127,10 @@ class LopperNode(object):
 
             self.abs_path = dct['__path__']
 
-            # children will find their way back during the load process, so clear
-            # the existing ones
-            self.child_nodes = OrderedDict()
+            if clear_children:
+                # children will find their way back during the load process, so clear
+                # the existing ones
+                self.child_nodes = OrderedDict()
 
             if self.__dbg__ > 2:
                 print( "[DBG++]: node load start [%s][%s]: %s" % (self,self.number,self.abs_path))
@@ -2177,6 +2221,13 @@ class LopperNode(object):
                     # same prop name, same parent node .. it is the same. If this
                     # somehow changes, we'll need to call resolve on this as well.
                     self.__props__[prop] = existing_prop
+                    if update_props:
+                        if self.__props__[prop].value != prop_val:
+                            if self.__dbg__ > 3:
+                                print( "[DBG+++]: existing prop detected (%s), updating value: %s -> %s" %
+                                       (self.__props__[prop].name,self.__props__[prop].value,prop_val))
+                            self.__props__[prop].value = prop_val
+
                 else:
                     self.__props__[prop] = LopperProp( prop, -1, self,
                                                        prop_val, self.__dbg__ )
@@ -2947,7 +2998,7 @@ class LopperTree:
 
         return self
 
-    def add( self, node, dont_sync = False ):
+    def add( self, node, dont_sync = False, merge = False ):
         """Add a node to a tree
 
         Supports adding a node to a tree through:
@@ -2986,7 +3037,7 @@ class LopperTree:
                 if not existing_node:
                     # an intermediate node is missing, we need to add it
                     i_node = LopperNode( -1, p )
-                    self.add( i_node, True )
+                    self.add( i_node, True, merge )
 
         # do we already have a node at this path ?
         try:
@@ -2995,9 +3046,15 @@ class LopperTree:
             existing_node = None
 
         if existing_node:
-            if self.__dbg__ > 2:
-                print( "[WARNING]: add: node: %s already exists" % node.abs_path )
-            return self
+            if not merge:
+                if self.__dbg__ > 2:
+                    print( "[WARNING]: add: node: %s already exists" % node.abs_path )
+                return self
+            else:
+                if self.__dbg__ > 2:
+                    print( "[INFO]: add: node: %s exists, merging properties" % node.abs_path )
+                existing_node.merge( node )
+                return self
 
         node.tree = self
         node.__dbg__ = self.__dbg__
@@ -3212,7 +3269,7 @@ class LopperTree:
 
         return nodes
 
-    def exec_cmd( self, node, cmd, env = None, module_list=[] ):
+    def exec_cmd( self, node, cmd, env = None, module_list=[], module_load_paths=[] ):
         """Execute a (limited) code block against a node
 
         Execute a python clode block with the 'node' context set to the
@@ -3248,6 +3305,8 @@ class LopperTree:
                                        variables to the code block
             module_list (list,optional): list of assists to load before
                                          running the code block
+            module_load_paths (list,optional): additional load paths to use
+                                               when loading modules
 
         Returns:
             Return value from the execution of the code block
@@ -3274,8 +3333,6 @@ class LopperTree:
         safe_dict = dict([ (k, locals().get(k, None)) for k in safe_list ])
         safe_dict['len'] = len
         safe_dict['print'] = print
-        safe_dict['prop_get'] = Lopper.property_get
-        safe_dict['getphandle'] = Lopper.node_getphandle
         safe_dict['fdt'] = None
         safe_dict['verbose'] = self.__dbg__
         safe_dict['tree'] = self
@@ -3301,9 +3358,13 @@ class LopperTree:
                 safe_dict[e] = env[e]
 
         if module_list:
-            mod_load = "import importlib\n"
+            mod_load = "sys.path.append('./assists/')\n"
+            for m in module_load_paths:
+                mod_load += "sys.path.append('{}')\n".format( m )
+            mod_load += "import importlib\n"
         else:
             mod_load = ""
+
         for m in module_list:
             mod_load += "{} = importlib.import_module( '.{}', package='assists' )\n".format(m,m)
 
@@ -3466,7 +3527,7 @@ class LopperTree:
             if self.__dbg__ > 4:
                 print( "[DBG++++]: node: %s:%s [%s] parent: %s children: %s" % (n.name, n.number, n.phandle, n.parent, n.child_nodes))
 
-            if n.number == 0:
+            if n.number == 0 or n.abs_path == "/":
                 if self.start_tree_cb:
                     self.start_tree_cb( n )
 
@@ -3891,17 +3952,25 @@ class LopperTreePrinter( LopperTree ):
 
         indent = (p.node.depth * 8) + 8
         outstring = str( p )
-
-        if p.pclass == "comment":
-            # we have to substitute \n for better indentation, since comments
-            # are multiline
-            dstring = ""
-            dstring = dstring.rjust(len(dstring) + indent + 1, " " )
-            outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
+        only_align_comments = False
 
         if p.pclass == "preamble":
             # start tree peeked at this, so we do nothing
             outstring = ""
+        else:
+            # p.pclass == "comment"
+            # we have to substitute \n for better indentation, since comments
+            # are multiline
+
+            do_indent = True
+            if only_align_comments:
+                if p.pclass != "comment":
+                    do_indent = False
+
+            if do_indent:
+                dstring = ""
+                dstring = dstring.rjust(len(dstring) + indent + 1, " " )
+                outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
         if outstring:
             print(outstring.rjust(len(outstring)+indent," " ), file=self.output)
@@ -3920,6 +3989,3 @@ class LopperTreePrinter( LopperTree ):
 
         if self.output != sys.stdout:
             self.output.close()
-
-
-from lopper_fdt import *
