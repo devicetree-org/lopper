@@ -563,9 +563,20 @@ def parse_openamp_domain(sdt, options, tgt_node):
     # update channel for openamp group
     channel_idx += 1
 
-  print("openamp_app_inputs: ") 
+  lines = ""
   for i in openamp_app_inputs.keys():
-      print('  ', i, openamp_app_inputs[i])
+      lines += i.upper().replace('@','_') + "=\""
+
+      val = openamp_app_inputs[i]
+      if isinstance(val, int):
+          lines += hex(openamp_app_inputs[i])
+      else:
+          lines += openamp_app_inputs[i]
+
+      lines += "\"\n"
+
+  with open('openamp-channel-info.txt', 'w') as the_file:
+    the_file.write(lines)
 
   return True
 
