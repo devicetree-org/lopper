@@ -1,4 +1,5 @@
 KERNEL_FLAG = 'openamp-xlnx-kernel'
+HOST_FLAG = 'openamp-host'
 
 ipi_to_irq_vect_id = {
   0xff330000 : 62,
