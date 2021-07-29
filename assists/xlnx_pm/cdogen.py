@@ -42,8 +42,8 @@ def write_header(x, fp=None):
 
 
 def write_footer(x, fp=None):
-    print("marker", hex(0x65), '"{}"'.format(x.name.upper()), file=fp)
     cmt = "# {0} : Setup END".format(x.name.upper())
+    print("marker", hex(0x65), '"{}"'.format(x.name.upper()), file=fp)
     print(cmt, file=fp)
 
 
