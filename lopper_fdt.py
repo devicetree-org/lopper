@@ -158,7 +158,7 @@ class LopperFDT(lopper_base.lopper_base):
             try:
                 fdt.set_name( node_number, newname )
                 retval = True
-            except Exception as e:
+            except:
                 fdt.resize( fdt.totalsize() + 1024 )
                 continue
             else:
@@ -434,7 +434,6 @@ class LopperFDT(lopper_base.lopper_base):
                     for _ in range(MAX_RETRIES):
                         try:
                             p = p.lstrip( '/' )
-                            p = os.path.basename( p )
                             prev = fdt_dest.add_subnode( prev, p )
                         except Exception as e:
                             fdt_dest.resize( fdt_dest.totalsize() + 1024 )
@@ -604,10 +603,7 @@ class LopperFDT(lopper_base.lopper_base):
                 sys.exit(1)
 
         nname = node_in['__fdt_name__']
-        nflag = LopperFDT.node_setname( fdt, nn, nname )
-        if not nflag:
-            print( "[ERROR]: unable to set node %s name to: %s" % (nn,nname) )
-            sys.exit(1)
+        LopperFDT.node_setname( fdt, nn, nname )
 
         try:
             ph = node_in['__fdt_phandle__']
@@ -626,7 +622,7 @@ class LopperFDT(lopper_base.lopper_base):
             else:
                 props_to_delete.append( p.name )
 
-        for prop, prop_val in reversed(node_in.items()):
+        for prop, prop_val in node_in.items():
             if re.search( "^__", prop ) or prop.startswith( '/' ):
                 if verbose:
                     print( "          lopper_fdt: node sync: skipping internal property: %s" % prop)
@@ -738,7 +734,7 @@ class LopperFDT(lopper_base.lopper_base):
                 # list, so this isn't an error.
                 pass
 
-        for n_item in reversed(node_ordered_list):
+        for n_item in node_ordered_list:
             node_in = n_item[0]
             node_in_parent = n_item[1]
             node_path = node_in['__path__']
