@@ -426,25 +426,43 @@ class LopperFDT(lopper_base.lopper_base):
         Returns:
             int: The node offset of the created node, if successfull, otherwise -1
         """
-        prev = 0
-        for p in os.path.split( node_full_path ):
-            n = LopperFDT.node_find( fdt_dest, p )
-            if n < 0:
-                if create_parents:
-                    for _ in range(MAX_RETRIES):
-                        try:
-                            p = p.lstrip( '/' )
-                            p = os.path.basename( p )
-                            prev = fdt_dest.add_subnode( prev, p )
-                        except Exception as e:
-                            fdt_dest.resize( fdt_dest.totalsize() + 1024 )
-                            continue
-                        else:
-                            break
-            else:
-                prev = n
+        paths_to_check = [ node_full_path ]
+        n_path = node_full_path
 
-        return prev
+        # create an ascending list of parent path components to check for existence
+        while n_path != "/":
+            n_path = os.path.dirname(n_path)
+            paths_to_check.insert( 0, n_path )
+
+        # walk that list, create what is missing and use the node numbers as parent offsets
+        node_parent = 0
+        for p in paths_to_check:
+            node_number = LopperFDT.node_find( fdt_dest, p )
+            node_name = os.path.basename( p )
+            if node_number == -1:
+                # were we the last item in the paths to check ? if not, we have
+                # to check to see if the parent create flag was set .. if not, return
+                # -1 and exit. Otherwise, create all missing components
+                if p != paths_to_check[-1]:
+                    if not create_parents:
+                        if verbose:
+                            print( "[DBG]: LopperFDT: parent node %s doesn't exist, but create parents is not set, returning -1" % p )
+                        return -1
+
+                # add it
+                for _ in range(MAX_RETRIES):
+                    try:
+                        node_parent = fdt_dest.add_subnode( node_parent, node_name )
+                    except Exception as e:
+                        fdt_dest.resize( fdt_dest.totalsize() + 1024 )
+                        continue
+                    else:
+                        break
+            else:
+                # it exists
+                node_parent = node_number
+
+        return node_parent
 
     @staticmethod
     def node_properties( fdt, node_number_or_path ):
@@ -738,6 +756,17 @@ class LopperFDT(lopper_base.lopper_base):
                 # list, so this isn't an error.
                 pass
 
+        # add the nodes
+        for n in reversed(node_ordered_list):
+            nn = LopperFDT.node_find( fdt, n[0]['__path__'] )
+            if nn == -1:
+                new_number = LopperFDT.node_add( fdt, n[0]['__path__'], True, verbose )
+                if new_number == -1:
+                    print( "[ERROR]:    lopper_fdt: node %s could not be added, exiting" % n[0]['__path__'] )
+                    sys.exit(1)
+
+
+        # sync the properties
         for n_item in reversed(node_ordered_list):
             node_in = n_item[0]
             node_in_parent = n_item[1]
