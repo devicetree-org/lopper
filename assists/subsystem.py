@@ -318,7 +318,10 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
     # * memory = <address size address size ...>
     # */
     try:
-        mem = [subnode.props( prop_name )[0][0]]
+        mem = []
+        prop = subnode[prop_name]
+        for i in range(0,len(prop)):
+            mem.append( prop[i] )
 
         mem_list = []
         for m in mem:
