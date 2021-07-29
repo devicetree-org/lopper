@@ -62,25 +62,22 @@ def update_mbox_cntr_intr_parent(sdt):
 # 1 for master, 0 for slave
 # for each openamp channel, return mapping of role to resource group
 def determine_role(sdt, domain_node):
-  include_prop = domain_node["include"]
-  rsc_groups = []
-  current_rsc_group = None
-  if len(list(include_prop.value)) % 2 == 1:
-    print("list of include not valid. expected even number of elements. got ", len(list(include_prop.value)), include_prop.value)
-    return -1
-  for index,value in enumerate(include_prop.value):
-    if index % 2 == 0:
-      current_rsc_group = sdt.tree.pnode(value)
-    else:
-      if value == 1: # only for openamp master
-        if current_rsc_group == None:
-          print("invalid resource group phandle: ", value)
-          return -1
-        rsc_groups.append(current_rsc_group)
-      else:
-        print("only do processing in host openamp channel domain ", value)
-        return -1
-  return rsc_groups
+    rsc_groups = []
+    current_rsc_group = None
+
+    for value in domain_node.propval('include'):
+        current_rsc_group = sdt.tree.pnode(value)
+        if domain_node.propval(HOST_FLAG) != ['']: # only for openamp master
+            if current_rsc_group == None:
+                print("invalid resource group phandle: ", value)
+                return -1
+            rsc_groups.append(current_rsc_group)
+        else:
+            print("only do processing in host openamp channel domain ", value)
+            return -1
+
+    return rsc_groups
+
 
 # in this case remote is rpu
 # find node that is other end of openamp channel
@@ -135,19 +132,20 @@ def construct_carveouts(sdt, rsc_group_node, core, openamp_app_inputs):
     2 : "vdev0vring1",
     3 : "vdev0buffer",
   }
-  for index,value in enumerate(rsc_group_node["memory"].value):
-    if index % 4 == 1:
-      mem_regions[index//4][0] = value
-    elif index % 4 == 3:
-       mem_regions[index//4][1] = value
   carveout_phandle_list = []
 
-  for i in range(4):
-    name = "rpu"+str(core)+mem_region_names[i]
-    addr = mem_regions[i][0]
-    openamp_app_inputs[rsc_group_node.name + mem_region_names[i] + '_base'] = hex(mem_regions[i][0])
-    length = mem_regions[i][1]
-    openamp_app_inputs[rsc_group_node.name + mem_region_names[i] + '_size'] = hex(mem_regions[i][1])
+  for index,value in enumerate(rsc_group_node["memory"].value):
+    if index % 2 == 1:
+      continue
+
+    region_name = mem_region_names[index/2]
+
+    name = "rpu"+str(core)+region_name
+    addr = value
+    length = rsc_group_node["memory"].value[index + 1]
+
+    openamp_app_inputs[rsc_group_node.name + region_name + '_base'] = hex(value)
+    openamp_app_inputs[rsc_group_node.name + region_name + '_size'] = hex(length)
 
     new_node = LopperNode(-1, "/reserved-memory/"+name)
     new_node + LopperProp(name="no-map", value=[])
@@ -495,7 +493,18 @@ def setup_userspace_nodes(sdt, domain_node, current_rsc_group, remote_domain, op
 
     userspace_host_ipi_node = LopperNode(-1, "/amba/ipi@0")
     userspace_host_ipi_node + LopperProp(name="compatible",value="none")
-    userspace_host_ipi_node + LopperProp(name="interrupts",value=[0,33,4])
+
+    # construct host ipi interrupts property
+    access_pval = domain_node.propval("access")
+    if len(access_pval) == 0:
+        print("invalid "+role+" IPI - no access property")
+        return False
+    ipi_node = sdt.tree.pnode(access_pval[0])
+    if validate_ipi_node(ipi_node) != True:
+        return False
+    host_ipi_interrupts_val = ipi_node.propval('interrupts')
+
+    userspace_host_ipi_node + LopperProp(name="interrupts",value=host_ipi_interrupts_val)
     userspace_host_ipi_node + LopperProp(name="interrupt-parent",value=[sdt.tree["/amba_apu/interrupt-controller@f9000000"].phandle])
     userspace_host_ipi_node + LopperProp(name="phandle",value=sdt.tree.phandle_gen())
     userspace_host_ipi_node + LopperProp(name="reg",value=[0x0, host_ipi , 0x0,  0x1000])
@@ -623,10 +632,8 @@ def xlnx_openamp_rpu( tgt_node, sdt, options ):
 
         for node in domains_node.subnodes():
             if "openamp,domain-v1" in node.propval("compatible"):
-                include_pval = node.propval("include")
-                if len(include_pval) % 2 == 0 and len(include_pval) > 1:
-                    if include_pval[1] == 0x1: # host
-                        return parse_openamp_domain(sdt, options, node)
+                if node.propval( HOST_FLAG ) != ['']:
+                    return parse_openamp_domain(sdt, options, node)
     except:
         print("ERR: openamp-xlnx rpu: no domains found")
 
