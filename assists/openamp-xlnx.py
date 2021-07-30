@@ -33,18 +33,6 @@ from openamp_xlnx_common import *
 
 RPU_PATH = "/rpu@ff9a0000"
 
-def trim_ipis(sdt):
-    unneeded_props = ["compatible", "xlnx,ipi-bitmask","interrupts", "xlnx,ipi-id", "xlnx,ipi-target-count",  "xlnx,cpu-name", "xlnx,buffer-base", "xlnx,buffer-index", "xlnx,int-id", "xlnx,bit-position"]
-
-    amba_sub_nodes = sdt.tree['/amba'].subnodes()
-    for node in amba_sub_nodes:
-      node_compat = node.propval("compatible")
-      if node_compat != [""]:
-       if 'xlnx,zynqmp-ipi-mailbox' in node_compat:
-         for i in unneeded_props:
-           node[i].value = ""
-         node.sync(sdt.FDT)
-
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,xlnx-rpu", compat_string_to_test):
         return xlnx_openamp_rpu
@@ -403,7 +391,7 @@ def parse_ipi_info(sdt, domain_node, remote_domain, current_rsc_group, openamp_a
         openamp_app_inputs[prefix+'ipi-irq-vect-id'] = ipi_to_irq_vect_id[ipi_base_addr]
 
 
-def construct_mbox_ctr(sdt, openamp_app_inputs):
+def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain):
     controller_parent = None
     try:
         controller_parent = sdt.tree["/zynqmp_ipi1"]
@@ -435,10 +423,17 @@ def construct_mbox_ctr(sdt, openamp_app_inputs):
             controller_node = LopperNode(-1, "/zynqmp_ipi1/controller" + str(controller_idx))
             controller_node + LopperProp(name="reg-names",value=["local_request_region", "local_response_region", "remote_request_region", "remote_response_region"])
             controller_node + LopperProp(name="#mbox-cells",value=1)
-            controller_node + LopperProp(name="xlnx,ipi-id",value=3)
-            for key in openamp_app_inputs.keys():
-                if 'remote' in key and 'ipi' in key:
-                    print('2: ',key)
+
+            # construct host mbox ctr xlnx,ipi-id from remote's ipi
+            access_pval = remote_domain.propval("access")
+            if len(access_pval) == 0:
+                print("invalid remote IPI - no access property")
+                return False
+            ipi_node = sdt.tree.pnode(access_pval[0])
+            if validate_ipi_node(ipi_node) != True:
+                return False
+            remote_ipi_id_val = ipi_node.propval('xlnx,ipi-id')
+            controller_node + LopperProp(name="xlnx,ipi-id",value=remote_ipi_id_val[0])
 
             remote_ipi = int(openamp_app_inputs[group.name+'-'+'remote'+'-ipi'], 16)
             host_ipi   = int(openamp_app_inputs[group.name+'-'+  'host'+'-ipi'], 16)
@@ -560,7 +555,7 @@ def parse_openamp_domain(sdt, options, tgt_node):
     openamp_app_inputs[current_rsc_group.name] = channel_idx
 
     if kernelcase:
-        construct_mbox_ctr(sdt, openamp_app_inputs)
+        construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain)
         mbox_ctr = sdt.tree["/zynqmp_ipi1/controller"+str(channel_idx)]
         construct_remoteproc_node(remote_domain, current_rsc_group, sdt, domain_node,  platform, mbox_ctr, openamp_app_inputs)
         openamp_app_inputs[current_rsc_group.name+'-tx'] = 'FW_RSC_U32_ADDR_ANY'
