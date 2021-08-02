@@ -7,8 +7,6 @@
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
 
-import xppu
-import cdogen
 from lopper import Lopper
 import lopper
 from lopper_tree import *
@@ -16,6 +14,14 @@ from xlnx_versal_power import xlnx_pm_devid_to_name, xlnx_pm_devname_to_id
 
 sys.path.append(os.path.dirname(__file__))
 
+import xppu
+import cdogen
+import ftb
+
+# Skip from FTB (TODO: Fix this in SDT in long term)
+SKIP_MODULES = [
+    "versal_cips_0_pspmc_0_psv_r5_tcm_ram_global", "psv_r5_tcm@ffe00000"
+]
 
 class XppuNode:
     def __init__(self, name, node, compat):
@@ -34,12 +40,88 @@ class ModuleNode:
     def __init__(self, name, node):
         self.name = name
         self.node = node
+        self.address = -1
+        self.size = -1
         self.pm = set()  # xilpm label(s)
+        self.ftb_entries = {}  # { subsystem_id : FirewallTableEntry instance }
 
     def __str__(self):
-        return "Module: {0:25} {1}".format(
-            self.node.label, self.pm if bool(self.pm) is True else "{}"
-        )
+        printstr = "Module: {0:25} {1}".format(
+            self.node.label, self.pm if bool(self.pm) is True else "{}")
+        for subsys in self.ftb_entries:
+            for each_entry in self.ftb_entries[subsys]:
+                printstr += "\n- {} : ".format(
+                    hex(subsys)) + each_entry.__str__()
+        return printstr
+
+    def print_entry(self, fp=None):
+        print("# {0}: {1}".format(self.node.label, self.name),
+              end='', file=fp)
+
+        if bool(self.pm) is True:
+            print(" ({0})"
+                  .format(" ".join(tag.lower() for tag in sorted(self.pm))),
+                  file=fp)
+        else:
+            print("", file=fp)
+
+        for subsys in self.ftb_entries:
+            for entry in self.ftb_entries[subsys]:
+                entry.print_entry(fp)
+
+    def get_base_and_size(self):
+        if self.address != -1 and self.size != -1:
+            return self.address, self.size
+
+        addr = self.node.propval("reg")
+        # print("[DBG++++]", self.name, self.node.label, addr)
+
+        if addr != [""]:
+            if len(addr) % 4 == 0:
+                self.address = (addr[0] << 32) | (addr[1])
+                self.size = (addr[2] << 32) | (addr[3])
+            elif len(addr) % 2 == 0:
+                self.address = addr[0]
+                self.size = addr[1]
+            else:
+                print(
+                    "[WARNING++++] FIXME:: len(addr) is not 2 or 4",
+                    self.name,
+                    self.node.label,
+                    addr,
+                )
+
+        return self.address, self.size
+
+    def add_ftb_entry(
+            self,
+            subsystem_id: int,
+            module_name: str,
+            base_addr: int,
+            size: int,
+            rw: int,
+            tz: int,
+            priority: int,
+            mid_list: [[ftb.MidEntry]],  # [ MidEntry(name, smid, mask), ...]
+            pm_name=''):
+        # add subsystem's entry for this module if missing
+        if subsystem_id not in self.ftb_entries:
+            self.ftb_entries[subsystem_id] = []
+
+        if priority == 0:
+            priority = 10  # "0" is highest priority from subsystem plugin
+
+        ftb_entry = ftb.FirewallTableEntry(subsystem_id,
+                                           base_addr,
+                                           size,
+                                           rw,
+                                           tz,
+                                           mid_list,
+                                           module_name,
+                                           pm_tag=pm_name,
+                                           priority=priority)
+
+        self.ftb_entries[subsystem_id].append(ftb_entry)
 
 
 class BusMid:
@@ -85,6 +167,34 @@ class FirewallToModuleMap:
                 self.pm_label_to_mod_map[pm_name] = set()
             self.pm_label_to_mod_map[pm_name].add(mod_name)
             self.modules[mod_name].pm.add(pm_name)
+
+    def add_module_ftb_entry(
+            self,
+            subsystem_id: int,
+            module_name: str,
+            base_addr: int,
+            size: int,
+            rw: int,
+            tz: int,
+            priority: int,
+            mid_list: [[ftb.MidEntry]],  # [ MidEntry(name, smid, mask), ...]
+            pm_name=''):
+        if module_name not in self.modules:
+            print("[ERROR] Missing module {} from prot_map"
+                  .format(module_name))
+            return
+        if module_name in SKIP_MODULES:
+            return
+        # add entry
+        self.modules[module_name].add_ftb_entry(subsystem_id,
+                                                module_name,
+                                                base_addr,
+                                                size,
+                                                rw,
+                                                tz,
+                                                priority,
+                                                mid_list,
+                                                pm_name=pm_name)
 
     def add_bus_mid(self, name, node, parents):
         """parents -> tuple of (<firewall-name, smid>)"""
@@ -140,11 +250,26 @@ class FirewallToModuleMap:
     def print_ss_to_bus_mids_map(self):
         for ss, bus_mid_nodes in self.ss_or_dom.items():
             mid_list = [(n[0], hex(n[1])) for n in bus_mid_nodes[1]]
-            print(
-                "[DBG++] {} -> {} [Mask: {}]".format(
-                    ss, mid_list, hex(self.derive_ss_mask(ss))
-                )
-            )
+            print("[DBG++] {} -> {} [Mask: {}]".format(
+                ss, mid_list, hex(self.derive_ss_mask(ss))))
+
+    def print_mod_ftb_map(self):
+        for module in self.modules:
+            print("[DBG++]", self.modules[module])
+
+    def write_ftb(self, fp=None):
+        # write out ppu entries first
+        for ppu in self.ppus:
+            if ppu in self.modules:
+                self.modules[ppu].print_entry(fp)
+        # write out all other entries
+        for module in self.modules:
+            if module not in self.ppus:
+                if module in SKIP_MODULES:
+                    # print("[DBG++] Skipping from firewall-table:", module)
+                    pass
+                else:
+                    self.modules[module].print_entry(fp)
 
 
 # Global PPU <-> Peripherals Map
@@ -154,7 +279,7 @@ prot_map = FirewallToModuleMap()
 def chunks(list_of_elements, num):
     """Yield successive num-sized chunks from input list"""
     for i in range(0, len(list_of_elements), num):
-        yield list_of_elements[i : i + num]
+        yield list_of_elements[i:i + num]
 
 
 def setup_firewall_nodes(root_tree):
@@ -219,18 +344,22 @@ def setup_dom_to_bus_mids(sub_or_dom_node, sdt):
 
     # cpu smid map
     cpu_map = {
-        "a72": {0x1: 0x260, 0x2: 0x261},
-        "r5": {0x1: 0x200, 0x2: 0x204},
+        "a72": {
+            0x1: 0x260,
+            0x2: 0x261
+        },
+        "r5": {
+            0x1: 0x200,
+            0x2: 0x204
+        },
     }
 
     for substr in cpu_map:
         if substr in cpu_node.name:
             if cpu_node.name not in prot_map.bus_mids:
                 print(
-                    "[WARNING] Node {} is missing from prot map bus master IDs".format(
-                        cpu_node.name
-                    )
-                )
+                    "[WARNING] Node {} is missing from prot map bus master IDs"
+                    .format(cpu_node.name))
                 return None
             # check for cores, add appropriately
             if (mask & 0x1) in cpu_map[substr]:
@@ -247,17 +376,113 @@ def setup_dom_to_bus_mids(sub_or_dom_node, sdt):
                 )
 
 
+def setup_dev_ftb_entry(
+        subsystem_id: int, pm_name: str, rw: int, tz: int,
+        mid_list: list):  # allowed: [(dom/ss name, priority),..]
+    """create an ftb entry for given device with a linked subsystem"""
+    mod_tags = ""
+    mod_tag = ""
+    mod_node = None
+    bus_mids = {}  # { priority: [ MidEntry(name, smid, mask), ...] }
+
+    if mid_list == [""]:
+        return
+
+    try:
+        mod_tags = prot_map.pm_label_to_mod_map[pm_name]
+        # print(mod_tags, len(mod_tags))
+    except:
+        print(
+            "[ERROR] FIXME:: Invalid or missing PM Node {}".format(pm_name))
+        return
+
+    mod_tags_list = list(mod_tags)
+
+    if len(mod_tags_list) == 1:
+        mod_tag = mod_tags_list[0]
+    elif len(mod_tags_list) == 2:
+        print("[DBG++] Warning: found more than one nodes with same addresses:",
+              mod_tags_list)
+        # pick the first one
+        for tag in mod_tags_list:
+            if tag not in SKIP_MODULES:
+                mod_tag = tag
+
+    try:
+        mod_node = prot_map.modules[mod_tag]
+        # print(mod_node.name)
+    except:
+        print("[ERROR] Invalid or missing Module {}".format(mod_node))
+        return
+
+    # get module base address and size
+    base_addr, size = mod_node.get_base_and_size()
+
+    for dom_or_ss_name, priority in mid_list:
+        # list of bus mids per domain or ss node
+        bus_mids[priority] = []
+        # print("[DBG++++]", prot_map.ss_or_dom[dom_or_ss_name])
+        for bus_mid_name, smid in prot_map.ss_or_dom[dom_or_ss_name][1]:
+            bus_mids[priority].append(
+                ftb.MidEntry(smid, 0x3FF, name=bus_mid_name))
+
+    print(
+        "[DBG++++]",
+        hex(subsystem_id),
+        hex(base_addr),
+        hex(size),
+        rw,
+        tz,
+        mod_tags_list,
+        mod_node.name,
+        bus_mids,
+    )
+
+    # entry for each priority in bus_mids
+    # { priority: [ MidEntry(name, smid, mask), ...] }
+    for priority in bus_mids:
+        prot_map.add_module_ftb_entry(
+            subsystem_id,
+            mod_node.name,
+            base_addr,
+            size,
+            rw,
+            tz,
+            priority,
+            bus_mids[priority],  # [ MidEntry(name, smid, mask), ...]
+            pm_name=pm_name,
+        )
+
+
+def setup_default_ftb_entries():
+    mid_list = [
+        ftb.MidEntry(xppu.MIDL[mid][0], xppu.MIDL[mid][1], name=mid)
+        for mid in xppu.DEF_MASTERS
+    ]
+
+    for module in prot_map.modules:
+        base_addr, size = prot_map.modules[module].get_base_and_size()
+        if module in prot_map.ppus:
+            size = "*"
+        prot_map.add_module_ftb_entry(
+            0x1c000000,  # PLM Subsystem ID
+            module,
+            base_addr,
+            size,
+            1,  # RW
+            1,  # TZ (Non-secure)
+            10,  # Highest priority
+            mid_list)
+
+
 def write_cdo(filep, verbose):
     with open(filep, "a") as fp:
         for ppu_name, ppu_obj in prot_map.ppus.items():
             xppu_instance = ppu_obj.hw_instance
             xppu_label = ppu_obj.node.label
             if verbose > 1:
-                print(
-                    "[INFO]: Generating configuration for {0} XPPU ({1})".format(
-                        xppu_label, filep
-                    )
-                )
+                print("[INFO]: Generating configuration for {0} XPPU ({1})".
+                      format(xppu_label, filep))
             if xppu_instance is not None:
                 cdogen.write_xppu(xppu_instance, fp)
 
