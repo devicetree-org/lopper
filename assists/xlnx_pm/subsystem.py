@@ -84,7 +84,7 @@ def find_cpu_ids(node, sdt):
     # XilPM Node IDs for the core node
     cpu_phandle = node.propval("cpus")[0]
     cpu_mask = node.propval("cpus")[1]
-    dev_str = "dev_"
+    dev_str = "PM_DEV_"
     cpu_xilpm_ids = []
 
     cpu_node = sdt.tree.pnode(cpu_phandle)
@@ -93,21 +93,27 @@ def find_cpu_ids(node, sdt):
 
     # based on cpu arg cpumask we can determine which cores are used
     if "a72" in cpu_node.name:
-        dev_str += "acpu"
-        cpu_xilpm_ids.append(existing_devices["dev_ams_root"])
-        cpu_xilpm_ids.append(existing_devices["dev_l2_bank_0"])
-        cpu_xilpm_ids.append(existing_devices["dev_aie"])
+        dev_str += "ACPU"
+        cpu_xilpm_ids.append(xlnx_pm_devname_to_id["PM_DEV_AMS_ROOT"])
+        cpu_xilpm_ids.append(xlnx_pm_devname_to_id["PM_DEV_L2_BANK_0"])
+        cpu_xilpm_ids.append(xlnx_pm_devname_to_id["PM_DEV_AIE"])
 
     elif "r5" in cpu_node.name:
-        dev_str += "rpu0"
+        dev_str += "RPU0"
     else:
         # for now only a72 or r5 are cores described in Xilinx subsystems
         return cpu_xilpm_ids
 
     if cpu_mask & 0x1:
-        cpu_xilpm_ids.append(existing_devices[dev_str + "_0"])
+        dev_name = dev_str + "_0"
+        xilpm_id = xlnx_pm_devname_to_id[dev_name]
+        cpu_xilpm_ids.append(xilpm_id)
+        protections.prot_map.add_module_node_id(dev_name, cpu_node.name)
     if cpu_mask & 0x2:
-        cpu_xilpm_ids.append(existing_devices[dev_str + "_1"])
+        dev_name = dev_str + "_1"
+        xilpm_id = xlnx_pm_devname_to_id[dev_name]
+        cpu_xilpm_ids.append(xilpm_id)
+        protections.prot_map.add_module_node_id(dev_name, cpu_node.name)
 
     return cpu_xilpm_ids
 
@@ -136,7 +142,7 @@ def find_mem_ids(node, sdt, fw_config={}):
     mem_xilpm_ids = []
     if node.propval("memory") != [""]:
         xilpm_id = mem_xilpm_ids.append(
-            (existing_devices["dev_ddr_0"], flags, fw_config)
+            (xlnx_pm_devname_to_id["PM_DEV_DDR_0"], flags, fw_config)
         )
 
     return mem_xilpm_ids
@@ -147,49 +153,75 @@ def find_sram_ids(node, sdt, fw_config={}):
     sram_end = node.propval("sram")[1] + sram_base
     mem_xilpm_ids = []
     id_with_flags = []
+    amba_tree = None
     flags = prelim_flag_processing(node, "sram")
 
     ocm_len = 0xFFFFF
     if 0xFFFC0000 <= sram_base <= 0xFFFFFFFF:
         # OCM
         if sram_base <= 0xFFFC0000 + ocm_len:
-            mem_xilpm_ids.append("dev_ocm_bank_0")
+            mem_xilpm_ids.append("PM_DEV_OCM_0")
         if sram_base < 0xFFFDFFFF and sram_end > 0xFFFD0000:
-            mem_xilpm_ids.append("dev_ocm_bank_1")
+            mem_xilpm_ids.append("PM_DEV_OCM_1")
         if sram_base < 0xFFFEFFFF and sram_end > 0xFFFE0000:
-            mem_xilpm_ids.append("dev_ocm_bank_2")
+            mem_xilpm_ids.append("PM_DEV_OCM_2")
         if sram_base < 0xFFFFFFFF and sram_end > 0xFFFF0000:
-            mem_xilpm_ids.append("dev_ocm_bank_3")
+            mem_xilpm_ids.append("PM_DEV_OCM_3")
     elif 0xFFE00000 <= sram_base <= 0xFFEBFFFF:
         # TCM
         if sram_base < 0xFFE1FFFF:
-            mem_xilpm_ids.append("dev_tcm_0_a")
+            mem_xilpm_ids.append("PM_DEV_TCM_0_A")
         if sram_base <= 0xFFE2FFFF and sram_end > 0xFFE20000:
-            mem_xilpm_ids.append("dev_tcm_0_b")
+            mem_xilpm_ids.append("PM_DEV_TCM_0_B")
         if sram_base <= 0xFFE9FFFF and sram_end > 0xFFE90000:
-            mem_xilpm_ids.append("dev_tcm_1_a")
+            mem_xilpm_ids.append("PM_DEV_TCM_1_A")
         if sram_base <= 0xFFEBFFFF and sram_end > 0xFFEB0000:
-            mem_xilpm_ids.append("dev_tcm_1_b")
+            mem_xilpm_ids.append("PM_DEV_TCM_1_B")
 
     for i in mem_xilpm_ids:
-        id_with_flags.append((existing_devices[i], flags, fw_config))
+        id_with_flags.append((xlnx_pm_devname_to_id[i], flags, fw_config))
+
+    try:
+        amba_tree = sdt.tree["/amba"]
+    except:
+        amba_tree = None
+
+    mem_nodes = {}
+    for _, mem_base in xlnx_pm_mem_node_to_base.items():
+        mem_nodes[mem_base] = set()
+
+    # filter mem nodes with matching base addresses and firewall-0 links
+    for n in amba_tree.subnodes():
+        addr = n.propval("reg")
+        if addr != [""] and len(addr) % 4 == 0:
+            baddr = (addr[0] << 32) | (addr[1])
+            size = (addr[2] << 32) | (addr[3])
+            if baddr in mem_nodes and n.propval("firewall-0") != [""]:
+                mem_nodes[baddr].add(n.name)
+
+    # setup pm mem node to sdt node map
+    for pm_label in mem_xilpm_ids:
+        mem_base = xlnx_pm_mem_node_to_base[pm_label]
+        if mem_base in mem_nodes:
+            for sdt_node in mem_nodes[mem_base]:
+                protections.prot_map.add_module_node_id(pm_label, sdt_node)
 
     return id_with_flags
 
 
 def xilpm_id_from_devnode(subnode):
     power_domains = subnode.propval("power-domains")
-    if power_domains != [""] and power_domains[1] in xilinx_versal_device_names.keys():
+    if power_domains != [""] and power_domains[1] in xlnx_pm_devid_to_name.keys():
         return power_domains[1]
     elif subnode.name in misc_devices:
         if misc_devices[subnode.name] is not None:
-            mailbox_xilpm_id = existing_devices[misc_devices[subnode.name]]
+            mailbox_xilpm_id = xlnx_pm_devname_to_id[misc_devices[subnode.name]]
             if mailbox_xilpm_id is not None:
                 return mailbox_xilpm_id
     return -1
 
 
-def process_acccess(subnode, sdt, options, fw_config={}):
+def process_access(subnode, sdt, options, fw_config={}):
     # return list of node ids and corresponding flags
     access_list = []
     access_flag_names = subnode.propval("access-flags-names")
@@ -212,7 +244,7 @@ def process_acccess(subnode, sdt, options, fw_config={}):
         dev_node = sdt.tree.pnode(phandle)
         if dev_node is None:
             print(
-                "WARNING: acccess list device phandle does not have matching device in tree: ",
+                "WARNING: access list device phandle does not have matching device in tree: ",
                 hex(phandle),
                 " for node: ",
                 subnode,
@@ -227,6 +259,11 @@ def process_acccess(subnode, sdt, options, fw_config={}):
         access_list.append(
             (xilpm_id, access_flag_names[index] + f + "::access", fw_config)
         )
+
+        protections.prot_map.add_module_node_id(
+            devid_to_devname(xilpm_id), dev_node.name
+        )
+
     return access_list
 
 
@@ -242,7 +279,7 @@ def document_requirement(output, subsystem, device):
     print("#    ID: " + hex(cdo_sub_id), file=output)
     print("#", file=output)
     print("# node:", file=output)
-    print("#    name: " + xilinx_versal_device_names[device.node_id], file=output)
+    print("#    name: " + xlnx_pm_devid_to_name[device.node_id], file=output)
     print("#    ID: " + hex(device.node_id), file=output)
     print("#", file=output)
     arg_names = {
@@ -271,10 +308,16 @@ def document_requirement(output, subsystem, device):
 
 def devid_to_devname(devid):
     try:
-        name = xilinx_versal_device_names[devid]
+        name = xlnx_pm_devid_to_name[devid]
     except:
         name = ""
     return name
+
+
+def print_dev_flags(flags, verbose):
+    if verbose > 0:
+        for nid, f, fw in flags:
+            print("[DBG++]", devid_to_devname(nid), "[", hex(nid), "]", f, fw)
 
 
 def get_dev_firewall_config(node, sdt, options, included=False, parent=None):
@@ -389,8 +432,25 @@ def is_domain_or_subsys(node):
     return False
 
 
+def print_subsystem(subsystem, verbose):
+    if verbose > 0:
+        print("[DBG++]", subsystem.sub_node.name, ":")
+        for k, v in subsystem.dev_dict.items():
+            print(
+                "[DBG++]\t",
+                "{} :".format(hex(k)),
+                devid_to_devname(k),
+                hex(k),
+                "+".join(n.name for n in v.nodes),
+                "=".join(n.label for n in v.nodes),
+                hex(v.node_id),
+                " ".join(n for n in v.flags),
+                v.firewall,
+            )
+
+
 def process_subsystem(
-    subsystem, subsystem_node, sdt, options, included=False, included_from=None
+    subsystem, subsystem_node, sdt, options, verbose, included=False, included_from=None
 ):
     # given a device tree node
     # traverse for devices that are either implicitly
@@ -428,12 +488,14 @@ def process_subsystem(
             for xilpm_id in find_cpu_ids(node, sdt):
                 device_flags.append((xilpm_id, f, fw_links))
 
+        # print_dev_flags(device_flags, verbose)
+
         if node.propval("memory") != [""]:
             device_flags.extend(find_mem_ids(node, sdt, fw_links))
         if node.propval("sram") != [""]:
             device_flags.extend(find_sram_ids(node, sdt, fw_links))
         if node.propval("access") != [""]:
-            device_flags.extend(process_acccess(node, sdt, options, fw_links))
+            device_flags.extend(process_access(node, sdt, options, fw_links))
 
         if node.propval("include") != [""]:
             for included_phandle in node.propval("include"):
@@ -451,6 +513,7 @@ def process_subsystem(
                         included_node,
                         sdt,
                         options,
+                        verbose,
                         included=True,
                         included_from=node,
                     )
@@ -540,6 +603,8 @@ def set_dev_pm_reqs(sub, device, usage):
 
     device.pm_reqs[0] |= usage
     device.pm_reqs[1] = get_aperture_mask(device)
+
+    # print("[DBG++]", hex(device.node_id), devid_to_devname(device.node_id))
 
 
 def construct_pm_reqs(subsystems):
@@ -717,19 +782,16 @@ def write_to_cdo(subsystems, outfile, verbose):
             cdo_sub_str, cdo_sub_id = get_sub_id_and_str(sub.sub_node)
             # add reqs
             for device in sub.dev_dict.values():
-                if device.node_id not in xilinx_versal_device_names.keys():
+                if device.node_id not in xlnx_pm_devid_to_name.keys():
                     print(
                         "WARNING: ",
                         hex(device.node_id),
-                        " not found in xilinx_versal_device_names",
+                        " not found in xlnx_pm_devid_to_name",
                     )
                     return
 
                 req_description = (
-                    "# "
-                    + cdo_sub_str
-                    + " "
-                    + xilinx_versal_device_names[device.node_id]
+                    "# " + cdo_sub_str + " " + xlnx_pm_devid_to_name[device.node_id]
                 )
 
                 # form CDO flags in string for python
@@ -755,11 +817,14 @@ def generate_cdo(root_node, domain_node, sdt, outfile, verbose, options):
     for sub in subsystems:
         # collect device tree flags, nodes, xilpm IDs for each device linked to
         # a subsystem
-        process_subsystem(sub, sub.sub_node, sdt, options)
+        process_subsystem(sub, sub.sub_node, sdt, options, verbose)
+        print_subsystem(sub, verbose)
         construct_flag_references(sub)
 
     # prot:: setup prot to bus mids map
     # protections.prot_map.print_ss_to_bus_mids_map()
+    if verbose > 0:
+        protections.prot_map.print_firewall_to_module_map()
 
     # generate xilpm reqs for each device
     construct_pm_reqs(subsystems)
@@ -769,3 +834,6 @@ def generate_cdo(root_node, domain_node, sdt, outfile, verbose, options):
 
     # prot:: write protection output
     protections.write_cdo(outfile, verbose)
+
+    # for k, v in xlnx_pm_devname_to_id.items():
+    #    print("    {}:".format(hex(v)), "'{}'".format(k))

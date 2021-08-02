@@ -12,21 +12,34 @@ import cdogen
 from lopper import Lopper
 import lopper
 from lopper_tree import *
+from xlnx_versal_power import xlnx_pm_devid_to_name, xlnx_pm_devname_to_id
 
 sys.path.append(os.path.dirname(__file__))
 
 
 class XppuNode:
-    def __init__(self, name, node):
+    def __init__(self, name, node, compat):
         self.name = name
         self.node = node
-        self.hw_instance = xppu.init_xppu(node.label)
+        self.compat = compat
+        if "xlnx,xppu" in self.compat:
+            self.hw_instance = xppu.init_xppu(node.label)
+        elif "xlnx,xmpu" in compat:
+            self.hw_instance = None
+        else:
+            print("[ERROR] Invalid protection node {}".format(name))
 
 
 class ModuleNode:
     def __init__(self, name, node):
         self.name = name
         self.node = node
+        self.pm = set()  # xilpm label(s)
+
+    def __str__(self):
+        return "Module: {0:25} {1}".format(
+            self.node.label, self.pm if bool(self.pm) is True else "{}"
+        )
 
 
 class BusMid:
@@ -44,10 +57,11 @@ class FirewallToModuleMap:
         self.ppu_to_mod_map = {}
         self.mod_to_ppu_map = {}
         self.ppu_to_mid_map = {}
+        self.pm_label_to_mod_map = {}
 
-    def add_xppu(self, name, node):
+    def add_xppu(self, name, node, compat):
         if name not in self.ppus:
-            self.ppus[name] = XppuNode(name, node)
+            self.ppus[name] = XppuNode(name, node, compat)
             self.ppu_to_mid_map[name] = []
             self.ppu_to_mod_map[name] = []
         else:
@@ -62,6 +76,15 @@ class FirewallToModuleMap:
             self.mod_to_ppu_map[name].append(parent)
         else:
             print("[WARNING] Trying to add {} instance again".format(name))
+
+    def add_module_node_id(self, pm_name, mod_name):
+        if mod_name not in self.modules:
+            print("[WARNING] Missing node {} from modules".format(mod_name))
+        else:
+            if pm_name not in self.pm_label_to_mod_map:
+                self.pm_label_to_mod_map[pm_name] = set()
+            self.pm_label_to_mod_map[pm_name].add(mod_name)
+            self.modules[mod_name].pm.add(pm_name)
 
     def add_bus_mid(self, name, node, parents):
         """parents -> tuple of (<firewall-name, smid>)"""
@@ -99,26 +122,28 @@ class FirewallToModuleMap:
 
     def print_firewall_to_module_map(self):
         for firewall in self.ppu_to_mod_map:
-            print("{}:".format(firewall))
+            print("[DBG++] {}:".format(firewall))
             for module in self.ppu_to_mod_map[firewall]:
-                print("\t{}".format(module))
+                print("[DBG++] \t{0:40}".format(module), self.modules[module])
         for firewall in self.ppu_to_mid_map:
-            print("{}:".format(firewall))
+            print("[DBG++] {}:".format(firewall))
             for mid in self.ppu_to_mid_map[firewall]:
-                print("\t({}, {})".format(mid[0], hex(mid[1])))
-        print("bus_mids:")
+                print("[DBG++] \t({}, {})".format(mid[0], hex(mid[1])))
+        print("[DBG++] bus_mids:")
         for mid_names in self.bus_mids:
-            print("\t{}".format(mid_names))
+            print("[DBG++] \t{}".format(mid_names))
 
     def print_module_to_firewall_map(self):
         for module, firewalls in self.mod_to_ppu_map.items():
-            print("{} -> {}".format(module, firewalls))
+            print("[DBG++] {} -> {}".format(module, firewalls))
 
     def print_ss_to_bus_mids_map(self):
         for ss, bus_mid_nodes in self.ss_or_dom.items():
             mid_list = [(n[0], hex(n[1])) for n in bus_mid_nodes[1]]
             print(
-                "{} -> {} [Mask: {}]".format(ss, mid_list, hex(self.derive_ss_mask(ss)))
+                "[DBG++] {} -> {} [Mask: {}]".format(
+                    ss, mid_list, hex(self.derive_ss_mask(ss))
+                )
             )
 
 
@@ -135,9 +160,12 @@ def chunks(list_of_elements, num):
 def setup_firewall_nodes(root_tree):
     for node in root_tree.subnodes():
         # A firewall controller
-        if "xlnx,xppu" in node.propval("compatible"):
+        compat = node.propval("compatible")
+        if "xlnx,xppu" in compat:
             # print(node.name, node.__props__)
-            prot_map.add_xppu(node.name, node)
+            prot_map.add_xppu(node.name, node, "xlnx,xppu")
+        elif "xlnx,xmpu" in compat:
+            prot_map.add_xppu(node.name, node, "xlnx,xmpu")
 
 
 def setup_module_nodes(root_tree):
@@ -148,6 +176,24 @@ def setup_module_nodes(root_tree):
                 firewall = root_tree.tree.pnode(parent)
                 # print(node.name, ":", node.abs_path, firewall.name)
                 prot_map.add_module(node.name, node, firewall.name)
+
+
+def setup_module_node_ids_if_present(root_tree):
+    for node in root_tree.subnodes():
+        # A module to pm id mapping
+        pd = node.propval("power-domains")
+        if pd != [""]:
+            # print("[DBG++] >>>>> {}".format(node.abs_path))
+            pm_name = None
+            try:
+                pm_name = xlnx_pm_devid_to_name[pd[1]]
+            except:
+                pm_name = ""
+
+            if pm_name != "":
+                prot_map.add_module_node_id(pm_name, node.name)
+            else:
+                print("[WARNING] Invalid or missing PM Node {}".format(pd[1]))
 
 
 def setup_mid_nodes(root_tree):
@@ -212,7 +258,8 @@ def write_cdo(filep, verbose):
                         xppu_label, filep
                     )
                 )
-            cdogen.write_xppu(xppu_instance, fp)
+            if xppu_instance is not None:
+                cdogen.write_xppu(xppu_instance, fp)
 
 
 def setup_node_to_prot_map(root_node, sdt, options):
@@ -225,9 +272,10 @@ def setup_node_to_prot_map(root_node, sdt, options):
 
     setup_firewall_nodes(root)
     setup_module_nodes(root)
+    setup_module_node_ids_if_present(root)
     setup_mid_nodes(root)
     xppu.init_instances()
 
-    # prot_map.print_firewall_to_module_map()
     # prot_map.print_module_to_firewall_map()
+    # prot_map.print_firewall_to_module_map()
     # prot_map.print_ss_to_bus_mids_map()
