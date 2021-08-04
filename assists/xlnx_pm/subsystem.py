@@ -12,6 +12,7 @@ from lopper import Lopper
 import lopper
 from lopper_tree import *
 from xlnx_versal_power import *
+import os.path
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -19,6 +20,9 @@ import protections
 import xppu
 import ftb
 
+# globals
+prot_enable = 0     # disable by default
+prot_infile = ""    # set to empty
 
 class Device:
     def __init__(self, nodes, node_id, flags, firewall={}):
@@ -68,6 +72,12 @@ def valid_subsystems(domain_node, sdt, options):
             if c == "xilinx,subsystem-v1":
                 subsystems.append(Subsystem(node))
 
+    # add to sub map
+    for sub in subsystems:
+        protections.sub_id_to_node[hex(sub.sub_id)] = sub
+    # add plm subsystem id for prot purposes
+    protections.sub_id_to_node['1c000000'] = None
+
     return subsystems
 
 
@@ -106,12 +116,17 @@ def find_cpu_ids(node, sdt):
         dev_name = dev_str + "_0"
         xilpm_id = xlnx_pm_devname_to_id[dev_name]
         cpu_xilpm_ids.append(xilpm_id)
-        protections.prot_map.add_module_node_id(dev_name, cpu_node.name)
+
+        if prot_enable != 0:
+            protections.prot_map.add_module_node_id(dev_name, cpu_node.name)
+
     if cpu_mask & 0x2:
         dev_name = dev_str + "_1"
         xilpm_id = xlnx_pm_devname_to_id[dev_name]
         cpu_xilpm_ids.append(xilpm_id)
-        protections.prot_map.add_module_node_id(dev_name, cpu_node.name)
+
+        if prot_enable != 0:
+            protections.prot_map.add_module_node_id(dev_name, cpu_node.name)
 
     return cpu_xilpm_ids
 
@@ -183,25 +198,27 @@ def find_sram_ids(node, sdt, fw_config={}):
     except:
         amba_tree = None
 
-    mem_nodes = {}
-    for _, mem_base in xlnx_pm_mem_node_to_base.items():
-        mem_nodes[mem_base] = set()
+    # setup pm <-> module mapping for memory nodes if protections are enabled
+    if prot_enable != 0:
+        mem_nodes = {}
+        for _, mem_base in xlnx_pm_mem_node_to_base.items():
+            mem_nodes[mem_base] = set()
 
-    # filter mem nodes with matching base addresses and firewall-0 links
-    for n in amba_tree.subnodes():
-        addr = n.propval("reg")
-        if addr != [""] and len(addr) % 4 == 0:
-            baddr = (addr[0] << 32) | (addr[1])
-            size = (addr[2] << 32) | (addr[3])
-            if baddr in mem_nodes and n.propval("firewall-0") != [""]:
-                mem_nodes[baddr].add(n.name)
+        # filter mem nodes with matching base addresses and firewall-0 links
+        for n in amba_tree.subnodes():
+            addr = n.propval("reg")
+            if addr != [""] and len(addr) % 4 == 0:
+                baddr = (addr[0] << 32) | (addr[1])
+                size = (addr[2] << 32) | (addr[3])
+                if baddr in mem_nodes and n.propval("firewall-0") != [""]:
+                    mem_nodes[baddr].add(n.name)
 
-    # setup pm mem node to sdt node map
-    for pm_label in mem_xilpm_ids:
-        mem_base = xlnx_pm_mem_node_to_base[pm_label]
-        if mem_base in mem_nodes:
-            for sdt_node in mem_nodes[mem_base]:
-                protections.prot_map.add_module_node_id(pm_label, sdt_node)
+        # setup pm mem node to sdt node map
+        for pm_label in mem_xilpm_ids:
+            mem_base = xlnx_pm_mem_node_to_base[pm_label]
+            if mem_base in mem_nodes:
+                for sdt_node in mem_nodes[mem_base]:
+                    protections.prot_map.add_module_node_id(pm_label, sdt_node)
 
     return id_with_flags
 
@@ -257,8 +274,11 @@ def process_access(subnode, sdt, options, fw_config={}):
         access_list.append(
             (xilpm_id, access_flag_names[index] + f + "::access", fw_config))
 
-        protections.prot_map.add_module_node_id(devid_to_devname(xilpm_id),
-                                                dev_node.name)
+        # setup pm <-> module mapping for access nodes if protections are enabled
+        if prot_enable != 0:
+            protections.prot_map.add_module_node_id(
+                devid_to_devname(xilpm_id),
+                dev_node.name)
 
     return access_list
 
@@ -314,7 +334,7 @@ def devid_to_devname(devid):
 
 
 def print_dev_flags(flags, verbose):
-    if verbose > 0:
+    if verbose > 1:
         for nid, f, fw in flags:
             print("[DBG++]", devid_to_devname(nid), "[", hex(nid), "]", f, fw)
 
@@ -373,44 +393,6 @@ def get_dev_firewall_config(node, sdt, options, included=False, parent=None):
     return fw_dev
 
 
-def get_aperture_mask(device):
-    outmask = 0xFFFFF
-    if device is None or device.firewall is None:
-        return outmask
-
-    default = [
-        action for action, masters in device.firewall.items() for m in masters
-        if m[0] == "rest"
-    ]
-
-    if len(default) > 1:
-        print("[WARNING] Conflicting default firewall configs for {}".format(
-            devid_to_devname(device.node_id)))
-        return outmask
-
-    if default != []:
-        default = default[0]
-
-    if default == "allow":
-        outmask = outmask & ~(0x3 << 18)  # Slot 19 and 20 is for ANY RO, RW
-    elif default == "block" or default == []:
-        outmask = 0x0
-
-    # build up the aperture mask
-    mask = {}
-    for action, masters in device.firewall.items():
-        mask[action] = 0
-        for m in masters:
-            if m[0] != "rest":
-                mask[action] = mask[
-                    action] | protections.prot_map.derive_ss_mask(m[0])
-
-    # set allowed masters and clear out blocked masters
-    newmask = outmask | mask["allow"] & ~mask["block"]
-
-    return newmask
-
-
 def is_domain_or_subsys(node):
     compat_list = node.propval("compatible")
 
@@ -425,7 +407,7 @@ def is_domain_or_subsys(node):
 
 
 def print_subsystem(subsystem, verbose):
-    if verbose > 0:
+    if verbose > 1:
         print("[DBG++]", subsystem.sub_node.name, ":")
         for k, v in subsystem.dev_dict.items():
             print(
@@ -461,26 +443,28 @@ def process_subsystem(subsystem,
     for node in subsystem_node.subnodes():
         device_flags = []
         parent_domain = None
+        fw_links = None
 
         # skip flag references
         if "flags" in node.abs_path:
             continue
 
         # retrieve firewallconf/firewallconf-def links for this node
-        if is_domain_or_subsys(node) is True:
-            # add to sub/dom -> bus master id map
-            protections.setup_dom_to_bus_mids(node, sdt)
-            fw_links = get_dev_firewall_config(node,
-                                               sdt,
-                                               options,
-                                               included=False,
-                                               parent=node)
-        else:
-            fw_links = get_dev_firewall_config(node,
-                                               sdt,
-                                               options,
-                                               included=included,
-                                               parent=included_from)
+        if prot_enable != 0:
+            if is_domain_or_subsys(node) is True:
+                # add to sub/dom -> bus master id map
+                protections.setup_dom_to_bus_mids(node, sdt)
+                fw_links = get_dev_firewall_config(node,
+                                                   sdt,
+                                                   options,
+                                                   included=False,
+                                                   parent=node)
+            else:
+                fw_links = get_dev_firewall_config(node,
+                                                   sdt,
+                                                   options,
+                                                   included=included,
+                                                   parent=included_from)
 
         if node.propval("cpus") != [""]:
             f = "default"
@@ -603,17 +587,31 @@ def set_dev_pm_reqs(sub, device, usage):
     device.pm_reqs = new_dev_flags
 
     device.pm_reqs[0] |= usage
-    device.pm_reqs[1] = get_aperture_mask(device)
+    device.pm_reqs[1] = 0xfffff     # default xppu aperture permissions
+    # device.pm_reqs[3] = 100         # default QoS
 
-    # add firewall table entry
-    #print("[DBG++++] Adding entry:", hex(device.node_id), devid_to_devname(device.node_id))
+    if prot_enable != 0:
+        dev_name = devid_to_devname(device.node_id)
+        # add firewall table entry
+        if 'IPI' not in dev_name:
+            rw = xppu.RW # FIXME:: always allow read-write
+            tz = (device.pm_reqs[0] >> 2) & 1
+            protections.setup_dev_ftb_entry(sub.sub_id, dev_name, rw, tz,
+                                            device.firewall['allow'])
 
-    dev_name = devid_to_devname(device.node_id)
-    if 'IPI' not in dev_name:
-        rw = 1 # FIXME:: always allow read-write
-        tz = (device.pm_reqs[0] >> 2) & 1
-        protections.setup_dev_ftb_entry(sub.sub_id, dev_name, rw, tz,
-                                        device.firewall['allow'])
+
+def setup_fw_apertures(subsystems, custom=0):
+    # given list of all subsystems,
+    # for each device
+    #    setup fw aperture mask (for xppu)
+    if prot_enable != 0:
+        for sub in subsystems:
+            for device in sub.dev_dict.values():
+                dev_name = devid_to_devname(device.node_id)
+                if 'IPI' not in dev_name:
+                    device.pm_reqs[1] = protections.get_dev_aperture(sub.sub_id, dev_name, custom)
+                else:
+                    device.pm_reqs[1] = 0
 
 
 def construct_pm_reqs(subsystems):
@@ -813,16 +811,53 @@ def write_to_cdo(subsystems, outfile, verbose):
         print("marker", hex(0x65), '"Subsystem"', file=output)
 
 
-def write_firewall_table(outfile):
+def write_firewall_table(outfile, custom=0):
     with open(outfile, 'w') as output:
-        protections.prot_map.write_ftb(output)
+        if not custom:
+            protections.prot_map.write_ftb(output)
+        else:
+            protections.prot_map.write_ftb_custom(output)
+
+
+def set_prot_status(options):
+    global prot_enable
+    global prot_infile
+
+    # check if prot is to be enabled or disabled
+    if (len(options["args"]) > 2):
+        if options["args"][2] == "--prot-enable":
+            prot_enable = 1
+        elif options["args"][2] == "--prot-custom":
+            prot_enable = 2
+        else:
+            print("[ERROR] Unrecognized option:", options["args"][2])
+            return False
+
+        # check if custom prot
+        if (len(options["args"]) > 3) and prot_enable == 2:
+            prot_infile = options["args"][3]
+            # check if the file exists
+            if os.path.isfile(prot_infile) is False:
+                print("ERROR] Protection config input file doesn't exist:",
+                      prot_infile)
+                return False
+    else:
+        # disable protection
+        prot_enable = 0
+
+    return True
 
 
 def generate_cdo(root_node, domain_node, sdt, outfile, verbose, options):
+    # set prot status
+    if set_prot_status(options) is False:
+        return
+
     subsystems = valid_subsystems(domain_node, sdt, options)
 
-    # prot:: setup protection nodes and mapping
-    protections.setup_node_to_prot_map(root_node, sdt, options)
+    if prot_enable != 0:
+        # setup protection nodes and mapping
+        protections.setup(root_node, sdt, options)
 
     for sub in subsystems:
         # collect device tree flags, nodes, xilpm IDs for each device linked to
@@ -831,29 +866,36 @@ def generate_cdo(root_node, domain_node, sdt, outfile, verbose, options):
         print_subsystem(sub, verbose)
         construct_flag_references(sub)
 
-    if verbose > 0:
-        protections.prot_map.print_firewall_to_module_map()
-
-        # prot:: setup prot to bus mids map
-        protections.prot_map.print_ss_to_bus_mids_map()
 
     # generate xilpm reqs for each device
     construct_pm_reqs(subsystems)
 
-    # add default protection node entry for each module
-    protections.setup_default_ftb_entries()
+    if prot_enable != 0:
+        # add default protection node entry for each module and write firewall table
+        mode = 0
+        protections.setup_default_ftb_entries()
+        write_firewall_table('prot.config')
+        protections.generate_aper_masks_all()   # generate apertures for all modules per subsystem
 
-    if verbose > 0:
-        protections.prot_map.print_mod_ftb_map()
+        if prot_enable == 2 and prot_infile != '':
+            mode = 1
+            protections.ftb_setup(prot_infile, sdt, options)    # read fw table if applicable
+            write_firewall_table('prot.config.custom', custom=mode)    # FIXME:: remove later
+            protections.generate_aper_masks_all(custom=mode)
+
+        # setup aperture mask for subsystem
+        setup_fw_apertures(subsystems, custom=mode)
+
+        if verbose > 1:
+            protections.prot_map.print_firewall_to_module_map()
+            protections.prot_map.print_ss_to_bus_mids_map()
+            protections.prot_map.print_mod_ftb_map()
 
     # write the output
     write_to_cdo(subsystems, outfile, verbose)
 
-    # write firewall table
-    write_firewall_table('prot.config')
-
-    # prot:: write protection output
-    protections.write_cdo(outfile, verbose)
+    if prot_enable != 0:
+        protections.write_to_cdo(outfile, verbose)
 
     # for k, v in xlnx_pm_devname_to_id.items():
     #    print("    {}:".format(hex(v)), "'{}'".format(k))
