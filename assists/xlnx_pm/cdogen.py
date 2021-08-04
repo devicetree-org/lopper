@@ -86,8 +86,11 @@ def write_ien_reg(x, fp=None):
 def write_enable_xppu_cmd(x, fp=None):
     cmt = "# Enable {0} XPPU\n".format(x.name)
     cmt += "# Initialize all apertures with default aperture value\n"
-    cmt += "# Default masters are {0}".format(xppu.DEF_MASTERS)
-    cmd = pm_init_node_cmd1(x.pm_id, x.get_default_aperture())
+    # cmt += "# Default masters are {0}".format(xppu.DEF_MASTERS)
+    def_aperture = x.get_default_aperture()
+    cmt += "# Default masters are {0}".format(
+            x.get_master_list_from_aperture(xppu.h2i(def_aperture)))
+    cmd = pm_init_node_cmd1(x.pm_id, def_aperture)
     print(cmt, file=fp)
     print(cmd, file=fp)
 

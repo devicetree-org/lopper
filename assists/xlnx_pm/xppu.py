@@ -61,6 +61,10 @@ MIDL = {
     "APU1": [0x261, 0x3FF],
     "RPU0": [0x200, 0x3FF],
     "RPU1": [0x204, 0x3FF],
+    "APU0_RO": [0x260, 0x3FF],
+    "APU1_RO": [0x261, 0x3FF],
+    "RPU0_RO": [0x200, 0x3FF],
+    "RPU1_RO": [0x204, 0x3FF],
     "PSM": [0x238, 0x3FF],
     # -- #
     "ANY_RO": [0x0, 0x0],
@@ -169,6 +173,7 @@ class Xppu:
         self.b512m_start = "0x0" if b512m is None else hex(b512m)
         self.b512m_end = "0x0" if b512m is None else hex(b512m + range_512m - 1)
         self.pm_id = hex(pm_id)
+        self.def_apermask = 0
         self.masters = OrderedDict()
         # initialize aperture address map
         self.apermap = dict()
@@ -233,6 +238,14 @@ class Xppu:
                     return int((m - mid_offset_start) / 4)
         return None
 
+    def get_master_by_smrw(self, mid, mask, rw):
+        for m in self.masters:
+            if self.masters[m] is not None:
+                m_inst = self.masters[m]
+                if h2i(m_inst.mid) == mid and h2i(m_inst.mask) == mask and m_inst.rw == rw:
+                    return int((m - mid_offset_start) / 4)
+        return None
+
     def get_master_addr(self, idx):
         k = mid_offset_start + (idx * 4)
         if k in self.masters:
@@ -265,8 +278,12 @@ class Xppu:
             aperture = aperture | (TZ << 27)  # TrustZone
         return aperture
 
+    def set_default_aperture(self, mask):
+        self.def_apermask = mask
+
     def get_default_aperture(self):
-        return hex(self.get_aperture(DEF_MASTERS))
+        # return hex(self.get_aperture(DEF_MASTERS))
+        return hex(self.def_apermask)
 
     def get_nondef_rw_aperture(self):
         def_aperture = int(self.get_default_aperture(), 16)
@@ -275,6 +292,11 @@ class Xppu:
     def get_nondef_ro_aperture(self):
         def_aperture = int(self.get_default_aperture(), 16)
         return hex(def_aperture | self.get_aperture(["ANY_RO"]))
+
+    def get_master_list_from_aperture(self, aper_mask):
+        midx = ( i for i in range(20) if (( aper_mask >> i ) & 0x1) == 1 )
+        mid_list = [ self.masters[list(self.masters)[idx]].name for idx in midx ]
+        return mid_list[::-1]
 
 
 def mid(master, rw, parity):
@@ -299,6 +321,12 @@ def init_masters(xppu):
     xppu.set_master(8, mid("PPU0", RW, MID_PARITY))  # PPU0
     xppu.set_master(9, mid("PMC_DMA0", RW, MID_PARITY))  # PMC DMA0
     xppu.set_master(10, mid("PMC_DMA1", RW, MID_PARITY))  # PMC DMA1
+    # -- RO (APU)
+    xppu.set_master(11, mid("APU0_RO", RO, MID_PARITY))  # APU0 (RO)
+    xppu.set_master(12, mid("APU1_RO", RO, MID_PARITY))  # APU1 (RO)
+    # -- RO (RPU)
+    xppu.set_master(13, mid("RPU0_RO", RO, MID_PARITY))  # RPU0
+    xppu.set_master(14, mid("RPU1_RO", RO, MID_PARITY))  # RPU1
     # Skip -- the middle entries for now
     xppu.set_master(18, mid("ANY_RO", RO, MID_PARITY))  # Any master (RO)
     xppu.set_master(19, mid("ANY_RW", RW, MID_PARITY))  # Any master (RW)
