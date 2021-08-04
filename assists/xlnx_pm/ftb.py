@@ -47,12 +47,13 @@ class FirewallTableEntry:
         self.module_tag = module_tag
         self.pm_tag = pm_tag
         self.priority = priority
+        self.aper_mask = 0
 
     def __str__(self):
-        printstr = "{0} {1:10} {2:8} {3} {4} {5} {6:15}".format(
+        printstr = "{0} {1:10} {2:8} {3} {4} {5} {6:7} {7:15}".format(
             hex(self.subsystem_id), hex(self.base_addr),
             hex(int(self.size)) if self.size != "*" else self.size,
-            self.rw, self.tz, self.priority, self.pm_tag)
+            self.rw, self.tz, self.priority, hex(self.aper_mask), self.pm_tag)
         for m in self.mid_list:
             printstr += " " + m.__str__()
         return printstr
@@ -70,3 +71,31 @@ class FirewallTableEntry:
         print(" ".join(m.__str__() for m in self.mid_list), file=fp)
 
 
+class FirewallTable:
+    def __init__(self):
+        self.lines = None
+        self.tokens = None
+
+    def read_file(self, filep):
+        with open(filep) as fp:
+            self.lines = [ line.strip() for line in fp if not line.isspace() ]
+
+        self.tokens = [ line.split()
+                       for line in self.lines
+                       if line.strip()[0] != "#" ]
+
+        # check column sanity
+        invalid_lines = [ tline
+                         for tline in self.tokens
+                         if len(tline) < 7 ]
+        if invalid_lines != []:
+            print("[ERROR] Parsing failed. Minimum colums >= 7:")
+            for line in invalid_lines:
+                print("[ERROR]:", line)
+            return False
+
+        return True
+
+    def dump(self):
+        for t in self.tokens:
+            print(t)
