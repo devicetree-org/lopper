@@ -21,8 +21,9 @@ import xppu
 import ftb
 
 # globals
-prot_enable = 0     # disable by default
-prot_infile = ""    # set to empty
+prot_enable = 0  # disable by default
+prot_infile = ""  # set to empty
+
 
 class Device:
     def __init__(self, nodes, node_id, flags, firewall={}):
@@ -76,15 +77,18 @@ def valid_subsystems(domain_node, sdt, options):
     for sub in subsystems:
         protections.sub_id_to_node[hex(sub.sub_id)] = sub
     # add plm subsystem id for prot purposes
-    protections.sub_id_to_node['1c000000'] = None
+    protections.sub_id_to_node["1c000000"] = None
 
     return subsystems
 
 
 def usage_no_restrictions(node):
     firewallconf_default = node.propval("firewallconf-default")
-    return (firewallconf_default != [""] and firewallconf_default[0] == 0
-            and firewallconf_default[1] == 0)
+    return (
+        firewallconf_default != [""]
+        and firewallconf_default[0] == 0
+        and firewallconf_default[1] == 0
+    )
 
 
 def find_cpu_ids(node, sdt):
@@ -155,7 +159,8 @@ def find_mem_ids(node, sdt, fw_config={}):
     mem_xilpm_ids = []
     if node.propval("memory") != [""]:
         xilpm_id = mem_xilpm_ids.append(
-            (xlnx_pm_devname_to_id["PM_DEV_DDR_0"], flags, fw_config))
+            (xlnx_pm_devname_to_id["PM_DEV_DDR_0"], flags, fw_config)
+        )
 
     return mem_xilpm_ids
 
@@ -229,8 +234,7 @@ def xilpm_id_from_devnode(subnode):
         return power_domains[1]
     elif subnode.name in misc_devices:
         if misc_devices[subnode.name] is not None:
-            mailbox_xilpm_id = xlnx_pm_devname_to_id[misc_devices[
-                subnode.name]]
+            mailbox_xilpm_id = xlnx_pm_devname_to_id[misc_devices[subnode.name]]
             if mailbox_xilpm_id is not None:
                 return mailbox_xilpm_id
     return -1
@@ -272,13 +276,14 @@ def process_access(subnode, sdt, options, fw_config={}):
             continue
 
         access_list.append(
-            (xilpm_id, access_flag_names[index] + f + "::access", fw_config))
+            (xilpm_id, access_flag_names[index] + f + "::access", fw_config)
+        )
 
         # setup pm <-> module mapping for access nodes if protections are enabled
         if prot_enable != 0:
             protections.prot_map.add_module_node_id(
-                devid_to_devname(xilpm_id),
-                dev_node.name)
+                devid_to_devname(xilpm_id), dev_node.name
+            )
 
     return access_list
 
@@ -305,10 +310,7 @@ def document_requirement(output, subsystem, device):
         3: "Quality of Service",
     }
     for index, flag in enumerate(device.pm_reqs):
-        print("# requirements: ",
-              arg_names[index],
-              ": " + hex(flag),
-              file=output)
+        print("# requirements: ", arg_names[index], ": " + hex(flag), file=output)
 
     print(usage(flags_arg), file=output)
     print(security(flags_arg), file=output)
@@ -349,8 +351,11 @@ def get_dev_firewall_config(node, sdt, options, included=False, parent=None):
     fw = node.propval("firewallconf")
     if fw != [""]:
         if len(fw) % 3 != 0:  # firewallconf = <<link> <b/a/bd> <p>, ...>
-            print("[WARNING] Invalid format for firewallconf {} for node {}".
-                  format(fw, node.name))
+            print(
+                "[WARNING] Invalid format for firewallconf {} for node {}".format(
+                    fw, node.name
+                )
+            )
             return fw_dev
 
         # retrieve device firewall links
@@ -362,15 +367,19 @@ def get_dev_firewall_config(node, sdt, options, included=False, parent=None):
                 fw_dev["allow"].append((target_node, f[2]))
             else:
                 print(
-                    "[WARNING] Unsupported attribute at firewallconf {} for node {}"
-                    .format(fw, node.name))
+                    "[WARNING] Unsupported attribute at firewallconf {} for node {}".format(
+                        fw, node.name
+                    )
+                )
 
     fw_def = node.propval("firewallconf-default")
     if fw_def != [""]:
         if len(fw_def) != 2:  # firewallconf-default = <<b/a/bd> <p>>
             print(
-                "[WARNING] Invalid format for firewallconf-default {} for node {}"
-                .format(fw_def, node.name))
+                "[WARNING] Invalid format for firewallconf-default {} for node {}".format(
+                    fw_def, node.name
+                )
+            )
             return fw_dev
 
         # retrieve device firewall links
@@ -381,8 +390,10 @@ def get_dev_firewall_config(node, sdt, options, included=False, parent=None):
             fw_dev["allow"].append(("rest", f[1]))
         else:
             print(
-                "[WARNING] Unsupported attribute at firewallconf-default {} for node {}"
-                .format(fw_def, node.name))
+                "[WARNING] Unsupported attribute at firewallconf-default {} for node {}".format(
+                    fw_def, node.name
+                )
+            )
 
     # for non-resource-group nodes, allow bus-master-ids from the node
     # for resource group nodes, allow bus-master-ids from the parent where
@@ -517,8 +528,8 @@ def process_subsystem(subsystem,
 
             # add to subsystem's list of xilpm nodes
             if xilpm_id not in subsystem.dev_dict.keys():
-                subsystem.dev_dict[xilpm_id] = Device([node], xilpm_id,
-                                                      [flags], firewall_config)
+                subsystem.dev_dict[xilpm_id] = Device([node], xilpm_id, [flags],
+                                                      firewall_config)
             else:
                 device = subsystem.dev_dict[xilpm_id]
                 device.nodes.append(node)
@@ -527,8 +538,7 @@ def process_subsystem(subsystem,
 
 def construct_flag_references(subsystem):
     flags_list = subsystem.sub_node.propval("flags")
-    for index, flags_name in enumerate(
-            subsystem.sub_node.propval("flags-names")):
+    for index, flags_name in enumerate(subsystem.sub_node.propval("flags-names")):
         ref_flags = [0x0, 0x0, 0x0, 0x0]
 
         current_base = index * 4  # 4 elements per requirement of device
@@ -555,8 +565,7 @@ def determine_inclusion(device_flags, other_device_flags, sub, other_sub):
     if other_dev_timeshare not in other_sub.flag_references.keys():
         other_dev_timeshare = "default"
 
-    other_dev_timeshare = copy.deepcopy(
-        other_sub.flag_references[other_dev_timeshare])
+    other_dev_timeshare = copy.deepcopy(other_sub.flag_references[other_dev_timeshare])
     included = 0x0
     for f in device_flags:
         if "include" in f:
@@ -587,17 +596,18 @@ def set_dev_pm_reqs(sub, device, usage):
     device.pm_reqs = new_dev_flags
 
     device.pm_reqs[0] |= usage
-    device.pm_reqs[1] = 0xfffff     # default xppu aperture permissions
+    device.pm_reqs[1] = 0xFFFFF  # default xppu aperture permissions
     # device.pm_reqs[3] = 100         # default QoS
 
     if prot_enable != 0:
         dev_name = devid_to_devname(device.node_id)
         # add firewall table entry
-        if 'IPI' not in dev_name:
-            rw = xppu.RW # FIXME:: always allow read-write
+        if "IPI" not in dev_name:
+            rw = xppu.RW  # FIXME:: always allow read-write
             tz = (device.pm_reqs[0] >> 2) & 1
-            protections.setup_dev_ftb_entry(sub.sub_id, dev_name, rw, tz,
-                                            device.firewall['allow'])
+            protections.setup_dev_ftb_entry(
+                sub.sub_id, dev_name, rw, tz, device.firewall["allow"]
+            )
 
 
 def setup_fw_apertures(subsystems, custom=0):
@@ -608,8 +618,10 @@ def setup_fw_apertures(subsystems, custom=0):
         for sub in subsystems:
             for device in sub.dev_dict.values():
                 dev_name = devid_to_devname(device.node_id)
-                if 'IPI' not in dev_name:
-                    device.pm_reqs[1] = protections.get_dev_aperture(sub.sub_id, dev_name, custom)
+                if "IPI" not in dev_name:
+                    device.pm_reqs[1] = protections.get_dev_aperture(
+                        sub.sub_id, dev_name, custom
+                    )
                 else:
                     device.pm_reqs[1] = 0
 
@@ -669,8 +681,7 @@ def construct_pm_reqs(subsystems):
                 else:
                     # if from resource group in only domain should still be
                     # shared
-                    included = determine_inclusion(device.flags, [], sub,
-                                                   other_sub)
+                    included = determine_inclusion(device.flags, [], sub, other_sub)
                     if included == 0x1:
                         usage = 0x1
 
@@ -697,8 +708,12 @@ def sub_operations_allowed(subsystems, output):
             other_sub_str = "subsystem_" + hex(other_sub_id)
             other_sub_id = 0x1C000000 | other_sub_id
 
-            cdo_str = ("# " + host_sub_str +
-                       " can  enact only non-secure ops upon " + other_sub_str)
+            cdo_str = (
+                "# "
+                + host_sub_str
+                + " can  enact only non-secure ops upon "
+                + other_sub_str
+            )
             cdo_cmd = "pm_add_requirement " + hex(host_sub_id) + " "
             cdo_cmd += hex(other_sub_id) + " " + hex(0x7)
 
@@ -751,8 +766,7 @@ def sub_reset_perms(sub, output):
         " can enact only non-secure system-reset (rst_pmc)",
         file=output,
     )
-    print("pm_add_requirement " + hex(cdo_sub_id) + " 0xc410002 0x1",
-          file=output)
+    print("pm_add_requirement " + hex(cdo_sub_id) + " 0xc410002 0x1", file=output)
 
 
 def sub_perms(subsystems, output):
@@ -795,12 +809,14 @@ def write_to_cdo(subsystems, outfile, verbose):
                     )
                     return
 
-                req_description = ("# " + cdo_sub_str + " " +
-                                   xlnx_pm_devid_to_name[device.node_id])
+                req_description = (
+                    "# " + cdo_sub_str + " " + xlnx_pm_devid_to_name[device.node_id]
+                )
 
                 # form CDO flags in string for python
-                req_str = ("pm_add_requirement " + hex(cdo_sub_id) + " " +
-                           hex(device.node_id))
+                req_str = (
+                    "pm_add_requirement " + hex(cdo_sub_id) + " " + hex(device.node_id)
+                )
                 for req in device.pm_reqs:
                     req_str += " " + hex(req)
 
@@ -812,7 +828,7 @@ def write_to_cdo(subsystems, outfile, verbose):
 
 
 def write_firewall_table(outfile, custom=0):
-    with open(outfile, 'w') as output:
+    with open(outfile, "w") as output:
         if not custom:
             protections.prot_map.write_ftb(output)
         else:
@@ -824,7 +840,7 @@ def set_prot_status(options):
     global prot_infile
 
     # check if prot is to be enabled or disabled
-    if (len(options["args"]) > 2):
+    if len(options["args"]) > 2:
         if options["args"][2] == "--prot-enable":
             prot_enable = 1
         elif options["args"][2] == "--prot-custom":
@@ -838,8 +854,7 @@ def set_prot_status(options):
             prot_infile = options["args"][3]
             # check if the file exists
             if os.path.isfile(prot_infile) is False:
-                print("ERROR] Protection config input file doesn't exist:",
-                      prot_infile)
+                print("ERROR] Protection config input file doesn't exist:", prot_infile)
                 return False
     else:
         # disable protection
@@ -866,7 +881,6 @@ def generate_cdo(root_node, domain_node, sdt, outfile, verbose, options):
         print_subsystem(sub, verbose)
         construct_flag_references(sub)
 
-
     # generate xilpm reqs for each device
     construct_pm_reqs(subsystems)
 
@@ -874,13 +888,13 @@ def generate_cdo(root_node, domain_node, sdt, outfile, verbose, options):
         # add default protection node entry for each module and write firewall table
         mode = 0
         protections.setup_default_ftb_entries()
-        write_firewall_table('prot.config')
-        protections.generate_aper_masks_all()   # generate apertures for all modules per subsystem
+        write_firewall_table("prot.config")
+        protections.generate_aper_masks_all()  # generate apertures for all modules per subsystem
 
-        if prot_enable == 2 and prot_infile != '':
+        if prot_enable == 2 and prot_infile != "":
             mode = 1
-            protections.ftb_setup(prot_infile, sdt, options)    # read fw table if applicable
-            write_firewall_table('prot.config.custom', custom=mode)    # FIXME:: remove later
+            protections.ftb_setup(prot_infile, sdt, options)  # read fw table if applicable
+            write_firewall_table('prot.config.custom', custom=mode)  # FIXME:: remove later
             protections.generate_aper_masks_all(custom=mode)
 
         # setup aperture mask for subsystem
