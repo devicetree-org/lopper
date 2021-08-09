@@ -89,7 +89,8 @@ def write_enable_xppu_cmd(x, fp=None):
     # cmt += "# Default masters are {0}".format(xppu.DEF_MASTERS)
     def_aperture = x.get_default_aperture()
     cmt += "# Default masters are {0}".format(
-            x.get_master_list_from_aperture(xppu.h2i(def_aperture)))
+        x.get_master_list_from_aperture(xppu.h2i(def_aperture))
+    )
     cmd = pm_init_node_cmd1(x.pm_id, def_aperture)
     print(cmt, file=fp)
     print(cmd, file=fp)

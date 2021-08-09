@@ -242,7 +242,11 @@ class Xppu:
         for m in self.masters:
             if self.masters[m] is not None:
                 m_inst = self.masters[m]
-                if h2i(m_inst.mid) == mid and h2i(m_inst.mask) == mask and m_inst.rw == rw:
+                if (
+                    h2i(m_inst.mid) == mid
+                    and h2i(m_inst.mask) == mask
+                    and m_inst.rw == rw
+                ):
                     return int((m - mid_offset_start) / 4)
         return None
 
@@ -294,8 +298,8 @@ class Xppu:
         return hex(def_aperture | self.get_aperture(["ANY_RO"]))
 
     def get_master_list_from_aperture(self, aper_mask):
-        midx = ( i for i in range(20) if (( aper_mask >> i ) & 0x1) == 1 )
-        mid_list = [ self.masters[list(self.masters)[idx]].name for idx in midx ]
+        midx = (i for i in range(20) if ((aper_mask >> i) & 0x1) == 1)
+        mid_list = [self.masters[list(self.masters)[idx]].name for idx in midx]
         return mid_list[::-1]
 
 
