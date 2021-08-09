@@ -15,6 +15,7 @@ from xlnx_versal_power import xlnx_pm_devid_to_name, xlnx_pm_devname_to_id
 sys.path.append(os.path.dirname(__file__))
 
 import xppu
+import xmpu
 import cdogen
 import ftb
 
@@ -37,17 +38,30 @@ def chunks(list_of_items, num):
         yield list_of_items[i : i + num]
 
 
-class XppuNode:
+class FirewallNode:
     def __init__(self, name, node, compat):
         self.name = name
         self.node = node
         self.compat = compat
+        self.hw_instance = None
+
+        reg = node.propval("reg")
         if "xlnx,xppu" in self.compat:
             self.hw_instance = xppu.init_xppu(node.label)
+            self.hw_instance.compat = compat
         elif "xlnx,xmpu" in compat:
-            self.hw_instance = None
+            self.hw_instance = xmpu.init_xmpu(node.label, reg)
+            self.hw_instance.compat = compat
         else:
             print("[ERROR] Invalid protection node {}".format(name))
+
+
+def is_xppu(firewall : FirewallNode):
+    return firewall.compat == "xlnx,xppu"
+
+
+def is_xmpu(firewall : FirewallNode):
+    return firewall.compat == "xlnx,xmpu"
 
 
 class ModuleNode:
@@ -249,9 +263,9 @@ class FirewallToModuleMap:
         self.ppu_to_mid_map = {}
         self.pm_label_to_mod_map = {}
 
-    def add_xppu(self, name, node, compat):
+    def add_firewall(self, name, node, compat):
         if name not in self.ppus:
-            self.ppus[name] = XppuNode(name, node, compat)
+            self.ppus[name] = FirewallNode(name, node, compat)
             self.ppu_to_mid_map[name] = []
             self.ppu_to_mod_map[name] = []
         else:
@@ -342,7 +356,7 @@ class FirewallToModuleMap:
         mask_dict = {
             x_name: 0
             for x_name, x_inst in self.ppus.items()
-            if x_inst.hw_instance != None
+            if x_inst.hw_instance != None and is_xppu(x_inst)
         }
 
         for x_name in mask_dict:
@@ -427,7 +441,7 @@ class FirewallToModuleMap:
             # get parent firewall controller instance
             x_inst_name = self.mod_to_ppu_map[module][0]
             x_inst = self.ppus[x_inst_name].hw_instance
-            if x_inst is not None:
+            if x_inst is not None and is_xppu(x_inst):
                 if debug > 0:
                     print(
                         "[DBG++] Aper Config for {} -> {}".format(module, x_inst_name)
@@ -449,7 +463,7 @@ class FirewallToModuleMap:
             # get parent firewall controller instance
             x_inst_name = self.mod_to_ppu_map[module][0]
             x_inst = self.ppus[x_inst_name].hw_instance
-            if x_inst is not None:
+            if x_inst is not None and is_xppu(x_inst):
                 if debug > 0:
                     print(
                         "[DBG++] Aper Config for {} -> {}".format(module, x_inst_name)
@@ -475,11 +489,12 @@ def setup_firewall_nodes(root_tree):
     for node in root_tree.subnodes():
         # A firewall controller
         compat = node.propval("compatible")
-        if "xlnx,xppu" in compat:
+        status = node.propval("status")
+        if "xlnx,xppu" in compat and "okay" in status:
             # print(node.name, node.__props__)
-            prot_map.add_xppu(node.name, node, "xlnx,xppu")
-        elif "xlnx,xmpu" in compat:
-            prot_map.add_xppu(node.name, node, "xlnx,xmpu")
+            prot_map.add_firewall(node.name, node, "xlnx,xppu")
+        elif "xlnx,xmpu" in compat and "okay" in status:
+            prot_map.add_firewall(node.name, node, "xlnx,xmpu")
 
 
 def setup_module_nodes(root_tree):
@@ -804,7 +819,7 @@ def write_to_cdo(filep, verbose):
                     )
                 )
 
-            if xppu_instance is not None:
+            if xppu_instance is not None and is_xppu(ppu_obj):
                 cdogen.write_xppu(xppu_instance, fp)
 
 
@@ -813,14 +828,15 @@ def setup(root_node, sdt, options):
     Setup a map with relationships between a node and its corresponding
     firewall controller (xppu + xmpu)
     """
-    # FIXME:: Do for XMPU
     root = root_node.tree["/"]
 
     setup_firewall_nodes(root)
     setup_module_nodes(root)
     setup_module_node_ids_if_present(root)
     setup_mid_nodes(root)
+
     xppu.init_instances()
+    xmpu.init_instances()
 
     # prot_map.print_module_to_firewall_map()
     # prot_map.print_firewall_to_module_map()
