@@ -3,7 +3,7 @@
 # *
 # * Author:
 # *     Ben Levinsky <ben.levinsky@xilinx.com>
-# *     Izhar Ameer Shaikh <izhar.ameer.shaikh@xilinx.com>
+# *     Izhar Shaikh <izhar.ameer.shaikh@xilinx.com>
 # *
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
