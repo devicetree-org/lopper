@@ -901,7 +901,8 @@ def generate_cdo(root_node, domain_node, sdt, outfile, verbose, options):
         setup_fw_apertures(subsystems, custom=mode)
 
         if verbose > 1:
-            protections.prot_map.print_firewall_to_module_map()
+            protections.prot_map.print_firewall_to_module_map(simple=True)
+            protections.prot_map.print_module_to_firewall_map()
             protections.prot_map.print_ss_to_bus_mids_map()
             protections.prot_map.print_mod_ftb_map()
 
