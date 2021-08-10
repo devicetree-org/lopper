@@ -340,11 +340,18 @@ class FirewallToModuleMap:
 
         return mask_dict
 
-    def print_firewall_to_module_map(self):
+    def print_firewall_to_module_map(self, simple=False):
         for firewall in self.ppu_to_mod_map:
-            print("[DBG++] {}:".format(firewall))
+            print("\n[DBG++] -------- START: {} --------".format(firewall))
             for module in self.ppu_to_mod_map[firewall]:
-                print("[DBG++] \t{0:40}".format(module), self.modules[module])
+                if not simple:
+                    print("[DBG++] \t{0:40}".format(module), self.modules[module])
+                else:
+                    reg = self.modules[module].node.propval("reg")
+                    label = self.modules[module].node.label
+                    reg = [ hex(i) for i in reg if reg != [''] ]
+                    print("[DBG++] \t{0:80} {1}".format('{0}: {1}'.format(label, module), reg))
+            print("[DBG++] -------- END: {} --------\n".format(firewall))
 
         for firewall in self.ppu_to_mid_map:
             print("[DBG++] {}:".format(firewall))
@@ -362,11 +369,8 @@ class FirewallToModuleMap:
     def print_ss_to_bus_mids_map(self):
         for ss, bus_mid_nodes in self.ss_or_dom.items():
             mid_list = [(n[0], hex(n[1])) for n in bus_mid_nodes[1]]
-            print(
-                "[DBG++] {} -> {} [Mask: {}]".format(
-                    ss, mid_list, self.derive_ss_mask(ss)
-                )
-            )
+            print("[DBG++] {} -> {} [Mask: {}]"
+                    .format(ss, mid_list, self.derive_ss_mask(ss)))
 
     def print_mod_ftb_map(self):
         for module in self.modules:
@@ -477,7 +481,7 @@ def setup_module_nodes(root_tree):
         if node.propval("firewall-0") != [""]:
             for parent in node.propval("firewall-0"):
                 firewall = root_tree.tree.pnode(parent)
-                # print(node.name, ":", node.abs_path, firewall.name)
+                print("[DBG++]", node.name, ":", node.abs_path, firewall.name)
                 prot_map.add_module(node.name, node, firewall.name)
 
 
