@@ -27,8 +27,14 @@ SKIP_MODULES = [
     # "cpus-a72@0", "cpus-r5@3"   # "reg" property is missing
 ]
 
-debug = 0
+debug = False
 sub_id_to_node = {}  # { str: Subsystem() instance }
+
+
+def chunks(list_of_items, num):
+    """Yield successive num-sized chunks from input list"""
+    for i in range(0, len(list_of_items), num):
+        yield list_of_items[i : i + num]
 
 
 class XppuNode:
@@ -48,8 +54,7 @@ class ModuleNode:
     def __init__(self, name, node):
         self.name = name
         self.node = node
-        self.address = -1
-        self.size = -1
+        self.reg = [] # [(addr, size), ...]
         self.aper_idx = -1
         self.aper_masks = {}  # { subsystem_id : 20-bit aperture mask }
         self.pm = set()  # xilpm label(s)
@@ -102,29 +107,37 @@ class ModuleNode:
                 entry.print_entry(fp)
 
     def get_base_and_size(self):
-        if self.address != -1 and self.size != -1:
-            return self.address, self.size
+        if self.reg != []:
+            return self.reg
 
-        addr = self.node.propval("reg")
-        # print("[DBG++++]", self.name, self.node.label, addr)
+        defval = (0xdeadbeef, 0xdeadbeef)
 
-        if addr != [""]:
-            if len(addr) % 4 == 0:
-                self.address = (addr[0] << 32) | (addr[1])
-                self.size = (addr[2] << 32) | (addr[3])
-            elif len(addr) % 2 == 0:
-                self.address = addr[0]
-                self.size = addr[1]
-            else:
-                if debug > 0:
-                    print(
-                        "[WARNING++++] FIXME:: len(addr) is not 2 or 4",
-                        self.name,
-                        self.node.label,
-                        addr,
-                    )
+        reg = self.node.propval("reg")
+        if reg == [""]:
+            self.reg.append(defval)
+            return self.reg
 
-        return self.address, self.size
+        # print("[DBG++++]", self.name, self.node.label, self.reg_sdt)
+
+        if len(reg) % 4 != 0 and len(reg) % 2 != 0:
+            if debug > 0:
+                print("[WARNING++++] FIXME:: len(addr) is not 2 or 4",
+                        self.name, self.node.label, addr)
+            self.reg.append(defval)
+            return self.reg
+
+        if len(reg) % 4 == 0:
+            for reg_slice in chunks(reg, 4):
+                addr = reg_slice[0] << 32 | reg_slice[1]
+                size = reg_slice[2] << 32 | reg_slice[3]
+                self.reg.append((addr, size))
+        else:
+            for reg_slice in chunks(reg, 2):
+                addr = reg_slice[0]
+                size = reg_slice[1]
+                self.reg.append((addr, size))
+
+        return self.reg
 
     def add_ftb_entry(
         self,
@@ -458,12 +471,6 @@ prot_map = FirewallToModuleMap()
 firewall_table = ftb.FirewallTable()
 
 
-def chunks(list_of_elements, num):
-    """Yield successive num-sized chunks from input list"""
-    for i in range(0, len(list_of_elements), num):
-        yield list_of_elements[i : i + num]
-
-
 def setup_firewall_nodes(root_tree):
     for node in root_tree.subnodes():
         # A firewall controller
@@ -481,7 +488,7 @@ def setup_module_nodes(root_tree):
         if node.propval("firewall-0") != [""]:
             for parent in node.propval("firewall-0"):
                 firewall = root_tree.tree.pnode(parent)
-                print("[DBG++]", node.name, ":", node.abs_path, firewall.name)
+                # print("[DBG++]", node.name, ":", node.abs_path, firewall.name)
                 prot_map.add_module(node.name, node, firewall.name)
 
 
@@ -643,9 +650,6 @@ def setup_dev_ftb_entry(
         print("[ERROR] Invalid or missing Module {}".format(mod_node))
         return
 
-    # get module base address and size
-    base_addr, size = mod_node.get_base_and_size()
-
     for dom_or_ss_name, priority in mid_list:
         if dom_or_ss_name not in prot_map.ss_or_dom:
             # print("Skipping dom/ss:", dom_or_ss_name, "for", pm_name)
@@ -656,33 +660,35 @@ def setup_dev_ftb_entry(
                 bus_mids[priority] = []
             bus_mids[priority].append(ftb.MidEntry(smid, 0x3FF, name=bus_mid_name))
 
-    if debug > 0:
-        print(
-            "[DBG++++]",
-            hex(subsystem_id),
-            hex(base_addr),
-            hex(size),
-            rw,
-            tz,
-            mod_tags_list,
-            mod_node.name,
-            bus_mids,
-        )
+    # get module base and sizes
+    for base_addr, size in mod_node.get_base_and_size():
+        if debug > 0:
+            print(
+                "[DBG++++]",
+                hex(subsystem_id),
+                hex(base_addr),
+                hex(size),
+                rw,
+                tz,
+                mod_tags_list,
+                mod_node.name,
+                bus_mids,
+            )
 
-    # entry for each priority in bus_mids
-    # { priority: [ MidEntry(name, smid, mask), ...] }
-    for priority in bus_mids:
-        prot_map.add_module_ftb_entry(
-            subsystem_id,
-            mod_node.name,
-            base_addr,
-            size,
-            rw,
-            tz,
-            priority,
-            bus_mids[priority],  # [ MidEntry(name, smid, mask), ...]
-            pm_name=pm_name,
-        )
+        # entry for each priority in bus_mids
+        # { priority: [ MidEntry(name, smid, mask), ...] }
+        for priority in bus_mids:
+            prot_map.add_module_ftb_entry(
+                subsystem_id,
+                mod_node.name,
+                base_addr,
+                size,
+                rw,
+                tz,
+                priority,
+                bus_mids[priority],  # [ MidEntry(name, smid, mask), ...]
+                pm_name=pm_name,
+            )
 
 
 def setup_default_ftb_entries():
@@ -692,19 +698,19 @@ def setup_default_ftb_entries():
     ]
 
     for module in prot_map.modules:
-        base_addr, size = prot_map.modules[module].get_base_and_size()
-        if module in prot_map.ppus:
-            size = "*"
-        prot_map.add_module_ftb_entry(
-            0x1C000000,  # PLM Subsystem ID
-            module,
-            base_addr,
-            size,
-            xppu.RW,  # RW
-            1,  # TZ (Non-secure)
-            10,  # Highest priority
-            mid_list,
-        )
+        for base_addr, size in prot_map.modules[module].get_base_and_size():
+            if module in prot_map.ppus:
+                size = "*"
+            prot_map.add_module_ftb_entry(
+                0x1C000000,  # PLM Subsystem ID
+                module,
+                base_addr,
+                size,
+                xppu.RW,  # RW
+                1,  # TZ (Non-secure)
+                10,  # Highest priority
+                mid_list,
+            )
 
 
 def ftb_setup_modules():
@@ -723,7 +729,8 @@ def ftb_setup_modules():
         match = [
             inst
             for mod, inst in prot_map.modules.items()
-            if inst.address == baddr and inst.size == size
+            for addr, sz in inst.get_base_and_size()
+            if addr == baddr and sz == size
         ]
 
         if len(match) >= 1:
