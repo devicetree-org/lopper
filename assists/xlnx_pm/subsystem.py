@@ -542,7 +542,7 @@ def construct_flag_references(subsystem):
         ref_flags = [0x0, 0x0, 0x0, 0x0]
 
         current_base = index * 4  # 4 elements per requirement of device
-        for i in range(0, 3):
+        for i in range(0, 4):
             ref_flags[i] = flags_list[current_base + i]
 
         subsystem.flag_references[flags_name] = ref_flags
@@ -597,7 +597,6 @@ def set_dev_pm_reqs(sub, device, usage):
 
     device.pm_reqs[0] |= usage
     device.pm_reqs[1] = 0xFFFFF  # default xppu aperture permissions
-    # device.pm_reqs[3] = 100         # default QoS
 
     if prot_enable != 0:
         dev_name = devid_to_devname(device.node_id)
