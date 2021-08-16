@@ -284,9 +284,11 @@ class Xppu:
 
     def set_default_aperture(self, mask):
         self.def_apermask = mask
+        # print("SET:", self.name, self.def_apermask)
 
     def get_default_aperture(self):
         # return hex(self.get_aperture(DEF_MASTERS))
+        # print("GET:", self.name, self.def_apermask)
         return hex(self.def_apermask)
 
     def get_nondef_rw_aperture(self):

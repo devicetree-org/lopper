@@ -145,8 +145,6 @@ class ModuleNode:
         self.name = name
         self.node = node
         self.reg = []  # [(addr, size), ...]
-        self.aper_idx = -1
-        self.aper_masks = {}  # { subsystem_id : 20-bit aperture mask }
         self.pm = set()  # xilpm label(s)
         self.ftb_entries = {
         }  # { subsystem_id : [FirewallTableEntry instances] }
@@ -533,8 +531,9 @@ class FirewallToModuleMap:
 
     def generate_aper_masks(self, custom=0):
         # write out all other entries
-        mod_list = (module for module in self.modules
-                    if module not in SKIP_MODULES)
+        mod_list = [ module
+                    for module in self.modules
+                    if module not in SKIP_MODULES ]
 
         for module in mod_list:
             # get parent firewall controller instance
@@ -552,16 +551,17 @@ class FirewallToModuleMap:
 
     def set_default_aper_masks_per_xppu(self, custom=0):
         # write out xppu def aper entries
-        mod_list = (module for module in self.modules if module in self.ppus)
+        mod_list = [ module
+                    for module in self.modules
+                    if module in self.ppus and is_xppu(self.ppus[module]) ]
 
         for module in mod_list:
-            # get parent firewall controller instance
-            x_inst_name = self.mod_to_ppu_map[module][0]
-            x_inst = self.ppus[x_inst_name].hw_instance
+            # get xppu instance
+            x_inst = self.ppus[module].hw_instance
             if x_inst is not None and is_xppu(x_inst):
                 if debug > 0:
                     print("[DBG++] Aper Config for {} -> {}".format(
-                        module, x_inst_name))
+                        module, x_inst.name))
                 self.modules[module].set_default_mask_for_xppu(x_inst, custom)
             else:
                 if debug > 0:
