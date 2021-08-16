@@ -34,6 +34,12 @@ class Device:
         self.pm_reqs = [0, 0, 0, 0]
 
 
+class Memory:
+    def __init__(self, mem_node, mem_flags):
+        self.mem_node = mem_node
+        self.mem_flags = mem_flags
+
+
 def get_sub_id_and_str(subsys_node):
     sub_id = subsys_node.propval("id")
     if isinstance(sub_id, list):
@@ -47,6 +53,7 @@ class Subsystem:
     def __init__(self, sub_node):
         self.flag_references = {}
         self.dev_dict = {}
+        self.mem_list = []
         self.sub_node = sub_node
         self.sub_str, self.sub_id = get_sub_id_and_str(sub_node)
 
@@ -138,6 +145,7 @@ def find_cpu_ids(node, sdt):
 def prelim_flag_processing(node, prefix):
     # return preliminary processing of flags
     flags = ""
+    raw_flags = ""
     if node.propval(prefix + "-flags-names") == [""]:
         flags = "default"
     else:
@@ -145,33 +153,41 @@ def prelim_flag_processing(node, prefix):
         if isinstance(flags, list):
             flags = flags[0]
 
+    raw_flags = [flags]
+
     if usage_no_restrictions(node):
         flags = flags + "::no-restrictions"
 
-    return flags
+    return flags, raw_flags
 
 
-def find_mem_ids(node, sdt, fw_config={}):
+def find_mem_ids(subsystem, node, sdt, fw_config={}):
     # given a node that has a memory or sram property, return list of  corresponding
     # XilPM Node IDs for the mem/sram node
-    flags = prelim_flag_processing(node, "memory")
+    flags, raw_flags = prelim_flag_processing(node, "memory")
 
     mem_xilpm_ids = []
-    if node.propval("memory") != [""]:
+    mem_val = node.propval("memory")
+    if mem_val != [""]:
         xilpm_id = mem_xilpm_ids.append(
             (xlnx_pm_devname_to_id["PM_DEV_DDR_0"], flags, fw_config)
         )
 
+    if prot_enable != 0:
+        mnode = protections.prot_map.add_to_mem_map(mem_val[0], mem_val[1], fw_config)
+        if mnode is not None:
+            subsystem.mem_list.append(Memory(mnode, raw_flags))
+
     return mem_xilpm_ids
 
 
-def find_sram_ids(node, sdt, fw_config={}):
+def find_sram_ids(subsystem, node, sdt, fw_config={}):
     sram_base = node.propval("sram")[0]
     sram_end = node.propval("sram")[1] + sram_base
     mem_xilpm_ids = []
     id_with_flags = []
     amba_tree = None
-    flags = prelim_flag_processing(node, "sram")
+    flags, raw_flags = prelim_flag_processing(node, "sram")
 
     ocm_len = 0xFFFFF
     if 0xFFFC0000 <= sram_base <= 0xFFFFFFFF:
@@ -184,6 +200,23 @@ def find_sram_ids(node, sdt, fw_config={}):
             mem_xilpm_ids.append("PM_DEV_OCM_2")
         if sram_base < 0xFFFFFFFF and sram_end > 0xFFFF0000:
             mem_xilpm_ids.append("PM_DEV_OCM_3")
+
+        if prot_enable != 0:
+            # add sram mem nodes to prot memory map (OCM)
+            mnode = protections.prot_map.add_to_mem_map(sram_base,
+                    sram_end - sram_base, fw_config)
+            if mnode is not None:
+                subsystem.mem_list.append(Memory(mnode, raw_flags))
+
+    elif 0xF2000000 <= sram_base <= 0xF2000000 + 0x20000:
+
+        if prot_enable != 0:
+            # add sram mem nodes to prot memory map (PMC RAM)
+            mnode = protections.prot_map.add_to_mem_map(sram_base,
+                    sram_end - sram_base, fw_config)
+            if mnode is not None:
+                subsystem.mem_list.append(Memory(mnode, raw_flags))
+
     elif 0xFFE00000 <= sram_base <= 0xFFEBFFFF:
         # TCM
         if sram_base < 0xFFE1FFFF:
@@ -281,9 +314,8 @@ def process_access(subnode, sdt, options, fw_config={}):
 
         # setup pm <-> module mapping for access nodes if protections are enabled
         if prot_enable != 0:
-            protections.prot_map.add_module_node_id(
-                devid_to_devname(xilpm_id), dev_node.name
-            )
+            protections.prot_map.add_module_node_id(devid_to_devname(xilpm_id),
+                                                    dev_node.name)
 
     return access_list
 
@@ -420,6 +452,7 @@ def is_domain_or_subsys(node):
 def print_subsystem(subsystem, verbose):
     if verbose > 1:
         print("[DBG++]", subsystem.sub_node.name, ":")
+        # devices
         for k, v in subsystem.dev_dict.items():
             print(
                 "[DBG++]\t",
@@ -432,6 +465,9 @@ def print_subsystem(subsystem, verbose):
                 " ".join(n for n in v.flags),
                 v.firewall,
             )
+        # memories
+        for mem in subsystem.mem_list:
+            print("[DBG++]\t", mem.mem_node, mem.mem_flags)
 
 
 def process_subsystem(subsystem,
@@ -486,9 +522,9 @@ def process_subsystem(subsystem,
         # print_dev_flags(device_flags, verbose)
 
         if node.propval("memory") != [""]:
-            device_flags.extend(find_mem_ids(node, sdt, fw_links))
+            device_flags.extend(find_mem_ids(subsystem, node, sdt, fw_links))
         if node.propval("sram") != [""]:
-            device_flags.extend(find_sram_ids(node, sdt, fw_links))
+            device_flags.extend(find_sram_ids(subsystem, node, sdt, fw_links))
         if node.propval("access") != [""]:
             device_flags.extend(process_access(node, sdt, options, fw_links))
 
@@ -528,8 +564,8 @@ def process_subsystem(subsystem,
 
             # add to subsystem's list of xilpm nodes
             if xilpm_id not in subsystem.dev_dict.keys():
-                subsystem.dev_dict[xilpm_id] = Device([node], xilpm_id, [flags],
-                                                      firewall_config)
+                subsystem.dev_dict[xilpm_id] = Device([node], xilpm_id,
+                                                      [flags], firewall_config)
             else:
                 device = subsystem.dev_dict[xilpm_id]
                 device.nodes.append(node)
@@ -604,9 +640,8 @@ def set_dev_pm_reqs(sub, device, usage):
         if "IPI" not in dev_name:
             rw = xppu.RW  # FIXME:: always allow read-write
             tz = (device.pm_reqs[0] >> 2) & 1
-            protections.setup_dev_ftb_entry(
-                sub.sub_id, dev_name, rw, tz, device.firewall["allow"]
-            )
+            protections.setup_dev_ftb_entry(sub.sub_id, dev_name, rw, tz,
+                                            device.firewall["allow"])
 
 
 def setup_fw_apertures(subsystems, custom=0):
@@ -619,8 +654,7 @@ def setup_fw_apertures(subsystems, custom=0):
                 dev_name = devid_to_devname(device.node_id)
                 if "IPI" not in dev_name:
                     device.pm_reqs[1] = protections.get_dev_aperture(
-                        sub.sub_id, dev_name, custom
-                    )
+                        sub.sub_id, dev_name, custom)
                 else:
                     device.pm_reqs[1] = 0
 
@@ -853,7 +887,8 @@ def set_prot_status(options):
             prot_infile = options["args"][3]
             # check if the file exists
             if os.path.isfile(prot_infile) is False:
-                print("ERROR] Protection config input file doesn't exist:", prot_infile)
+                print("ERROR] Protection config input file doesn't exist:",
+                      prot_infile)
                 return False
     else:
         # disable protection
@@ -886,6 +921,7 @@ def generate_cdo(root_node, domain_node, sdt, outfile, verbose, options):
     if prot_enable != 0:
         # add default protection node entry for each module and write firewall table
         mode = 0
+        protections.setup_mem_ftb_entries(subsystems)
         protections.setup_default_ftb_entries()
         write_firewall_table("prot.config")
         protections.generate_aper_masks_all()  # generate apertures for all modules per subsystem
@@ -902,8 +938,9 @@ def generate_cdo(root_node, domain_node, sdt, outfile, verbose, options):
         if verbose > 1:
             protections.prot_map.print_firewall_to_module_map(simple=True)
             protections.prot_map.print_module_to_firewall_map()
-            protections.prot_map.print_ss_to_bus_mids_map()
-            protections.prot_map.print_mod_ftb_map()
+            protections.prot_map.print_memory_nodes()
+            # protections.prot_map.print_ss_to_bus_mids_map()
+            # protections.prot_map.print_mod_ftb_map()
 
     # write the output
     write_to_cdo(subsystems, outfile, verbose)
