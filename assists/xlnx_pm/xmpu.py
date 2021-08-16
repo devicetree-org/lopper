@@ -12,7 +12,7 @@ from operator import ior
 from functools import reduce
 
 nodes = dict()
-debug = True
+debug = False
 
 # Constants
 NS_CHECK_TYPE = False  # Region checking policy
@@ -25,14 +25,14 @@ DEF_WR_ALLOWED = False
 
 # Interrupts
 Interrupts = {
-    "IEN_SECURITY_VIO" : [True, 3],  # Enable Security violation interrupt
-    "IEN_WRPERM_VIO" : [True, 2],    # Enable Write permission violation interrupt
-    "IEN_RDPERM_VIO" : [True, 1],    # Enable Read permission Violation interrupt
-    "IEN_INV_APB" : [True, 0],       # Enable Register Access interrupt on APB
+    "IEN_SECURITY_VIO": [True, 3],  # Enable Security violation interrupt
+    "IEN_WRPERM_VIO": [True, 2],  # Enable Write permission violation interrupt
+    "IEN_RDPERM_VIO": [True, 1],  # Enable Read permission Violation interrupt
+    "IEN_INV_APB": [True, 0],  # Enable Register Access interrupt on APB
 }
 
 # Total regions
-REGIONS = 16    # 16 Regions
+REGIONS = 16  # 16 Regions
 
 # Aper Address start
 REGION_0_START = 0x100
@@ -50,12 +50,12 @@ REGN_X_CONFIG_OFFSET = 0x14
 IEN_OFFSET = 0x18
 
 OFFSETS = {
-    "s_lo" : REGN_X_START_LO_OFFSET,
-    "s_hi" : REGN_X_START_HI_OFFSET,
-    "e_lo" : REGN_X_END_LO_OFFSET,
-    "e_hi" : REGN_X_END_HI_OFFSET,
-    "master" : REGN_X_MASTER_OFFSET,
-    "config" : REGN_X_CONFIG_OFFSET,
+    "s_lo": REGN_X_START_LO_OFFSET,
+    "s_hi": REGN_X_START_HI_OFFSET,
+    "e_lo": REGN_X_END_LO_OFFSET,
+    "e_hi": REGN_X_END_HI_OFFSET,
+    "master": REGN_X_MASTER_OFFSET,
+    "config": REGN_X_CONFIG_OFFSET,
 }
 
 # Master ID List (Global)
@@ -78,7 +78,9 @@ MIDL = {
 }
 
 # default masters list
-DEF_MASTERS = ["PPU0", "PPU1", "PSM", "DAP", "HSDP_DPC", "PMC_DMA0", "PMC_DMA1"]
+DEF_MASTERS = [
+    "PPU0", "PPU1", "PSM", "DAP", "HSDP_DPC", "PMC_DMA0", "PMC_DMA1"
+]
 
 
 def h2i(string):
@@ -92,12 +94,11 @@ def i2h(num):
 
 
 def dword(num):
-    return hex(num & 0xffffffff)
+    return (num & 0xffffffff)
 
 
 class Master:
     """XMPU MASTER_IDXX"""
-
     def __init__(self, mid, midm, name=''):
         self.name = name  # Master name string
         self.mid = mid  # Master Id (SMID)
@@ -117,7 +118,6 @@ class Master:
 
 class Config:
     """ XMPU Region Config """
-
     def __init__(self, check_type, tz, wr_allowed, rd_allowed, enable):
         self.check_type = check_type
         self.tz = tz
@@ -129,32 +129,64 @@ class Config:
         return str(self.__class__) + ": " + str(self.__dict__)
 
     def val(self):
-        bits = [self.enable, self.rd_allowed, self.wr_allowed, self.tz, self.check_type]
-        bitv = ( bit << pos for pos, bit in enumerate(bits) )
+        bits = [
+            self.enable, self.rd_allowed, self.wr_allowed, self.tz,
+            self.check_type
+        ]
+        bitv = (bit << pos for pos, bit in enumerate(bits))
         return reduce(ior, bitv)
+
+    def set_tz(self, tz):
+        self.tz = tz
+
+    def set_wr_allowed(self, wr_allowed):
+        self.wr_allowed = wr_allowed
+
+    def set_rd_allowed(self, rd_allowed):
+        self.rd_allowed = rd_allowed
+
+    def set_rw(self, rw):
+        if rw == 0:
+            self.set_wr_allowed(1)
+            self.set_rd_allowed(1)
+        elif rw == 1:
+            self.set_rd_allowed(1)
+        elif rw == 2:
+            self.set_wr_allowed(1)
+        else:
+            return
+
+    def enable(self):
+        self.enable = 1
+
+    def disable(self):
+        self.enable = 0
 
 
 class Region:
     """ XMPU Regions """
-
     def __init__(self, idx, offset):
         self.idx = idx
         self.offset = offset
-        self.addr_lo = 0
-        self.addr_hi = 0
+        self.addr_start = 0
+        self.addr_end = 0
         self.master = Master(0, 0)
         self.config = Config(NS_CHECK_TYPE, TZ, WR, RD, 0)
 
     def __str__(self):
         return str(self.__class__) + ": " + str(self.__dict__)
 
-    def set_master(self, master : Master):
+    def set_master(self, master: Master):
         self.master.mid = master.mid
         self.master.mask = master.mask
         self.master.name = master.name
 
+    def set_addr(self, addr, size):
+        self.addr_start = addr
+        self.addr_end = addr + size
+
     def get_offset(self, offkey):
-        return hex(self.offset + OFFSETS[offkey])
+        return self.offset + OFFSETS[offkey]
 
     def get_master(self):
         return self.get_offset("master"), dword(self.master.val())
@@ -163,43 +195,69 @@ class Region:
         return self.get_offset("config"), dword(self.config.val())
 
     def get_start_lo(self):
-        return self.get_offset("s_lo"), dword(self.addr_lo)
+        return self.get_offset("s_lo"), dword(self.addr_start)
 
     def get_start_hi(self):
-        return self.get_offset("s_hi"), dword(self.addr_hi)
+        return self.get_offset("s_hi"), dword(self.addr_start >> 32)
 
     def get_end_lo(self):
-        return self.get_offset("e_lo"), dword(self.addr_lo >> 32)
+        return self.get_offset("e_lo"), dword(self.addr_end)
 
     def get_end_hi(self):
-        return self.get_offset("e_hi"), dword(self.addr_hi >> 32)
+        return self.get_offset("e_hi"), dword(self.addr_end >> 32)
 
 
 class Xmpu:
     """Xmpu base class"""
-
     def __init__(self, name, addr, size):
         self.name = name
         self.baseaddr = addr
         self.size = size
         # initialize regions map
         self.regions = {
-                i : Region(i, REGION_0_START + (i * REGION_STEP_SIZE))
-                for i in range(REGIONS)
-            }
+            i: Region(i, REGION_0_START + (i * REGION_STEP_SIZE))
+            for i in range(REGIONS)
+        }
 
     def __str__(self):
         return str(self.__class__) + ": " + str(self.__dict__)
 
-    def set_master(self, idx, master : Master):
+    def set_master(self, idx, master: Master):
         if idx < len(self.regions):
             self.regions[idx].set_master(master)
         else:
-            print("[ERROR] xmpu region idx {} too big (max: {})".format(idx, REGIONS))
+            print("[ERROR] xmpu region idx {} too big (max: {})".format(
+                idx, REGIONS))
+            return
+
+    def set_addr(self, idx, addr, size):
+        if idx < len(self.regions):
+            self.regions[idx].set_addr(addr, size)
+        else:
+            print("[ERROR] xmpu region idx {} too big (max: {})".format(
+                idx, REGIONS))
+            return
+
+    def set_config(self, idx, tz, rw):
+        if idx < len(self.regions):
+            self.regions[idx].config.set_tz(tz)
+            self.regions[idx].config.set_rw(rw)
+        else:
+            print("[ERROR] xmpu region idx {} too big (max: {})".format(
+                idx, REGIONS))
+            return
+
+    def enable_region(self, idx):
+        if idx < len(self.regions):
+            self.regions[idx].config.enable()
+        else:
+            print("[ERROR] xmpu region idx {} too big (max: {})".format(
+                idx, REGIONS))
             return
 
     def get_ctrl_reg_addr_val(self):
-        return hex(self.baseaddr), hex((DEF_WR_ALLOWED << 1) | (DEF_RD_ALLOWED))
+        return hex(self.baseaddr), hex((DEF_WR_ALLOWED << 1)
+                                       | (DEF_RD_ALLOWED))
 
     def get_ien_reg_addr_val(self):
         reg_addr = self.baseaddr + IEN_OFFSET
@@ -231,7 +289,7 @@ def init_masters(xmpu):
 
 def init_xmpu(name, reg):
     base = (reg[0] << 32) | reg[1]
-    size = (reg[2] << 32 ) | reg[3]
+    size = (reg[2] << 32) | reg[3]
     nodes[name] = Xmpu(name, base, size)
     return nodes[name]
 

@@ -35,7 +35,18 @@ sub_id_to_node = {}  # { str: Subsystem() instance }
 def chunks(list_of_items, num):
     """Yield successive num-sized chunks from input list"""
     for i in range(0, len(list_of_items), num):
-        yield list_of_items[i : i + num]
+        yield list_of_items[i:i + num]
+
+
+def is_substr_in_compat(substr, compat_list):
+    if not isinstance(compat_list, list):
+        compat_list = list(compat_list)
+
+    for compat in compat_list:
+        if substr in compat:
+            return True
+
+    return False
 
 
 class FirewallNode:
@@ -56,32 +67,99 @@ class FirewallNode:
             print("[ERROR] Invalid protection node {}".format(name))
 
 
-def is_xppu(firewall : FirewallNode):
+def is_xppu(firewall: FirewallNode):
     return firewall.compat == "xlnx,xppu"
 
 
-def is_xmpu(firewall : FirewallNode):
+def is_xmpu(firewall: FirewallNode):
     return firewall.compat == "xlnx,xmpu"
+
+
+class MemNode:
+    def __init__(self, addr, size):
+        self.addr = addr
+        self.size = size
+        self.fw_parents = []
+        self.fw_config = {}
+        self.ftb_entries = {}
+        self.ftb_entries_in = {}
+
+    def __str__(self):
+        return "addr: {0}, size: {1}, fw_config: {2}, parents: {3}".format(
+            hex(self.addr), hex(self.size), self.fw_config, self.fw_parents)
+
+    def print_entry(self, fp=None, custom=0):
+        if custom != 0:
+            ftb_ents = self.ftb_entries_in
+        else:
+            ftb_ents = self.ftb_entries
+
+        if ftb_ents == {}:
+            return
+
+        print("# memory range", file=fp)
+        for subsys in ftb_ents:
+            for entry in ftb_ents[subsys]:
+                entry.print_entry(fp)
+
+    def add_ftb_entry(
+        self,
+        subsystem_id: int,
+        rw: int,
+        tz: int,
+        priority: int,
+        mid_list: [[ftb.MidEntry]],  # [ MidEntry(name, smid, mask), ...]
+        module_tag="",
+        pm_name="",
+        custom=0,
+    ):
+        if custom != 0:
+            ftb_ents = self.ftb_entries_in
+        else:
+            ftb_ents = self.ftb_entries
+
+        # add subsystem's entry for this module if missing
+        if subsystem_id not in ftb_ents:
+            ftb_ents[subsystem_id] = []
+
+        if priority == 0:
+            priority = 10  # "0" is highest priority from subsystem plugin
+
+        ftb_entry = ftb.FirewallTableEntry(
+            subsystem_id,
+            self.addr,
+            self.size,
+            rw,
+            tz,
+            mid_list,
+            module_tag,
+            priority=priority,
+        )
+
+        # add to the subsystem's ftb entries
+        ftb_ents[subsystem_id].append(ftb_entry)
 
 
 class ModuleNode:
     def __init__(self, name, node):
         self.name = name
         self.node = node
-        self.reg = [] # [(addr, size), ...]
+        self.reg = []  # [(addr, size), ...]
         self.aper_idx = -1
         self.aper_masks = {}  # { subsystem_id : 20-bit aperture mask }
         self.pm = set()  # xilpm label(s)
-        self.ftb_entries = {}  # { subsystem_id : [FirewallTableEntry instances] }
-        self.ftb_entries_in = {}  # { subsystem_id : [FirewallTableEntry instances] }
+        self.ftb_entries = {
+        }  # { subsystem_id : [FirewallTableEntry instances] }
+        self.ftb_entries_in = {
+        }  # { subsystem_id : [FirewallTableEntry instances] }
 
     def __str__(self):
         printstr = "Module: {0:25} {1}".format(
-            self.node.label, self.pm if bool(self.pm) is True else "{}"
-        )
+            self.node.label, self.pm if bool(self.pm) is True else "{}")
         for subsys in self.ftb_entries:
             for each_entry in self.ftb_entries[subsys]:
-                printstr += "\n- {} : ".format(hex(subsys)) + each_entry.__str__()
+                printstr += "\n- {} : ".format(
+                    hex(subsys)) + each_entry.__str__()
         return printstr
 
     def print_entry(self, fp=None):
@@ -92,7 +170,8 @@ class ModuleNode:
 
         if bool(self.pm) is True:
             print(
-                " ({0})".format(" ".join(tag.lower() for tag in sorted(self.pm))),
+                " ({0})".format(" ".join(tag.lower()
+                                         for tag in sorted(self.pm))),
                 file=fp,
             )
         else:
@@ -110,7 +189,8 @@ class ModuleNode:
 
         if bool(self.pm) is True:
             print(
-                " ({0})".format(" ".join(tag.lower() for tag in sorted(self.pm))),
+                " ({0})".format(" ".join(tag.lower()
+                                         for tag in sorted(self.pm))),
                 file=fp,
             )
         else:
@@ -120,23 +200,23 @@ class ModuleNode:
             for entry in self.ftb_entries_in[subsys]:
                 entry.print_entry(fp)
 
-    def get_base_and_size(self):
+    def get_base_and_size(self, prop='reg'):
         if self.reg != []:
             return self.reg
 
         defval = (0xdeadbeef, 0xdeadbeef)
 
-        reg = self.node.propval("reg")
+        reg = self.node.propval(prop)
         if reg == [""]:
             self.reg.append(defval)
             return self.reg
 
-        # print("[DBG++++]", self.name, self.node.label, self.reg_sdt)
+        # print("[DBG++++]", self.name, self.node.label, self.reg)
 
         if len(reg) % 4 != 0 and len(reg) % 2 != 0:
             if debug > 0:
                 print("[WARNING++++] FIXME:: len(addr) is not 2 or 4",
-                        self.name, self.node.label, addr)
+                      self.name, self.node.label, addr)
             self.reg.append(defval)
             return self.reg
 
@@ -205,8 +285,7 @@ class ModuleNode:
                 mask = 0
                 for mid_entry in entry.mid_list:
                     mask_idx = x_inst.get_master_by_smrw(
-                        mid_entry.smid, mid_entry.mask, entry.rw
-                    )
+                        mid_entry.smid, mid_entry.mask, entry.rw)
                     if mask_idx is not None:
                         mask = mask | (1 << mask_idx)
                 # store aper mask for this entry
@@ -262,6 +341,7 @@ class FirewallToModuleMap:
         self.mod_to_ppu_map = {}
         self.ppu_to_mid_map = {}
         self.pm_label_to_mod_map = {}
+        self.memory_nodes = []
 
     def add_firewall(self, name, node, compat):
         if name not in self.ppus:
@@ -304,7 +384,8 @@ class FirewallToModuleMap:
     ):
 
         if module_name not in self.modules:
-            print("[ERROR] Missing module {} from prot_map".format(module_name))
+            print(
+                "[ERROR] Missing module {} from prot_map".format(module_name))
             return
 
         if module_name in SKIP_MODULES:
@@ -369,16 +450,25 @@ class FirewallToModuleMap:
 
     def print_firewall_to_module_map(self, simple=False):
         for firewall in self.ppu_to_mod_map:
-            print("\n[DBG++] -------- START: {} --------".format(firewall))
+            firewall_label = self.ppus[firewall].node.label
+            print("\n[DBG++] -------- START: {0} : {1} --------".format(
+                firewall_label, firewall))
+
             for module in self.ppu_to_mod_map[firewall]:
                 if not simple:
-                    print("[DBG++] \t{0:40}".format(module), self.modules[module])
+                    print("[DBG++] \t{0:40}".format(module),
+                          self.modules[module])
                 else:
                     reg = self.modules[module].node.propval("reg")
+                    ranges = self.modules[module].node.propval("ranges")
                     label = self.modules[module].node.label
-                    reg = [ hex(i) for i in reg if reg != [''] ]
-                    print("[DBG++] \t{0:80} {1}".format('{0}: {1}'.format(label, module), reg))
-            print("[DBG++] -------- END: {} --------\n".format(firewall))
+                    reg = [hex(i) for i in reg if reg != ['']]
+                    ranges = [hex(i) for i in ranges if ranges != ['']]
+                    print("[DBG++] \t{0:80} {1} {2}".format(
+                        '{0}: {1}'.format(label, module), reg, ranges))
+
+            print("[DBG++] -------- END: {0} : {1} --------\n".format(
+                firewall_label, firewall))
 
         for firewall in self.ppu_to_mid_map:
             print("[DBG++] {}:".format(firewall))
@@ -396,8 +486,8 @@ class FirewallToModuleMap:
     def print_ss_to_bus_mids_map(self):
         for ss, bus_mid_nodes in self.ss_or_dom.items():
             mid_list = [(n[0], hex(n[1])) for n in bus_mid_nodes[1]]
-            print("[DBG++] {} -> {} [Mask: {}]"
-                    .format(ss, mid_list, self.derive_ss_mask(ss)))
+            print("[DBG++] {} -> {} [Mask: {}]".format(
+                ss, mid_list, self.derive_ss_mask(ss)))
 
     def print_mod_ftb_map(self):
         for module in self.modules:
@@ -418,6 +508,10 @@ class FirewallToModuleMap:
                 else:
                     self.modules[module].print_entry(fp)
 
+        # write out all memory entries
+        for mem in self.memory_nodes:
+            mem.print_entry(fp)
+
     def write_ftb_custom(self, fp=None):
         # write out ppu entries first
         for ppu in self.ppus:
@@ -433,9 +527,14 @@ class FirewallToModuleMap:
                 else:
                     self.modules[module].print_entry_custom(fp)
 
+        # write out all memory entries
+        for mem in self.memory_nodes:
+            mem.print_entry(fp, custom=1)
+
     def generate_aper_masks(self, custom=0):
         # write out all other entries
-        mod_list = (module for module in self.modules if module not in SKIP_MODULES)
+        mod_list = (module for module in self.modules
+                    if module not in SKIP_MODULES)
 
         for module in mod_list:
             # get parent firewall controller instance
@@ -443,17 +542,13 @@ class FirewallToModuleMap:
             x_inst = self.ppus[x_inst_name].hw_instance
             if x_inst is not None and is_xppu(x_inst):
                 if debug > 0:
-                    print(
-                        "[DBG++] Aper Config for {} -> {}".format(module, x_inst_name)
-                    )
+                    print("[DBG++] Aper Config for {} -> {}".format(
+                        module, x_inst_name))
                 self.modules[module].compute_aper_mask(x_inst, custom)
             else:
                 if debug > 0:
-                    print(
-                        "[DBG++] Skipped: Aper Config for {} -> {}".format(
-                            module, x_inst_name
-                        )
-                    )
+                    print("[DBG++] Skipped: Aper Config for {} -> {}".format(
+                        module, x_inst_name))
 
     def set_default_aper_masks_per_xppu(self, custom=0):
         # write out xppu def aper entries
@@ -465,17 +560,71 @@ class FirewallToModuleMap:
             x_inst = self.ppus[x_inst_name].hw_instance
             if x_inst is not None and is_xppu(x_inst):
                 if debug > 0:
-                    print(
-                        "[DBG++] Aper Config for {} -> {}".format(module, x_inst_name)
-                    )
+                    print("[DBG++] Aper Config for {} -> {}".format(
+                        module, x_inst_name))
                 self.modules[module].set_default_mask_for_xppu(x_inst, custom)
             else:
                 if debug > 0:
-                    print(
-                        "[DBG++] Skipped: Aper Config for {} -> {}".format(
-                            module, x_inst_name
-                        )
-                    )
+                    print("[DBG++] Skipped: Aper Config for {} -> {}".format(
+                        module, x_inst_name))
+
+    def get_parent_xmpus(self, addr, size):
+        parents = []
+        xmpus = (name for name, node in self.ppus.items()
+                 if is_xmpu(node) and "okay" in node.node.propval("status"))
+
+        for mpu in xmpus:
+            for mod_name in self.ppu_to_mod_map[mpu]:
+                module = self.modules[mod_name]
+
+                compat_list = module.node.propval("compatible")
+                if is_substr_in_compat("xlnx,psv-ocm-ram", compat_list):
+                    prop = 'reg'
+                elif is_substr_in_compat("xlnx,psv-pmc-ram", compat_list):
+                    prop = 'reg'
+                elif is_substr_in_compat("xlnx,versal-ddrmc-edac-region",
+                                         compat_list):
+                    prop = 'ranges'
+                else:
+                    continue
+
+                for m_addr, m_size in module.get_base_and_size(prop=prop):
+                    m_end = m_addr + m_size
+                    if addr >= m_addr and (addr + size) <= m_end:
+                        # print(module.name, hex(m_addr), hex(m_size), hex(addr), hex(addr + size))
+                        parents.append(mpu)
+
+        return parents
+
+    def add_to_mem_map(self, addr, size, fw_conf):
+        # add memory node in the prot map
+        mem_node = None
+
+        # check if the mem node already exists
+        for mnode in self.memory_nodes:
+            if mnode.addr == addr and mnode.size == size:
+                mem_node = mnode
+                break
+
+        if mem_node is None:
+            mem_node = MemNode(addr, size)
+            mem_node.fw_config = copy.deepcopy(fw_conf)
+            # setup firewall parents
+            mem_node.fw_parents = self.get_parent_xmpus(addr, size)
+            # add to mem nodes map
+            self.memory_nodes.append(mem_node)
+        else:
+            # copy firewall config for this node
+            for key in ["allow", "block"]:
+                for item in fw_conf[key]:
+                    mem_node.fw_config[key].append(copy.deepcopy(item))
+            # print(mem_node.fw_config[key], fw_conf[key])
+
+        return mem_node
+
+    def print_memory_nodes(self):
+        for mem_node in self.memory_nodes:
+            print(mem_node)
 
 
 # Global PPU <-> Peripherals Map
@@ -550,18 +699,22 @@ def setup_dom_to_bus_mids(sub_or_dom_node, sdt):
 
     # cpu smid map
     cpu_map = {
-        "a72": {0x1: 0x260, 0x2: 0x261},
-        "r5": {0x1: 0x200, 0x2: 0x204},
+        "a72": {
+            0x1: 0x260,
+            0x2: 0x261
+        },
+        "r5": {
+            0x1: 0x200,
+            0x2: 0x204
+        },
     }
 
     for substr in cpu_map:
         if substr in cpu_node.name:
             if cpu_node.name not in prot_map.bus_mids:
                 print(
-                    "[WARNING] Node {} is missing from prot map bus master IDs".format(
-                        cpu_node.name
-                    )
-                )
+                    "[WARNING] Node {} is missing from prot map bus master IDs"
+                    .format(cpu_node.name))
                 return None
 
             # check for cores, add appropriately
@@ -591,7 +744,8 @@ def get_dev_aperture(subsystem_id: int, pm_name: str, custom=0):
         # print(mod_tags, len(mod_tags))
     except:
         if debug > 0:
-            print("[WARNING] FIXME:: Invalid or missing PM Node {}".format(pm_name))
+            print("[WARNING] FIXME:: Invalid or missing PM Node {}".format(
+                pm_name))
         return 0
 
     mod_tags_list = list(mod_tags)
@@ -624,8 +778,8 @@ def get_dev_aperture(subsystem_id: int, pm_name: str, custom=0):
 
 
 def setup_dev_ftb_entry(
-    subsystem_id: int, pm_name: str, rw: int, tz: int, mid_list: list
-):  # allowed: [(dom/ss name, priority),..]
+        subsystem_id: int, pm_name: str, rw: int, tz: int,
+        mid_list: list):  # allowed: [(dom/ss name, priority),..]
     """create an ftb entry for given device with a linked subsystem"""
     mod_tags = ""
     mod_tag = ""
@@ -640,7 +794,8 @@ def setup_dev_ftb_entry(
         # print(mod_tags, len(mod_tags))
     except:
         if debug > 0:
-            print("[WARNING] FIXME:: Invalid or missing PM Node {}".format(pm_name))
+            print("[WARNING] FIXME:: Invalid or missing PM Node {}".format(
+                pm_name))
         return
 
     mod_tags_list = list(mod_tags)
@@ -673,7 +828,8 @@ def setup_dev_ftb_entry(
         for bus_mid_name, smid in prot_map.ss_or_dom[dom_or_ss_name][1]:
             if priority not in bus_mids:
                 bus_mids[priority] = []
-            bus_mids[priority].append(ftb.MidEntry(smid, 0x3FF, name=bus_mid_name))
+            bus_mids[priority].append(
+                ftb.MidEntry(smid, 0x3FF, name=bus_mid_name))
 
     # get module base and sizes
     for base_addr, size in mod_node.get_base_and_size():
@@ -727,6 +883,78 @@ def setup_default_ftb_entries():
                 mid_list,
             )
 
+    for memory in prot_map.memory_nodes:
+        memory.add_ftb_entry(
+            0x1C000000,  # PLM Subsystem ID
+            xppu.RW,  # RW
+            1,  # TZ (Non-secure)
+            10,  # Highest priority
+            mid_list,
+        )
+
+
+def setup_mem_ftb_entry(subsystem):  # Subsystem() object
+    """create an ftb entry for every memory node in the given subsystem"""
+
+    # add ftb entry for each Memory() instance from a subsystem
+    for m_inst in subsystem.mem_list:
+
+        bus_mids = {}  # { priority: [ MidEntry(name, smid, mask), ...] }
+        mid_list = []
+
+        # base and size
+        base_addr = m_inst.mem_node.addr
+        size = m_inst.mem_node.size
+        subsystem_id = subsystem.sub_id
+
+        # flags for this memory node
+        flags = subsystem.flag_references[m_inst.mem_flags[0]]
+
+        # Extract TZ, RW (FIXME)
+        rw = 0  # RW
+        tz = 1  # Non-secure
+
+        # Extract firewall config
+        mid_list = m_inst.mem_node.fw_config['allow']
+
+        for dom_or_ss_name, priority in mid_list:
+            if dom_or_ss_name not in prot_map.ss_or_dom:
+                # print("Skipping dom/ss:", dom_or_ss_name, "for", pm_name)
+                continue
+            # print("[DBG++++]", prot_map.ss_or_dom[dom_or_ss_name])
+            for bus_mid_name, smid in prot_map.ss_or_dom[dom_or_ss_name][1]:
+                if priority not in bus_mids:
+                    bus_mids[priority] = []
+                bus_mids[priority].append(
+                    ftb.MidEntry(smid, 0x3FF, name=bus_mid_name))
+
+        if debug > 0:
+            print(
+                "[DBG++++]",
+                hex(subsystem_id),
+                hex(base_addr),
+                hex(size),
+                rw,
+                tz,
+                bus_mids,
+            )
+
+        # entry for each priority in bus_mids
+        # { priority: [ MidEntry(name, smid, mask), ...] }
+        for priority in bus_mids:
+            m_inst.mem_node.add_ftb_entry(
+                subsystem_id,
+                rw,
+                tz,
+                priority,
+                bus_mids[priority]  # [ MidEntry(name, smid, mask), ...]
+            )
+
+
+def setup_mem_ftb_entries(subsystems):
+    for sub in subsystems:
+        setup_mem_ftb_entry(sub)
+
 
 def ftb_setup_modules():
     for tline in firewall_table.tokens:
@@ -742,8 +970,7 @@ def ftb_setup_modules():
         mod_inst = None
 
         match = [
-            inst
-            for mod, inst in prot_map.modules.items()
+            inst for mod, inst in prot_map.modules.items()
             for addr, sz in inst.get_base_and_size()
             if addr == baddr and sz == size
         ]
@@ -807,20 +1034,20 @@ def ftb_setup(filepath, sdt, options):
 
 def write_to_cdo(filep, verbose):
     with open(filep, "a") as fp:
-        for ppu_name, ppu_obj in prot_map.ppus.items():
+        for firewall_name, firewall_obj in prot_map.ppus.items():
 
-            xppu_instance = ppu_obj.hw_instance
-            xppu_label = ppu_obj.node.label
+            firewall_inst = firewall_obj.hw_instance
+            firewall_label = firewall_obj.node.label
 
             if verbose > 1:
-                print(
-                    "[INFO]: Generating configuration for {0} XPPU ({1})".format(
-                        xppu_label, filep
-                    )
-                )
+                print("[INFO]: Generating configuration for {0} ({1})".
+                      format(firewall_label, filep))
 
-            if xppu_instance is not None and is_xppu(ppu_obj):
-                cdogen.write_xppu(xppu_instance, fp)
+            if firewall_inst is not None:
+                if is_xppu(firewall_obj):
+                    cdogen.write_xppu(firewall_inst, fp)
+                elif is_xmpu(firewall_obj):
+                    cdogen.write_xmpu(firewall_inst, fp)
 
 
 def setup(root_node, sdt, options):
