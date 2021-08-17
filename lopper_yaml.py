@@ -42,6 +42,7 @@ class LopperTreeImporter(object):
 
         """
         self.nodecls = nodecls
+        self.boolean_as_int = False
 
     def import_(self, data):
         """Import tree from `data`."""
@@ -51,7 +52,6 @@ class LopperTreeImporter(object):
         assert isinstance(node, LopperNode)
 
         attrs = OrderedDict()
-        boolean_encode_as_int = False
 
         name = node.name
         if not name:
@@ -66,7 +66,7 @@ class LopperTreeImporter(object):
                 # empty list. So check for a value, try json, fallback to
                 # assignment.
                 decode = False
-                if boolean_encode_as_int:
+                if self.boolean_as_int:
                     decode = True
                 else:
                     if node.__props__[p].value:
@@ -295,7 +295,7 @@ class LopperYAML():
     LopperTree or Yaml file on demand. Hence we have the capability of
     converting between the two formats as required.
     """
-    def __init__( self, yaml_file = None, tree = None ):
+    def __init__( self, yaml_file = None, tree = None, config = None ):
         """
         Initialize a a LopperYAML representation from either a yaml file
         or from a LopperTree.
@@ -311,6 +311,15 @@ class LopperYAML():
         self.yaml_source = yaml_file
         self.anytree = None
         self.tree = tree
+
+        bool_as_int = False
+        if config:
+            try:
+                bool_as_int = config.getboolean( 'yaml','bool_as_int' )
+            except:
+                pass
+
+        self.boolean_as_int = bool_as_int
 
         if self.yaml_source and self.tree:
             print( "[ERROR]: both yaml and lopper tree provided" )
@@ -441,7 +450,6 @@ class LopperYAML():
         excluded_props = [ "name", "fdt_name" ]
         serialize_json = True
         verbose = 0
-        boolean_encode_as_int = False
 
         for node in PreOrderIter(self.anytree):
             if node.name == "root":
@@ -479,13 +487,13 @@ class LopperYAML():
                     elif type(props[p]) == bool:
                         # don't encode false bool, and a true is just an empty list
                         if props[p]:
-                            if boolean_encode_as_int:
-                                props[p] = 1
+                            if self.boolean_as_int:
+                                props[p] = [ 1 ]
                             else:
                                 props[p] = None
                         else:
-                            if boolean_encode_as_int:
-                                props[p] = 0
+                            if self.boolean_as_int:
+                                props[p] = [ 0 ]
                             else:
                                 skip = True
 
@@ -677,6 +685,8 @@ class LopperYAML():
             print( "[ERROR]: no tree provided" )
             sys.exit(1)
 
-        self.anytree = LopperTreeImporter(Node).import_(in_tree["/"])
+        importer = LopperTreeImporter(Node)
+        importer.boolean_as_int = self.boolean_as_int
+        self.anytree = importer.import_(in_tree["/"])
 
 

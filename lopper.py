@@ -30,6 +30,7 @@ import atexit
 import textwrap
 from collections import UserDict
 from collections import OrderedDict
+import configparser
 
 import humanfriendly
 
@@ -219,7 +220,7 @@ class LopperSDT:
 
                         elif re.search( ".yaml$", f ):
                             # look for a special front end, for this or any file for that matter
-                            yaml = LopperYAML( f )
+                            yaml = LopperYAML( f, config=config )
                             yaml_tree = yaml.to_tree()
 
                             # save the tree for future processing (and joining with the main
@@ -291,7 +292,7 @@ class LopperSDT:
                 sdt_files.append( sdt_file )
                 fp = sdt_file
 
-            yaml = LopperYAML( fp )
+            yaml = LopperYAML( fp, config=config )
             lt = yaml.to_tree()
 
             # temp location. check to see if automatic translations are
@@ -348,7 +349,7 @@ class LopperSDT:
 
                 self.lops.append( lop )
             elif re.search( ".yaml$", ifile ):
-                yaml = LopperYAML( ifile )
+                yaml = LopperYAML( ifile, config=config )
                 yaml_tree = yaml.to_tree()
 
                 lop = LopperFile( ifile )
@@ -502,7 +503,7 @@ class LopperSDT:
                 print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
                 sys.exit(1)
 
-            yaml = LopperYAML( None, self.tree )
+            yaml = LopperYAML( None, self.tree, config=config )
             yaml.to_yaml( output_filename )
         else:
             # we use the outfile extension as a mask
@@ -2068,6 +2069,8 @@ def usage():
     print('  -f, --force         force overwrite output file(s)')
     print('    , --werror        treat warnings as errors' )
     print('  -S, --save-temps    don\'t remove temporary files' )
+    print('    , --cfgfile       specify a lopper configuration file to use (configparser format) ' )
+    print('    , --cfgval        specify a configuration value to use (in configparser section format). Can be specified multiple times' )
     print('  -h, --help          display this help and exit')
     print('  -O, --outdir        directory to use for output files')
     print('    , --server        after processing, start a server for ReST API calls')
@@ -2100,6 +2103,7 @@ def main():
     global xlate
     global libfdt
     global overlay
+    global config
 
     debug = False
     sdt = None
@@ -2122,13 +2126,16 @@ def main():
     libfdt = True
     xlate = []
     overlay = False
+    config_file = None
+    config_vals = {}
+
     try:
         opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:Dx:",
                                    [ "debug", "assist-paths=", "outdir", "enhanced",
                                      "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
                                      "assist=","server", "auto", "permissive", "xlate=",
-                                     "no-libfdt", "overlay" ] )
+                                     "no-libfdt", "overlay", "cfgfile=", "cfgval="] )
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2180,6 +2187,10 @@ def main():
             permissive = True
         elif o in ('--overlay' ):
             overlay = True
+        elif o in ('--cfgfile' ):
+            config_file = a
+        elif o in ('--cfgval' ):
+            config_vals[a] = a
         elif o in ('-x', '--xlate'):
             xlate.append(a)
         elif o in ('--version'):
@@ -2262,6 +2273,41 @@ def main():
             print( "[ERROR]: unrecognized input file type passed" )
             sys.exit(1)
 
+    # config file handling
+    config = configparser.ConfigParser()
+    if not config_file:
+        config_file = "{}/lopper.ini".format( lopper_directory )
+
+    inf = Path(config_file)
+    if not inf.exists():
+        print( "Error: config file %s does not exist" % config_file )
+        sys.exit(1)
+
+    config.read( inf.absolute() )
+
+    if config_vals:
+        # was there a ".", if so that's the section split marker
+        for i,k in config_vals.items():
+            config_sections = k.split( '.' )
+            if len(config_sections) > 1:
+                # we have sections
+                config_option = config_sections[-1]
+                config_option_name = config_option.split('=')[0]
+                config_option_val = config_option.split('=')[-1]
+                if config_option_name == config_option_val:
+                    config_option_val = True
+
+                for item in config_sections[:-1]:
+                    try:
+                        section = config[item]
+                    except:
+                        config[item] = {}
+
+                    config[item][config_option_name] = str(config_option_val)
+
+            else:
+                # global section, not currently implemented
+                pass
 
     if xlate:
         for x in xlate:
@@ -2283,7 +2329,7 @@ def main():
         for x in x_files:
             inf = Path(x)
             if not inf.exists():
-                x = "lops/" + x
+                x = "{}/lops/".format( lopper_directory ) + x
                 inf = Path( x )
                 if not inf.exists():
                     print( "[ERROR]: input file %s does not exist" % x )
