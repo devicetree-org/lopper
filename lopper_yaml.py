@@ -208,6 +208,7 @@ class LopperDictImporter(object):
         assert "parent" not in data
         attrs = dict(data)
         verbose = 0
+        lists_as_nodes = False
 
         if verbose:
             print( "[DBG]: ===> __import (%s)" % name )
@@ -237,6 +238,36 @@ class LopperDictImporter(object):
                 # stored in the parent node. We don't remove it here, since the iterator
                 # will change and we'll error
                 to_delete.append( k )
+
+            if type(attrs[k]) == list:
+                if not lists_as_nodes:
+                    continue
+
+                # if the attribute is a list, and all of the subtypes are dictionaries
+                # we had yaml something like:
+                #    firewallconf:
+                #       - block: true
+                #       - block: never
+                #         domain: 0x1
+                #       - ....
+                # We can expand that, and generate node names for the subdictionaries.
+                # If we don't, the list will be json encoded and will have to be expanded
+                # later.
+                #
+                all_dicts = all(isinstance(x, dict) for x in attrs[k])
+                if all_dicts:
+                    for i, kk in enumerate(attrs[k]):
+                        cdict = copy.deepcopy(kk)
+                        cdict['name'] = "{}_{}".format( k, i )
+                        cdict['fdt_name'] = "{}_{}".format( k, i )
+
+                        if verbose:
+                            print( "[DBG]      queuing child node: generated name: %s props: %s" % (cdict['name'],cdict))
+
+                        children.append( cdict )
+
+                    to_delete.append( k )
+
 
         for d in to_delete:
             del attrs[d]
@@ -320,6 +351,7 @@ class LopperYAML():
                 pass
 
         self.boolean_as_int = bool_as_int
+        self.lists_as_nodes = False
 
         if self.yaml_source and self.tree:
             print( "[ERROR]: both yaml and lopper tree provided" )
