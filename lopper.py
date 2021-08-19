@@ -1016,9 +1016,12 @@ class LopperSDT:
 
 
                     if self.verbose > 1:
-                        print( "[DBG++]: selected nodes:" )
+                        print( "[DBG++]: select pass done: selected nodes:" )
                         for n in selected_nodes:
                             print( "    %s" % n )
+                        # these are now our possible selected nodes for any follow
+                        # up "or" conditions
+                        selected_nodes_possible = selected_nodes
 
             # update the tree selection with our results
             tree.__selected__ = selected_nodes
