@@ -185,7 +185,9 @@
                 lop_0_8 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
-                      //select_2 = "/.*:firewallconf:";
+                      // select firewallconf properties
+                      select_2 = "/.*:firewallconf:";
+                      // select firewallconf nodes
                       select_3 = "/.*/firewallconf::";
                       lop_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
