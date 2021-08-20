@@ -144,7 +144,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             canondef_dict.update({prop:node[prop].value[0]})
                         elif prop == "interrupts":
                             try:
-                                intr = get_interrupt_prop(sdt.FDT, node, node[prop].value)
+                                intr = get_interrupt_prop(sdt, node, node[prop].value)
                                 plat.buf('\n#define XPAR_%s_%s %s' % (label_name, prop.upper(), intr[0]))
                                 canondef_dict.update({prop:intr[0]})
                             except KeyError:

@@ -145,10 +145,7 @@ def getmatch_nodes(sdt, node_list, yamlfile, options):
     return driver_nodes
 
 def getxlnx_phytype(sdt, value):
-    child_node = sdt.FDT.node_offset_by_phandle(value[0])
-    name = sdt.FDT.get_name(child_node)
-    root_sub_nodes = sdt.tree['/'].subnodes()
-    child_node = [node for node in root_sub_nodes if re.search(name, node.name)]
+    child_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == value[0]]
     phy_type = child_node[0]['xlnx,phy-type'].value[0]
     return hex(phy_type)
 
@@ -212,7 +209,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options):
                            topology_data.append(val)
                            topology_data.append(lwiptype_index)
                     elif prop == "interrupts":
-                       val = get_interrupt_prop(sdt.FDT, node, node[prop].value)
+                       val = get_interrupt_prop(sdt, node, node[prop].value)
                        val = val[0]
                     elif prop == "axistream-connected":
                        val = hex(get_phandle_regprop(sdt, prop, node[prop].value))

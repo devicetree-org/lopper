@@ -121,11 +121,11 @@ def scan_reg_size(node, value, idx):
         reg = value[0]
     return reg, size
 
-def get_interrupt_prop(fdt, node, value):
+def get_interrupt_prop(sdt, node, value):
     intr = []
     inp =  node['interrupt-parent'].value[0]
-    intr_parent = fdt.node_offset_by_phandle(inp)
-    inc = Lopper.property_get(fdt, intr_parent, '#interrupt-cells')
+    intr_parent = [node for node in sdt.tree['/'].subnodes() if node.phandle == inp]
+    inc = intr_parent[0]["#interrupt-cells"].value[0]
     """
     Baremetal Interrupt Property format:
         bits[11:0]  interrupt-id
@@ -153,10 +153,7 @@ def get_interrupt_prop(fdt, node, value):
 
 #Return the base address of the parent node.
 def get_phandle_regprop(sdt, prop, value):
-    parent_node = sdt.FDT.node_offset_by_phandle(value[0])
-    name = sdt.FDT.get_name(parent_node)
-    root_sub_nodes = sdt.tree['/'].subnodes()
-    parent_node = [node for node in root_sub_nodes if re.search(name, node.name)]
+    parent_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == value[0]]
     reg, size = scan_reg_size(parent_node[0], parent_node[0]['reg'].value, 0)
     # Special handling for Soft Ethernet(1/2.5G, and 10G/25G MAC) axistream-connected property
     if prop == "axistream-connected":
@@ -174,10 +171,7 @@ def get_phandle_regprop(sdt, prop, value):
 
 #Return the base address of the interrupt parent.
 def get_intrerrupt_parent(sdt, value):
-    intr_parent = sdt.FDT.node_offset_by_phandle(value[0])
-    name = sdt.FDT.get_name(intr_parent)
-    root_sub_nodes = sdt.tree['/'].subnodes()
-    intr_node = [node for node in root_sub_nodes if re.search(name, node.name)]
+    intr_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == value[0]]
     reg, size = scan_reg_size(intr_node[0], intr_node[0]['reg'].value, 0)
     """
     Baremetal Interrupt Parent Property Format:
@@ -227,10 +221,7 @@ def scan_ranges_size(node, value, idx):
     return addr, size
 
 def get_clock_prop(sdt, value):
-    clk_parent = sdt.FDT.node_offset_by_phandle(value[0])
-    name = sdt.FDT.get_name(clk_parent)
-    root_sub_nodes = sdt.tree['/'].subnodes()
-    clk_node = [node for node in root_sub_nodes if re.search(name, node.name)]
+    clk_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == value[0]]
     """
     Baremetal clock format:
         bits[0] clock parent(controller) type(0: ZynqMP clock controller)
@@ -491,7 +482,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                 drvprop_list.append(node[prop].value[0])
             elif prop == "interrupts":
                 try:
-                    intr = get_interrupt_prop(sdt.FDT, node, node[prop].value)
+                    intr = get_interrupt_prop(sdt, node, node[prop].value)
                 except KeyError:
                     intr = [hex(0xFFFF)]
 
