@@ -29,7 +29,7 @@ import importlib
 from lopper import Lopper
 import lopper
 from lopper_tree import *
-from xlnx_pm import subsystem
+from xlnx import subsystem
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -57,8 +57,6 @@ def cdo_write(root_node, sdt, options):
         verbose = options['verbose']
     except BaseException:
         verbose = 0
-
-    subs_data = []
 
     domain_node = None
     try:
