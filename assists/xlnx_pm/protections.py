@@ -139,6 +139,27 @@ class MemNode:
         # add to the subsystem's ftb entries
         ftb_ents[subsystem_id].append(ftb_entry)
 
+    def compute_regions(self, fw_instances, custom=0):
+        if custom != 0:
+            ftb_ents = self.ftb_entries_in
+        else:
+            ftb_ents = self.ftb_entries
+
+        # loop over the appropriate ftb (custom vs non-custom)
+        for sub_id, entries in ftb_ents.items():
+            for entry in entries:  # ftb.FirewallTableEntry instance per subsystem
+                # create one entry per master/mask pair
+                for mid_entry in entry.mid_list:
+                    # do it for each firewall
+                    for xmpu in fw_instances:
+                        #if xmpu.is_filled():
+                        #    continue
+                        # create entry
+                        xmpu.create_region_and_en(entry.base_addr, entry.size,
+                                                  mid_entry.smid,
+                                                  mid_entry.mask, entry.rw,
+                                                  entry.tz)
+
 
 class ModuleNode:
     def __init__(self, name, node):
@@ -531,9 +552,9 @@ class FirewallToModuleMap:
 
     def generate_aper_masks(self, custom=0):
         # write out all other entries
-        mod_list = [ module
-                    for module in self.modules
-                    if module not in SKIP_MODULES ]
+        mod_list = [
+            module for module in self.modules if module not in SKIP_MODULES
+        ]
 
         for module in mod_list:
             # get parent firewall controller instance
@@ -551,9 +572,10 @@ class FirewallToModuleMap:
 
     def set_default_aper_masks_per_xppu(self, custom=0):
         # write out xppu def aper entries
-        mod_list = [ module
-                    for module in self.modules
-                    if module in self.ppus and is_xppu(self.ppus[module]) ]
+        mod_list = [
+            module for module in self.modules
+            if module in self.ppus and is_xppu(self.ppus[module])
+        ]
 
         for module in mod_list:
             # get xppu instance
@@ -621,6 +643,18 @@ class FirewallToModuleMap:
             # print(mem_node.fw_config[key], fw_conf[key])
 
         return mem_node
+
+    def generate_mem_regions(self, custom=0):
+        # write out all other entries
+        for mem_node in self.memory_nodes:
+            # get parent firewall controller(s) instance
+            firewalls = [
+                self.ppus[fw_inst].hw_instance
+                for fw_inst in mem_node.fw_parents
+            ]
+
+            # flush out mem regions for this mem node
+            mem_node.compute_regions(firewalls, custom)
 
     def print_memory_nodes(self):
         for mem_node in self.memory_nodes:
@@ -883,14 +917,14 @@ def setup_default_ftb_entries():
                 mid_list,
             )
 
-    for memory in prot_map.memory_nodes:
-        memory.add_ftb_entry(
-            0x1C000000,  # PLM Subsystem ID
-            xppu.RW,  # RW
-            1,  # TZ (Non-secure)
-            10,  # Highest priority
-            mid_list,
-        )
+    # for memory in prot_map.memory_nodes:
+    #     memory.add_ftb_entry(
+    #         0x1C000000,  # PLM Subsystem ID
+    #         xppu.RW,  # RW
+    #         1,  # TZ (Non-secure)
+    #         10,  # Highest priority
+    #         mid_list,
+    #     )
 
 
 def setup_mem_ftb_entry(subsystem):  # Subsystem() object
@@ -1021,6 +1055,11 @@ def generate_aper_masks_all(custom=0):
     prot_map.generate_aper_masks(custom)
     # print("--- xppu mask begin [custom: {0}] ---".format(custom))
     prot_map.set_default_aper_masks_per_xppu(custom)
+    # xmpu regions setup (default)
+    # prot_map.set_default_regions_per_xmpu(custom)
+    # xmpu regions setup (from domains)
+    # TODO: Fix for custom=1 case
+    prot_map.generate_mem_regions(custom=0)
 
 
 def ftb_setup(filepath, sdt, options):
@@ -1040,8 +1079,8 @@ def write_to_cdo(filep, verbose):
             firewall_label = firewall_obj.node.label
 
             if verbose > 1:
-                print("[INFO]: Generating configuration for {0} ({1})".
-                      format(firewall_label, filep))
+                print("[INFO]: Generating configuration for {0} ({1})".format(
+                    firewall_label, filep))
 
             if firewall_inst is not None:
                 if is_xppu(firewall_obj):
