@@ -2386,6 +2386,8 @@ class LopperTree:
         self.__pnodes__ = OrderedDict()
         # nodes, indexed by label
         self.__lnodes__ = OrderedDict()
+        # nodes. indexed by aliases
+        self.__aliases__ = OrderedDict()
         # nodes. selected. default/fallback for some operations
         self.__selected__ = []
 
@@ -3246,6 +3248,27 @@ class LopperTree:
             return None
 
 
+    def alias_node( self, alias ):
+        """Find a node via an alias
+
+        Safely (no exception raised) returns the node that can be found
+        at a given alias.
+
+        Args:
+           alias (string): node alias to check
+
+        Returns:
+           node (LopperNode): the alias nodes if found, None otherwise
+        """
+        try:
+            node = self.__aliases__[alias]
+        except:
+            node = None
+
+        return node
+
+
+
     def lnodes( self, label ):
         """Find nodes in a tree by label
 
@@ -3687,6 +3710,8 @@ class LopperTree:
             self.__pnodes__ = OrderedDict()
             # nodes, indexed by label
             self.__lnodes__ = OrderedDict()
+            # nodes. indexed by alias
+            self.__aliases__ = OrderedDict()
 
             if self.__dbg__ > 2:
                 print( "[DGB+]: tree load start: %s" % self )
@@ -3739,6 +3764,52 @@ class LopperTree:
                 except:
                     # the node didn't get copied over, invalidate the state
                     nodes_saved[node_abs_path].__nstate__ = "*invalid*"
+
+            # setup aliases
+            try:
+                alias_node = self.__nodes__["/aliases"]
+                if self.__dbg__ > 2:
+                    print( "[DBG++]: aliases node found, registring aliases" )
+                for alias in alias_node:
+                    if self.__dbg__ > 2:
+                        print( "[DBG++]: alias: %s %s" % (alias.name,alias.value[0] ))
+                    try:
+                        alias_target = self.__nodes__[ alias.value[0] ]
+                    except Exception as e:
+                        alias_target = None
+
+                        # TODO: this should be moved to a generic lookup routine so
+                        #       it can be used everywhere for label path based lookups
+                        # was the first component a label ?
+                        components = alias.value[0].split('/')
+                        try:
+                            base_component = components[1]
+                        except:
+                            base_component = None
+
+                        label_node = None
+                        if base_component:
+                            try:
+                                label_node = self.__lnodes__[base_component]
+                            except:
+                                pass
+
+                        if label_node:
+                            label_chunk, _, rest = alias.value[0].partition( base_component )
+                            label_adjusted_path = label_node.abs_path + rest
+                            if self.__dbg__ > 2:
+                                print( "[DBG++]: alias: looking for node via label path: %s" % label_adjusted_path )
+                            try:
+                                alias_target = self.__nodes__[ label_adjusted_path ]
+                            except:
+                                alias_target = None
+
+                    if alias_target:
+                        if self.__dbg__ > 2:
+                            print( "[DBG++]: alias target node found: %s" % alias_target.abs_path )
+                        self.__aliases__[alias.name] = alias_target
+            except:
+                pass
         else:
             # breadth first. not currently implemented
             pass
