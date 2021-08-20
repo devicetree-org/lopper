@@ -759,6 +759,17 @@ def setup_device_tree( outdir ):
         ethernet0: ethernet0 {
                 device_type = "eth";
         };
+        aliases {
+                serial0 = "/amba/serial@ff000000";
+                ethernet0 = "/amba/ethernet@ff0c0000";
+                ethernet1 = "/amba/ethernet@ff0d0000";
+                i2c0 = "/amba/i2c@ff030000";
+                mmc0 = "/amba/sdhci@f1050000";
+                spi0 = "/amba/spi@f1010000";
+                usb0 = "/amba/usb@ff9d0000";
+                rtc0 = "/amba/rtc@f12a0000";
+                imux = "/amba/interrupt-multiplex";
+        };
 };
 """)
 
@@ -1196,8 +1207,8 @@ def tree_sanity_test( fdt, verbose=0 ):
             if re.search( "node:", line ):
                 node_count += 1
 
-    if node_count != 19:
-        test_failed( "fffggfff node count is incorrect. Got %s, expected %s" % (node_count,19) )
+    if node_count != 20:
+        test_failed( "node count (1) is incorrect. Got %s, expected %s" % (node_count,19) )
     else:
         test_passed( "end: node walk passed\n" )
 
@@ -1217,8 +1228,8 @@ def tree_sanity_test( fdt, verbose=0 ):
             if re.search( "{", line ):
                 node_count += 1
 
-    if node_count != 19:
-        test_failed( "node count is incorrect (%s expected %s)" % (node_count, 19) )
+    if node_count != 20:
+        test_failed( "node count (2) is incorrect (%s expected %s)" % (node_count, 19) )
     else:
         test_passed( "end: tree print passed\n")
     fpw.close()
@@ -1297,7 +1308,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpw.close()
     c = test_pattern_count( fpp.name, ".*node:" )
-    if c == 19:
+    if c == 20:
         test_passed( "full walk, after restricted walk" )
     else:
         test_failed( "full walk, after restricted walk" )
@@ -1334,7 +1345,7 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( "       starting node test: node: %s" % p )
         count += 1
 
-    if count == 13:
+    if count == 14:
         test_passed( "start -> end walk" )
     else:
         test_failed( "start -> end walk (%s vs %s)" % (count,13))
@@ -1378,7 +1389,7 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( "    node: %s" % k.abs_path )
         subnodecount += 1
 
-    if subnodecount == 19:
+    if subnodecount == 20:
         test_passed( "full tree subnode" )
     else:
         test_failed( "full tree subnode (%s vs %s)" % (subnodecount,19))
@@ -1841,6 +1852,18 @@ def tree_sanity_test( fdt, verbose=0 ):
         test_passed( "propval dict access" )
     else:
         test_failed( "propval dict access" )
+
+    # alias test
+    alias = printer.alias_node( "imux" )
+    if not alias:
+        test_falled( "alias lookup for valid node" )
+    else:
+        test_passed( "alias lookup for valid node" )
+    alias = printer.alias_node( "serial0" )
+    if alias:
+        test_falled( "alias lookup for invalid node" )
+    else:
+        test_passed( "alias lookup for invalid node" )
 
 
 def lops_code_test( device_tree, lop_file, verbose ):
