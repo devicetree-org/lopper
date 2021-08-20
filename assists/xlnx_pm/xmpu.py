@@ -156,7 +156,7 @@ class Config:
         else:
             return
 
-    def enable(self):
+    def en(self):
         self.enable = 1
 
     def disable(self):
@@ -213,6 +213,7 @@ class Xmpu:
         self.name = name
         self.baseaddr = addr
         self.size = size
+        self.current = 0
         # initialize regions map
         self.regions = {
             i: Region(i, REGION_0_START + (i * REGION_STEP_SIZE))
@@ -249,11 +250,26 @@ class Xmpu:
 
     def enable_region(self, idx):
         if idx < len(self.regions):
-            self.regions[idx].config.enable()
+            self.regions[idx].config.en()
         else:
             print("[ERROR] xmpu region idx {} too big (max: {})".format(
                 idx, REGIONS))
             return
+
+    def create_region_and_en(self, addr, size, smid, mask, rw, tz, name=''):
+        if self.current >= REGIONS:
+            print("[ERROR] {} xmpu regions full!".format(self.name))
+            return False
+
+        self.set_addr(self.current, addr, size)
+        self.set_master(self.current, Master(smid, mask, name=name))
+        self.set_config(self.current, tz, rw)
+        self.enable_region(self.current)
+        self.current += 1
+        return True
+
+    def is_filled(self):
+        return self.current < REGIONS
 
     def get_ctrl_reg_addr_val(self):
         return hex(self.baseaddr), hex((DEF_WR_ALLOWED << 1)
