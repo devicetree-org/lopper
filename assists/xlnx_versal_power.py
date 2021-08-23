@@ -1,168 +1,205 @@
+# /*
+# * Copyright (c) 2019,2020,2021 Xilinx Inc. All rights reserved.
+# *
+# * Author:
+# *     Ben Levinsky <ben.levinsky@xilinx.com>
+# *     Izhar Shaikh <izhar.ameer.shaikh@xilinx.com>
+# *
+# * SPDX-License-Identifier: BSD-3-Clause
+# */
+
 from enum import IntEnum
 
+
 class REQ_USAGE(IntEnum):
-  REQ_NO_RESTRICTION = 0
-  REQ_SHARED = 1
-  REQ_NONSHARED = 2
-  REQ_TIME_SHARED = 3
+    REQ_NO_RESTRICTION = 0
+    REQ_SHARED = 1
+    REQ_NONSHARED = 2
+    REQ_TIME_SHARED = 3
+
 
 # if this bit combination is on for usage offset, the meaning is as described below
 req_usage_message = "Device usage policies"
 req_usage = {
- REQ_USAGE.REQ_NO_RESTRICTION : "device accessible from all subsystem",
- REQ_USAGE.REQ_SHARED : "device simultaneously shared between two or more subsystems",
- REQ_USAGE.REQ_NONSHARED : "device exclusively reserved by one subsystem, always",
- REQ_USAGE.REQ_TIME_SHARED : "device is time shared between two or more subsystems",
+    REQ_USAGE.REQ_NO_RESTRICTION:
+    "device accessible from all subsystem",
+    REQ_USAGE.REQ_SHARED:
+    "device simultaneously shared between two or more subsystems",
+    REQ_USAGE.REQ_NONSHARED:
+    "device exclusively reserved by one subsystem, always",
+    REQ_USAGE.REQ_TIME_SHARED:
+    "device is time shared between two or more subsystems",
 }
 
 usage_mask = 0x3
+
+
 def usage(flags):
-  msg = "#    usage: "
-  msg += req_usage[flags & usage_mask]
-  return msg
+    msg = "#    usage: "
+    msg += req_usage[flags & usage_mask]
+    return msg
+
 
 class REGION_SECURITY(IntEnum):
-  ACCESS_FROM_SECURE = 0
-  ACCESS_FROM_NONSECURE = 1
+    ACCESS_FROM_SECURE = 0
+    ACCESS_FROM_NONSECURE = 1
+
 
 req_security_message = "Device/Memory region security status requirement per TrustZone."
 req_security = {
- REGION_SECURITY.ACCESS_FROM_SECURE : "Device/Memory region only allows access from secure masters",
- REGION_SECURITY.ACCESS_FROM_NONSECURE : "Device/Memory region allow both secure or non-secure masters",
+    REGION_SECURITY.ACCESS_FROM_SECURE:
+    "Device/Memory region only allows access from secure masters",
+    REGION_SECURITY.ACCESS_FROM_NONSECURE:
+    "Device/Memory region allow both secure or non-secure masters",
 }
 security_mask = 0x4
 security_offset = 0x2
+
+
 def security(flags):
-  msg = "#    security: "
-  msg += req_security[(flags & security_mask) >> security_offset]
-  return msg
+    msg = "#    security: "
+    msg += req_security[(flags & security_mask) >> security_offset]
+    return msg
+
 
 class RDWR_POLICY(IntEnum):
-  ALLOWED = 0
-  NOT_ALLOWED = 1
+    ALLOWED = 0
+    NOT_ALLOWED = 1
+
 
 # this map is only applicable for memory regions
 req_rd_wr_message = "Read/Write access control policy"
 req_rd_wr = {
-  RDWR_POLICY.ALLOWED : "Transaction allowed",
-  RDWR_POLICY.NOT_ALLOWED : "Transaction not Allowed",
+    RDWR_POLICY.ALLOWED: "Transaction allowed",
+    RDWR_POLICY.NOT_ALLOWED: "Transaction not Allowed",
 }
 rd_policy_mask = 0x8
 rd_policy_offset = 0x3
 wr_policy_mask = 0x10
 wr_policy_offset = 0x4
 rw_message = "Read/Write access control policy."
+
+
 def read_policy(flags):
-  msg = "#    read policy: "
-  msg += req_rd_wr[(flags & rd_policy_mask) >> rd_policy_offset]
-  return msg
+    msg = "#    read policy: "
+    msg += req_rd_wr[(flags & rd_policy_mask) >> rd_policy_offset]
+    return msg
+
 
 def write_policy(flags):
-  msg = "#    write policy: "
-  msg += req_rd_wr[(flags & wr_policy_mask) >> wr_policy_offset]
-  return msg
+    msg = "#    write policy: "
+    msg += req_rd_wr[(flags & wr_policy_mask) >> wr_policy_offset]
+    return msg
 
 
 nsregn_check_mask = 0x20
 nsregn_check_offset = 0x5
 
+
 class NSREGN_POLICY(IntEnum):
-  RELAXED = 0
-  STRICT = 1
+    RELAXED = 0
+    STRICT = 1
+
 
 nsregn_message = "Non-secure memory region check type policy."
 nsregn = {
-  NSREGN_POLICY.RELAXED : "RELAXED",
-  NSREGN_POLICY.STRICT: "STRICT",
+    NSREGN_POLICY.RELAXED: "RELAXED",
+    NSREGN_POLICY.STRICT: "STRICT",
 }
 
+
 def nsregn_policy(flags):
-  msg = "#    Non-secure memory region check type policy: "
-  msg += nsregn[(flags & nsregn_check_mask) >> nsregn_check_offset]
-  return msg
+    msg = "#    Non-secure memory region check type policy: "
+    msg += nsregn[(flags & nsregn_check_mask) >> nsregn_check_offset]
+    return msg
+
 
 capability_offset = 0x8
 capability_mask = 0x7F00
 
 cap_message = "capability: "
+
+
 def capability_policy(flags):
-  msg = "#    Capability policy: "
-  msg += hex((flags & capability_mask) >> capability_offset)
-  return msg
+    msg = "#    Capability policy: "
+    msg += hex((flags & capability_mask) >> capability_offset)
+    return msg
+
 
 prealloc_offset = 6
 prealloc_mask = (0x1 << 6)
 
+
 class PREALLOC(IntEnum):
-  NOT_REQUIRED = 0
-  REQUIRED  = 1
+    NOT_REQUIRED = 0
+    REQUIRED = 1
+
 
 prealloc = {
-  PREALLOC.NOT_REQUIRED : "prealloc not required",
-  PREALLOC.REQUIRED : "prealloc required",
+    PREALLOC.NOT_REQUIRED: "prealloc not required",
+    PREALLOC.REQUIRED: "prealloc required",
 }
 
 prealloc_message = "prealloc policy "
+
+
 def prealloc_policy(flags):
-  msg = "#    Preallocation policy: "
-  msg += prealloc[(flags & prealloc_mask) >> prealloc_offset]
-  return msg
+    msg = "#    Preallocation policy: "
+    msg += prealloc[(flags & prealloc_mask) >> prealloc_offset]
+    return msg
+
 
 def prealloc_detailed_policy(flags):
-  msg = "#    Preallocation detailed: "
-  caps = [
-    "full access",
-    "preserve context",
-    "emit wake interrupts",
-    "not usable",
-    "secure access",
-    "coherent access",
-    "virtualized access"
-  ]
-  for index,s in enumerate(caps):
-    match =  ((0x1 << index) & flags) >> index
-    if match == 1:
-      msg += " " + s
-  return msg
+    msg = "#    Preallocation detailed: "
+    caps = [
+        "full access", "preserve context", "emit wake interrupts",
+        "not usable", "secure access", "coherent access", "virtualized access"
+    ]
+    for index, s in enumerate(caps):
+        match = ((0x1 << index) & flags) >> index
+        if match == 1:
+            msg += " " + s
+    return msg
+
 
 class Requirement:
-  def __init__(self, subsystem, node, prealloc, capability, nsregn_policy,
-               read_policy, write_policy, security, usage):
-    self.prealloc       = prealloc
-    self.capability     = capability
-    self.nsregn_policy  = nsregn_policy
-    self.read_policy    = read_policy
-    self.write_policy   = write_policy
-    self.security       = security
-    self.usage          = usage
-    self.subsystem     = subsystem
-    self.node           = node
+    def __init__(self, subsystem, node, prealloc, capability, nsregn_policy,
+                 read_policy, write_policy, security, usage):
+        self.prealloc = prealloc
+        self.capability = capability
+        self.nsregn_policy = nsregn_policy
+        self.read_policy = read_policy
+        self.write_policy = write_policy
+        self.security = security
+        self.usage = usage
+        self.subsystem = subsystem
+        self.node = node
 
 
 def mem_regn_node(node_id):
-    return ( (0x3F << 20) & node_id ) == 0x300000
+    return ((0x3F << 20) & node_id) == 0x300000
 
 
 misc_devices = {
-  "mailbox@ff320000": "PM_DEV_IPI_0",
-  "mailbox@ff390000": "PM_DEV_IPI_1",
-  "mailbox@ff310000": "PM_DEV_IPI_2",
-  "mailbox@ff330000": "PM_DEV_IPI_3",
-  "mailbox@ff340000": "PM_DEV_IPI_4",
-  "mailbox@ff350000": "PM_DEV_IPI_5",
-  "mailbox@ff360000": "PM_DEV_IPI_6",
-  "watchdog@ff120000": "PM_DEV_SWDT_LPD",
+    "mailbox@ff320000": "PM_DEV_IPI_0",
+    "mailbox@ff390000": "PM_DEV_IPI_1",
+    "mailbox@ff310000": "PM_DEV_IPI_2",
+    "mailbox@ff330000": "PM_DEV_IPI_3",
+    "mailbox@ff340000": "PM_DEV_IPI_4",
+    "mailbox@ff350000": "PM_DEV_IPI_5",
+    "mailbox@ff360000": "PM_DEV_IPI_6",
+    "watchdog@ff120000": "PM_DEV_SWDT_LPD",
 }
 
 xlnx_pm_mem_node_to_base = {
-    "PM_DEV_OCM_0" : 0xff960000,
-    "PM_DEV_OCM_1" : 0xff960000,
-    "PM_DEV_OCM_2" : 0xff960000,
-    "PM_DEV_OCM_3" : 0xff960000,
-    "PM_DEV_TCM_0_A" : 0xffe00000,
-    "PM_DEV_TCM_0_B" : 0xffe20000,
-    "PM_DEV_TCM_1_A" : 0xffe90000,
-    "PM_DEV_TCM_1_B" : 0xffeb0000,
+    "PM_DEV_OCM_0": 0xff960000,
+    "PM_DEV_OCM_1": 0xff960000,
+    "PM_DEV_OCM_2": 0xff960000,
+    "PM_DEV_OCM_3": 0xff960000,
+    "PM_DEV_TCM_0_A": 0xffe00000,
+    "PM_DEV_TCM_0_B": 0xffe20000,
+    "PM_DEV_TCM_1_A": 0xffe90000,
+    "PM_DEV_TCM_1_B": 0xffeb0000,
 }
 
 xlnx_pm_devname_to_id = {
