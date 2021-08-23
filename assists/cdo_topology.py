@@ -27,7 +27,6 @@ import lopper
 from lopper_tree import *
 
 sys.path.append(os.path.dirname(__file__))
-from xlnx_versal_power import *
 from topology_headr import *
 
 def gen_board_topology( node, lt, output ):
