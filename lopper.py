@@ -1019,9 +1019,10 @@ class LopperSDT:
                         print( "[DBG++]: select pass done: selected nodes:" )
                         for n in selected_nodes:
                             print( "    %s" % n )
-                        # these are now our possible selected nodes for any follow
-                        # up "or" conditions
-                        selected_nodes_possible = selected_nodes
+
+                    # these are now our possible selected nodes for any follow
+                    # up "or" conditions
+                    selected_nodes_possible = selected_nodes
 
             # update the tree selection with our results
             tree.__selected__ = selected_nodes
