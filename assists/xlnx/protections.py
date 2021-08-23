@@ -10,7 +10,7 @@
 from lopper import Lopper
 import lopper
 from lopper_tree import *
-from xlnx_versal_power import xlnx_pm_devid_to_name, xlnx_pm_devname_to_id
+from power import xlnx_pm_devid_to_name, xlnx_pm_devname_to_id
 
 sys.path.append(os.path.dirname(__file__))
 

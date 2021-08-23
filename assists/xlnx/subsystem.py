@@ -11,7 +11,6 @@
 from lopper import Lopper
 import lopper
 from lopper_tree import *
-from xlnx_versal_power import *
 import os.path
 
 sys.path.append(os.path.dirname(__file__))
@@ -19,6 +18,7 @@ sys.path.append(os.path.dirname(__file__))
 import protections
 import xppu
 import ftb
+from power import *
 
 # globals
 prot_enable = 0  # disable by default

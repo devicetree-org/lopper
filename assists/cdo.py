@@ -11,7 +11,6 @@ import humanfriendly
 import json
 from collections import OrderedDict
 from cdo_topology import *
-from xlnx_versal_power import *
 import struct
 import sys
 import types
