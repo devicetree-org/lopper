@@ -98,16 +98,20 @@ def firewall_expand( tree, subnode, verbose = 0 ):
         firewall_target_node = subnode.parent
     else:
         # we have a node with a firewallconf property
-        if subnode["firewallconf"]:
-            prop = subnode["firewallconf"]
-            for i in range(len(prop)):
-                firewall_conf_list.append( prop[i] )
+        try:
+            if subnode["firewallconf"]:
+                prop = subnode["firewallconf"]
+                for i in range(len(prop)):
+                    firewall_conf_list.append( prop[i] )
 
-            # delete the property, it has been replaced
-            subnode.delete( 'firewallconf' )
+                # delete the property, it has been replaced
+                subnode.delete( 'firewallconf' )
 
-            firewall_target_node = subnode
-        else:
+                firewall_target_node = subnode
+            else:
+                print( "[WARNING]: unrecognized node passed for firewallconf expansion: %s" % subnode.abs_path )
+                return
+        except:
             print( "[WARNING]: unrecognized node passed for firewallconf expansion: %s" % subnode.abs_path )
             return
     #
