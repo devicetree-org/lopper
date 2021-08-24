@@ -628,7 +628,7 @@ def expand_cdo_flags_bits_third_word(flags_node, ref_flags,
         else:
             continue
 
-        if node.propval(key) != [''] or key in node.__props__.keys():
+        if node.propval(key) != [0]:
 
             # this can only be set if prealloc is set too
             if key == 'requested-secure':
