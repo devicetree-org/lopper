@@ -631,7 +631,10 @@ def set_dev_pm_reqs(sub, device, usage):
     new_dev_flags = copy.deepcopy(sub.flag_references[new_dev_flags])
     device.pm_reqs = new_dev_flags
 
-    device.pm_reqs[0] |= usage
+    if usage == 0x0: # no restriction should take precedence over other policies
+        device.pm_reqs[0] &= 0xFC
+    else:
+        device.pm_reqs[0] |= usage
     device.pm_reqs[1] = 0xFFFFF  # default xppu aperture permissions
 
     if prot_enable != 0:
