@@ -573,7 +573,7 @@ def expand_cdo_flags_bits_first_word(flags_node, ref_flags,
         else:
             continue
 
-        if node.propval(key) != [''] or key in node.__props__.keys():
+        if key in node.__props__.keys() and node.propval(key) == [1]:
             if key == 'allow-secure' or key == 'read-only':
                 # if true then set to low, as per spec: "0: secure master only."
                 # write should be low if read-only
