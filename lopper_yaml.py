@@ -198,6 +198,7 @@ class LopperDictImporter(object):
         └── AnyNode(a='sub1')
         """
         self.nodecls = nodecls
+        self.lists_as_nodes = False
 
     def import_(self, data):
         """Import tree from `data`."""
@@ -208,7 +209,6 @@ class LopperDictImporter(object):
         assert "parent" not in data
         attrs = dict(data)
         verbose = 0
-        lists_as_nodes = False
 
         if verbose:
             print( "[DBG]: ===> __import (%s)" % name )
@@ -240,7 +240,7 @@ class LopperDictImporter(object):
                 to_delete.append( k )
 
             if type(attrs[k]) == list:
-                if not lists_as_nodes:
+                if not self.lists_as_nodes:
                     continue
 
                 # if the attribute is a list, and all of the subtypes are dictionaries
@@ -343,15 +343,20 @@ class LopperYAML():
         self.anytree = None
         self.tree = tree
 
-        bool_as_int = False
+        self.boolean_as_int = False
+        self.lists_as_nodes = False
         if config:
             try:
-                bool_as_int = config.getboolean( 'yaml','bool_as_int' )
+                self.boolean_as_int = config.getboolean( 'yaml','bool_as_int' )
             except:
                 pass
 
-        self.boolean_as_int = bool_as_int
-        self.lists_as_nodes = False
+            try:
+                self.lists_as_nodes = config.getboolean( 'yaml','lists_as_nodes' )
+            except:
+                pass
+
+
 
         if self.yaml_source and self.tree:
             print( "[ERROR]: both yaml and lopper tree provided" )
@@ -694,7 +699,9 @@ class LopperYAML():
             print( "[ERROR]: no data available to load" )
             sys.exit(1)
 
-        self.anytree = LopperDictImporter(Node).import_(self.dct)
+        importer = LopperDictImporter(Node)
+        importer.lists_as_nodes = self.lists_as_nodes
+        self.anytree = importer.import_(self.dct)
 
     def load_tree( self, tree = None ):
         """Load/Read a LopperTree into a YAML representation
