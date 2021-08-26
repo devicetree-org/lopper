@@ -1003,7 +1003,10 @@ class LopperProp():
                             if self.binary:
                                 formatted_records.append( "{0:02X}".format( i ) )
                             else:
-                                formatted_records.append( "{0}".format( hex(i) ) )
+                                try:
+                                    formatted_records.append( "{0}".format( hex(i) ) )
+                                except:
+                                    formatted_records.append( "{0}".format( i ) )
                         else:
                             formatted_records.append( "\"{0}\"".format( i ) )
 
