@@ -239,16 +239,38 @@ this example, I used /domains:
 		openamp_r5 {
 			compatible = "openamp,domain-v1";
 			cpus = <&cpus_r5 0x2 0x80000000>;
+			#flags-cells = <1>;
+			flags = <0x0 0x1 0x0>;
+			flags-names = "dev_rw", "dev_ro", "mem_rw";
 			memory = <0x0 0x0 0x0 0x8000000>;
-			access = <&can@ff060000 0x0>;
+			memory-flags-names = "mem_rw";
+			access = <&can@ff060000 &ethernet@ff0c0000>;
+			access-flags-names = "dev_rw", "dev_ro";
+			id = <0x1>;
 		};
 	};
 
 
 An openamp,domain node contains information about:
 - cpus: physical cpus on which the software is running on
-- memory: memory assigned to the domain
+- #flags-cells (optional): number of cells to specify flags for each
+  flag group in the flags property, the flags are used to specify
+  accessibility properties
+- flags (optional): a list of flags groups, each flag group has
+  #flags-cells number of cells
+- flags-names (optional): a list of strings giving names to flag groups,
+  one name for each flag group
 - access: any devices configured to be only accessible by a domain
+- access-flags-names: a list of flag group names, one for each device.
+  The names correspond to the flags groups names specified under
+  flags-names.
+- memory: memory assigned to the domain
+- memory-flags-names (optional): names of the flags group for each
+  memory region
+- sram (optional): sram regions assigned to the domain
+- sram-flags-names (optional): names of the flags group for each sram
+  region
+- id: a 32bit integer that identifies a domain
 
 cpus is in the format: link-to-cluster cpu-mask execution-level
 Where the cpu-mask is a bitfield indicating the relevant CPUs in the
@@ -264,14 +286,35 @@ For Cortex-A53/A72 CPUs, execution-level is:
 - bits 0-1: EL0 (0x0), EL1 (0x1), or EL2 (0x2)
 
 
-memory is a sequence of start and size pairs. #address-cells and
-#size-cells express how many cells are used to specify start and
-size respectively.
+access is list of links to devices. The links are to devices that are
+configured to be only accessible by an execution domain, using bus
+firewalls or similar technologies. For each link to a device, a
+corresponding flags group name is specified with the access-flags-names
+property. They are specified in order, the first name corresponds to the
+first device in the access list. access-flags-names strings correspond
+to the strings under flags-names, which in turn corresponds to flags
+groups under flags. In other words, for each string in
+access-flags-names, there is a set of flags under flags.
+access-flags-names is optional, if it is missing no flags are specified
+for any of the devices.
 
-access is list of links and flags pairs. The links are to devices that
-are configured to be only accessible by an execution domain, using bus
-firewalls or similar technologies. For each link there is a 32-bit
-bitfield to express device-specific flags related to accessibility.
+memory is a sequence of start, size tuples. #address-cells and
+#size-cells express how many cells are used to specify start and size
+respectively. For each range there might be a flags group name specified
+with the memory-flags-names property. memory-flags-names strings
+correspond to the strings under flags-names, which in turn corresponds
+to flags groups under flags. memory-flags-names is optional, if it is
+missing no flags are specified for any of the memory ranges.
+
+sram, like memory, is a sequence of start, size tuples. However, the
+sram ranges should be subsets or matching mmio-sram ranges.
+sram-flags-names strings correspond to the strings under flags-names,
+which in turn corresponds to flags groups under flags.  sram-flags-names
+is optional, if it is missing no flags are specified for any of the sram
+ranges.
+
+Access flags are domain specific.
+
 
 The memory range assigned to an execution domain is expressed by the
 memory property. It needs to be a subset of the physical memory in the
@@ -282,11 +325,13 @@ between domains:
 	domains {
 		openamp_r5 {
 			compatible = "openamp,domain-v1";
-			memory = <0x0 0x0 0x0 0x8000000 0x8 0x0 0x0 0x10000>;
+			memory = <0x0 0x0 0x0 0x8000000 0x8 0x0 0x0 0x10000 0x0>;
+			id = <0x2>;
 		};
 		openamp_a72 {
 			compatible = "openamp,domain-v1";
-			memory = <0x0 0x8000000 0x0 0x80000000 0x8 0x0 0x0 0x10000>;
+			memory = <0x0 0x8000000 0x0 0x80000000 0x8 0x0 0x0 0x10000 0x0>;
+			id = <0x3>;
 		};
 	};
 

@@ -25,7 +25,7 @@ and the remote cluster are separate domains. Any shared resources are
 represented as a resource-group, as usual with system device tree.
 
 Special vendor-specific properties can be represented using the access
-list and include list flag fields, as usual with system device tree.
+list flag fields, as usual with system device tree.
 
 
 
@@ -37,10 +37,10 @@ lopper to generate RemoteProc nodes for Linux.
 The things to note are:
 
 - resource\_group@0 to share resources
-- the 0x1 flag passed to "include" under openamp\_a53, which specifies
-  openamp\_a53 as master
-- the 0x13 flag passed to "access" for ipi\_mailbox\_rpu0, the specific
+- the 0x13 access flags for ipi\_mailbox\_rpu0, the specific
   meaning is expressed in a comment below
+- the sharedmem flag, which is defined as 0x1 for openamp_a53, which
+  means master, and as 0x0 for openamp_r5, which means slave.
 
 
 ~~~
@@ -94,8 +94,10 @@ The things to note are:
 			memory = <0x0 0x3ed40000 0x0 0x4000
 				  0x0 0x3ed44000 0x0 0x4000
 				  0x0 0x3ed48000 0x0 0x100000
-				  0x0 0x3ed00000 0x0 0x40000>;
-			access = <&psu_r5_0_btcm_global 0x0>, <&psu_r5_0_atcm_global 0x0>;
+				  0x0 0x3ed00000 0x0 0x40000
+			memory-flags-names = "sharedmem";
+			sram = <&psu_r5_0_btcm_global>, <&psu_r5_0_atcm_global>;
+			sram-flags-names = "sharedmem";
 		};
 
 		openamp_a53 {
@@ -103,6 +105,7 @@ The things to note are:
 			#address-cells = <0x2>;
 			#size-cells = <0x2>;
 
+			id = <0x3>;
 			memory = <0x0 0x80000000 0x0 0x78000000
 				  0x8 0x0 0x0 0x80000000>;
 			cpus = <&cpus_a53 0xf 0x2>;
@@ -127,10 +130,13 @@ The things to note are:
 			 * Other cases: unused 
 			 *
 			 */
-			access = <&ipi_mailbox_rpu0 0x13>;
+			#flags-cells = <1>;
+			flags = <0x13 0x1>;
+			flags-names = "rpu0", "sharedmem";
+			access = <&ipi_mailbox_rpu0>;
+			access-flags-names = "rpu0";
 
-			/* 0x1: master */
-			include = <&resource_group 0x1>;
+			include = <&resource_group>;
 		};
 
 		openamp_r5 {
@@ -138,11 +144,15 @@ The things to note are:
 			#address-cells = <0x2>;
 			#size-cells = <0x2>;
 
+			id = <0x4>;
 			memory = <0x0 0x0 0x0 0x20000000>;
 			cpus = <&cpus_r5 0x2 0x80000000>;
 
-			/* 0x0: slave */
-			include = <&resource_group 0x0>;
+			#flags-cells = <1>;
+			flags = <0x0>;
+			flags-names = "sharedmem";
+
+			include = <&resource_group>;
 		};
 	};
 ~~~
