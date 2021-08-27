@@ -198,8 +198,8 @@ def setup_mbox_info(sdt, domain_node, r5_node, mbox_ctr):
   if mbox_ctr.propval("reg-names") == [''] or mbox_ctr.propval("xlnx,ipi-id") == ['']:
     print("invalid mbox ctr")
     return -1
-  
-  r5_node + LopperProp(name="mboxes",value=[mbox_ctr.phandle,0,mbox_ctr.phandle,1])
+  mbox_ctr_phandle = mbox_ctr.propval("phandle")
+  r5_node + LopperProp(name="mboxes",value=[mbox_ctr_phandle,0,mbox_ctr_phandle,1])
   r5_node + LopperProp(name="mbox-names", value = ["tx", "rx"]);
   sdt.tree.sync()
   r5_node.sync(sdt.FDT)
@@ -225,6 +225,7 @@ def setup_r5_core_node(rpu_config, sdt, domain_node, rsc_group_node, core, remot
     r5_node + LopperProp(name="#address-cells",value=2)
     r5_node + LopperProp(name="#size-cells",value=2)
     r5_node + LopperProp(name="ranges",value=[])
+    r5_node + LopperProp(name="compatible",value="xilinx,r5f")
     sdt.tree.add(r5_node)
     print("added r5 node ", r5_node)
     print("add props for ",str(r5_node))
@@ -395,19 +396,23 @@ def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain):
     controller_parent = None
     try:
         controller_parent = sdt.tree["/zynqmp_ipi1"]
+        print("zynqmp_ipi1 already present.")
     except:
+
         controller_parent = LopperNode(-1, "/zynqmp_ipi1")
         controller_parent + LopperProp(name="compatible",value="xlnx,zynqmp-ipi-mailbox")
         gic_node_phandle = sdt.tree["/amba_apu/interrupt-controller@f9000000"].phandle
         controller_parent + LopperProp(name="interrupt-parent", value = [gic_node_phandle])
         controller_parent + LopperProp(name="interrupts",value=[0, 33, 4])
         controller_parent + LopperProp(name="xlnx,ipi-id",value=5)
-        controller_parent + LopperProp(name="#address-cells",value=1)
-        controller_parent + LopperProp(name="#size-cells",value=1)
+        controller_parent + LopperProp(name="#address-cells",value=2)
+        controller_parent + LopperProp(name="#size-cells",value=2)
         controller_parent + LopperProp(name="ranges")
         controller_parent + LopperProp(name="phandle",value=sdt.tree.phandle_gen())
         sdt.tree.add(controller_parent)
         print("added node ",controller_parent)
+
+
 
     # for each channel, add agent info to zynqmp_ipi1
     # find resource group per channel
@@ -423,6 +428,7 @@ def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain):
             controller_node = LopperNode(-1, "/zynqmp_ipi1/controller" + str(controller_idx))
             controller_node + LopperProp(name="reg-names",value=["local_request_region", "local_response_region", "remote_request_region", "remote_response_region"])
             controller_node + LopperProp(name="#mbox-cells",value=1)
+            controller_node + LopperProp(name="phandle",value=sdt.tree.phandle_gen()+1)
 
             # construct host mbox ctr xlnx,ipi-id from remote's ipi
             access_pval = remote_domain.propval("access")
@@ -450,17 +456,30 @@ def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain):
             local_request_region = ipi_msg_buf_base | host_agent | remote_offset
             remote_request_region = ipi_msg_buf_base | remote_agent | host_offset
 
-            reg_vals = [
+            vals = [
                 local_request_region,
                 local_request_region | response_offset,
                 remote_request_region,
                 remote_request_region | response_offset
             ]
 
+            reg_vals = []
+            for i in vals:
+                reg_vals.append(0x0)
+                reg_vals.append(i)
+                reg_vals.append(0x0)
+                reg_vals.append(0x20)
+
             controller_node + LopperProp(name="reg",value=reg_vals)
 
             sdt.tree.add(controller_node)
             controller_idx += 1
+
+    # if needed, will have to remove the existing mailbox
+    for i in sdt.tree["/amba"].subnodes():
+        if i.propval("compatible") == ['xlnx,zynqmp-ipi-mailbox'] and i.propval('xlnx,ipi-bitmask') != ['']:
+                sdt.tree - i
+                sdt.tree.sync()
 
 
 def setup_userspace_nodes(sdt, domain_node, current_rsc_group, remote_domain, openamp_app_inputs):
