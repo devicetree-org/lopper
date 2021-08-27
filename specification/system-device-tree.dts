@@ -730,30 +730,6 @@
 			reg = <0x0 0xffe90000 0x0 0x10000>;
 		};
 
-		zynqmp_ipi@0 {
-			compatible = "xlnx,zynqmp-ipi-mailbox";
-			interrupt-parent = <&gic_a72>;
-			interrupts = <0 29 4>;
-			xlnx,ipi-id = <7>;
-			#address-cells = <1>;
-			#size-cells = <1>;
-			ranges;
-
-			/* APU<->RPU0 IPI mailbox controller */
-			ipi_mailbox_rpu0: mailbox@ff90000 {
-				reg = <0xff990600 0x20>,
-				      <0xff990620 0x20>,
-				      <0xff9900c0 0x20>,
-				      <0xff9900e0 0x20>;
-				reg-names = "local_request_region",
-					    "local_response_region",
-					    "remote_request_region",
-					    "remote_response_region";
-				#mbox-cells = <1>;
-				xlnx,ipi-id = <1>;
-			};
-		};
-
 		zynqmp-power {
 			compatible = "xlnx,zynqmp-power";
 			interrupts = <0x0 0x1e 0x4>;
@@ -767,79 +743,65 @@
 	domains {
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
+		
+		resource_group_1: resource_group_1 {
+			compatible = "openamp,group-v1";
 
-		resource_group_0: resource_group@0 {
-			compatible = "openamp,remoteproc-v1", "openamp,group-v1";
-			memory = <0x0 0x3ed40000 0x0 0x4000
-				  0x0 0x3ed44000 0x0 0x4000
-				  0x0 0x3ed48000 0x0 0x100000
-				  0x0 0x3ed00000 0x0 0x40000>;
-			access = <&tcm 0x0>;
-		};
+			access = <&ethernet0, &serial0>;
 
-		linux: domain@0 {
-			compatible = "openamp,domain-v1";
-
-			/*
-			 * Cluster | cpus-mask | execution-mode
-			 *
-			 * execution mode for ARM-A CPUs:
-			 * 0x0: EL0
-			 * 0x1: EL1
-			 * 0x2: EL2
-			 * 0x3: EL3
-			 * bit 31: secure mode / normal mode (secure mode == 1)
-			 */
-			cpus = <&cpus_a72 0x3 0x00000001>;
-			memory = <0x0 0x500000 0x0 0x7fb00000>;
-
-			/*
-			 * Flags field, mapping specific
-			 *
-			 * memory and reserved-memory:
-			 *   bit 0: 0/1: RO/RW
-			 *
-			 * xlnx,zynqmp-ipi-mailbox:
-			 *   4 bits for each IPI channel to pass special flags
-			 *   0-3   bits: channel 0
-			 *   4-7   bits: channel 1
-			 *   8-11  bits: channel 2
-			 *   12-15 bits: channel 3
-			 * each 4 bits:
-			 *   bit 0: enable/disable (enable==1)
-			 *   bit 1: TX/RX (TX==1)
-			 *   bit 2-3: unused
-			 *
-			 * Other cases: unused
-			 *
-			 */
-			access = <&mmc0 0x0 &ipi_mailbox_rpu0 0x13>;
-
-			/* 0x1: master */
-			include = <&resource_group_0 0x1>;
-
-			/* 1: block */
+            /* 1: block */
 			firewallconfig-default = <1 0>;
 		};
+	
+		resource_group_2: resource_group_2 {
+			compatible = "openamp,group-v1";
 
-		zephyr: domain@1 {
+			memory = <0x0 0x500000 0x0 0x1000>;
+		};
+
+		xen: domain@2 {
 			compatible = "openamp,domain-v1";
 
-			/*
-			 * Cluster | cpus-mask | execution-mode
-			 *
-			 * execution mode ARM-R CPUs:
-			 * bit 30: lockstep (lockstep enabled == 1)
-			 * bit 31: secure mode / normal mode (secure mode == 1)
-			 */
-			cpus = <&cpus_r5 0x3 0x80000001>;
+			cpus = <&cpus_a72 0x3 0x00000002>;
+			memory = <0x0 0x500000 0x0 0x7fb00000>;
+			id = <0xffff>;
+
+			linux1: domain@3 {
+				compatible = "openamp,domain-v1";
+
+				cpus = <&cpus_a72 0x3 0x00000001>;
+				memory = <0x0 0x501000 0x0 0x3faff000>;
+				id = <0x0>;
+
+				access = <&mmc0>;
+				include = <&resource_group_2>;
+			};
+
+			linux2: domain@4 {
+				compatible = "openamp,domain-v1";
+
+				cpus = <&cpus_a72 0x3 0x00000001>;
+				memory = <0x0 0x40000000 0x0 0x40000000>;
+				id = <0x1>;
+
+				include = <&resource_group_1, &resource_group_2>;
+				/* 1: block */
+				firewallconfig = <&linux1 1 0>;
+			};
+		};
+
+		domain@5 {
+			compatible = "openamp,domain-v1";
+
+			cpus = <&cpus_r5 0x3 0x80000001 &microblaze0 0x1 0x00000000>;
 			memory = <0x0 0x100000 0x0 0x400000>;
+			id = <0x4>;
 
-			access = <&can0 0x0>;
-
-			/* 0x0: slave */
-			include = <&resource_group_0 0x0>;
-
+			flags = <0x0>;
+			flags-names = "dev";
+			access = <&can0>;
+			access-flags-names = "dev";
+			include = <&resource_group_1>;
 			/* 1: block */
 			firewallconfig-default = <1 0>;
 		};
