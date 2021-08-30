@@ -231,7 +231,7 @@ class LopperDictImporter(object):
                 cdict['fdt_name'] = k
 
                 if verbose:
-                    print( "[DBG]      queuing child node: name: %s props: %s" % (k,cdict))
+                    print( "[DBG]      queuing child from dict node: name: %s props: %s" % (k,cdict))
 
                 children.append( cdict )
                 # queue it for removal, since we don't want the child attributes to be
@@ -242,6 +242,7 @@ class LopperDictImporter(object):
             if type(attrs[k]) == list:
                 if not self.lists_as_nodes:
                     continue
+
 
                 # if the attribute is a list, and all of the subtypes are dictionaries
                 # we had yaml something like:
@@ -256,15 +257,25 @@ class LopperDictImporter(object):
                 #
                 all_dicts = all(isinstance(x, dict) for x in attrs[k])
                 if all_dicts:
+                    # Create a node, that will hold the unrolled child dictionaries
+                    new_node = { 'name': k,
+                                 'fdt_name' : k }
                     for i, kk in enumerate(attrs[k]):
-                        cdict = copy.deepcopy(kk)
-                        cdict['name'] = "{}_{}".format( k, i )
-                        cdict['fdt_name'] = "{}_{}".format( k, i )
+                        sub_node_name = "{}@{}".format( k, i )
 
-                        if verbose:
-                            print( "[DBG]      queuing child node: generated name: %s props: %s" % (cdict['name'],cdict))
+                        d_to_process = kk
+                        # if there is only one element in the dictionary, then pop it out, this
+                        # avoids intermediate nodes of no value.
+                        if len(kk.keys()) == 1:
+                            # to be an intermediate node, the type of that single entry must
+                            # be a dict, otherwise, we just leave things alone.
+                            if type(list(kk.values())[0]) == dict:
+                                d_to_process = list(kk.keys())[0]
+                                d_to_process = kk[d_to_process]
 
-                        children.append( cdict )
+                        new_node[sub_node_name] = d_to_process
+
+                    children.append( new_node )
 
                     to_delete.append( k )
 
