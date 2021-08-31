@@ -104,7 +104,7 @@
                                     try:
                                         domain_node = tree['/domains']
                                     except KeyError:
-                                        print('[INFO]: no domain node to translate from in YAML.')
+                                        # print('[INFO]: no domain node to translate from in YAML.')
                                         return
 
                                     for d in __selected__:
@@ -225,7 +225,176 @@
                         ";
                       };
                 };
+                lop_0_11 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/.*/reg$";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              // disabled by default
+                              noexec;
+                              code = "
+                                    if __selected__ == []:
+                                        return
 
+                                    for n in __selected__:
+                                        generated_reg = []
+                                        print( '[INFO]: expanding reg nodes for %s' % n.parent )
+                                        for sn in n.subnodes():
+                                            if sn != n:
+                                               try:
+                                                   start = sn['start'].value
+                                                   size = sn['size'].value
+                                               except:
+                                                   start = -1
+                                                   size = -1
+
+                                               if start != -1:
+                                                   generated_reg.append( start )
+                                                   generated_reg.append( size )
+
+                                        reg_prop = LopperProp( 'reg', -1, None, generated_reg )
+                                        reg_prop.resolve()
+                                        n.parent + reg_prop
+                                        tree - n
+
+
+                              ";
+                      };
+               };
+               lop_0_12 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/.*:interrupt-parent:";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              // disabled by default
+                              noexec;
+                              code = "
+                                    if __selected__ == []:
+                                        return
+
+                                    for n in __selected__:
+                                        print( '[INFO]: locating and creating phandle for %s interrupt-parent' % n.abs_path )
+
+                                        target = n['interrupt-parent'].value
+
+                                        try:
+                                            target_node = tree.lnodes( target )[0]
+                                        except:
+                                            try:
+                                                target_node = tree.nodes( target )[0]
+                                            except:
+                                                target_node = None
+
+                                        if target_node:
+                                            if target_node.phandle == 0:
+                                                ph = target_node.phandle_or_create()
+
+                                            target_handle = target_node.phandle
+                                        else:
+                                            target_handle = 0xdeadbeef
+
+                                        n['interrupt-parent'].value = target_handle
+                              ";
+                      };
+               };
+               lop_0_13 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/.*:ranges:";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              // disabled by default
+                              noexec;
+                              code = "
+                                    if __selected__ == []:
+                                        return
+
+                                    for n in __selected__:
+                                        print( '[INFO]: generating cells for: %s' % n.abs_path )
+                                        a_cells = LopperProp( '#address-cells', value=2 )
+                                        s_cells = LopperProp( '#size-cells', value=2 )
+
+
+                                        n + a_cells
+                                        n + s_cells
+                              ";
+                      };
+               };
+
+               lop_0_14 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/cpus";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              // disabled by default
+                              noexec;
+                              code = "
+                                    if __selected__ == []:
+                                        return
+
+                                    for n in __selected__:
+                                        print( '[INFO]: generating cpu cells for: %s' % n.abs_path )
+
+                                        compat = LopperProp( 'compatible', value='cpus,cluster' )
+                                        a_cells = LopperProp( '#address-cells', value=1 )
+                                        s_cells = LopperProp( '#size-cells', value=0 )
+                                        m_cells = LopperProp( '#mask-cells', value=1 )
+
+                                        n + compat
+                                        n + a_cells
+                                        n + s_cells
+                                        n + m_cells
+
+                              ";
+                      };
+               };
+               lop_0_15 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/.*:clocks:";
+                      lop_0_2 {
+                              compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "subsystem";
+                              // disabled by default
+                              noexec;
+                              code = "
+                                    if __selected__ == []:
+                                        return
+
+                                    for n in __selected__:
+                                        print( '[INFO]: locating and creating phandle for: %s clocks' % n.abs_path )
+
+                                        # the first field is the target node, the second are the flags
+                                        target = n['clocks'].value.split()[0]
+                                        flags = int(n['clocks'].value.split()[1],16)
+
+                                        try:
+                                            target_node = tree.lnodes( target )[0]
+                                        except:
+                                            try:
+                                                target_node = tree.nodes( target )[0]
+                                            except:
+                                                target_node = None
+
+                                        if target_node:
+                                            if target_node.phandle == 0:
+                                                ph = target_node.phandle_or_create()
+
+                                            target_handle = target_node.phandle
+                                        else:
+                                            target_handle = 0xdeadbeef
+
+                                        n['clocks'].value = [ target_handle, flags ]
+                              ";
+                      };
+               };
 
         };
 };
