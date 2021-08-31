@@ -275,8 +275,7 @@ def set_remoteproc_node(remoteproc_node, sdt, rpu_config):
   # 
 
 def determine_core(remote_domain):
-  rpu_cluster_node = remote_domain.parent
-  cpus_prop_val = rpu_cluster_node.propval("cpus")
+  cpus_prop_val = remote_domain.propval("cpus")
   rpu_config = None # split or lockstep
 
   if cpus_prop_val != ['']:
@@ -287,22 +286,17 @@ def determine_core(remote_domain):
     if rpu_config == "lockstep":
       core = 0
     else:
-      if cpus_prop_val[1] == 3:
-        # if here this means that cluster is in split mode. look at which core from remote domain
-        core_prop_val = remote_domain.propval("cpus")
-        if core_prop_val == ['']:
-          print("no cpus val for core ", remote_domain)
-        else:
-          if core_prop_val[1] == 2:
-            core  = 1
-          elif core_prop_val[1] == 1:
-            core = 0
-          else:
-            print("invalid cpu prop for core ", remote_domain, core_prop_val[1])
-            return -1
+      core_prop_val = remote_domain.propval("cpus")
+      if core_prop_val == ['']:
+        print("no cpus val for core ", remote_domain)
       else:
-        print("invalid cpu prop for rpu: ",remote_domain, cpus_prop_val[1])
-        return -1
+        if core_prop_val[1] == 2:
+          core  = 1
+        elif core_prop_val[1] == 1:
+          core = 0
+        else:
+          print("invalid cpu prop for core ", remote_domain, core_prop_val[1])
+          return -1
   return [core, rpu_config]
 
 
