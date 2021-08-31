@@ -996,7 +996,7 @@ class LopperSDT:
                                     sl_prop = None
 
                                 if prop_exists_test:
-                                    if sl_prop:
+                                    if sl_prop != None:
                                         if not sl in selected_nodes:
                                             selected_nodes.append( sl )
                                     else:
