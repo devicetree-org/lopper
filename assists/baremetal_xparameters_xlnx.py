@@ -35,7 +35,7 @@ def is_compat( node, compat_string_to_test ):
     return ""
 
 def get_label(sdt, symbol_node, node):
-    prop_dict = Lopper.node_properties_as_dict(sdt.FDT, symbol_node.abs_path, False)
+    prop_dict = symbol_node.__props__
     match = [label for label,node_abs in prop_dict.items() if re.match(node_abs[0], node.abs_path) and len(node_abs[0]) == len(node.abs_path)]
     if match:
         return match[0]
@@ -233,7 +233,6 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     # Generate Defines for Generic Nodes
     node_list = get_mapped_nodes(sdt, node_list, options)
     for node in node_list:
-        prop_dict = Lopper.node_properties_as_dict(sdt.FDT, node.abs_path)
         label_name = get_label(sdt, symbol_node, node)
         label_name = label_name.upper()
         try:
