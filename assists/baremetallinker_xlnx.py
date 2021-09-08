@@ -182,7 +182,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     ## To inline with existing tools point default ddr for linker to lower DDR
     lower_ddrs = ["axi_noc_0", "psu_ddr_0", "ps7_ddr_0"]
     has_ddr = [x for x in mem_ranges.keys() for ddr in lower_ddrs if re.search(ddr, x)]
-    if has_ddr:
+    if has_ddr and not memtest_config:
         default_ddr = has_ddr[0]
 
     with open(cmake_file, 'a') as fd:
