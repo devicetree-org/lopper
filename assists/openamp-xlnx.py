@@ -386,7 +386,7 @@ def parse_ipi_info(sdt, domain_node, remote_domain, current_rsc_group, openamp_a
         openamp_app_inputs[prefix+'ipi-irq-vect-id'] = ipi_to_irq_vect_id[ipi_base_addr]
 
 
-def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain):
+def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain, host_ipi, remote_ipi):
     controller_parent = None
     try:
         controller_parent = sdt.tree["/zynqmp_ipi1"]
@@ -397,8 +397,8 @@ def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain):
         controller_parent + LopperProp(name="compatible",value="xlnx,zynqmp-ipi-mailbox")
         gic_node_phandle = sdt.tree["/amba_apu/interrupt-controller@f9000000"].phandle
         controller_parent + LopperProp(name="interrupt-parent", value = [gic_node_phandle])
-        controller_parent + LopperProp(name="interrupts",value=[0, 33, 4])
-        controller_parent + LopperProp(name="xlnx,ipi-id",value=5)
+        controller_parent + LopperProp(name="interrupts",value= host_ipi.propval("interrupts").copy()   )
+        controller_parent + LopperProp(name="xlnx,ipi-id",value= host_ipi.propval("xlnx,ipi-id")[0]  )
         controller_parent + LopperProp(name="#address-cells",value=2)
         controller_parent + LopperProp(name="#size-cells",value=2)
         controller_parent + LopperProp(name="ranges")
@@ -563,12 +563,14 @@ def parse_openamp_domain(sdt, options, tgt_node):
     if 'openamp-xlnx-kernel' in current_rsc_group.__props__:
         kernelcase = True
 
-
     openamp_app_inputs['channel'+ str(channel_idx)+  '_to_group'] = str(channel_idx) + '-to-' + current_rsc_group.name
     openamp_app_inputs[current_rsc_group.name] = channel_idx
 
     if kernelcase:
-        construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain)
+        host_ipi = sdt.tree.pnode(domain_node.propval("access")[0])
+        remote_ipi = sdt.tree.pnode(remote_domain.propval("access")[0])
+
+        construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain, host_ipi, remote_ipi)
         mbox_ctr = sdt.tree["/zynqmp_ipi1/controller"+str(channel_idx)]
         construct_remoteproc_node(remote_domain, current_rsc_group, sdt, domain_node,  platform, mbox_ctr, openamp_app_inputs)
         openamp_app_inputs[current_rsc_group.name+'-tx'] = 'FW_RSC_U32_ADDR_ANY'
