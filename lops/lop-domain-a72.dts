@@ -40,11 +40,6 @@
                         compatible = "system-device-tree-v1,lop,modify";
                         modify = "/memory@fffc0000::";
                 };
-                lop_7 {
-                        // modify to "nothing", is a remove operation
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/tcm_bus::";
-                };
                 lop_9 {
 			compatible = "system-device-tree-v1,lop,code-v1";
 			code = "
