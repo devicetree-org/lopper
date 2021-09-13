@@ -1322,6 +1322,21 @@ class LopperNode(object):
         else:
             return self.abs_path
 
+    def items( self ):
+        """method to support items() iteration
+
+        If the pure Iterators aren't used (__iter__, etc), and instead a dictionary
+        style items() is requested for the Node. We can just return the items() from
+        __props__ to support that style of access.
+
+        Args:
+            None
+
+        Returns:
+           LopperNode object: self
+        """
+        return self.__props__.items()
+
     def __iter__(self):
         """magic method to support iteration
 
