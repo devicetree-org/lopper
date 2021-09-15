@@ -55,17 +55,5 @@
                         ";
 
                 };
-                lop_10 {
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/amba/psv_r5_tcm@0000::";
-                };
-                lop_11 {
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/amba/psv_r5_tcm@20000::";
-                };
-                lop_12 {
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/amba/psv_r5_tcm@00000::";
-                };
         };
 };
