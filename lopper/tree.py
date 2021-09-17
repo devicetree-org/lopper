@@ -3408,7 +3408,7 @@ class LopperTree:
             mod_load = ""
 
         for m in module_list:
-            mod_load += "{} = importlib.import_module( '.{}', package='assists' )\n".format(m,m)
+            mod_load += "{} = importlib.import_module( '.{}', package='lopper.assists' )\n".format(m,m)
 
         tc = cmd
 
