@@ -2104,7 +2104,7 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
 
 def assists_sanity_test( device_tree, lop_file, verbose ):
     device_tree.setup( dt, [lop_file], "", True, libfdt = libfdt )
-    device_tree.assists_setup( [ "domain-access.py" ] )
+    device_tree.assists_setup( [ "lopper/assists/domain-access.py" ] )
 
     print( "[TEST]: running assist against tree" )
     device_tree.perform_lops()

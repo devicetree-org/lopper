@@ -17,7 +17,6 @@ import contextlib
 from importlib.machinery import SourceFileLoader
 import tempfile
 from collections import OrderedDict
-import configparser
 
 from lopper.fmt import LopperFmt
 import lopper.fdt
@@ -32,8 +31,6 @@ except Exception as e:
     print( "[WARNING]: cant load yaml, disabling support: %s" % e )
     yaml_support = False
 
-lopper_directory = os.path.dirname(os.path.realpath(__file__))
-
 @contextlib.contextmanager
 def stdoutIO(stdout=None):
     old = sys.stdout
@@ -43,19 +40,10 @@ def stdoutIO(stdout=None):
         yield stdout
         sys.stdout = old
 
-def at_exit_cleanup():
-    if device_tree:
-        device_tree.cleanup()
-    else:
-        pass
-
 def lopper_type(cls):
     global Lopper
     Lopper = cls
     lopper.tree.Lopper = cls
-
-# default to FDT front/backend
-lopper_type(lopper.fdt.LopperFDT)
 
 class LopperAssist:
     """Internal class to contain the details of a lopper assist
@@ -107,7 +95,7 @@ class LopperSDT:
         self.permissive = False
         self.merge = False
 
-    def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True):
+    def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True, config=None):
         """executes setup and initialization tasks for a system device tree
 
         setup validates the inputs, and calls the appropriate routines to
@@ -277,13 +265,11 @@ class LopperSDT:
             yaml = LopperYAML( fp, config=config )
             lt = yaml.to_tree()
 
-            # temp location. check to see if automatic translations are
-            # registered for the intput file type, and generate the lops
-
-            # or .. is this really input type necessary ?!
-
             self.dtb = None
-            self.FDT = Lopper.fdt()
+            if self.use_libfdt:
+                self.FDT = Lopper.fdt()
+            else:
+                self.FDT = None
             self.tree = lt
         else:
             # the system device tree is a dtb

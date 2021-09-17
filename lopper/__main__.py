@@ -12,8 +12,22 @@ import os
 import sys
 import atexit
 from pathlib import Path
+import configparser
+import re
 
 import lopper.rest
+from lopper import LopperSDT
+
+lopper_directory = os.path.dirname(os.path.realpath(__file__))
+
+global device_tree
+device_tree = None
+
+def at_exit_cleanup():
+    if device_tree:
+        device_tree.cleanup()
+    else:
+        pass
 
 with open(Path(__file__).parent / 'VERSION', 'r') as f:
     LOPPER_VERSION = f.read().strip()
@@ -194,6 +208,13 @@ def main():
         usage()
         sys.exit(1)
 
+    if not libfdt:
+        import lopper.dt
+        lopper.lopper_type(lopper.dt.LopperDT)
+    else:
+        import lopper.fdt
+        lopper.lopper_type(lopper.fdt.LopperFDT)
+
     if outdir != "./":
         op = Path( outdir )
         try:
@@ -210,7 +231,7 @@ def main():
             sys.exit(1)
 
         valid_ifile_types = [ ".dtsi", ".dtb", ".dts", ".yaml" ]
-        itype = Lopper.input_file_type(i)
+        itype = lopper.Lopper.input_file_type(i)
         if not itype in valid_ifile_types:
             print( "[ERROR]: unrecognized input file type passed" )
             sys.exit(1)
@@ -279,12 +300,8 @@ def main():
 
             inputfiles.append( x )
 
-    if not libfdt:
-        import lopper.dt
-        lopper_type(lopper.dt.LopperDT)
-
     if dump_dtb:
-        Lopper.dtb_dts_export( sdt, verbose )
+        lopper.Lopper.dtb_dts_export( sdt, verbose )
         sys.exit(0)
 
     device_tree = LopperSDT( sdt )
@@ -305,7 +322,7 @@ def main():
     device_tree.permissive = permissive
     device_tree.merge = overlay
 
-    device_tree.setup( sdt, inputfiles, "", force, libfdt )
+    device_tree.setup( sdt, inputfiles, "", force, libfdt, config )
     device_tree.assists_setup( cmdline_assists )
 
     if auto_run:
@@ -331,7 +348,7 @@ def main():
 
     if not dryrun:
         # write any changes to the FDT, before we do our write
-        Lopper.sync( device_tree.FDT, device_tree.tree.export() )
+        lopper.Lopper.sync( device_tree.FDT, device_tree.tree.export() )
         device_tree.write( enhanced = device_tree.enhanced )
     else:
         print( "[INFO]: --dryrun was passed, output file %s not written" % output )
