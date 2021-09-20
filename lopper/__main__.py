@@ -33,7 +33,7 @@ with open(Path(__file__).parent / 'VERSION', 'r') as f:
     LOPPER_VERSION = f.read().strip()
 
 def usage():
-    prog = os.path.basename(sys.argv[0])
+    prog = "lopper"
     print('Usage: %s [OPTION] <system device tree> [<output file>]...' % prog)
     print('  -v, --verbose       enable verbose/debug processing (specify more than once for more verbosity)')
     print('  -t, --target        indicate the starting domain for processing (i.e. chosen node or domain label)' )
