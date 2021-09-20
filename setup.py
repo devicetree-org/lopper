@@ -35,6 +35,10 @@ setuptools.setup(
     packages=setuptools.find_packages(include=('lopper',)),
     python_requires='>=3.5',
     include_package_data=True,
-    install_requires=[],        # TODO
+    install_requires=[ ],        # TODO
+    extras_require={ "server": ["flask>=1.1.2","flask_restful>=0.3.8","pandas"],
+                     "yaml": ["pyaml","ruamel.yaml","anytree"],
+                    },
+    namespace_packages=[ ],
     entry_points={'console_scripts': ('lopper = lopper.__main__:main',)},
 )
