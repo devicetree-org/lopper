@@ -1,3 +1,5 @@
 graft lopper/assists
-graft looper/lops
-graft vendor/
+graft lopper/lops
+graft lopper/vendor
+include lopper/VERSION
+
