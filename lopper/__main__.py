@@ -15,7 +15,6 @@ from pathlib import Path
 import configparser
 import re
 
-import lopper.rest
 from lopper import LopperSDT
 
 lopper_directory = os.path.dirname(os.path.realpath(__file__))
