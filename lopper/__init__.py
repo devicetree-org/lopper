@@ -19,7 +19,6 @@ import tempfile
 from collections import OrderedDict
 
 from lopper.fmt import LopperFmt
-import lopper.fdt
 
 from lopper.tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
 import lopper.tree
