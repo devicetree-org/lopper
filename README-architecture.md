@@ -1,5 +1,4 @@
-Lopper processing flow:
------------------------
+# Lopper processing flow:
 
 Lopper is data driven and only performs operations or invokes assist routines as
 specified by its inputs (command line or operation files). This means that
@@ -74,8 +73,7 @@ The flow of lopper processing is broken into the following broad categories:
     files. An exit and trap handler are part of lopper and will clean up in the
     case or normal or abnormal exit.
 
-Lopper Classes / Routines:
---------------------------
+# Lopper Classes / Routines:
 
 Lopper contains the following classes for use when manipulating a system device
 tree:
@@ -115,12 +113,12 @@ based logic around the underlying device tree.
 A snapshot of pydoc information for lopper is maintained in README.pydoc. For
 the latest detailed information on lopper, execute the following:
 
-  % pydoc3 ./lopper.py
-  % pydoc3 ./lopper_tree.py
-  % pydoc3 ./lopper_sdt.py
+    % pydoc3 lopper/__init__.py
+    % pydoc3 lopper/tree.py
+    % pydoc3 lopper/fdt.py
+    % pydoc3 lopper/dt.py
 
-Lopper Inputs / Outputs:
-------------------------
+# Lopper Inputs / Outputs:
 
 Although most inputs and outputs from Lopper are dts files (or dtb in rare cases),
 YAML is also supported. While not everything can (or should) be expressed in
@@ -135,8 +133,7 @@ To aid decoding and interpretation of properties carried in a LopperTree, if a
 node has been created from yaml, the LopperNode field '_source' is set to "yaml"
 (otherwise it is "dts").
 
-Lopper Tree and complex (non-dts) types:
-----------------------------------------
+# Lopper Tree and complex (non-dts) types:
 
 Depending on the input format, complex data types or associated data are
 carried in the Lopper tree.
@@ -150,8 +147,7 @@ types are json encoded and carried as a string in a LopperProp. When json
 encoding is used, the "pclass" of the LopperProp is set to "json", so that it
 can be loaded and expanded for processing.
 
-Lopper operations
------------------
+# Lopper operations
 
 Lopper operations are passed to the tool in a dts format file. Any number of
 operations files can be passed, and they will be executed in priority order.
@@ -159,23 +155,23 @@ operations files can be passed, and they will be executed in priority order.
 A lopper operations (lops) file has the following structure:
 
 -----
-/dts-v1/;
-
-/ {
-        compatible = "system-device-tree-v1";
-        // optional priority, normally not specified
-        priority = <1>;
-        lops {
-                lop_<number> {
-                        compatible = "system-device-tree-v1,lop,<lop type>";
-                        <lop specific properties>;
-                };
-                lop_<number> {
-                        compatible = "system-device-tree-v1,lop,<lop type>";
-                        <lop specific properties>;
-                };
-        };
-};
+    /dts-v1/;
+    
+    / {
+            compatible = "system-device-tree-v1";
+            // optional priority, normally not specified
+            priority = <1>;
+            lops {
+                    lop_<number> {
+                            compatible = "system-device-tree-v1,lop,<lop type>";
+                            <lop specific properties>;
+                    };
+                    lop_<number> {
+                            compatible = "system-device-tree-v1,lop,<lop type>";
+                            <lop specific properties>;
+                    };
+            };
+    };
 -----
 
 The important elements of the file are that it is structured like any standard
@@ -232,13 +228,13 @@ The following types of lops are currently valid:
                 };
 
 # modify: a general purpose node and property modify/delete/add/move operation
-#
-#         format is: "path":"property":"replacement"
-#                     - modify to "nothing", is a remove operation
-#                     - modify with no property is node operation (rename or remove)
-#
-#         To update complex/compound values, see the phandle#property notation in the
-#         examples below
+
+    #         format is: "path":"property":"replacement"
+    #                     - modify to "nothing", is a remove operation
+    #                     - modify with no property is node operation (rename or remove)
+    #
+    #         To update complex/compound values, see the phandle#property notation in the
+    #         examples below
 
                 lop_1 {
                         compatible = "system-device-tree-v1,lop,modify";
@@ -292,11 +288,11 @@ The following types of lops are currently valid:
                 };
 
 # node add: copies the compiled node to the target device tree
-#
-# Additional operations or assists can modify this node just as if it was
-# compiled into the original device tree. In this example the __...__ values
-# will be filled in by an assist routine.
-#
+
+    # Additional operations or assists can modify this node just as if it was
+    # compiled into the original device tree. In this example the __...__ values
+    # will be filled in by an assist routine.
+    #
 
                 lop_7 {
                         // node add
@@ -339,9 +335,9 @@ The following types of lops are currently valid:
 
 
 # output: write selected nodes to an output file
-#
-# multiple of these can be in a single lop file. They pull fields from the
-# modified system device tree and write them to output files.
+
+    # multiple of these can be in a single lop file. They pull fields from the
+    # modified system device tree and write them to output files.
 
                 lop_13 {
                        compatible = "system-device-tree-v1,lop,output";
@@ -377,54 +373,54 @@ The following types of lops are currently valid:
 		};
 
 # conditional: do a conditional test on nodes of the tree, and execute an operation
-#
-# does a set of conditional tests against a nodes in the system device tree that
-# match the structure of the conditional tree found at the base defined by "cond_root".
-#
-# conditions are compound, if any are not true, then the overall condition is False
-# conditions can be inverted with a suffix of __not__ at the end of property name
-#
-# if the result is true, all blocks that start with "true" are executed. These can
-# contain any valid lop, and can modify the tree. Execution stops if any lop returns
-# False.
-#
-# Similarly, false blocks are executed when the conditions evaluate to false.
-#
-# Note: the "select" lop is a newer, and cleaner way to select a group of nodes
-#       for code operation. Conditional continues to work, but consider using
-#       select -> code lops instead.
-#
-# code: a block of python code to execute against a node
-#
-# Execute python code in a restricted environment. This can be used to test and
-# produce special output without needing to write an assist. Changes made to a node
-# are persistent and hence collection of data can be done, as the following examples
-# show.
-#
-# The 'code' property contains the block of python code to be executed. Note, that
-# since this is compiled with dtc, you cannot use quotes " within the code, and
-# should use single quotes ' instead.
-#
-# The 'options' property in a code lop is of the format:
-#
-#    <variable name>:<value>
-#
-# Lopper will arrange for a variable to be available to the python code under
-# that name, with the specified value.
-#
-# Code blocks can also inherit Lopper assists, to facilitate code reuse.
-# The property "inherit" is a comma separate list of python
-# assists that should be loaded and made available to the code block
-# on execution.
-#
-# The python modules must be searchable by the python loader and in
-# an "assists" subdirectory. They will be loaded and made available under
-# their module name for direct use in the code block.
-#
-# See the 'xlate' lop for an example of 'inherit'
-#
-# See README.pydoc for details of the code execution environment
 
+    # does a set of conditional tests against a nodes in the system device tree that
+    # match the structure of the conditional tree found at the base defined by "cond_root".
+    #
+    # conditions are compound, if any are not true, then the overall condition is False
+    # conditions can be inverted with a suffix of __not__ at the end of property name
+    #
+    # if the result is true, all blocks that start with "true" are executed. These can
+    # contain any valid lop, and can modify the tree. Execution stops if any lop returns
+    # False.
+    #
+    # Similarly, false blocks are executed when the conditions evaluate to false.
+    #
+    # Note: the "select" lop is a newer, and cleaner way to select a group of nodes
+    #       for code operation. Conditional continues to work, but consider using
+    #       select -> code lops instead.
+    #
+    # code: a block of python code to execute against a node
+    #
+    # Execute python code in a restricted environment. This can be used to test and
+    # produce special output without needing to write an assist. Changes made to a node
+    # are persistent and hence collection of data can be done, as the following examples
+    # show.
+    #
+    # The 'code' property contains the block of python code to be executed. Note, that
+    # since this is compiled with dtc, you cannot use quotes " within the code, and
+    # should use single quotes ' instead.
+    #
+    # The 'options' property in a code lop is of the format:
+    #
+    #    <variable name>:<value>
+    #
+    # Lopper will arrange for a variable to be available to the python code under
+    # that name, with the specified value.
+    #
+    # Code blocks can also inherit Lopper assists, to facilitate code reuse.
+    # The property "inherit" is a comma separate list of python
+    # assists that should be loaded and made available to the code block
+    # on execution.
+    #
+    # The python modules must be searchable by the python loader and in
+    # an "assists" subdirectory. They will be loaded and made available under
+    # their module name for direct use in the code block.
+    #
+    # See the 'xlate' lop for an example of 'inherit'
+    #
+    # See README.pydoc for details of the code execution environment
+    
                 lop_15_1 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
@@ -573,16 +569,16 @@ The following types of lops are currently valid:
 
 
 # print: output strings during processing
-#
-# print provides basic string output and is primarily provided for debug purposes
-# (complex output can be generated from code lops).
-#
-# Any properties that begin with "print" will be output to stdout when the lop
-# is processed.
-#
-# One convenience routine is provided to print a node. If the print property is
-# a valid phandle, then the node will be pretty printed to stdout.
-#
+
+    # print provides basic string output and is primarily provided for debug purposes
+    # (complex output can be generated from code lops).
+    #
+    # Any properties that begin with "print" will be output to stdout when the lop
+    # is processed.
+    #
+    # One convenience routine is provided to print a node. If the print property is
+    # a valid phandle, then the node will be pretty printed to stdout.
+    #
 
                 lop_16_2 {
                       compatible = "system-device-tree-v1,lop,print-v1";
@@ -593,22 +589,22 @@ The following types of lops are currently valid:
 
 
 # exec: execute another lop
-#
-# Commonly used in combination with a conditional lop to avoid code duplication
-# and execute another lopper operation. i.e. renaming a node, deleting a property
-# running code, etc.
-#
-# The lop to exec is found in the "exec" property of the lop, and must be a valid
-# phandle to the target lopper operation.
-#
-# The 'options' property in a code lop is of the format:
-#
-#    <variable name>:<value>
-#
-# Lopper will arrange for those options to be available to the called lop routine.
-# If the exec'd lop is a code block, the options will be propagated to the code
-# as local variables.
-#
+
+    # Commonly used in combination with a conditional lop to avoid code duplication
+    # and execute another lopper operation. i.e. renaming a node, deleting a property
+    # running code, etc.
+    #
+    # The lop to exec is found in the "exec" property of the lop, and must be a valid
+    # phandle to the target lopper operation.
+    #
+    # The 'options' property in a code lop is of the format:
+    #
+    #    <variable name>:<value>
+    #
+    # Lopper will arrange for those options to be available to the called lop routine.
+    # If the exec'd lop is a code block, the options will be propagated to the code
+    # as local variables.
+    #
 
                 track_feature: track_feature {
                         compatible = "system-device-tree-v1,lop,code-v1";
@@ -627,51 +623,51 @@ The following types of lops are currently valid:
                 };
 
 # select: select nodes to be used in other lopper operations
-#
-# select is provided to build up complex conditionals or series of nodes,
-# It is similar to the conditional lop (and could replace it in the
-# future). In particular regular expressions which are not valid to dtc
-# can be expressed in select.
-#
-# The syntax of a select test is exactly the same as the modify operation:
-#
-#    <path to node>:<property>:<value>
-#
-#    If <path to node> is omitted, then the nodes from the previous
-#    select operation are used. Hence you can build up a series of
-#    tests to refine search operations.
-#
-# Each select operation is a property of the format:
-#
-#    select[_]<extension> = <select expression>
-#
-# If "select"  with no extension is encountered, it clears any
-# previously selected nodes.
-#
-# Operations are processed in the order they are found in the lop node.
-#
-# Once selected, other lopper operations will use the nodes if no
-# override is supplied in their lop.
-#
-#    - code, exec: The selected node is the default node context of the block
-#                  And all selected nodes are available in the tree variable
-#                  __selected__
-#    - modify: If no node regex is supplied, the selected nodes are used
-#    - output: If no nodes are specified, the selected nodes are used
-#
-#
-# An example of an "or" condition (meaning both sets of matching nodes
-# will be selected).
-#
-#    select_1 = "/path/or/regex/to/nodes:prop:val";
-#    select_2 = "/path/or/2nd/node/regex:prop2:val2";
-#
-# to do an "and" condition (meaning only nodes that match both conditions
-# will be selected).
-#
-#    select_1 = "/path/or/regex/to/nodes:prop:val";
-#    select_2 = ":prop2:val2";
-#
+
+    # select is provided to build up complex conditionals or series of nodes,
+    # It is similar to the conditional lop (and could replace it in the
+    # future). In particular regular expressions which are not valid to dtc
+    # can be expressed in select.
+    #
+    # The syntax of a select test is exactly the same as the modify operation:
+    #
+    #    <path to node>:<property>:<value>
+    #
+    #    If <path to node> is omitted, then the nodes from the previous
+    #    select operation are used. Hence you can build up a series of
+    #    tests to refine search operations.
+    #
+    # Each select operation is a property of the format:
+    #
+    #    select[_]<extension> = <select expression>
+    #
+    # If "select"  with no extension is encountered, it clears any
+    # previously selected nodes.
+    #
+    # Operations are processed in the order they are found in the lop node.
+    #
+    # Once selected, other lopper operations will use the nodes if no
+    # override is supplied in their lop.
+    #
+    #    - code, exec: The selected node is the default node context of the block
+    #                  And all selected nodes are available in the tree variable
+    #                  __selected__
+    #    - modify: If no node regex is supplied, the selected nodes are used
+    #    - output: If no nodes are specified, the selected nodes are used
+    #
+    #
+    # An example of an "or" condition (meaning both sets of matching nodes
+    # will be selected).
+    #
+    #    select_1 = "/path/or/regex/to/nodes:prop:val";
+    #    select_2 = "/path/or/2nd/node/regex:prop2:val2";
+    #
+    # to do an "and" condition (meaning only nodes that match both conditions
+    # will be selected).
+    #
+    #    select_1 = "/path/or/regex/to/nodes:prop:val";
+    #    select_2 = ":prop2:val2";
+    #
                 lop_17_1 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       // clear any old selections
@@ -712,21 +708,21 @@ The following types of lops are currently valid:
                 };
 
 # tree: create a subtree from specified nodes
-#
-# To allow for nodes to not only be collected for output, but also for
-# modification, we have the "tree" lop.
-#
-# This lop follows the same syntax as "output". If no nodes are specified
-# in the lop itself, previously selected ones via "select" are used
-#
-# The lop must provide the name of the newly created tree via the "tree"
-# property. A new tree is created and stored in the system device tree
-# in the "subtrees" dictionary.
-#
-# lops that support specifying the tree, can then modify the named tree
-# instead of the default system device tree (which they do via an optional
-# "tree" property in their lops.
-#
+
+    # To allow for nodes to not only be collected for output, but also for
+    # modification, we have the "tree" lop.
+    #
+    # This lop follows the same syntax as "output". If no nodes are specified
+    # in the lop itself, previously selected ones via "select" are used
+    #
+    # The lop must provide the name of the newly created tree via the "tree"
+    # property. A new tree is created and stored in the system device tree
+    # in the "subtrees" dictionary.
+    #
+    # lops that support specifying the tree, can then modify the named tree
+    # instead of the default system device tree (which they do via an optional
+    # "tree" property in their lops.
+    #
 
                 lop_13_1 {
                        compatible = "system-device-tree-v1,lop,tree";
@@ -751,24 +747,24 @@ The following types of lops are currently valid:
                 };
 
 # xlate: translate a node / properties
-#
-# It is becoming more common that non dts compatible trees / properties
-# are carried along side of device tree ones (i.e. yaml), and those
-# properties often need to be translated / expanded to be device tree
-# format (since they are complex types).
-#
-# To make that easier, we have a translate "xlate" lopper operation.
-# This lop is expected to work in coordination with a select lop to
-# target specific nodes and properties that need translation. xlate is
-# very similar to "code", and in fact, you can do everything that xlate
-#  does with a code block (just more verbosely).
-#
-#    The differences (conveniences) from "code" are as follows:
-#
-#      - Automatic inheritance of lopper library functions (as: lopper_lib)
-#      - Automatic iteration over selected nodes
-#
-# See the description of the "code" lop for an explanation of 'inherit'
+
+    # It is becoming more common that non dts compatible trees / properties
+    # are carried along side of device tree ones (i.e. yaml), and those
+    # properties often need to be translated / expanded to be device tree
+    # format (since they are complex types).
+    #
+    # To make that easier, we have a translate "xlate" lopper operation.
+    # This lop is expected to work in coordination with a select lop to
+    # target specific nodes and properties that need translation. xlate is
+    # very similar to "code", and in fact, you can do everything that xlate
+    #  does with a code block (just more verbosely).
+    #
+    #    The differences (conveniences) from "code" are as follows:
+    #
+    #      - Automatic inheritance of lopper library functions (as: lopper_lib)
+    #      - Automatic iteration over selected nodes
+    #
+    # See the description of the "code" lop for an explanation of 'inherit'
 
                     lop_0_1 {
                           compatible = "system-device-tree-v1,lop,select-v1";
@@ -785,22 +781,21 @@ The following types of lops are currently valid:
                             ";
                     };
 
-# The impact of these two lops would be to run the code block in 0_2
-# against all nodes that match the selection criteria of 0_1. In this
-# case, it would be against any nodes under /domains/subsystem that have
-#  a 'cpus' property (that is set to anything).
-#
-# When the code block runs, the python module "subsystem" will be loaded
-# from the assists subdirectory and made available to the code block.
-# The calls to subsystem.<function> will leverage the transforms available
-# in that assist (and in this case, will expand various properties in
-# in the node).
+    # The impact of these two lops would be to run the code block in 0_2
+    # against all nodes that match the selection criteria of 0_1. In this
+    # case, it would be against any nodes under /domains/subsystem that have
+    #  a 'cpus' property (that is set to anything).
+    #
+    # When the code block runs, the python module "subsystem" will be loaded
+    # from the assists subdirectory and made available to the code block.
+    # The calls to subsystem.<function> will leverage the transforms available
+    # in that assist (and in this case, will expand various properties in
+    # in the node).
 
 Note: the lopper_sanity.py utility has an embedded lops file that can be
-      used as a reference, as well as embedded LopperTree sanity tests.
+used as a reference, as well as embedded LopperTree sanity tests.
 
-Lopper Assists
---------------
+# Lopper Assists
 
 Assists can be used to perform operations on the tree (using libfdt or Lopper
 utility routines) or to generate output from a tree.
@@ -854,8 +849,7 @@ LopperProp routines can be used to modify the tree.
 If the module has invalid code, or otherwise generates and exception, Lopper
 catches it and reports the error to the user.
 
-Command line assists:
---------------------
+# Command line assists:
 
 Commonly we want to run an assist against the loaded system device tree and exit.
 
@@ -869,26 +863,25 @@ id, or they will not be executed.
 
 An example is a simple "grep" assist:
 
- % lopper.py device-trees/system-device-tree.dts -- grep compatible "/bus.*"
+     % lopper.py device-trees/system-device-tree.dts -- grep compatible "/bus.*"
 
 Everything after the "--" is of the format: <module> <arguments>
 
 In this case, the grep.py assist is located, loaded and passed the system device
 tree. It can then process the arguments as it sees fit:
 
- % lopper.py device-trees/system-device-tree.dts -- grep compatible "/bus.*"
-   /bus@f1000000/spi@ff040000: compatible = "cdns,spi-r1p6";
-   /bus@f1000000/pci@fca10000: compatible = "xlnx,versal-cpm-host-1.00";
-   /bus@f1000000/dma@ffac0000: compatible = "xlnx,zynqmp-dma-1.0";
-   /bus@f1000000/serial@ff010000: compatible = "arm,pl011","arm,sbsa-uart";
-   /bus@f1000000/spi@f1030000: compatible = "xlnx,versal-qspi-1.0";
-   /bus@f1000000/zynqmp_ipi: compatible = "xlnx,zynqmp-ipi-mailbox";
-   /bus@f1000000/cci@fd000000/pmu@10000: compatible = "arm,cci-500-pmu,r0";
-   /bus@f1000000/dma@ffae0000: compatible = "xlnx,zynqmp-dma-1.0";
-   /bus@f1000000/dma@ffa90000: compatible = "xlnx,zynqmp-dma-1.0";
+     % lopper.py device-trees/system-device-tree.dts -- grep compatible "/bus.*"
+       /bus@f1000000/spi@ff040000: compatible = "cdns,spi-r1p6";
+       /bus@f1000000/pci@fca10000: compatible = "xlnx,versal-cpm-host-1.00";
+       /bus@f1000000/dma@ffac0000: compatible = "xlnx,zynqmp-dma-1.0";
+       /bus@f1000000/serial@ff010000: compatible = "arm,pl011","arm,sbsa-uart";
+       /bus@f1000000/spi@f1030000: compatible = "xlnx,versal-qspi-1.0";
+       /bus@f1000000/zynqmp_ipi: compatible = "xlnx,zynqmp-ipi-mailbox";
+       /bus@f1000000/cci@fd000000/pmu@10000: compatible = "arm,cci-500-pmu,r0";
+       /bus@f1000000/dma@ffae0000: compatible = "xlnx,zynqmp-dma-1.0";
+       /bus@f1000000/dma@ffa90000: compatible = "xlnx,zynqmp-dma-1.0";
 
-output assists:
----------------
+# output assists:
 
 Output assists are similar to standard (node) assists, except they are called
 when an output file extension is not recognized. Each loaded assist is queried
@@ -901,33 +894,32 @@ format:
    def assist_write( node, lt, options ):
 
 Note: A LopperTree is passed to the output assist, and not a system device
-      tree, since changes to the core SDT should not be made by an output
-      assist.
+tree, since changes to the core SDT should not be made by an output
+assist.
 
 The routine can write the appropriate parts of the passed LopperTreePrinter (lt
 above) to the passed output filename.
 
 The output filename is passed via the options dictionary, in the key 'outfile'
 
-execution samples:
-------------------
+# execution samples:
 
-# testing with openamp domains
-#
-# Notes: -v -v: verbosity level 2
-#        -f: force overwrite files if they exist
-#        -i: module load lop
-#        -i: main lop file for modifying system device tree (with a unified chosen node in this example)
-#        foo.dts: output file (dts format)
-#
-lopper.py -f -v -v -i lop-load.dts -i xform-domain-r5.dts system-device-tree-domains.dts foo.dts
+    # testing with openamp domains
+    #
+    # Notes: -v -v: verbosity level 2
+    #        -f: force overwrite files if they exist
+    #        -i: module load lop
+    #        -i: main lop file for modifying system device tree (with a unified chosen node in this example)
+    #        foo.dts: output file (dts format)
+    #
+    lopper.py -f -v -v -i lop-load.dts -i xform-domain-r5.dts system-device-tree-domains.dts foo.dts
 
-# testing with binary transform
-lopper.py -f -v -v -i xform-load.dts -i xform-domain-r5.dts -i xform-bin.dtb system-device-tree-domains.dts foo.dts
+    # testing with binary transform
+    lopper.py -f -v -v -i xform-load.dts -i xform-domain-r5.dts -i xform-bin.dtb system-device-tree-domains.dts foo.dts
 
-# testing with split chosen node
-lopper.py -f --werror -v -v -v -v -i lop-load.dts -i lop-domain-r5.dts -i lop-bin.dtb -i system-device-tree-chosen.dts system-device-tree-domains.dts foo.dts
-lopper.py -f --werror -v -v -v -v -i lop-load.dts -i lop-domain-a53.dts -i lop-bin.dtb -i system-device-tree-chosen.dts system-device-tree-domains.dts foo.dts
+    # testing with split chosen node
+    lopper.py -f --werror -v -v -v -v -i lop-load.dts -i lop-domain-r5.dts -i lop-bin.dtb -i system-device-tree-chosen.dts system-device-tree-domains.dts foo.dts
+    lopper.py -f --werror -v -v -v -v -i lop-load.dts -i lop-domain-a53.dts -i lop-bin.dtb -i system-device-tree-chosen.dts system-device-tree-domains.dts foo.dts
 
-# dump a dtb to console as a "dts"
-lopper.py --dump linux.dtb
+    # dump a dtb to console as a "dts"
+    lopper.py --dump linux.dtb
