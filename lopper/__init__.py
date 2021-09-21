@@ -24,6 +24,8 @@ import lopper.fdt
 from lopper.tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
 import lopper.tree
 
+lopper_directory = os.path.dirname(os.path.realpath(__file__))
+
 try:
     from lopper.yaml import *
     yaml_support = True
