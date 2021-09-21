@@ -1,7 +1,7 @@
-Help on module lopper:
+Help on module __init__:
 
 NAME
-    lopper
+    __init__
 
 DESCRIPTION
     #/*
@@ -204,7 +204,7 @@ CLASSES
      |      Returns:
      |          Nothing
      |  
-     |  setup(self, sdt_file, input_files, include_paths, force=False)
+     |  setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True, config=None)
      |      executes setup and initialization tasks for a system device tree
      |      
      |      setup validates the inputs, and calls the appropriate routines to
@@ -220,7 +220,7 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
-     |  write(self, fdt=None, output_filename=None, overwrite=True, enhanced=False)
+     |  write(self, tree=None, output_filename=None, overwrite=True, enhanced=False)
      |      Write a system device tree to a file
      |      
      |      Write a fdt (or system device tree) to an output file. This routine uses
@@ -233,7 +233,7 @@ CLASSES
      |      it is called to write the file, otherwise, a warning or error is raised.
      |      
      |      Args:
-     |          fdt (fdt,optional): source flattened device tree to write
+     |          tree (LopperTree,optional): LopperTree to write
      |          output_filename (string,optional): name of the output file to create
      |          overwrite (bool,optional): Should existing files be overwritten. Default is True.
      |          enhanced(bool,optional): whether enhanced printing should be performed. Default is False
@@ -251,27 +251,22 @@ CLASSES
      |      list of weak references to the object (if defined)
 
 FUNCTIONS
-    at_exit_cleanup()
-    
-    main()
+    lopper_type(cls)
     
     stdoutIO(stdout=None)
-    
-    usage()
 
 DATA
-    LOPPER_VERSION = '2020.4-beta'
-    lopper_directory = '/home/bruce/git/system-device-tree'
+    lopper_directory = '/home/bruce/git/system-device-tree/lopper'
     yaml_support = True
 
 FILE
-    /home/bruce/git/system-device-tree/lopper.py
+    /home/bruce/git/system-device-tree/lopper/__init__.py
 
 
-Help on module lopper_tree:
+Help on module tree:
 
 NAME
-    lopper_tree
+    tree
 
 DESCRIPTION
     #/*
@@ -643,7 +638,7 @@ CLASSES
      |      
      |      Export the details of a node in a dictionary. The format of the dictionary
      |      is suitable for loading() into a LopperTree, or syncing() to a flattened
-     |      device tree by lopper_fdt.
+     |      device tree by lopper.fdt.
      |      
      |      Internal / FDT properties are prefixed/suffixed with __.
      |      
@@ -659,7 +654,20 @@ CLASSES
      |      Returns:
      |         Ordered Dict Describing a node
      |  
-     |  load(self, dct, parent_path=None)
+     |  items(self)
+     |      method to support items() iteration
+     |      
+     |      If the pure Iterators aren't used (__iter__, etc), and instead a dictionary
+     |      style items() is requested for the Node. We can just return the items() from
+     |      __props__ to support that style of access.
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |         LopperNode object: self
+     |  
+     |  load(self, dct, parent_path=None, clear_children=True, update_props=False)
      |      load (calculate) node details against a property dictionary
      |      
      |      Some attributes of a node are not known at initialization time, or may
@@ -668,8 +676,15 @@ CLASSES
      |      This method calculates those values using information in the node and in
      |      the passed property dictionary
      |      
-     |      The only value that must be set in the node before resolve() is called
-     |      is the node number.
+     |      If clear_children is set to True (the default), children nodes will be
+     |      dropped with the expectation that they will be re-added when the children
+     |      themselves are loaded. When set to False, the children are not modified,
+     |      and this is used when updating a node from a dictionary.
+     |      
+     |      If update_props is set to True (the default is False), then existing
+     |      properties will be updated with the contents of the passed dictionary.
+     |      This is set to true when a dictionary should override all values in
+     |      a node.
      |      
      |      Fields resolved (see class for descriptions)
      |         - name
@@ -685,6 +700,22 @@ CLASSES
      |      Args:
      |         Property dictionary: Dictionary with the node details/properties
      |         parent_path (Optional,string)
+     |         clear_children (Optional,boolean): default is True
+     |         update_props (Optional,boolean): default is False
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  merge(self, other_node)
+     |      merge a secondary node into the target
+     |      
+     |      This routine updates the target node with the properties of secondary.
+     |      
+     |      It is additive/modification only, no properties are removed as part of
+     |      the processing.
+     |      
+     |      Args:
+     |         other_node (LopperNode): The other to merge
      |      
      |      Returns:
      |         Nothing
@@ -1336,7 +1367,7 @@ CLASSES
      |      Returns:
      |         LopperTree: returns self
      |  
-     |  add(self, node, dont_sync=False)
+     |  add(self, node, dont_sync=False, merge=False)
      |      Add a node to a tree
      |      
      |      Supports adding a node to a tree through:
@@ -1353,6 +1384,18 @@ CLASSES
      |      
      |      Returns:
      |         LopperTree: returns self, raises Exception on invalid parameter
+     |  
+     |  alias_node(self, alias)
+     |      Find a node via an alias
+     |      
+     |      Safely (no exception raised) returns the node that can be found
+     |      at a given alias.
+     |      
+     |      Args:
+     |         alias (string): node alias to check
+     |      
+     |      Returns:
+     |         node (LopperNode): the alias nodes if found, None otherwise
      |  
      |  delete(self, node, delete_from_parent=True)
      |      delete a node from a tree
@@ -1386,7 +1429,7 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
-     |  exec_cmd(self, node, cmd, env=None, module_list=[])
+     |  exec_cmd(self, node, cmd, env=None, module_list=[], module_load_paths=[])
      |      Execute a (limited) code block against a node
      |      
      |      Execute a python clode block with the 'node' context set to the
@@ -1422,6 +1465,8 @@ CLASSES
      |                                     variables to the code block
      |          module_list (list,optional): list of assists to load before
      |                                       running the code block
+     |          module_load_paths (list,optional): additional load paths to use
+     |                                             when loading modules
      |      
      |      Returns:
      |          Return value from the execution of the code block
@@ -1487,7 +1532,7 @@ CLASSES
      |      versus added order.
      |      
      |      Args:
-     |         dct (Dictionary): dictionary from a lopper_fdt export, or a tree export
+     |         dct (Dictionary): dictionary from a lopper.fdt export, or a tree export
      |      
      |      Returns:
      |         Nothing
@@ -1926,7 +1971,7 @@ CLASSES
      |      Returns:
      |         LopperTree: returns self
      |  
-     |  add(self, node, dont_sync=False)
+     |  add(self, node, dont_sync=False, merge=False)
      |      Add a node to a tree
      |      
      |      Supports adding a node to a tree through:
@@ -1943,6 +1988,18 @@ CLASSES
      |      
      |      Returns:
      |         LopperTree: returns self, raises Exception on invalid parameter
+     |  
+     |  alias_node(self, alias)
+     |      Find a node via an alias
+     |      
+     |      Safely (no exception raised) returns the node that can be found
+     |      at a given alias.
+     |      
+     |      Args:
+     |         alias (string): node alias to check
+     |      
+     |      Returns:
+     |         node (LopperNode): the alias nodes if found, None otherwise
      |  
      |  delete(self, node, delete_from_parent=True)
      |      delete a node from a tree
@@ -1976,7 +2033,7 @@ CLASSES
      |      Returns:
      |         Nothing
      |  
-     |  exec_cmd(self, node, cmd, env=None, module_list=[])
+     |  exec_cmd(self, node, cmd, env=None, module_list=[], module_load_paths=[])
      |      Execute a (limited) code block against a node
      |      
      |      Execute a python clode block with the 'node' context set to the
@@ -2012,6 +2069,8 @@ CLASSES
      |                                     variables to the code block
      |          module_list (list,optional): list of assists to load before
      |                                       running the code block
+     |          module_load_paths (list,optional): additional load paths to use
+     |                                             when loading modules
      |      
      |      Returns:
      |          Return value from the execution of the code block
@@ -2077,7 +2136,7 @@ CLASSES
      |      versus added order.
      |      
      |      Args:
-     |         dct (Dictionary): dictionary from a lopper_fdt export, or a tree export
+     |         dct (Dictionary): dictionary from a lopper.fdt export, or a tree export
      |      
      |      Returns:
      |         Nothing
@@ -2254,21 +2313,14 @@ CLASSES
      |  __weakref__
      |      list of weak references to the object (if defined)
 
-DATA
-    MAX_RETRIES = 3
-    QUIET_ALL = range(1, 18)
-    QUIET_NOTFOUND = (1,)
-    printable = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU...
-    python_version_dir = 'python3.6'
-
 FILE
-    /home/bruce/git/system-device-tree/lopper_tree.py
+    /home/bruce/git/system-device-tree/lopper/tree.py
 
 
-Help on module lopper_fdt:
+Help on module fdt:
 
 NAME
-    lopper_fdt
+    fdt
 
 DESCRIPTION
     #/*
@@ -2281,16 +2333,19 @@ DESCRIPTION
     # */
 
 CLASSES
-    builtins.object
-        Lopper
-    enum.Enum(builtins.object)
-        LopperFmt
+    lopper.base.lopper_base(builtins.object)
+        LopperFDT
     
-    class Lopper(builtins.object)
+    class LopperFDT(lopper.base.lopper_base)
      |  The Lopper Class contains static methods for manipulating device trees
      |  
      |  Use the lopper methods when manipulating device trees (in particular
      |  libfdt FDT objects) or SystemDeviceTree classes.
+     |  
+     |  Method resolution order:
+     |      LopperFDT
+     |      lopper.base.lopper_base
+     |      builtins.object
      |  
      |  Static methods defined here:
      |  
@@ -2325,29 +2380,6 @@ CLASSES
      |      Returns:
      |         string: Name of the compiled dtb
      |  
-     |  dt_preprocess(dts_file, includes, outdir='./', verbose=0)
-     |      Compile a dts file to a dtb
-     |      
-     |      This routine takes a dts input file, include search path and then
-     |      uses standard tools (cpp, etc) to expand references.
-     |      
-     |      Environment variables can be used tweak the execution of the various
-     |      tools and stages:
-     |      
-     |         LOPPER_CPP: set if a different cpp than the standard one should
-     |                     be used, or if cpp is not on the path
-     |         LOPPER_PPFLAGS: flags to be used when calling cpp
-     |      
-     |      Args:
-     |         dts_file (string): path to the dts file to be preprocessed
-     |         includes (list): list of include directories (translated into -i <foo>
-     |                          for cpp calls)
-     |         outdir (string): directory to place all output and temporary files
-     |         verbose (bool,optional): verbosity level
-     |      
-     |      Returns:
-     |         string: Name of the preprocessed dts
-     |  
      |  dt_to_fdt(dtb, rmode='rb')
      |      takes a dtb and returns a flattened device tree object
      |      
@@ -2369,24 +2401,6 @@ CLASSES
      |      
      |      Returns:
      |         The return value of executing dtc to dump the dtb to dts
-     |  
-     |  encode_byte_array(values)
-     |      utility to encode a list of values into a bytearray
-     |      
-     |      Args:
-     |         values (list): integer (numeric) values to encode
-     |      
-     |      Returns:
-     |         byte array: the encoded byte array
-     |  
-     |  encode_byte_array_from_strings(values)
-     |      utility to encode a list of strings into a bytearray
-     |      
-     |      Args:
-     |         values (list): string values to encode
-     |      
-     |      Returns:
-     |         byte array: the encoded byte array
      |  
      |  export(fdt, start_node='/', verbose=False, strict=False)
      |      export a FDT to a description / nested dictionary
@@ -2450,15 +2464,6 @@ CLASSES
      |      
      |      Returns:
      |          fdt: The newly created FDT
-     |  
-     |  input_file_type(infile)
-     |      utility to return the "type" of a file, aka the extension
-     |      
-     |      Args:
-     |         infile (string): path of the file
-     |      
-     |      Returns:
-     |         string: the extension of the file
      |  
      |  node_abspath(fdt, nodeid)
      |      Get the absolute (fully specified) path of a nodes
@@ -2699,20 +2704,6 @@ CLASSES
      |      Returns:
      |         Boolean: True if node is removed, false otherwise
      |  
-     |  node_remove_if_not_compatible(fdt, node_prefix, compat_string)
-     |      Remove a node if incompatible with passed string
-     |      
-     |      Utility/cleanup function to remove all nodues under a node_prefix
-     |      that are not compatible with a given string.
-     |      
-     |      Args:
-     |          fdt (FDT): flattened device tree
-     |          node_prefix (string): starting node path
-     |          compat_strin (string): string for compat property comparison
-     |      
-     |      Returns:
-     |          Nothing
-     |  
      |  node_setname(fdt, node_number_or_path, newname)
      |      Sets the FDT name of a node
      |      
@@ -2787,19 +2778,6 @@ CLASSES
      |      Returns:
      |          string: compatible string of the node if successful, otherwise ''
      |  
-     |  node_walk(fdt, verbose=0)
-     |      Walk nodes and gather a list
-     |      
-     |      Utility / reference routine for gathering a list of nodes.
-     |      Always starts at node 0.
-     |      
-     |      Args:
-     |          fdt (FDT): flattened device tree
-     |          verbose (int,optional): verbosity level, default 0.
-     |      
-     |      Returns:
-     |          List of nodes. Each containg the [node number, name, phandle, depth]
-     |  
      |  nodes(fdt, node_number_or_path, abs_paths=True)
      |      Get the nodes of a tree from a starting point
      |      
@@ -2837,59 +2815,6 @@ CLASSES
      |      Returns:
      |          list: list of matching nodes if successful, otherwise an empty list
      |  
-     |  phandle_possible_properties()
-     |      Get the diectionary of properties that can contain phandles
-     |      
-     |      dictionary of possible properties that can have phandles.
-     |      To do the replacement, we map out the properties so we can locate any
-     |      handles and do replacement on them with symbolic values. This format is
-     |      internal only, and yes, could be the schema for the fields, but for now,
-     |      this is easier.
-     |      
-     |      Each key (property name) maps to a list of: 'format', 'flag'
-     |      flag is currently unused, and format is the following:
-     |      
-     |         - field starting with #: is a size value, we'll look it up and add 'x'
-     |           number of fields based on it. If we can't find it, we'll just use '1'
-     |         - phandle: this is the location of a phandle, size is '1'
-     |         - anything else: is just a field we can ignore, size is '1'
-     |      
-     |      Args:
-     |          None
-     |      
-     |      Returns:
-     |          The phandle property dictionary
-     |  
-     |  phandle_safe_name(phandle_name)
-     |      Make the passed name safe to use as a phandle label/reference
-     |      
-     |      Args:
-     |          phandle_name (string): the name to use for a phandle
-     |      
-     |      Returns:
-     |          The modified phandle safe string
-     |  
-     |  property_convert(property_string)
-     |      utility command to convert a string to a list of property values
-     |      
-     |      Takes a string formatted in device tree notation, and returns a list
-     |      of property values.
-     |      
-     |      Formats of the following types will work, and be converted to their
-     |      base types in the returned list.
-     |      
-     |            <0x1 0x2 0x3>
-     |            <0x1>
-     |            "string value"
-     |            "string value1","string value2"
-     |            10
-     |      
-     |      Args:
-     |         property_string (string): device tree "style" string
-     |      
-     |      Returns:
-     |         list: converted property values, empty string if cannot convert
-     |  
      |  property_get(fdt, node_number, prop_name, ftype=<LopperFmt.SIMPLE: 1>, encode=<LopperFmt.DEC: 4>)
      |      utility command to get a property (as a string) from a node
      |      
@@ -2919,33 +2844,6 @@ CLASSES
      |         string: if format is SIMPLE: string value of the property, or "" if not found
      |         list: if format is COMPOUND: list of property values as strings, [] if not found
      |  
-     |  property_list(fdt, node_path)
-     |      Read a list of properties from a node
-     |      
-     |      Args:
-     |         node_path: Full path to node, e.g. '/subnode@1/subsubnode'
-     |      
-     |      Returns:
-     |         List of property names for that node, e.g. ['compatible', 'reg']
-     |  
-     |  property_phandle_params(fdt, nodeoffset, property_name)
-     |      Determines the phandle elements/params of a property
-     |      
-     |      Takes a property name and returns where to find a phandle in
-     |      that property.
-     |      
-     |      Both the index of the phandle, and the number of fields in
-     |      the property are returned.
-     |      
-     |      Args:
-     |          fdt (FDT): flattened device tree
-     |          nodeoffset (int): node number of the property
-     |          property_name (string): the name of the property to fetch
-     |      
-     |      Returns:
-     |          The the phandle index and number of fields, if the node can't
-     |          be found 0, 0 are returned.
-     |  
      |  property_remove(fdt, node_name, prop_name, verbose=0)
      |      removes a property from a fdt
      |      
@@ -2958,17 +2856,6 @@ CLASSES
      |      
      |      Returns:
      |          Boolean: True if the property was deleted, False if it wasn't
-     |  
-     |  property_resolve_phandles(fdt, nodeoffset, property_name)
-     |      Resolve the targets of any phandles in a property
-     |      
-     |      Args:
-     |          fdt (FDT): flattened device tree
-     |          nodeoffset (int): node number of the property
-     |          property_name (string): the name of the property to resolve
-     |      
-     |      Returns:
-     |          A list of all resolved phandle nodes, [] if no phandles are present
      |  
      |  property_set(fdt, node_number, prop_name, prop_val, ftype=<LopperFmt.SIMPLE: 1>, verbose=False)
      |      utility command to set a property in a node
@@ -2993,70 +2880,6 @@ CLASSES
      |      
      |      Returns:
      |         Nothing
-     |  
-     |  property_type_guess(prop)
-     |      utility routine to guess the type of a property
-     |      
-     |      Often the type of a property is not know, in particular if there isn't
-     |      access to markers via libfdt.
-     |      
-     |      This routine looks at the data of a libFDT property and returns the best
-     |      guess for the type. The logic behind the guesses is documented in the code
-     |      itself
-     |      
-     |      Args:
-     |         prop (libfdt property): the property to process
-     |      
-     |      Returns:
-     |         LopperFmt description of the property. Default is UINT8 (binary)
-     |                     LopperFmt.STRING: string
-     |                     LopperFmt.UINT32 1: uint32
-     |                     LopperFmt.UINT64 2: uint64
-     |                     LopperFmt.UINT8 3: uint8 (binary)
-     |                     LopperFmt.EMPTY 4: empty (just a name)
-     |  
-     |  property_value_decode(prop, poffset, ftype=<LopperFmt.SIMPLE: 1>, encode=<LopperFmt.UNKNOWN: 11>, verbose=0)
-     |      Decodes a property
-     |      
-     |      Decode a property into a common data type (string, integer, list of
-     |      strings, etc).
-     |      
-     |      This is a robust wrapper around the decode facilities provided via
-     |      libfdt. This routine tries multiple encode formats and uses
-     |      heuristics to determine the best format for the decoded property.
-     |      
-     |      The format type (ftype) and encod arguments can be used to help
-     |      decode properly when the type of a property is known.
-     |      
-     |      The format and encoding options are in the following enum type:
-     |      
-     |         class LopperFmt(Enum):
-     |            SIMPLE = 1 (format)
-     |            COMPOUND = 2 (format)
-     |            HEX = 3 (encoding)
-     |            DEC = 4 (encoding)
-     |            STRING = 5 (encoding)
-     |            MULTI_STRING = 5 (encoding)
-     |      
-     |      Args:
-     |         prop (libfdt property): property to decode
-     |         poffset (int): offset of the property in the node (unused)
-     |         ftype (LopperFmt,optional): format hint for the property. default is SIMPLE
-     |         encode (LopperFmt,optional): encoding hint. default is DEC
-     |         verbose (int,optional): verbosity level, default is 0
-     |      
-     |      Returns:
-     |         (string): if SIMPLE. The property as a string
-     |         (list): if COMPOUND. The property as a list of strings / values
-     |  
-     |  string_test(prop, allow_multiline=True)
-     |      Check if a property (byte array) is a string
-     |      
-     |      Args:
-     |         prop: (libfdt property)
-     |      
-     |      Returns:
-     |         boolean: True if the property looks like a string
      |  
      |  sync(fdt, dct, verbose=False)
      |      sync (write) a tree dictionary to a fdt
@@ -3121,7 +2944,183 @@ CLASSES
      |          Nothing
      |  
      |  ----------------------------------------------------------------------
-     |  Data descriptors defined here:
+     |  Methods inherited from lopper.base.lopper_base:
+     |  
+     |  dt_preprocess(dts_file, includes, outdir='./', verbose=0)
+     |      Compile a dts file to a dtb
+     |      
+     |      This routine takes a dts input file, include search path and then
+     |      uses standard tools (cpp, etc) to expand references.
+     |      
+     |      Environment variables can be used tweak the execution of the various
+     |      tools and stages:
+     |      
+     |         LOPPER_CPP: set if a different cpp than the standard one should
+     |                     be used, or if cpp is not on the path
+     |         LOPPER_PPFLAGS: flags to be used when calling cpp
+     |      
+     |      Args:
+     |         dts_file (string): path to the dts file to be preprocessed
+     |         includes (list): list of include directories (translated into -i <foo>
+     |                          for cpp calls)
+     |         outdir (string): directory to place all output and temporary files
+     |         verbose (bool,optional): verbosity level
+     |      
+     |      Returns:
+     |         string: Name of the preprocessed dts
+     |  
+     |  ----------------------------------------------------------------------
+     |  Class methods inherited from lopper.base.lopper_base:
+     |  
+     |  phandle_possible_properties() from builtins.type
+     |      Get the diectionary of properties that can contain phandles
+     |      
+     |      dictionary of possible properties that can have phandles.
+     |      To do the replacement, we map out the properties so we can locate any
+     |      handles and do replacement on them with symbolic values. This format is
+     |      internal only, and yes, could be the schema for the fields, but for now,
+     |      this is easier.
+     |      
+     |      Each key (property name) maps to a list of: 'format', 'flag'
+     |      flag is currently unused, and format is the following:
+     |      
+     |         - field starting with #: is a size value, we'll look it up and add 'x'
+     |           number of fields based on it. If we can't find it, we'll just use '1'
+     |         - phandle: this is the location of a phandle, size is '1'
+     |         - anything else: is just a field we can ignore, size is '1'
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |          The phandle property dictionary
+     |  
+     |  ----------------------------------------------------------------------
+     |  Static methods inherited from lopper.base.lopper_base:
+     |  
+     |  encode_byte_array(values)
+     |      utility to encode a list of values into a bytearray
+     |      
+     |      Args:
+     |         values (list): integer (numeric) values to encode
+     |      
+     |      Returns:
+     |         byte array: the encoded byte array
+     |  
+     |  encode_byte_array_from_strings(values)
+     |      utility to encode a list of strings into a bytearray
+     |      
+     |      Args:
+     |         values (list): string values to encode
+     |      
+     |      Returns:
+     |         byte array: the encoded byte array
+     |  
+     |  input_file_type(infile)
+     |      utility to return the "type" of a file, aka the extension
+     |      
+     |      Args:
+     |         infile (string): path of the file
+     |      
+     |      Returns:
+     |         string: the extension of the file
+     |  
+     |  phandle_safe_name(phandle_name)
+     |      Make the passed name safe to use as a phandle label/reference
+     |      
+     |      Args:
+     |          phandle_name (string): the name to use for a phandle
+     |      
+     |      Returns:
+     |          The modified phandle safe string
+     |  
+     |  property_convert(property_string)
+     |      utility command to convert a string to a list of property values
+     |      
+     |      Takes a string formatted in device tree notation, and returns a list
+     |      of property values.
+     |      
+     |      Formats of the following types will work, and be converted to their
+     |      base types in the returned list.
+     |      
+     |            <0x1 0x2 0x3>
+     |            <0x1>
+     |            "string value"
+     |            "string value1","string value2"
+     |            10
+     |      
+     |      Args:
+     |         property_string (string): device tree "style" string
+     |      
+     |      Returns:
+     |         list: converted property values, empty string if cannot convert
+     |  
+     |  property_type_guess(prop)
+     |      utility routine to guess the type of a property
+     |      
+     |      Often the type of a property is not know, in particular if there isn't
+     |      access to markers via a support library.
+     |      
+     |      This routine looks at the data of a libfdt or byte property and returns
+     |      the best guess for the type. The logic behind the guesses is documented
+     |      in the code itself
+     |      
+     |      Args:
+     |         prop (libfdt or byte property): the property to process
+     |      
+     |      Returns:
+     |         LopperFmt description of the property. Default is UINT8 (binary)
+     |                     LopperFmt.STRING: string
+     |                     LopperFmt.UINT32 1: uint32
+     |                     LopperFmt.UINT64 2: uint64
+     |                     LopperFmt.UINT8 3: uint8 (binary)
+     |                     LopperFmt.EMPTY 4: empty (just a name)
+     |  
+     |  property_value_decode(prop, poffset, ftype=<LopperFmt.SIMPLE: 1>, encode=<LopperFmt.UNKNOWN: 11>, verbose=0)
+     |      Decodes a property
+     |      
+     |      Decode a property into a common data type (string, integer, list of
+     |      strings, etc).
+     |      
+     |      This is a robust wrapper around the decode facilities provided via
+     |      libfdt. This routine tries multiple encode formats and uses
+     |      heuristics to determine the best format for the decoded property.
+     |      
+     |      The format type (ftype) and encod arguments can be used to help
+     |      decode properly when the type of a property is known.
+     |      
+     |      The format and encoding options are in the following enum type:
+     |      
+     |         class LopperFmt(Enum):
+     |            SIMPLE = 1 (format)
+     |            COMPOUND = 2 (format)
+     |            HEX = 3 (encoding)
+     |            DEC = 4 (encoding)
+     |            STRING = 5 (encoding)
+     |            MULTI_STRING = 5 (encoding)
+     |      
+     |      Args:
+     |         prop (libfdt or byte property): property to decode
+     |         poffset (int): offset of the property in the node (unused)
+     |         ftype (LopperFmt,optional): format hint for the property. default is SIMPLE
+     |         encode (LopperFmt,optional): encoding hint. default is DEC
+     |         verbose (int,optional): verbosity level, default is 0
+     |      
+     |      Returns:
+     |         (string): if SIMPLE. The property as a string
+     |         (list): if COMPOUND. The property as a list of strings / values
+     |  
+     |  string_test(prop, allow_multiline=True)
+     |      Check if a property (byte array) is a string
+     |      
+     |      Args:
+     |         prop: (libfdt or byte property)
+     |      
+     |      Returns:
+     |         boolean: True if the property looks like a string
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors inherited from lopper.base.lopper_base:
      |  
      |  __dict__
      |      dictionary for instance variables (if defined)
@@ -3130,68 +3129,1062 @@ CLASSES
      |      list of weak references to the object (if defined)
      |  
      |  ----------------------------------------------------------------------
-     |  Data and other attributes defined here:
+     |  Data and other attributes inherited from lopper.base.lopper_base:
      |  
      |  phandle_possible_prop_dict = {}
-    
-    class LopperFmt(enum.Enum)
-     |  Enum class to define the types and encodings of Lopper format routines
-     |  
-     |  Method resolution order:
-     |      LopperFmt
-     |      enum.Enum
-     |      builtins.object
-     |  
-     |  Data and other attributes defined here:
-     |  
-     |  COMPOUND = <LopperFmt.COMPOUND: 2>
-     |  
-     |  DEC = <LopperFmt.DEC: 4>
-     |  
-     |  EMPTY = <LopperFmt.EMPTY: 10>
-     |  
-     |  HEX = <LopperFmt.HEX: 3>
-     |  
-     |  MULTI_STRING = <LopperFmt.MULTI_STRING: 6>
-     |  
-     |  SIMPLE = <LopperFmt.SIMPLE: 1>
-     |  
-     |  STRING = <LopperFmt.STRING: 5>
-     |  
-     |  UINT32 = <LopperFmt.UINT32: 8>
-     |  
-     |  UINT64 = <LopperFmt.UINT64: 9>
-     |  
-     |  UINT8 = <LopperFmt.UINT8: 7>
-     |  
-     |  UNKNOWN = <LopperFmt.UNKNOWN: 11>
-     |  
-     |  ----------------------------------------------------------------------
-     |  Data descriptors inherited from enum.Enum:
-     |  
-     |  name
-     |      The name of the Enum member.
-     |  
-     |  value
-     |      The value of the Enum member.
-     |  
-     |  ----------------------------------------------------------------------
-     |  Data descriptors inherited from enum.EnumMeta:
-     |  
-     |  __members__
-     |      Returns a mapping of member name->value.
-     |      
-     |      This mapping lists all enum members, including aliases. Note that this
-     |      is a read-only view of the internal mapping.
 
 DATA
-    MAX_RETRIES = 3
+    MAX_RETRIES = 10
     QUIET_ALL = range(1, 18)
     QUIET_NOTFOUND = (1,)
     printable = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU...
     python_version_dir = 'python3.6'
 
 FILE
-    /home/bruce/git/system-device-tree/lopper_fdt.py
+    /home/bruce/git/system-device-tree/lopper/fdt.py
+
+
+Help on module dt:
+
+NAME
+    dt
+
+DESCRIPTION
+    #/*
+    # * Copyright (c) 2021 Xilinx Inc. All rights reserved.
+    # *
+    # * Author:
+    # *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+    # *
+    # * SPDX-License-Identifier: BSD-3-Clause
+    # */
+
+CLASSES
+    lopper.base.lopper_base(builtins.object)
+        LopperDT
+    
+    class LopperDT(lopper.base.lopper_base)
+     |  The Lopper Class contains static methods for manipulating DT
+     |  
+     |  Method resolution order:
+     |      LopperDT
+     |      lopper.base.lopper_base
+     |      builtins.object
+     |  
+     |  Static methods defined here:
+     |  
+     |  dt_compile(dts_file, i_files='', includes='', force_overwrite=False, outdir='./', save_temps=False, verbose=0, enhanced=True)
+     |  
+     |  export(dt, start_node_path='/', verbose=False, strict=False)
+     |      export a FDT to a description / nested dictionary
+     |      
+     |      This routine takes a FDT, a start node, and produces a nested dictionary
+     |      that describes the nodes and properties in the tree.
+     |      
+     |      The dictionary contains a set of internal properties, as well as
+     |      a list of standand properties to the node. Internal properties have
+     |      a __ suffix and __ prefix.
+     |      
+     |      Child nodes are indexed by their absolute path. So any property that
+     |      starts with "/" and is a dictionary, represents another node in the
+     |      tree.
+     |      
+     |      In particular:
+     |          - __path__ : is the absolute path fo the node, and is used to lookup
+     |                       the target node
+     |          - __fdt_name__ : is the name of the node and will be written to the
+     |                           fdt name property
+     |          - __fdt_phandle__ : is the phandle for the node
+     |      
+     |      All other "standard" properties are returned as entries in the dictionary.
+     |      
+     |      if strict is enabled, structural issues in the input tree will be
+     |      flagged and an error triggered. Currently, this is duplicate nodes, but
+     |      may be extended in the future
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          start_node (string,optional): the starting node
+     |          verbose (bool,optional): verbosity level
+     |          strict (bool,optional): toggle validity checking
+     |      
+     |      Returns:
+     |          OrderedDict describing the tree
+     |  
+     |  node_by_phandle(fdt, phandle, verbose=0)
+     |      Get a node offset by a phandle
+     |      
+     |      Thin wrapper around the libfdt routine. The wrapper provides
+     |      consistent exception handling and verbosity level handling.
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          phandle(int): phandle to use as lookup key
+     |          verbose(bool,optional): verbosity level. Deafult is 0.
+     |      
+     |      Returns:
+     |          int: if > 0, the node that was found. -1 if node was not found.
+     |  
+     |  node_find_by_name(fdt, node_name, starting_node=0, multi_match=False)
+     |      Finds a node by its name (not path)
+     |      
+     |      Searches for a node by its name, and returns the offset of that same node
+     |      Note: use this when you don't know the full path of a node
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          node_name (string): name of the node
+     |          starting_node (int): node number to use as the search starting point
+     |          multi_match (bool,optional): flag to indicate if more than one matching
+     |                                       node should be found, default is False
+     |      
+     |      Returns:
+     |          tuple: first matching node, list of matching nodes. -1 and [] if no match is found
+     |  
+     |  node_getname(fdt, node_number_or_path)
+     |      Gets the FDT name of a node
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          node_number_or_path: node number or path
+     |      
+     |      Returns:
+     |          string: name of the node, or "" if node wasn't found
+     |  
+     |  node_properties_as_dict(node, type_hints=True, verbose=0)
+     |      Create a dictionary populated with the nodes properties.
+     |      
+     |      Builds a dictionary that is propulated with a node's properties as
+     |      the keys, and their values. Used as a utility routine to avoid
+     |      multiple calls to check if a property exists, and then to fetch its
+     |      value.
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          node (int or string): either a node number or node path
+     |          type_hints  (bool,optional): flag indicating if type hints should be returned
+     |          verbose (int,optional): verbosity level. default is 0.
+     |      
+     |      Returns:
+     |          dict: dictionary of the properties, if successfull, otherwise and empty dict
+     |  
+     |  node_type(fdt, node_offset, verbose=0)
+     |      Utility function to get the "type" of a node
+     |      
+     |      A small wrapper around the compatible property, but we can use this
+     |      instead of directly getting compatible, since if we switch formats or if
+     |      we want to infer anything based on the name of a node, we can hide it in
+     |      this routine
+     |      
+     |      Args:
+     |          fdt (fdt): flattened device tree object
+     |          node_offset (int): node number
+     |          verbose (int): verbose output level
+     |      
+     |      Returns:
+     |          string: compatible string of the node if successful, otherwise ''
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from lopper.base.lopper_base:
+     |  
+     |  dt_preprocess(dts_file, includes, outdir='./', verbose=0)
+     |      Compile a dts file to a dtb
+     |      
+     |      This routine takes a dts input file, include search path and then
+     |      uses standard tools (cpp, etc) to expand references.
+     |      
+     |      Environment variables can be used tweak the execution of the various
+     |      tools and stages:
+     |      
+     |         LOPPER_CPP: set if a different cpp than the standard one should
+     |                     be used, or if cpp is not on the path
+     |         LOPPER_PPFLAGS: flags to be used when calling cpp
+     |      
+     |      Args:
+     |         dts_file (string): path to the dts file to be preprocessed
+     |         includes (list): list of include directories (translated into -i <foo>
+     |                          for cpp calls)
+     |         outdir (string): directory to place all output and temporary files
+     |         verbose (bool,optional): verbosity level
+     |      
+     |      Returns:
+     |         string: Name of the preprocessed dts
+     |  
+     |  ----------------------------------------------------------------------
+     |  Class methods inherited from lopper.base.lopper_base:
+     |  
+     |  phandle_possible_properties() from builtins.type
+     |      Get the diectionary of properties that can contain phandles
+     |      
+     |      dictionary of possible properties that can have phandles.
+     |      To do the replacement, we map out the properties so we can locate any
+     |      handles and do replacement on them with symbolic values. This format is
+     |      internal only, and yes, could be the schema for the fields, but for now,
+     |      this is easier.
+     |      
+     |      Each key (property name) maps to a list of: 'format', 'flag'
+     |      flag is currently unused, and format is the following:
+     |      
+     |         - field starting with #: is a size value, we'll look it up and add 'x'
+     |           number of fields based on it. If we can't find it, we'll just use '1'
+     |         - phandle: this is the location of a phandle, size is '1'
+     |         - anything else: is just a field we can ignore, size is '1'
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |          The phandle property dictionary
+     |  
+     |  ----------------------------------------------------------------------
+     |  Static methods inherited from lopper.base.lopper_base:
+     |  
+     |  encode_byte_array(values)
+     |      utility to encode a list of values into a bytearray
+     |      
+     |      Args:
+     |         values (list): integer (numeric) values to encode
+     |      
+     |      Returns:
+     |         byte array: the encoded byte array
+     |  
+     |  encode_byte_array_from_strings(values)
+     |      utility to encode a list of strings into a bytearray
+     |      
+     |      Args:
+     |         values (list): string values to encode
+     |      
+     |      Returns:
+     |         byte array: the encoded byte array
+     |  
+     |  input_file_type(infile)
+     |      utility to return the "type" of a file, aka the extension
+     |      
+     |      Args:
+     |         infile (string): path of the file
+     |      
+     |      Returns:
+     |         string: the extension of the file
+     |  
+     |  phandle_safe_name(phandle_name)
+     |      Make the passed name safe to use as a phandle label/reference
+     |      
+     |      Args:
+     |          phandle_name (string): the name to use for a phandle
+     |      
+     |      Returns:
+     |          The modified phandle safe string
+     |  
+     |  property_convert(property_string)
+     |      utility command to convert a string to a list of property values
+     |      
+     |      Takes a string formatted in device tree notation, and returns a list
+     |      of property values.
+     |      
+     |      Formats of the following types will work, and be converted to their
+     |      base types in the returned list.
+     |      
+     |            <0x1 0x2 0x3>
+     |            <0x1>
+     |            "string value"
+     |            "string value1","string value2"
+     |            10
+     |      
+     |      Args:
+     |         property_string (string): device tree "style" string
+     |      
+     |      Returns:
+     |         list: converted property values, empty string if cannot convert
+     |  
+     |  property_type_guess(prop)
+     |      utility routine to guess the type of a property
+     |      
+     |      Often the type of a property is not know, in particular if there isn't
+     |      access to markers via a support library.
+     |      
+     |      This routine looks at the data of a libfdt or byte property and returns
+     |      the best guess for the type. The logic behind the guesses is documented
+     |      in the code itself
+     |      
+     |      Args:
+     |         prop (libfdt or byte property): the property to process
+     |      
+     |      Returns:
+     |         LopperFmt description of the property. Default is UINT8 (binary)
+     |                     LopperFmt.STRING: string
+     |                     LopperFmt.UINT32 1: uint32
+     |                     LopperFmt.UINT64 2: uint64
+     |                     LopperFmt.UINT8 3: uint8 (binary)
+     |                     LopperFmt.EMPTY 4: empty (just a name)
+     |  
+     |  property_value_decode(prop, poffset, ftype=<LopperFmt.SIMPLE: 1>, encode=<LopperFmt.UNKNOWN: 11>, verbose=0)
+     |      Decodes a property
+     |      
+     |      Decode a property into a common data type (string, integer, list of
+     |      strings, etc).
+     |      
+     |      This is a robust wrapper around the decode facilities provided via
+     |      libfdt. This routine tries multiple encode formats and uses
+     |      heuristics to determine the best format for the decoded property.
+     |      
+     |      The format type (ftype) and encod arguments can be used to help
+     |      decode properly when the type of a property is known.
+     |      
+     |      The format and encoding options are in the following enum type:
+     |      
+     |         class LopperFmt(Enum):
+     |            SIMPLE = 1 (format)
+     |            COMPOUND = 2 (format)
+     |            HEX = 3 (encoding)
+     |            DEC = 4 (encoding)
+     |            STRING = 5 (encoding)
+     |            MULTI_STRING = 5 (encoding)
+     |      
+     |      Args:
+     |         prop (libfdt or byte property): property to decode
+     |         poffset (int): offset of the property in the node (unused)
+     |         ftype (LopperFmt,optional): format hint for the property. default is SIMPLE
+     |         encode (LopperFmt,optional): encoding hint. default is DEC
+     |         verbose (int,optional): verbosity level, default is 0
+     |      
+     |      Returns:
+     |         (string): if SIMPLE. The property as a string
+     |         (list): if COMPOUND. The property as a list of strings / values
+     |  
+     |  string_test(prop, allow_multiline=True)
+     |      Check if a property (byte array) is a string
+     |      
+     |      Args:
+     |         prop: (libfdt or byte property)
+     |      
+     |      Returns:
+     |         boolean: True if the property looks like a string
+     |  
+     |  sync(dt, dct, verbose=False)
+     |      sync (write) a tree dictionary to a backend file
+     |      
+     |      This routine takes an input dictionary, and writes the details to
+     |      the passed dt.
+     |      
+     |      The dictionary contains a set of internal properties, as well as
+     |      a list of standand properties to the node. Internal properties have
+     |      a __ suffix and __ prefix.
+     |      
+     |      Child nodes are indexed by their absolute path. So any property that
+     |      starts with "/" and is a dictionary, represents another node in the
+     |      tree.
+     |      
+     |      In particular:
+     |          - __path__ : is the absolute path fo the node, and is used to lookup
+     |                       the target node
+     |          - __fdt_name__ : is the name of the node and will be written to the
+     |                           fdt name property
+     |          - __fdt_phandle__ : is the phandle for the node
+     |      
+     |      All other non  '/' leading, or '__' leading properties will be written to
+     |      the FDT as node properties.
+     |      
+     |      Passed nodes will be synced via the node_sync() function, and will
+     |      be created if they don't exist. Existing nodes will have their properties
+     |      deleted if they are not in the corresponding dictionary.
+     |      
+     |      All of the existing nodes in the FDT are read, if they aren not found
+     |      in the passed dictionary, they will be deleted.
+     |      
+     |      Args:
+     |          dt (dt): device tree object
+     |          node_in: (dictionary): Node description dictionary
+     |          parent (dictionary,optional): parent node description dictionary
+     |          verbose (bool,optional): verbosity level
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors inherited from lopper.base.lopper_base:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data and other attributes inherited from lopper.base.lopper_base:
+     |  
+     |  phandle_possible_prop_dict = {}
+
+DATA
+    printable = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU...
+
+FILE
+    /home/bruce/git/system-device-tree/lopper/dt.py
+
+
+Help on module yaml:
+
+NAME
+    yaml
+
+DESCRIPTION
+    #/*
+    # * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+    # *
+    # * Author:
+    # *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+    # *
+    # * SPDX-License-Identifier: BSD-3-Clause
+    # */
+
+CLASSES
+    anytree.exporter.dictexporter.DictExporter(builtins.object)
+        LopperDictExporter
+    builtins.object
+        LopperDictImporter
+        LopperTreeImporter
+        LopperYAML
+    ruamel.yaml.dumper.Dumper(ruamel.yaml.emitter.Emitter, ruamel.yaml.serializer.Serializer, ruamel.yaml.representer.Representer, ruamel.yaml.resolver.Resolver)
+        LopperDumper
+    
+    class LopperDictExporter(anytree.exporter.dictexporter.DictExporter)
+     |  # Extension of the default anytree DictExporter, since we don't want added
+     |  # nodes like "root" and children to be in the export.
+     |  
+     |  Method resolution order:
+     |      LopperDictExporter
+     |      anytree.exporter.dictexporter.DictExporter
+     |      builtins.object
+     |  
+     |  Methods defined here:
+     |  
+     |  export(self, node)
+     |      Export tree starting at `node`.
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from anytree.exporter.dictexporter.DictExporter:
+     |  
+     |  __init__(self, dictcls=<class 'dict'>, attriter=None, childiter=<class 'list'>, maxlevel=None)
+     |      Tree to dictionary exporter.
+     |      
+     |      Every node is converted to a dictionary with all instance
+     |      attributes as key-value pairs.
+     |      Child nodes are exported to the children attribute.
+     |      A list of dictionaries.
+     |      
+     |      Keyword Args:
+     |          dictcls: class used as dictionary. :any:`dict` by default.
+     |          attriter: attribute iterator for sorting and/or filtering.
+     |          childiter: child iterator for sorting and/or filtering.
+     |          maxlevel (int): Limit export to this number of levels.
+     |      
+     |      >>> from pprint import pprint  # just for nice printing
+     |      >>> from anytree import AnyNode
+     |      >>> from anytree.exporter import DictExporter
+     |      >>> root = AnyNode(a="root")
+     |      >>> s0 = AnyNode(a="sub0", parent=root)
+     |      >>> s0a = AnyNode(a="sub0A", b="foo", parent=s0)
+     |      >>> s0b = AnyNode(a="sub0B", parent=s0)
+     |      >>> s1 = AnyNode(a="sub1", parent=root)
+     |      
+     |      >>> exporter = DictExporter()
+     |      >>> pprint(exporter.export(root))  # order within dictionary might vary!
+     |      {'a': 'root',
+     |       'children': [{'a': 'sub0',
+     |                     'children': [{'a': 'sub0A', 'b': 'foo'}, {'a': 'sub0B'}]},
+     |                    {'a': 'sub1'}]}
+     |      
+     |      Pythons dictionary `dict` does not preserve order.
+     |      :any:`collections.OrderedDict` does.
+     |      In this case attributes can be ordered via `attriter`.
+     |      
+     |      >>> from collections import OrderedDict
+     |      >>> exporter = DictExporter(dictcls=OrderedDict, attriter=sorted)
+     |      >>> pprint(exporter.export(root))
+     |      OrderedDict([('a', 'root'),
+     |                   ('children',
+     |                    [OrderedDict([('a', 'sub0'),
+     |                                  ('children',
+     |                                   [OrderedDict([('a', 'sub0A'), ('b', 'foo')]),
+     |                                    OrderedDict([('a', 'sub0B')])])]),
+     |                     OrderedDict([('a', 'sub1')])])])
+     |      
+     |      The attribute iterator `attriter` may be used for filtering too.
+     |      For example, just dump attributes named `a`:
+     |      
+     |      >>> exporter = DictExporter(attriter=lambda attrs: [(k, v) for k, v in attrs if k == "a"])
+     |      >>> pprint(exporter.export(root))
+     |      {'a': 'root',
+     |       'children': [{'a': 'sub0', 'children': [{'a': 'sub0A'}, {'a': 'sub0B'}]},
+     |                    {'a': 'sub1'}]}
+     |      
+     |      The child iterator `childiter` can be used for sorting and filtering likewise:
+     |      
+     |      >>> exporter = DictExporter(childiter=lambda children: [child for child in children if "0" in child.a])
+     |      >>> pprint(exporter.export(root))
+     |      {'a': 'root',
+     |       'children': [{'a': 'sub0',
+     |                     'children': [{'a': 'sub0A', 'b': 'foo'}, {'a': 'sub0B'}]}]}
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors inherited from anytree.exporter.dictexporter.DictExporter:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+    
+    class LopperDictImporter(builtins.object)
+     |  Methods defined here:
+     |  
+     |  __init__(self, nodecls=<class 'anytree.node.anynode.AnyNode'>)
+     |      Import Tree from dictionary.
+     |      
+     |      This is taken from the Anytree codebase, and modified to not
+     |      require a "children" element in the yaml.
+     |      
+     |      Every dictionary is converted to an instance of `nodecls`.
+     |      The dictionaries listed in the children attribute are converted
+     |      likewise and added as children.
+     |      
+     |      Keyword Args:
+     |          nodecls: class used for nodes.
+     |      
+     |      >>> from anytree.importer import DictImporter
+     |      >>> from anytree import RenderTree
+     |      >>> importer = DictImporter()
+     |      >>> data = {
+     |      ...     'a': 'root',
+     |      ...     'children': [{'a': 'sub0',
+     |      ...                   'children': [{'a': 'sub0A', 'b': 'foo'}, {'a': 'sub0B'}]},
+     |      ...                  {'a': 'sub1'}]}
+     |      >>> root = importer.import_(data)
+     |      >>> print(RenderTree(root))
+     |      AnyNode(a='root')
+     |      ├── AnyNode(a='sub0')
+     |      │   ├── AnyNode(a='sub0A', b='foo')
+     |      │   └── AnyNode(a='sub0B')
+     |      └── AnyNode(a='sub1')
+     |  
+     |  import_(self, data)
+     |      Import tree from `data`.
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors defined here:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+    
+    class LopperDumper(ruamel.yaml.dumper.Dumper)
+     |  Lopper specific dumper
+     |  
+     |  Any simple formating changes to the yaml output are contained in
+     |  this class.
+     |  
+     |  Currently it only increases the indent on yaml sequences, but may
+     |  container more adjustments in the future.
+     |  
+     |  Method resolution order:
+     |      LopperDumper
+     |      ruamel.yaml.dumper.Dumper
+     |      ruamel.yaml.emitter.Emitter
+     |      ruamel.yaml.serializer.Serializer
+     |      ruamel.yaml.representer.Representer
+     |      ruamel.yaml.representer.SafeRepresenter
+     |      ruamel.yaml.representer.BaseRepresenter
+     |      ruamel.yaml.resolver.Resolver
+     |      ruamel.yaml.resolver.BaseResolver
+     |      builtins.object
+     |  
+     |  Methods defined here:
+     |  
+     |  increase_indent(self, flow=False, indentless=False)
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from ruamel.yaml.dumper.Dumper:
+     |  
+     |  __init__(self, stream, default_style=None, default_flow_style=None, canonical=None, indent=None, width=None, allow_unicode=None, line_break=None, encoding=None, explicit_start=None, explicit_end=None, version=None, tags=None, block_seq_indent=None, top_level_colon_align=None, prefix_colon=None)
+     |      Initialize self.  See help(type(self)) for accurate signature.
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from ruamel.yaml.emitter.Emitter:
+     |  
+     |  analyze_scalar(self, scalar)
+     |  
+     |  check_empty_document(self)
+     |  
+     |  check_empty_mapping(self)
+     |  
+     |  check_empty_sequence(self)
+     |  
+     |  check_simple_key(self)
+     |  
+     |  choose_scalar_style(self)
+     |  
+     |  determine_block_hints(self, text)
+     |  
+     |  dispose(self)
+     |  
+     |  emit(self, event)
+     |  
+     |  expect_alias(self)
+     |  
+     |  expect_block_mapping(self)
+     |  
+     |  expect_block_mapping_key(self, first=False)
+     |  
+     |  expect_block_mapping_simple_value(self)
+     |  
+     |  expect_block_mapping_value(self)
+     |  
+     |  expect_block_sequence(self)
+     |  
+     |  expect_block_sequence_item(self, first=False)
+     |  
+     |  expect_document_end(self)
+     |  
+     |  expect_document_root(self)
+     |  
+     |  expect_document_start(self, first=False)
+     |  
+     |  expect_first_block_mapping_key(self)
+     |  
+     |  expect_first_block_sequence_item(self)
+     |  
+     |  expect_first_document_start(self)
+     |  
+     |  expect_first_flow_mapping_key(self)
+     |  
+     |  expect_first_flow_sequence_item(self)
+     |  
+     |  expect_flow_mapping(self, single=False)
+     |  
+     |  expect_flow_mapping_key(self)
+     |  
+     |  expect_flow_mapping_simple_value(self)
+     |  
+     |  expect_flow_mapping_value(self)
+     |  
+     |  expect_flow_sequence(self)
+     |  
+     |  expect_flow_sequence_item(self)
+     |  
+     |  expect_node(self, root=False, sequence=False, mapping=False, simple_key=False)
+     |  
+     |  expect_nothing(self)
+     |  
+     |  expect_scalar(self)
+     |  
+     |  expect_stream_start(self)
+     |  
+     |  flush_stream(self)
+     |  
+     |  need_events(self, count)
+     |  
+     |  need_more_events(self)
+     |  
+     |  prepare_anchor(self, anchor)
+     |  
+     |  prepare_tag(self, tag)
+     |  
+     |  prepare_tag_handle(self, handle)
+     |  
+     |  prepare_tag_prefix(self, prefix)
+     |  
+     |  prepare_version(self, version)
+     |  
+     |  process_anchor(self, indicator)
+     |  
+     |  process_scalar(self)
+     |  
+     |  process_tag(self)
+     |  
+     |  write_comment(self, comment, pre=False)
+     |  
+     |  write_double_quoted(self, text, split=True)
+     |  
+     |  write_folded(self, text)
+     |  
+     |  write_indent(self)
+     |  
+     |  write_indicator(self, indicator, need_whitespace, whitespace=False, indention=False)
+     |  
+     |  write_line_break(self, data=None)
+     |  
+     |  write_literal(self, text, comment=None)
+     |  
+     |  write_plain(self, text, split=True)
+     |  
+     |  write_post_comment(self, event)
+     |  
+     |  write_pre_comment(self, event)
+     |  
+     |  write_single_quoted(self, text, split=True)
+     |  
+     |  write_stream_end(self)
+     |  
+     |  write_stream_start(self)
+     |  
+     |  write_tag_directive(self, handle_text, prefix_text)
+     |  
+     |  write_version_directive(self, version_text)
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors inherited from ruamel.yaml.emitter.Emitter:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+     |  
+     |  flow_level
+     |  
+     |  serializer
+     |  
+     |  stream
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data and other attributes inherited from ruamel.yaml.emitter.Emitter:
+     |  
+     |  DEFAULT_TAG_PREFIXES = {'!': '!', 'tag:yaml.org,2002:': '!!'}
+     |  
+     |  ESCAPE_REPLACEMENTS = {'\x00': '0', '\x07': 'a', '\x08': 'b', '\t': 't...
+     |  
+     |  MAX_SIMPLE_KEY_LENGTH = 128
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from ruamel.yaml.serializer.Serializer:
+     |  
+     |  anchor_node(self, node)
+     |  
+     |  close(self)
+     |  
+     |  generate_anchor(self, node)
+     |  
+     |  open(self)
+     |  
+     |  serialize(self, node)
+     |  
+     |  serialize_node(self, node, parent, index)
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors inherited from ruamel.yaml.serializer.Serializer:
+     |  
+     |  emitter
+     |  
+     |  resolver
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data and other attributes inherited from ruamel.yaml.serializer.Serializer:
+     |  
+     |  ANCHOR_RE = <ruamel.yaml.util.LazyEval object>
+     |  
+     |  ANCHOR_TEMPLATE = 'id%03d'
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from ruamel.yaml.representer.Representer:
+     |  
+     |  represent_complex(self, data)
+     |  
+     |  represent_module(self, data)
+     |  
+     |  represent_name(self, data)
+     |  
+     |  represent_object(self, data)
+     |  
+     |  represent_tuple(self, data)
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data and other attributes inherited from ruamel.yaml.representer.Representer:
+     |  
+     |  yaml_multi_representers = {<class 'object'>: <function Representer.rep...
+     |  
+     |  yaml_representers = {<class 'NoneType'>: <function SafeRepresenter.rep...
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from ruamel.yaml.representer.SafeRepresenter:
+     |  
+     |  ignore_aliases(self, data)
+     |  
+     |  represent_binary(self, data)
+     |  
+     |  represent_bool(self, data, anchor=None)
+     |  
+     |  represent_date(self, data)
+     |  
+     |  represent_datetime(self, data)
+     |  
+     |  represent_dict(self, data)
+     |  
+     |  represent_float(self, data)
+     |  
+     |  represent_int(self, data)
+     |  
+     |  represent_list(self, data)
+     |  
+     |  represent_none(self, data)
+     |  
+     |  represent_ordereddict(self, data)
+     |  
+     |  represent_set(self, data)
+     |  
+     |  represent_str(self, data)
+     |  
+     |  represent_undefined(self, data)
+     |  
+     |  represent_yaml_object(self, tag, data, cls, flow_style=None)
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data and other attributes inherited from ruamel.yaml.representer.SafeRepresenter:
+     |  
+     |  inf_value = inf
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from ruamel.yaml.representer.BaseRepresenter:
+     |  
+     |  represent(self, data)
+     |  
+     |  represent_data(self, data)
+     |  
+     |  represent_key(self, data)
+     |      David Fraser: Extract a method to represent keys in mappings, so that
+     |      a subclass can choose not to quote them (for example)
+     |      used in represent_mapping
+     |      https://bitbucket.org/davidfraser/pyyaml/commits/d81df6eb95f20cac4a79eed95ae553b5c6f77b8c
+     |  
+     |  represent_mapping(self, tag, mapping, flow_style=None)
+     |  
+     |  represent_omap(self, tag, omap, flow_style=None)
+     |  
+     |  represent_scalar(self, tag, value, style=None, anchor=None)
+     |  
+     |  represent_sequence(self, tag, sequence, flow_style=None)
+     |  
+     |  ----------------------------------------------------------------------
+     |  Class methods inherited from ruamel.yaml.representer.BaseRepresenter:
+     |  
+     |  add_multi_representer(data_type, representer) from builtins.type
+     |  
+     |  add_representer(data_type, representer) from builtins.type
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data and other attributes inherited from ruamel.yaml.resolver.Resolver:
+     |  
+     |  yaml_implicit_resolvers = {'': [('tag:yaml.org,2002:null', <ruamel.yam...
+     |  
+     |  ----------------------------------------------------------------------
+     |  Methods inherited from ruamel.yaml.resolver.BaseResolver:
+     |  
+     |  ascend_resolver(self)
+     |  
+     |  check_resolver_prefix(self, depth, path, kind, current_node, current_index)
+     |  
+     |  descend_resolver(self, current_node, current_index)
+     |  
+     |  resolve(self, kind, value, implicit)
+     |  
+     |  ----------------------------------------------------------------------
+     |  Class methods inherited from ruamel.yaml.resolver.BaseResolver:
+     |  
+     |  add_implicit_resolver(tag, regexp, first) from builtins.type
+     |  
+     |  add_implicit_resolver_base(tag, regexp, first) from builtins.type
+     |  
+     |  add_path_resolver(tag, path, kind=None) from builtins.type
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors inherited from ruamel.yaml.resolver.BaseResolver:
+     |  
+     |  parser
+     |  
+     |  processing_version
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data and other attributes inherited from ruamel.yaml.resolver.BaseResolver:
+     |  
+     |  DEFAULT_MAPPING_TAG = 'tag:yaml.org,2002:map'
+     |  
+     |  DEFAULT_SCALAR_TAG = 'tag:yaml.org,2002:str'
+     |  
+     |  DEFAULT_SEQUENCE_TAG = 'tag:yaml.org,2002:seq'
+     |  
+     |  yaml_path_resolvers = {}
+    
+    class LopperTreeImporter(builtins.object)
+     |  Methods defined here:
+     |  
+     |  __init__(self, nodecls=<class 'anytree.node.anynode.AnyNode'>)
+     |      Import Tree from LopperTree
+     |      
+     |      Every node is converted to an instance of `nodecls`.
+     |      The node's children are converted likewise and added as children.
+     |      
+     |      Keyword Args:
+     |          nodecls: class used for nodes.
+     |  
+     |  import_(self, data)
+     |      Import tree from `data`.
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors defined here:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+    
+    class LopperYAML(builtins.object)
+     |  YAML read/writer for Lopper
+     |  
+     |  A Lopper "container" around a yaml input/output.
+     |  
+     |  This class is capable of reading a yaml inputfile, and
+     |  creating a LopperTree. It is also capabable of taking a
+     |  LopperTree and creating a yaml description of that tree.
+     |  
+     |  This is done by internally storing either a yaml or lopper tree input as a
+     |  generic tree structure. The generic tree structure can be converted to a
+     |  LopperTree or Yaml file on demand. Hence we have the capability of
+     |  converting between the two formats as required.
+     |  
+     |  Methods defined here:
+     |  
+     |  __init__(self, yaml_file=None, tree=None, config=None)
+     |      Initialize a a LopperYAML representation from either a yaml file
+     |      or from a LopperTree.
+     |      
+     |      Args:
+     |         yaml_file (string,optional): path to a yaml input file
+     |         tree (LopperTree,optional): reference to a LopperTree
+     |      
+     |      Returns:
+     |         LopperYAML object: self
+     |  
+     |  dump(self)
+     |      Dump/print the internal representation of the YAML tree
+     |      
+     |      Debug routine to print the details of the Tree created for the
+     |      input YAML or LopperTree
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |          None
+     |  
+     |  load_tree(self, tree=None)
+     |      Load/Read a LopperTree into a YAML representation
+     |      
+     |      Create an internal tree object from an input LopperTree. The tree can be
+     |      passed directly to this routine, or already be part of the object
+     |      through initialization.
+     |      
+     |      Args:
+     |          tree (LopperTree,optional): LopperTree representation of a device tree
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  load_yaml(self, filename=None)
+     |      Load/Read a YAML file into tree structure
+     |      
+     |      Create an internal tree object from an input YAML file. The file can be
+     |      passed directly to this routine, or already be part of the object
+     |      through initialization.
+     |      
+     |      Args:
+     |          filename (string,optional): path to yaml file to read
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  path(self, node)
+     |      Determine the string representation of a Node's path
+     |      
+     |      Generate and return a string that represents the path of a node in
+     |      the Yaml internal tree.
+     |      
+     |      Args:
+     |          node (AnyTreeNode): node to query for path
+     |      
+     |      Returns:
+     |          string: absolute path of the node
+     |  
+     |  print(self)
+     |      Print/Render tree representation of the YAML input
+     |      
+     |      Args:
+     |          None
+     |      
+     |      Returns:
+     |          Nothing
+     |  
+     |  prop_expand(self, prop)
+     |      Expand a property into a format a device tree can represent
+     |      
+     |      This routine is for use when json is not available as a serialization
+     |      mechanism for imported yaml. It expands lists and dictionaries into
+     |      a ":::" separate string, that can be carried in a device tree.
+     |      
+     |      This is mostly obsolete, but is kept for compatibility
+     |      
+     |      Args:
+     |         Anytree Property
+     |      
+     |      Returns:
+     |         string: serialized representation of the property
+     |  
+     |  props(self, node)
+     |      Create a dictionary representation of Node attributes
+     |      
+     |      Gather a dictionary representation of the properties of a LopperYAML
+     |      Node.
+     |      
+     |      This routine skips internal members of a node, and returns only
+     |      attributes that are meaningful to the caller.
+     |      
+     |      It knows how to expand node references and returns them as properties
+     |      of the node.
+     |      
+     |      Args:
+     |          node (AnyTreeNode): node to export as dictionary
+     |      
+     |      Returns:
+     |          dict of node names -> properties
+     |  
+     |  to_tree(self)
+     |      Export LopperYAML to a LopperTree
+     |      
+     |      Args:
+     |         None
+     |      
+     |      Returns:
+     |        LopperTree object representation of YAML object
+     |  
+     |  to_yaml(self, outfile=None, verbose=0)
+     |      Export LopperYAML tree to a yaml output file
+     |      
+     |      Args:
+     |         outfile (string): path to a yaml output file
+     |      
+     |      Returns:
+     |         Nothing
+     |  
+     |  ----------------------------------------------------------------------
+     |  Data descriptors defined here:
+     |  
+     |  __dict__
+     |      dictionary for instance variables (if defined)
+     |  
+     |  __weakref__
+     |      list of weak references to the object (if defined)
+
+FILE
+    /home/bruce/git/system-device-tree/lopper/yaml.py
 
 
