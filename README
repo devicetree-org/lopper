@@ -10,31 +10,54 @@ has practical information, known limitations and TODO items.
 config/setup:
 -------------
 
-Lopper is in a single repository:
+Lopper is in a single repository, and is available via git or pypi:
 
-  % git clone git://github.com/devicetree-org/lopper
+git:
 
-Ensure that the prerequisite tools are installed on your host. Lopper is written
-in python3, and requires that standard support libraries are installed. Current
-testing has been against python3.5.x, but no issues are expected on newer 3.x
-releases.
+   % git clone git://github.com/devicetree-org/lopper
 
-In addition to the standard libraries, Lopper uses: pcpp (or cpp), dtc and libfdt for
-processing and manipulating device trees. These tools must be installed and
-on the PATH.
+   Ensure that the prerequisite tools are installed on your host. Lopper is written
+   in python3, and requires that standard support libraries are installed. Current
+   testing has been against python3.5.x, but no issues are expected on newer 3.x
+   releases.
 
-Note: (python cpp) pcpp is optional (available on PyPi), and if not available cpp
-      will be used for pre-processing input files. If comments are to be maintained
-      through the processing flow, pcpp must be used since it has functionality to
-      not strip them during processing.
+   In addition to the standard libraries, Lopper uses: pcpp (or cpp), dtc and libfdt for
+   processing and manipulating device trees. These tools must be installed and
+   on the PATH.
 
-For yaml file processing, lopper has an optional dependency on python's yaml
-and ruamel as well as anytree for importing the contents of yaml files.
+   Note: (python cpp) pcpp is optional (available on PyPi), and if not available cpp
+         will be used for pre-processing input files. If comments are to be maintained
+         through the processing flow, pcpp must be used since it has functionality to
+         not strip them during processing.
 
-Make sure you have libfdt installed and available. If it is not in a standard
-location, make sure it is on PYTHONPATH:
+   For yaml file processing, lopper has an optional dependency on python's yaml
+   and ruamel as well as anytree for importing the contents of yaml files.
 
-     export PYTHONPATH=<path to pylibfdt>:$PYTHONPATH
+
+pypi:
+
+   % pip install lopper
+
+   The pip installation will pull in the required dependencies, and also contains
+   the following optional features:
+
+      - 'server' : enable if the ReST API server is required
+      - 'yaml'   : enable for yaml support
+      - 'dt'     : enable if non-libfdt support is required
+      - 'pcpp'   : enable for enhanced preprocessing functionality
+
+   i.e.:
+
+   % pip install loppper[server,yaml,dt,pcpp]
+
+Note: lopper (via clone or pip) contains a vendored python libfdt (from dtc), since
+      it is not available via a pip dependency. If the vendored versions do not match
+      the python in use, you must manually ensure that libfdt is installed and
+      available.
+
+      If it is not in a standard location, make sure it is on PYTHONPATH:
+
+   % export PYTHONPATH=<path to pylibfdt>:$PYTHONPATH
 
 Lopper overview:
 ----------------
@@ -53,9 +76,14 @@ lopper.py --help
         . --auto          automatically run any assists passed via -a
         , --permissive    do not enforce fully validated properties (phandles, etc)
       -o, --output        output file
+        , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes
+      -x. --xlate         run automatic translations on nodes for indicated input types (yaml,dts)
+        , --no-libfdt     don't use dtc/libfdt for parsing/compiling device trees
       -f, --force         force overwrite output file(s)
         , --werror        treat warnings as errors
       -S, --save-temps    don't remove temporary files
+        , --cfgfile       specify a lopper configuration file to use (configparser format)
+        , --cfgval        specify a configuration value to use (in configparser section format). Can be specified multiple times
       -h, --help          display this help and exit
       -O, --outdir        directory to use for output files
         , --server        after processing, start a server for ReST API calls
@@ -93,6 +121,9 @@ Sample run:
 -----------
 
   % ./lopper.py -f --enhanced --werror -v -v -i lops/lop-load.dts -i lops/lop-domain-r5.dts device-trees/system-device-tree.dts modified-sdt.dts
+
+
+  % python -m lopper -f --enhanced --werror -v -v -i lops/lop-load.dts -i lops/lop-domain-r5.dts device-trees/system-device-tree.dts modified-sdt.dts
 
 Limitations:
 -----------
