@@ -51,11 +51,6 @@
                         compatible = "system-device-tree-v1,lop,modify";
                         modify = "/memory@fffc0000::";
                 };
-                lop_7 {
-                        // modify to "nothing", is a remove operation
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/tcm_bus::";
-                };
                 lop_8 {
                       compatible = "system-device-tree-v1,lop,code-v1";
                       code = "
@@ -89,5 +84,15 @@
                               tree.delete(node1)
                       ";
                 };
+		lop_9 {
+			compatible = "system-device-tree-v1,lop,code-v1";
+			code = "
+                        n = node.tree['/amba_pl']
+                        for i in n.subnodes():
+                            if i.propval('compatible') == ['xlnx,axi-dma-mm2s-channel'] or i.propval('compatible') == ['xlnx,axi-dma-s2mm-channel']:
+                                tree.delete(i)
+			";
+		};
+
         };
 };
