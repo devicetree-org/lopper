@@ -9,7 +9,7 @@ import setuptools
 
 here = Path(__file__).parent
 
-with open(here / 'README', 'r') as f:
+with open(here / 'README.md', 'r') as f:
     long_description = f.read()
 
 with open(here / 'lopper' / 'VERSION', 'r') as f:
