@@ -71,13 +71,6 @@
                           # Delete the unmapped nodes for a72
                           invalid_nodes = []
                           for node1 in node_list:
-                              match = 0
-                              for handle in phandles:
-                                  if handle == node1.phandle:
-                                      if not re.search('xlnx,zynqmp-ipi-mailbox', node1['compatible'].value[0]):
-                                          match += 1
-                              if match == 0:
-                                  invalid_nodes.append(node1)
                               if re.search('xlnx,axi-bram-ctrl', node1['compatible'].value[0]):
                                   invalid_nodes.append(node1)
                           for node1 in invalid_nodes:
