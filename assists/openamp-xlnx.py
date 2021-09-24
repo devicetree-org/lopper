@@ -209,6 +209,11 @@ def setup_mbox_info(sdt, domain_node, r5_node, mbox_ctr):
 # add tcm nodes to device tree
 def setup_tcm_nodes(sdt, r5_node, platform, rsc_group_node):
   # determine which tcm nodes to use based on access list in rsc group
+  for i in rsc_group_node["access"].value:
+      tcm_node = sdt.tree.pnode(i)
+      print(tcm_node)
+      if tcm_node != None and tcm_node.propval("phandle") == ['']:
+          tcm_node + LopperProp( name="phandle", value = tcm_node.phandle )
   r5_node + LopperProp(name="sram", value = rsc_group_node["access"].value.copy() )
 
   return 0
@@ -472,8 +477,7 @@ def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain, host_ipi, remote_
     # if needed, will have to remove the existing mailbox
     for i in sdt.tree["/amba"].subnodes():
         if i.propval("compatible") == ['xlnx,zynqmp-ipi-mailbox'] and i.propval('xlnx,ipi-bitmask') != ['']:
-                sdt.tree - i
-                sdt.tree.sync()
+            i["status"].value = "disabled"
 
 
 def setup_userspace_nodes(sdt, domain_node, current_rsc_group, remote_domain, openamp_app_inputs):
