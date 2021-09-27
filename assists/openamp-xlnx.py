@@ -177,6 +177,8 @@ def set_rpu_pnode(sdt, r5_node, rpu_config, core, platform, remote_domain):
   rpu_pnodes = {}
   if platform == SOC_TYPE.VERSAL:
     rpu_pnodes = {0 : 0x18110005, 1: 0x18110006}
+  elif platform == SOC_TYPE.ZYNQMP:
+    rpu_pnodes = {0 : 0x7, 1: 0x8}
   else:
     print("only versal supported for openamp domains")
     return -1
@@ -342,7 +344,7 @@ def construct_remoteproc_node(remote_domain, rsc_group_node, sdt, domain_node,  
   return setup_r5_core_node(rpu_config, sdt, domain_node, rsc_group_node, core, remoteproc_node, platform, remote_domain, mbox_ctr, openamp_app_inputs)
 
 
-def validate_ipi_node(ipi_node):
+def validate_ipi_node(ipi_node, platform):
     if ipi_node == None:
         print("invalid "+role+" IPI - invalid phandle from access property.")
         return False
@@ -356,13 +358,21 @@ def validate_ipi_node(ipi_node):
         print("invalid "+role+" IPI - incorrect reg property of ipi", ipi_node)
         return False
 
-    if ipi_base_addr[1] not in openamp_supported_ipis:
-        return False
+    if platform == SOC_TYPE.VERSAL:
+        if ipi_base_addr[1] not in openamp_supported_ipis:
+            print(hex(ipi_base_addr[1]), "not supported")
+            return False
+    elif platform == SOC_TYPE.ZYNQMP:
+        if ipi_base_addr[1] in [0xFF330000, 0xFF331000, 0xFF332000, 0xFF333000]:
+            print("do not use PMU IPIs in OpenAMP Overlay")
+            return False
+    else:
+        print("unsupported platform: ",platform)
 
     return True
 
 
-def parse_ipi_info(sdt, domain_node, remote_domain, current_rsc_group, openamp_app_inputs):
+def parse_ipi_info(sdt, domain_node, remote_domain, current_rsc_group, openamp_app_inputs, platform):
     host_ipi_node = None
     remote_ipi_node = None
     domains_to_process = {
@@ -378,29 +388,121 @@ def parse_ipi_info(sdt, domain_node, remote_domain, current_rsc_group, openamp_a
             print("invalid "+role+" IPI - no access property")
             return False
         ipi_node = sdt.tree.pnode(access_pval[0])
-        if validate_ipi_node(ipi_node) != True:
+        if validate_ipi_node(ipi_node, platform) != True:
+            print("parse_ipi_info: invalid IPI node.")
             return False
-
         ipi_base_addr = ipi_node.propval("reg")[1]
-        agent = ipi_to_agent[ipi_base_addr]
-        bitmask = agent_to_ipi_bitmask[agent]
-
         prefix = current_rsc_group.name + '-' + role + '-'
-        openamp_app_inputs[prefix+'bitmask'] = hex(agent_to_ipi_bitmask[agent])
         openamp_app_inputs[prefix+'ipi'] = hex(ipi_base_addr)
-        openamp_app_inputs[prefix+'ipi-irq-vect-id'] = ipi_to_irq_vect_id[ipi_base_addr]
+
+        if platform == SOC_TYPE.VERSAL:
+            agent = ipi_to_agent[ipi_base_addr]
+            bitmask = agent_to_ipi_bitmask[agent]
+            openamp_app_inputs[prefix+'bitmask'] = hex(agent_to_ipi_bitmask[agent])
+            openamp_app_inputs[prefix+'ipi-irq-vect-id'] = ipi_to_irq_vect_id[ipi_base_addr]
+
+        elif platform == SOC_TYPE.ZYNQMP:
+            bitmask = ipi_node.propval("xlnx,ipi-bitmask")
+            if bitmask == ['']:
+                print("no bitmask for IPI node: ", ipi_node)
+                return False
+            interrupts = ipi_node.propval("interrupts")
+            if len(interrupts) != 3:
+                print("invalid interrupts for IPI node ", ipi_node)
+                return False
+
+            openamp_app_inputs[prefix+'bitmask'] = hex(bitmask[0])
+            # system interrupts are the GIC val + 32
+            openamp_app_inputs[prefix+'ipi-irq-vect-id'] = hex(interrupts[1] + 32)
+
+        else:
+            print("unsupported platform: ",platform)
 
 
-def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain, host_ipi, remote_ipi):
+def construct_mbox_ctr_reg(sdt, host_ipi, remote_ipi, openamp_app_inputs, platform, group):
+    reg_vals = []
+    if platform == SOC_TYPE.VERSAL:
+        remote_ipi = int(openamp_app_inputs[group.name+'-'+'remote'+'-ipi'], 16)
+        host_ipi   = int(openamp_app_inputs[group.name+'-'+  'host'+'-ipi'], 16)
+
+        remote_agent = ipi_to_agent[remote_ipi]
+        host_agent = ipi_to_agent[host_ipi]
+
+        remote_offset = ipi_msg_buf_dest_agent_request_offsets[remote_ipi]
+        host_offset = ipi_msg_buf_dest_agent_request_offsets[host_ipi]
+
+        ipi_msg_buf_base = 0xff3f0000
+        response_offset = 0x20
+
+        local_request_region = ipi_msg_buf_base | host_agent | remote_offset
+        remote_request_region = ipi_msg_buf_base | remote_agent | host_offset
+
+        vals = [
+            local_request_region,
+            local_request_region | response_offset,
+            remote_request_region,
+            remote_request_region | response_offset
+        ]
+
+        for i in vals:
+            reg_vals.append(0x0)
+            reg_vals.append(i)
+            reg_vals.append(0x0)
+            reg_vals.append(0x20)
+
+    elif platform == SOC_TYPE.ZYNQMP:
+        # for host and remote IPI
+        # find its corresponding IPI ID mapping in the other IPI
+        # store its response and request regions
+        # return
+
+        host_ipi_id = host_ipi.propval("xlnx,ipi-id")[0]
+        remote_ipi_id = remote_ipi.propval("xlnx,ipi-id")[0]
+
+        ipis = [ host_ipi, remote_ipi ]
+        target_ipis = [remote_ipi_id , host_ipi_id ]
+
+        match = 0
+        for index,current_ipi in enumerate(ipis):
+            for node in current_ipi.subnodes():
+                subnode_ipi_id = node.propval("xlnx,ipi-id")
+                if subnode_ipi_id != [''] and subnode_ipi_id[0] == target_ipis[index]:
+                    match += 1
+                    if node.propval("xlnx,ipi-message-buffer-response-region") == [''] or node.propval("xlnx,ipi-message-buffer-request-region") == ['']:
+                        print("no IPI message buffers found for ZU+ SDT")
+                        return None
+                    reg_vals.append( node.propval("xlnx,ipi-message-buffer-response-region")[0] )
+                    reg_vals.append( node.propval("xlnx,ipi-message-buffer-request-region")[0] )
+            if match == 0:
+                print("no IPI nodes found")
+                return None
+
+    else:
+        print("construct_mbox_ctr_reg: unsupported platform: ", platform)
+        return None
+
+    return reg_vals
+
+
+def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain, host_ipi, remote_ipi, platform):
     controller_parent = None
     try:
         controller_parent = sdt.tree["/zynqmp_ipi1"]
         print("zynqmp_ipi1 already present.")
     except:
-
         controller_parent = LopperNode(-1, "/zynqmp_ipi1")
         controller_parent + LopperProp(name="compatible",value="xlnx,zynqmp-ipi-mailbox")
-        gic_node_phandle = sdt.tree["/amba_apu/interrupt-controller@f9000000"].phandle
+        gic_node_phandle = None
+
+        if platform == SOC_TYPE.VERSAL:
+            gic_node_phandle = sdt.tree["/amba_apu/interrupt-controller@f9000000"].phandle
+        elif platform == SOC_TYPE.ZYNQMP:
+
+            gic_node_phandle = sdt.tree["/amba_apu/interrupt-controller@f9010000"].phandle
+        else:
+            print("invalid platform for construct_mbox_ctr")
+            return False
+
         controller_parent + LopperProp(name="interrupt-parent", value = [gic_node_phandle])
         controller_parent + LopperProp(name="interrupts",value= host_ipi.propval("interrupts").copy()   )
         controller_parent + LopperProp(name="xlnx,ipi-id",value= host_ipi.propval("xlnx,ipi-id")[0]  )
@@ -410,7 +512,6 @@ def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain, host_ipi, remote_
         controller_parent + LopperProp(name="phandle",value=sdt.tree.phandle_gen())
         sdt.tree.add(controller_parent)
         print("added node ",controller_parent)
-
 
 
     # for each channel, add agent info to zynqmp_ipi1
@@ -435,44 +536,19 @@ def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain, host_ipi, remote_
                 print("invalid remote IPI - no access property")
                 return False
             ipi_node = sdt.tree.pnode(access_pval[0])
-            if validate_ipi_node(ipi_node) != True:
+
+            if validate_ipi_node(ipi_node, platform) != True:
+                print("IPI node is invalid")
                 return False
+
             remote_ipi_id_val = ipi_node.propval('xlnx,ipi-id')
             controller_node + LopperProp(name="xlnx,ipi-id",value=remote_ipi_id_val[0])
-
-            remote_ipi = int(openamp_app_inputs[group.name+'-'+'remote'+'-ipi'], 16)
-            host_ipi   = int(openamp_app_inputs[group.name+'-'+  'host'+'-ipi'], 16)
-
-            remote_agent = ipi_to_agent[remote_ipi]
-            host_agent = ipi_to_agent[host_ipi]
-
-            remote_offset = ipi_msg_buf_dest_agent_request_offsets[remote_ipi]
-            host_offset = ipi_msg_buf_dest_agent_request_offsets[host_ipi]
-
-            ipi_msg_buf_base = 0xff3f0000
-            response_offset = 0x20
-
-            local_request_region = ipi_msg_buf_base | host_agent | remote_offset
-            remote_request_region = ipi_msg_buf_base | remote_agent | host_offset
-
-            vals = [
-                local_request_region,
-                local_request_region | response_offset,
-                remote_request_region,
-                remote_request_region | response_offset
-            ]
-
-            reg_vals = []
-            for i in vals:
-                reg_vals.append(0x0)
-                reg_vals.append(i)
-                reg_vals.append(0x0)
-                reg_vals.append(0x20)
-
+            reg_vals = construct_mbox_ctr_reg(sdt, host_ipi, remote_ipi, openamp_app_inputs, platform, group)
             controller_node + LopperProp(name="reg",value=reg_vals)
 
             sdt.tree.add(controller_node)
             controller_idx += 1
+            print("added mailbox controller node ",controller_node)
 
     # if needed, will have to remove the existing mailbox
     for i in sdt.tree["/amba"].subnodes():
@@ -512,7 +588,7 @@ def setup_userspace_nodes(sdt, domain_node, current_rsc_group, remote_domain, op
         print("invalid "+role+" IPI - no access property")
         return False
     ipi_node = sdt.tree.pnode(access_pval[0])
-    if validate_ipi_node(ipi_node) != True:
+    if validate_ipi_node(ipi_node, platform) != True:
         return False
     host_ipi_interrupts_val = ipi_node.propval('interrupts')
 
@@ -560,7 +636,7 @@ def parse_openamp_domain(sdt, options, tgt_node):
       return remote_domain
 
     # parse IPI base address, bitmask, vect ID, agent information
-    parse_ipi_info(sdt, domain_node, remote_domain, current_rsc_group, openamp_app_inputs)
+    parse_ipi_info(sdt, domain_node, remote_domain, current_rsc_group, openamp_app_inputs, platform)
 
     # determine if userspace or kernelspace flow
     print(current_rsc_group)
@@ -573,8 +649,7 @@ def parse_openamp_domain(sdt, options, tgt_node):
     if kernelcase:
         host_ipi = sdt.tree.pnode(domain_node.propval("access")[0])
         remote_ipi = sdt.tree.pnode(remote_domain.propval("access")[0])
-
-        construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain, host_ipi, remote_ipi)
+        construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain, host_ipi, remote_ipi, platform)
         mbox_ctr = sdt.tree["/zynqmp_ipi1/controller"+str(channel_idx)]
         construct_remoteproc_node(remote_domain, current_rsc_group, sdt, domain_node,  platform, mbox_ctr, openamp_app_inputs)
         openamp_app_inputs[current_rsc_group.name+'-tx'] = 'FW_RSC_U32_ADDR_ANY'
