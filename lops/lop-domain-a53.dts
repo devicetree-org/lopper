@@ -21,7 +21,7 @@
                 lop_1 {
                         // node name modify
                         compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/cpus_a53/::/cpus/";
+                        modify = "/cpus-a53@0/::/cpus/";
                 };
                 lop_2 {
                         compatible = "system-device-tree-v1,lop,modify";
