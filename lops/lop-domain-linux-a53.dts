@@ -80,5 +80,10 @@
                               tree.delete(node1)
                       ";
                 };
+                lop_7 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        // Disable SMMU Node
+                        modify = "/smmu@fd800000:status:disabled";
+                };
         };
 };
