@@ -85,10 +85,16 @@
                             if i.propval('compatible') == ['xlnx,axi-dma-mm2s-channel'] or i.propval('compatible') == ['xlnx,axi-dma-s2mm-channel']:
                                 tree.delete(i)
                         n = node.tree['/amba']
-                        for i in n.subnodes():
-                            if i.propval('compatible') == ['xlnx,psv-r5-tcm'] or 'xlnx,psv-r5-tcm' in i.propval('compatible'):
-                                tree.delete(i)
 
+                        tcm_str = 'xlnx,psv-r5-tcm'
+
+                        for i in n.subnodes():
+                            if len(i.propval('compatible')) == 1 and tcm_str in i.propval('compatible')[0]:
+                                tree.delete(i)
+                            elif len(i.propval('compatible')) > 1:
+                                for j in i.propval('compatible'):
+                                    if tcm_str in j:
+                                        tree.delete(i)
 			";
 		};
 
