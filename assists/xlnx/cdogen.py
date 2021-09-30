@@ -101,12 +101,59 @@ def write_xppu_en_cmd(x, fp=None):
     print(cmd, file=fp)
 
 
+# --
+# NOTE:
+# These are temporary hard-coded apertures required for the system to boot
+# when the protection configuration is generated for subsystems.
+# There is no way to express this in the SDT/YAML today, therefore it is directly
+# patched in the output CDO. We'll remove this when SDT/YAML spec gaps are resolved.
+# --
+def write_xppu_allowed_entries(x, fp=None):
+    # for PMC_XPPU
+    pmc_xppu_fixes = """
+        # FIXME
+        # ATF: Allow PMC_GLOBAL (17) to be APU RD Only
+        pm_init_node 0x24000002 0x2 0x11 0x8001fe1
+        # ATF: Allow (386) to be APU RD Only
+        pm_init_node 0x24000002 0x2 0x182 0x8001fe1
+
+        # Uboot/Linux: Allow CRP (38) to be APU RD Only
+        pm_init_node 0x24000002 0x2 0x26 0x8001fe1
+        # Linux: Allow PMC_SYSMON (39) [Only Root] to be APU RW
+        pm_init_node 0x24000002 0x2 0x27 0x80007f9
+    """
+    # for LPD_XPPU
+    lpd_xppu_fixes = """
+        # FIXME
+        # ATF: Allow CRL (94) to be APU RW
+        pm_init_node 0x24000001 0x2 0x5E 0x80007f9
+        # ATF: Allow IOU_SCNTRS (20) to be APU RW
+        pm_init_node 0x24000001 0x2 0x14 0x80007f9
+
+        # Linux: Allow USB_XHCI (386) to be APU RW
+        pm_init_node 0x24000001 0x2 0x182 0x80007f9
+    """
+    block = None
+
+    if x.pm_id == "0x24000002":
+        block = pmc_xppu_fixes
+    elif x.pm_id == "0x24000001":
+        block = lpd_xppu_fixes
+    else:
+        return
+
+    if block is not None:
+        for line in block.split("\n"):
+            print(line.strip(), file=fp)
+
+
 def write_xppu(x, fp=None):
     write_header(x, fp)
     write_xppu_mid_list(x, fp)
     write_xppu_ctrl_reg(x, fp)
     write_xppu_ien_reg(x, fp)
     write_xppu_en_cmd(x, fp)
+    write_xppu_allowed_entries(x, fp)
     write_footer(x, fp)
 
 
