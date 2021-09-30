@@ -955,12 +955,29 @@ def setup_mem_ftb_entry(subsystem):  # Subsystem() object
             if dom_or_ss_name not in prot_map.ss_or_dom:
                 # print("Skipping dom/ss:", dom_or_ss_name, "for", pm_name)
                 continue
+
             # print("[DBG++++]", prot_map.ss_or_dom[dom_or_ss_name])
             for bus_mid_name, smid in prot_map.ss_or_dom[dom_or_ss_name][1]:
                 if priority not in bus_mids:
                     bus_mids[priority] = []
+
                 bus_mids[priority].append(
                     ftb.MidEntry(smid, 0x3FF, name=bus_mid_name))
+
+            # TODO: Remove hardcoding in future (this should come from domains.yaml)
+            # Allow firmware masters needed for each region
+            bus_mids[priority].append(
+                ftb.MidEntry(xppu.MIDL["PMC_DMA0"][0],
+                             xppu.MIDL["PMC_DMA0"][1],
+                             name="PMC_DMA0"))
+            bus_mids[priority].append(
+                ftb.MidEntry(xppu.MIDL["PMC_DMA1"][0],
+                             xppu.MIDL["PMC_DMA1"][1],
+                             name="PMC_DMA1"))
+            # Needed for booting from OCM
+            bus_mids[priority].append(
+                ftb.MidEntry(0x268, 0x3FF, name="APU-NonCPU"))
+
 
         if debug > 0:
             print(
