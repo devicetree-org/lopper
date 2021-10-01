@@ -471,8 +471,14 @@ def construct_mbox_ctr_reg(sdt, host_ipi, remote_ipi, openamp_app_inputs, platfo
                     if node.propval("xlnx,ipi-message-buffer-response-region") == [''] or node.propval("xlnx,ipi-message-buffer-request-region") == ['']:
                         print("no IPI message buffers found for ZU+ SDT")
                         return None
-                    reg_vals.append( node.propval("xlnx,ipi-message-buffer-response-region")[0] )
-                    reg_vals.append( node.propval("xlnx,ipi-message-buffer-request-region")[0] )
+
+                    prop_names = [ "xlnx,ipi-message-buffer-response-region", "xlnx,ipi-message-buffer-request-region" ]
+                    for name in prop_names:
+                        reg_vals.append(0x0)
+                        reg_vals.append( node.propval( name )[0] )
+                        reg_vals.append(0x0)
+                        reg_vals.append(0x20)
+
             if match == 0:
                 print("no IPI nodes found")
                 return None
