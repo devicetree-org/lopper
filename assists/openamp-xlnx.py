@@ -562,7 +562,7 @@ def construct_mbox_ctr(sdt, openamp_app_inputs, remote_domain, host_ipi, remote_
             i["status"].value = "disabled"
 
 
-def setup_userspace_nodes(sdt, domain_node, current_rsc_group, remote_domain, openamp_app_inputs):
+def setup_userspace_nodes(sdt, domain_node, current_rsc_group, remote_domain, openamp_app_inputs, platform):
     [core, rpu_config] = determine_core(remote_domain)
     construct_mem_region(sdt, domain_node, current_rsc_group, core, openamp_app_inputs)
     base = int(openamp_app_inputs[current_rsc_group.name+'elfload_base'],16)
@@ -599,7 +599,16 @@ def setup_userspace_nodes(sdt, domain_node, current_rsc_group, remote_domain, op
     host_ipi_interrupts_val = ipi_node.propval('interrupts')
 
     userspace_host_ipi_node + LopperProp(name="interrupts",value=host_ipi_interrupts_val)
-    userspace_host_ipi_node + LopperProp(name="interrupt-parent",value=[sdt.tree["/amba_apu/interrupt-controller@f9000000"].phandle])
+    gic_path = ""
+    if platform == SOC_TYPE.VERSAL:
+        gic_path = "/amba_apu/interrupt-controller@f9000000"
+    elif platform == SOC_TYPE.ZYNQMP:
+        gic_path = "/amba_apu/interrupt-controller@f9010000"
+    else:
+        print("invalid platform for setup_userspace_nodes")
+        return False
+
+    userspace_host_ipi_node + LopperProp(name="interrupt-parent",value=[sdt.tree[gic_path].phandle])
     userspace_host_ipi_node + LopperProp(name="phandle",value=sdt.tree.phandle_gen())
     userspace_host_ipi_node + LopperProp(name="reg",value=[0x0, host_ipi , 0x0,  0x1000])
     sdt.tree.add(userspace_host_ipi_node)
@@ -662,7 +671,7 @@ def parse_openamp_domain(sdt, options, tgt_node):
         openamp_app_inputs[current_rsc_group.name+'-rx'] = 'FW_RSC_U32_ADDR_ANY'
 
     else:
-        setup_userspace_nodes(sdt, domain_node, current_rsc_group, remote_domain, openamp_app_inputs)
+        setup_userspace_nodes(sdt, domain_node, current_rsc_group, remote_domain, openamp_app_inputs, platform)
 
     # update channel for openamp group
     channel_idx += 1
