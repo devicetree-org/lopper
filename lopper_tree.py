@@ -3287,7 +3287,7 @@ class LopperTree:
 
 
 
-    def lnodes( self, label ):
+    def lnodes( self, label, exact = True ):
         """Find nodes in a tree by label
 
         Safely (no exception raised) returns the node that can be found
@@ -3295,6 +3295,7 @@ class LopperTree:
 
         Args:
            label (string): node string  to check
+           strict (boolean): flag indicating if exact or fuzzy matching
 
         Returns:
            list (LopperNode): the matching nodes if found, [] otherwise
@@ -3303,8 +3304,12 @@ class LopperTree:
         nodes = []
         try:
             for l in self.__lnodes__.keys():
-                if re.search( label, l ):
-                    nodes.append( self.__lnodes__[l] )
+                if exact:
+                    if re.search( "^" + label + "$", l ):
+                        nodes.append( self.__lnodes__[l] )
+                else:
+                    if re.search( label, l ):
+                        nodes.append( self.__lnodes__[l] )
         except:
             return nodes
 
