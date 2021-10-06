@@ -40,6 +40,79 @@ def check_bit_set(n, k):
 
     return False
 
+def node_memories(tree, node):
+    memory_nodes = []
+    try:
+        memory_list = node["memory"].value
+    except:
+        memory_list = []
+
+    if memory_list:
+        memory_nodes.append(node)
+
+    return memory_nodes
+
+def get_domain_nodes(tree):
+    try:
+        domain_node = tree['/domains']
+    except:
+        domain_node = None
+    direct_node_refs = []
+
+    if domain_node:
+        prop_dict = domain_node.child_nodes
+        nodes = [label for node_name,label in prop_dict.items()]
+        for node in nodes:
+            m_nodes = node_memories(tree, node)
+            if m_nodes:
+                direct_node_refs.extend( m_nodes )
+            a_nodes = lopper_lib.node_accesses( tree, node )
+            if a_nodes:
+                direct_node_refs.append( node )
+
+    return direct_node_refs
+
+def get_mem_nodes(tree):
+    # 1) find if there's a top level memory nodes
+    """
+    try:
+        memory_nodes = sdt.tree["/memory@.*"]
+    except:
+        memory_nodes = []
+    """
+
+    try:
+        memory_nodes = [node for node in tree.nodes('/memory@.*') if re.search("memory", node['device_type'].value[0])] 
+    except:
+        memory_nodes = []
+
+    return memory_nodes
+
+def get_cpunode(tree, domain):
+    cpu_prop = domain['cpus']
+    cpu_node = [node for node in tree.nodes('/cpus.*') if cpu_prop.value[0] == node.phandle]
+
+    return cpu_node
+
+def update_mem_node(node, mem_val):
+    ac = node.parent['#address-cells'].value[0]
+    sc = node.parent['#size-cells'].value[0]
+
+    new_mem_val = []
+    mem_reg_pairs = len(mem_val)/2
+    for i in range(0, int(mem_reg_pairs)):
+        for j in range(0, ac):
+            if j == ac-1:
+                new_mem_val.append(mem_val[i * int(mem_reg_pairs)])
+            else:
+                new_mem_val.append(0)
+        for j in range(0, sc):
+            if j == sc-1:
+                new_mem_val.append(mem_val[(i * int(mem_reg_pairs))+1])
+            else:
+                new_mem_val.append(0)
+    return new_mem_val
+
 # tgt_node: is the domain node number
 # sdt: is the system device tree
 def core_domain_access( tgt_node, sdt, options ):
