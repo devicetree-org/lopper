@@ -49,6 +49,51 @@
                 lop_6 {
                       compatible = "system-device-tree-v1,lop,code-v1";
                       code = "
+                          assist_dir = os.path.dirname(os.path.realpath(__file__)) + '/assists/'
+                          sys.path.append(assist_dir)
+                          from domain_access import get_domain_nodes, get_mem_nodes, update_mem_node
+                          from baremetalconfig_xlnx import scan_reg_size
+
+                          domain_nodes = get_domain_nodes(tree) 
+                          invalid_phandles = []
+                          linux_mem_domain = []
+                          shared_phandles = []
+                          for domain_node in domain_nodes:
+                              linux_domain = []
+                              try:
+                                  if re.search('linux', domain_node['os,type'].value):
+                                      linux_domain = domain_node
+                                      linux_mem_domain = domain_node
+                              except:
+                                  try:
+                                      if domain_node['cpus'].value:
+                                          print('ERROR: os,type property is missing in the domain', domain_node.name)
+                                  except:
+                                      pass
+
+                              if linux_domain:
+                                  try:
+                                      shared_phandles.extend(domain_node['access'].value)
+                                  except:
+                                      pass
+                                  try:
+                                      rsc_domain = domain_node['include'].value
+                                      for rsc in rsc_domain:
+                                          match = [node for node in domain_nodes if node.phandle == rsc]
+                                          if match:
+                                              try:
+                                                  shared_phandles.extend(match[0]['access'].value)
+                                              except:
+                                                  pass
+                                  except:
+                                      pass
+                              else:
+                                  try:
+                                      for phandle in domain_node['access'].value:
+                                          invalid_phandles.append(phandle)
+                                  except:
+                                      pass
+
                           node_list = []
                           address_map = node.parent['address-map'].value
                           na = node.parent['#ranges-address-cells'].value[0]
@@ -59,8 +104,9 @@
                           while tmp < len(address_map):
                               phandles.append(address_map[tmp])
                               tmp = tmp + cells + na + 1
-                          print(' phandle %s' % phandles)
                           phandles = list(dict.fromkeys(phandles))
+                          invalid_phandles_list = [phandle for phandle in invalid_phandles if phandle not in shared_phandles]
+                          valid_phandles = [phandle for phandle in phandles if phandle not in invalid_phandles_list]
                           for s in tree.__selected__:
                               if not re.search('cpu.*', s.abs_path):
                                   node_list.append(s)
@@ -68,7 +114,7 @@
                           invalid_nodes = []
                           for node1 in node_list:
                               match = 0
-                              for handle in phandles:
+                              for handle in valid_phandles:
                                   if handle == node1.phandle:
                                       if not re.search('xlnx,zynqmp-ipi-mailbox', node1['compatible'].value[0]):
                                           match += 1
@@ -78,6 +124,41 @@
                                   invalid_nodes.append(node1)
                           for node1 in invalid_nodes:
                               tree.delete(node1)
+
+                          # Memory Domain handling
+                          if linux_mem_domain:
+                              try:
+                                  has_addr = linux_mem_domain['memory'].value
+                              except:
+                                  has_addr = []
+
+                              shared_mem = []
+                              try:
+                                  rsc_domain = linux_mem_domain['include'].value
+                                  for rsc in rsc_domain:
+                                      match = [node for node in domain_nodes if node.phandle == rsc]
+                                      if match:
+                                          try:
+                                              shared_mem = match[0]['memory'].value
+                                          except:
+                                              pass
+                              except:
+                                  pass
+
+                              if has_addr:
+                                  start_addr = has_addr[0]
+                                  mem_nodes = get_mem_nodes(tree)
+                                  for node1 in mem_nodes:
+                                      reg, size = scan_reg_size(node1, node1['reg'].value, 0)
+                                      if start_addr in range(reg, reg+size) and shared_mem:
+                                          shared_mem.extend(linux_mem_domain['memory'].value)
+                                          modify_val = update_mem_node(node1, shared_mem)
+                                          node1['reg'].value = modify_val
+                                      elif start_addr in range(reg, reg+size):
+                                          modify_val = update_mem_node(node1, linux_mem_domain['memory'].value)
+                                          node1['reg'].value = modify_val
+                          for domain_node in domain_nodes:
+                              tree.delete(domain_node)
                       ";
                 };
                 lop_7 {
