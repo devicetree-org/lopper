@@ -30,11 +30,13 @@ from re import *
 sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node
 from bmcmake_metadata_xlnx import to_cmakelist
+from domain_access import *
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetallinker_xlnx", compat_string_to_test):
         return xlnx_generate_bm_linker
     return ""
+
 
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
@@ -43,6 +45,67 @@ def get_memranges(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     mem_nodes = []
+
+    domain_nodes = get_domain_nodes(sdt.tree)
+    # Get the Baremetal Domain
+    bm_domain = []
+    for domain_node in domain_nodes:
+        try:
+            if re.search('baremetal', domain_node['os,type'].value):
+                bm_domain.append(domain_node)
+        except:
+            try:
+                if domain_node['cpus'].value:
+                    print('ERROR: os,type property is missing in the domain', domain_node.name)
+            except:
+                pass
+
+    match_cpunodes = get_cpu_node(sdt, options)
+
+    # Check whether domain is mapped for current processor or not
+    if bm_domain:
+        for domain in bm_domain:
+            shared_mem = []
+            cpu_node = get_cpunode(sdt.tree, domain)
+            if not re.search(cpu_node[0].name, match_cpunodes[0].parent.name):
+                print("Domain is not Mapped to the given cpus cluster\n\r")
+                continue
+            else:
+               try:
+                   rsc_domain = domain['include'].value
+                   for rscdomain in rsc_domain:
+                       match = [node for node in domain_nodes if node.phandle == rscdomain]
+                       if match:
+                           try:
+                               shared_mem = match[0]['memory'].value
+                           except:
+                               pass
+               except:
+                   pass
+
+            mem_nodes = get_mem_nodes(sdt.tree)
+            for node in mem_nodes:
+                update_shared_mem = []
+                reg, size = scan_reg_size(node, node['reg'].value, 0)
+                if shared_mem:
+                    start_addr = shared_mem[0]
+                    if start_addr in range(reg, reg+size):
+                        update_shared_mem.extend(shared_mem)
+
+                try:
+                    start_addr = domain['memory'].value[0]
+                    if start_addr in range(reg, reg+size):
+                        if update_shared_mem:
+                            update_shared_mem.extend(domain['memory'].value)
+                            modify_val = update_mem_node(node, update_shared_mem)
+                        else:
+                            modify_val = update_mem_node(node, domain['memory'].value)
+                        node['reg'].value = modify_val
+                except:
+                    if update_shared_mem:
+                        modify_val = update_mem_node(node, update_shared_mem)
+                        node['reg'].value = modify_val
+
     #Maintain a static memory IP list this is needed inorder to capture proper ip name in the linker script
     xlnx_memipname = {"axi_bram": 0, "ps7_ddr": 0, "psu_ddr": 0, "psv_ddr": 0, "mig": 0, "lmb_bram": 0, "axi_noc": 0, "psu_ocm": 0,  "psv_ocm": 0, "ddr4": 0}
     for node in root_sub_nodes:
@@ -56,7 +119,7 @@ def get_memranges(tgt_node, sdt, options):
     versal_noc_ch_ranges =  {"DDR_CH_1": "0x50000000000", "DDR_CH_2": "0x60000000000", "DDR_CH_3": "0x70000000000"}
 
     # Yocto Machine to CPU compat mapping
-    match_cpunodes = get_cpu_node(sdt, options)
+    #match_cpunodes = get_cpu_node(sdt, options)
    
     address_map = match_cpunodes[0].parent["address-map"].value
     all_phandles = []
@@ -69,6 +132,8 @@ def get_memranges(tgt_node, sdt, options):
         tmp = tmp + cells + na + 1
 
     mem_ranges = {}
+    # Remove Duplicate memory node referenecs
+    mem_nodes = list(dict.fromkeys(mem_nodes))
     for node in mem_nodes:
         # Check whether the memory node is mapped to cpu cluster or not
         mem_phandles = [handle for handle in all_phandles if handle == node.phandle]
@@ -100,7 +165,7 @@ def get_memranges(tgt_node, sdt, options):
             match = [mem for mem in name_list if mem in compat]
             for i in range(total_nodes):
                 reg, size = scan_reg_size(node, val, i)
-                valid_range = [addr for addr in addr_list if reg == addr or addr > reg]
+                valid_range = [reg for addr in addr_list if reg == addr or reg > addr]
                 if valid_range:
                     key = match[0].replace("-", "_")
                     is_valid_noc_ch = 0
