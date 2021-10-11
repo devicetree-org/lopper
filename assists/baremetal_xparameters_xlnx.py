@@ -232,14 +232,32 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                     
     # Generate Defines for Generic Nodes
     node_list = get_mapped_nodes(sdt, node_list, options)
+    prev = ""
+    count = 0
     for node in node_list:
         label_name = get_label(sdt, symbol_node, node)
+        node_name = node.name
+        node_name = node_name.split("@")
+        node_name = node_name[0]
+        if prev != node_name:
+            count = 0
+        else:
+            count = count + 1
+
+        prev = node_name
         label_name = label_name.upper()
+        node_name = node_name.upper()
         try:
             val = scan_reg_size(node, node['reg'].value, 0)
             plat.buf('\n/* Definitions for peripheral %s */' % label_name)
             plat.buf('\n#define XPAR_%s_BASEADDR %s\n' % (label_name, hex(val[0])))
             plat.buf('#define XPAR_%s_HIGHADDR %s\n' % (label_name, hex(val[0] + val[1] - 1)))
+            temp_label = label_name.rsplit("_", 1)
+            temp_label = temp_label[0]
+            if temp_label != node_name:
+                plat.buf('\n/* Canonical definitions for peripheral %s */' % label_name)
+                plat.buf('\n#define XPAR_%s_%s_BASEADDR %s\n' % (node_name, count, hex(val[0])))
+                plat.buf('#define XPAR_%s_%s_HIGHADDR %s\n' % (node_name, count, hex(val[0] + val[1] - 1)))
         except KeyError:
             pass
 
