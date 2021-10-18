@@ -24,17 +24,20 @@ import importlib
 from lopper import Lopper
 from lopper import LopperFmt
 import lopper
+import lopper_lib
 from lopper.tree import *
 from re import *
 
 sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node
 from bmcmake_metadata_xlnx import to_cmakelist
+from domain_access import *
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetallinker_xlnx", compat_string_to_test):
         return xlnx_generate_bm_linker
     return ""
+
 
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
@@ -43,6 +46,54 @@ def get_memranges(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     mem_nodes = []
+
+    domain_nodes = domain_get_subnodes(sdt.tree)
+    # Get the Baremetal Domain
+    for domain_node in domain_nodes:
+        bm_domain = []
+        if domain_node.propval('os,type') != ['']:
+            if re.search('baremetal', domain_node.propval('os,type', list)[0]):
+                    bm_domain.append(domain_node)
+        elif domain_node.propval('cpus') != ['']:
+                print('ERROR: os,type property is missing in the domain', domain_node.name)
+
+        match_cpunodes = get_cpu_node(sdt, options)
+
+        # Check whether domain is mapped for current processor or not
+        if bm_domain:
+            shared_mem = []
+            if not domain_node['cpus'][0] == match_cpunodes[0].parent.phandle:
+                continue
+            else:
+               if domain_node.propval('include') != ['']:
+                   rsc_domain = lopper_lib.includes( sdt.tree, domain_node['include'] )
+                   for rscdomain in rsc_domain:
+                       if rscdomain.propval('memory') != ['']:
+                           shared_mem.extend(rscdomain.propval('memory'))
+
+            mem_nodes = sdt.tree.nodes('/memory@.*')
+            for node in mem_nodes:
+                update_shared_mem = []
+                reg, size = scan_reg_size(node, node['reg'].value, 0)
+                if shared_mem:
+                    start_addr = shared_mem[0]
+                    if start_addr in range(reg, reg+size):
+                        update_shared_mem.extend(shared_mem)
+
+                if domain_node.propval('memory') != ['']:
+                    start_addr = domain_node['memory'].value[0]
+                    if start_addr in range(reg, reg+size):
+                        if update_shared_mem:
+                            update_shared_mem.extend(domain_node['memory'].value)
+                            modify_val = update_mem_node(node, update_shared_mem)
+                        else:
+                            modify_val = update_mem_node(node, domain_node['memory'].value)
+                        node['reg'].value = modify_val
+                else:
+                    if update_shared_mem:
+                        modify_val = update_mem_node(node, update_shared_mem)
+                        node['reg'].value = modify_val
+
     #Maintain a static memory IP list this is needed inorder to capture proper ip name in the linker script
     xlnx_memipname = {"axi_bram": 0, "ps7_ddr": 0, "psu_ddr": 0, "psv_ddr": 0, "mig": 0, "lmb_bram": 0, "axi_noc": 0, "psu_ocm": 0,  "psv_ocm": 0, "ddr4": 0}
     for node in root_sub_nodes:
@@ -69,6 +120,8 @@ def get_memranges(tgt_node, sdt, options):
         tmp = tmp + cells + na + 1
 
     mem_ranges = {}
+    # Remove Duplicate memory node referenecs
+    mem_nodes = list(dict.fromkeys(mem_nodes))
     for node in mem_nodes:
         # Check whether the memory node is mapped to cpu cluster or not
         mem_phandles = [handle for handle in all_phandles if handle == node.phandle]
@@ -100,7 +153,7 @@ def get_memranges(tgt_node, sdt, options):
             match = [mem for mem in name_list if mem in compat]
             for i in range(total_nodes):
                 reg, size = scan_reg_size(node, val, i)
-                valid_range = [addr for addr in addr_list if reg == addr or addr > reg]
+                valid_range = [reg for addr in addr_list if reg == addr or reg > addr]
                 if valid_range:
                     key = match[0].replace("-", "_")
                     is_valid_noc_ch = 0
