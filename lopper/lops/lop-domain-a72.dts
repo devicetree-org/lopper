@@ -42,11 +42,54 @@
                       compatible = "system-device-tree-v1,lop,select-v1";
                       // clear any old selections
                       select_1;
+                      select_2 = "/domains";
+                };
+                lop_5_0 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                          assist_dir = os.path.dirname(os.path.realpath(__file__)) + '/assists/'
+                          sys.path.append(assist_dir)
+                          from domain_access import update_mem_node
+                          from baremetalconfig_xlnx import scan_reg_size
+                          // Domain memory handling
+                          shared_mem = []
+                          memnode_list = tree.nodes('/memory@.*')
+                          for n in node.subnodes():
+                              if n.propval('memory') != [''] and n.propval('os,type') == ['']:
+                                  shared_mem.append(n)
+                          for n in node.subnodes():
+                              if n.propval('memory') != [''] and  n.propval('os,type') != ['']:
+                                  if re.search('linux', n.propval('os,type', list)[0]):
+                                      start_addr = n.propval('memory')[0]
+                                      linux_shared_mem = []
+                                      //Check for resource group
+                                      if n.propval('include'):
+                                          // Get shared memory nodes for Linux domain
+                                          linux_shared_mem = [mem_node for mem_node in shared_mem if mem_node.phandle in n.propval('include')]
+
+                                      for node1 in memnode_list:
+                                          reg, size = scan_reg_size(node1, node1['reg'].value, 0)
+                                          if start_addr in range(reg, reg+size) and linux_shared_mem:
+                                              shared_mem_node = n.propval('memory')
+                                              for mem_node in linux_shared_mem:
+                                                  shared_mem_node.extend(linux_shared_mem[0].propval('memory'))
+                                              modify_val = update_mem_node(node1, shared_mem_node)
+                                              node1['reg'].value = modify_val
+                                          elif start_addr in range(reg, reg+size):
+                                              modify_val = update_mem_node(node1, n.propval('memory'))
+                                              node1['reg'].value = modify_val
+                      ";
+                };
+                lop_6 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      // clear any old selections
+                      select_1;
                       select_2 = "/cpus/.*:compatible:.*arm,cortex-a72.*";
                       select_3 = "/.*:status:.*okay.*";
                       select_4 = "/.*:device_type:.*memory.*";
+                      select_5 = "/domains";
                 };
-                lop_6 {
+                lop_7 {
                         // modify to "nothing", is a remove operation
                         compatible = "system-device-tree-v1,lop,modify";
                         modify = "/memory@fffc0000::";
@@ -54,6 +97,34 @@
                 lop_8 {
                       compatible = "system-device-tree-v1,lop,code-v1";
                       code = "
+                          // Check for domain node
+                          domain_node = []
+                          for n in __selected__:
+                              if re.search('domains', n.name):
+                                  domain_node = n
+                          // Peipheral node handling
+                          invalid_phandles = []
+                          if domain_node:
+                              shared_dev = []
+                              valid_phandles = []
+                              for n in domain_node.subnodes():
+                                  if n.propval('access') != [''] and n.propval('os,type') == ['']:
+                                      shared_dev.append(n)
+                              for n in domain_node.subnodes():
+                                  if n.propval('access') != [''] and  n.propval('os,type') != ['']:
+                                      if re.search('linux', n.propval('os,type', list)[0]):
+                                          valid_phandles.extend(n.propval('access'))
+                                          if n.propval('include'):
+                                              // Get shared memory nodes for Linux domain
+                                              linux_shared_dev = [dev_node for dev_node in shared_dev if dev_node.phandle in n.propval('include')]
+                                              for node1 in linux_shared_dev:
+                                                  valid_phandles.extend(node1.propval('access'))
+                                      else:
+                                          invalid_phandles.extend(n.propval('access'))
+
+                              invalid_phandles = [phandle for phandle in invalid_phandles if phandle not in valid_phandles]
+                              invalid_phandles = list(dict.fromkeys(invalid_phandles))
+
                           node_list = []
                           address_map = node.parent['address-map'].value
                           na = node.parent['#ranges-address-cells'].value[0]
@@ -65,13 +136,24 @@
                               phandles.append(address_map[tmp])
                               tmp = tmp + cells + na + 1
                           phandles = list(dict.fromkeys(phandles))
+                          phandles = [phandle for phandle in phandles if phandle not in invalid_phandles]
                           for s in tree.__selected__:
                               if not re.search('cpu.*', s.abs_path):
                                   node_list.append(s)
                           # Delete the unmapped nodes for a72
                           invalid_nodes = []
                           for node1 in node_list:
-                              if re.search('xlnx,axi-bram-ctrl', node1['compatible'].value[0]):
+                              try:
+                                  if re.search('xlnx,axi-bram-ctrl', node1['compatible'].value[0]):
+                                      invalid_nodes.append(node1)
+                              except:
+                                  pass
+                          for node1 in node_list:
+                              match = 0
+                              for handle in phandles:
+                                  if handle == node1.phandle:
+                                      match += 1
+                              if match == 0:
                                   invalid_nodes.append(node1)
                           for node1 in invalid_nodes:
                               tree.delete(node1)
