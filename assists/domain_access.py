@@ -40,6 +40,56 @@ def check_bit_set(n, k):
 
     return False
 
+# tree: is the lopper system device-tree
+def domain_get_subnodes(tree):
+    try:
+        domain_node = tree['/domains']
+    except:
+        domain_node = None
+
+    direct_node_refs = []
+
+    if domain_node:
+        for node in domain_node.subnodes():
+            # 1) memory access/node = <> nodes
+            try:
+                mem_node = node["memory"].value
+                direct_node_refs.append( node )
+            except:
+                pass
+            # 2) direct access = <> nodes
+            a_nodes = lopper_lib.node_accesses( tree, node )
+            if a_nodes:
+                direct_node_refs.append( node )
+
+    # Remove duplicate entries
+    direct_node_refs = list(dict.fromkeys(direct_node_refs))
+    return direct_node_refs
+
+# node: is the domain node number
+# mem_val: Memory node address and size value to be updated
+# This api takes the memory value(address and size) and creates
+# a new memory node value for memory node reg property based on the
+# address-cells and size-cells property.
+def update_mem_node(node, mem_val):
+    ac = node.parent['#address-cells'][0]
+    sc = node.parent['#size-cells'][0]
+
+    new_mem_val = []
+    mem_reg_pairs = len(mem_val)/2
+    for i in range(0, int(mem_reg_pairs)):
+        for j in range(0, ac):
+            if j == ac-1:
+                new_mem_val.append(mem_val[i * int(mem_reg_pairs)])
+            else:
+                new_mem_val.append(0)
+        for j in range(0, sc):
+            if j == sc-1:
+                new_mem_val.append(mem_val[(i * int(mem_reg_pairs))+1])
+            else:
+                new_mem_val.append(0)
+    return new_mem_val
+
 # tgt_node: is the domain node number
 # sdt: is the system device tree
 def core_domain_access( tgt_node, sdt, options ):
