@@ -25,6 +25,7 @@ import yaml
 
 sys.path.append(os.path.dirname(__file__))
 from bmcmake_metadata_xlnx import *
+from domain_access import *
 
 def get_cpu_node(sdt, options):
     # Yocto Machine to CPU compat mapping
@@ -298,55 +299,66 @@ def get_mapped_nodes(sdt, node_list, options):
     while tmp < len(address_map):
         all_phandles.append(address_map[tmp])
         tmp = tmp + cells + na + 1
+
+    # Get all Domains and see if any other peripheral is accessing the mapped node
+    # If Mapped delete it from valid_nodes
+    domain_nodes = domain_get_subnodes(sdt.tree)
+
+    # Get all nodes in that remove BM domain nodes
+    invalid_phandles = []
+    shared_phandles = []
+    for domain_node in domain_nodes:
+        bm_domain = []
+        if domain_node.propval('os,type') != ['']:
+            if re.search('baremetal', domain_node.propval('os,type', list)[0]):
+                    bm_domain.append(domain_node)
+        elif domain_node.propval('cpus') != ['']:
+                print('ERROR: os,type property is missing in the domain', domain_node.name)
+
+        if bm_domain:
+            if domain_node['cpus'].value[0] == match_cpunodes[0].parent.phandle:
+               # Baremetal access property
+               # Check for shared resources
+               if domain_node.propval('access') != ['']:
+                   shared_phandles.extend(domain_node['access'].value)
+
+               if domain_node.propval('include') != ['']:
+                   rsc_domain = domain_node['include'].value
+                   for rsc in rsc_domain:
+                       match = [node for node in domain_nodes if node.phandle == rsc]
+                       if match:
+                           try:
+                               shared_phandles.extend(match[0]['access'].value)
+                           except:
+                               pass
+            else:
+                if domain_node.propval('access') != ['']:
+                   invalid_phandles.extend(domain_node['access'].value)
+        else:
+            if domain_node.propval('access') != ['']:
+                invalid_phandles.extend(domain_node['access'].value)
+
     # Remove duplicate phandle
     all_phandles = list(dict.fromkeys(all_phandles))
+    invalid_phandles = list(dict.fromkeys(invalid_phandles))
 
-    valid_nodes = [node for node in node_list for handle in all_phandles if handle == node.phandle]
-
-    # Get Access or Domain list for the given CPU/Machine
-    root_node = sdt.tree['/']
-    root_sub_nodes = root_node.subnodes()
-    domain_nodes = []
-    for node in root_sub_nodes:
-        try:
-            is_subsystem = node["cpus"].value
-            if is_subsystem:
-                domain_nodes.append(node)
-        except:
-            pass
-
-    if domain_nodes:
-        # Get Matched Domains for a given cpu cluster
-        cpu_phandle = match_cpunodes[0].parent.phandle
-        domain_node = [node for node in domain_nodes if node["cpus"].value[0]  == cpu_phandle]
-
-        if domain_node:
-            # Get valid node list by reading access property
-            access_phandle_list = domain_node[0]["access"].value
-
-            # Check whether Domain node has any shared resource group
-            try:
-               rsrc_grp_phandle = domain_node[0]["include"].value[0]
-               node = [node for node in sdt.tree['/'].subnodes() if node.phandle == rsrc_grp_phandle]
-               rsrc_grp_phanlde = node[0]["access"].value
-               access_phandle_list.extend(rsrc_grp_phanlde)
-            except KeyError:
-               pass
-
-            mapped_phandle = [handle for handle in access_phandle_list for phandle in all_phandles if handle == phandle]
-            if len(access_phandle_list) != len(mapped_phandle):
-               wrong_mapped_handle = [handle for handle in access_phandle_list if handle not in mapped_phandle]
-               wrong_nodes = [node.name for node in sdt.tree['/'].subnodes() for handle in wrong_mapped_handle if handle == node.phandle]
-               if wrong_nodes:
-                  print("[WARNING]: invalid node %s reference mentioned in access property please delete the references" % ','.join(wrong_nodes))
-
-            domain_valid_nodes = [node for node in node_list for handle in mapped_phandle if handle == node.phandle]
-            valid_nodes.extend(domain_valid_nodes)
-            # Remove duplicate nodes
-            valid_nodes = list(dict.fromkeys(valid_nodes))
-        return valid_nodes
-    else:
-        return valid_nodes
+    """
+    Create a valid node list, Here valid node list means
+    1) Without any domains cpu cluster address-map property mapped nodes are valid nodes
+    2) With domains below are assumptions
+        i) If the domain node has access property then it takes priority than address-map property
+           (i.e if any other domain node contains access property and the same peripheral node is
+            not mapped in our domain access node then it should be removed from the valid_node list)
+        ii) If the same peripheral node is mapped in our domain and other domain access node then
+            the node should include it in the valid_node list,
+        iii) If the peripheral node is in a shared resource and if it is mapped for the baremetal domain
+             then include it in the valid node list else remove it from the valid node list.
+    """
+    # Remove shared phandles from invalid phandles list
+    invalid_phandles_list = [phandle for phandle in invalid_phandles if phandle not in shared_phandles]
+    valid_phandles = [phandle for phandle in all_phandles if phandle not in invalid_phandles_list]
+    valid_nodes = [node for node in node_list for handle in valid_phandles if handle == node.phandle]
+    return valid_nodes
 
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
