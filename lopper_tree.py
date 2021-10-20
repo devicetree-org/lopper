@@ -1932,9 +1932,12 @@ class LopperNode(object):
                 if ptype == dict:
                     return dict(self.__props__[pname])
                 elif ptype == list:
-                    list(self.__props__[pname])
+                    if type(self.__props__[pname].value) == list:
+                        return self.__props__[pname].value
+                    else:
+                        return [ self.__props__[pname].value ]
                 else:
-                    self.__props__[pname].value
+                    return self.__props__[pname].value
             except:
                 return [""]
 
