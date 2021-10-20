@@ -85,8 +85,8 @@ def main():
     config_vals = {}
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:Dx:",
-                                   [ "debug", "assist-paths=", "outdir", "enhanced",
+        opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:D:x:",
+                                   [ "debug=", "assist-paths=", "outdir", "enhanced",
                                      "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
                                      "assist=","server", "auto", "permissive", "xlate=",
@@ -119,7 +119,7 @@ def main():
         elif o in ('-O', '--outdir'):
             outdir = a
         elif o in ('-D', '--debug'):
-            debug = True
+            debug = a
         elif o in ('-t', '--target'):
             target_domain = a
         elif o in ('-o', '--output'):
@@ -340,8 +340,35 @@ def main():
             device_tree.assist_autorun_setup( module_name, module_args )
 
     if debug:
-        import cProfile
-        cProfile.run( 'device_tree.perform_lops()' )
+        # TODO add the ability to run an inline python block here
+
+        if debug == "profile":
+            import cProfile
+            cProfile.runctx( 'device_tree.perform_lops()', globals(), locals() )
+
+        elif re.search( r'\.py$', debug ):
+            from importlib.machinery import SourceFileLoader
+
+            for p in load_paths:
+                if p not in sys.path:
+                    sys.path.append( p )
+
+            try:
+                imported_test = SourceFileLoader( "debug", debug ).load_module()
+                func_name_to_call = Path( debug ).stem
+                func_to_call = getattr( imported_test, func_name_to_call )
+                func_to_call( device_tree )
+            except Exception as e:
+                print( "ERROR: %s" % e )
+        else:
+            try:
+                # is it a python string ? try compiling and runnig it
+                block = compile( debug, '<string>', 'exec' )
+                eval( block )
+            except Exception as e:
+                print( "ERROR: %s" % e )
+
+        sys.exit(1)
     else:
         device_tree.perform_lops()
 
