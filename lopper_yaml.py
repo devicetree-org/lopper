@@ -356,6 +356,7 @@ class LopperYAML():
 
         self.boolean_as_int = False
         self.lists_as_nodes = False
+        self.scalar_as_lists = False
         if config:
             try:
                 self.boolean_as_int = config.getboolean( 'yaml','bool_as_int' )
@@ -367,7 +368,10 @@ class LopperYAML():
             except:
                 pass
 
-
+            try:
+                self.scalar_as_lists = config.getboolean( 'yaml','scalar_as_lists' )
+            except:
+                pass
 
         if self.yaml_source and self.tree:
             print( "[ERROR]: both yaml and lopper tree provided" )
@@ -544,6 +548,11 @@ class LopperYAML():
                                 props[p] = [ 0 ]
                             else:
                                 skip = True
+                    else:
+                        # not a list, not a dict, not a bool, but if asked, we'll still
+                        # encode as a list (for consistency with fdt reads).
+                        if self.scalar_as_lists:
+                            props[p] = [props[p]]
 
                     if use_json:
                         x = json.dumps(props[p])
