@@ -640,7 +640,19 @@ def setup_device_tree( outdir ):
                         interrupt-map = <0x0 0x0 0x0 &gic_a72 0x0 0x0 0x0>,
                                         <0x0 0x0 0x0 &gic_r5 0x0 0x0 0x0>;
                 };
-
+                serial0: serial@ff000000 {
+                        compatible = "arm,pl011", "arm,sbsa-uart";
+                        status = "okay";
+                        reg = <0x0 0xff000000 0x0 0x1000>;
+                        interrupts = <0x0 0x12 0x4>;
+                        clock-names = "uart_clk", "apb_clk";
+                        current-speed = <0x1c200>;
+                        clocks = <0x3 0x5c 0x3 0x52>;
+                        power-domains = <0x7 0x18224021>;
+                        cts-override;
+                        device_type = "serial";
+                        port-number = <0x0>;
+                };
         };
 
         amba_apu: amba_apu {
@@ -762,14 +774,8 @@ def setup_device_tree( outdir ):
         };
         aliases {
                 serial0 = "/amba/serial@ff000000";
-                ethernet0 = "/amba/ethernet@ff0c0000";
-                ethernet1 = "/amba/ethernet@ff0d0000";
-                i2c0 = "/amba/i2c@ff030000";
-                mmc0 = "/amba/sdhci@f1050000";
-                spi0 = "/amba/spi@f1010000";
-                usb0 = "/amba/usb@ff9d0000";
-                rtc0 = "/amba/rtc@f12a0000";
-                imux = "/amba/interrupt-multiplex";
+                ethernet0 = "/ethernet0";
+                imux = "/ethernet0";
         };
 };
 """)
@@ -1208,8 +1214,8 @@ def tree_sanity_test( fdt, verbose=0 ):
             if re.search( "node:", line ):
                 node_count += 1
 
-    if node_count != 20:
-        test_failed( "node count (1) is incorrect. Got %s, expected %s" % (node_count,19) )
+    if node_count != 21:
+        test_failed( "node count (1) is incorrect. Got %s, expected %s" % (node_count,21) )
     else:
         test_passed( "end: node walk passed\n" )
 
@@ -1229,8 +1235,8 @@ def tree_sanity_test( fdt, verbose=0 ):
             if re.search( "{", line ):
                 node_count += 1
 
-    if node_count != 20:
-        test_failed( "node count (2) is incorrect (%s expected %s)" % (node_count, 19) )
+    if node_count != 21:
+        test_failed( "node count (2) is incorrect (%s expected %s)" % (node_count, 21) )
     else:
         test_passed( "end: tree print passed\n")
     fpw.close()
@@ -1309,10 +1315,10 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpw.close()
     c = test_pattern_count( fpp.name, ".*node:" )
-    if c == 20:
+    if c == 21:
         test_passed( "full walk, after restricted walk" )
     else:
-        test_failed( "full walk, after restricted walk" )
+        test_failed( "full walk, after restricted walk (wrong number of nodes)" )
 
     print( "[SUB TEST]: end full node walk after custom node list\n" )
 
@@ -1328,10 +1334,10 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( "    /amba restricted test: node: %s" % p )
         count += 1
 
-    if count == 2:
+    if count == 3:
         test_passed( "subtree walk" )
     else:
-        test_failed( "subtree walk (%s vs %s)" % (count,2))
+        test_failed( "subtree walk (%s vs %s)" % (count,3))
     print( "[SUB TEST]: end subtree walk\n" )
 
     print( "[SUB TEST]: start node -> end of tree walk" )
@@ -1346,10 +1352,10 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( "       starting node test: node: %s" % p )
         count += 1
 
-    if count == 14:
+    if count == 15:
         test_passed( "start -> end walk" )
     else:
-        test_failed( "start -> end walk (%s vs %s)" % (count,13))
+        test_failed( "start -> end walk (%s vs %s)" % (count,15))
 
     print( "[SUB TEST]: start node -> end of tree walk\n" )
 
@@ -1390,10 +1396,10 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( "    node: %s" % k.abs_path )
         subnodecount += 1
 
-    if subnodecount == 20:
+    if subnodecount == 21:
         test_passed( "full tree subnode" )
     else:
-        test_failed( "full tree subnode (%s vs %s)" % (subnodecount,19))
+        test_failed( "full tree subnode (%s vs %s)" % (subnodecount,21))
 
     subnodecount = 0
     kiddies = printer.subnodes( printer['/'], ".*amba.*" )
@@ -1404,10 +1410,10 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( "    node: %s" % k.abs_path )
         subnodecount += 1
 
-    if subnodecount == 8:
+    if subnodecount == 9:
         test_passed( "regex subnode" )
     else:
-        test_failed( "regex subnode (%s vs %s)" % (subnodecount,8))
+        test_failed( "regex subnode (%s vs %s)" % (subnodecount,9))
 
     print( "[TEST]: end: subnode calls\n" )
 
@@ -1494,10 +1500,10 @@ def tree_sanity_test( fdt, verbose=0 ):
         if verbose:
             print( " match: %s [%s]" % (m.abs_path, m) )
 
-    if count == 1 and multiplex:
+    if count == 2 and multiplex:
         test_passed( "regex node match" )
     else:
-        test_failed( "regex node match" )
+        test_failed( "regex node match (wrong number of nodes)" )
 
     if verbose:
         print( "searching for /amba.*" )
@@ -1510,10 +1516,10 @@ def tree_sanity_test( fdt, verbose=0 ):
         if verbose:
             print( "    match: %s [%s]" % (m.abs_path, m) )
 
-    if count == 8 and multiplex:
+    if count == 9 and multiplex:
         test_passed( "regex node match 2" )
     else:
-        test_failed( "regex node match 2" )
+        test_failed( "regex node match 2 (wrong number of nodes)" )
 
     if verbose:
         print( "exact node match: /amba" )
@@ -1857,12 +1863,12 @@ def tree_sanity_test( fdt, verbose=0 ):
     # alias test
     alias = printer.alias_node( "imux" )
     if not alias:
-        test_falled( "alias lookup for valid node" )
+        test_failed( "alias lookup for valid node" )
     else:
         test_passed( "alias lookup for valid node" )
-    alias = printer.alias_node( "serial0" )
+    alias = printer.alias_node( "serial0-fake" )
     if alias:
-        test_falled( "alias lookup for invalid node" )
+        test_failed( "alias lookup for invalid node" )
     else:
         test_passed( "alias lookup for invalid node" )
 
