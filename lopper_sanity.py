@@ -2356,6 +2356,7 @@ if __name__ == "__main__":
     main()
 
     if libfdt:
+        import lopper.fdt
         lopper.lopper_type(lopper.fdt.LopperFDT)
     else:
         import lopper.dt
