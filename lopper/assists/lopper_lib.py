@@ -149,7 +149,7 @@ def includes( tree, include_prop ):
         includes = include_prop.value
 
         # every other entry is a phandle
-        for ph in includes[::2]:
+        for ph in includes:
             anode = tree.pnode( ph )
             if anode:
                 include_nodes.append( anode )
