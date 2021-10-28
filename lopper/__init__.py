@@ -80,6 +80,7 @@ class LopperSDT:
         self.dts = sdt_file
         self.dtb = ""
         self.lops = []
+        self.lops_optional = []
         self.verbose = 0
         self.dry_run = False
         self.assists = []
@@ -284,9 +285,38 @@ class LopperSDT:
             self.tree.load( Lopper.export( self.FDT ) )
             self.tree.strict = not self.permissive
 
+        try:
+            lops = self.tree["/lops"]
+            if lops:
+                if self.verbose:
+                    print( "[INFO]: embedded lops detected, extracting and queuing" )
+
+                # free the lops from the input tree
+                self.tree.delete(lops)
+
+                # and save them in a lops tree
+                embedded_lops_tree = LopperTree()
+                embedded_lops_tree + lops
+
+                lop = LopperFile( "" )
+                lop.dts = ""
+                lop.dtb = ""
+                lop.fdt = None
+                lop.tree = embedded_lops_tree
+
+                if self.autorun:
+                    self.lops.append( lop )
+                else:
+                    self.lops_optional.append( lop )
+        except Exception as e:
+            pass
+
+        # exceptions are carrying us on and causing us trouble!
+        #os._exit(1)
+
         if self.verbose:
             print( "" )
-            print( "SDT summary:")
+            print( "Lopper summary:")
             print( "   system device tree: %s" % sdt_files )
             print( "   lops: %s" % lop_files )
             print( "   output: %s" % self.output_file )
@@ -648,7 +678,6 @@ class LopperSDT:
         #     id = "openamp,domain-v1";
         # };
         # and then inject it into self.lops to run first
-
 
         lt = LopperTree()
 
@@ -1920,7 +1949,28 @@ class LopperSDT:
         """
         # was --target passed on the command line ?
         if self.target_domain:
-            self.domain_spec(target_domain)
+            # is the target domain in our tree ? If not, don't bother queing it, since
+            # it is a lop specification
+            try:
+                td = self.tree[self.target_domain]
+                self.domain_spec(self.target_domain)
+            except:
+                optional_lops_tree = LopperTree()
+                for l in self.lops_optional:
+                    try:
+                        lop_possible = l.tree.nodes(self.target_domain)
+                        for ll in lop_possible:
+                            optional_lops_tree + ll
+                    except:
+                        pass
+
+                # promote any matching optional lops, to lops that will be run
+                lop = LopperFile( "" )
+                lop.dts = ""
+                lop.dtb = ""
+                lop.fdt = None
+                lop.tree = optional_lops_tree
+                self.lops.append( lop )
 
         # force verbose output if --dryrun was passed
         if self.dryrun:

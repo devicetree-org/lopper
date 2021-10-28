@@ -42,7 +42,7 @@ def usage():
     print('  -a, --assist        load specified python assist (for node or output processing)' )
     print('  -A, --assist-paths  colon separated lists of paths to search for assist loading' )
     print('    , --enhanced      when writing output files, do enhanced processing (this includes phandle replacement, comments, etc' )
-    print('    . --auto          automatically run any assists passed via -a' )
+    print('    . --auto          automatically run any eligible assists (via -a) or lops (embedded)' )
     print('    , --permissive    do not enforce fully validated properties (phandles, etc)' )
     print('  -o, --output        output file')
     print('    , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes' )
@@ -320,6 +320,7 @@ def main():
     device_tree.load_paths = load_paths
     device_tree.permissive = permissive
     device_tree.merge = overlay
+    device_tree.autorun = auto_run
 
     device_tree.setup( sdt, inputfiles, "", force, libfdt, config )
     device_tree.assists_setup( cmdline_assists )

@@ -2819,8 +2819,11 @@ class LopperTree:
         if self.__dbg__ > 2:
             print( "[DBG] tree export start: %s" % start_path )
 
-        # tree export to a nested dictionary!
-        start_node = self[start_path]
+        try:
+            # tree export to a nested dictionary!
+            start_node = self[start_path]
+        except:
+            return {}
 
         subnodes = start_node.subnodes( 0, 1 )
 
@@ -2948,7 +2951,6 @@ class LopperTree:
 
         """
         n = node
-
         # not a great idea to delete by number, but we support it as
         # a transitional step
         if type(node) == int:
@@ -2965,22 +2967,22 @@ class LopperTree:
 
             try:
                 del self.__nodes__[n.abs_path]
-            except:
+            except Exception as e:
                 pass
 
             try:
                 del self.__pnodes__[n.phandle]
-            except:
+            except Exception as e:
                 pass
 
             try:
                 del self.__lnodes__[n.label]
-            except:
+            except Exception as e:
                 pass
 
             try:
                 del self.__nnodes__[n.number]
-            except:
+            except Exception as e:
                 pass
 
             # snip the link if we are the first call, otherwise, the
@@ -2993,7 +2995,10 @@ class LopperTree:
             # are hence still fundamentally deleted. As does the flagging as
             # state "deleted" below
             if n.parent and delete_from_parent:
-                del n.parent.child_nodes[n.abs_path]
+                try:
+                    del n.parent.child_nodes[n.abs_path]
+                except Exception as e:
+                    print( "[WARNING]: tree inconsistency. could not delete %s from %s" % (n.abs_path,n.parent.abs_path))
 
             n.__nstate__ = "deleted"
             n.__modified__ = True
