@@ -61,6 +61,13 @@ def domain_get_subnodes(tree):
             a_nodes = lopper_lib.node_accesses( tree, node )
             if a_nodes:
                 direct_node_refs.append( node )
+            # 3) include = <> nodes
+            try:
+                i_nodes = lopper_lib.includes( tree, node['include'])
+                if i_nodes:
+                    direct_node_refs.append( node )
+            except:
+                pass
 
     # Remove duplicate entries
     direct_node_refs = list(dict.fromkeys(direct_node_refs))
