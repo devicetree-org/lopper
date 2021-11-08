@@ -1426,7 +1426,7 @@ class LopperFDT(lopper_base.lopper_base):
             if len(prop_val) >= 0:
                 try:
                     bval = LopperFDT.encode_byte_array_from_strings(prop_val)
-                except:
+                except Exception as e:
                     bval = LopperFDT.encode_byte_array(prop_val)
 
                 for _ in range(MAX_RETRIES):
