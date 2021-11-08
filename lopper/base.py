@@ -484,7 +484,11 @@ class lopper_base:
         """
         barray = b''
         for i in values:
-            barray = barray + i.to_bytes(4,byteorder='big')
+            byte_count=4
+            try:
+                barray = barray + i.to_bytes(byte_count,byteorder='big')
+            except OverflowError:
+                byte_count += 1
         return barray
 
     @staticmethod
