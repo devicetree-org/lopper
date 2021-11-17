@@ -502,7 +502,7 @@ class LopperSDT:
                 print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
                 sys.exit(1)
 
-            yaml = LopperYAML( None, self.tree, config=config )
+            yaml = LopperYAML( None, self.tree, config=self.config )
             yaml.to_yaml( output_filename )
         else:
             # we use the outfile extension as a mask

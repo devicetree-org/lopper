@@ -221,7 +221,6 @@ class LopperDictImporter(object):
         to_delete = []
         for k in attrs:
             if type(attrs[k]) == dict:
-
                 # This is a child, name it
                 # we need this deepcopy, since if the yaml has an alias and
                 # reference, changing one dictionary changes the other. We
@@ -278,7 +277,6 @@ class LopperDictImporter(object):
                     children.append( new_node )
 
                     to_delete.append( k )
-
 
         for d in to_delete:
             del attrs[d]
@@ -497,7 +495,7 @@ class LopperYAML():
             print( "[ERROR]: cannot export tree, nothing is loaded" )
             return None
 
-        lt = LopperTreePrinter()
+        lt = LopperTree()
 
         excluded_props = [ "name", "fdt_name" ]
         serialize_json = True
@@ -525,6 +523,7 @@ class LopperYAML():
             for p in props:
                 if verbose:
                     print( "[DBG+]: prop: %s (%s)" % (p,props[p]) )
+
                 if serialize_json:
                     use_json = False
                     skip = False
@@ -597,8 +596,117 @@ class LopperYAML():
                             ln + lp
 
         lt.resolve()
-        lt.sync()
 
+        # are there any nodes in the tree with properties containing a merge ?
+        #   - as the value ?
+        #   - as the key in a dictionary ?
+        for n in lt:
+            new_node = None
+            for p in n:
+                new_list = []
+                if p.pclass == "json":
+                    if verbose:
+                        print( "[DBG]: json: %s (len: %s)" % (p.value,len(p)) )
+                    extension_found = False
+                    for x in range(0, len(p)):
+                        try:
+                            m_val = p[x]["<<+"]
+                            extension_found = True
+                            if verbose:
+                                print( "[DBG]; found extension marker: %s" % m_val )
+                        except:
+                            pass
+
+                    if not extension_found:
+                        if p.name == "<<+":
+                            extension_found = True
+                            if verbose:
+                                print( "[DBG]: found extension name (<<+)" )
+
+                    for x in range(0, len(p)):
+                        if verbose:
+                            print("[DBG]     [%s] chunk: %s (%s)" % (x,p[x],type(p[x]) ) )
+                        try:
+                            # an exception is raised if the chunk doesn't have an index
+                            # with <<+, so everything below can assume this is true.
+                            if p.name == "<<+":
+                                m_val = p[x]
+                                dict_check = 0
+                            else:
+                                m_val = p[x]["<<+"]
+                                dict_check = x
+                            if verbose:
+                                print( "[DBG]                      mval %s" % m_val )
+                            if type(m_val) == list and len(m_val) == 1 and type(m_val[dict_check]) == dict:
+                                new_name = p.name
+                                if p.name == "<<+":
+                                    try:
+                                        new_name = p.node.name + "@" + str(x)
+                                    except Exception as e:
+                                        print( " damn! %s" % e )
+
+                                if verbose:
+                                    print( "[DBG]: -------> promote to a node: %s" % p.name )
+                                new_node = LopperNode( -1, name=new_name )
+                                for i,v in m_val[dict_check].items():
+                                    if verbose:
+                                        print( "[DBG]:                adding prop: %s -> %s" % (i,v))
+                                    new_prop = LopperProp(i, -1, new_node, v )
+                                    new_node + new_prop
+                                    new_prop.resolve()
+
+                                new_node.resolve()
+
+                                if p.name != "<<+":
+                                    n.delete( p )
+
+                                # this is wrong, there's a bug in node adding .. we
+                                # should be able to just add this to the parent node
+                                # and be done.
+                                # n = n + new_node
+                                new_node.abs_path = n.abs_path + "/" + new_node.name
+                                lt = lt + new_node
+                            else:
+                                if new_node:
+                                    if verbose:
+                                        print( "[DBG]: extension found, adding as property to the new node" )
+                                    new_prop_name = new_node.name + "-xtend"
+                                    new_prop = LopperProp( new_prop_name, -1, new_node, json.dumps(m_val) )
+                                    new_prop.pclass = "json"
+                                    new_node + new_prop
+                                    new_prop.resolve()
+                                else:
+                                    # unroll a loop ?
+                                    if type(m_val) == list:
+                                        possible_merge = m_val
+                                        nested_lists = any(isinstance(i, list) for i in possible_merge)
+                                        newlist = possible_merge
+                                        while nested_lists:
+                                            newlist = [item for items in newlist for item in items]
+                                            nested_lists = any(isinstance(i, list) for i in newlist)
+
+                                        new_list.extend(newlist)
+                                    else:
+                                        pass
+
+                        # catches the check for "<<+"
+                        except Exception as e:
+                            if extension_found:
+                                new_list.append(p[x])
+
+                    # end of the loop through the property chunks
+                    if p.name == "<<+":
+                        n.delete( p )
+
+                    # we've finished looping through all the json chunks
+                    if new_list and extension_found:
+                        # we do this to avoid the wrapping routines in LopperProperty
+                        p.__dict__["value"] = json.dumps(new_list)
+                        p.resolve( False )
+
+            # we've finished looping through all the properties
+
+        lt.sync()
         return lt
 
     def print( self ):

@@ -662,6 +662,7 @@ class LopperProp():
 
         """
         indent = (self.node.depth * 8) + 8
+
         outstring = self.string_val
         only_align_comments = False
 
@@ -1030,6 +1031,7 @@ class LopperProp():
         else:
             outstring = "{0} = \"{1}\";".format( self.name, prop_val )
 
+        #print( "proiperty %s is resolved: %s" % (self.name,self.string_val))
         if not self.ptype:
             self.ptype = self.property_type_guess()
             if self.__dbg__ > 3:
@@ -2047,6 +2049,7 @@ class LopperNode(object):
                 self.abs_path = "/" + self.name
 
             node.abs_path = self.abs_path + "/" + node.name
+            node.__path__ = node.abs_path
             node.parent = self
             node.tree = self.tree
 
