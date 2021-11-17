@@ -662,6 +662,7 @@ class LopperProp():
 
         """
         indent = (self.node.depth * 8) + 8
+
         outstring = self.string_val
         only_align_comments = False
 

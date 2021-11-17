@@ -321,6 +321,7 @@ def main():
     device_tree.permissive = permissive
     device_tree.merge = overlay
     device_tree.autorun = auto_run
+    device_tree.config = config
 
     device_tree.setup( sdt, inputfiles, "", force, libfdt, config )
     device_tree.assists_setup( cmdline_assists )
