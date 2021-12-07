@@ -22,7 +22,7 @@ similar plugins to generate their RemoteProc device tree nodes.
 At the System Device Tree level, no special nodes or properties are
 needed to represent RemoteProc information. Typically, the main cluster
 and the remote cluster are separate domains. Any shared resources are
-represented as a resource-group, as usual with system device tree.
+repeated under all domains that can access them.
 
 Special vendor-specific properties can be represented using the access
 list flag fields, as usual with system device tree.
@@ -34,127 +34,102 @@ list flag fields, as usual with system device tree.
 This is a System Device Tree example that can be used as input for
 lopper to generate RemoteProc nodes for Linux.
 
-The things to note are:
+~~
 
-- resource\_group@0 to share resources
-- the 0x13 access flags for ipi\_mailbox\_rpu0, the specific
-  meaning is expressed in a comment below
-- the sharedmem flag, which is defined as 0x1 for openamp_a53, which
-  means master, and as 0x0 for openamp_r5, which means slave.
-
+Example in YAML:
 
 ~~~
-	psu_r5_0_atcm_global: psu_tcm_global@ffe00000 {
-		xlnx,s-axi-highaddr = <0xFFE0FFFF>;
-		compatible = "xlnx,psu-tcm-global";
-		status = "okay";
-		reg = <0x0 0xffe00000 0x0 0x10000>;
-		firewall-0 = <&lpd_xppu>;
-		xlnx,s-axi-baseaddr = <0xFFE00000>;
-	};
-	psu_r5_0_btcm_global: psu_tcm_global@ffe20000 {
-		xlnx,s-axi-highaddr = <0xFFE2FFFF>;
-		compatible = "xlnx,psu-tcm-global";
-		status = "okay";
-		reg = <0x0 0xffe20000 0x0 0x10000>;
-		firewall-0 = <&lpd_xppu>;
-		xlnx,s-axi-baseaddr = <0xFFE20000>;
-	};
+definitions:
+    OpenAMP:
 
-	zynqmp_ipi@0 {
-		 compatible = "xlnx,zynqmp-ipi-mailbox";
-		 interrupt-parent = <&gic>;
-		 interrupts = <0 29 4>;
-		 xlnx,ipi-id = <7>;
-		 #address-cells = <1>;
-		 #size-cells = <1>;
-		 ranges;
+         openamp-channel-0-access-srams: &openamp-channel0-access-srams # used for access in each domain
+             - dev: psu_r5_0_atcm_global
+             - dev: psu_r5_0_btcm_global
 
-		 /* APU<->RPU0 IPI mailbox controller */
-		 ipi_mailbox_rpu0: mailbox@ff90000 {
-			reg = <0xff990600 0x20>,
-			      <0xff990620 0x20>,
-			      <0xff9900c0 0x20>,
-			      <0xff9900e0 0x20>;
-			reg-names = "local_request_region",
-				    "local_response_region",
-				    "remote_request_region",
-				    "remote_response_region";
-			#mbox-cells = <1>;
-			xlnx,ipi-id = <1>;
-		 };
-	};
+         rproc_reserved0: &rproc_reserved0
+             - start: 0x3ed00000
+               size: 0x40000
+               no-map: 1
 
-	domains {
-		#address-cells = <0x2>;
-		#size-cells = <0x2>;
+         rpu0vdev0vring: &rpu0vdev0vring0
+             - start: 0x3ed40000
+               size: 0x4000
+               no-map: 1
 
-		resource_group: resource_group@0 {
-			compatible = "openamp,remoteproc-v1", "openamp,group-v1";
-			memory = <0x0 0x3ed40000 0x0 0x4000
-				  0x0 0x3ed44000 0x0 0x4000
-				  0x0 0x3ed48000 0x0 0x100000
-				  0x0 0x3ed00000 0x0 0x40000
-			memory-flags-names = "sharedmem";
-			sram = <&psu_r5_0_btcm_global>, <&psu_r5_0_atcm_global>;
-			sram-flags-names = "sharedmem";
-		};
+         rpu0vdev0vring1: &rpu0vdev0vring1
+             - start: 0x3ed44000
+               size: 0x4000
+               no-map: 1
 
-		openamp_a53 {
-			compatible = "openamp,domain-v1";
-			#address-cells = <0x2>;
-			#size-cells = <0x2>;
+         rpu0vdev0buffer: &rpu0vdev0buffer
+             - start: 0x3ed48000
+               size: 0x100000
+               no-map: 1
 
-			id = <0x3>;
-			memory = <0x0 0x80000000 0x0 0x78000000
-				  0x8 0x0 0x0 0x80000000>;
-			cpus = <&cpus_a53 0xf 0x2>;
 
-			/*
-			 * Flags field, mapping specific
-			 *
-			 * memory and reserved-memory:
-			 *   bit 0: 0/1: RO/RW
-			 *
-			 * xlnx,zynqmp-ipi-mailbox:
-			 *   4 bits for each IPI channel to pass special flags
-			 *   0-3   bits: channel 0
-			 *   4-7   bits: channel 1
-			 *   8-11  bits: channel 2
-			 *   12-15 bits: channel 3
-			 * each 4 bits:
-			 *   bit 0: enable/disable (enable==1)
-			 *   bit 1: TX/RX (TX==1)
-			 *   bit 2-3: unused
-			 *
-			 * Other cases: unused 
-			 *
-			 */
-			#flags-cells = <1>;
-			flags = <0x13 0x1>;
-			flags-names = "rpu0", "sharedmem";
-			access = <&ipi_mailbox_rpu0>;
-			access-flags-names = "rpu0";
+domains:
+    openamp_a72_0_cluster: # host in channel from a72-0 to r5-1 over channel 0
+        compatible:
+            - "openamp,domain-v1"
+        cpus:
+            - cluster: cpus_a72
+              cpumask: 0x1
+              mode:
+                 secure: false
+                 el: 0x1
+        access:
+            # if we want to have a list merge, it should be in a list
+            - dev: ipi0  # used for Open AMP RPMsg IPC
+            - <<+: [ *openamp-channel0-access-srams ]
 
-			include = <&resource_group>;
-		};
+        reserved-memory:
+            ranges: true
+            # if we want an object / node merge, it should be like this (a map)
+            - <<+: [*rpu0vdev0vring0, *rpu0vdev0vring1, *rpu0vdev0buffer, *rproc_reserved0 ]
 
-		openamp_r5 {
-			compatible = "openamp,domain-v1";
-			#address-cells = <0x2>;
-			#size-cells = <0x2>;
+        domain-to-domain:
+            compatible: openamp,domain-to-domain-v1
+            remoteproc0:
+                compatible: openamp,remoteproc-v1
+                remote: openamp_r5_0_cluster
+                elfload:
+                     - rproc_reserved0
+                     - openamp-channel-0-access-srams
 
-			id = <0x4>;
-			memory = <0x0 0x0 0x0 0x20000000>;
-			cpus = <&cpus_r5 0x2 0x80000000>;
+            rpmsg0:
+                compatible: openamp,rpmsg-v1
+                openamp-xlnx-native: true # use native OpenAMP implementation
+                remote:  openamp_r5_0_cluster
+                mbox: ipi0
+                carveouts:
+		   - rproc_reserved0
+		   - rpu0vdev0vring0
+		   - rpu0vdev0vring1
 
-			#flags-cells = <1>;
-			flags = <0x0>;
-			flags-names = "sharedmem";
-
-			include = <&resource_group>;
-		};
-	};
+    openamp_r5_0_cluster:
+        compatible:
+            - "openamp,domain-v1"
+        cpus:
+            - cluster: cpus_r5
+              cpumask: 0x1
+              mode:
+              secure: true
+        access:
+            - dev: ipi2
+            - <<+: *openamp-channel0-access-srams # TCM banks used for firmware memory
+        reserved-memory:
+            ranges: true
+            <<+: [ *rpu0vdev0vring0, *rpu0vdev0vring0, *rpu0vdev0buffer, *rproc_reserved0 ]
+        domain-to-domain:
+             compatible: openamp,domain-to-domain-v1
+             relation0:
+                 compatible: openamp,rpmsg-v1
+                 host: openamp_a72_0_cluster
+                 mbox: ipi2
+                 carveouts:
+		    - rproc_reserved0
+		    - rpu0vdev0vring0
+		    - rpu0vdev0vring1
 ~~~
 
 
@@ -164,10 +139,10 @@ The corresponding Device Tree for Linux generated by lopper is the
 following. (It is compliant to the latest RemoteProc Xilinx bindings
 upstream.)
 
-- the reserved-memory regions are generated from the regions under resource\_group@0 in system device tree
+- the reserved-memory regions are copied from the reserved-memory subnode of a domain.
 - r5ss@f9a00000:
     - xlnx,cluster-mode comes from the cpus property of the RPU domain
-    - memory-region and sram properties come from resource\_group@0
+    - memory-region and sram properties come from the shared regions
 	- mboxes and mbox-names come from the access property and the 0x13 flag
 
 ~~~
@@ -208,17 +183,16 @@ upstream.)
 
 		r5f_0 {
 			compatible = "xilinx,r5f";
-			memory-region = <&elf_load0>,
-							 <&rpu0vdev0vring0>,
-							 <&rpu0vdev0vring1>,
-							 <&rpu0vdev0buffer>;
+			memory-region = <&rproc_0_reserved0>,
+					<&rpu0vdev0vring0>,
+					<&rpu0vdev0vring1>,
+					<&rpu0vdev0buffer>;
 			sram = <&psu_r5_0_atcm_global>, <&psu_r5_0_btcm_global>;
 			mboxes = <&ipi_mailbox_rpu0 0x0 &ipi_mailbox_rpu0 0x1>;
 			mbox-names = "tx", "rx";
 			power-domain = <0x7>;
 		};
 	};
-
 	psu_r5_0_atcm_global: psu_tcm_global@ffe00000 {
 		compatible = "xlnx,psu-tcm-global";
 		status = "okay";
