@@ -85,7 +85,7 @@ domains:
         reserved-memory:
             ranges: true
             # if we want an object / node merge, it should be like this (a map)
-            - <<+: [*rpu0vdev0vring0, *rpu0vdev0vring1, *rpu0vdev0buffer, *rproc_reserved0 ]
+	    label-references: { rpu1vdev0vring0, rpu1vdev0vring0, rpu1vdev0buffer, rproc_reserved0 }
 
         domain-to-domain:
             compatible: openamp,domain-to-domain-v1
@@ -119,7 +119,7 @@ domains:
             - <<+: *openamp-channel0-access-srams # TCM banks used for firmware memory
         reserved-memory:
             ranges: true
-            <<+: [ *rpu0vdev0vring0, *rpu0vdev0vring0, *rpu0vdev0buffer, *rproc_reserved0 ]
+	    label-references: { rpu1vdev0vring0, rpu1vdev0vring0, rpu1vdev0buffer, rproc_reserved0 }
         domain-to-domain:
              compatible: openamp,domain-to-domain-v1
              relation0:
