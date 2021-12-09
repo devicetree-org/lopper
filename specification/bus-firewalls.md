@@ -1,8 +1,6 @@
 Bus Firewalls: Hardware Description
 ===================================
 
-This extension is still a DRAFT.
-
 Bus Firewall Controllers
 ------------------------
 
@@ -125,65 +123,15 @@ Bus Firewalls: Configuration
 Bus firewalls configuration is based on Execution Domains. They are the
 natural place to describe the desired firewalls configurations because
 they already specify device assignments. We only need to add protection
-to the assignments. To do that, we add new node "resource-group" and a
-two properties "firewallconf" and "firewallconf-default".
-
-
-resource-group
---------------
-
-A resource-group node is used to group together resources shared across
-multiple Execution Domains. Instead of "access", we use the new property
-"include" to link to a resource-group from a domain node:
-
-
-	domains {
-		#address-cells = <0x1>;
-		#size-cells = <0x1>;
-	
-		resource_group_1: resource_group_1 {
-			compatible = "openamp,resource-group-v1";
-			access = <&ethernet, &serial0>;
-			access-flags-names = "dev_rw", "dev_rw";
-		};
-
-		domain@0 {
-			compatible = "openamp,domain-v1";
-			#flags-cells = <1>;
-			flags = <0x0 0x1>;
-			flags-names = "dev_rw", "dev_ro";
-			access = <&mmc0>;
-			access-flags-names = "dev_rw";
-			include = <&resource_group_1>;
-		};
-
-		domain@1 {
-			compatible = "openamp,domain-v1";
-			#flags-cells = <1>;
-			flags = <0x3 0x0>;
-			flags-names = "dev_rw", "dev_ro";
-			access = <&can0>;
-			access-flags-names = "dev_rw";
-			include = <&resource_group_1>;
-		};
-
-
-In this example, resource_group_1 is shared between domain@0 and
-domain@1, hence, both ethernet and serial0 are accessible by both
-domains.
-
-include is a list of links pointing to resource groups.
-
-access under resource groups, much like access under domains, is a list
-of links to peripherals.  
+to the assignments. To do that, we add two new properties "firewallconf"
+and "firewallconf-default".
   
 
 firewallconf
 ------------
 
-firewallconf is a new property that can be used in a resource-group or a
-domain node. It applies to all address ranges in the resource-group or
-domain it appears in.
+firewallconf is a new property that can be used in a domain node. It
+applies to all address ranges in the domain it appears in.
 
 
 			firewallconf = <&domain0 block 0>;
@@ -231,27 +179,19 @@ of domain@0 and domain@1.
 Full Example
 ------------
 
-Two domains sharing two key resources. The two resources are accessible
-by the two domains using them, but everybody else is prevented from
-accessing them. The two domains also want to protect themselves against
-foreign access but at a lower priority.
+Two domains are block access from everybody else to their resources with
+the exception of two devices, ethernet and serial0, which are shared
+between the two domains so both domains get access to them.
 
 		domains {
 			#address-cells = <0x1>;
 			#size-cells = <0x1>;
-		
-			resource_group_1: resource_group_1 {
-				compatible = "openamp,group-v1";
-				access = <&ethernet>, <&serial0>;
-				firewallconf-default = <block 0>;
-			};
-
+	
 			domain0: domain@0 {
 				compatible = "openamp,domain-v1";
 				id = <0x0>;
 				memory = <0x100000 0x100000>;
-				access = <&mmc0>;
-				include = <&resource_group_1>;
+				access = <&mmc0 &ethernet &serial0>;
 				firewallconf-default = <block-desirable 8>;
 			};
 
@@ -259,7 +199,6 @@ foreign access but at a lower priority.
 				compatible = "openamp,domain-v1";
 				id = <0x1>;
 				memory = <0x0 0x100000>;
-				access = <&can0>;
-				include = <&resource_group_1>;
+				access = <&can0 &ethernet &serial0>;
 				firewallconf-default = <block-desirable 8>;
 			};
