@@ -11,8 +11,7 @@ representation of System Device Tree domains (/domains).
 Hierarchy
 ---------
 
-Resource groups nodes are not under /domains but under
-/resource\_groups; domains are under /domains.
+Domains are under /domains.
 
 All domains, even nested domains, are specified under a "domain" key.
 
@@ -32,7 +31,7 @@ Example:
 ~~~
   access:
       - dev: serial0
-        flags: dev_ns_req
+        flags: {read-only: true}
 ~~~
 
 
@@ -40,9 +39,8 @@ Memory and Sram
 ---------------
 
 The memory and sram properties to specify the memory and sram
-allocations to a domain (or shared under a resource\_group) are
-specified in YAML using start and size key: value pairs to increase
-readability.
+allocations to a domain are specified in YAML using start and size key:
+value pairs to increase readability.
 
 Example:
 
@@ -50,7 +48,7 @@ Example:
   sram:
       - start: 0xfffc0000
         size: 0x1000
-        flags: sharedmem
+        flags: {read-only: true}
 ~~~
 
 
@@ -85,25 +83,19 @@ Flags
 In YAML the following simplifications are used for access, memory, and
 sram flags definitions and usage:
 
-- To define flags, instead of two separate flags and flags-names
-  properties, use key: value pairs under a top "flags" key.
+- To define flags  use key: value pairs
 
 - When defining flags values, give individual flags setting a name
   rather than just a number, e.g. use read-only instead of (1<<2). The
   name and corresponding numeric values should be specified in lopper.
 
-- Instead of \*-flags-names, use a "flags" key: value pair.
+- no \*-flags-cells
 
 ~~~
 
-  flags:
-    rodev:
-      requested: true
-      read-only: true
-
   access:
       - dev: can0
-        flags: rodev
+        flags: {requested: true, read-only: true}
 
 ~~~
 
@@ -141,13 +133,6 @@ Full Example
 ------------
 
 ~~~
-resource_groups:
-    resource_group1:
-        sram:
-            - start: 0xfffc0000
-              size: 0x1000
-              flags: sharedmem
-
 domains:
     xen:
         compatible: openamp,domain-v1
@@ -163,13 +148,11 @@ domains:
             - start: 0x500000
               size: 0x7fb00000
 
-        flags:
-            dev_ns_req: { xen-flag-example1: true }
-            sharedmem: { read-only: true }
-
         access:
             - dev: serial0
-              flags: dev_ns_req
+              flags: { xen-flag-example1: true }
+            - dev: mmc0
+              flags: { xen-flag-example1: true }
 
         domains:
             linux1:
@@ -186,9 +169,10 @@ domains:
                     - size: 1G
                 access:
                     - dev: mmc0
-                      flags: dev_ns_req
-                include:
-                    - resource_group1
+                sram:
+                    - start: 0xfffc0000
+                      size: 0x1000
+                      flags: { read-only: true }
                 firewallconf:
                     domain: bm1
                     block: 0x12
@@ -207,7 +191,6 @@ domains:
                     - size: 512M
                 access:
                     - dev: ethernet0
-                      flags: dev_ns_req
                 firewallconf:
                     domain: linux1
                     block: always
@@ -238,6 +221,8 @@ domains:
             - size: 1M
         access:
             - dev: serial1
-        include:
-            - resource_group1
+        sram:
+            - start: 0xfffc0000
+              size: 0x1000
+              flags: { read-only: true }
 ~~~

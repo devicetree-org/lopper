@@ -743,65 +743,73 @@
 	domains {
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
-		
-		resource_group_1: resource_group_1 {
-			compatible = "openamp,group-v1";
 
-			access = <&ethernet0, &serial0>;
+		subsystem1: domain@1 {
+			compatible = "xilinx,subsystem-v1", "openamp,domain-v1";
 
-            /* 1: block */
-			firewallconfig-default = <1 0>;
-		};
-	
-		resource_group_2: resource_group_2 {
-			compatible = "openamp,group-v1";
-
-			memory = <0x0 0x500000 0x0 0x1000>;
-		};
-
-		xen: domain@2 {
-			compatible = "openamp,domain-v1";
-
-			cpus = <&cpus_a72 0x3 0x00000002>;
+			/*
+			 * When the domain is a xilinx,subsystem, then the specified
+			 * CPU level is expected to be the highest possible in the
+			 * cluster.
+			 *
+			 * bit 0-3: EL
+			 * bit 31: secure/non-secure
+			 */
+			cpus = <&cpus_a72 0x3 0x80000003>;
 			memory = <0x0 0x500000 0x0 0x7fb00000>;
-			id = <0xffff>;
 
-			linux1: domain@3 {
+			#access-flags-cells = <1>;
+			access = <&mmc0 0x1>;
+			id = <0x3>;
+
+			/* 2: block-desirable */
+			firewallconfig-default = <2 8>;
+
+			xen: domain@2 {
 				compatible = "openamp,domain-v1";
 
-				cpus = <&cpus_a72 0x3 0x00000001>;
-				memory = <0x0 0x501000 0x0 0x3faff000>;
-				id = <0x0>;
-
+				cpus = <&cpus_a72 0x3 0x00000002>;
+				memory = <0x0 0x500000 0x0 0x7fb00000>;
+				id = <0xffff>;
+				#access-flags-cells = <0>;
 				access = <&mmc0>;
-				include = <&resource_group_2>;
-			};
 
-			linux2: domain@4 {
-				compatible = "openamp,domain-v1";
+				linux1: domain@3 {
+					compatible = "openamp,domain-v1";
 
-				cpus = <&cpus_a72 0x3 0x00000001>;
-				memory = <0x0 0x40000000 0x0 0x40000000>;
-				id = <0x1>;
+					cpus = <&cpus_a72 0x3 0x00000001>;
+					memory = <0x0 0x501000 0x0 0x3faff000
+							  0x0 0x500000 0x0 0x1000>;
+					id = <0x0>;
 
-				include = <&resource_group_1, &resource_group_2>;
-				/* 1: block */
-				firewallconfig = <&linux1 1 0>;
+					#access-flags-cells = <0>;
+					access = <&mmc0>;
+				};
+
+				linux2: domain@4 {
+					compatible = "openamp,domain-v1";
+
+					cpus = <&cpus_a72 0x3 0x00000001>;
+					memory = <0x0 0x40000000 0x0 0x40000000
+							  0x0 0x500000 0x0 0x1000>;
+					id = <0x1>;
+
+					access = <&ethernet0 &serial0>;
+					/* 1: block */
+					firewallconfig = <&linux1 1 0>;
+				};
 			};
 		};
 
-		domain@5 {
-			compatible = "openamp,domain-v1";
+		subsystem2: domain@5 {
+			compatible = "xilinx,subsystem-v1", "openamp,domain-v1";
 
 			cpus = <&cpus_r5 0x3 0x80000001 &microblaze0 0x1 0x00000000>;
 			memory = <0x0 0x100000 0x0 0x400000>;
 			id = <0x4>;
 
-			flags = <0x0>;
-			flags-names = "dev";
-			access = <&can0>;
-			access-flags-names = "dev";
-			include = <&resource_group_1>;
+			#access-flags-cells = <0x1>;
+			access = <&can0 0x0 &ethernet0 0x0 &serial0 0x0>;
 			/* 1: block */
 			firewallconfig-default = <1 0>;
 		};
