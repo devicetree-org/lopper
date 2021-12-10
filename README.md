@@ -56,6 +56,27 @@ Lopper is in a single repository, and is available via git or pypi:
 
    % export PYTHONPATH=<path to pylibfdt>:$PYTHONPATH
 
+# submitting patches / reporting issues
+
+Pull requests or patches are acceptable for sending changes/fixes/features to Lopper,
+chose whichever matches your preferred workflow.
+
+For pull requests and issues:
+
+  - Use the Lopoper github: https://github.com/devicetree-org/lopper
+
+For Patches:
+
+  - Use the groups.io mailing list: https://groups.io/g/lopper-devel
+  - kernel (lkml) style patch sending is preferred
+  - Send patches via git send-mail, using something like:
+
+     % git send-email -M --to lopper-devel@groups.io <path to your patches>
+
+For discussion:
+
+  - Use the mailing list or the github wiki/dicussions/issue tracker
+
 # Lopper overview:
 
 lopper.py --help
@@ -122,5 +143,5 @@ handle the split directories and include files.
 
 ## Limitations:
 
- - This is a pre-release, internal interfaces are still subject to change
+ - Internal interfaces are subject to change
 
