@@ -684,6 +684,18 @@ def flags_expand(tree, tgt_node, verbose = 0 ):
 
     return True
 
+def domain_to_domain_expand(tree, tgt_node, verbose = 0 ):
+
+    if 'openamp,domain-to-domain-v1' not in tgt_node.propval("compatible"):
+        return False
+
+    # loop through subnodes that describe various relations between domains
+    for n in tgt_node.subnodes():
+        if n.depth == tgt_node.depth + 1:
+            if verbose:
+                print("domain_to_domain_expand: ", tgt_node, n)
+
+    return True
 
 def subsystem_expand( tgt_node, sdt, verbose = 0 ):
     if verbose:
