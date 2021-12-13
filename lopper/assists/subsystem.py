@@ -33,6 +33,11 @@ import lopper
 import json
 import humanfriendly
 
+sys.path.append(os.path.dirname(__file__))
+from openamp import is_openamp_d_to_d
+from openamp import openamp_d_to_d_expand
+
+
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,subsystem", compat_string_to_test):
         return subsystem
@@ -694,6 +699,8 @@ def domain_to_domain_expand(tree, tgt_node, verbose = 0 ):
         if n.depth == tgt_node.depth + 1:
             if verbose:
                 print("domain_to_domain_expand: ", tgt_node, n)
+            if is_openamp_d_to_d(tree, tgt_node, verbose):
+                openamp_d_to_d_expand(tree, tgt_node, verbose)
 
     return True
 
