@@ -26,6 +26,10 @@ from lopper import LopperFmt
 from lopper.tree import LopperAction
 import lopper
 
+sys.path.append(os.path.dirname(__file__))
+from openamp_xlnx import xlnx_openamp_rpmsg_expand
+from openamp_xlnx import xlnx_openamp_remoteproc_expand
+
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,domain-v1", compat_string_to_test):
         return process_domain
@@ -43,6 +47,45 @@ def chunks(l, n):
     for i in range(0, len(l), n):
         # Create an index range for l of n items:
         yield l[i:i+n]
+
+
+def openamp_remoteproc_expand(tree, subnode, verbose = 0 ):
+    # Generic OpenAMP expansion subroutine which selects the applicable
+    # vendor method to use for Remoteproc YAML expansion
+    for i in tree["/"]["compatible"].value:
+        if "xlnx" in i:
+            return xlnx_openamp_remoteproc_expand(tree, subnode, verbose)
+    return True
+
+
+def openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
+    # Generic OpenAMP expansion subroutine which selects the applicable
+    # vendor method to use for RPMsg YAML expansion
+    for i in tree["/"]["compatible"].value:
+        if "xlnx" in i:
+            return xlnx_openamp_rpmsg_expand(tree, subnode, verbose)
+
+    return True
+
+openamp_d_to_d_compat_strings = {
+    "openamp,rpmsg-v1" : openamp_rpmsg_expand,
+    "openamp,remoteproc-v1" : openamp_remoteproc_expand,
+}
+
+def is_openamp_d_to_d(tree, subnode, verbose = 0 ):
+    for n in subnode.subnodes():
+        if len(n["compatible"]) == 1 and n["compatible"][0]  in openamp_d_to_d_compat_strings.keys():
+            return True
+    return False
+
+def openamp_d_to_d_expand(tree, subnode, verbose = 0 ):
+    # landing function for generic YAML expansion of
+    # domain-to-domain property
+    for n in subnode.subnodes():
+        if len(n["compatible"]) == 1 and n["compatible"][0]  in openamp_d_to_d_compat_strings.keys():
+            return openamp_d_to_d_compat_strings[n["compatible"][0]](tree, n, verbose)
+
+    return False
 
 
 def openamp_process_cpus( sdt, domain_node, verbose = 0 ):
