@@ -38,6 +38,17 @@ def is_compat( node, compat_string_to_test ):
         return xlnx_openamp_rpu
     return ""
 
+
+def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
+    # Xilinx-specific YAML expansion of RPMsg description.
+    return True
+
+
+def xlnx_openamp_remoteproc_expand(tree, subnode, verbose = 0 ):
+    # Xilinx-specific YAML expansion of Remoteproc description.
+    return True
+
+
 def update_mbox_cntr_intr_parent(sdt):
   # find phandle of a72 gic for mailbox controller
   a72_gic_node = sdt.tree["/amba_apu/interrupt-controller@f9000000"]
