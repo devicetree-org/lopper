@@ -29,10 +29,13 @@ import lopper
 sys.path.append(os.path.dirname(__file__))
 from openamp_xlnx import xlnx_openamp_rpmsg_expand
 from openamp_xlnx import xlnx_openamp_remoteproc_expand
+from openamp_xlnx import xlnx_openamp_parse
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,domain-v1", compat_string_to_test):
         return process_domain
+    if re.search( "openamp,domain-processing", compat_string_to_test):
+        return openamp_parse
     return ""
 
 # tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
@@ -171,6 +174,20 @@ def openamp_process_cpus( sdt, domain_node, verbose = 0 ):
                 sdt.tree.delete( s )
             except Exception as e:
                 print( "[WARNING]: %s" % e )
+
+
+def openamp_parse(root_node, tree, verbose = 0 ):
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
+
+    for i in root_node["compatible"].value:
+        if "xlnx" in i:
+            return xlnx_openamp_parse(tree, verbose)
+
+    return False
+
 
 # all the logic for applying a openamp domain to a device tree.
 # this is a really long routine that will be broken up as more examples
