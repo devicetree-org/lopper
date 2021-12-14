@@ -10,7 +10,7 @@
 
 from lopper import Lopper
 import lopper
-from lopper_tree import *
+from lopper.tree import *
 import os.path
 
 sys.path.append(os.path.dirname(__file__))
