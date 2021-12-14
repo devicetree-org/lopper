@@ -25,7 +25,7 @@
 		lop_5_1 {
 			compatible = "system-device-tree-v1,lop,assist-v1";
 			node = "/";
-			id = "openamp,xlnx-rpu";
+			id = "openamp,domain-processing";
 
 		};
 	};

@@ -32,12 +32,49 @@ sys.path.append(os.path.dirname(__file__))
 from openamp_xlnx_common import *
 
 RPU_PATH = "/rpu@ff9a0000"
+REMOTEPROC_D_TO_D = "openamp,remoteproc-v1"
+RPMSG_D_TO_D = "openamp,rpmsg-v1"
+
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,xlnx-rpu", compat_string_to_test):
         return xlnx_openamp_rpu
     return ""
 
+
+def xlnx_rpmsg_parse(tree, node, openamp_channel_info, verbose = 0 ):
+    # Xilinx OpenAMP subroutine to collect RPMsg information from RPMsg
+    # relation
+    return True
+
+
+def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
+    # Xilinx OpenAMP subroutine to collect RPMsg information from Remoteproc
+    # relation
+    return True
+
+
+def xlnx_openamp_parse(sdt, verbose = 0 ):
+    # Xilinx OpenAMP subroutine to parse OpenAMP Channel
+    # information and generate Device Tree information.
+    tree = sdt.tree
+    ret = False
+    openamp_channel_info = {}
+
+    for n in tree["/domains"].subnodes():
+            node_compat = n.props("compatible")
+            if node_compat != []:
+                node_compat = node_compat[0].value
+
+                if node_compat == REMOTEPROC_D_TO_D:
+                    ret = xlnx_remoteproc_parse(tree, n, openamp_channel_info, verbose)
+                elif node_compat == RPMSG_D_TO_D:
+                    ret = xlnx_rpmsg_parse(tree, n, openamp_channel_info, verbose)
+
+                if ret == False:
+                    return ret
+
+    return ret
 
 def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
     # Xilinx-specific YAML expansion of RPMsg description.
