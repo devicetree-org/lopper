@@ -19,6 +19,18 @@
                         compatible = "system-device-tree-v1,lop,load";
                         load = "assists/openamp.py";
                 };
+                lop_1 {
+                        compatible = "system-device-tree-v1,lop,load";
+                        load = "assists/cdo.py";
+                        // props describes the extra properties of this assist,
+                        // so they can be loaded and stored with the module
+                        props = "id", "file_ext";
+                        // the extension of the output file that this is
+                        // compatible with.
+                        file_ext = ".cdo";
+                        // the id that this module is compatible with
+                        id = "xlnx,output,cdo";
+                };
                 lop_2 {
                         compatible = "system-device-tree-v1,lop,load";
                         load = "assists/openamp_xlnx.py";
