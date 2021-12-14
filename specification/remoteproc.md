@@ -47,42 +47,36 @@ definitions:
             - dev: psu_r5_1_atcm_global
             - dev: psu_r5_1_btcm_global
 
-        rproc1: &rproc_reserved1
-            compatible: xilinx,openamp-ipc-1.0
-            no-map: 1
-            reg:
-                - start: 0x3ed00000
-                  size: 0x40000
 
-        rproc0: &rproc_reserved0
+        rpu1vdev0vring0: &rpu1vdev0vring0
             compatible: xilinx,openamp-ipc-1.0
             no-map: 1
             reg:
-                - start: 0x3ed00000
-                  size: 0x40000
-
-        rpu1vdev0vring: &rpu1vdev0vring0
-            compatible: xilinx,openamp-ipc-1.0
-            no-map: 1
-            reg:
-                - start: 0x3ed40000
+                - start: 0x3ef40000
                   size: 0x4000
 
         rpu1vdev0vring1: &rpu1vdev0vring1
             compatible: xilinx,openamp-ipc-1.0
             no-map: 1
             reg:
-                - start: 0x3ed44000
+                - start: 0x3ef44000
                   size: 0x4000
 
         rpu1vdev0buffer: &rpu1vdev0buffer
             compatible: xilinx,openamp-ipc-1.0
             no-map: 1
             reg:
-                - start: 0x3ed48000
+                - start: 0x3ef48000
                   size: 0x100000
 
-        rproc_reserved1: &rproc_reserved11
+        rproc_reserved1: &rproc_reserved1
+            compatible: xilinx,openamp-ipc-1.0
+            no-map: 1
+            reg:
+                - start: 0x3ef00000
+                  size: 0x40000
+
+        rproc_reserved0: &rproc_reserved0
             compatible: xilinx,openamp-ipc-1.0
             no-map: 1
             reg:
@@ -123,14 +117,14 @@ domains:
         access:
             # if we want to have a list merge, it should be in a list
             - dev: ipi0  # used for Open AMP RPMsg IPC
+	    - dev: ipi1  # same as ipi0
             - <<+: [ *openamp-channel0-access-srams, *openamp-channel1-access-srams ]
-            - <<+: *openamp-channel1-access-srams # TCM banks used for elf load
 
         reserved-memory:
             ranges: true
             # if we want an object / node merge, it should be like this (a map)
-            - <<+: [*rpu0vdev0vring0, *rpu0vdev0vring1, *rpu0vdev0buffer, *rproc_reserved0 ]
-            - <<+: [*rpu1vdev0vring0, *rpu1vdev0vring1, *rpu1vdev0buffer, *rproc_reserved1 ]
+	    label-references: { rpu0vdev0vring0, rpu0vdev0vring0, rpu0vdev0buffer, rproc_reserved0 }
+	    label-references: { rpu1vdev0vring0, rpu1vdev0vring1, rpu1vdev0buffer, rproc_reserved1 }
 
         domain-to-domain:
             compatible: openamp,domain-to-domain-v1
@@ -164,7 +158,7 @@ domains:
                 compatible: openamp,rpmsg-v1
                 openamp-xlnx-native: true # use native OpenAMP implementation
                 remote:  openamp_r5_1_cluster
-                mbox: ipi0
+                mbox: ipi1
                 carveouts:
                    - rpu1vdev0buffer
                    - rpu1vdev0vring0
@@ -182,7 +176,7 @@ domains:
             - <<+: *openamp-channel0-access-srams # TCM banks used for firmware memory
         reserved-memory:
             ranges: true
-            <<+: [ *rpu0vdev0vring0, *rpu0vdev0vring0, *rpu0vdev0buffer, *rproc_reserved0 ]
+	     label-references: { rpu0vdev0vring0, rpu0vdev0vring0, rpu0vdev0buffer, rproc_reserved0 }
         domain-to-domain:
              compatible: openamp,domain-to-domain-v1
              rpmsg0:
@@ -206,7 +200,7 @@ domains:
             - <<+: *openamp-channel1-access-srams # TCM banks used for firmware memory
         reserved-memory:
             ranges: true
-            <<+: [ *rpu1vdev0vring0, *rpu1vdev0vring0, *rpu1vdev0buffer, *rproc_reserved1 ]
+	    label-references: { rpu1vdev0vring0, rpu1vdev0vring1, rpu1vdev0buffer, rproc_reserved1 }
         domain-to-domain:
              compatible: openamp,domain-to-domain-v1
              relation0:
