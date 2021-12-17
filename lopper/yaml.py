@@ -12,6 +12,7 @@ import ruamel.yaml as yaml
 import json
 import sys
 import copy
+import os
 
 from collections import OrderedDict
 
@@ -27,6 +28,15 @@ from anytree import RenderTree  # just for nice printing
 from anytree import PreOrderIter
 from anytree import AnyNode
 from anytree import Node
+
+
+def flatten_dict(dd, separator ='_', prefix =''):
+    return { prefix + separator + k if prefix else k : v
+             for kk, vv in dd.items()
+             for k, v in flatten_dict(vv, separator, kk).items()
+    } if isinstance(dd, dict) else { prefix : dd }
+
+
 
 class LopperTreeImporter(object):
 
@@ -600,17 +610,41 @@ class LopperYAML():
         # are there any nodes in the tree with properties containing a merge ?
         #   - as the value ?
         #   - as the key in a dictionary ?
+        # lt.print()
         for n in lt:
             new_node = None
+            props_to_delete = []
             for p in n:
                 new_list = []
+
+                # "<<+" is the extended expand
+                # "<<*" is a node extended expand
+                expand_string = "<<+"
+                if p.name == "<<*":
+                    if verbose:
+                        print( "[DBG]: node extension <<* detected in node %s" % p.node.abs_path )
+                    # to make the standard processing work below, we upgrade the
+                    # property to json formatted if it already isn't
+                    expand_string = "<<*"
+                    if p.pclass != "json":
+                        p.pclass = "json"
+                        p.__dict__["value"] = json.dumps(p.value)
+
+                    # we could do special processing here, with merging, etc, but
+                    # for now, we'll just leave it as a placeholder, since it is
+                    # better to have it as generic as possible.
+                    # for label_prop in p.value:
+                    #     tgt_node = lt.lnodes(label_prop)
+                    #     if tgt_node:
+                    #         print( "[DBG]: target found, pulling properties" )
+
                 if p.pclass == "json":
                     if verbose:
                         print( "[DBG]: json: %s (len: %s)" % (p.value,len(p)) )
                     extension_found = False
                     for x in range(0, len(p)):
                         try:
-                            m_val = p[x]["<<+"]
+                            m_val = p[x][expand_string]
                             extension_found = True
                             if verbose:
                                 print( "[DBG]; found extension marker: %s" % m_val )
@@ -618,10 +652,10 @@ class LopperYAML():
                             pass
 
                     if not extension_found:
-                        if p.name == "<<+":
+                        if p.name == expand_string:
                             extension_found = True
                             if verbose:
-                                print( "[DBG]: found extension name (<<+)" )
+                                print( "[DBG]: found extension name (%s)" % expand_string)
 
                     for x in range(0, len(p)):
                         if verbose:
@@ -629,24 +663,72 @@ class LopperYAML():
                         try:
                             # an exception is raised if the chunk doesn't have an index
                             # with <<+, so everything below can assume this is true.
-                            if p.name == "<<+":
+                            if p.name == expand_string:
                                 m_val = p[x]
                                 dict_check = 0
                             else:
-                                m_val = p[x]["<<+"]
+                                m_val = p[x][expand_string]
                                 dict_check = x
                             if verbose:
-                                print( "[DBG]                      mval %s" % m_val )
+                                print( "[DBG]                      mval %s (%s)" % (m_val,dict_check))
                             if type(m_val) == list and len(m_val) == 1 and type(m_val[dict_check]) == dict:
+                                if verbose:
+                                    print( "[DBG]: -------> promote json to a node: %s (%s)" % (p.name,p.abs_path) )
+
+                                # the new node name will be: <parent node>@<number> by default
                                 new_name = p.name
-                                if p.name == "<<+":
+                                if p.name == expand_string:
                                     try:
                                         new_name = p.node.name + "@" + str(x)
                                     except Exception as e:
-                                        print( " damn! %s" % e )
+                                        print( "[DBG]: Exception during new node name creation: %s" % e )
+
+                                # A secondary name (and better) for the new node, is the name of
+                                # the alias (if one was used). To do that, we pull out the dictionary
+                                # that was stored in the flattened yaml dict structure, and check that
+                                # dictionary for identity in the anchors.
+                                try:
+                                    # Grab the dictionary that is at the same path as this node (minus
+                                    # the leading "/" from the flattened dictionary..
+                                    possible_alias = self.dct_flat[p.abs_path[1:]][x]
+                                    # if there is a dictionary there, then this could have been an
+                                    # expanded alias.
+                                    if verbose:
+                                        print( "[DBG]: [%s] found %s" % (p.abs_path[1:],possible_alias ))
+
+                                    # Searching that same flattened yaml dictionary for the *same*
+                                    # dictionary in another location indicates that this is an expanded
+                                    # alias. We can get the name from the target anchor.
+                                    i_name = None
+                                    for flat_thing_name,flat_thing in self.dct_flat.items():
+                                        if possible_alias is flat_thing:
+                                            if verbose:
+                                                print( "[DBG]: alias/anchor identity match: %s" % flat_thing_name )
+                                            # we take the first hit, that's the anchor, other hits will just
+                                            # be more aliases .. which point to the same anchor and of course
+                                            # will also pass
+                                            if not i_name:
+                                                i_name = flat_thing_name
+
+                                    if i_name:
+                                        # TODO: we should look to see if there's already a node with this
+                                        #       name, if so, we need the @<number>
+                                        new_name = os.path.basename(i_name) #  + "@" + str(x)
+
+                                except Exception as e:
+                                    pass
 
                                 if verbose:
-                                    print( "[DBG]: -------> promote to a node: %s" % p.name )
+                                    print( "[DBG]: new node name: %s" % new_name )
+                                try:
+                                    if verbose:
+                                        print( "[DBG]: checking for existing node at: %s" % n.abs_path + "/" + new_name )
+                                    node_check = lt[n.abs_path + "/" + new_name]
+                                    if verbose:
+                                        print( "[DBG] node exists" )
+                                except:
+                                    pass
+
                                 new_node = LopperNode( -1, name=new_name )
                                 for i,v in m_val[dict_check].items():
                                     if verbose:
@@ -657,7 +739,7 @@ class LopperYAML():
 
                                 new_node.resolve()
 
-                                if p.name != "<<+":
+                                if p.name != expand_string:
                                     n.delete( p )
 
                                 # this is wrong, there's a bug in node adding .. we
@@ -676,6 +758,16 @@ class LopperYAML():
                                     new_node + new_prop
                                     new_prop.resolve()
                                 else:
+                                    if type(m_val) == dict:
+                                        if verbose:
+                                            print( "[DBG]: extending properties to node: %s" % n.abs_path )
+                                        for i,v in m_val.items():
+                                            if verbose:
+                                                print( "[DBG]:                     adding prop: %s -> %s" % (i,v))
+                                            new_prop = LopperProp(i, -1, n, v )
+                                            n + new_prop
+                                            new_prop.resolve()
+
                                     # unroll a loop ?
                                     if type(m_val) == list:
                                         possible_merge = m_val
@@ -687,16 +779,20 @@ class LopperYAML():
 
                                         new_list.extend(newlist)
                                     else:
-                                        pass
+                                        new_list.extend( [m_val] )
 
-                        # catches the check for "<<+"
+                        # catches the check for expand_string ("<<+" or "<<*")
                         except Exception as e:
                             if extension_found:
                                 new_list.append(p[x])
 
-                    # end of the loop through the property chunks
-                    if p.name == "<<+":
-                        n.delete( p )
+                    # This delete blows up the iteration. We need to save the
+                    # list of properties to delete and delete them AFTER we
+                    # finish the loop end of the loop through the property
+                    # chunks
+                    if p.name == expand_string:
+                        props_to_delete.append(p)
+                        #n.delete( p )
 
                     # we've finished looping through all the json chunks
                     if new_list and extension_found:
@@ -705,6 +801,9 @@ class LopperYAML():
                         p.resolve( False )
 
             # we've finished looping through all the properties
+            if props_to_delete:
+                for p in props_to_delete:
+                    n.delete(p)
 
         lt.sync()
         return lt
@@ -800,6 +899,20 @@ class LopperYAML():
                     path_gen += "/" + p.name
             print( "   full path: %s" % path_gen )
 
+    def flatten(self,d):
+        out = {}
+        for key, val in d.items():
+            if isinstance(val, dict):
+                val = [val]
+            if isinstance(val, list):
+                for subdict in val:
+                    if isinstance(subdict,dict):
+                        deeper = self.flatten(subdict).items()
+                        out.update({key + '_' + key2: val2 for key2, val2 in deeper})
+            else:
+                out[key] = val
+        return out
+
     def load_yaml( self, filename = None ):
         """Load/Read a YAML file into tree structure
 
@@ -827,6 +940,9 @@ class LopperYAML():
             print( "[ERROR]: no data available to load" )
             sys.exit(1)
 
+        # flatten the dictionary so we can look up aliases and anchors
+        # by identity later .. without needing to recurse
+        self.dct_flat = flatten_dict(self.dct,separator="/")
         importer = LopperDictImporter(Node)
         importer.lists_as_nodes = self.lists_as_nodes
         self.anytree = importer.import_(self.dct)
