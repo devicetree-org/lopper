@@ -1,3 +1,5 @@
+from lopper.tree import *
+
 KERNEL_FLAG = 'openamp-xlnx-kernel'
 HOST_FLAG = 'openamp-host'
 
@@ -259,3 +261,59 @@ def parse_memory_carevouts(sdt, options, remoteproc_node):
 
     return carveout_list
 
+def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
+    mbox_node = None
+    prop = None
+
+    if subnode.props("mbox") == []:
+        print("WARNING:", "rpmsg relation does not have mbox")
+        return False
+
+    prop = subnode.props("mbox")[0]
+    search_str = prop.value.strip()
+
+    for n in subnode.tree["/"].subnodes():
+        if search_str == n.name or search_str == n.label:
+            mbox_node = n
+            break
+
+    if mbox_node == None:
+        print("resolve_rpmsg_mbox: ", tree.lnodes(n.name, exact = False) )
+
+    if mbox_node == None or mbox_node == []:
+        print("WARNING:", "rpmsg relation can't find mbox name: ", prop.value)
+        return False
+
+    if mbox_node.phandle == 0:
+        mbox_node.phandle_or_create()
+
+    prop.value = mbox_node.phandle
+    if mbox_node.props("phandle") == []:
+        mbox_node + LopperProp(name="phandle", value=mbox_node.phandle)
+    return True
+
+def resolve_host_remote( tree, subnode, verbose = 0 ):
+    prop = None
+    domain_node = None
+
+    if subnode.props("host") != [] and subnode.props("remote") != []:
+        print("WARNING:", "relation has both host and remote")
+        return False
+    elif subnode.props("host") != []:
+        prop = subnode.props("host")[0]
+    else:
+        prop = subnode.props("remote")[0]
+
+
+    for n in tree["/domains"].subnodes():
+        if prop.value in n.name:
+            domain_node = n
+            break
+
+    if domain_node.phandle == 0:
+        domain_node.phandle_or_create()
+
+    prop.value = domain_node.phandle
+    if domain_node.props("phandle") == []:
+        domain_node + LopperProp(name="phandle", value=domain_node.phandle)
+    return True
