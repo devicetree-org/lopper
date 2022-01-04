@@ -58,7 +58,7 @@ def xlnx_openamp_parse(sdt, verbose = 0 ):
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
     tree = sdt.tree
-    ret = False
+    ret = -1
     openamp_channel_info = {}
 
     for n in tree["/domains"].subnodes():
@@ -74,15 +74,28 @@ def xlnx_openamp_parse(sdt, verbose = 0 ):
                 if ret == False:
                     return ret
 
-    return ret
+    return True
 
 def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
     # Xilinx-specific YAML expansion of RPMsg description.
+    ret = resolve_host_remote( tree, subnode, verbose)
+    if ret == False:
+        return ret
+    ret = resolve_rpmsg_mbox( tree, subnode, verbose)
+    if ret == False:
+        return ret
+
+
     return True
 
 
 def xlnx_openamp_remoteproc_expand(tree, subnode, verbose = 0 ):
     # Xilinx-specific YAML expansion of Remoteproc description.
+    ret = resolve_host_remote( tree, subnode, verbose)
+    if ret == False:
+        return ret
+
+
     return True
 
 
