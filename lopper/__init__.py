@@ -1028,13 +1028,36 @@ class LopperSDT:
         if re.search( ".*,meta.*$", lop_type ):
             if re.search( "phandle-desc", lop_args ):
                 if self.verbose > 1:
-                    print( "[DBG++]: processing phandle meta data" )
-                Lopper.phandle_possible_prop_dict = OrderedDict()
+                    print( "[DBG++]: processing phandle meta data (%s)" % type(Lopper))
+
+                # grab all the defaults
+                Lopper.phandle_possible_prop_dict = Lopper.phandle_possible_properties()
+                try:
+                    del Lopper.phandle_possible_prop_dict["DEFAULT"]
+                except:
+                    pass
+
+                # now override, remove, extend
                 for p in lop_node:
                     # we skip compatible, since that is actually the compatibility value
                     # of the node, not a meta data entry. Everything else is though
                     if p.name != "compatible":
-                        Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
+                        if re.search( r'^reset$', p.name ):
+                            if self.verbose > 1:
+                                print( "[DBG++]: resetting phandle table" )
+                            Lopper.phandle_possible_prop_dict = OrderedDict()
+                        elif re.search( r'^lopper-comment.*', p.name ):
+                            # skip
+                            pass
+                        elif re.search( r'^\-.*', p.name ):
+                            # delete
+                            p.name = re.sub( r'^\-', '', p.name )
+                            try:
+                                del Lopper.phandle_possible_prop_dict[p.name]
+                            except:
+                                pass
+                        else:
+                            Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
 
         if re.search( ".*,output$", lop_type ):
             try:

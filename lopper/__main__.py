@@ -342,8 +342,6 @@ def main():
             device_tree.assist_autorun_setup( module_name, module_args )
 
     if debug:
-        # TODO add the ability to run an inline python block here
-
         if debug == "profile":
             import cProfile
             cProfile.runctx( 'device_tree.perform_lops()', globals(), locals() )
