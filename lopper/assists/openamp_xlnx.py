@@ -84,6 +84,9 @@ def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
     ret = resolve_rpmsg_mbox( tree, subnode, verbose)
     if ret == False:
         return ret
+    ret = resolve_rpmsg_carveouts( tree, subnode, verbose)
+    if ret == False:
+        return ret
 
 
     return True
