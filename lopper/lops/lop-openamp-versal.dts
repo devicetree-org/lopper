@@ -28,5 +28,19 @@
 			id = "openamp,domain-processing";
 
 		};
+		lop_5_2 {
+			compatible = "system-device-tree-v1,lop,meta-v1","phandle-desc-v1";
+			// mbox
+			mbox = "phandle";
+			// remote
+			remote = "phandle";
+			// host
+			host = "phandle";
+			// carveouts
+			carveouts = "phandle";
+			// elfload
+			elfload = "phandle";
+
+		};
 	};
 };
