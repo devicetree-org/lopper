@@ -97,6 +97,9 @@ def xlnx_openamp_remoteproc_expand(tree, subnode, verbose = 0 ):
     ret = resolve_host_remote( tree, subnode, verbose)
     if ret == False:
         return ret
+    ret = resolve_remoteproc_carveouts( tree, subnode, verbose)
+    if ret == False:
+        return ret
 
 
     return True
