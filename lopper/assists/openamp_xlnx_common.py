@@ -261,6 +261,45 @@ def parse_memory_carevouts(sdt, options, remoteproc_node):
 
     return carveout_list
 
+def resolve_remoteproc_carveouts( tree, subnode, verbose = 0 ):
+    prop = None
+    domain_node = None
+    new_prop_val = []
+
+    if subnode.props("elfload") == []:
+        print("WARNING:", "remoteproc relation does not have elfload carveouts", subnode.abs_path)
+        return False
+
+    prop = subnode.props("elfload")[0]
+
+    # for each carveout
+    # look for it in domain's reserved memory
+    # get or create phandle of the carveout
+    for carveout_str in prop.value:
+        current_node = None
+
+        for n in subnode.tree["/"].subnodes():
+            if carveout_str == n.name or carveout_str == n.label:
+                current_node = n
+                break
+
+        if current_node == None:
+            print("WARNING:", "rpmsg relation can't find carveout name", carveout_str)
+            return False
+
+        if current_node.phandle == 0:
+            current_node.phandle_or_create()
+
+        if current_node.props("phandle") == []:
+            current_node + LopperProp(name="phandle", value=current_node.phandle)
+
+        new_prop_val.append(current_node.phandle)
+
+    # update value of property to have phandles
+    prop.value = new_prop_val
+
+    return True
+
 def resolve_rpmsg_carveouts( tree, subnode, verbose = 0 ):
     prop = None
     res_mem_node = None
