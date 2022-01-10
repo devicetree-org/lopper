@@ -700,7 +700,7 @@ def domain_to_domain_expand(tree, tgt_node, verbose = 0 ):
             if verbose:
                 print("domain_to_domain_expand: ", tgt_node, n)
             if is_openamp_d_to_d(tree, tgt_node, verbose):
-                openamp_d_to_d_expand(tree, tgt_node, verbose)
+                ret = openamp_d_to_d_expand(tree, n, verbose)
 
     return True
 
