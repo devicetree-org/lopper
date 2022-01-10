@@ -27,6 +27,7 @@ from lopper import LopperFmt
 import lopper
 from lopper.tree import *
 from re import *
+from enum import Enum
 
 sys.path.append(os.path.dirname(__file__))
 from openamp_xlnx_common import *
@@ -35,6 +36,13 @@ RPU_PATH = "/rpu@ff9a0000"
 REMOTEPROC_D_TO_D = "openamp,remoteproc-v1"
 RPMSG_D_TO_D = "openamp,rpmsg-v1"
 
+class CPU_CONFIG(Enum):
+    RPU_SPLIT = 0
+    RPU_LOCKSTEP = 1
+
+class RPU_CORE(Enum):
+    RPU_0 = 0
+    RPU_1 = 1
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,xlnx-rpu", compat_string_to_test):
@@ -48,10 +56,194 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, verbose = 0 ):
     return True
 
 
+def determine_cpus_config(remote_domain):
+  cpus_prop_val = remote_domain.propval("cpus")
+  cpu_config = None # split or lockstep
+
+  if cpus_prop_val != ['']:
+    if len(cpus_prop_val) != 3:
+      print("rpu cluster cpu prop invalid len")
+      return -1
+    cpu_config = CPU_CONFIG.RPU_LOCKSTEP if  check_bit_set(cpus_prop_val[2], 30)==True else CPU_CONFIG.RPU_SPLIT
+
+  return cpu_config
+
+
+def determinte_rpu_core(cpu_config, remote_node, remote_prop):
+    remote_cpus = remote_node.props("cpus")[0]
+
+    if cpu_config == CPU_CONFIG.RPU_LOCKSTEP:
+        return RPU_CORE.RPU_0
+    elif cpu_config == CPU_CONFIG.RPU_SPLIT:
+        if remote_cpus[1] == 0x1:
+            return RPU_CORE.RPU_0
+        elif remote_cpus[1] == 0x2:
+            return RPU_CORE.RPU_1
+        else:
+            print("WARNING: invalid cpus for ", remote_node)
+            return False
+    else:
+        print("WARNING: invalid cpu config: ", cpu_config)
+        return False
+
+
+def xlnx_remoteproc_construct_carveouts(tree, carveouts, new_ddr_nodes, verbose = 0 ):
+    res_mem_node = None
+
+    try:
+        res_mem_node = tree["/reserved-memory"]
+    except KeyError:
+        res_mem_node = LopperNode(-1, "/reserved-memory")
+        res_mem_node + LopperProp(name="#address-cells",value=2)
+        res_mem_node + LopperProp(name="#size-cells",value=2)
+        res_mem_node + LopperProp(name="ranges",value=[])
+        tree.add(res_mem_node)
+
+    # only applicable for DDR carveouts
+    for carveout in carveouts:
+        # SRAM banks have status prop
+        # SRAM banks are not in reserved memory
+        if carveout.props("status") != []:
+            continue
+        elif carveout.props("no-map") != []:
+            start = carveout.props("start")[0].value
+            size = carveout.props("size")[0].value
+            new_node =  LopperNode(-1, "/reserved-memory/"+carveout.name)
+            new_node + LopperProp(name="no-map")
+            new_node + LopperProp(name="reg", value=[0, start, 0, size])
+            tree.add(new_node)
+
+            phandle_val = new_node.phandle_or_create()
+
+            new_node + LopperProp(name="phandle", value = phandle_val)
+            new_node.phandle = phandle_val
+            new_ddr_nodes.append(new_node.phandle)
+        else:
+            print("WARNING: invalid remoteproc elfload carveout", carveout)
+            return False
+
+    return True
+
+
+def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_nodes, host_node, remote_node, openamp_channel_info, verbose = 0):
+    channel_id = "_"+host_node.name+"_"+remote_node.name
+    cluster_node = None
+    if cpu_config in [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT ]:
+        try:
+            cluster_node = tree["/rf5ss@ff9a0000"]
+        except KeyError:
+            cluster_node = LopperNode(-1, "/rf5ss@ff9a0000")
+            cluster_node + LopperProp(name="compatible", value = "xlnx,zynqmp-r5-remoteproc")
+            cluster_node + LopperProp(name="#address-cells", value = 0x2)
+            cluster_node + LopperProp(name="#size-cells", value = 0x2)
+            cluster_node + LopperProp(name="ranges", value= [])
+            cluster_node + LopperProp(name="xlnx,cluster-mode", value = cpu_config.value)
+            cluster_node + LopperProp(name="reg", value = [0, 0xff9a0000, 0, 0x10000])
+            tree.add(cluster_node)
+
+        rpu_core = openamp_channel_info["rpu_core"+channel_id]
+        rpu_core_pd_prop = openamp_channel_info["rpu_core_pd_prop"+channel_id]
+
+        core_node = LopperNode(-1, "/rf5ss@ff9a0000/r5f_" + str(rpu_core.value))
+        core_node + LopperProp(name="compatible", value = "xilinx,r5f")
+        core_node + LopperProp(name="#address-cells", value = 2)
+        core_node + LopperProp(name="#size-cells", value = 2)
+        core_node + LopperProp(name="ranges", value=[])
+        core_node + LopperProp(name="power-domain", value=copy.deepcopy(rpu_core_pd_prop.value))
+        core_node + LopperProp(name="mbox-names", value = ["tx", "rx"]);
+
+        tree.add(core_node)
+
+        srams = []
+        memory_region = []
+        for carveout in elfload_nodes:
+            if carveout.props("status") != []:
+                srams.append(carveout.phandle)
+
+        # there may be new nodes created in linux reserved-memory node to account for
+        for phandle_val in new_ddr_nodes:
+            memory_region.append(phandle_val)
+
+        core_node + LopperProp(name="memory-region", value=memory_region)
+        core_node + LopperProp(name="sram", value=srams)
+
+    else:
+        return False
+
+    return True
+
+def xlnx_remoteproc_update_tree(tree, node, remote_node, openamp_channel_info, verbose = 0 ):
+    channel_id = "_"+node.parent.parent.name+"_"+remote_node.name
+    cpu_config =  openamp_channel_info["cpu_config"+channel_id]
+    elfload_nodes = openamp_channel_info["elfload"+channel_id]
+    new_ddr_nodes = []
+
+    ret = xlnx_remoteproc_construct_carveouts(tree, elfload_nodes, new_ddr_nodes, verbose)
+    if ret == False:
+        return ret
+    ret = xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_nodes, node.parent.parent, remote_node, openamp_channel_info, verbose = 0)
+    if ret == False:
+        return ret
+
+    return True
+
+
 def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
     # Xilinx OpenAMP subroutine to collect RPMsg information from Remoteproc
     # relation
-    return True
+    remote = node.props("remote")
+    elfload_nodes = []
+    elfload_prop = node.props("elfload")
+
+    if remote == []:
+        print("WARNING: ", node, "is missing remote property")
+        return False
+
+    remote_node = tree.pnode( remote[0].value[0] )
+    cpu_config = determine_cpus_config(remote_node)
+
+    if cpu_config in [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT]:
+        rpu_core = determinte_rpu_core(cpu_config, remote_node, remote[0] )
+        if not rpu_core:
+            return False
+    else:
+        return False
+
+    if elfload_prop == []:
+        print("WARNING: ", node, " is missing elfload property")
+        return False
+    else:
+        elfload_prop = elfload_prop[0].value
+
+    for p in elfload_prop:
+        elfload_nodes.append ( tree.pnode(p) )
+
+    rpu_cluster_node = tree.pnode(remote_node.props("cpus")[0].value[0])
+    rpu_core_node = rpu_cluster_node.abs_path + "/cpu@"
+
+    if CPU_CONFIG.RPU_SPLIT == cpu_config and RPU_CORE.RPU_1 == rpu_core:
+        rpu_core_node = tree[rpu_core_node+"1"]
+    elif CPU_CONFIG.RPU_LOCKSTEP == cpu_config:
+        rpu_core_node = tree[rpu_core_node+"0"]
+    elif CPU_CONFIG.RPU_SPLIT == cpu_config and RPU_CORE.RPU_0 == rpu_core:
+        rpu_core_node = tree[rpu_core_node+"0"]
+    else:
+        print("WARNING invalid RPU and CPU config for relation. cpu: ", cpu_config, " rpu: ", rpu_core)
+        return False
+
+    if rpu_core_node.props("power-domains") == []:
+        print("WARNING: RPU core does not have power-domains property.")
+        return False
+
+    rpu_core_pd_prop = rpu_core_node.props("power-domains")[0]
+
+    channel_id = "_"+node.parent.parent.name+"_"+remote_node.name
+    openamp_channel_info["elfload"+channel_id] = elfload_nodes
+    openamp_channel_info["rpu_core_pd_prop"+channel_id] = rpu_core_pd_prop
+    openamp_channel_info["cpu_config"+channel_id] = cpu_config
+    openamp_channel_info["rpu_core"+channel_id] = rpu_core
+
+    return xlnx_remoteproc_update_tree(tree, node, remote_node, openamp_channel_info, verbose = 0 )
 
 
 def xlnx_openamp_parse(sdt, verbose = 0 ):
@@ -113,25 +305,6 @@ def update_mbox_cntr_intr_parent(sdt):
   mailbox_cntr_node["interrupt-parent"].value = a72_gic_node.phandle
   sdt.tree.sync()
   sdt.tree.resolve()
-
-# 1 for master, 0 for slave
-# for each openamp channel, return mapping of role to resource group
-def determine_role(sdt, domain_node):
-    rsc_groups = []
-    current_rsc_group = None
-
-    for value in domain_node.propval('include'):
-        current_rsc_group = sdt.tree.pnode(value)
-        if domain_node.propval(HOST_FLAG) != ['']: # only for openamp master
-            if current_rsc_group == None:
-                print("invalid resource group phandle: ", value)
-                return -1
-            rsc_groups.append(current_rsc_group)
-        else:
-            print("only do processing in host openamp channel domain ", value)
-            return -1
-
-    return rsc_groups
 
 
 # in this case remote is rpu
@@ -346,32 +519,6 @@ def set_remoteproc_node(remoteproc_node, sdt, rpu_config):
   props.append(LopperProp(name="compatible",value="xlnx,zynqmp-r5-remoteproc"))
   for i in props:
     remoteproc_node + i
-  # 
-
-def determine_core(remote_domain):
-  cpus_prop_val = remote_domain.propval("cpus")
-  rpu_config = None # split or lockstep
-
-  if cpus_prop_val != ['']:
-    if len(cpus_prop_val) != 3:
-      print("rpu cluster cpu prop invalid len")
-      return -1
-    rpu_config = "lockstep" if  check_bit_set(cpus_prop_val[2], 30)==True else "split"
-    if rpu_config == "lockstep":
-      core = 0
-    else:
-      core_prop_val = remote_domain.propval("cpus")
-      if core_prop_val == ['']:
-        print("no cpus val for core ", remote_domain)
-      else:
-        if core_prop_val[1] == 2:
-          core  = 1
-        elif core_prop_val[1] == 1:
-          core = 0
-        else:
-          print("invalid cpu prop for core ", remote_domain, core_prop_val[1])
-          return -1
-  return [core, rpu_config]
 
 
 #core = []
@@ -759,52 +906,3 @@ def parse_openamp_domain(sdt, options, tgt_node):
     the_file.write(lines)
 
   return True
-
-# this is what it needs to account for:
-#
-# identify ipis, shared pages (have defaults but allow them to be overwritten
-# by system architect
-#
-#
-# kernel space case
-#   linux
-#   - update memory-region
-#   - mboxes
-#   - zynqmp_ipi1::interrupt-parent
-#   rpu
-#   - header
-# user space case
-#   linux
-#   - header
-#   rpu
-#   - header
-def xlnx_openamp_rpu( tgt_node, sdt, options ):
-    print("xlnx_openamp_rpu")
-    try:
-        verbose = options['verbose']
-    except:
-        verbose = 0
-
-    if verbose:
-        print( "[INFO]: cb: xlnx_openamp_rpu( %s, %s, %s )" % (tgt_node, sdt, verbose))
-
-    root_node = sdt.tree["/"]
-    platform = SOC_TYPE.UNINITIALIZED
-    if 'versal' in str(root_node['compatible']):
-        platform = SOC_TYPE.VERSAL
-    elif 'zynqmp' in str(root_node['compatible']):
-        platform = SOC_TYPE.ZYNQMP
-    else:
-        print("invalid input system DT")
-        return False
-
-    try:
-        domains_node = sdt.tree["/domains"]
-
-        for node in domains_node.subnodes():
-            if "openamp,domain-v1" in node.propval("compatible"):
-                if node.propval( HOST_FLAG ) != ['']:
-                    return parse_openamp_domain(sdt, options, node)
-    except:
-        print("ERR: openamp-xlnx rpu: no domains found")
-
