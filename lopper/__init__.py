@@ -909,10 +909,18 @@ class LopperSDT:
                             prop_val = ""
 
                         if node_regex:
-                            if selected_nodes_possible:
-                                selected_nodes_possible = selected_nodes_possible + tree.nodes( node_regex )
+                            if node_regex.startswith( "/" ):
+                                if selected_nodes_possible:
+                                    selected_nodes_possible = selected_nodes_possible + tree.nodes( node_regex )
+                                else:
+                                    selected_nodes_possible = tree.nodes( node_regex )
                             else:
-                                selected_nodes_possible = tree.nodes( node_regex )
+                                # search with it as a label
+                                if selected_nodes_possible:
+                                    selected_nodes_possible = selected_nodes_possible + tree.lnodes( node_regex )
+                                else:
+                                    selected_nodes_possible = tree.lnodes( node_regex )
+
                         else:
                             # if the node_regex is empty, we operate on previously
                             # selected nodes.
