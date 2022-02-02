@@ -581,11 +581,14 @@ class LopperProp():
 
         return True
 
-    def resolve_phandles( self, tag_invalid = False ):
+    def resolve_phandles( self, tag_invalid = False, ctx_record = False ):
         """Resolve the targets of any phandles in a property
 
         Args:
-            None
+            tag_invalid (bool,optional): if an exception or error occurs use
+                                         #invalid as the phandle return
+            ctx_record (bool,optional): return context fields when resolving
+                                        phandles.
 
         Returns:
             A list of all resolved phandle node numbers, [] if no phandles are present
@@ -611,8 +614,12 @@ class LopperProp():
         phandle_idxs = list(range(1,len(prop_val) + 1))
         phandle_idxs = phandle_idxs[idx - 1::pfields]
 
+        ctx_fields = []
+
         element_count = 1
         element_total = len(prop_val)
+
+        record_list = []
         for i in prop_val:
             base = 10
             if re.search( "0x", i ):
@@ -622,6 +629,11 @@ class LopperProp():
                 i = i_as_int
             except:
                 pass
+
+            record_list.append( i )
+            if element_count % pfields == 0:
+                ctx_fields.append( record_list )
+                record_list = []
 
             if element_count in phandle_idxs:
                 try:
@@ -643,7 +655,10 @@ class LopperProp():
 
             element_count = element_count + 1
 
-        return phandle_targets
+        if ctx_record:
+            return phandle_targets, ctx_fields
+        else:
+            return phandle_targets
 
     def print( self, output ):
         """print a property
@@ -2219,7 +2234,12 @@ class LopperNode(object):
                     # see if we got a property class as part of the input dictionary
                     pclass = dct['__{}_pclass__'.format(prop)]
                 except Exception as e:
-                    pclass = ""
+                    if re.search( r'lopper-comment-.*', prop ):
+                        pclass = "comment"
+                    elif re.search( r'lopper-label-.*', prop ):
+                        pclass = "label"
+                    else:
+                        pclass = ""
 
                 try:
                     node_source = dct['__nodesrc__']
@@ -2863,8 +2883,10 @@ class LopperTree:
         self["/"].print( output )
 
     def resolve( self ):
-        # kept for compatibility, the tree is always resolved now
-        pass
+        # walk each node, and individually resolve
+        for n in self:
+            for p in n:
+                p.resolve()
 
     def sync( self, fdt = None, only_if_required = False ):
         """Sync a tree to a backing FDT
