@@ -444,6 +444,7 @@ class lopper_base:
                 return {
                     "DEFAULT" : [ 'this is the default provided phandle map' ],
                     "address-map" : [ '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells', 0 ],
+                    "secure-address-map" : [ '#address-cells phandle #address-cells #size-cells', 0 ],
                     "interrupt-parent" : [ 'phandle', 0 ],
                     "iommus" : [ 'phandle field' ],
                     "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
