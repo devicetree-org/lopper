@@ -1231,7 +1231,9 @@ class LopperSDT:
                 # select some nodes!
                 if "*" in tree_regex:
                     new_tree = LopperTree( True )
+                    new_tree.strict = False
                     new_tree.load( Lopper.export( self.FDT ) )
+                    new_tree.resolve()
                     new_tree.strict = not self.permissive
                 else:
                     # we can gather the tree nodes and unify with the selected
