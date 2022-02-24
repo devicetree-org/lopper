@@ -178,7 +178,7 @@ The important elements of the file are that it is structured like any standard
 dts file, and that the root of the device tree must have the compatible string,
 so that it will be recognized as a lop file.
 
-  compatible = "system-device-tree-v1";
+  compatible = "system-device-tree-v1,lop";
 
 The lops can then have a specified priority, with <1> being the highest
 priority and <10> being the lowest. This is used to broadly order operations
@@ -191,9 +191,19 @@ lop specific properties. The <number> in a lop node is a convention for easier
 reading, but is not used by lopper to order operations. The order lops appear in
 the file is the order they are applied.
 
-NOTE/TODO: bindings will be written for the lopper operations.
+lops are identified through the compatible string:
 
-The following types of lops are currently valid:
+    compatible = "system-device-tree-v1,lop,<lop type>
+
+The valid lop types are desribed below. Note that the lop type can have an
+optional "-v<version>" appended (i.e. -v1) and will be accepted. The version
+specification is optional at the moment, since only -v1 operations exist.
+
+A lop can be specified, and have execution inhibited via the 'nexec;' property
+in that lop (child lops also need this to be specified). This allows for lopper
+operations to be carried, but only enabled for debug, etc.
+
+NOTE/TODO: bindings will be written for the lopper operations.
 
 # module load: load a lopper assist module
 
@@ -391,6 +401,10 @@ The following types of lops are currently valid:
     #       select -> code lops instead.
     #
     # code: a block of python code to execute against a node
+    #
+    # code blocks are identified with the compatible string: "system-device-tree-v1,lop,code"
+    # '-v1' can follow 'code', but it is not required as only one format of python code
+    # is currently supported.
     #
     # Execute python code in a restricted environment. This can be used to test and
     # produce special output without needing to write an assist. Changes made to a node
@@ -628,6 +642,10 @@ The following types of lops are currently valid:
     # It is similar to the conditional lop (and could replace it in the
     # future). In particular regular expressions which are not valid to dtc
     # can be expressed in select.
+    #
+    # select operations are idenfied via: compatible = "system-device-tree-v1,lop,select";
+    # Optionally a "-v1" can be appended, but currently is not required as only
+    # one select format is supported.
     #
     # The syntax of a select test is exactly the same as the modify operation:
     #
