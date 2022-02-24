@@ -792,6 +792,48 @@ The following types of lops are currently valid:
     # in that assist (and in this case, will expand various properties in
     # in the node).
 
+
+# meta-v1, phandle-desc-v1
+
+    # lopper performs phandle validation and phandle replacement during dts /
+    # dtb output handling. To do these lookups, it must understand the names and
+    # layout of properites that contain phandles.
+
+    # Internally lopper has the following default phandle understanding:
+
+        "DEFAULT" : [ 'this is the default provided phandle map' ],
+        "address-map" : [ '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells', 0 ],
+        "secure-address-map" : [ '#address-cells phandle #address-cells #size-cells', 0 ],
+        "interrupt-parent" : [ 'phandle', 0 ],
+        "iommus" : [ 'phandle field' ],
+        "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
+        "access" : [ 'phandle' ],
+        "cpus" : [ 'phandle mask mode' ],
+        "clocks" : [ 'phandle:#clock-cells' ],
+
+    # the format of the entries is rudimentary, and will be enhanced with
+    # bindings in future revisions. The important information in an entry
+    # is the position of the phandle, non-phandle fields can be given any
+    # name, and are simply placeholders for counting.
+    #
+    # lopper also supports dynamically sized properies when locating
+    # a phandle for replacement/lookup. The property that varies in size
+    # is prefixed with '#', followed by the property name. Lopper will lookup
+    # that property in the device tree and expand the field count
+    # appropriately.
+    #
+    # A phandle description is additive. Existing entries do not need
+    # to be repeated, and existing values can be overwritten by putting
+    # them in the lop.
+
+
+                lop_0_0 {
+                      compatible = "system-device-tree-v1,lop,meta-v1","phandle-desc-v1";
+                      interrupt-map = "#interrupt-cells phandle #interrupt-cells";
+                      access = "flags phandle flags";
+                      mynewproperty = "phandle field field";
+                };
+
 Note: the lopper_sanity.py utility has an embedded lops file that can be
 used as a reference, as well as embedded LopperTree sanity tests.
 
