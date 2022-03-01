@@ -1811,7 +1811,20 @@ class LopperNode(object):
 
 
             if self.label:
-                dct['lopper-label-0'] = [ self.label ]
+                # there can only be one label per-node. The node may already have
+                # a label that was created during processing, or read from a dtb.
+                # if so, we overwrite that one with any label updates that may have
+                # happened during processing. Otherwise, we create a special lopper
+                # label attribute
+                existing_label = ""
+                for lp in dct.keys():
+                    if re.match( r'lopper-label.*', lp ):
+                        existing_label = lp
+
+                if existing_label:
+                    dct[existing_label] = [ self.label ]
+                else:
+                    dct['lopper-label-0'] = [ self.label ]
 
             self.__modified__ = False
 
