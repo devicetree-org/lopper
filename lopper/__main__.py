@@ -398,5 +398,7 @@ def main():
 
     device_tree.cleanup()
 
-main()
+
+if __name__ == "__main__":
+    main()
 
