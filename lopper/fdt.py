@@ -1494,7 +1494,7 @@ class LopperFDT(lopper.base.lopper_base):
 
     @staticmethod
     def dt_compile( dts_file, i_files, includes, force_overwrite=False, outdir="./",
-                    save_temps=False, verbose=0, enhanced = True ):
+                    save_temps=False, verbose=0, enhanced = True, permissive = False ):
         """Compile a dts file to a dtb
 
         This routine takes a dts input file, other dts include files,
@@ -1699,31 +1699,34 @@ class LopperFDT(lopper.base.lopper_base):
                 if label:
                     try:
                         existing_label = labeldict[label]
-                        print( "[ERROR]: duplicate label '%s' detected, processing cannot continue" % label )
-                        if verbose:
-                            print( "[DBG+]: Dumping label dictionary (as processed to error)" )
-                            for l in labeldict:
-                                print( "    %s" % l )
+                        if not permissive:
+                            print( "[ERROR]: duplicate label '%s' detected, processing cannot continue" % label )
+                            if verbose:
+                                print( "[DBG+]: Dumping label dictionary (as processed to error)" )
+                                for l in labeldict:
+                                    print( "    %s" % l )
 
-                            print( "\n[DBG+]: Offending label lines with context:" )
-                            file_as_array = data.splitlines()
-                            pattern = re.compile( r'^\s*?({})\s*?\:(.*?)$'.format(label), re.DOTALL | re.MULTILINE )
-                            match_line = 0
-                            for i,f in enumerate(file_as_array):
-                                m = re.search( pattern, f )
-                                if m:
-                                    try:
-                                        print( "    %s %s" % (i-2,file_as_array[i-2]) )
-                                        print( "    %s %s" % (i-1,file_as_array[i-1]) )
-                                        print( "    %s %s" % (i,file_as_array[i]) )
-                                        print( "    %s %s" % (i+1,file_as_array[i+1]) )
-                                        print( "    %s %s" % (i+2,file_as_array[i+2]) )
-                                    except:
-                                        print( "    %s %s" % (i,file_as_array[i]) )
+                                print( "\n[DBG+]: Offending label lines with context:" )
+                                file_as_array = data.splitlines()
+                                pattern = re.compile( r'^\s*?({})\s*?\:(.*?)$'.format(label), re.DOTALL | re.MULTILINE )
+                                match_line = 0
+                                for i,f in enumerate(file_as_array):
+                                    m = re.search( pattern, f )
+                                    if m:
+                                        try:
+                                            print( "    %s %s" % (i-2,file_as_array[i-2]) )
+                                            print( "    %s %s" % (i-1,file_as_array[i-1]) )
+                                            print( "    %s %s" % (i,file_as_array[i]) )
+                                            print( "    %s %s" % (i+1,file_as_array[i+1]) )
+                                            print( "    %s %s" % (i+2,file_as_array[i+2]) )
+                                        except:
+                                            print( "    %s %s" % (i,file_as_array[i]) )
 
-                                    print( "\n" )
-                        os._exit(1)
-
+                                        print( "\n" )
+                            os._exit(1)
+                        else:
+                            # clobber the dup
+                            labeldict[label] = label
                     except:
                         labeldict[label] = label
 
