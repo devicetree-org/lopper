@@ -1809,22 +1809,29 @@ class LopperNode(object):
                     print( "       node export: [%s] property: %s (state:%s)(type:%s)" %
                            (p.ptype,p.name,p.__pstate__,dct['__{}_type__'.format(p.name)]) )
 
-
             if self.label:
                 # there can only be one label per-node. The node may already have
                 # a label that was created during processing, or read from a dtb.
                 # if so, we overwrite that one with any label updates that may have
                 # happened during processing. Otherwise, we create a special lopper
                 # label attribute
+                keys_to_delete = []
                 existing_label = ""
+                label_name = "lopper-label-0"
                 for lp in dct.keys():
                     if re.match( r'lopper-label.*', lp ):
-                        existing_label = lp
+                        if existing_label:
+                            keys_to_delete.append( lp )
+                        else:
+                            existing_label = lp
+                            label_name = lp
 
-                if existing_label:
-                    dct[existing_label] = [ self.label ]
-                else:
-                    dct['lopper-label-0'] = [ self.label ]
+
+                for k in keys_to_delete:
+                    del dct[k]
+
+                dct[label_name] = [ self.label ]
+
 
             self.__modified__ = False
 
