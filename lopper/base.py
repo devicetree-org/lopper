@@ -448,7 +448,7 @@ class lopper_base:
                     "interrupt-parent" : [ 'phandle', 0 ],
                     "iommus" : [ 'phandle field' ],
                     "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
-                    "access" : [ 'phandle' ],
+                    "access" : [ 'phandle flags' ],
                     "cpus" : [ 'phandle mask mode' ],
                     "clocks" : [ 'phandle:#clock-cells' ],
                 }

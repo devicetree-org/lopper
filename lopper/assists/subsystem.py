@@ -289,23 +289,66 @@ def access_expand( tree, subnode, verbose = 0 ):
         flags_value = 0
         if flags:
             try:
-                secure = flags['secure']
-                secure = val_as_bool( secure )
-                if secure:
+                fval = flags['timeshare']
+                if fval:
                     flags_value = set_bit( flags_value, 0 )
             except:
-                secure = False
+                pass
 
             try:
-                requested = flags['requested']
-                requested = val_as_bool( requested )
-                if requested:
-                    flags_value = set_bit( flags_value, 1 )
+                fval = flags['allow-secure']
+                if fval:
+                    flags_value = set_bit( flags_value, 2 )
             except:
-                requested = 0x0
+                pass
+
+            try:
+                fval = flags['read-only']
+                if fval:
+                    flags_value = set_bit( flags_value, 4 )
+            except:
+                pass
+
+            try:
+                fval = flags['requested']
+                if fval:
+                    flags_value = set_bit( flags_value, 6 )
+            except:
+                pass
+
+            try:
+                fval = flags['requested-secure']
+                if fval:
+                    flags_value = set_bit( flags_value, 36 )
+            except:
+                pass
+
+            try:
+                fval = flags['coherent']
+                if fval:
+                    flags_value = set_bit( flags_value, 37 )
+            except:
+                pass
+
+            try:
+                fval = flags['virtualized']
+                if fval:
+                    flags_value = set_bit( flags_value, 38 )
+            except:
+                pass
+
+            # todo: definition: values [0-100] expressed using bits [64-95]
+            # try:
+            #     fval = flags['qos']
+            #     if fval:
+            #         flags_value = set_bit( flags_value, 37 )
+            # except:
+            #     pass
+
 
         # save the <phandle> <flags> to the list of values to write
         access_list.append( dev_handle )
+        access_list.append( flags_value )
         flag_list.append(flags)
 
 
@@ -314,7 +357,6 @@ def access_expand( tree, subnode, verbose = 0 ):
         print( '[DBG] setting access: [{}]'.format(', '.join(hex(x) for x in access_list)) )
 
     ap.value = access_list
-    subnode + LopperProp(name='access-flags-names',value=flag_list)
 
 # handle either sram or memory with use of prop_name arg
 def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', verbose = 0 ):

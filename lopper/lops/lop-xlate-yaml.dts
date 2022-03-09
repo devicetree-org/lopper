@@ -20,7 +20,7 @@
                         interrupt-parent = "phandle";
                         iommus = "phandle field";
                         interrupt-map = "#interrupt-cells phandle #interrupt-cells";
-                        access = "phandle";
+                        access = "phandle flags";
                         cpus = "phandle mask mode";
                         include = "phandle";
                         firewallconf = "phandle type priority";
