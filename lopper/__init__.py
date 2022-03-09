@@ -215,7 +215,7 @@ class LopperSDT:
             # in case there are dtsi files, etc.
             include_paths += " " + str(sdt_file.parent) + " "
             self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
-                                          self.save_temps, self.verbose, self.enhanced )
+                                          self.save_temps, self.verbose, self.enhanced, self.permissive )
 
             if self.use_libfdt:
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
