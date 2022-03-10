@@ -676,7 +676,10 @@ class LopperProp():
            Nothing
 
         """
-        indent = (self.node.depth * 8) + 8
+        if self.node.indent_char == ' ':
+            indent = (self.node.depth * 8) + 8
+        else:
+            indent = (self.node.depth) + 1
 
         outstring = self.string_val
         only_align_comments = False
@@ -696,11 +699,11 @@ class LopperProp():
 
             if do_indent:
                 dstring = ""
-                dstring = dstring.rjust(len(dstring) + indent + 1, " " )
+                dstring = dstring.rjust(len(dstring) + indent + 1, self.node.indent_char)
                 outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
         if outstring:
-            print(outstring.rjust(len(outstring)+indent," " ), file=output)
+            print(outstring.rjust(len(outstring)+indent, self.node.indent_char), file=output)
 
     def property_type_guess( self, force = False ):
         """'guess' the type of a property
@@ -1120,6 +1123,9 @@ class LopperNode(object):
 
         self.__dbg__ = debug
 
+        # output/print information
+        self.indent_char = ' '
+
         # states could be enumerated types
         self.__nstate__ = "init"
         self.__modified__ = False
@@ -1159,6 +1165,7 @@ class LopperNode(object):
         new_instance.label = copy.deepcopy( self.label, memodict )
         new_instance.type = copy.deepcopy( self.type, memodict )
         new_instance.abs_path = copy.deepcopy( self.abs_path, memodict )
+        new_instance.indent_char = self.indent_char
 
         new_instance._source = self._source
 
@@ -1660,7 +1667,11 @@ class LopperNode(object):
             except:
                 output = sys.stdout
 
-        indent = self.depth * 8
+        if self.indent_char == ' ':
+            indent = self.depth * 8
+        else:
+            indent = self.depth
+
         nodename = self.name
 
         # we test for None, not "if strict", since we don't want an
@@ -1690,7 +1701,7 @@ class LopperNode(object):
                     outstring = nodename + " {"
 
             print( "", file=output )
-            print(outstring.rjust(len(outstring)+indent," " ), file=output )
+            print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output )
         else:
             # root node
             # peek ahead to handle the preamble
@@ -1713,7 +1724,7 @@ class LopperNode(object):
 
         # end the node
         outstring = "};"
-        print(outstring.rjust(len(outstring)+indent," " ), file=output)
+        print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output)
 
     def phandle_or_create( self ):
         """Access (and generate) a phandle for this node
@@ -2476,6 +2487,8 @@ class LopperTree:
         self.depth_first = depth_first
 
         self.strict = True
+        # output/print information
+        self.indent_char = ' '
 
         # ensure that we have a root node available immediately
         i_dct = {  '__path__' : '/',
@@ -3803,6 +3816,7 @@ class LopperTree:
                 except:
                     # node didn't exist before, create it as something new
                     node = LopperNode( nn, "", self )
+                    node.indent_char = self.indent_char
 
                 node.__dbg__ = self.__dbg__
 
@@ -4041,7 +4055,11 @@ class LopperTreePrinter( LopperTree ):
         Returns:
             Nothing
         """
-        indent = n.depth * 8
+        if n.indent_char == ' ':
+            indent = n.depth * 8
+        else:
+            indent = n.depth
+
         nodename = n.name
         if n.number != 0:
             plabel = ""
@@ -4063,7 +4081,7 @@ class LopperTreePrinter( LopperTree ):
                     outstring = nodename + " {"
 
             print( "", file=self.output )
-            print(outstring.rjust(len(outstring)+indent," " ), file=self.output )
+            print(outstring.rjust(len(outstring)+indent, n.indent_char), file=self.output )
 
     def end_node(self, n):
         """LopperTreePrinter node end
@@ -4076,9 +4094,13 @@ class LopperTreePrinter( LopperTree ):
         Returns:
             Nothing
         """
-        indent = n.depth * 8
+        if n.indent_char == ' ':
+            indent = n.depth * 8
+        else:
+            indent = n.depth
+
         outstring = "};"
-        print(outstring.rjust(len(outstring)+indent," " ), file=self.output)
+        print(outstring.rjust(len(outstring)+indent,n.indent_char), file=self.output)
 
     def start_property(self, p):
         """LopperTreePrinter property print
@@ -4096,7 +4118,11 @@ class LopperTreePrinter( LopperTree ):
         # can go
         p.resolve( self.strict )
 
-        indent = (p.node.depth * 8) + 8
+        if p.node.indent_char == ' ':
+            indent = (p.node.depth * 8) + 8
+        else:
+            indent = p.node.depth + 1
+
         outstring = str( p )
         only_align_comments = False
 
@@ -4115,11 +4141,11 @@ class LopperTreePrinter( LopperTree ):
 
             if do_indent:
                 dstring = ""
-                dstring = dstring.rjust(len(dstring) + indent + 1, " " )
+                dstring = dstring.rjust(len(dstring) + indent + 1, p.node.indent_char)
                 outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
         if outstring:
-            print(outstring.rjust(len(outstring)+indent," " ), file=self.output)
+            print(outstring.rjust(len(outstring)+indent,p.node.indent_char), file=self.output)
 
     def end(self, n):
         """LopperTreePrinter tree end

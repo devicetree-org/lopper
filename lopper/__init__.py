@@ -493,6 +493,13 @@ class LopperSDT:
 
             printer = LopperTreePrinter( True, output_filename, self.verbose )
             printer.strict = not self.permissive
+            try:
+                if self.config['dts']['tabs']:
+                    printer.indent_char = '\t'
+                else:
+                    printer.indent_char = ' '
+            except:
+                pass
             printer.load( tree_to_write.export() )
             printer.exec()
 
