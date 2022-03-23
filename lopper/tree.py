@@ -2259,7 +2259,7 @@ class LopperNode(object):
                     pass
 
                 if self.__dbg__ > 3:
-                    print( "[DBG++] node load: [%s] prop: %s val: %s" % (dtype, prop, prop_val ))
+                    print( "[DBG++] node [%s] load: [%s] prop: %s val: %s" % (self,dtype, prop, prop_val ))
 
                 try:
                     # see if we got a property class as part of the input dictionary
@@ -2346,7 +2346,6 @@ class LopperNode(object):
 
         if self.__dbg__ > 2:
             print( "[DGB++]: node resolution end: %s" % self)
-
 
     def resolve( self, fdt = None ):
         """resolve (calculate) node details against a FDT
@@ -3827,6 +3826,7 @@ class LopperTree:
                     node_check = self.__nodes__[node.abs_path]
                     if node_check:
                         print( "[ERROR]: tree inconsistency found, two nodes with the same path (%s)" % node_check.abs_path )
+                        node_check.print()
                         # we need to exit the thread/backgound call AND the entire application, so
                         # hit is with a hammer.
                         os._exit(1)

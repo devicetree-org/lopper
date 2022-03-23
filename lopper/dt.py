@@ -43,7 +43,7 @@ class LopperDT(lopper.base.lopper_base):
 
     @staticmethod
     def dt_compile( dts_file, i_files ="", includes="", force_overwrite=False, outdir="./",
-                    save_temps=False, verbose=0, enhanced = True ):
+                    save_temps=False, verbose=0, enhanced = True, permissive = False ):
 
 
         preprocessed_name = LopperDT.dt_preprocess( dts_file, includes, outdir, verbose )

@@ -180,6 +180,15 @@ class LopperFDT(lopper.base.lopper_base):
         """
         try:
             node = fdt.path_offset( node_prefix )
+            # libfdt returns matches based on partial paths. i.e. if a tree
+            # has /timer@2a810000 and /timer, and you search for /timer, you
+            # will get the node number for /timer@2a810000 .. this causes problems.
+            # so we double check the name, and if it isn't as expected, we do a
+            # slower secondary search to find the proper node.
+            node_name = fdt.get_name( node )
+            if node_name != os.path.basename( node_prefix ):
+                node, matching_nodes = LopperFDT.node_find_by_name( fdt, os.path.basename(node_prefix) + "$" )
+
         except:
             node = -1
 
@@ -882,7 +891,6 @@ class LopperFDT(lopper.base.lopper_base):
 
         prop_list = LopperFDT.node_properties( fdt, node_path )
         for p in prop_list:
-            # print( "                      export as dict: read: %s" % p.name )
             property_val = LopperFDT.property_get( fdt, node_number, p.name, LopperFmt.COMPOUND )
             prop_dict[p.name] = property_val
             if type_hints:
@@ -1084,6 +1092,15 @@ class LopperFDT(lopper.base.lopper_base):
             node_number = LopperFDT.node_find( fdt, node )
             if node_number == -1:
                 node_number, matching_nodes = LopperFDT.node_find_by_name( fdt, node )
+            else:
+                # libfdt returns matches based on partial paths. i.e. if a tree
+                # has /timer@2a810000 and /timer, and you search for /timer, you
+                # will get the node number for /timer@2a810000 .. this causes problems.
+                # so we double check the name, and if it isn't as expected, we do a
+                # slower secondary search to find the proper node.
+                node_name = fdt.get_name( node_number )
+                if node_name != os.path.basename( node):
+                    node_number, matching_nodes = LopperFDT.node_find_by_name( fdt, os.path.basename(node) + "$" )
 
         if node_number == -1:
             print( "[WARNING]: could not find node %s" % node )
