@@ -3,12 +3,12 @@ from lopper.tree import *
 KERNEL_FLAG = 'openamp-xlnx-kernel'
 HOST_FLAG = 'openamp-host'
 
-ipi_to_irq_vect_id = {
+zynqmp_ipi_to_irq_vect_id = {
   0xff330000 : 62,
   0xFF340000 : 63,
   0xFF350000 : 64,
-  0xFF360000 : 65,
-  0xff370000 : 66,
+  0xFF310000 : 65,
+  0xff320000 : 66,
   0xff380000 : 67,
 }
 
