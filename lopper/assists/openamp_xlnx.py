@@ -625,8 +625,9 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, verbose = 0 ):
     if not ret:
         return ret
 
-    # TODO
     # remove definitions
+    defn_node =  tree["/definitions"]
+    tree - defn_node
 
     return True
 
