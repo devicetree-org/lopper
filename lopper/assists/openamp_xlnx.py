@@ -49,10 +49,513 @@ def is_compat( node, compat_string_to_test ):
         return xlnx_openamp_rpu
     return ""
 
+def xlnx_rpmsg_native_update_carveouts(tree, elfload_node,
+                                       native_shm_mem_area_start, native_shm_mem_area_size,
+                                       native_amba_shm_node):
+    # start and size of reserved-mem rproc0
+    start = elfload_node.props("start")[0].value
+    size = elfload_node.props("size")[0].value
+
+    # update size if applicable
+    if start < native_shm_mem_area_start:
+        native_shm_mem_area_start = start
+    native_shm_mem_area_size += size
+
+    # update rproc0 size
+    elfload_res_mem_node = tree["/reserved-memory/" + elfload_node.name]
+    elfload_res_mem_reg = elfload_res_mem_node.props("reg")[0].value
+    elfload_res_mem_reg[3] = native_shm_mem_area_size
+    elfload_res_mem_node.props("reg")[0].value = elfload_res_mem_reg
+
+    # FIXME: update demos so that start of shm is not hard-coded offset
+    native_shm_mem_area_start += 0x20000
+    shm_space = [0, native_shm_mem_area_start, 0, native_shm_mem_area_size]
+    native_amba_shm_node + LopperProp(name="reg", value=shm_space)
+
+    return True
+
+
+native_shm_node_count = 0
+def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native,
+                                   amba_node = None, elfload_node = None, verbose = 0 ):
+    global native_shm_node_count
+    res_mem_node = tree["/reserved-memory"]
+    native_amba_shm_node = None
+    native_shm_mem_area_size = 0
+    native_shm_mem_area_start = 0xFFFFFFFF
+
+    if amba_node != None:
+        native_amba_shm_node = LopperNode(-1, amba_node.abs_path + "/shm" + str(native_shm_node_count))
+        native_amba_shm_node + LopperProp(name="compatible", value="shm_uio")
+        tree.add(native_amba_shm_node)
+        tree.resolve()
+        native_shm_node_count += 1
+
+
+    # only applicable for DDR carveouts
+    for carveout in carveouts:
+        # SRAM banks have status prop
+        # SRAM banks are not in reserved memory
+        # FIXME  skip SRAM banks in RPMsg support
+        if carveout.props("status") != []:
+            continue
+        elif carveout.props("no-map") != []:
+            start = carveout.props("start")[0].value
+            size = carveout.props("size")[0].value
+            # handle native RPMsg
+            if native:
+                if start < native_shm_mem_area_start:
+                    native_shm_mem_area_start = start
+                native_shm_mem_area_size += size
+                # add more space for shared buffers
+                if 'vdev0buffer' in carveout.name:
+                    native_shm_mem_area_size += size
+            else:
+
+                new_node =  LopperNode(-1, "/reserved-memory/"+carveout.name)
+                new_node + LopperProp(name="no-map")
+                new_node + LopperProp(name="reg", value=[0, start, 0, size])
+
+                if "vdev0buffer" in carveout.name:
+                    new_node + LopperProp(name="compatible", value="shared-dma-pool")
+
+                tree.add(new_node)
+                tree.resolve()
+
+                if new_node.phandle == 0:
+                    new_node.phandle = new_node.phandle_or_create()
+
+                new_node + LopperProp(name="phandle", value = new_node.phandle)
+                rpmsg_carveouts.append(new_node)
+
+        else:
+            print("WARNING: invalid remoteproc elfload carveout", carveout)
+            return False
+
+
+    if native:
+        ret = xlnx_rpmsg_native_update_carveouts(tree, elfload_node,
+                                                 native_shm_mem_area_start, native_shm_mem_area_size,
+                                                 native_amba_shm_node)
+        if not ret:
+            return ret
+
+    return True
+
+
+def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
+                         remote_node, channel_id, native,
+                         verbose = 0 ):
+    remote = node.props("remote")
+    carveouts_prop = node.props("carveouts")
+    amba_node = None
+    ipi_id_prop_name = "xlnx,ipi-id"
+    host_to_remote_ipi = None
+    remote_to_host_ipi = None
+
+    # collect host ipi
+    host_ipi_prop = node.props("mbox")
+    if host_ipi_prop == []:
+        print("WARNING: ", node, " is missing mbox property")
+        return False
+
+    host_ipi_prop = host_ipi_prop[0]
+    host_ipi = tree.pnode(host_ipi_prop.value[0])
+
+    # collect corresponding remote rpmsg relation
+    remote_node = tree.pnode( remote[0].value[0] )
+    remote_rpmsg_relation = None
+    try:
+        remote_rpmsg_relation = tree[remote_node.abs_path + "/domain-to-domain/rpmsg-relation"]
+    except:
+        print("WARNING: ", remote_node, " is missing rpmsg relation")
+        return False
+
+    # collect remote ipi
+    remote_ipi_prop = remote_rpmsg_relation.props("mbox")
+    if remote_ipi_prop == []:
+        print("WARNING: ", remote_node, " is missing mbox property")
+        return False
+
+    remote_ipi_prop = remote_ipi_prop[0]
+    remote_ipi = tree.pnode(remote_ipi_prop.value[0])
+
+    host_ipi_id = host_ipi.props(ipi_id_prop_name)
+    if host_ipi_id == []:
+        print("WARNING", host_ipi, " does not have property name: ", ipi_id_prop_name)
+    host_ipi_id = host_ipi_id[0]
+
+    remote_ipi_id = remote_ipi.props(ipi_id_prop_name)
+    if remote_ipi_id == []:
+        print("WARNING", remote_ipi, " does not have property name: ", ipi_id_prop_name)
+        return False
+    remote_ipi_id = remote_ipi_id[0]
+
+    # find host to remote buffers
+    host_to_remote_ipi_channel = None
+    for subnode in host_ipi.subnodes():
+        subnode_ipi_id = subnode.props(ipi_id_prop_name)
+        if subnode_ipi_id != [] and remote_ipi_id.value[0] == subnode_ipi_id[0].value[0]:
+            host_to_remote_ipi_channel = subnode
+    if host_to_remote_ipi_channel == None:
+        print("WARNING no host to remote IPI channel has been found.")
+        return False
+
+    # find remote to host buffers
+    remote_to_host_ipi_channel = None
+    for subnode in remote_ipi.subnodes():
+        subnode_ipi_id = subnode.props(ipi_id_prop_name)
+        if subnode_ipi_id != [] and host_ipi_id.value[0] == subnode_ipi_id[0].value[0]:
+            remote_to_host_ipi_channel = subnode
+    if remote_to_host_ipi_channel == None:
+        print("WARNING no remote to host IPI channel has been found.")
+        return False
+
+    # set platform
+    platform = None
+    root_node = tree["/"]
+    root_compat = root_node.props("compatible")[0].value
+    for compat in root_compat:
+        if "zynqmp" in compat:
+            platform = SOC_TYPE.ZYNQMP
+            break
+        elif "versal" in compat:
+            platform = SOC_TYPE.VERSAL
+            break
+    openamp_channel_info["platform"] = platform
+
+    # store IPI IRQ Vector IDs
+    platform =  openamp_channel_info["platform"]
+    host_ipi_base = host_ipi.props("reg")[0][1]
+    remote_ipi_base = remote_ipi.props("reg")[0][1]
+
+    if SOC_TYPE.ZYNQMP == platform:
+        if host_ipi_base not in zynqmp_ipi_to_irq_vect_id.keys():
+            print("WARNING: host IPI", hex(host_ipi_base), "not in IRQ VECTOR ID Mapping for ZU+")
+            return False
+        if remote_ipi_base not in zynqmp_ipi_to_irq_vect_id.keys():
+            print("WARNING: remote IPI", hex(remote_ipi_base), "not in IRQ VECTOR ID Mapping for ZU+")
+            return False
+
+        openamp_channel_info["host_ipi_base"+channel_id] = host_ipi_base
+        openamp_channel_info["host_ipi_irq_vect_id"+channel_id] = zynqmp_ipi_to_irq_vect_id[host_ipi_base]
+        openamp_channel_info["remote_ipi_base"+channel_id] = remote_ipi_base
+        openamp_channel_info["remote_ipi_irq_vect_id"+channel_id] = zynqmp_ipi_to_irq_vect_id[remote_ipi_base]
+    else:
+        print("Unsupported platform")
+
+    openamp_channel_info["host_ipi_"+channel_id] = host_ipi
+    openamp_channel_info["remote_ipi_"+channel_id] = remote_ipi
+    openamp_channel_info["rpmsg_native_"+channel_id] = native
+    openamp_channel_info["host_to_remote_ipi_channel_" + channel_id] = host_to_remote_ipi_channel
+    openamp_channel_info["remote_to_host_ipi_channel_" + channel_id] = remote_to_host_ipi_channel
+
+    return True
+
+
+def xlnx_rpmsg_setup_host_controller(tree, controller_parent, gic_node_phandle,
+                                     host_ipi):
+    controller_parent + LopperProp(name="compatible",value="xlnx,zynqmp-ipi-mailbox")
+    controller_parent + LopperProp(name="interrupt-parent", value = [gic_node_phandle])
+    controller_parent + LopperProp(name="#address-cells",value=1)
+    controller_parent + LopperProp(name="#size-cells",value=1)
+    controller_parent + LopperProp(name="ranges")
+
+    host_interrupts_prop = host_ipi.props("interrupts")
+    if host_interrupts_prop == []:
+        print("WARNING: host ipi ", host_ipi, " missing interrupts property")
+        return False
+
+    host_interrupts_pval = host_interrupts_prop[0].value
+    controller_parent + LopperProp(name="interrupts", value = copy.deepcopy(host_interrupts_pval))
+    controller_parent + LopperProp(name="xlnx,ipi-id", value = host_ipi.props("xlnx,ipi-id")[0].value)
+
+    tree.add(controller_parent)
+    tree.resolve()
+
+    if controller_parent.phandle == 0:
+        controller_parent.phandle = controller_parent.phandle_or_create()
+
+    controller_parent + LopperProp(name="phandle", value = controller_parent.phandle)
+
+    return True
+
+
+controller_parent_index = 1
+def xlnx_rpmsg_create_host_controller(tree, host_ipi, gic_node_phandle, verbose = 0):
+    global controller_parent_index
+    controller_parent = None
+    ctr_parent_name = "/zynqmp_ipi" + str(controller_parent_index)
+    setup_host_controller = True
+    try:
+        controller_parent = tree[ctr_parent_name]
+
+        ctr_parent_ipi_id = controller_parent.props("xlnx,ipi-id")
+        if ctr_parent_ipi_id != [] and ctr_parent_ipi_id[0].value[0] == host_ipi.props("xlnx,ipi-id")[0].value[0]:
+            setup_host_controller = False
+        else:
+            setup_host_controller = True
+            controller_parent_index += 1
+            # make new parent controller with updated name
+            ctr_parent_name = "/zynqmp_ipi" + str(controller_parent_index)
+            controller_parent = LopperNode(-1, ctr_parent_name)
+    except:
+        controller_parent = LopperNode(-1, ctr_parent_name)
+
+    # check if host controller needs to be setup before adding props to it
+    if setup_host_controller:
+        ret = xlnx_rpmsg_setup_host_controller(tree, controller_parent,
+                                               gic_node_phandle, host_ipi)
+        if not ret:
+            return False
+
+    return controller_parent
+
+
+def xlnx_rpmsg_native_update_ipis(tree, amba_node, openamp_channel_info, gic_node_phandle,
+                                  amba_ipi_node_index, host_ipi):
+    amba_node = openamp_channel_info["amba_node"]
+    amba_ipi_node = LopperNode(-1, amba_node.abs_path + "/openamp_ipi" + str(amba_ipi_node_index))
+    amba_ipi_node + LopperProp(name="compatible",value="ipi_uio")
+    amba_ipi_node + LopperProp(name="interrupts",value=copy.deepcopy(host_ipi.props("interrupts")[0].value))
+    amba_ipi_node + LopperProp(name="interrupt-parent",value=[gic_node_phandle])
+    reg_val = copy.deepcopy(host_ipi.props("reg")[0].value)
+    reg_val[3] = 0x1000
+    amba_ipi_node + LopperProp(name="reg",value=reg_val)
+    tree.add(amba_ipi_node)
+    tree.resolve()
+    amba_ipi_node_index += 1
+
+    # check if there is a kernelspace IPI that has same interrupts
+    # if so then error out
+    for n in tree["/"].subnodes():
+        compat_str = n.props("compatible")
+        if compat_str != [] and compat_str[0].value == "xlnx,zynqmp-ipi-mailbox" and \
+            n.props("interrupts")[0].value[1] ==  host_ipi.props("interrupts")[0].value[1]:
+            # check if subnode exists with the correct structure
+            # before erroring out. There may be IP IPIs that this
+            # catches
+            for sub_n in n.subnodes():
+                if sub_n.props("reg-names") != []:
+                    print("WARNING:  conflicting userspace and kernelspace for host ipi: ", host_ipi)
+                    return False
+
+    return True
+
+
+def xlnx_rpmsg_kernel_update_mboxes(tree, host_ipi, remote_ipi, gic_node_phandle,
+                                  openamp_channel_info, channel_id,
+                                  core_node, remote_controller_node, rpu_core):
+    remote_controller_node + LopperProp(name="phandle", value = remote_controller_node.phandle)
+    remote_controller_node + LopperProp(name="#mbox-cells", value = 1)
+    remote_controller_node + LopperProp(name="xlnx,ipi-id", value = remote_ipi.props("xlnx,ipi-id")[0].value)
+    reg_names_val = ["local_response_region", "local_request_region", "remote_response_region", "remote_request_region"]
+    remote_controller_node + LopperProp(name="reg-names", value = reg_names_val)
+
+    cpu_config = str(openamp_channel_info["cpu_config"+channel_id].value)
+    host_to_remote_ipi_channel = openamp_channel_info["host_to_remote_ipi_channel_"+channel_id]
+    remote_to_host_ipi_channel= openamp_channel_info["remote_to_host_ipi_channel_"+channel_id]
+    response_buf_str = "xlnx,ipi-response_message_buffer"
+    request_buf_str = "xlnx,ipi-request_message_buffer"
+
+    host_remote_response = host_to_remote_ipi_channel.props(response_buf_str)
+    if host_remote_response == []:
+        print("WARNING: host_remote_response ", host_to_remote_ipi_channel, "is missing property name: ", response_buf_str)
+        return False
+    host_remote_request = host_to_remote_ipi_channel.props(request_buf_str)
+    if host_remote_request == []:
+        print("WARNING: host_remote_request ", host_to_remote_ipi_channel, " is missing property name: ", request_buf_str)
+        return False
+    remote_host_response = remote_to_host_ipi_channel.props(response_buf_str)
+    if remote_host_response == []:
+        print("WARNING: remote_host_response ", remote_to_host_ipi_channel, " is missing property name: ", response_buf_str)
+        return False
+    remote_host_request = remote_to_host_ipi_channel.props(request_buf_str)
+    if remote_host_request == []:
+        print("WARNING: remote_host_request ", remote_to_host_ipi_channel, " is missing property name: ", request_buf_str)
+        return False
+
+    host_remote_response = host_remote_response[0].value[0]
+    host_remote_request = host_remote_request[0].value[0]
+    remote_host_response = remote_host_response[0].value[0]
+    remote_host_request = remote_host_request[0].value[0]
+
+    remote_controller_node + LopperProp(name="reg", value =[ host_remote_request, 0x20,
+                                                         host_remote_response, 0x20,
+                                                         remote_host_request, 0x20,
+                                                         remote_host_response, 0x20])
+
+    core_node + LopperProp(name="mboxes", value = [remote_controller_node.phandle, 0, remote_controller_node.phandle, 1])
+    return True
+
+def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
+                                  core_node, openamp_channel_info, channel_id):
+    controller_parent = xlnx_rpmsg_create_host_controller(tree, host_ipi, gic_node_phandle)
+
+    # check if there is a userspace IPI that has same interrupts
+    # if so then error out
+    for n in tree["/"].subnodes():
+        compat_str = n.props("compatible")
+        if compat_str != [] and compat_str[0].value == "ipi_uio" and \
+            n.props("interrupts")[0].value[1] ==  host_ipi.props("interrupts")[0].value[1]:
+            print("WARNING:  conflicting userspace and kernelspace for host ipi: ", host_ipi)
+            return False
+
+    if controller_parent == False:
+        return False
+
+    rpu_core = openamp_channel_info["rpu_core" + channel_id]
+    remote_controller_node = LopperNode(-1, controller_parent.abs_path + "/ipi_mailbox_rpu" + str(rpu_core.value))
+    tree.add(remote_controller_node)
+    tree.resolve()
+
+    if remote_controller_node.phandle == 0:
+        remote_controller_node.phandle = remote_controller_node.phandle_or_create()
+
+
+    return xlnx_rpmsg_kernel_update_mboxes(tree, host_ipi, remote_ipi, gic_node_phandle,
+                                           openamp_channel_info, channel_id,
+                                           core_node, remote_controller_node, rpu_core)
+
+
+amba_ipi_node_index = 0
+def xlnx_rpmsg_update_ipis(tree, host_ipi, remote_ipi, core_node, channel_id, openamp_channel_info, verbose = 0 ):
+    global amba_ipi_node_index
+    native = openamp_channel_info["rpmsg_native_"+ channel_id]
+    platform = openamp_channel_info["platform"]
+    controller_parent = None
+    amba_node = None
+    gic_node_phandle = None
+
+    if platform == SOC_TYPE.VERSAL:
+        gic_node_phandle = tree["/amba_apu/interrupt-controller@f9000000"].phandle
+    elif platform == SOC_TYPE.ZYNQMP:
+        gic_node_phandle = tree["/amba_apu/interrupt-controller@f9010000"].phandle
+    else:
+        print("invalid platform")
+        return False
+
+    if native:
+        return xlnx_rpmsg_native_update_ipis(tree, amba_node, openamp_channel_info, gic_node_phandle,
+                                             amba_ipi_node_index, host_ipi)
+    else:
+        return xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
+                                             core_node, openamp_channel_info, channel_id)
+
+
+def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose = 0 ):
+    cpu_config =  openamp_channel_info["cpu_config"+channel_id]
+    carveouts_nodes = openamp_channel_info["carveouts_"+ channel_id]
+    host_ipi = openamp_channel_info["host_ipi_"+ channel_id]
+    remote_ipi = openamp_channel_info["remote_ipi_"+ channel_id]
+    native = openamp_channel_info["rpmsg_native_"+ channel_id]
+    amba_node = None
+    elfload_node = None
+    if native:
+        amba_node = openamp_channel_info["amba_node"]
+    rpu_core = openamp_channel_info["rpu_core" + channel_id]
+    rpmsg_carveouts = []
+
+
+    # if Amba node exists, then this is for RPMsg native.
+    # in this case find elfload node in case of native RPMsg as it may be contiguous
+    # for AMBA Shm Node
+    if native:
+        for node in openamp_channel_info["elfload"+ channel_id]:
+            if node.props("start") != []:
+                elfload_node = node
+
+    ret = xlnx_rpmsg_construct_carveouts(tree, carveouts_nodes, rpmsg_carveouts, native,
+                                         amba_node=amba_node, elfload_node=elfload_node, verbose=verbose)
+    if ret == False:
+        return ret
+
+    core_node = tree["/rf5ss@ff9a0000/r5f_" + str(rpu_core.value)]
+    mem_region_prop = core_node.props("memory-region")[0]
+
+    # add rpmsg carveouts to cluster core node if using rpmsg kernel driver
+    new_mem_region_prop_val = mem_region_prop.value
+    if not native:
+        for rc in rpmsg_carveouts:
+            new_mem_region_prop_val.append(rc.phandle)
+        # update property with new values
+        mem_region_prop.value = new_mem_region_prop_val
+
+    ret = xlnx_rpmsg_update_ipis(tree, host_ipi, remote_ipi, core_node, channel_id, openamp_channel_info, verbose)
+    if ret != True:
+        return False
+
+    tree - host_ipi
+    tree - remote_ipi
+
+    return True
+
 
 def xlnx_rpmsg_parse(tree, node, openamp_channel_info, verbose = 0 ):
     # Xilinx OpenAMP subroutine to collect RPMsg information from RPMsg
     # relation
+    remote = node.props("remote")
+    carveouts_nodes = []
+    carveouts_prop = node.props("carveouts")
+    amba_node = None
+
+    # skip rpmsg remote node which will link to its host via 'host' property
+    if node.props("host") != []:
+        return True
+
+    if remote == []:
+        print("WARNING: ", node, "is missing remote property")
+        return False
+
+    remote_node = tree.pnode( remote[0].value[0] )
+    channel_id = "_"+node.parent.parent.name+"_"+remote_node.name
+
+
+    if carveouts_prop == []:
+        print("WARNING: ", node, " is missing elfload property")
+        return False
+    else:
+        carveouts_prop = carveouts_prop[0].value
+
+    for p in carveouts_prop:
+        carveouts_nodes.append ( tree.pnode(p) )
+
+    openamp_channel_info["carveouts_"+channel_id] = carveouts_nodes
+
+    # rpmsg native?
+    native = node.props("openamp-xlnx-native")
+    if native != [] and native[0].value[0] == 1:
+        native = True
+        # if native is true, then find and store amba bus
+        # to store IPI and SHM nodes
+        try:
+            amba_node = tree["/amba"]
+        except:
+            amba_node = LopperNode(-1, "/amba")
+            amba_node + LopperProp(name="u-boot,dm-pre-reloc")
+            amba_node + LopperProp(name="ranges")
+            amba_node + LopperProp(name="#address-cells", value = 2)
+            amba_node + LopperProp(name="#size-cells", value = 2)
+            tree.add(amba_node)
+            tree.resolve()
+
+        openamp_channel_info["amba_node"] = amba_node
+    else:
+        native = False
+
+    ret = xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
+                         remote_node, channel_id, native, verbose)
+    if ret != True:
+        return False
+
+    ret = xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose )
+    if ret != True:
+        return False
+
+    # TODO
+    # generate text file
+    # remove definitions
+
     return True
 
 
