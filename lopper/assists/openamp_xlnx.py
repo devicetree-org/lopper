@@ -35,6 +35,7 @@ from openamp_xlnx_common import *
 RPU_PATH = "/rpu@ff9a0000"
 REMOTEPROC_D_TO_D = "openamp,remoteproc-v1"
 RPMSG_D_TO_D = "openamp,rpmsg-v1"
+output_file = "openamp-channel-info.txt"
 
 class CPU_CONFIG(Enum):
     RPU_SPLIT = 0
@@ -491,6 +492,73 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
     return True
 
 
+channel_index = 0
+def xlnx_construct_text_file(openamp_channel_info, channel_id, verbose = 0 ):
+    global channel_index
+    text_file_contents = ""
+    rpmsg_native = openamp_channel_info["rpmsg_native_"+channel_id]
+    carveouts = openamp_channel_info["carveouts_"+channel_id]
+    elfload = openamp_channel_info["elfload"+channel_id]
+    tx = None
+    rx = None
+
+    for c in carveouts:
+        base = hex(c.props("start")[0].value)
+        size = hex(c.props("size")[0].value)
+        name = ""
+        if "vring0" in c.name:
+            name = "VRING0"
+            tx = base
+        elif "vring1" in c.name:
+            name = "VRING1"
+            rx = base
+        else:
+            name = "VDEV0BUFFER"
+
+        text_file_contents += "CHANNEL"+str(channel_index)+name+"BASE=\""+base+"\"\n"
+        text_file_contents += "CHANNEL"+str(channel_index)+name+"SIZE=\""+size+"\"\n"
+
+    if not rpmsg_native:
+        tx = "FW_RSC_U32_ADDR_ANY"
+        rx = "FW_RSC_U32_ADDR_ANY"
+
+    elfbase = None
+    elfsize = None
+    for e in elfload:
+        if e.props("start") != []: # filter to only parse ELF LOAD node
+            elfbase = hex(e.props("start")[0].value)
+            elfsize = hex(e.props("size")[0].value)
+            break
+
+    host_ipi = openamp_channel_info["host_ipi_" + channel_id]
+    host_ipi_bitmask = hex(host_ipi.props("xlnx,ipi-bitmask")[0].value[0])
+    host_ipi_irq_vect_id = hex(openamp_channel_info["host_ipi_irq_vect_id" + channel_id])
+    host_ipi_base = hex(openamp_channel_info["host_ipi_base"+channel_id])
+
+    remote_ipi = openamp_channel_info["remote_ipi_" + channel_id]
+    remote_ipi_bitmask = hex(remote_ipi.props("xlnx,ipi-bitmask")[0].value[0])
+    remote_ipi_irq_vect_id = hex(openamp_channel_info["remote_ipi_irq_vect_id" + channel_id])
+    remote_ipi_base = hex(openamp_channel_info["remote_ipi_base"+channel_id])
+
+    text_file_contents += "CHANNEL"+str(channel_index)+name+"RX=\""+rx+"\"\n"
+    text_file_contents += "CHANNEL"+str(channel_index)+name+"TX=\""+tx+"\"\n"
+    text_file_contents += "CHANNEL"+str(channel_index)+"ELFBASE=\""+elfbase+"\"\n"
+    text_file_contents += "CHANNEL"+str(channel_index)+"ELFSIZE=\""+elfsize+"\"\n"
+    text_file_contents += "CHANNEL"+str(channel_index)+"TO_HOST=\""+ host_ipi_base  +"\"\n"
+    text_file_contents += "CHANNEL"+str(channel_index)+"TO_HOST-BITMASK=\"" + host_ipi_bitmask + "\"\n"
+    text_file_contents += "CHANNEL"+str(channel_index)+"TO_HOST-IPIIRQVECTID=\"" + host_ipi_irq_vect_id + "\"\n"
+    text_file_contents += "CHANNEL"+str(channel_index)+"TO_REMOTE=\""+ remote_ipi_base  +"\"\n"
+    text_file_contents += "CHANNEL"+str(channel_index)+"TO_REMOTE-BITMASK=\"" + remote_ipi_bitmask + "\"\n"
+    text_file_contents += "CHANNEL"+str(channel_index)+"TO_REMOTE-IPIIRQVECTID=\"" + remote_ipi_irq_vect_id + "\"\n"
+
+    f = open(output_file, "w")
+    f.write(text_file_contents)
+    f.close()
+
+    channel_index += 1
+    return True
+
+
 def xlnx_rpmsg_parse(tree, node, openamp_channel_info, verbose = 0 ):
     # Xilinx OpenAMP subroutine to collect RPMsg information from RPMsg
     # relation
@@ -552,8 +620,12 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, verbose = 0 ):
     if ret != True:
         return False
 
-    # TODO
     # generate text file
+    ret = xlnx_construct_text_file(openamp_channel_info, channel_id, verbose)
+    if not ret:
+        return ret
+
+    # TODO
     # remove definitions
 
     return True
