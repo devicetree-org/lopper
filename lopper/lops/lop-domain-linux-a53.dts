@@ -12,27 +12,12 @@
 / {
         compatible = "system-device-tree-v1";
         lops {
-                // compatible = "system-device-tree-v1,lop";
                 lop_0 {
                         // node name modify
                         compatible = "system-device-tree-v1,lop,modify";
                         modify = "/cpus-a53@0/::/cpus/";
                 };
-                lop_1 {
-                        // modify to "nothing", is a remove operation
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/cpus-r5@1::";
-                };
-                lop_2 {
-                        // modify to "nothing", is a remove operation
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/cpus_microblaze@1::";
-                };
-                lop_3 {
-                        // modify to "nothing", is a remove operation
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/amba_rpu::";
-                };
+
                 lop_4 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       // clear any old selections
@@ -89,72 +74,7 @@
                         compatible = "system-device-tree-v1,lop,modify";
                         modify = "/memory@fffc0000::";
                 };
-                lop_7 {
-                      compatible = "system-device-tree-v1,lop,code-v1";
-                      code = "
-                          // Check for domain node
-                          domain_node = []
-                          for n in __selected__:
-                              if re.search('domains', n.name):
-                                  domain_node = n
-                          // Peipheral node handling
-                          invalid_phandles = []
-                          if domain_node:
-                              shared_dev = []
-                              valid_phandles = []
-                              for n in domain_node.subnodes():
-                                  if n.propval('access') != [''] and n.propval('os,type') == ['']:
-                                      shared_dev.append(n)
-                              for n in domain_node.subnodes():
-                                  if n.propval('access') != [''] and  n.propval('os,type') != ['']:
-                                      if re.search('linux', n.propval('os,type', list)[0]):
-                                          valid_phandles.extend(n.propval('access'))
-                                          if n.propval('include'):
-                                              // Get shared memory nodes for Linux domain
-                                              linux_shared_dev = [dev_node for dev_node in shared_dev if dev_node.phandle in n.propval('include')]
-                                              for node1 in linux_shared_dev:
-                                                  valid_phandles.extend(node1.propval('access'))
-                                      else:
-                                          invalid_phandles.extend(n.propval('access'))
 
-                              invalid_phandles = [phandle for phandle in invalid_phandles if phandle not in valid_phandles]
-                              invalid_phandles = list(dict.fromkeys(invalid_phandles))
-
-                          node_list = []
-                          address_map = node.parent['address-map'].value
-                          na = node.parent['#ranges-address-cells'].value[0]
-                          ns = node.parent['#ranges-size-cells'].value[0]
-                          cells = na + ns
-                          phandles = []
-                          tmp = na
-                          while tmp < len(address_map):
-                              phandles.append(address_map[tmp])
-                              tmp = tmp + cells + na + 1
-                          phandles = list(dict.fromkeys(phandles))
-                          phandles = [phandle for phandle in phandles if phandle not in invalid_phandles]
-                          for s in tree.__selected__:
-                              if not re.search('cpu.*', s.abs_path):
-                                  node_list.append(s)
-
-                          # Delete the unmapped nodes for a53
-                          invalid_nodes = []
-                          for node1 in node_list:
-                              match = 0
-                              for handle in phandles:
-                                  if handle == node1.phandle:
-                                      if not re.search('xlnx,zynqmp-ipi-mailbox', node1['compatible'].value[0]):
-                                          match += 1
-                              if match == 0:
-                                  invalid_nodes.append(node1)
-                              try:
-                                  if re.search('xlnx,axi-bram-ctrl', node1['compatible'].value[0]):
-                                      invalid_nodes.append(node1)
-                              except:
-                                  pass
-                          for node1 in invalid_nodes:
-                              tree.delete(node1)
-                      ";
-                };
                 lop_8 {
                         compatible = "system-device-tree-v1,lop,modify";
                         // Disable SMMU Node
