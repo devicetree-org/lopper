@@ -743,6 +743,9 @@ def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_n
         for carveout in elfload_nodes:
             if carveout.props("status") != []:
                 srams.append(carveout.phandle)
+                # FIXME for each sram, add 'power-domain' prop for kernel driver
+                carveout + LopperProp(name="power-domain",
+                                      value=copy.deepcopy( carveout.props("power-domains")[0].value ))
 
         # there may be new nodes created in linux reserved-memory node to account for
         for phandle_val in new_ddr_nodes:
