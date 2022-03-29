@@ -242,6 +242,18 @@ def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
         openamp_channel_info["host_ipi_irq_vect_id"+channel_id] = zynqmp_ipi_to_irq_vect_id[host_ipi_base]
         openamp_channel_info["remote_ipi_base"+channel_id] = remote_ipi_base
         openamp_channel_info["remote_ipi_irq_vect_id"+channel_id] = zynqmp_ipi_to_irq_vect_id[remote_ipi_base]
+    elif SOC_TYPE.VERSAL == platform:
+        if host_ipi_base not in versal_ipi_to_irq_vect_id.keys():
+            print("WARNING: host IPI", hex(host_ipi_base), "not in IRQ VECTOR ID Mapping for ZU+")
+            return False
+        if remote_ipi_base not in versal_ipi_to_irq_vect_id.keys():
+            print("WARNING: remote IPI", hex(remote_ipi_base), "not in IRQ VECTOR ID Mapping for ZU+")
+            return False
+
+        openamp_channel_info["host_ipi_base"+channel_id] = host_ipi_base
+        openamp_channel_info["host_ipi_irq_vect_id"+channel_id] = versal_ipi_to_irq_vect_id[host_ipi_base]
+        openamp_channel_info["remote_ipi_base"+channel_id] = remote_ipi_base
+        openamp_channel_info["remote_ipi_irq_vect_id"+channel_id] = versal_ipi_to_irq_vect_id[remote_ipi_base]
     else:
         print("Unsupported platform")
 
