@@ -12,6 +12,15 @@ zynqmp_ipi_to_irq_vect_id = {
   0xff380000 : 67,
 }
 
+versal_ipi_to_irq_vect_id = {
+    0xff330000 : 62,
+    0xff340000 : 63,
+    0xFF350000 : 64,
+    0xFF360000 : 65,
+    0xFF370000 : 66,
+    0xFF380000 : 67,
+}
+
 ipi_to_agent = {
   0xff330000 : 0x400,
   0xff340000 : 0x600,
