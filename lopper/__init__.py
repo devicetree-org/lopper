@@ -138,7 +138,7 @@ class LopperSDT:
         lop_files = []
         sdt_files = []
         for ifile in input_files:
-            if re.search( ".dts$", ifile ):
+            if re.search( ".dts$", ifile ) or re.search( ".dtsi$", ifile ):
                 # an input file is either a lopper operation file, or part of the
                 # system device tree. We can check for compatibility to decide which
                 # it is.
