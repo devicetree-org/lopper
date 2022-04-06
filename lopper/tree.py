@@ -1551,7 +1551,7 @@ class LopperNode(object):
         else:
             self._ref = 0
 
-    def resolve_all_refs( self, property_mask=[] ):
+    def resolve_all_refs( self, property_mask=[], parents=True ):
         """Resolve and Return all references in a node
 
         Finds all the references starting from a given node. This includes:
@@ -1563,6 +1563,8 @@ class LopperNode(object):
         Args:
            property_mask (list of regex): Any properties to exclude from reference
                                           tracking, "*" to exclude all properties
+           parents (bool): flag indicating if parent nodes should be returned as
+                           references. Default is True.
 
         Returns:
            A list of referenced nodes, or [] if no references are found
@@ -1578,12 +1580,13 @@ class LopperNode(object):
         # always add ourself!
         reference_list.append( self )
 
-        # and our parents, but we don't chase all of their links, just their
-        # node numbers
-        node_parent = self.parent
-        while node_parent != None:
-            reference_list.append( node_parent )
-            node_parent = node_parent.parent
+        if parents:
+            # and our parents, but we don't chase all of their links, just their
+            # node numbers
+            node_parent = self.parent
+            while node_parent != None:
+                reference_list.append( node_parent )
+                node_parent = node_parent.parent
 
         props_to_consider = []
         for p in self:
@@ -1599,7 +1602,7 @@ class LopperNode(object):
                 for ph_node in phandle_nodes:
                     # don't call in for our own node, or we'll recurse forever
                     if ph_node.abs_path != self.abs_path:
-                        refs = ph_node.resolve_all_refs( property_mask_check )
+                        refs = ph_node.resolve_all_refs( property_mask_check, parents )
                         if refs:
                             reference_list.append( refs )
 
@@ -1643,6 +1646,24 @@ class LopperNode(object):
             all_kids = all_kids + child_node.subnodes( depth + 1, max_depth  )
 
         return all_kids
+
+    def is_child( self, potential_child_node ):
+        """test if a node is a child
+
+        Returns true if the passed node is a child of this node,
+        false otherwise.
+
+        Args:
+            potential_child_node (LopperNode) : node to test as descendant
+
+        Returns:
+             bool: returns True if the node is a chile, false otherwise
+        """
+        possible_children = self.subnodes()
+        if potential_child_node in possible_children:
+            return True
+
+        return False
 
     def print( self, output=None, strict=None ):
         """print a node
@@ -2391,6 +2412,14 @@ class LopperNode(object):
         ## We also may use this as recursive subnode resolve() call, so we
         ## can apply changes to a nodes properties and all subnode properties
 
+        if self.abs_path == "/":
+            self.depth = 0
+        else:
+            self.depth = len(re.findall( '/', self.abs_path ))
+
+        if self.__dbg__ > 2:
+            print( "[DBG++]: node resolve: calculating depth %s for: %s" % (self.abs_path, self.depth))
+
         self.__nstate__ = "resolved"
         self.__modified__ = False
 
@@ -2917,6 +2946,7 @@ class LopperTree:
     def resolve( self ):
         # walk each node, and individually resolve
         for n in self:
+            n.resolve()
             for p in n:
                 p.resolve()
 
