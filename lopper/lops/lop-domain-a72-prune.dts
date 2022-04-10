@@ -117,15 +117,34 @@
                               tree.delete(node1)
                       ";
                 };
-		lop_9 {
-			compatible = "system-device-tree-v1,lop,code-v1";
-			code = "
+                lop_9 {
+                compatible = "system-device-tree-v1,lop,code-v1";
+                code = "
                         n = node.tree['/amba_pl']
                         for i in n.subnodes():
                             if i.propval('compatible') == ['xlnx,axi-dma-mm2s-channel'] or i.propval('compatible') == ['xlnx,axi-dma-s2mm-channel']:
                                 tree.delete(i)
-			";
-		};
+                       ";
+                };
+                lop_10 {
+                        // remove all SRAM banks that are not referenced via phandle in openamp use case
+                       compatible = "system-device-tree-v1,lop,code-v1";
+                       code = "
+                        n = node.tree['/']
+                        phandles = []
+                        compat_strs = ['xlnx,psv-tcm-global', 'mmio-sram', 'xlnx,psv-r5-tcm', 'xlnx,psv-r5-tcm-1.0']
+                        // if the node is not referred to by phandle then remove it
+                        for i in n.subnodes():
+                            if 'xilinx,r5f' in i.propval('compatible'):
+                                sram_prop = i.props('sram')[0].value
+                                for j in sram_prop:
+                                    phandles.append(j)
+                        for i in n.subnodes():
+                            for compat in compat_strs:
+                                if compat in i.propval('compatible') and i.phandle not in phandles:
+                                    tree.delete(i)
+                       ";
+                };
 
         };
 };
