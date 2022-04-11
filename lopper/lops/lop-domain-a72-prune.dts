@@ -145,6 +145,15 @@
                                     tree.delete(i)
                        ";
                 };
+                lop_11 {
+                compatible = "system-device-tree-v1,lop,code-v1";
+                code = "
+                        n = node.tree['/']
+                        for i in n.subnodes():
+                            if 'xlnx,axi-intc-4.1' in i.propval('compatible'):
+                                tree.delete(i)
+                       ";
+                };
 
         };
 };
