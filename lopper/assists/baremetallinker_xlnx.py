@@ -153,7 +153,7 @@ def get_memranges(tgt_node, sdt, options):
             match = [mem for mem in name_list if mem in compat]
             for i in range(total_nodes):
                 reg, size = scan_reg_size(node, val, i)
-                valid_range = [reg for addr in addr_list if reg == addr or reg > addr]
+                valid_range = [addr for addr in addr_list if reg == addr or addr in range(reg, size-reg)]
                 if valid_range:
                     key = match[0].replace("-", "_")
                     is_valid_noc_ch = 0
