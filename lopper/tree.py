@@ -2898,6 +2898,17 @@ class LopperTree:
 
 
     def export(self, start_path = "/" ):
+        """Export a tree to a dictionary
+
+        This routine takes a LopperTree, and exports the nodes and properties
+        to a dictionary.
+
+        Args:
+            start_path (String,optional): the starting path for export
+
+        Returns:
+             dictionary
+        """
         if self.__dbg__ > 2:
             print( "[DBG] tree export start: %s" % start_path )
 
@@ -2917,7 +2928,12 @@ class LopperTree:
         for i,n in enumerate(subnodes):
             # node_dct = self.export(n)
             # dct[node_dct['__path__']] = node_dct
-            dct[n.abs_path] = self.export(n.abs_path)
+            nd = self.export(n.abs_path)
+            if nd:
+                dct[n.abs_path] = nd
+            else:
+                if self.__dbg__ > 2:
+                    print( "[WARNING]: node with no annotations: %s" % n.abs_path )
 
         return dct
 
