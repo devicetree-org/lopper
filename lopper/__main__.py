@@ -156,7 +156,7 @@ def main():
 
     # any args should be <system device tree> <output file>
     module_name = ""
-    module_args= []
+    module_args = {}
     module_args_found = False
     for idx, item in enumerate(args):
         # validate that the system device tree file exists
@@ -195,11 +195,17 @@ def main():
                     if not module_name:
                         module_name = item
                         cmdline_assists.append( item )
+                        module_args[module_name] = []
                     else:
-                        module_args.append( item )
+                        module_args[module_name].append( item )
+                else:
+                    if module_name:
+                        # another module, clear the name to trigger a re-start of the
+                        # processing
+                        module_name = ""
 
     if module_name and verbose:
-        print( "[DBG]: module found: %s" % module_name )
+        print( "[DBG]: modules found: %s" % list(module_args.keys()) )
         print( "         args: %s" % module_args )
 
     if not sdt:
@@ -328,18 +334,20 @@ def main():
 
     if auto_run:
         for a in cmdline_assists:
-            assist_args = []
-            if a == module_name:
-                assist_args = module_args
+            try:
+                assist_args = module_args[a]
+            except:
+                assist_args = []
 
             device_tree.assist_autorun_setup( a, assist_args )
-
     else:
-        # a "module" is an assist passed after -- on the command line call to
+        # "modules" are assists passed after -- on the command line call to
         # lopper.
-        if module_name:
+        if module_args:
             # This sets the trigger node of "/", and makes it autorun
-            device_tree.assist_autorun_setup( module_name, module_args )
+            for module_name in reversed(list(module_args.keys())):
+                m_args = module_args[module_name]
+                device_tree.assist_autorun_setup( module_name, m_args )
 
     if debug:
         if debug == "profile":

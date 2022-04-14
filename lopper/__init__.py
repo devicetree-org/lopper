@@ -377,6 +377,8 @@ class LopperSDT:
     def assist_autorun_setup( self, module_name, module_args = [] ):
         lt = LopperTree()
 
+        if self.verbose > 2:
+            print( "[INFO]: setting up module %s with args: %s" % (module_name,module_args))
         lt['/']['compatible'] = [ 'system-device-tree-v1' ]
         lt['/']['priority'] = [ 3 ]
 
