@@ -144,6 +144,6 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
         device_type_dict['processor'][proc_name].update(tmp_dict)
 
         with open("petalinux_config.yaml", "w") as fd:
-            fd.write(yaml.dump(device_type_dict, Dumper=YamlDumper, default_flow_style=False, sort_keys=False))
+            fd.write(yaml.dump(device_type_dict, Dumper=YamlDumper, default_flow_style=False, sort_keys=False, indent=4, width=32768))
 
     return True
