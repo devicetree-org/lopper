@@ -362,14 +362,15 @@ def xlnx_rpmsg_kernel_update_mboxes(tree, host_ipi, remote_ipi, gic_node_phandle
     remote_controller_node + LopperProp(name="phandle", value = remote_controller_node.phandle)
     remote_controller_node + LopperProp(name="#mbox-cells", value = 1)
     remote_controller_node + LopperProp(name="xlnx,ipi-id", value = remote_ipi.props("xlnx,ipi-id")[0].value)
-    reg_names_val = ["local_response_region", "local_request_region", "remote_response_region", "remote_request_region"]
+    reg_names_val = [ "local_request_region", "local_response_region",
+                      "remote_request_region","remote_response_region"]
     remote_controller_node + LopperProp(name="reg-names", value = reg_names_val)
 
     cpu_config = str(openamp_channel_info["cpu_config"+channel_id].value)
     host_to_remote_ipi_channel = openamp_channel_info["host_to_remote_ipi_channel_"+channel_id]
     remote_to_host_ipi_channel= openamp_channel_info["remote_to_host_ipi_channel_"+channel_id]
-    response_buf_str = "xlnx,ipi-response_message_buffer"
-    request_buf_str = "xlnx,ipi-request_message_buffer"
+    response_buf_str = "xlnx,ipi-rsp-msg-buf"
+    request_buf_str = "xlnx,ipi-req-msg-buf"
 
     host_remote_response = host_to_remote_ipi_channel.props(response_buf_str)
     if host_remote_response == []:
@@ -393,8 +394,9 @@ def xlnx_rpmsg_kernel_update_mboxes(tree, host_ipi, remote_ipi, gic_node_phandle
     remote_host_response = remote_host_response[0].value[0]
     remote_host_request = remote_host_request[0].value[0]
 
-    remote_controller_node + LopperProp(name="reg", value =[ host_remote_request, 0x20,
+    remote_controller_node + LopperProp(name="reg", value = [
                                                          host_remote_response, 0x20,
+                                                         host_remote_request, 0x20,
                                                          remote_host_request, 0x20,
                                                          remote_host_response, 0x20])
 
