@@ -530,8 +530,12 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                     if len(pad) != 1:
                         plat.buf('\n\t\t\t{')
                     for k,p in enumerate(pad):
-                        plat.buf('\n\t\t\t\t%s' % hex(child[1][p].value[0]))
-                        drvprop_list.append(hex(child[1][p].value[0]))
+                        try:
+                            plat.buf('\n\t\t\t\t%s' % hex(child[1][p].value[0]))
+                            drvprop_list.append(hex(child[1][p].value[0]))
+                        except KeyError:
+                            plat.buf('\n\t\t\t\t%s' % hex(0xFFFF))
+                            drvprop_list.append(hex(0xFFFF))
                         if k != (len(pad) - 1) or len(pad) == 1:
                             plat.buf(',')
                         plat.buf(' /* %s */' % p)
