@@ -171,7 +171,10 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         elif prop == "child,required":
                             for j,child in enumerate(list(node.child_nodes.items())):
                                 for k,p in enumerate(pad):
-                                    val = hex(child[1][p].value[0])
+                                    try:
+                                        val = hex(child[1][p].value[0])
+                                    except KeyError:
+                                        val = 0xFFFF
                                     p = p.replace("-", "_")
                                     p = p.replace("xlnx,", "")
                                     plat.buf('\n#define XPAR_%s_%s_%s %s' % (label_name, j, p.upper(), val))
