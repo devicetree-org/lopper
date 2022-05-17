@@ -55,8 +55,9 @@
                       select_1;
                       select_2 = "/cpus/.*:compatible:.*arm,cortex-a53.*";
                       select_3 = "/.*:status:.*okay.*";
-                      select_4 = "/.*:device_type:.*memory.*";
-                      select_5 = "/domains";
+                      select_4 = "/.*:status:.*disabled.*";
+                      select_5 = "/.*:device_type:.*memory.*";
+                      select_6 = "/domains";
                 };
 
                 lop_7 {
@@ -108,6 +109,14 @@
 
                           # Delete the unmapped nodes for a53
                           invalid_nodes = []
+                          ignore_list = ['psu_apu', 'psu_bbram_0', 'psu_cci_gpv', 'psu_crf_apb', 'psu_crl_apb',
+                                         'psu_csu_0', 'psu_ddr_phy', 'psu_ddr_qos_ctrl', 'psu_ddr_xmpu0_cfg', 'psu_ddr_xmpu1_cfg',
+                                         'psu_ddr_xmpu2_cfg', 'psu_ddr_xmpu3_cfg', 'psu_ddr_xmpu4_cfg', 'psu_ddr_xmpu5_cfg', 'psu_efuse',
+                                         'psu_fpd_gpv', 'psu_fpd_slcr', 'psu_fpd_slcr_secure', 'psu_fpd_xmpu_cfg', 'psu_fpd_xmpu_sink',
+                                         'psu_iou_scntr', 'psu_iou_scntrs', 'psu_iousecure_slcr', 'psu_iouslcr_0', 'psu_lpd_slcr',
+                                         'psu_lpd_slcr_secure', 'psu_lpd_xppu_sink', 'psu_mbistjtag', 'psu_message_buffers', 'psu_ocm_xmpu_cfg',
+                                         'psu_pcie_attrib_0', 'psu_pcie_dma', 'psu_pcie_high1', 'psu_pcie_high2', 'psu_pcie_low',
+                                         'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou']
                           for node1 in node_list:
                               match = 0
                               for handle in phandles:
@@ -123,7 +132,9 @@
                                   pass
                               if node1.props('compatible') != [] and 'xlnx,zynqmp-ipi-mailbox' in node1.props('compatible')[0].value:
                                   invalid_nodes.append(node1)
-
+                              ignore_node = [node1 for ipname in ignore_list if re.search(ipname, node1.name)]
+                              if ignore_node:
+                                  invalid_nodes.append(ignore_node[0])
                           for node1 in invalid_nodes:
                               tree.delete(node1)
                       ";
