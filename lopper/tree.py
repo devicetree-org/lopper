@@ -959,6 +959,15 @@ class LopperProp():
                                     phandle_tgt_name = "invalid_phandle"
                             else:
                                 # strict and an invalid phandle, jump to the next record
+
+                                # were we the last record ? That means we could have an incorrectly
+                                # continued list with ","
+                                if rnum == len(records_to_iterate) - 1:
+                                    try:
+                                        formatted_records[-1] = ";"
+                                    except:
+                                        pass
+
                                 continue
                         else:
                             phandle_tgt_name = phandle_resolution.label
