@@ -61,19 +61,19 @@
                 lop_8 {
                       compatible = "system-device-tree-v1,lop,code-v1";
                       code = "
-                          // Check for domain node
+                          # Check for domain node
                           domain_node = []
                           for n in __selected__:
                               if re.search('domains', n.name):
                                   domain_node = n
-                          // Peipheral node handling
+                          # Peipheral node handling
                           invalid_phandles = []
                           if domain_node:
                               valid_phandles = []
                               for n in domain_node.subnodes():
                                   if n.propval('access') != [''] and  n.propval('os,type') != ['']:
                                       if re.search('linux', n.propval('os,type', list)[0]):
-                                          continue // domain procesing alread occurred. do nothing here.
+                                          continue # domain procesing alread occurred. do nothing here.
                                       else:
                                           invalid_phandles.extend(n.propval('access'))
 
@@ -127,13 +127,13 @@
                        ";
                 };
                 lop_10 {
-                        // remove all SRAM banks that are not referenced via phandle in openamp use case
+                       // this is removing a clock and breaking output
+                       // remove all SRAM banks that are not referenced via phandle in openamp use case
                        compatible = "system-device-tree-v1,lop,code-v1";
                        code = "
                         n = node.tree['/']
                         phandles = []
                         compat_strs = ['xlnx,psv-tcm-global', 'mmio-sram', 'xlnx,psv-r5-tcm', 'xlnx,psv-r5-tcm-1.0']
-                        // if the node is not referred to by phandle then remove it
                         for i in n.subnodes():
                             if 'xilinx,r5f' in i.propval('compatible'):
                                 sram_prop = i.props('sram')[0].value

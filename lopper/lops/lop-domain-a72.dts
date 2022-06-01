@@ -26,7 +26,7 @@
                           sys.path.append(assist_dir)
                           from domain_access import update_mem_node
                           from baremetalconfig_xlnx import scan_reg_size
-                          // Domain memory handling
+                          # Domain memory handling
                           shared_mem = []
                           memnode_list = tree.nodes('/memory@.*')
                           for n in node.subnodes():
@@ -37,9 +37,9 @@
                                   if re.search('linux', n.propval('os,type', list)[0]):
                                       start_addr = n.propval('memory')[0]
                                       linux_shared_mem = []
-                                      //Check for resource group
+                                      # Check for resource group
                                       if n.propval('include'):
-                                          // Get shared memory nodes for Linux domain
+                                          # Get shared memory nodes for Linux domain
                                           linux_shared_mem = [mem_node for mem_node in shared_mem if mem_node.phandle in n.propval('include')]
 
                                       for node1 in memnode_list:
