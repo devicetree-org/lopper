@@ -198,8 +198,7 @@ def extract_xen( tgt_node, sdt, options ):
     xen_tree.resolve()
 
     if output:
-        o = open( output, "w")
-        xen_tree.print( o )
+        sdt.write( xen_tree, output, True, True )
     else:
         if verbose:
             xen_tree.output = None

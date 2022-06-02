@@ -184,8 +184,6 @@ def extract( tgt_node, sdt, options ):
     sdt.subtrees["extracted"] = extracted_tree
 
     if output:
-        # extracted_tree.output = open( output, "w")
-        o = open( output, "w")
-        extracted_tree.print( o )
+        sdt.write( extracted_tree, output, True, True )
 
     return True
