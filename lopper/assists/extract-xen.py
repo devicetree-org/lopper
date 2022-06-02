@@ -100,12 +100,20 @@ def extract_xen( tgt_node, sdt, options ):
     extracted_node.name = "passthrough"
 
     # walk the nodes in the tree, and look for the property "extracted,path"
-    # and update it to "xen,path"
+    # and update it to "xen,path" (when conditions are met)
     for n in xen_tree:
         try:
             p = n["extracted,path"]
+            # if there's an iommu in the node, we convert to xen,path, otherwise
+            # do nothing
+            iommu = n["iommus"]
+            # we'll have thrown an exception if the property wasn't there, so this
+            # only runs in the sucess case
             p.name = "xen,path"
         except:
+            # TODO: we may want to check for nodes that have "reg" and use that
+            #       as a secondary trigger to convert to xen,path .. but that still
+            #       may be too broad
             pass
 
         try:
@@ -113,25 +121,44 @@ def extract_xen( tgt_node, sdt, options ):
             n["interrupt-parent"].value = 0xfde8
             if verbose:
                 print( "[INFO]: %s interrupt parent found, updating" % n.name  )
-            # for p in n:
-            #     print( "p: %s %s" % (p.name,p.value))
 
             # this is a known non-existent phandle, we need to inhibit
             # phandle resolution and just have the number used
             ip.phandle_resolution = False
             ip.resolve( strict = False )
-            # n.print()
         except:
             pass
 
 
     if target_node_name:
+        nodes_to_delete = []
         for n in xen_tree:
             if n.name == target_node_name:
-                # print( "target node found" )
-                np = LopperProp( "xen,force-assign-without-iommu" )
-                np.value = 1
-                n + np
+                # the target node may not have had a iommus property, but we do
+                # always want it to have a xen,path property, so we force it here
+                p = n["extracted,path"]
+                p.name = "xen,path"
+
+                # is there an iommu property ? if so, that tells us what to do about the
+                # without iommu
+                need_force_assign = False
+                try:
+                    iommus_prop = n["iommus"]
+
+                    # remove the property and all the other nodes it may have brought in
+                    refs = iommus_prop.resolve_phandles()
+                    n - iommus_prop
+
+                    for r in refs:
+                        nodes_to_delete.append( r )
+                except:
+                    need_force_assign = True
+
+
+                if need_force_assign:
+                    np = LopperProp( "xen,force-assign-without-iommu" )
+                    np.value = 1
+                    n + np
 
                 # check for the reg property
                 try:
@@ -160,17 +187,22 @@ def extract_xen( tgt_node, sdt, options ):
                     if verbose > 3:
                         print( "[ERROR]: %s" % e )
 
+        if nodes_to_delete:
+            for n in nodes_to_delete:
+                if verbose:
+                    print( "[INFO]: deleting node (referencing node was removed): %s" % n.abs_path )
+                xen_tree - n
 
     # resolve() isn't strictly required, but better to be safe
     xen_tree.strict = False
     xen_tree.resolve()
 
     if output:
-        xen_tree.output = open( output, "w")
-        xen_tree.print()
+        o = open( output, "w")
+        xen_tree.print( o )
     else:
         if verbose:
             xen_tree.output = None
-            xen_tree.print()
+            xen_tree.print( sys.stdout )
 
     return True

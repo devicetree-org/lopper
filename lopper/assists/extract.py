@@ -87,7 +87,7 @@ def extract( tgt_node, sdt, options ):
 
     tgt_nodes = []
     try:
-        tgt_nodes = sdt.tree[target_node_name]
+        tgt_nodes.append(sdt.tree[target_node_name])
     except:
         if permissive:
             tgt_nodes = sdt.tree.nodes( target_node_name )
@@ -99,7 +99,7 @@ def extract( tgt_node, sdt, options ):
         sys.exit(1)
 
     if verbose:
-        print( "[INFO]: target node %s found" % [y.abs_path for y in tgt_nodes] )
+        print( "[INFO]: target node(s) %s found" % [y.abs_path for y in tgt_nodes] )
 
     extracted_tree = LopperTree()
 
@@ -184,7 +184,8 @@ def extract( tgt_node, sdt, options ):
     sdt.subtrees["extracted"] = extracted_tree
 
     if output:
-        extracted_tree.output = open( output, "w")
-        extracted_tree.print()
+        # extracted_tree.output = open( output, "w")
+        o = open( output, "w")
+        extracted_tree.print( o )
 
     return True
