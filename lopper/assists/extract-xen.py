@@ -54,7 +54,7 @@ def extract_xen( tgt_node, sdt, options ):
     try:
         xen_tree = sdt.subtrees["extracted"]
     except:
-        print( "[ERROR]: no extracted tree detcted, returning" )
+        print( "[ERROR][extract-xen]: no extracted tree detcted, returning" )
         return False
 
     opts,args2 = getopt.getopt( args, "vpt:o:", [ "verbose", "permissive" ] )
@@ -93,7 +93,7 @@ def extract_xen( tgt_node, sdt, options ):
     try:
         extracted_node = xen_tree["/extracted"]
     except:
-        print( "[ERROR]: no extracted tree detected" )
+        print( "[ERROR][xen-extract]: no extracted node detected" )
         return False
 
     # rename the containing node from /extracted to /passthrough
@@ -120,7 +120,7 @@ def extract_xen( tgt_node, sdt, options ):
             ip = n["interrupt-parent"]
             n["interrupt-parent"].value = 0xfde8
             if verbose:
-                print( "[INFO]: %s interrupt parent found, updating" % n.name  )
+                print( "[INFO][extract-xen]: %s interrupt parent found, updating" % n.name  )
 
             # this is a known non-existent phandle, we need to inhibit
             # phandle resolution and just have the number used
@@ -128,7 +128,6 @@ def extract_xen( tgt_node, sdt, options ):
             ip.resolve( strict = False )
         except:
             pass
-
 
     if target_node_name:
         nodes_to_delete = []
@@ -160,11 +159,19 @@ def extract_xen( tgt_node, sdt, options ):
                     np.value = 1
                     n + np
 
+                # reach into the SDT and add "xen,passthrough" to the device
+                sdt_device_path = n["extracted,path"].value
+                if sdt_device_path:
+                    print( "[INFO][extract-xen]: updating sdt with passthrough property" )
+                    x_pass = LopperProp( "xen,passthrough" )
+                    x_pass.value = ""
+                    sdt.tree[sdt_device_path] + x_pass
+
                 # check for the reg property
                 try:
                     reg = n["reg"]
                     if verbose:
-                        print( "[INFO]: reg found: %s copying and extending to xen,reg" % reg )
+                        print( "[INFO][extract-xen]: reg found: %s copying and extending to xen,reg" % reg )
                     # make a xen,reg from it
                     xen_reg = LopperProp( "xen,reg" )
                     xen_reg.value = copy.deepcopy( reg.value )
@@ -185,12 +192,12 @@ def extract_xen( tgt_node, sdt, options ):
                     n = n + xen_reg
                 except Exception as e:
                     if verbose > 3:
-                        print( "[ERROR]: %s" % e )
+                        print( "[ERROR]]extract-xen]: %s" % e )
 
         if nodes_to_delete:
             for n in nodes_to_delete:
                 if verbose:
-                    print( "[INFO]: deleting node (referencing node was removed): %s" % n.abs_path )
+                    print( "[INFO][extract-xen]: deleting node (referencing node was removed): %s" % n.abs_path )
                 xen_tree - n
 
     # resolve() isn't strictly required, but better to be safe
