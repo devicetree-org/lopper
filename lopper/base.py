@@ -468,6 +468,7 @@ class lopper_base:
 
         safe_name = phandle_name.replace( '@', '' )
         safe_name = safe_name.replace( '-', "_" )
+        safe_name = safe_name.replace( '/', "_" )
 
         return safe_name
 

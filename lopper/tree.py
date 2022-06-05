@@ -972,7 +972,10 @@ class LopperProp():
                         else:
                             phandle_tgt_name = phandle_resolution.label
                             if not phandle_tgt_name:
-                                phandle_tgt_name = Lopper.phandle_safe_name( phandle_resolution.name )
+                                # the node has no label, we should label it, so we can reference it.
+                                # phandle_tgt_name = Lopper.phandle_safe_name( phandle_resolution.name )
+                                phandle_resolution.label_set( Lopper.phandle_safe_name( phandle_resolution.name ) )
+                                phandle_tgt_name = phandle_resolution.label
 
                         if self.binary:
                             formatted_records.append( "[" )
@@ -1572,6 +1575,28 @@ class LopperNode(object):
         else:
             self._ref = 0
 
+
+    def label_set(self,value):
+        # someone is labelling a node, the tree's lnodes need to be
+        # updated
+        if self.tree:
+            if value:
+                # is there an existing labelled node ?
+                label_val = None
+                count = 1
+                while not label_val:
+                    try:
+                        existing_label = self.tree.__lnodes__[value]
+                        # label exists, we need to be unique
+                        value = value + "_" + str(count)
+                        count = count + 1
+                    except:
+                        label_val = value
+
+                self.tree.__lnodes__[value] = self
+                self.label = value
+
+
     def resolve_all_refs( self, property_mask=[], parents=True ):
         """Resolve and Return all references in a node
 
@@ -1729,13 +1754,20 @@ class LopperNode(object):
                 if n['lopper-label.*']:
                     plabel = n['lopper-label.*'].value[0]
             except:
+                label_all_nodes = False
+                if not self.label:
+                    if label_all_nodes:
+                        self.label_set( Lopper.phandle_safe_name( nodename ) )
                 plabel = self.label
 
             if self.phandle != 0:
                 if plabel:
                     outstring = plabel + ": " + nodename + " {"
                 else:
-                    outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
+                    # this is creating duplicate labels if the node names collide
+                    # which they may
+                    # outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
+                    outstring = nodename + " {"
             else:
                 if plabel:
                     outstring = plabel + ": " + nodename + " {"
@@ -2760,7 +2792,7 @@ class LopperTree:
             val: LopperNode
 
         Returns:
-;           Nothing, raises TypeError on invalid parameters
+            Nothing, raises TypeError on invalid parameters
         """
 
         if isinstance(val, LopperNode ):
@@ -4160,13 +4192,19 @@ class LopperTreePrinter( LopperTree ):
                 if n['lopper-label.*']:
                     plabel = n['lopper-label.*'].value[0]
             except:
+                label_all_nodes = False
+                if not n.label:
+                    if label_all_nodes:
+                        n.label_set( Lopper.phandle_safe_name( nodename ) )
                 plabel = n.label
 
             if n.phandle != 0:
                 if plabel:
                     outstring = plabel + ": " + nodename + " {"
                 else:
-                    outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
+                    # nodename is creating duplicates, let's do a label based on the path
+                    # outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
+                    outstring = nodename + " {"
             else:
                 if plabel:
                     outstring = plabel + ": " + nodename + " {"
