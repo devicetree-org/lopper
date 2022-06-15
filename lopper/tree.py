@@ -3282,6 +3282,9 @@ class LopperTree:
         # TODO: To be complete, we could add the properites of the node
         #       into the dictionary when calling load, that way we don't
         #       count on the current behaviour to not drop the properties.
+        if node.phandle == -1:
+            node.phandle = 0
+
         node.load( { '__path__' : node.abs_path,
                      '__fdt_name__' : node.name,
                      '__fdt_phandle__' : node.phandle },
