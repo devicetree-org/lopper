@@ -107,6 +107,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                     try:
                         valid_ex = node[prop[0]].value
                     except KeyError:
+                        match_list.append(False)
                         valid_ex = 0
 
             if valid_ex or not False in match_list:
