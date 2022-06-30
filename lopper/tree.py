@@ -351,6 +351,9 @@ class LopperProp():
 
             if len( other_prop.value ) == 1:
                 # check if this is actually a phandle property
+                # TODO: this may need to be converted to the newer phandle_map(), but
+                #       we aren't checking ALL phandles currently, so this is good
+                #       enough
                 idx, pfields = self.phandle_params()
                 # idx2, pfields2 = other_prop.phandle_params()
                 if pfields > 0:
@@ -471,6 +474,104 @@ class LopperProp():
 
         return ret_val
 
+    def phandle_map( self, tag_invalid = True ):
+        """Determines the phandle elements/params of a property
+
+        Takes a property name and returns a list of lists, where phandles are
+        indicated by the dereferenced node, and non phandle fields are "0"
+
+        Args:
+            tag_invalid (bool): default True. Whether or not invalid phandles should be indicated with "invald"
+
+        Returns:
+            A list / map of values. Where 0 in the list means no phandle, and
+            a LopperNode in the list means phandle. If there are no phandles, an empty list
+            is returned.
+        """
+        phandle_map = []
+        phandle_sub_list = []
+        phandle_props = Lopper.phandle_possible_properties()
+        if self.name in phandle_props.keys():
+            # This property can have phandles!
+            property_description = phandle_props[self.name]
+            # index 0 is always the description, other elements are flags, etc.
+            property_fields = property_description[0].split()
+
+            # we need the values in hex. This could be a utility routine in the
+            # future .. convert to hex.
+
+            ## not required, remove
+            prop_val = []
+            for f in self.value:
+                if type(f) == str:
+                    prop_val.append( f )
+                else:
+                    #prop_val.append( hex(f) )
+                    prop_val.append( f )
+
+            phandle_idx = 0
+            property_desc_idx = 0
+            latch_sub_list = False
+            for idx,val in enumerate(prop_val):
+                phandle_desc = ""
+                if idx == phandle_idx:
+                    if latch_sub_list:
+                        phandle_map.append( phandle_sub_list )
+                        latch_sub_list = False
+                        phandle_sub_list = []
+
+                    phandle_desc = property_fields[property_desc_idx]
+                    property_desc_idx = property_desc_idx + 1
+                    if property_desc_idx >= len( property_fields ):
+                        latch_sub_list = True
+                        property_desc_idx = 0
+                else:
+                    pass
+
+                if re.search( '^phandle', phandle_desc ):
+                    derefs = phandle_desc.split(':')
+                    if len(derefs) == 2:
+                        node_deref = self.node.tree.deref( val )
+                        try:
+                            cell_count = node_deref[derefs[1]].value[0]
+                            cell_count = cell_count + 1
+                        except:
+                            cell_count = 1
+
+                        phandle_idx = phandle_idx + cell_count
+                    else:
+                        node_deref = None
+                        if self.node:
+                            node_deref = self.node.tree.deref( val )
+                        # no deref, bump our phandle_idx by one
+                        phandle_idx = phandle_idx + 1
+
+                    if node_deref == None:
+                        if tag_invalid:
+                            node_deref = "#invalid"
+
+                    phandle_sub_list.append( node_deref )
+                elif re.search( '^#.*', phandle_desc ):
+                    try:
+                        field_val = self.node.__props__[phandle_desc].value[0]
+                    except Exception as e:
+                        field_val = 0
+
+                    if not field_val:
+                        field_val = 1
+
+                    phandle_sub_list.append( 0 )
+                    phandle_idx = phandle_idx + field_val
+                else:
+                    # not a phandle
+                    phandle_sub_list.append( 0 )
+
+            # append the last collected set of phandle or not indications
+            phandle_map.append( phandle_sub_list )
+
+        return phandle_map
+
+
     def phandle_params( self ):
         """Determines the phandle elements/params of a property
 
@@ -487,67 +588,25 @@ class LopperProp():
             The the phandle index and number of fields, if the node can't
             be found 0, 0 are returned.
         """
-        phandle_props = Lopper.phandle_possible_properties()
-        if self.name in phandle_props.keys():
-            property_description = phandle_props[self.name]
-            property_fields = property_description[0].split()
 
-            phandle_idx = 0
-            phandle_field_count = 0
-            for f in property_fields:
-                if re.search( '^#.*', f ):
-                    try:
-                        field_val = self.node.__props__[f].value[0]
-                    except Exception as e:
-                        field_val = 0
+        phandle_map = self.phandle_map()
+        phandle_flat = [x for xs in phandle_map for x in xs]
+        phandle_idx = 0
+        phandle_field_count = 0
+        field_index = 0
+        if phandle_map:
+            # looking for the first non-zero entry in the map, and we
+            # return that as the index, and the number of entries in the
+            # record as the number of fields (note: this is not completely
+            # accurate, as variable sized lists of phandles are possible)
+            for rnum,record in enumerate(phandle_map):
+                for rindex,r in enumerate(record):
+                    field_index += 1
+                    if r:
+                        phandle_idx = field_index
+                        phandle_field_count = len(record)
 
-                    if not field_val:
-                        field_val = 1
-
-                    phandle_field_count = phandle_field_count + field_val
-                elif re.search( '^phandle', f ):
-                    phandle_field_count = phandle_field_count + 1
-                    phandle_idx = phandle_field_count
-
-                    # if a phandle field is of the format "phandle:<#property>", then
-                    # we need to dereference the phandle, and get the value of #property
-                    # to figure out the indexes.
-                    derefs = f.split(':')
-                    if len(derefs) == 2:
-                        # we have to deference the phandle, and look at the property
-                        # specified to know the count
-                        try:
-                            phandle_tgt_val = self.value[phandle_field_count - 1]
-                            tgn = self.node.tree.pnode( phandle_tgt_val )
-                            if tgn == None:
-                                # if we couldn't find the target, maybe it is in
-                                # as a string. So let's check that way.
-                                tgn2 = self.node.tree.nodes( phandle_tgt_val )
-                                if not tgn2:
-                                    tgn2 = self.node.tree.lnodes( phandle_tgt_val )
-
-                                if tgn2:
-                                    tgn = tgn2[0]
-
-                            if tgn:
-                                try:
-                                    cell_count = tgn[derefs[1]].value[0]
-                                except:
-                                    cell_count = 0
-
-                                phandle_field_count = phandle_field_count + cell_count
-                        except:
-                            # either we had no value, or something else wasn't defined
-                            # yet, so we continue on with the initial values set at
-                            # the top (i.e. treat it just as a non dereferenced phandle
-                            pass
-
-                else:
-                    # it's a placeholder field, count it as one
-                    phandle_field_count = phandle_field_count + 1
-        else:
-            phandle_idx = 0
-            phandle_field_count = 0
+                        return phandle_idx, phandle_field_count
 
         return phandle_idx, phandle_field_count
 
@@ -596,9 +655,10 @@ class LopperProp():
             A list of all resolved phandle node numbers, [] if no phandles are present
         """
         phandle_targets = []
+        phandle_map = self.phandle_map()
+        phandle_flat = [x for xs in phandle_map for x in xs]
 
-        idx, pfields = self.phandle_params()
-        if idx == 0:
+        if not phandle_map:
             return phandle_targets
 
         # we need the values in hex. This could be a utility routine in the
@@ -613,11 +673,9 @@ class LopperProp():
         if not prop_val:
             return phandle_targets
 
-        phandle_idxs = list(range(1,len(prop_val) + 1))
-        phandle_idxs = phandle_idxs[idx - 1::pfields]
-
         ctx_fields = []
 
+        element_map_idx = 0
         element_count = 1
         element_total = len(prop_val)
 
@@ -632,26 +690,20 @@ class LopperProp():
             except:
                 pass
 
+            phandle_check = phandle_flat[element_map_idx]
             record_list.append( i )
-            if element_count % pfields == 0:
+            if phandle_check:
                 ctx_fields.append( record_list )
                 record_list = []
 
-            if element_count in phandle_idxs:
-                try:
-                    lnode = self.node.tree.pnode( i )
-                    if lnode:
-                        phandle_targets.append( lnode )
-                    else:
-                        # was it a label ? If it was converted to an int above,
-                        # we'll throw an exception and catch it below for proper
-                        # processing. If it is a string, we'll try the lookup.
-                        lnode = self.node.tree.lnodes( re.escape(i) )
-                        if lnode:
-                            phandle_targets.extend( lnode )
-                        else:
-                            phandle_targets.append( "#invalid" )
-                except Exception as e:
+            element_map_idx = element_map_idx + 1
+            if phandle_check:
+                node_deref = None
+                if self.node:
+                    node_deref = self.node.tree.deref( i )
+                if node_deref:
+                    phandle_targets.append( node_deref )
+                else:
                     if tag_invalid:
                         phandle_targets.append( "#invalid" )
 
@@ -852,19 +904,9 @@ class LopperProp():
         self.pclass = prop_type
 
         if self.phandle_resolution:
-            phandle_idx, phandle_field_count = self.phandle_params()
-            phandle_tgts = self.resolve_phandles( True )
-
-            if phandle_field_count and len(prop_val) % phandle_field_count != 0:
-                # if the property values and the expected field counts do not match
-                # zero phandles out to avoid processing below.
-                phandle_idx = 0
-                phandle_field_count = 0
-                phandle_tgts = []
+            phandle_map = self.phandle_map()
         else:
-            phandle_idx = 0
-            phandle_field_count = 0
-            phandle_tgts = []
+            phandle_map = []
 
         if prop_type == "comment":
             outstring = ""
@@ -901,8 +943,8 @@ class LopperProp():
                 outstring_list = "{0} = ".format( self.name )
 
                 # if the attribute was detected as potentially having a
-                # phandle, phandle_idx will be non zero.
-                if phandle_idx != 0:
+                # phandle, phandle_map will be non zero.
+                if phandle_map:
                     # we should consider a test to see if the type is string AND
                     # we have a non-zero phandle index.
                     # test if the string can be converted to a number, if not,
@@ -938,86 +980,91 @@ class LopperProp():
                 element_count = 1
                 element_total = len(prop_val)
                 outstring_record = ""
-                drop_record = False
-                drop_all = False
 
                 formatted_records = []
-                if phandle_field_count:
-                    records_to_iterate = [prop_val[i:i + phandle_field_count] for i in range(0, len(prop_val), phandle_field_count)]
-                    for rnum,r in enumerate(records_to_iterate):
-                        try:
-                            phandle_resolution = phandle_tgts.pop(0)
-                        except:
-                            phandle_resolution = "#invalid"
-
-                        if phandle_resolution == "#invalid":
-                            # drop the record, if strict
-                            if not strict:
-                                if type(r[phandle_idx - 1]) == str:
-                                    phandle_tgt_name = r[phandle_idx - 1]
-                                else:
-                                    phandle_tgt_name = "invalid_phandle"
-                            else:
-                                # strict and an invalid phandle, jump to the next record
-
-                                # were we the last record ? That means we could have an incorrectly
-                                # continued list with ","
-                                if rnum == len(records_to_iterate) - 1:
-                                    try:
-                                        formatted_records[-1] = ";"
-                                    except:
-                                        pass
-
-                                continue
-                        else:
-                            phandle_tgt_name = phandle_resolution.label
-                            if not phandle_tgt_name:
-                                # the node has no label, we should label it, so we can reference it.
-                                # phandle_tgt_name = Lopper.phandle_safe_name( phandle_resolution.name )
-                                phandle_resolution.label_set( Lopper.phandle_safe_name( phandle_resolution.name ) )
-                                phandle_tgt_name = phandle_resolution.label
+                phandle_record = []
+                if phandle_map:
+                    pval_index = 0
+                    # each entry in the phandle map list, is a "record" in the phandle
+                    # list.
+                    for rnum,record in enumerate(phandle_map):
+                        # each entry is a list of value that is a phandle or not, so we
+                        # walk this list
+                        drop_sub_record = False
+                        phandle_sub_record = []
 
                         if self.binary:
-                            formatted_records.append( "[" )
+                            phandle_sub_record.append( "[" )
                         else:
                             # we have to open with a '<', if this is a list of numbers
-                            formatted_records.append( "<" )
+                            phandle_sub_record.append( "<" )
 
-                        # keep the record
-                        for i,element in enumerate(r):
-                            if i == 0:
+                        # now we walk the fields in the individual record, they will be values
+                        # or phandles
+                        for rindex,r in enumerate(record):
+                            if rindex == 0:
                                 # first item, we don't want a leading space
                                 pass
                             else:
-                                formatted_records.append( " " )
+                                phandle_sub_record.append( " " )
 
-                            phandle_replacement_flag = False
-                            try:
-                                if i == phandle_idx - 1:
-                                    phandle_replacement_flag = True
-                            except:
-                                pass
+                            if r:
+                                if type(r) == str and r == "#invalid":
+                                    # drop the record, if strict
+                                    if not strict:
+                                        if type(prop_val[pval_index]) == str:
+                                            phandle_tgt_name = prop_val[pval_index]
+                                        else:
+                                            phandle_tgt_name = "invalid_phandle"
+                                    else:
+                                        # strict and an invalid phandle, jump to the next record
+                                        # were we the last record ? That means we could have an incorrectly
+                                        # continued list with ","
+                                        if rnum == len(phandle_map) - 1:
+                                            try:
+                                                formatted_records[-1] = ";"
+                                                #phandle_record[-1] = ";"
+                                            except:
+                                                pass
 
-                            if phandle_replacement_flag:
-                                formatted_records.append( "&{0}".format( phandle_tgt_name ) )
+                                        drop_sub_record = True
+                                        continue
+                                else:
+                                    phandle_tgt_name = r.label
+                                    if not phandle_tgt_name:
+                                        # the node has no label, we should label it, so we can reference it.
+                                        # phandle_tgt_name = Lopper.phandle_safe_name( phandle_resolution.name )
+                                        r.label_set( Lopper.phandle_safe_name( r.name ) )
+                                        phandle_tgt_name = r.label
+
+                                phandle_sub_record.append( "&{0}".format( phandle_tgt_name ) )
+
                             else:
+                                element = prop_val[pval_index]
                                 if self.binary:
-                                    formatted_records.append( "{0:02X}".format( element ) )
+                                    phandle_sub_record.append( "{0:02X}".format( element ) )
                                 else:
                                     try:
-                                        formatted_records.append( "{0}".format( hex(element) ) )
+                                        phandle_sub_record.append( "{0}".format( hex(element) ) )
                                     except:
-                                        formatted_records.append( "{0}".format( element ) )
-                        if self.binary:
-                            formatted_records.append( "]" )
-                        else:
-                            formatted_records.append( ">" )
+                                        phandle_sub_record.append( "{0}".format( element ) )
 
-                        # if we aren't the last item, we continue with a ,
-                        if rnum != len(records_to_iterate) - 1:
-                            formatted_records.append( ",\n" )
-                        else:
-                            formatted_records.append( ";" )
+                            pval_index = pval_index + 1
+
+                        if not drop_sub_record:
+                            if phandle_sub_record:
+                                formatted_records.extend( phandle_sub_record )
+
+                                if self.binary:
+                                    formatted_records.append( "]" )
+                                else:
+                                    formatted_records.append( ">" )
+
+                                # if we aren't the last item, we continue with a ,
+                                if rnum != len(phandle_map) - 1:
+                                    formatted_records.append( ",\n" )
+                                else:
+                                    formatted_records.append( ";" )
                 else:
                     # no phandles
                     if list_of_nums:
@@ -3437,6 +3484,35 @@ class LopperTree:
                 pass
 
         return matches
+
+
+    def deref( self, phandle_or_label ):
+        """Find a node by a phandle or label
+
+        dereferences a phandle or label to find the target node.
+
+        Args:
+           phandle_or_label (int or string)
+
+        Returns:
+           LopperNode: the matching node if found, None otherwise
+
+        """
+        try:
+            tgn = self.pnode( phandle_or_label )
+            if tgn == None:
+                # if we couldn't find the target, maybe it is in
+                # as a string. So let's check that way.
+                tgn2 = self.node.tree.nodes( phandle_or_label )
+                if not tgn2:
+                    tgn2 = self.node.tree.lnodes( re.escape(phandle_or_label) )
+
+                if tgn2:
+                    tgn = tgn2[0]
+        except:
+            tgn = None
+
+        return tgn
 
     def pnode( self, phandle ):
         """Find a node in a tree by phandle
