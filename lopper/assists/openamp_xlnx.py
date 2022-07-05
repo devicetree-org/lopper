@@ -38,12 +38,19 @@ RPMSG_D_TO_D = "openamp,rpmsg-v1"
 output_file = "openamp-channel-info.txt"
 
 class CPU_CONFIG(Enum):
-    RPU_SPLIT = 0
-    RPU_LOCKSTEP = 1
+    RPU_LOCKSTEP = 0
+    RPU_SPLIT = 1
 
 class RPU_CORE(Enum):
     RPU_0 = 0
     RPU_1 = 1
+
+# This is used for YAML representation
+# after this is parsed, the above enums are used for internal record keeping.
+class CLUSTER_CONFIG(Enum):
+    RPU_LOCKSTEP = 0
+    RPU_0 = 1
+    RPU_1 = 2
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "openamp,xlnx-rpu", compat_string_to_test):
@@ -662,9 +669,16 @@ def determine_cpus_config(remote_domain):
     if len(cpus_prop_val) != 3:
       print("rpu cluster cpu prop invalid len")
       return -1
-    cpu_config = CPU_CONFIG.RPU_LOCKSTEP if  check_bit_set(cpus_prop_val[2], 30)==True else CPU_CONFIG.RPU_SPLIT
+    for i in CLUSTER_CONFIG:
+        if i.value == cpus_prop_val[1]:
+            if CLUSTER_CONFIG.RPU_LOCKSTEP.value == cpus_prop_val[1]:
+                return CPU_CONFIG.RPU_LOCKSTEP
+            else:
+                return CPU_CONFIG.RPU_SPLIT
 
-  return cpu_config
+    # if here then no match
+    print("WARNING: invalid cpus for ", remote_node, cpus_prop_val)
+    return -1
 
 
 def determinte_rpu_core(cpu_config, remote_node, remote_prop):
