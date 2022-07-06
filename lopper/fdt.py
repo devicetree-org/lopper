@@ -731,12 +731,17 @@ class LopperFDT(lopper.base.lopper_base):
         # we have a list of: containing dict, value, parent
         dwalk = [ [dct,dct,None]  ]
         node_ordered_list = []
+        node_special_list = []
         while dwalk:
             firstitem = dwalk.pop()
             if type(firstitem[1]) is OrderedDict:
                 node_ordered_list.append( [firstitem[1], firstitem[0]] )
                 for item,value in reversed(firstitem[1].items()):
                     dwalk.append([firstitem[1],value,firstitem[0]])
+            elif type(firstitem[1]) is dict:
+                # type 'dict' are special nodes, that aren't order dependent,
+                # gather them up for future processing.
+                node_special_list.append( firstitem[1] )
             else:
                 pass
 
@@ -764,6 +769,16 @@ class LopperFDT(lopper.base.lopper_base):
                 # child nodes are removed with their parent, and follow in the
                 # list, so this isn't an error.
                 pass
+
+        for n in node_special_list:
+            if verbose:
+                print( "[DBG]:    lopper.fdt: sync: special node: %s" % n )
+            if n['__path__'] == "/memreserve":
+                memreserve_vals = n['__memreserve__']
+                if verbose:
+                    print( "[DBG]:    lopper.fdt: sync: memreserve: %s" % memreserve_vals )
+                # no swig wrapper, so we do this the hard way
+                libfdt.fdt_add_mem_rsv( fdt._fdt, memreserve_vals[0], memreserve_vals[1] )
 
         # add the nodes
         for n in reversed(node_ordered_list):
@@ -851,6 +866,35 @@ class LopperFDT(lopper.base.lopper_base):
             # Children are indexed by their path (/foo/bar), since properties
             # cannot start with '/'
             dct[n] = LopperFDT.export( fdt, n, verbose, strict )
+
+        # only when processing the root node, we look to see if there
+        # was a peer /memreserve node. if found, we add it to the exported
+        # dictionary
+        if start_node == "/":
+            memreserve = fdt.num_mem_rsv()
+            mdct = {}
+            if memreserve:
+                mdct["__fdt_number__"] = -1
+                mdct["__fdt_name__"] = "memreserve"
+                mdct["__fdt_phandle__"] = -1
+                mdct["__path__"] = "/memreserve"
+
+                if verbose:
+                    print( "[DBG]:     lopper.fdt export: memreserve: %s" % memreserve )
+                for idx in range(0,memreserve):
+                    mr = fdt.get_mem_rsv(idx)
+                    if verbose:
+                        print( "[DBG]:     lopper.fdt export: memreserve: %s" % (mr))
+
+                    if type(mr) == int:
+                        # we got a single number, which means our start address
+                        # was 0x0, and the value is the range/size
+                        mr = [ 0x0, mr ]
+
+                    mdct["__memreserve__"] = mr
+
+                dct["/memreserve"] = mdct
+
 
         return dct
 

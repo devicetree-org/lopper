@@ -1830,7 +1830,15 @@ class LopperNode(object):
                 if p.pclass == "preamble":
                     print( "%s" % p, file=output )
 
-            print( "/dts-v1/;\n\n/ {", file=output )
+            #print( "/dts-v1/;\n\n/ {", file=output )
+            print( "/dts-v1/;\n", file=output )
+
+            if self.tree.__memreserve__:
+                mem_res_addr = hex(self.tree.__memreserve__[0] )
+                mem_res_len = hex(self.tree.__memreserve__[1] )
+                print( "/memreserve/ %s %s;\n" % (mem_res_addr,mem_res_len), file=output )
+
+            print( "/ {", file=output )
 
         # now the properties
         for p in self:
@@ -2605,6 +2613,9 @@ class LopperTree:
         # nodes. selected. default/fallback for some operations
         self.__selected__ = []
 
+        # memreserve section
+        self.__memreserve__ = []
+
         # callbacks
         # these can even be lambdas. i.e lambda n, fdt: print( "start the tree!: %s" % n )
         # TODO: the callbacks could return False if we want to abort the tree walk
@@ -3046,7 +3057,18 @@ class LopperTree:
                 dct[n.abs_path] = nd
             else:
                 if self.__dbg__ > 2:
-                    print( "[WARNING]: node with no annotations: %s" % n.abs_path )
+                    print( "[WARNING]: node with no annotations: %s" % self.__memreserve__ )
+
+        if start_path == "/":
+            if self.__memreserve__:
+                if  self.__dbg__ > 2:
+                    print( "[DBG]: tree export: memreserve for tree: %s" % self)
+                dct["/memreserve"] = { '__fdt_number__' : -1,
+                                       '__fdt_name__' : "memreserve",
+                                       '__fdt_phandle__' : -1,
+                                       '__path__' : "/memreserve",
+                                       '__memreserve__' : self.__memreserve__
+                }
 
         return dct
 
@@ -4021,6 +4043,13 @@ class LopperTree:
                     node = LopperNode( nn, "", self )
                     node.indent_char = self.indent_char
 
+                # special node processing
+                if abs_path == "/memreserve":
+                    if self.__dbg__ > 2:
+                        print( "[DGB+]: tree load: memreserve found: %s" % node_in["__memreserve__"] )
+                    self.__memreserve__ = node_in["__memreserve__"]
+                    continue
+
                 node.__dbg__ = self.__dbg__
 
                 # resolve the details against the dictionary
@@ -4246,7 +4275,14 @@ class LopperTreePrinter( LopperTree ):
             if p.pclass == "preamble":
                 print( "%s" % p, file=self.output )
 
-        print( "/dts-v1/;\n\n/ {", file=self.output )
+        print( "/dts-v1/;\n", file=self.output )
+        # print( "/dts-v1/;\n\n/ {", file=self.output )
+
+        if self.__memreserve__:
+            mem_res_addr = hex(self.__memreserve__[0] )
+            mem_res_len = hex(self.__memreserve__[1] )
+            print( "/memreserve/ %s %s;\n" % (mem_res_addr,mem_res_len), file=self.output )
+        print( "/ {", file=self.output )
 
     def start_node(self, n ):
         """LopperTreePrinter node start
