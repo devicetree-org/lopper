@@ -3057,7 +3057,7 @@ class LopperTree:
                 dct[n.abs_path] = nd
             else:
                 if self.__dbg__ > 2:
-                    print( "[WARNING]: node with no annotations: %s" % self.__memreserve__ )
+                    print( "[WARNING]: node with no annotations: %s" % self.abs_path )
 
         if start_path == "/":
             if self.__memreserve__:
@@ -3068,7 +3068,7 @@ class LopperTree:
                                        '__fdt_phandle__' : -1,
                                        '__path__' : "/memreserve",
                                        '__memreserve__' : self.__memreserve__
-                }
+                                     }
 
         return dct
 

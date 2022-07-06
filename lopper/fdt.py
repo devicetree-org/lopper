@@ -435,6 +435,10 @@ class LopperFDT(lopper.base.lopper_base):
         Returns:
             int: The node offset of the created node, if successfull, otherwise -1
         """
+
+        if verbose:
+            print( "[DBG]: lopper fdt: node add: %s" % node_full_path )
+
         paths_to_check = [ node_full_path ]
         n_path = node_full_path
 
@@ -461,9 +465,31 @@ class LopperFDT(lopper.base.lopper_base):
                 # add it
                 for _ in range(MAX_RETRIES):
                     try:
+                        if verbose:
+                            print( "[DBG]:       LopperFDT: node_add: adding node: '%s' parent: %s" % (node_name,node_parent ))
                         node_parent = fdt_dest.add_subnode( node_parent, node_name )
-                    except Exception as e:
-                        fdt_dest.resize( fdt_dest.totalsize() + 1024 )
+                    except FdtException as e:
+                        if e.err == -2:
+                            if verbose:
+                                print( "[DBG]:       LopperFDT: node_add: existing node found, creating temporary placeholder node" )
+
+                            # node exists. This shouldn't happen, unless we've
+                            # hit the prefix bug. Let's delete the node that
+                            # occupied the slot, add ours, and then re-add the node
+
+                            #node_to_remove_add_readd = fdt.path_offset( node_prefix )
+
+                            # we exploit the fact that the holding node starting
+                            # wth loppper<> means that the output export routines
+                            # will ignore it later. And as such, we create the
+                            # node, and the add properties later create it, so
+                            # we get the proper node and don't have to do the
+                            # delete -> add -> delete dance. If this breaks, we
+                            # may have to revisit and do the extra manipulations.
+                            node_name = "lopper%s" % str(_) + node_name
+                        else:
+                            fdt_dest.resize( fdt_dest.totalsize() + 1024 )
+
                         continue
                     else:
                         break
@@ -646,6 +672,8 @@ class LopperFDT(lopper.base.lopper_base):
         props = LopperFDT.node_properties( fdt, nn )
         props_to_delete = []
         for p in props:
+            if verbose:
+                print( "              node sync, considering property: %s %s" % (p.name,p) )
             if node_in['__fdt_phandle__'] and p.name == "phandle":
                 # we just added this, it won't be in the node_in items under
                 # the name name
@@ -653,6 +681,8 @@ class LopperFDT(lopper.base.lopper_base):
             else:
                 props_to_delete.append( p.name )
 
+        if verbose:
+            print( "              node sync: props to delete: %s" % props_to_delete )
         for prop, prop_val in reversed(node_in.items()):
             if re.search( "^__", prop ) or prop.startswith( '/' ):
                 if verbose:
@@ -765,7 +795,7 @@ class LopperFDT(lopper.base.lopper_base):
                 LopperFDT.node_remove( fdt, nn )
             else:
                 if verbose:
-                    print( "[DBG]:    lopper.fdt: sync: node %s was not found, and could not be remove" % node )
+                    print( "[DBG]:    lopper.fdt: sync: node %s was not found, and could not be removed" % node )
                 # child nodes are removed with their parent, and follow in the
                 # list, so this isn't an error.
                 pass
@@ -788,7 +818,13 @@ class LopperFDT(lopper.base.lopper_base):
                 if new_number == -1:
                     print( "[ERROR]:    lopper_fdt: node %s could not be added, exiting" % n[0]['__path__'] )
                     sys.exit(1)
+                else:
+                    if verbose:
+                        print( "[DBG]:    lopper.fdt: sync: node %s added, number is: %s" % (n[0]['__path__'],new_number) )
 
+
+        # were there any __lopper<>__ nodes created ? These were
+        # temporary to work around libfdt prefix issues
 
         # sync the properties
         for n_item in reversed(node_ordered_list):
@@ -798,7 +834,7 @@ class LopperFDT(lopper.base.lopper_base):
             abs_path = node_path
             nn =  node_in['__fdt_number__']
 
-            LopperFDT.node_sync( fdt, node_in, node_in_parent )
+            LopperFDT.node_sync( fdt, node_in, node_in_parent, verbose )
 
     @staticmethod
     def export( fdt, start_node = "/", verbose = False, strict = False ):
