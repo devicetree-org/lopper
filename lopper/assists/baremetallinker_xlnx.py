@@ -126,12 +126,14 @@ def get_memranges(tgt_node, sdt, options):
         # Check whether the memory node is mapped to cpu cluster or not
         mem_phandles = [handle for handle in all_phandles if handle == node.phandle]
         addr_list = []
+        size_list = []
         if mem_phandles:
            # Remove Duplicate phandle referenecs
            mem_phandles = list(dict.fromkeys(mem_phandles))
            indx_list = [index for index,handle in enumerate(address_map) for val in mem_phandles if handle == val]
            for inx in indx_list:
                start = [address_map[inx+i+1] for i in range(na)]
+               size_list.append(address_map[inx+2*na])
                if na == 2 and start[0] != 0:
                    val = str(start[1])
                    pad = 8 - len(val)
@@ -154,6 +156,8 @@ def get_memranges(tgt_node, sdt, options):
             for i in range(total_nodes):
                 reg, size = scan_reg_size(node, val, i)
                 valid_range = [addr for addr in addr_list if reg == addr or addr in range(reg, size-reg)]
+                if not valid_range:
+                    valid_range = [reg for index, addr in enumerate(addr_list) if reg in range(addr, size_list[index]-addr)]
                 if valid_range:
                     key = match[0].replace("-", "_")
                     is_valid_noc_ch = 0
