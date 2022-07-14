@@ -1669,6 +1669,14 @@ class LopperFDT(lopper.base.lopper_base):
                 # nodes.
                 data = re.sub( dts_regex, '', data )
 
+            memres_string = ""
+            memres_regex = re.compile( r'\/memreserve\/(.*)?;' )
+            memres = re.search( memres_regex, data )
+            if memres:
+                if verbose:
+                    print ( "[DBG]: memreserve detected: %s" % memres.group(1) )
+                memres_string = "/memreserve/ %s;" % memres.group(1)
+
             # This captures everything at the start of the file (i.e. a comment block)
             # and puts it into a special pre-mble property in the root node. If we don't
             # do this, and let the comment substituion find it below, we have an invalid
@@ -1694,7 +1702,7 @@ class LopperFDT(lopper.base.lopper_base):
                     data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data, count = 1 )
 
             # put the dts start info back in
-            data = re.sub( '^', '/dts-v1/;\n\n', data )
+            data = re.sub( '^', '/dts-v1/;\n\n%s' % memres_string, data )
 
             # Comment and label substitution
             fp_comments_as_attributes = LopperFDT._comment_translate(data)
