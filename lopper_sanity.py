@@ -571,12 +571,12 @@ def setup_device_tree( outdir ):
 
 /dts-v1/;
 
+/memreserve/    0x0000000000000000 0x0000000000001000;
 / {
         compatible = "xlnx,versal-vc-p-a2197-00-revA", "xlnx,versal-vc-p-a2197-00", "xlnx,versal-vc-p-a2197", "xlnx,versal";
         #address-cells = <0x2>;
         #size-cells = <0x2>;
         model = "Xilinx Versal A2197 Processor board revA";
-
 
         /* test comment */
         cpus: cpus {
@@ -1223,6 +1223,30 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     # test2: tree print
     print( "[TEST]: start: tree print" )
+
+    # test the build in print() routines (not the walker version), and
+    # test for /memreserve/
+    memres_tree = LopperTree()
+    dct = Lopper.export( fdt )
+    memres_tree.load( dct )
+    fpp = tempfile.NamedTemporaryFile( delete=True )
+    fpw = open( fpp.name, 'w+')
+    memres_tree.print( fpw )
+
+    memres_found = None
+    memres_regex = re.compile( r'\/memreserve\/(.*)?;' )
+    with open(fpp.name) as fp:
+        for line in fp:
+            memres = re.search( memres_regex, line )
+            if memres:
+                memres_found = memres
+
+    if not memres_found:
+        test_failed( "/memreserve/ was not maintained through processing" )
+    else:
+        test_passed( "/memreserve/ was maintained through processing" )
+    fpw.close()
+
     fpp = tempfile.NamedTemporaryFile( delete=True )
 
     printer = LopperTreePrinter( True, fpp.name )
