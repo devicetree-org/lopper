@@ -451,7 +451,6 @@ class lopper_base:
                     "access" : [ 'phandle flags' ],
                     "cpus" : [ 'phandle mask mode' ],
                     "clocks" : [ 'phandle:#clock-cells' ],
-                    "power-domains" : [ 'phandle' ],
                 }
         except:
             return {}
