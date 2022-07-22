@@ -33,6 +33,11 @@ import lopper
 import json
 from itertools import chain
 
+# utility function to return true or false if a number
+# is 32 bit, or not.
+def check_32_bit(n):
+    return n<1<<31
+
 # tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
 def check_bit_set(n, k):
     if n & (1 << (k)):

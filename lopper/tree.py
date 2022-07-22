@@ -29,6 +29,11 @@ from lopper.fmt import LopperFmt
 # must be set to the Lopper class to call
 global Lopper
 
+# utility function to return true or false if a number
+# is 32 bit, or not.
+def check_32_bit(n):
+    return n<1<<31
+
 # used in node_filter
 class LopperAction(Enum):
     """Enum class to define the actions available in Lopper's node_filter function
@@ -1045,9 +1050,16 @@ class LopperProp():
                                     phandle_sub_record.append( "{0:02X}".format( element ) )
                                 else:
                                     try:
-                                        phandle_sub_record.append( "{0}".format( hex(element) ) )
-                                    except:
-                                        phandle_sub_record.append( "{0}".format( element ) )
+                                        if check_32_bit(element):
+                                            hex_string = '0x{:x}'.format(element)
+                                        else:
+                                            upper = element >> 32
+                                            lower = element & 0x00000000FFFFFFFF
+                                            hex_string = '0x{:08x}'.format(upper) + ' 0x{:08x}'.format(lower)
+                                    except Exception as e:
+                                        hex_string = '{0}'.format( element ) 
+
+                                    phandle_sub_record.append( hex_string )
 
                             pval_index = pval_index + 1
 
@@ -1066,6 +1078,8 @@ class LopperProp():
                                 else:
                                     formatted_records.append( ";" )
                 else:
+                    if self.name == "access":
+                        print( "             no phandles, list of nums" )
                     # no phandles
                     if list_of_nums:
                         if self.binary:
@@ -1084,14 +1098,24 @@ class LopperProp():
                             else:
                                 formatted_records.append( ", " )
 
+                        if self.name == "access":
+                            print( "                             resolving access property" )
+                            
                         if list_of_nums:
                             if self.binary:
                                 formatted_records.append( "{0:02X}".format( i ) )
                             else:
                                 try:
-                                    formatted_records.append( "{0}".format( hex(i) ) )
-                                except:
-                                    formatted_records.append( "{0}".format( i ) )
+                                    if check_32_bit(i):
+                                        hex_string = '0x{:x}'.format(i)
+                                    else:
+                                        upper = i >> 32
+                                        lower = i & 0x00000000FFFFFFFF
+                                        hex_string = '0x{:08x}'.format(upper) + ' 0x{:08x}'.format(lower)
+                                except Exception as e:
+                                    hex_string = '{0}'.format( i ) 
+
+                                formatted_records.append( hex_string )
                         else:
                             formatted_records.append( "\"{0}\"".format( i ) )
 

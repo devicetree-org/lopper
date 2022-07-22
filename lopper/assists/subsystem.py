@@ -320,6 +320,7 @@ def access_expand( tree, subnode, verbose = 0 ):
                 fval = flags['requested-secure']
                 if fval:
                     flags_value = set_bit( flags_value, 36 )
+
             except:
                 pass
 
