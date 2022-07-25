@@ -840,7 +840,8 @@ class LopperSDT:
                 exec_tgt = lop_node['exec'].value[0]
                 target_node = lops_tree.pnode( exec_tgt )
                 if self.verbose > 1:
-                    print( "[DBG++]: exec phandle: %s target: %s" % (exec_tgt,target_node))
+                    lop_node.print()
+                    print( "[DBG++]: exec phandle: %s target: %s" % (hex(exec_tgt),target_node))
 
                 if target_node:
                     try:
@@ -1543,15 +1544,24 @@ class LopperSDT:
                 print( "[INFO]: conditional node %s not found, returning" % lop_node.abs_path + "/" + root )
                 return False
 
+            try:
+                cond_select = lop_node["cond_select"]
+            except:
+                cond_select = None
+
             # the subnodes of the conditional lop represent the set of conditions
             # to use. The deepest node is what we'll be comparing
             cond_nodes = conditional_start.subnodes()
             # get the last node
             cond_last_node = cond_nodes[-1]
-            # drop the path to the this conditional lop from the full path of
-            # the last node in the chain. That's the path we'll look for in the
-            # system device tree.
-            cond_path = re.sub( lop_node.abs_path, "", cond_last_node.abs_path)
+
+            if cond_select:
+                cond_path = cond_select.value[0]
+            else:
+                # drop the path to the this conditional lop from the full path of
+                # the last node in the chain. That's the path we'll look for in the
+                # system device tree.
+                cond_path = re.sub( lop_node.abs_path, "", cond_last_node.abs_path)
 
             sdt_tgt_nodes = tree.nodes(cond_path)
             if not sdt_tgt_nodes:

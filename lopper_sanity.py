@@ -293,8 +293,9 @@ def setup_code_lops( outdir ):
                 lop_15_1 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
+                      cond_select = "/cpus/cpu@.*";
                       cpus {
-                           cpu@.* {
+                           cpu@ {
                                compatible = ".*a72.*";
                            };
                       };
@@ -319,8 +320,9 @@ def setup_code_lops( outdir ):
                 lop_15_2 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
+                      cond_select = "/cpus/cpu@.*";
                       cpus {
-                           cpu@.* {
+                           cpu@ {
                                compatible = ".*invalid-proc-72.*";
                            };
                       };
@@ -344,8 +346,9 @@ def setup_code_lops( outdir ):
                 lop_15_3 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
+                      cond_select = "/cpus/cpu@.*";
                       cpus {
-                           cpu@.* {
+                           cpu@ {
                                compatible = ".*a72.*";
                                operating-points-v2 = <0x1>;
                            };
@@ -362,8 +365,9 @@ def setup_code_lops( outdir ):
                 lop_15_4 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
+                      cond_select = "/cpus/cpu@.*";
                       cpus {
-                           cpu@.* {
+                           cpu@ {
                                compatible = ".*a72.*";
                                operating-points-v2 = <0x2>;
                            };
@@ -380,8 +384,9 @@ def setup_code_lops( outdir ):
                 lop_15_5 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
+                      cond_select = "/cpus/cpu@.*";
                       cpus {
-                           cpu@.* {
+                           cpu@ {
                                compatible = ".*a72.*";
                                operating-points-v2__not__ = <0x2>;
                            };
@@ -398,8 +403,9 @@ def setup_code_lops( outdir ):
                 lop_15_6 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
+                      cond_select = "/cpus/cpu@.*";
                       cpus {
-                           cpu@.* {
+                           cpu@ {
                                compatible = ".*a72.*";
                                clocks = <0x3 0x4d>;
                            };
@@ -417,8 +423,9 @@ def setup_code_lops( outdir ):
                 lop_15_7 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
+                      cond_select = "/cpus/cpu@.*";
                       cpus {
-                           cpu@.* {
+                           cpu@ {
                                compatible = ".*a72.*";
                                cpu-idle-states__not__ = <0x1 0x2>;
                            };
@@ -434,8 +441,9 @@ def setup_code_lops( outdir ):
                 lop_15_8 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
+                      cond_select = "/cpus/cpu@.*";
                       cpus {
-                           cpu@.* {
+                           cpu@ {
                                compatible = ".*a72.*";
                            };
                       };
@@ -466,8 +474,9 @@ def setup_code_lops( outdir ):
                 lop_16_1 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
+                      cond_select = "/cpus/cpu@.*";
                       cpus {
-                           cpu@.* {
+                           cpu@ {
                                compatible = ".*a72.*";
                                clocks = <0x3 0x4d>;
                            };

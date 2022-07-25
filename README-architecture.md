@@ -387,6 +387,38 @@ NOTE/TODO: bindings will be written for the lopper operations.
     # does a set of conditional tests against a nodes in the system device tree that
     # match the structure of the conditional tree found at the base defined by "cond_root".
     #
+    # Note: although nodes/labels with syntax like: 'cpu@.*' were never accepted syntax
+    #       dtc would allow it on a forced run. As of the latest releases of dtc (1.6.1+)
+    #       a forced run generates invalid phandles, and even though we can still have
+    #       the regex encoded into the node name, exec<> blocks won't properly execute
+    #       due to invalid phandles.
+    #
+    #       If conditionals with wildcard paths are not working, either use the 'select'
+    #       lop, or use the property 'cond_select' with the path as a string (with
+    #       wildcards.
+    #
+    #       i.e.
+    #
+    #                   compatible = "system-device-tree-v1,lop,conditional-v1";
+    #                   cond_root = "cpus";
+    #                   cpus {
+    #                        cpu@.* {
+    #                            compatible = ".*a72.*";
+    #                        };
+    #                   };
+    #
+    #           becomes
+    #
+    #                   compatible = "system-device-tree-v1,lop,conditional-v1";
+    #                   cond_root = "cpus";
+    #                   cond_select = "/cpus/cpus@.*"
+    #                   cpus {
+    #                        cpu {
+    #                            compatible = ".*a72.*";
+    #                        };
+    #                   };
+    #
+    #
     # conditions are compound, if any are not true, then the overall condition is False
     # conditions can be inverted with a suffix of __not__ at the end of property name
     #
@@ -525,8 +557,9 @@ NOTE/TODO: bindings will be written for the lopper operations.
                 lop_15_5 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
+                      cond_select = "/cpus/cpu@.*";
                       cpus {
-                           cpu@.* {
+                           cpu@ {
                                compatible = ".*a72.*";
                                operating-points-v2__not__ = <0x2>;
                            };
