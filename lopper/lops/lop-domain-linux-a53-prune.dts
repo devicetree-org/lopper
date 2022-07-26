@@ -48,12 +48,12 @@
                 lop_7 {
                       compatible = "system-device-tree-v1,lop,code-v1";
                       code = "
-                          // Check for domain node
+                          # Check for domain node
                           domain_node = []
                           for n in __selected__:
                               if re.search('domains', n.name):
                                   domain_node = n
-                          // Peipheral node handling
+                          # Peipheral node handling
                           invalid_phandles = []
                           if domain_node:
                               shared_dev = []
@@ -66,7 +66,7 @@
                                       if re.search('linux', n.propval('os,type', list)[0]):
                                           valid_phandles.extend(n.propval('access'))
                                           if n.propval('include'):
-                                              // Get shared memory nodes for Linux domain
+                                              # Get shared memory nodes for Linux domain
                                               linux_shared_dev = [dev_node for dev_node in shared_dev if dev_node.phandle in n.propval('include')]
                                               for node1 in linux_shared_dev:
                                                   valid_phandles.extend(node1.propval('access'))
