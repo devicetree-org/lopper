@@ -692,8 +692,13 @@ class LopperFDT(lopper.base.lopper_base):
                 if verbose:
                     print( "          lopper.fdt: node sync: prop: %s val: %s" % (prop,prop_val) )
 
+                try:
+                    qtype = node_in["__{}_type__".format( prop ) ]
+                except:
+                    qtype = None
+
                 # We could supply a type hint via the __{}_type__ attribute
-                LopperFDT.property_set( fdt, nn, prop, prop_val, LopperFmt.COMPOUND )
+                LopperFDT.property_set( fdt, nn, prop, prop_val, LopperFmt.COMPOUND, verbose, qtype )
                 if props_to_delete:
                     try:
                         props_to_delete.remove( prop )
@@ -1414,7 +1419,7 @@ class LopperFDT(lopper.base.lopper_base):
         return val
 
     @staticmethod
-    def property_set( fdt, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE, verbose=False ):
+    def property_set( fdt, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE, verbose=False, typehint=None ):
         """utility command to set a property in a node
 
         A more robust way to set the value of a property in a node, This routine
@@ -1468,7 +1473,10 @@ class LopperFDT(lopper.base.lopper_base):
             # if sys.getsizeof(prop_val) >= 32:
             for _ in range(MAX_RETRIES):
                 try:
-                    if sys.getsizeof(prop_val) > 32:
+                    if typehint and typehint == LopperFmt.UINT8:
+                        bval = LopperFDT.encode_byte_array([prop_val], 1)
+                        fdt.setprop( node_number, prop_name, bval)
+                    elif sys.getsizeof(prop_val) > 32:
                         fdt.setprop_u64( node_number, prop_name, prop_val )
                     else:
                         fdt.setprop_u32( node_number, prop_name, prop_val )
@@ -1521,10 +1529,13 @@ class LopperFDT(lopper.base.lopper_base):
 
             # list is a compound value, or an empty one!
             if len(prop_val) >= 0:
-                try:
-                    bval = LopperFDT.encode_byte_array_from_strings(prop_val)
-                except Exception as e:
-                    bval = LopperFDT.encode_byte_array(prop_val)
+                if typehint and typehint == LopperFmt.UINT8:
+                    bval = LopperFDT.encode_byte_array(prop_val, 1)
+                else:
+                    try:
+                        bval = LopperFDT.encode_byte_array_from_strings(prop_val)
+                    except Exception as e:
+                        bval = LopperFDT.encode_byte_array(prop_val)
 
                 for _ in range(MAX_RETRIES):
                     try:

@@ -474,11 +474,12 @@ class lopper_base:
 
 
     @staticmethod
-    def encode_byte_array( values ):
+    def encode_byte_array( values, byte_count_hint = 4 ):
         """utility to encode a list of values into a bytearray
 
         Args:
            values (list): integer (numeric) values to encode
+           byte_count_hint (int,optional): how many bytes to use for each entry (1-4)
 
         Returns:
            byte array: the encoded byte array
@@ -486,7 +487,7 @@ class lopper_base:
         """
         barray = b''
         for i in values:
-            byte_count=4
+            byte_count = byte_count_hint
             try:
                 barray = barray + i.to_bytes(byte_count,byteorder='big')
             except OverflowError:
@@ -514,7 +515,7 @@ class lopper_base:
         return barray
 
     @staticmethod
-    def string_test( prop, allow_multiline = True ):
+    def string_test( prop, allow_multiline = True, debug = False ):
         """ Check if a property (byte array) is a string
 
         Args:
@@ -550,8 +551,12 @@ class lopper_base:
             if prop[byte] != 0 or byte == bytei:
                 if byte + 3 < len(prop):
                     if prop[byte:byte+3] == b'\xe2\x80\x9c' or prop[byte:byte+3] == b'\xe2\x80\x9d':
-                        #print( "jumping ahead, looks like an escaped quote" )
                         byte += 3
+                        continue
+                else:
+                    if byte == bytei and prop[byte] == 0:
+                        # null termination on the string
+                        byte += 1
                         continue
 
                 return False
