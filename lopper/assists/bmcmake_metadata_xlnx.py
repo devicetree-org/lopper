@@ -105,12 +105,19 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                             match_list.append(False)
                 else:
                     try:
-                        valid_ex = node[prop[0]].value
+                        valid_ex = node[p].value
+                        if valid_ex:
+                            match_list.append(True)
                     except KeyError:
                         match_list.append(False)
-                        valid_ex = 0
 
-            if valid_ex or not False in match_list:
+            #If all the example required conditions met it is valid example
+            if False in match_list:
+                valid_ex = 0
+            else:
+                valid_ex = 1
+
+            if valid_ex:
                 validex_list.append(example)
 
         example_dict.update({node.name:validex_list})
