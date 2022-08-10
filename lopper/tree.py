@@ -32,7 +32,7 @@ global Lopper
 # utility function to return true or false if a number
 # is 32 bit, or not.
 def check_32_bit(n):
-    return n<1<<31
+    return (n & 0xFFFFFFFF00000000) == 0
 
 # used in node_filter
 class LopperAction(Enum):
@@ -1078,8 +1078,6 @@ class LopperProp():
                                 else:
                                     formatted_records.append( ";" )
                 else:
-                    if self.name == "access":
-                        print( "             no phandles, list of nums" )
                     # no phandles
                     if list_of_nums:
                         if self.binary:
@@ -1097,9 +1095,6 @@ class LopperProp():
                                 formatted_records.append( " " )
                             else:
                                 formatted_records.append( ", " )
-
-                        if self.name == "access":
-                            print( "                             resolving access property" )
                             
                         if list_of_nums:
                             if self.binary:
