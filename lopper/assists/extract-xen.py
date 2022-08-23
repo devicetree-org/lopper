@@ -118,7 +118,7 @@ def extract_xen( tgt_node, sdt, options ):
 
         try:
             ip = n["interrupt-parent"]
-            n["interrupt-parent"].value = 0xfde8
+            n["interrupt-parent"].value = "0xfde8"
             if verbose:
                 print( "[INFO][extract-xen]: %s interrupt parent found, updating" % n.name  )
 
