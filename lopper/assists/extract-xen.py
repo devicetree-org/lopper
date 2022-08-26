@@ -99,6 +99,11 @@ def extract_xen( tgt_node, sdt, options ):
     # rename the containing node from /extracted to /passthrough
     extracted_node.name = "passthrough"
 
+    # copy sdt root compatibles into extracted node
+    root_compat = sdt.tree["/"]["compatible"].value
+    root_compat.append(extracted_node["compatible"].value)
+    extracted_node["compatible"].value = root_compat
+
     # walk the nodes in the tree, and look for the property "extracted,path"
     # and update it to "xen,path" (when conditions are met)
     for n in xen_tree:
