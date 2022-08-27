@@ -1713,7 +1713,7 @@ class LopperFDT(lopper.base.lopper_base):
                     data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data, count = 1 )
 
             # put the dts start info back in
-            data = re.sub( '^', '/dts-v1/;\n\n%s' % memres_string, data )
+            data = re.sub( '^', '/dts-v1/;\n\n%s\n' % memres_string, data )
 
             # Comment and label substitution
             fp_comments_as_attributes = LopperFDT._comment_translate(data)
