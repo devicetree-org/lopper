@@ -1238,13 +1238,20 @@ def tree_sanity_test( fdt, verbose=0 ):
     memres_tree = LopperTree()
     dct = Lopper.export( fdt )
     memres_tree.load( dct )
+
     fpp = tempfile.NamedTemporaryFile( delete=True )
     fpw = open( fpp.name, 'w+')
     memres_tree.print( fpw )
 
+    # temp file based write is having sync problems on some
+    # systems. This is the 2nd option
+    fpp2 = open( "/tmp/memres-test.dts", "w+" )
+    memres_tree.print( fpp2 )
+    fpp2.close()
+
     memres_found = None
     memres_regex = re.compile( r'\/memreserve\/(.*)?;' )
-    with open(fpp.name) as fp:
+    with open(fpp2.name) as fp:
         for line in fp:
             memres = re.search( memres_regex, line )
             if memres:
