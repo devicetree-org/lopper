@@ -1745,6 +1745,7 @@ class LopperFDT(lopper.base.lopper_base):
                     file_boundary_index = i
                     # clear the node tracking counts, we are into a new file
                     subnode_at_depth = { 0: False }
+                    node_depth = 0
 
                 mn = re.search( "^\s*(.*){", f )
                 if mn:
