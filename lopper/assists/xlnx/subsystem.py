@@ -232,7 +232,7 @@ def find_sram_ids(subsystem, node, sdt, fw_config={}):
         id_with_flags.append((xlnx_pm_devname_to_id[i], flags, fw_config))
 
     try:
-        amba_tree = sdt.tree["/amba"]
+        amba_tree = sdt.tree["/axi"]
     except:
         amba_tree = None
 

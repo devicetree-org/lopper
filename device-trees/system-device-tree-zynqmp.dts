@@ -531,7 +531,7 @@
 		compatible = "xlnx,zynqmp-aes";
 	};
 
-	amba-apu@0 {
+	amba_apu : apu-bus {
 		compatible = "simple-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x1>;
@@ -560,7 +560,7 @@
 		interrupts = <0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4 0x0 0x9b 0x4>;
 		phandle = <0xe>;
 	};
-	amba_rpu: indirect-bus@0 {
+	amba_rpu: rpu-bus {
 		compatible = "indirect-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -573,7 +573,7 @@
 		};
 	};
 
-	amba {
+	amba : axi {
 		compatible = "simple-bus";
 		u-boot,dm-pre-reloc;
 		#address-cells = <0x2>;
@@ -2128,7 +2128,7 @@
 	};
 
 	chosen {
-		xlnx,eeprom = "/amba/i2c@ff030000/i2c-mux@74/i2c@0/eeprom@54";
+		xlnx,eeprom = "/axi/i2c@ff030000/i2c-mux@74/i2c@0/eeprom@54";
 		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw";
 		stdout-path = "serial0:115200n8";
 	};
@@ -2224,12 +2224,12 @@
 	};
 
 	aliases {
-		ethernet0 = "/amba/ethernet@ff0e0000";
-		i2c0 = "/amba/i2c@ff020000";
-		i2c1 = "/amba/i2c@ff030000";
-		serial0 = "/amba/serial@ff000000";
-		serial1 = "/amba/serial@ff010000";
-		spi0 = "/amba/spi@ff0f0000";
+		ethernet0 = "/axi/ethernet@ff0e0000";
+		i2c0 = "/axi/i2c@ff020000";
+		i2c1 = "/axi/i2c@ff030000";
+		serial0 = "/axi/serial@ff000000";
+		serial1 = "/axi/serial@ff010000";
+		spi0 = "/axi/spi@ff0f0000";
 	};
 
 	memory@80000000 {

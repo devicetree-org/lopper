@@ -32,7 +32,7 @@ indentation.
 #### YAML
 
 ~~~
-  amba:
+  axi:
     compatible: simple-bus;
 
     can0:
@@ -45,7 +45,7 @@ indentation.
 #### Device Tree
 
 ~~~
-	amba {
+	axi {
 		compatible = "simple-bus";
 
 		can0: can@ff060000 {
@@ -183,7 +183,7 @@ Example:
       - [0x1, 0xb, 0xf08]
       - [0x1, 0xa, 0xf08]
 
-  amba:
+  axi:
     compatible: simple-bus
     ranges: true
 

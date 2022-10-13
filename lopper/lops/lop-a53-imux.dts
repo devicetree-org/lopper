@@ -15,7 +15,7 @@
                 compatible = "system-device-tree-v1,lop";
                 lop_0 {
                         compatible = "system-device-tree-v1,lop,assist-v1";
-                        node = "/amba/imux";
+                        node = "/axi/imux";
                         id = "imux,imux-v1";
                         noexec;
                 };
@@ -33,7 +33,7 @@
                 lop_3 {
                         compatible = "system-device-tree-v1,lop,modify";
                         // delete the interrupt-multiplex
-                        modify = "/amba/interrupt-multiplex::";
+                        modify = "/axi/interrupt-multiplex::";
                 };
         };
 };

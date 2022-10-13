@@ -129,7 +129,7 @@ The following is a brief example to show how they can be used together:
 		};
 	};
 
-	amba_rpu: indirect-bus@f9000000 {
+	amba_rpu: rpu-bus@f9000000 {
 		compatible = "indirect-bus";
 	};
 
@@ -160,7 +160,7 @@ following example we can see how interrupts controllers are expressed:
 	};
 
 	/* bus only accessible by cpus */
-	amba_apu: bus@f9000000 {
+	amba_apu: apu-bus@f9000000 {
 		compatible = "simple-bus";
 
 		gic_a72: interrupt-controller@f9000000 {
@@ -168,7 +168,7 @@ following example we can see how interrupts controllers are expressed:
 	};
 
 	/* bus only accessible by cpus_r5 */
-	amba_rpu: indirect-bus@f9000000 {
+	amba_rpu: rpu-bus@f9000000 {
 		compatible = "indirect-bus";
 
 		gic_r5: interrupt-controller@f9000000 {
@@ -189,7 +189,7 @@ to the right cpus cluster, it is possible to express interrupt routing
 from a device to multiple clusters. For instance:
 
 
-	amba: bus@f1000000 {
+	amba: axi@f1000000 {
 		compatible = "simple-bus";
 		ranges;
 

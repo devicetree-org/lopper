@@ -133,7 +133,7 @@
 		phandle = <0x4>;
 	};
 
-	amba_apu: bus@f9000000 {
+	amba_apu: apu-bus@f9000000 {
 		compatible = "simple-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -180,7 +180,7 @@
 		};
 	};
 
-	amba_rpu: indirect-bus@0 {
+	amba_rpu: rpu-bus@0 {
 		compatible = "indirect-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -193,7 +193,7 @@
 		};
 	};
 
-	amba: bus@f1000000 {
+	amba: axi@f1000000 {
 		compatible = "simple-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -816,14 +816,14 @@
 	};
 
 	aliases {
-		serial0 = "/amba/serial@ff000000";
-		ethernet0 = "/amba/ethernet@ff0c0000";
-		ethernet1 = "/amba/ethernet@ff0d0000";
-		i2c0 = "/amba/i2c@ff030000";
-		mmc0 = "/amba/sdhci@f1050000";
-		spi0 = "/amba/spi@f1010000";
-		usb0 = "/amba/usb@ff9d0000";
-		rtc0 = "/amba/rtc@f12a0000";
+		serial0 = "/axi/serial@ff000000";
+		ethernet0 = "/axi/ethernet@ff0c0000";
+		ethernet1 = "/axi/ethernet@ff0d0000";
+		i2c0 = "/axi/i2c@ff030000";
+		mmc0 = "/axi/sdhci@f1050000";
+		spi0 = "/axi/spi@f1010000";
+		usb0 = "/axi/usb@ff9d0000";
+		rtc0 = "/axi/rtc@f12a0000";
 	};
 
 	alt_ref_clk {

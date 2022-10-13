@@ -43,7 +43,7 @@ Each device node protected by a firewall links to the relevant firewall
 controller, for instance can0 is protected by lpd_xppu:
 
 
-	amba {
+	axi {
 		can0: can@ff060000 {
 			firewall-0 = <&lpd_xppu>;
 		};
@@ -96,7 +96,7 @@ Full Example
 		bus-master-id = <&lpd_xppu 0x0 &pmc_xppu 0x0 &lpd_xppu 0x1 &pmc_xppu 0x1>;
 	};
 
-	amba {
+	axi {
 		ethernet0: ethernet@ff0c0000 {
 			bus-master-id = <&lpd_xppu 0x234 &pmc_xppu 0x234>;
 			firewall-0 = <&lpd_xppu>;
