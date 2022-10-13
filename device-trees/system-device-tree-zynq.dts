@@ -95,7 +95,7 @@
 		};
 	};
 
-	amba {
+	amba : axi {
 		u-boot,dm-pre-reloc;
 		compatible = "simple-bus";
 		#address-cells = <0x1>;
@@ -1035,10 +1035,10 @@
 	};
 
 	aliases {
-		ethernet0 = "/amba/ethernet@e000b000";
-		i2c0 = "/amba/i2c@e0004000";
-		serial0 = "/amba/serial@e0001000";
-		spi0 = "/amba/spi@e000d000";
+		ethernet0 = "/axi/ethernet@e000b000";
+		i2c0 = "/axi/i2c@e0004000";
+		serial0 = "/axi/serial@e0001000";
+		spi0 = "/axi/spi@e000d000";
 	};
 
 	memory@0 {

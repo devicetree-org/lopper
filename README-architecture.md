@@ -259,7 +259,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                 lop_4 {
                         compatible = "system-device-tree-v1,lop,modify";
                         // node delete
-                        modify = "/amba/::";
+                        modify = "/axi/::";
                 };
                 lop_11 {
                         compatible = "system-device-tree-v1,lop,modify";
@@ -276,9 +276,9 @@ NOTE/TODO: bindings will be written for the lopper operations.
                        compatible = "system-device-tree-v1,lop,modify";
                        // property add to node + matching child nodes
                        // nodes that match this regex will have the operation applied
-                       modify = "/amba/.*ethernet.*phy.*:testprop:testvalue";
+                       modify = "/axi/.*ethernet.*phy.*:testprop:testvalue";
                        // note: nodes is legacy now. Just put the regex into the modify parameter
-                       // nodes = "/amba/.*ethernet.*phy.*";
+                       // nodes = "/axi/.*ethernet.*phy.*";
                 };
                 lop_16 {
                        compatible = "system-device-tree-v1,lop,modify";
@@ -365,7 +365,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
 		       compatible = "system-device-tree-v1,lop,output";
 		       outfile = "linux-partial.dts";
 		       // * is "all nodes"
-		       nodes = "amba.*";
+		       nodes = "axi.*";
 	        };
 		lop_17 {
                        compatible = "system-device-tree-v1,lop,output";
@@ -379,7 +379,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
 		       compatible = "system-device-tree-v1,lop,output";
 		       outfile = "linux-special-props.dts";
 		       // nodes (regex), with a property that must be set
-		       nodes = "amba.*:testprop:testvalue";
+		       nodes = "axi.*:testprop:testvalue";
 		};
 
 # conditional: do a conditional test on nodes of the tree, and execute an operation
@@ -747,7 +747,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                       select_1;
                       select_2 = "/cpus/.*:compatible:.*arm,cortex-a72.*";
                       // since there's a path specifier, this is an OR operation
-                      select_3 = "/amba/.*:phy-handle:0x9";
+                      select_3 = "/axi/.*:phy-handle:0x9";
                 };
                 lop_17_5 {
                       compatible = "system-device-tree-v1,lop,code-v1";

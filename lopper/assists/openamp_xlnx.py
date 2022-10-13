@@ -450,9 +450,9 @@ def xlnx_rpmsg_update_ipis(tree, host_ipi, remote_ipi, core_node, channel_id, op
     gic_node_phandle = None
 
     if platform == SOC_TYPE.VERSAL:
-        gic_node_phandle = tree["/amba_apu/interrupt-controller@f9000000"].phandle
+        gic_node_phandle = tree["/apu-bus/interrupt-controller@f9000000"].phandle
     elif platform == SOC_TYPE.ZYNQMP:
-        gic_node_phandle = tree["/amba_apu/interrupt-controller@f9010000"].phandle
+        gic_node_phandle = tree["/apu-bus/interrupt-controller@f9010000"].phandle
     else:
         print("invalid platform")
         return False
@@ -618,9 +618,9 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, verbose = 0 ):
         # if native is true, then find and store amba bus
         # to store IPI and SHM nodes
         try:
-            amba_node = tree["/amba"]
+            amba_node = tree["/axi"]
         except:
-            amba_node = LopperNode(-1, "/amba")
+            amba_node = LopperNode(-1, "/axi")
             amba_node + LopperProp(name="u-boot,dm-pre-reloc")
             amba_node + LopperProp(name="ranges")
             amba_node + LopperProp(name="#address-cells", value = 2)

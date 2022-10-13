@@ -84,7 +84,7 @@
                 lop_9 {
                         // Delete the duplicate tcm_ram node
                         compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/amba/psu_r5_tcm_ram@ffe00000::";
+                        modify = "/axi/psu_r5_tcm_ram@ffe00000::";
                 };
         };
 };

@@ -36,7 +36,7 @@
                 lop_4 {
                         // modify to "nothing", is a remove operation
                         compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/amba_rpu::";
+                        modify = "/rpu-bus::";
                 };
                 lop_5 {
                       compatible = "system-device-tree-v1,lop,select-v1";

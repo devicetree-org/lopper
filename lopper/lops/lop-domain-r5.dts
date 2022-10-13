@@ -45,22 +45,16 @@
                          compatible = "system-device-tree-v1,lop,output";
                          outfile = "r5.dts";
                          // * is "all nodes"
-                         nodes = "ps_ipi_*", "channel*", "cpus*","fpga*", "amba_rpu","tcm","memory_r5@0";
+                         nodes = "ps_ipi_*", "channel*", "cpus*","fpga*","rpu-bus","tcm","memory_r5@0";
                   };
 
                   lop_16 {
                          compatible = "system-device-tree-v1,lop,modify";
-                         modify = "/amba/.*ethernet.*phy.*:testprop:testvalue";
-                         // noexec;
+                         modify = "/axi/.*ethernet.*phy.*:testprop:testvalue";
                   };
                   lop_17 {
                          compatible = "system-device-tree-v1,lop,modify";
-                         //modify = "/amba/:testprop:testvalue";
                          modify = "/bus@f1000000/.*ethernet.*phy.*:testprop:testvaluenew";
-                         //modify = "/amba.*:testprop:testvalue";
-                         // note: nodes is legacy now. Just put the regex into the modify
-                         // parameter
-                         // nodes = "/amba/.*ethernet.*phy.*";
                   };
                   lop_18 {
                          compatible = "system-device-tree-v1,lop,modify";
