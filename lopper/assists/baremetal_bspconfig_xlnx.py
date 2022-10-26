@@ -46,6 +46,8 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
     root_sub_nodes = root_node.subnodes()
    
     mem_ranges = get_memranges(tgt_node, sdt, options)
+    if not mem_ranges:
+        return
     # Generate Memconfig cmake meta-data file.
     with open('MemConfig.cmake', 'w') as fd:
         mem_name_list = []
@@ -61,11 +63,9 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
         fd.write("set(MEM_DEF_NAMES %s)\n" % to_cmakelist(mem_name_list))
         fd.write("set(MEM_RANGES %s)\n" % to_cmakelist(mem_size_list))
 
-    # Yocto Machine to CPU compat mapping
-    cpu_dict = {'cortexa53-zynqmp': 'arm,cortex-a53', 'cortexa72-versal':'arm,cortex-a72', 'cortexr5-zynqmp': 'arm,cortex-r5', 'cortexa9-zynq': 'arm,cortex-a9',
-                'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze', 'cortexr5-versal': 'arm,cortex-r5'}
     machine = options['args'][0]
-    match_cpunodes = get_cpu_node(sdt, options)
+    # Get the cpu node for a given Processor
+    match_cpunode = get_cpu_node(sdt, options)
 
     tmpdir = os.getcwd()
     os.chdir(options['args'][1])
@@ -82,7 +82,7 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
                 schema = yaml.safe_load(stream)
                 compatlist = compat_list(schema)
                 prop_list = schema['required']
-                match = [compat for compat in compatlist if compat == cpu_dict[machine]]
+                match = [compat for compat in compatlist if compat in match_cpunode['compatible'].value]
                 if match:
                    config_struct = schema['config'][0] 
                    outfile = tmpdir + str("/") + str("x") + name.lower() + str("_g.c")
@@ -93,9 +93,9 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
                            if index == 0:
                                fd.write("\t{")
                            try:
-                               for i in range(0, len(match_cpunodes[0][prop].value)):
-                                   fd.write("\n\t\t%s" % hex(match_cpunodes[0][prop].value[i]))
-                                   if i != (len(match_cpunodes[0][prop].value) - 1):
+                               for i in range(0, len(match_cpunode[prop].value)):
+                                   fd.write("\n\t\t%s" % hex(match_cpunode[prop].value[i]))
+                                   if i != (len(match_cpunode[prop].value) - 1):
                                        fd.write(",")
                            except:
                                fd.write("\n\t\t 0")
