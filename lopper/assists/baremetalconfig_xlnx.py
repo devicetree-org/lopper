@@ -28,23 +28,25 @@ from bmcmake_metadata_xlnx import *
 from domain_access import *
 
 def get_cpu_node(sdt, options):
-    # Yocto Machine to CPU compat mapping
-    cpu_dict = {'cortexa53-zynqmp': 'arm,cortex-a53', 'cortexa72-versal':'arm,cortex-a72', 'cortexr5-zynqmp': 'arm,cortex-r5', 'cortexa9-zynq': 'arm,cortex-a9',
-                'microblaze-pmu': 'pmu-microblaze', 'microblaze-plm': 'pmc-microblaze', 'microblaze-psm': 'psm-microblaze', 'cortexr5-versal': 'arm,cortex-r5'}
+    cpu_name = options['args'][0]
+    symbol_node = sdt.tree['/__symbols__']
+    prop_dict = symbol_node.__props__
     nodes = sdt.tree.nodes('/cpu.*')
-    machine = options['args'][0]
-    match_cpunodes = []
-    match = cpu_dict[machine]
+    cpu_lables = []
+    match_cpu_node = []
     for node in nodes:
-        try:
-            compat = node['compatible'].value[0]
-            match = cpu_dict[machine]
-            if compat == match:
-                match_cpunodes.append(node)
-        except KeyError:
-            pass
+        match = [label for label,node_abs in prop_dict.items() if re.match(node_abs[0], node.abs_path) and len(node_abs[0]) == len(node.abs_path)]
+        if match:
+            if match[0] == cpu_name:
+                match_cpu_node = node
+            else:
+                if node.propval('reg') != ['']:
+                    cpu_lables.append(match[0])
 
-    return match_cpunodes
+    if not match_cpu_node:
+        print("ERROR: In valid CPU Name valid Processors for a given SDT are %s\n"%' '.join(cpu_lables))
+
+    return match_cpu_node
 
 def item_generator(json_input, lookup_key):
     if isinstance(json_input, dict):
@@ -288,12 +290,12 @@ def get_stdin(sdt, chosen_node, node_list):
 
 def get_mapped_nodes(sdt, node_list, options):
     # Yocto Machine to CPU compat mapping
-    match_cpunodes = get_cpu_node(sdt, options)
+    match_cpunode = get_cpu_node(sdt, options)
 
     all_phandles = []
-    address_map = match_cpunodes[0].parent["address-map"].value
-    na = match_cpunodes[0].parent["#ranges-address-cells"].value[0]
-    ns = match_cpunodes[0].parent["#ranges-size-cells"].value[0]
+    address_map = match_cpunode.parent["address-map"].value
+    na = match_cpunode.parent["#ranges-address-cells"].value[0]
+    ns = match_cpunode.parent["#ranges-size-cells"].value[0]
     cells = na + ns
     tmp = na
     while tmp < len(address_map):
@@ -316,7 +318,7 @@ def get_mapped_nodes(sdt, node_list, options):
                 print('ERROR: os,type property is missing in the domain', domain_node.name)
 
         if bm_domain:
-            if domain_node['cpus'].value[0] == match_cpunodes[0].parent.phandle:
+            if domain_node['cpus'].value[0] == match_cpunode.parent.phandle:
                # Baremetal access property
                # Check for shared resources
                if domain_node.propval('access') != ['']:
