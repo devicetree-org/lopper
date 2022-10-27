@@ -1874,6 +1874,10 @@ class LopperSDT:
                             else:
                                 if pfnodes:
                                     phandle = pfnodes[0].phandle
+                                    if not phandle:
+                                        # this is a reference, generate a phandle
+                                        pfnodes[0].phandle = tree.phandle_gen()
+                                        phandle = pfnodes[0].phandle
                                 else:
                                     phandle = 0
 
