@@ -193,48 +193,45 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     except IndexError:
         pass
 
-    with open(os.path.join(sdt.outdir,'memory.ld'), 'w') as fd:
-        fd.write("MEMORY\n")
-        fd.write("{\n")
-        if memtest_config:
-            traverse = False
-        else:
-            traverse = True
-
-        for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
-            if default_ddr is None:
-                default_ddr = key
-            start,size = value[0], value[1]
-            """
-            LMB BRAM initial 80 bytes being used by the linker vectors section
-            Adjust the size and start address accordingly.
-            """
-            if "lmb_bram" in key:
-                start = 80
-                size -= start
-            """
-            PS7 DDR initial 1MB is reserved memory
-            Adjust the size and start address accordingly.
-            """
-            if "ps7_ddr" in key:
-                start = 1048576
-                size -= start
-            """
-            For R5 PSU DDR initial 1MB is reserved for tcm
-            Adjust the size and start address accordingly.
-            """
-            if "psu_ddr" in key and machine == "cortexr5-zynqmp" and start == 0:
-                start = 1048576
-                size -= start
-            if "axi_noc" in key and machine == "cortexr5-versal" and start == 0:
-                start = 1048576
-                size -= start
-            fd.write("\t%s : ORIGIN = %s, LENGTH = %s\n" % (key, hex(start), hex(size)))
-        fd.write("}\n")
-
     src_dir = options['args'][1].rstrip(os.path.sep)
     appname = os.path.basename(os.path.dirname(src_dir))
     cmake_file = os.path.join(sdt.outdir, f"{appname.capitalize()}Example.cmake")
+    cfd = open(cmake_file, 'a')
+    if memtest_config:
+        traverse = False
+    else:
+        traverse = True
+
+    mem_sec = ""
+    for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
+        if default_ddr is None:
+            default_ddr = key
+        start,size = value[0], value[1]
+        """
+        LMB BRAM initial 80 bytes being used by the linker vectors section
+        Adjust the size and start address accordingly.
+        """
+        if "lmb_bram" in key:
+            start = 80
+            size -= start
+        """
+        PS7 DDR initial 1MB is reserved memory
+        Adjust the size and start address accordingly.
+        """
+        if "ps7_ddr" in key:
+            start = 1048576
+            size -= start
+        """
+        For R5 PSU DDR initial 1MB is reserved for tcm
+        Adjust the size and start address accordingly.
+        """
+        if "psu_ddr" in key and machine == "cortexr5-zynqmp" and start == 0:
+            start = 1048576
+            size -= start
+        if "axi_noc" in key and machine == "cortexr5-versal" and start == 0:
+            start = 1048576
+            size -= start
+        mem_sec += f'\n\t{key} : ORIGIN = {hex(start)}, LENGTH = {hex(size)}'
 
     ## To inline with existing tools point default ddr for linker to lower DDR
     lower_ddrs = ["axi_noc_0", "psu_ddr_0", "ps7_ddr_0"]
@@ -242,11 +239,11 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     if has_ddr and not memtest_config:
         default_ddr = has_ddr[0]
 
-    with open(cmake_file, 'a') as fd:
-        fd.write("set(DDR %s)\n" % default_ddr)
-        memip_list = []
-        for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
-            memip_list.append(key)
-            fd.write("set(%s %s)\n" % (key, to_cmakelist([hex(value[0]), hex(value[1])])))
-        fd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
+    cfd.write("set(DDR %s)\n" % default_ddr)
+    memip_list = []
+    for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
+        memip_list.append(key)
+        cfd.write("set(%s %s)\n" % (key, to_cmakelist([hex(value[0]), hex(value[1])])))
+    cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
+    cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
     return True
