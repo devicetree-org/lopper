@@ -29,9 +29,9 @@ from baremetalconfig_xlnx import *
 
 def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
     driver_compatlist = []
-
-    drvname = src_dir.split('/')[-3]
-    yaml_file = Path( src_dir + "../data/" + drvname + ".yaml")
+    src_dir = src_dir.rstrip(os.path.sep)
+    drvname = os.path.basename(os.path.dirname(src_dir))
+    yaml_file = Path( os.path.join(os.path.dirname(src_dir), "data", f"{drvname}.yaml"))
     try:
         yaml_file_abs = yaml_file.resolve()
     except FileNotFoundError:
@@ -123,9 +123,8 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
         example_dict.update({node.name:validex_list})
         depreg_dict.update({node.name:depreg_list})
 
-    drvname = yamlfile.rsplit('/', 1)[-1]
-    drvname = drvname.replace('.yaml', '')
-    cmake_file = drvname.capitalize() + str("Example.cmake")
+    drvname = os.path.basename(yamlfile).replace('.yaml', '')
+    cmake_file = os.path.join(sdt.outdir, f"{drvname.capitalize()}Example.cmake")
     with open(cmake_file, 'a') as fd:
         fd.write("set(NUM_DRIVER_INSTANCES %s)\n" % to_cmakelist(nodename_list))
         fd.write("set(REG_LIST %s)\n" % to_cmakelist(reg_list))
@@ -179,8 +178,9 @@ def lwip_topolgy(config):
 
 def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options):
     meta_dict = {}
-    name = src_path.split('/')[-3]
-    yaml_file = Path( src_path + "../data/" + name + ".yaml")
+    src_path = src_path.rstrip(os.path.sep)
+    name = os.path.basename(os.path.dirname(src_path))
+    yaml_file = Path( os.path.join(os.path.dirname(src_path), "data", f"{name}.yaml"))
     try:
         yaml_file_abs = yaml_file.resolve()
     except FileNotFoundError:

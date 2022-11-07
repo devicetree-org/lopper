@@ -193,7 +193,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     except IndexError:
         pass
 
-    with open('memory.ld', 'w') as fd:
+    with open(os.path.join(sdt.outdir,'memory.ld'), 'w') as fd:
         fd.write("MEMORY\n")
         fd.write("{\n")
         if memtest_config:
@@ -232,10 +232,9 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             fd.write("\t%s : ORIGIN = %s, LENGTH = %s\n" % (key, hex(start), hex(size)))
         fd.write("}\n")
 
-    src_dir = os.path.dirname(options['args'][1])
-    src_dir = os.path.dirname(src_dir)
-    appname = src_dir.rsplit('/', 1)[-1]
-    cmake_file = appname.capitalize() + str("Example.cmake")
+    src_dir = options['args'][1].rstrip(os.path.sep)
+    appname = os.path.basename(os.path.dirname(src_dir))
+    cmake_file = os.path.join(sdt.outdir, f"{appname.capitalize()}Example.cmake")
 
     ## To inline with existing tools point default ddr for linker to lower DDR
     lower_ddrs = ["axi_noc_0", "psu_ddr_0", "ps7_ddr_0"]

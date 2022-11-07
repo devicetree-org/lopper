@@ -389,8 +389,9 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     except IndexError:
         pass
 
-    drvname = src_dir.split('/')[-3]
-    yaml_file = Path( src_dir + "../data/" + drvname + ".yaml")
+    drvpath = os.path.dirname(src_dir.rstrip(os.sep))
+    drvname = os.path.basename(drvpath)
+    yaml_file = Path(os.path.join(drvpath, f"data/{drvname}.yaml"))
     try:
         yaml_file_abs = yaml_file.resolve()
     except FileNotFoundError:
@@ -438,7 +439,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         config_struct = config_struct[0]
         driver_name = config_struct.split('_Config')[0].lower()
         driver_name = driver_name[1:]
-    outfile = str("x") + driver_name + str("_g.c")
+    outfile = os.path.join(sdt.outdir,f"x{driver_name}_g.c")
 
     plat = DtbtoCStruct(outfile)
     nodename_list = []
@@ -446,6 +447,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         nodename_list.append(node.name)
 
     cmake_file = drvname.upper() + str("Config.cmake")
+    cmake_file = os.path.join(sdt.outdir,f"{cmake_file}")
     with open(cmake_file, 'a') as fd:
        fd.write("set(DRIVER_INSTANCES %s)\n" % to_cmakelist(nodename_list))
        if stdin:
