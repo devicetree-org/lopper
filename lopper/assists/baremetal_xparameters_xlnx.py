@@ -76,7 +76,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             cci_en = None
 
     drvlist = xlnx_generate_bm_drvlist(tgt_node, sdt, options)
-    plat = DtbtoCStruct('xparameters.h')
+    xparams = os.path.join(sdt.outdir, f"xparameters.h")
+    plat = DtbtoCStruct(xparams)
     plat.buf('#ifndef XPARAMETERS_H   /* prevent circular inclusions */\n')
     plat.buf('#define XPARAMETERS_H   /* by using protection macros */\n')
     total_nodes = node_list
