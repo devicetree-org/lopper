@@ -30,6 +30,43 @@ def is_compat(node, compat_string_to_test):
         return xlnx_generate_bm_drvlist
     return ""
 
+def drv_copy_src(proc_name, fd, src_dir):
+    fd.write("foreach(drv ${DRIVER_LIST})\n")
+    fd.write("\texecute_process(\n")
+    src_dir = f"{src_dir}/XilinxProcessorIPLib/drivers/${{drv}}/src"
+    fd.write(f"\t\t\t COMMAND ${{CMAKE_COMMAND}} -E copy_directory {src_dir} ${{CMAKE_LIBRARY_PATH}}/../libsrc/${{drv}}/src\n") 
+    fd.write("\t\t\t)\n")
+    fd.write("endforeach()\n")
+    
+
+def drv_cmake_target(proc_name, fd, src_dir):
+    fd.write("foreach(drv ${DRIVER_TARGETS})\n")
+    fd.write(f'\tif (("${{drv}}" STREQUAL "uartps") OR\n')
+    fd.write(f'\t    ("${{drv}}" STREQUAL "uartpsv"))\n')
+    add_custom_target(proc_name, fd, src_dir, 1)
+    fd.write("\telse()\n")
+    add_custom_target(proc_name, fd, src_dir, 0)
+    fd.write("\tendif()\n")
+    fd.write("endforeach()\n")
+
+def add_custom_target(proc_name, fd, src_dir, stdin):
+    fd.write("\t\tadd_custom_target(\n")
+    fd.write("\t\t\t\t${drv} ALL\n")
+    src_dir = f"{src_dir}/XilinxProcessorIPLib/drivers/${{drv}}/src"
+    if stdin:
+        fd.write(f"\t\t\t\tCOMMAND lopper -O ${{CMAKE_LIBRARY_PATH}}/../libsrc/${{drv}}/src ${{SDT}} -- baremetalconfig_xlnx {proc_name} {src_dir} stdin\n")
+    else:
+        fd.write(f"\t\t\t\tCOMMAND lopper -O ${{CMAKE_LIBRARY_PATH}}/../libsrc/${{drv}}/src ${{SDT}} -- baremetalconfig_xlnx {proc_name} {src_dir}\n")
+    fd.write("\t\t\t\tBYPRODUCTS x${drv}_g.c\n")
+    fd.write("\t\t\t)\n")
+
+def add_xparam_target(proc_name, fd, src_dir):
+    fd.write("add_custom_target(\n")
+    fd.write("\t\txparam ALL\n")
+    fd.write(f'\t\tCOMMAND lopper -O ${{CMAKE_INCLUDE_PATH}}/ "${{SDT}}" -- baremetal_xparameters_xlnx {proc_name} {src_dir}\n')
+    fd.write("\t\tBYPRODUCTS xparameters.h\n")
+    fd.write("\t\t)\n")
+
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
@@ -103,12 +140,34 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
         tmp_str =  ' '.join(tmpdrv_list)
         tmp_str = '"{}"'.format(tmp_str)
         fd.write("DISTRO_FEATURES = %s" % tmp_str)
+
+    with open('DRVLISTConfig.cmake', 'w') as cfd:
+        cfd.write("set(DRIVER_LIST %s)\n" % to_cmakelist(driver_list))
+
+    cfd = open('CMakeLists.txt', 'w')
+    cfd.write("cmake_minimum_required(VERSION 3.15)\n")
+    cfd.write("project(libxil)\n")
+    proc_name = options['args'][0]
+    drv_targets = []
     with open('libxil.conf', 'w') as fd:
         for drv in driver_list:
+            drv_src = Path( os.path.join(src_dir,f"XilinxProcessorIPLib/drivers/{drv}/src"))
+            # if driver has yaml then only add it to custom_target
+            drv_hasyaml = Path(os.path.join(src_dir,f"XilinxProcessorIPLib/drivers/{drv}/data/{drv}.yaml"))
+            if os.path.isfile(drv_hasyaml):
+                drv_targets.append(drv)
             drv1 = drv.replace("_", "-")
             tmp_str1 = str("${RECIPE_SYSROOT}")
             tmp_str = tmp_str1 + "/usr/lib/lib{}.a,,{},,".format(drv, drv1)
             tmp_str = '"{}"'.format(tmp_str)
             fd.write("\nPACKAGECONFIG[%s] = %s" % (drv1, tmp_str))
 
+    cfd.write("set(DRIVER_TARGETS %s)\n" % to_cmakelist(drv_targets))
+    cfd.write("set(DRIVER_LIST %s)\n" % to_cmakelist(driver_list))
+    drv_copy_src(proc_name, cfd, src_dir)
+    drv_cmake_target(proc_name, cfd, src_dir)
+    add_xparam_target(proc_name, cfd, src_dir)
+    cfd.write("add_library(xil INTERFACE)\n")
+    cfd.write("add_dependencies(xil ${DRIVER_TARGETS} xparam)\n")
+    cfd.close()
     return driver_list
