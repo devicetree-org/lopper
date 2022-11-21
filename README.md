@@ -19,9 +19,9 @@ Lopper is in a single repository, and is available via git or pypi:
    testing has been against python3.5.x, but no issues are expected on newer 3.x
    releases.
 
-   In addition to the standard libraries, Lopper uses: pcpp (or cpp), dtc and libfdt for
-   processing and manipulating device trees. These tools must be installed and
-   on the PATH.
+   In addition to the standard libraries, Lopper uses: pcpp (or cpp), humanfriendly,
+   dtc and libfdt for processing and manipulating device trees. These tools must be
+   installed and on the PATH.
 
    **Note:** (python cpp) pcpp is optional (available on PyPi), and if not available cpp
    will be used for pre-processing input files. If comments are to be maintained
@@ -136,10 +136,10 @@ handle the split directories and include files.
 
 ## Sample run:
 
-  % ./lopper.py -f --enhanced --werror -v -v -i lops/lop-load.dts -i lops/lop-domain-r5.dts device-trees/system-device-tree.dts modified-sdt.dts
+  % ./lopper.py -f --enhanced --werror -v -v -i lopper/lops/lop-load.dts -i lopper/lops/lop-domain-r5.dts device-trees/system-device-tree.dts modified-sdt.dts
 
 
-  % python -m lopper -f --enhanced --werror -v -v -i lops/lop-load.dts -i lops/lop-domain-r5.dts device-trees/system-device-tree.dts modified-sdt.dts
+  % python -m lopper -f --enhanced --werror -v -v -i lopper/lops/lop-load.dts -i lopper/lops/lop-domain-r5.dts device-trees/system-device-tree.dts modified-sdt.dts
 
 ## Limitations:
 
