@@ -156,8 +156,8 @@ def getxlnx_phytype(sdt, value):
     phy_type = child_node[0]['xlnx,phy-type'].value[0]
     return hex(phy_type)
 
-def lwip_topolgy(config):
-    topology_fd = open('xtopology_g.c', 'w')
+def lwip_topolgy(outdir, config):
+    topology_fd = open(os.path.join(outdir, 'xtopology_g.c'), 'w')
     tmp_str = "netif/xtopology.h"
     tmp_str = '"{}"'.format(tmp_str)
     topology_fd.write("\n#include %s\n" % tmp_str)
@@ -194,10 +194,10 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options):
 
     with open(yamlfile, 'r') as stream:
         schema = yaml.safe_load(stream)
-        meta_dict = schema['required']
+        meta_dict = schema['depends']
 
     lwip = re.search("lwip211", name)
-    cmake_file = name.capitalize() + str("Example.cmake")
+    cmake_file = os.path.join(sdt.outdir, f"{name.capitalize()}Example.cmake")
     topology_data = []
     with open(cmake_file, "a") as fd:
         lwiptype_index = 0
@@ -233,7 +233,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options):
                 fd.write("list(APPEND TOTAL_%s_PROP_LIST %s%s_PROP_LIST)\n" % (drv.upper(), drv.upper(), index))
             lwiptype_index += 1
     if topology_data:
-        lwip_topolgy(topology_data)
+        lwip_topolgy(sdt.outdir, topology_data)
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,bmcmake_metadata_xlnx", compat_string_to_test):

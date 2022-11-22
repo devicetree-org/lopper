@@ -115,11 +115,8 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
                                 match = [x for x in c if comp == x]
                                 if match:
                                     driver_list.append(name)
-                                    try:
-                                        if schema['depends']:
-                                            depdrv_list.append(schema['depends'])
-                                    except:
-                                        pass
+                                    if schema.get('depends',{}):
+                                        depdrv_list.append(list(schema['depends'].keys()))
                 except FileNotFoundError:
                     pass
 
