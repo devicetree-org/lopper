@@ -45,6 +45,7 @@ def get_cpu_node(sdt, options):
 
     if not match_cpu_node:
         print("ERROR: In valid CPU Name valid Processors for a given SDT are %s\n"%' '.join(cpu_lables))
+        sys.exit(1)
 
     return match_cpu_node
 
