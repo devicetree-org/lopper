@@ -48,10 +48,10 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
     root_compat = tgt_node.propval('compatible')
     yaml_file = options['args'][0]
 
-    if any("zynqmp" in compat for compat in root_compat):
-        options['args'] = ["cortexa53-zynqmp", yaml_file]
+    if any("zynqmp" in compat for compat in root_compat) or any("zcu" in compat for compat in root_compat):
+        options['args'] = ["a53_cpu0", yaml_file]
     else:
-        options['args'] = ["cortexa72-versal", yaml_file]
+        options['args'] = ["a72_cpu0", yaml_file]
     
     # Traverse the tree and find the nodes having status=ok property
     # and create a compatible_list from these nodes.
@@ -88,10 +88,10 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
             dev_type = schema[res]['device_type']
             if re.search("processor", dev_type):
                 ### Processor Handling
-                match_cpunodes = get_cpu_node(sdt, options)
-                if match_cpunodes:
-                    label_name = get_label(sdt, symbol_node, match_cpunodes[0])
-                    ip_name = match_cpunodes[0].propval('xlnx,ip-name')
+                match_cpunode = get_cpu_node(sdt, options)
+                if match_cpunode:
+                    label_name = get_label(sdt, symbol_node, match_cpunode)
+                    ip_name = match_cpunode.propval('xlnx,ip-name')
                     proc_name = label_name
                     ipname = {"arch": "aarch64", "ip_name":ip_name[0]}
                     device_type_dict['processor'] = {label_name:ipname}
