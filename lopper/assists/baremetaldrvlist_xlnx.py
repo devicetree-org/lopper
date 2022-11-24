@@ -132,21 +132,21 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
     driver_list.sort()
     os.chdir(tmpdir)
 
-    with open('distro.conf', 'w') as fd:
+    with open(os.path.join(sdt.outdir, 'distro.conf'), 'w') as fd:
         tmpdrv_list = [drv.replace("_", "-") for drv in driver_list]
         tmp_str =  ' '.join(tmpdrv_list)
         tmp_str = '"{}"'.format(tmp_str)
         fd.write("DISTRO_FEATURES = %s" % tmp_str)
 
-    with open('DRVLISTConfig.cmake', 'w') as cfd:
+    with open(os.path.join(sdt.outdir, 'DRVLISTConfig.cmake'), 'w') as cfd:
         cfd.write("set(DRIVER_LIST %s)\n" % to_cmakelist(driver_list))
 
-    cfd = open('CMakeLists.txt', 'w')
+    cfd = open(os.path.join(sdt.outdir, 'CMakeLists.txt'), 'w')
     cfd.write("cmake_minimum_required(VERSION 3.15)\n")
     cfd.write("project(libxil)\n")
     proc_name = options['args'][0]
     drv_targets = []
-    with open('libxil.conf', 'w') as fd:
+    with open(os.path.join(sdt.outdir, 'libxil.conf'), 'w') as fd:
         for drv in driver_list:
             drv_src = Path( os.path.join(src_dir,f"XilinxProcessorIPLib/drivers/{drv}/src"))
             # if driver has yaml then only add it to custom_target
