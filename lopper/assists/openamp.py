@@ -176,7 +176,7 @@ def openamp_process_cpus( sdt, domain_node, verbose = 0 ):
                 print( "[WARNING]: %s" % e )
 
 
-def openamp_parse(root_node, tree, verbose = 0 ):
+def openamp_parse(root_node, tree, options ):
     try:
         verbose = options['verbose']
     except:
