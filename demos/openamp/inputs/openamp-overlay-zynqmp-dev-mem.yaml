@@ -8,7 +8,7 @@ definitions:
 
          rpu0vdev0vring0: &rpu0vdev0vring0
              - start: 0x00c0ffee
-               size: 0xFEEE 
+               size: 0xFEEE
                no-map: 1
 
          rproc0: &rproc0
