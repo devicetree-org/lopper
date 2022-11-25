@@ -267,10 +267,12 @@ def access_expand( tree, subnode, verbose = 0 ):
         except:
             flags = None
 
-        dev_handle =  0xdeadbeef
+        dev_handle = 0xdeadbeef
         if dev:
             try:
-                dev_node = tree.lnodes( dev )[0]
+                dev_node = tree.deref( dev )
+                if verbose:
+                    print( "[DBG]: found dev node %s" % dev_node )
             except:
                 if verbose:
                     print( "[DBG]: WARNING: could not find node %s" % dev )
