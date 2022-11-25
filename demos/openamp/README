@@ -279,12 +279,13 @@ d) that phandles have been adjusted to allow for new devices
 4) Xen extraction demo
 ======================
 
-% $LOPPER_DIR/lopper.py -f inputs/dt/host-device-tree.dts system-device-tree-out.dts  -- \
+% $LOPPER_DIR/lopper.py --permissive -f inputs/dt/host-device-tree.dts system-device-tree-out.dts  -- \
       extract -t /bus@f1000000/serial@ff010000 -i zynqmp-firmware -x pinctrl-0 -x pinctrl-names -x power-domains -x current-speed -x resets -x 'interrupt-controller.*' -- \
       extract-xen -t serial@ff010000 -o serial@ff010000.dts
 [INFO]: cb: extract( /, <lopper.LopperSDT object at 0x7f15355d7310>, 0, ['-t', '/bus@f1000000/serial@ff010000', '-i', 'zynqmp-firmware', '-x', 'pinctrl-0', '-x', 'pinctrl-names', '-x', 'power-domains', '-x', 'current-speed', '-x', 'resets', '-x', 'interrupt-controller.*'] )
+[INFO]: dropping masked property pinctrl-0
 [INFO]: dropping masked property power-domains
-[INFO]: dropping masked property current-speed
+[INFO]: dropping masked property pinctrl-names
 [INFO][extract-xen]: updating sdt with passthrough property
 
 4a) serial@ff010000.dts is the extracted device tree
@@ -299,69 +300,149 @@ d) that phandles have been adjusted to allow for new devices
             #size-cells = <0x2>;
 
             passthrough {
-                    compatible = "xlnx,versal-vc-p-a2197-00-revA", "xlnx,versal-vc-p-a2197-00", "xlnx,versal-vc-p-a2197", "xlnx,versal", "simple-bus";
+                    compatible = "xlnx,zynqmp-zcu102-rev1.0", "xlnx,zynqmp-zcu102", "xlnx,zynqmp", "simple-bus";
                     ranges;
                     #address-cells = <0x2>;
                     #size-cells = <0x2>;
 
                     serial@ff010000 {
-                            clocks = <&clock_controller 0x5d>,
-                             <&clock_controller 0x52>;
-                            clock-names = "uart_clk", "apb_clk";
-                            interrupts = <0x0 0x13 0x4>;
+                            port-number = <0x1>;
+                            device_type = "serial";
+                            cts-override;
+                            clocks = <&clock_controller 0x39>,
+                             <&clock_controller 0x1f>;
+                            clock-names = "uart_clk", "pclk";
                             reg = <0x0 0xff010000 0x0 0x1000>;
-                            status = "disabled";
-                            compatible = "arm,pl011", "arm,sbsa-uart";
-                            xen,path = "/bus@f1000000/serial@ff010000";
+                            interrupts = <0x0 0x16 0x4>;
+                            interrupt-parent = <0xfde8>;
+                            status = "okay";
+                            compatible = "cdns,uart-r1p12", "xlnx,xuartps";
+                            u-boot,dm-pre-reloc;
+                            xen,path = "/axi/serial@ff010000";
                             xen,force-assign-without-iommu = <0x1>;
                             xen,reg = <0x0 0xff010000 0x0 0x1000 0x0 0xff010000>;
                     };
 
-                    clock_controller: clock-controller {
-                            phandle = <0x3>;
-                            clock-names = "ref_clk", "alt_ref_clk", "pl_alt_ref_clk";
-                            clocks = <&ref_clk>,
-                             <&alt_ref_clk>,
-                             <&pl_alt_ref_clk>;
-                            compatible = "xlnx,versal-clk";
-                            #clock-cells = <0x1>;
-                            extracted,path = "/clock-controller";
+                    zynqmp-firmware {
+                            phandle = <0xc>;
+                            #power-domain-cells = <0x1>;
+                            method = "smc";
+                            u-boot,dm-pre-reloc;
+                            compatible = "xlnx,zynqmp-firmware";
+                            extracted,path = "/firmware/zynqmp-firmware/clock-controller";
+
+                            clock_controller: clock-controller {
+                                    phandle = <0x3>;
+                                    clock-names = "pss_ref_clk", "video_clk", "pss_alt_ref_clk", "aux_ref_clk", "gt_crx_ref_clk";
+                                    clocks = <&pss_ref_clk>,
+                                     <&video_clk>,
+                                     <&pss_alt_ref_clk>,
+                                     <&aux_ref_clk>,
+                                     <&gt_crx_ref_clk>;
+                                    compatible = "xlnx,zynqmp-clk";
+                                    #clock-cells = <0x1>;
+                                    u-boot,dm-pre-reloc;
+                            };
                     };
 
-                    ref_clk: ref_clk {
-                            phandle = <0x1c>;
-                            clock-frequency = <0x1fca055>;
+                    pss_ref_clk: pss_ref_clk {
+                            phandle = <0x6>;
+                            clock-frequency = <0x1fc9350>;
                             #clock-cells = <0x0>;
                             compatible = "fixed-clock";
-                            extracted,path = "/ref_clk";
+                            u-boot,dm-pre-reloc;
+                            extracted,path = "/pss_ref_clk";
                     };
 
-                    alt_ref_clk: alt_ref_clk {
-                            phandle = <0x1d>;
-                            clock-frequency = <0x1fca055>;
+                    video_clk: video_clk {
+                            phandle = <0x7>;
+                            clock-frequency = <0x1fc9f08>;
                             #clock-cells = <0x0>;
                             compatible = "fixed-clock";
-                            extracted,path = "/alt_ref_clk";
+                            u-boot,dm-pre-reloc;
+                            extracted,path = "/video_clk";
                     };
 
-                    pl_alt_ref_clk: pl_alt_ref_clk {
-                            phandle = <0x1e>;
-                            clock-frequency = <0x1fca055>;
+                    pss_alt_ref_clk: pss_alt_ref_clk {
+                            phandle = <0x8>;
+                            clock-frequency = <0x0>;
                             #clock-cells = <0x0>;
                             compatible = "fixed-clock";
-                            extracted,path = "/pl_alt_ref_clk";
+                            u-boot,dm-pre-reloc;
+                            extracted,path = "/pss_alt_ref_clk";
+                    };
+
+                    aux_ref_clk: aux_ref_clk {
+                            phandle = <0x9>;
+                            clock-frequency = <0x19bfcc0>;
+                            #clock-cells = <0x0>;
+                            compatible = "fixed-clock";
+                            u-boot,dm-pre-reloc;
+                            extracted,path = "/aux_ref_clk";
+                    };
+
+                    gt_crx_ref_clk: gt_crx_ref_clk {
+                            phandle = <0xa>;
+                            clock-frequency = <0x66ff300>;
+                            #clock-cells = <0x0>;
+                            compatible = "fixed-clock";
+                            u-boot,dm-pre-reloc;
+                            extracted,path = "/gt_crx_ref_clk";
                     };
             };
     };
 
+
 4b) system-device-tree-out.dts for the modified system device tree with passthrough option
+-------------------------------------------------------------------------------------------
 
-% diff -u inputs/dt/host-device-tree-lopper.dts system-device-tree-out.dts
+% grep -C4 xen,passthrough system-device-tree-out.dts
 
-@@ -585,6 +585,7 @@
-                         clocks = <&clock_controller 0x5d>,
-                          <&clock_controller 0x52>;
-                         power-domains = <0x7 0x18224022>;
-+                        xen,passthrough;
-                 };
+                        pinctrl-0 = <0x3c>;
+                        cts-override;
+                        device_type = "serial";
+                        port-number = <0x1>;
+                        xen,passthrough;
+                };
 
+                usb0@ff9d0000 {
+                        #address-cells = <0x2>;
+
+4c) extract an ethernet device
+------------------------------
+
+# we use the output system device tree from the previous run, as the input for this run
+
+% $LOPPER_DIR/lopper.py --permissive -f system-device-tree-out.dts system-device-tree-out-final.dts  -- \
+                          extract -o extracted_tree.dts -p -t ethernet@ff0e0000 -i zynqmp-firmware -x 'interrupt-controller.*' -x power-domains -x current-speed -- \
+                          extract-xen -v -t ethernet@ff0e0000 -o xen-passthrough-eth.dts
+
+[INFO]: cb: extract( /, <lopper.LopperSDT object at 0x7efd688df340>, 0, ['-o', 'extracted_tree.dts', '-p', '-t', 'ethernet@ff0e0000', '-i', 'zynqmp-firmware', '-x', 'interrupt-controller.*', '-x', 'power-domains', '-x', 'current-speed'] )
+[INFO]: dropping masked property power-domains
+[INFO][extract-xen]: ethernet@ff0e0000 interrupt parent found, updating
+[INFO][extract-xen]: smmu@fd800000 interrupt parent found, updating
+[INFO][extract-xen]: updating sdt with passthrough property
+[INFO][extract-xen]: reg found: reg = <0x0 0xff0e0000 0x0 0x1000>; copying and extending to xen,reg
+[INFO][extract-xen]: deleting node (referencing node was removed): /extracted/smmu@fd800000
+
+% grep -C4 xen,passthrough system-device-tree-out-final.dts
+
+                        phy-mode = "rgmii-id";
+                        xlnx,ptp-enet-clock = <0x0>;
+                        local-mac-address = [FF FF FF FF FF FF];
+                        phandle = <0x22>;
+                        xen,passthrough;
+
+                        ethernet-phy@c {
+                                reg = <0xc>;
+                                ti,rx-internal-delay = <0x8>;
+--
+                        pinctrl-0 = <0x3c>;
+                        cts-override;
+                        device_type = "serial";
+                        port-number = <0x1>;
+                        xen,passthrough;
+                };
+
+                usb0@ff9d0000 {
+                        #address-cells = <0x2>;
