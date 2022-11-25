@@ -3545,9 +3545,9 @@ class LopperTree:
             if tgn == None:
                 # if we couldn't find the target, maybe it is in
                 # as a string. So let's check that way.
-                tgn2 = self.node.tree.nodes( phandle_or_label )
+                tgn2 = self.nodes( phandle_or_label )
                 if not tgn2:
-                    tgn2 = self.node.tree.lnodes( re.escape(phandle_or_label) )
+                    tgn2 = self.lnodes( re.escape(phandle_or_label) )
 
                 if tgn2:
                     tgn = tgn2[0]
