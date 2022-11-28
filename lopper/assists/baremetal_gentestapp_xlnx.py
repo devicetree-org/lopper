@@ -60,11 +60,11 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
            pass
 
     node_list = get_mapped_nodes(sdt, node_list, options)
-    tmpdir = os.getcwd()
-    file_fd = open('file_list.txt', 'w')
+    tmpdir = sdt.outdir
+    file_fd = open(os.path.join(tmpdir, 'file_list.txt'), 'w')
     file_fd.write('testperiph.c')
     file_fd.write("\n")
-    plat = DtbtoCStruct('testperiph.c')
+    plat = DtbtoCStruct(os.path.join(tmpdir,'testperiph.c'))
     src_dir = options['args'][1]
     os.chdir(src_dir)
     os.chdir("XilinxProcessorIPLib/drivers/")
