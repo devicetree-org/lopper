@@ -14,9 +14,7 @@ Execution domains are expressed by a new node "openamp,domain"
 compatible. Being a configuration rather than a description, their
 natural place is under a new top-level node /domains:
 
-.. FIXME: should be 'dts', but this is invalid DTS
-
-.. code-block:: none
+.. code-block:: dts
 
    domains {
            openamp_r5 {
@@ -25,7 +23,7 @@ natural place is under a new top-level node /domains:
                    #memory-flags-cells = <0>;
                    memory = <0x0 0x0 0x0 0x8000000>;
                    #access-flags-cells = <1>;
-                   access = <&can@ff060000 0x3 &ethernet@ff0c0000 0x7>;
+                   access = <&can0 0x3 &ethernet0 0x7>;
                    id = <0x1>;
            };
    };

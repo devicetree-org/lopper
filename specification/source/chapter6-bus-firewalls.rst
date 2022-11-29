@@ -41,14 +41,13 @@ Device Protection
 Each device node protected by a firewall links to the relevant firewall
 controller, for instance can0 is protected by lpd_xppu:
 
-.. FIXME: should be DTS, but this is invalid DTS
+.. code-block:: dts
 
-.. code-block:: none
-
-	axi {
-		can0: can@ff060000 {
-			firewall-0 = <&lpd_xppu>;
-		};
+   axi {
+           can0: can@ff060000 {
+                   firewall-0 = <&lpd_xppu>;
+           };
+   };
 
 Bus mastering devices are identified by bus firewalls using IDs. Their
 transactions are marked with a device ID. These IDs are used to
@@ -62,12 +61,11 @@ advertised using a new property "bus-master-id":
 Where &controller is the link to the bus firewall controller and u32 is
 the Bus Master ID of the device:
 
-.. FIXME: should be DTS, but this is invalid DTS
+.. code-block:: dts
 
-.. code-block:: none
-
-	dev0: device@0 {
-		bus-master-id = <&lpd_xppu 0x212>;
+   dev0: device@0 {
+           bus-master-id = <&lpd_xppu 0x212>;
+   };
 
 Full Example
 ------------
@@ -184,9 +182,7 @@ Two domains are block access from everybody else to their resources with
 the exception of two devices, ethernet and serial0, which are shared
 between the two domains so both domains get access to them.
 
-.. FIXME: this should be 'dts', but this is invalid DTS
-
-.. code-block:: none
+.. code-block:: dts
 
    domains {
            #address-cells = <0x1>;
@@ -207,3 +203,4 @@ between the two domains so both domains get access to them.
                    access = <&can0 &ethernet &serial0>;
                    firewallconf-default = <block-desirable 8>;
            };
+   };
