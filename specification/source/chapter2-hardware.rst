@@ -113,7 +113,7 @@ from a device to multiple clusters. For instance:
            interrupt-map = <0x0 0x0 0x0 &gic_a72 0x0 0x0 0x0>,
                            <0x0 0x0 0x0 &gic_r5 0x0 0x0 0x0>;
 
-           can@ff060000 {
+           can0: can@ff060000 {
                    compatible = "xlnx,canfd-2.0";
                    reg = <0x0 0xff060000 0x0 0x6000>;
                    interrupts = <0x0 0x14 0x1>;
