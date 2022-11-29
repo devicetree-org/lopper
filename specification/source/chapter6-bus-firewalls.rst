@@ -12,7 +12,7 @@ The controllers are described using regular device tree nodes such as:
 
 .. code-block:: dts
 
-   amba_xppu: indirect-bus@1 {
+   amba_xppu: xppu-bus {
            compatible = "indirect-bus";
            #address-cells = <0x2>;
            #size-cells = <0x2>;
@@ -72,7 +72,7 @@ Full Example
 
 .. code-block:: dts
 
-   amba_xppu: indirect-bus@1 {
+   amba_xppu: xppu-bus {
            compatible = "indirect-bus";
            #address-cells = <0x2>;
            #size-cells = <0x2>;
@@ -90,7 +90,7 @@ Full Example
            };
    };
 
-   cpus_r5: cpus-cluster@0 {
+   cpus_r5: cpus-cluster-r5 {
            #address-cells = <0x1>;
            #size-cells = <0x0>;
            #cpus-mask-cells = <0x1>;
@@ -99,7 +99,11 @@ Full Example
            bus-master-id = <&lpd_xppu 0x0 &pmc_xppu 0x0 &lpd_xppu 0x1 &pmc_xppu 0x1>;
    };
 
-   axi {
+   axi-bus {
+           compatible = "simple-bus";
+           #address-cells = <2>;
+           #size-cells = <2>;
+
            ethernet0: ethernet@ff0c0000 {
                    bus-master-id = <&lpd_xppu 0x234 &pmc_xppu 0x234>;
                    firewall-0 = <&lpd_xppu>;
@@ -169,11 +173,11 @@ listed in the firewallconf property:
 .. code-block:: none
 
    firewallconf-default = <block-desirable 8>,
-   firewallconf = <&domain@0 allow 0>,
-                  <&domain@1 allow 0>;
+   firewallconf = <&domain-0 allow 0>,
+                  <&domain-1 allow 0>;
 
 In this example, we want to block all bus-master-ids except for the ones
-of domain@0 and domain@1.
+of domain-0 and domain-1.
 
 Full Example
 ------------
@@ -185,10 +189,7 @@ between the two domains so both domains get access to them.
 .. code-block:: dts
 
    domains {
-           #address-cells = <0x1>;
-           #size-cells = <0x1>;
-
-           domain0: domain@0 {
+           domain0: domain-0 {
                    compatible = "openamp,domain-v1";
                    id = <0x0>;
                    memory = <0x100000 0x100000>;
@@ -196,7 +197,7 @@ between the two domains so both domains get access to them.
                    firewallconf-default = <block-desirable 8>;
            };
 
-           domain1: domain@1 {
+           domain1: domain-1 {
                    compatible = "openamp,domain-v1";
                    id = <0x1>;
                    memory = <0x0 0x100000>;

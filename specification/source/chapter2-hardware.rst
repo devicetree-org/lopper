@@ -22,27 +22,36 @@ The following is a brief example to show how they can be used together:
 
    /* default cluster */
    cpus {
+           #address-cells = <1>;
+           #size-cells = <0>;
+
            cpu@0 {
+                   reg = <0>;
            };
            cpu@1 {
+                   reg = <1>;
            };
    };
 
    /* additional R5 cluster */
-   cpus_r5: cpus-cluster@0 {
+   cpus_r5: cpus-cluster-r5 {
            compatible = "cpus,cluster";
+           #address-cells = <1>;
+           #size-cells = <0>;
 
            /* specifies address mappings */
            address-map = <0xf9000000 &amba_rpu 0xf9000000 0x10000>;
 
            cpu@0 {
+                   reg = <0>;
            };
 
            cpu@1 {
+                   reg = <1>;
            };
    };
 
-   amba_rpu: rpu-bus@f9000000 {
+   amba_rpu: rpu-bus {
            compatible = "indirect-bus";
    };
 
@@ -65,7 +74,7 @@ following example we can see how interrupts controllers are expressed:
    };
 
    /* additional R5 cluster */
-   cpus_r5: cpus-cluster@0 {
+   cpus_r5: cpus-cluster-r5 {
            compatible = "cpus,cluster";
 
            /* specifies address mappings */
@@ -73,7 +82,7 @@ following example we can see how interrupts controllers are expressed:
    };
 
    /* bus only accessible by cpus */
-   amba_apu: apu-bus@f9000000 {
+   amba_apu: apu-bus {
            compatible = "simple-bus";
 
            gic_a72: interrupt-controller@f9000000 {
@@ -81,7 +90,7 @@ following example we can see how interrupts controllers are expressed:
    };
 
    /* bus only accessible by cpus_r5 */
-   amba_rpu: rpu-bus@f9000000 {
+   amba_rpu: rpu-bus {
            compatible = "indirect-bus";
 
            gic_r5: interrupt-controller@f9000000 {
@@ -103,8 +112,10 @@ from a device to multiple clusters. For instance:
 
 .. code-block:: dts
 
-   amba: axi@f1000000 {
+   amba: axi-bus {
            compatible = "simple-bus";
+           #address-cells = <2>;
+           #size-cells = <2>;
            ranges;
 
            #interrupt-cells = <3>;
