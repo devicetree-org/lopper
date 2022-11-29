@@ -59,9 +59,7 @@ For Cortex-A53/A72 CPUs, execution-level is:
 - bits 0-1: EL0 (0x0), EL1 (0x1), or EL2 (0x2)
 
 The execution level is the most privileged level that the domain can
-make use of. If the execution level is secure, then "secure-reg"
-addresses (when specified) are used when the domain accesses device
-memory mapped regions.
+make use of.
 
 access is list of links to devices. The links are to devices that are
 configured to be only accessible by an execution domain, using bus
