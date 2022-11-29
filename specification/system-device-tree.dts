@@ -6,7 +6,7 @@
 	#size-cells = <0x2>;
 	model = "Xilinx Versal A2197 Processor board revA";
 
-	amba_xppu: indirect-bus@1 {
+	amba_xppu: xppu-bus {
 		compatible = "indirect-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -50,7 +50,7 @@
 		};
 	};
 
-	cpus_r5: cpus-cluster@0 {
+	cpus_r5: cpus-cluster-r5 {
 		#address-cells = <0x1>;
 		#size-cells = <0x0>;
 		#cpus-mask-cells = <0x1>;
@@ -79,7 +79,7 @@
 		};
 	};
 
-	microblaze0: cpus-cluster@1 {
+	microblaze0: cpus-cluster-microblaze0 {
 		#address-cells = <0x1>;
 		#size-cells = <0x0>;
 		#cpus-mask-cells = <0x1>;
@@ -100,7 +100,7 @@
 		};
 	};
 
-	pmc: cpus-cluster@2 {
+	pmc: cpus-cluster-pmc {
 		#address-cells = <0x1>;
 		#size-cells = <0x0>;
 		#cpus-mask-cells = <0x1>;
@@ -133,7 +133,7 @@
 		phandle = <0x4>;
 	};
 
-	amba_apu: apu-bus@f9000000 {
+	amba_apu: apu-bus {
 		compatible = "simple-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -180,7 +180,7 @@
 		};
 	};
 
-	amba_rpu: rpu-bus@0 {
+	amba_rpu: rpu-bus {
 		compatible = "indirect-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -193,7 +193,7 @@
 		};
 	};
 
-	amba: axi@f1000000 {
+	amba: axi-bus {
 		compatible = "simple-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -744,7 +744,7 @@
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
 
-		subsystem1: domain@1 {
+		subsystem1: domain-1 {
 			compatible = "xilinx,subsystem-v1", "openamp,domain-v1";
 
 			/*
@@ -765,7 +765,7 @@
 			/* 2: block-desirable */
 			firewallconfig-default = <2 8>;
 
-			xen: domain@2 {
+			xen: domain-2 {
 				compatible = "openamp,domain-v1";
 
 				cpus = <&cpus_a72 0x3 0x00000002>;
@@ -774,7 +774,7 @@
 				#access-flags-cells = <0>;
 				access = <&mmc0>;
 
-				linux1: domain@3 {
+				linux1: domain-3 {
 					compatible = "openamp,domain-v1";
 
 					cpus = <&cpus_a72 0x3 0x00000001>;
@@ -786,7 +786,7 @@
 					access = <&mmc0>;
 				};
 
-				linux2: domain@4 {
+				linux2: domain-4 {
 					compatible = "openamp,domain-v1";
 
 					cpus = <&cpus_a72 0x3 0x00000001>;
@@ -801,7 +801,7 @@
 			};
 		};
 
-		subsystem2: domain@5 {
+		subsystem2: domain-5 {
 			compatible = "xilinx,subsystem-v1", "openamp,domain-v1";
 
 			cpus = <&cpus_r5 0x3 0x80000001 &microblaze0 0x1 0x00000000>;
@@ -816,14 +816,14 @@
 	};
 
 	aliases {
-		serial0 = "/axi/serial@ff000000";
-		ethernet0 = "/axi/ethernet@ff0c0000";
-		ethernet1 = "/axi/ethernet@ff0d0000";
-		i2c0 = "/axi/i2c@ff030000";
-		mmc0 = "/axi/sdhci@f1050000";
-		spi0 = "/axi/spi@f1010000";
-		usb0 = "/axi/usb@ff9d0000";
-		rtc0 = "/axi/rtc@f12a0000";
+		serial0 = "/axi-bus/serial@ff000000";
+		ethernet0 = "/axi-bus/ethernet@ff0c0000";
+		ethernet1 = "/axi-bus/ethernet@ff0d0000";
+		i2c0 = "/axi-bus/i2c@ff030000";
+		mmc0 = "/axi-bus/sdhci@f1050000";
+		spi0 = "/axi-bus/spi@f1010000";
+		usb0 = "/axi-bus/usb@ff9d0000";
+		rtc0 = "/axi-bus/rtc@f12a0000";
 	};
 
 	alt_ref_clk {
@@ -873,7 +873,7 @@
 		phandle = <0x3>;
 	};
 
-	memory: memory@00000000 {
+	memory: memory@0 {
 		device_type = "memory";
 		reg = <0x0 0x0 0x0 0x80000000>;
 	};
