@@ -55,9 +55,9 @@
                                   domain_node = n
                           # Peipheral node handling
                           invalid_phandles = []
+                          valid_phandles = []
                           if domain_node:
                               shared_dev = []
-                              valid_phandles = []
                               for n in domain_node.subnodes():
                                   if n.propval('access') != [''] and n.propval('os,type') == ['']:
                                       shared_dev.append(n)
