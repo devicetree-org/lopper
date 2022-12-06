@@ -15,6 +15,5 @@ System Devicetree Specification
    chapter1-introduction
    chapter2-hardware
    chapter3-execution-domains
-   chapter4-implicit-flags
-   chapter5-bus-firewalls
+   chapter4-bus-firewalls
    references

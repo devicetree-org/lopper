@@ -62,6 +62,8 @@ specification:
    node. This allocation may differ across designs based on the SoC, or
    between boots on the same design.
 
+.. _usage-environments:
+
 Usage Environments
 ------------------
 
