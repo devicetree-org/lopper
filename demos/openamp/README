@@ -280,7 +280,7 @@ d) that phandles have been adjusted to allow for new devices
 ======================
 
 % $LOPPER_DIR/lopper.py --permissive -f inputs/dt/host-device-tree.dts system-device-tree-out.dts  -- \
-      extract -t /bus@f1000000/serial@ff010000 -i zynqmp-firmware -x pinctrl-0 -x pinctrl-names -x power-domains -x current-speed -x resets -x 'interrupt-controller.*' -- \
+      extract -t /axi/serial@ff010000 -i zynqmp-firmware -x pinctrl-0 -x pinctrl-names -x power-domains -x current-speed -x resets -x 'interrupt-controller.*' -- \
       extract-xen -t serial@ff010000 -o serial@ff010000.dts
 [INFO]: cb: extract( /, <lopper.LopperSDT object at 0x7f15355d7310>, 0, ['-t', '/bus@f1000000/serial@ff010000', '-i', 'zynqmp-firmware', '-x', 'pinctrl-0', '-x', 'pinctrl-names', '-x', 'power-domains', '-x', 'current-speed', '-x', 'resets', '-x', 'interrupt-controller.*'] )
 [INFO]: dropping masked property pinctrl-0
