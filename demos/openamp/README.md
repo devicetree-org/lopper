@@ -1,66 +1,64 @@
-1) clone lopper, use the systemdt-linaro-demo branch
-====================================================
+# Lopper Demonstration
 
-# the hash is only required as our input system device tree
-# has not been updated to the latest bus naming used in the
-# openamp assists
+## 1) Clone lopper, using the systemdt-linaro-demo branch
 
-% git clone https://github.com/devicetree-org/lopper.git -b systemdt-linaro-demo
-% cd lopper
+The hash is only required as our input system device tree has not been updated to the latest bus naming used in the openamp assists.
 
-# ensure that the support requirements are installed
-% cat Pipfile
+```
+    % git clone https://github.com/devicetree-org/lopper.git -b systemdt-linaro-demo
+    % cd lopper
+```
+    
+Ensure that the support requirements are installed.
 
-[[source]]
-url = "https://pypi.org/simple"
-verify_ssl = true
-name = "pypi"
+```
+    % cat Pipfile
 
-[packages]
-flask = "*"
-flask-restful = "*"
-pandas = "*"
-"ruamel.yaml" = "*"
-anytree = "*"
-humanfriendly = "*"
+    [[source]]
+    url = "https://pypi.org/simple"
+    verify_ssl = true
+    name = "pypi"
 
-2) Change into the lopper demo directory
-========================================
+    [packages]
+    flask = "*"
+    flask-restful = "*"
+    pandas = "*"
+    "ruamel.yaml" = "*"
+    anytree = "*"
+    humanfriendly = "*"
+```
 
-% cd demos/openamp
+## 2) Change into the lopper demo directory
 
-3) execute Lopper with openamp assits and lops
-==============================================
+```
+    % cd demos/openamp
+```
 
-% export LOPPER_DIR="<path to your lopper clone>"
-% $LOPPER_DIR/lopper.py -f -O scratch --enhanced --permissive \
-                        -a openamp.py -a openamp_xlnx.py -a openamp-xlnx-zynq.py \
-                        -i ./inputs/openamp-overlay-zynqmp.yaml \
-                        -i $LOPPER_DIR/lopper/lops/lop-xlate-yaml.dts \
-                        -i $LOPPER_DIR/lopper/lops/lop-a53-imux.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53.dts \
-                        -i $LOPPER_DIR/lopper/lops/lop-openamp-versal.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53-prune.dts \
-                        inputs/system-dt/system-top.dts linux-boot.dts
+## 3) Execute Lopper with openamp assists and lops
 
-# The outputs from this run are: linux-boot.dts and openamp-channel-info.txt
+```
+    % export LOPPER_DIR="<path to your lopper clone>"
+    % $LOPPER_DIR/lopper.py -f -O scratch --enhanced --permissive \
+                            -a openamp.py -a openamp_xlnx.py -a openamp-xlnx-zynq.py \
+                            -i ./inputs/openamp-overlay-zynqmp.yaml \
+                            -i $LOPPER_DIR/lopper/lops/lop-xlate-yaml.dts \
+                            -i $LOPPER_DIR/lopper/lops/lop-a53-imux.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53.dts \
+                            -i $LOPPER_DIR/lopper/lops/lop-openamp-versal.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53-prune.dts \
+                            inputs/system-dt/system-top.dts linux-boot.dts
+```
+    
+The outputs from this run are: linux-boot.dts and openamp-channel-info.txt
 
-3a) linux-boot.dts
--------------------
+### 3a) linux-boot.dts
 
-Note that this linux device tree has been created by modifying and
-transforming the input system device tree (system-top.dts), based on
-the description and values in a yaml domain file
-(openamp-overlay-zynqmp.yaml), transformed by assists (openamp,
-openampy_xlnx, openamp-xlnx-zynq) and lop files. The lop files provide
-unit transformations and control the overall flow of the
-modifications, while the assists provide more complex and context
-aware changes to the device tree.
+Note that this linux device tree has been created by modifying and transforming the input system device tree (system-top.dts), based on
+the description and values in a yaml domain file (openamp-overlay-zynqmp.yaml), transformed by assists (openamp, openampy_xlnx, openamp-xlnx-zynq) and lop files. The lop files provide unit transformations and control the overall flow of the modifications, while the assists provide more complex and context aware changes to the device tree.
 
-We can see that nodes such as reserved-memory have been created from
-the vring descriptions in the yaml file.
+We can see that nodes such as reserved-memory have been created from the vring descriptions in the yaml file.
 
 yaml:
-----
 
+```
      definitions:
          OpenAMP:
               openamp_channel0_access_srams: &openamp_channel0_access_srams # used for access in each domain
@@ -89,10 +87,11 @@ yaml:
                   - start: 0x3ed48000
                     size: 0x100000
                     no-map: 1
-
+```
+    
 dts:
-----
 
+```
         reserved-memory {
                 #address-cells = <0x2>;
                 #size-cells = <0x2>;
@@ -123,15 +122,14 @@ dts:
                         phandle = <0xd3>;
                 };
         };
+```
+    
+### 3b) openamp-channel-info.txt
 
-3b) openamp-channel-info.txt
-----------------------------
+This file is an export of significant values in the yaml, which were used to created nodes and properties in the dts file. They are consumed by
+things such as baremetal builds, or other build systems. This ensures that the dts and applications are kept in sync and agree on critical values.
 
-This file is an export of significant values in the yaml, which were used
-to created nodes and properties in the dts file. They are consumed by
-things such as baremetal builds, or other build systems. This ensures that
-the dts and applications are kept in sync and agree on critical values.
-
+```
     CHANNEL0VRING0BASE="0x3ed40000"
     CHANNEL0VRING0SIZE="0x2000"
     CHANNEL0VRING1BASE="0x3ed44000"
@@ -148,15 +146,16 @@ the dts and applications are kept in sync and agree on critical values.
     CHANNEL0TO_REMOTE="0xff310000"
     CHANNEL0TO_REMOTE-BITMASK="0x100"
     CHANNEL0TO_REMOTE-IPIIRQVECTID="0x41"
+```
 
-3c) modify values in the yaml
------------------------------
+### 3c) Modify values in the yaml
 
 We change:
   - vring base and size
   - access to new devices
   - memory for the domain
 
+```
 % diff -u openamp-overlay-zynqmp.yaml openamp-overlay-zynqmp-dev-mem.yaml
 --- openamp-overlay-zynqmp.yaml 2022-11-25 03:55:42.912355236 +0000
 +++ openamp-overlay-zynqmp-dev-mem.yaml 2022-11-25 03:57:16.404274348 +0000
@@ -195,24 +194,29 @@ We change:
          domain-to-domain:
              compatible: openamp,domain-to-domain-v1
              remoteproc-relation:
+```
 
-3d) run the lopper with the new inputs
---------------------------------------
+### 3d) run the lopper with the new inputs
 
-% $LOPPER_DIR/lopper.py -f -O scratch --enhanced --permissive \
-                        -a openamp.py -a openamp_xlnx.py -a openamp-xlnx-zynq.py \
-                        -i ./inputs/openamp-overlay-zynqmp-dev-mem.yaml \
-                        -i $LOPPER_DIR/lopper/lops/lop-xlate-yaml.dts \
-                        -i $LOPPER_DIR/lopper/lops/lop-a53-imux.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53.dts \
-                        -i $LOPPER_DIR/lopper/lops/lop-openamp-versal.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53-prune.dts \
-                        inputs/system-dt/system-top.dts linux-boot2.dts
-
+```
+    % $LOPPER_DIR/lopper.py -f -O scratch --enhanced --permissive \
+                            -a openamp.py -a openamp_xlnx.py -a openamp-xlnx-zynq.py \
+                            -i ./inputs/openamp-overlay-zynqmp-dev-mem.yaml \
+                            -i $LOPPER_DIR/lopper/lops/lop-xlate-yaml.dts \
+                            -i $LOPPER_DIR/lopper/lops/lop-a53-imux.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53.dts \
+                            -i $LOPPER_DIR/lopper/lops/lop-openamp-versal.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53-prune.dts \
+           	                 inputs/system-dt/system-top.dts linux-boot2.dts
+```
+    
 We can see that:
 
+```
 % diff -u linux-boot.dts linux-boot2.dts
+```
 
-a) A new ethernet device has been made available
+#### a) A new ethernet device has been made available
 
+```
 --- linux-boot.dts	2022-11-25 03:29:00.661642062 +0000
 +++ linux-boot2.dts	2022-11-25 03:59:59.544134215 +0000
 @@ -1209,6 +1209,25 @@
@@ -239,9 +243,11 @@ a) A new ethernet device has been made available
 +                };
 +
                  gem3: ethernet@ff0e0000 {
+```
 
-b) the vring base and size addresses have been adjusted
+#### b) the vring base and size addresses have been adjusted
 
+```
 --- linux-boot.dts	2022-11-25 03:29:00.661642062 +0000
 +++ linux-boot2.dts	2022-11-25 03:59:59.544134215 +0000
 
@@ -252,9 +258,11 @@ b) the vring base and size addresses have been adjusted
 +                        reg = <0x0 0xc0ffee 0x0 0xfeee>;
 +                        phandle = <0xd2>;
                  };
+```
 
-c) the memory node has been modified
+#### c) the memory node has been modified
 
+```
 --- linux-boot.dts	2022-11-25 03:29:00.661642062 +0000
 +++ linux-boot2.dts	2022-11-25 03:59:59.544134215 +0000
 
@@ -275,10 +283,11 @@ d) that phandles have been adjusted to allow for new devices
 -                        phandle = <0xd0>;
 +                        phandle = <0xd1>;
                  };
+```
 
-4) Xen extraction demo
-======================
+## 4) Xen extraction demo
 
+```
 % $LOPPER_DIR/lopper.py --permissive -f inputs/dt/host-device-tree.dts system-device-tree-out.dts  -- \
       extract -t /axi/serial@ff010000 -i zynqmp-firmware -x pinctrl-0 -x pinctrl-names -x power-domains -x current-speed -x resets -x 'interrupt-controller.*' -- \
       extract-xen -t serial@ff010000 -o serial@ff010000.dts
@@ -287,10 +296,11 @@ d) that phandles have been adjusted to allow for new devices
 [INFO]: dropping masked property power-domains
 [INFO]: dropping masked property pinctrl-names
 [INFO][extract-xen]: updating sdt with passthrough property
+```
 
-4a) serial@ff010000.dts is the extracted device tree
-----------------------------------------------------
+### 4a) serial@ff010000.dts is the extracted device tree
 
+```
 % cat serial@ff010000.dts
 
     /dts-v1/;
@@ -391,11 +401,11 @@ d) that phandles have been adjusted to allow for new devices
                     };
             };
     };
+```
 
+### 4b) system-device-tree-out.dts for the modified system device tree with passthrough option
 
-4b) system-device-tree-out.dts for the modified system device tree with passthrough option
--------------------------------------------------------------------------------------------
-
+```
 % grep -C4 xen,passthrough system-device-tree-out.dts
 
                         pinctrl-0 = <0x3c>;
@@ -407,12 +417,13 @@ d) that phandles have been adjusted to allow for new devices
 
                 usb0@ff9d0000 {
                         #address-cells = <0x2>;
+```
 
-4c) extract an ethernet device
-------------------------------
+### 4c) extract an ethernet device
 
-# we use the output system device tree from the previous run, as the input for this run
+We use the output system device tree from the previous run, as the input for this run.
 
+```
 % $LOPPER_DIR/lopper.py --permissive -f system-device-tree-out.dts system-device-tree-out-final.dts  -- \
                           extract -o extracted_tree.dts -p -t ethernet@ff0e0000 -i zynqmp-firmware -x 'interrupt-controller.*' -x power-domains -x current-speed -- \
                           extract-xen -v -t ethernet@ff0e0000 -o xen-passthrough-eth.dts
@@ -446,3 +457,4 @@ d) that phandles have been adjusted to allow for new devices
 
                 usb0@ff9d0000 {
                         #address-cells = <0x2>;
+```
