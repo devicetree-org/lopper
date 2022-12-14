@@ -176,7 +176,7 @@ def lwip_topolgy(outdir, config):
     topology_fd.write("\t}\n")
     topology_fd.write("};")
 
-def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options):
+def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chosen_node):
     meta_dict = {}
     src_path = src_path.rstrip(os.path.sep)
     name = os.path.basename(os.path.dirname(src_path))
@@ -194,9 +194,13 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options):
 
     with open(yamlfile, 'r') as stream:
         schema = yaml.safe_load(stream)
-        meta_dict = schema['depends']
+        try:
+            meta_dict = schema['depends']
+        except:
+            pass
 
     lwip = re.search("lwip211", name)
+    standalone = re.search("standalone", name)
     cmake_file = os.path.join(sdt.outdir, f"{name.capitalize()}Example.cmake")
     topology_data = []
     with open(cmake_file, "a") as fd:
@@ -232,6 +236,10 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options):
                 fd.write("set(%s%s_PROP_LIST %s)\n" % (drv.upper(), index, to_cmakelist(val_list)))
                 fd.write("list(APPEND TOTAL_%s_PROP_LIST %s%s_PROP_LIST)\n" % (drv.upper(), drv.upper(), index))
             lwiptype_index += 1
+        if standalone:
+            stdin_node = get_stdin(sdt, chosen_node, node_list)
+            fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(stdin_node.name))
+
     if topology_data:
         lwip_topolgy(sdt.outdir, topology_data)
 
@@ -251,9 +259,12 @@ def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
     root_sub_nodes = root_node.subnodes()
 
     node_list = []
+    chosen_node = ""
     # Traverse the tree and find the nodes having status=ok property
     for node in root_sub_nodes:
         try:
+            if node.name == "chosen":
+                chosen_node = node
             status = node["status"].value
             if "okay" in status:
                 node_list.append(node)
@@ -271,5 +282,5 @@ def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
     if command == "drvcmake_metadata":
         generate_drvcmake_metadata(sdt, node_list, src_path, options)
     elif command == "hwcmake_metadata":
-        generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options)
+        generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chosen_node)
     return True
