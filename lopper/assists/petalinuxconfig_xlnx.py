@@ -46,13 +46,8 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
     node_list = []
     symbol_node = ""
     root_compat = tgt_node.propval('compatible')
-    yaml_file = options['args'][0]
+    yaml_file = options['args'][1]
 
-    if any("zynqmp" in compat for compat in root_compat) or any("zcu" in compat for compat in root_compat):
-        options['args'] = ["a53_cpu0", yaml_file]
-    else:
-        options['args'] = ["a72_cpu0", yaml_file]
-    
     # Traverse the tree and find the nodes having status=ok property
     # and create a compatible_list from these nodes.
     for node in root_sub_nodes:
