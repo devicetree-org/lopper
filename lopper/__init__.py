@@ -199,6 +199,15 @@ class LopperSDT:
                             # system device tree). No code after this needs to be concerned that
                             # this came from yaml.
                             sdt_extended_trees.append( yaml_tree )
+                        elif re.search( ".json$", f ):
+                            # look for a special front end, for this or any file for that matter
+                            json = LopperYAML( json=f, config=config )
+                            json_tree = json.to_tree()
+
+                            # save the tree for future processing (and joining with the main
+                            # system device tree). No code after this needs to be concerned that
+                            # this came from yaml.
+                            sdt_extended_trees.append( json_tree )
 
                 fp = fpp.name
             else:
@@ -266,6 +275,36 @@ class LopperSDT:
 
             yaml = LopperYAML( fp, config=config )
             lt = yaml.to_tree()
+
+            self.dtb = None
+            if self.use_libfdt:
+                self.FDT = Lopper.fdt()
+            else:
+                self.FDT = None
+            self.tree = lt
+        elif re.search( ".json$", self.dts ):
+            if not yaml_support:
+                print( "[ERROR]: no json detected, but system device tree is json" )
+                sys.exit(1)
+
+            fp = ""
+            fpp = tempfile.NamedTemporaryFile( delete=False )
+            if sdt_files:
+                sdt_files.insert( 0, self.dts )
+
+                # this block concatenates all the files into a single yaml file to process
+                with open( fpp.name, 'wb') as wfd:
+                    for f in sdt_files:
+                        with open(f,'rb') as fd:
+                            shutil.copyfileobj(fd, wfd)
+
+                fp = fpp.name
+            else:
+                sdt_files.append( sdt_file )
+                fp = sdt_file
+
+            json = LopperYAML( json=fp, config=config )
+            lt = json.to_tree()
 
             self.dtb = None
             if self.use_libfdt:
@@ -356,6 +395,16 @@ class LopperSDT:
                 lop.dtb = ""
                 lop.fdt = None
                 lop.tree = yaml_tree
+                self.lops.append( lop )
+            elif re.search( ".json$", ifile ):
+                json = LopperYAML( json=ifile, config=config )
+                json_tree = json.to_tree()
+
+                lop = LopperFile( ifile )
+                lop.dts = ""
+                lop.dtb = ""
+                lop.fdt = None
+                lop.tree = json_tree
                 self.lops.append( lop )
             elif re.search( ".dtb$", ifile ):
                 lop = LopperFile( ifile )
@@ -513,6 +562,14 @@ class LopperSDT:
 
             yaml = LopperYAML( None, self.tree, config=self.config )
             yaml.to_yaml( output_filename )
+        elif re.search( ".json", output_filename ):
+            o = Path(output_filename)
+            if o.exists() and not overwrite:
+                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                sys.exit(1)
+
+            json = LopperYAML( None, self.tree, config=self.config )
+            json.to_json( output_filename )
         else:
             # we use the outfile extension as a mask
             (out_name, out_ext) = os.path.splitext(output_filename)
