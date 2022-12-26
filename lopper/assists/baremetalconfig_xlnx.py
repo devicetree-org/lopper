@@ -27,6 +27,14 @@ sys.path.append(os.path.dirname(__file__))
 from bmcmake_metadata_xlnx import *
 from domain_access import *
 
+def get_label(sdt, symbol_node, node):
+    prop_dict = symbol_node.__props__
+    match = [label for label,node_abs in prop_dict.items() if re.match(node_abs[0], node.abs_path) and len(node_abs[0]) == len(node.abs_path)]
+    if match:
+        return match[0]
+    else:
+        return None
+
 def get_cpu_node(sdt, options):
     cpu_name = options['args'][0]
     symbol_node = sdt.tree['/__symbols__']
