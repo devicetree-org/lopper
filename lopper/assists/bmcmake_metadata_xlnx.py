@@ -176,7 +176,7 @@ def lwip_topolgy(outdir, config):
     topology_fd.write("\t}\n")
     topology_fd.write("};")
 
-def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chosen_node):
+def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chosen_node, symbol_node):
     meta_dict = {}
     src_path = src_path.rstrip(os.path.sep)
     name = os.path.basename(os.path.dirname(src_path))
@@ -209,7 +209,10 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chos
             name = drv + str(".yaml")
             drv_yamlpath = [y for x in os.walk(repo_path) for y in glob.glob(os.path.join(x[0], name))]
             nodes = getmatch_nodes(sdt, node_list, drv_yamlpath[0], options)
-            name_list = [node.name for node in nodes]
+            if standalone:
+                name_list = [get_label(sdt, symbol_node, node) for node in nodes]
+            else:
+                name_list = [node.name for node in nodes]
             fd.write("set(%s_NUM_DRIVER_INSTANCES %s)\n" % (drv.upper(), to_cmakelist(name_list)))
             for index,node in enumerate(nodes):
                 val_list = []
@@ -238,7 +241,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chos
             lwiptype_index += 1
         if standalone:
             stdin_node = get_stdin(sdt, chosen_node, node_list)
-            fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(stdin_node.name))
+            fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(get_label(sdt, symbol_node, stdin_node)))
 
     if topology_data:
         lwip_topolgy(sdt.outdir, topology_data)
@@ -260,11 +263,14 @@ def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
 
     node_list = []
     chosen_node = ""
+    symbol_node = ""
     # Traverse the tree and find the nodes having status=ok property
     for node in root_sub_nodes:
         try:
             if node.name == "chosen":
                 chosen_node = node
+            if node.name == "__symbols__":
+                symbol_node = node
             status = node["status"].value
             if "okay" in status:
                 node_list.append(node)
@@ -282,5 +288,5 @@ def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
     if command == "drvcmake_metadata":
         generate_drvcmake_metadata(sdt, node_list, src_path, options)
     elif command == "hwcmake_metadata":
-        generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chosen_node)
+        generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chosen_node, symbol_node)
     return True
