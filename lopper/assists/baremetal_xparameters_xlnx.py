@@ -34,14 +34,6 @@ def is_compat( node, compat_string_to_test ):
         return xlnx_generate_xparams
     return ""
 
-def get_label(sdt, symbol_node, node):
-    prop_dict = symbol_node.__props__
-    match = [label for label,node_abs in prop_dict.items() if re.match(node_abs[0], node.abs_path) and len(node_abs[0]) == len(node.abs_path)]
-    if match:
-        return match[0]
-    else:
-        return None
-
 def xlnx_generate_xparams(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
