@@ -18,6 +18,11 @@
                         compatible = "system-device-tree-v1,lop,modify";
                         modify = "/cpus-r5@1::";
                 };
+                lop_1_0 {
+                        // modify to "nothing", is a remove operation
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/cpus-r5@2::";
+                };
                 lop_2 {
                         // modify to "nothing", is a remove operation
                         compatible = "system-device-tree-v1,lop,modify";
