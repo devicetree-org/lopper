@@ -252,6 +252,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             temp_label = temp_label[0]
             if temp_label != node_name:
                 plat.buf('\n/* Canonical definitions for peripheral %s */' % label_name)
+                node_name = node_name.replace("-", "_")
                 plat.buf('\n#define XPAR_%s_%s_BASEADDR %s\n' % (node_name, count, hex(val[0])))
                 plat.buf('#define XPAR_%s_%s_HIGHADDR %s\n' % (node_name, count, hex(val[0] + val[1] - 1)))
         except KeyError:
