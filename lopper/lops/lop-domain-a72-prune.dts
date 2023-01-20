@@ -55,8 +55,9 @@
                       select_1;
                       select_2 = "/cpus/.*:compatible:.*arm,cortex-a72.*";
                       select_3 = "/.*:status:.*okay.*";
-                      select_4 = "/.*:device_type:.*memory.*";
-                      select_5 = "/domains";
+                      select_4 = "/.*:status:.*disabled.*";
+                      select_5 = "/.*:device_type:.*memory.*";
+                      select_6 = "/domains";
                 };
                 lop_7 {
                         // modify to "nothing", is a remove operation
@@ -108,6 +109,14 @@
                                       invalid_nodes.append(node1)
                               except:
                                   pass
+                          ignore_ip_list = ['xlconstant', 'proc_sys_reset', 'noc_mc_ddr4',
+                                            'psv_apu', 'psv_coresight_a720_dbg', 'psv_coresight_a720_etm',
+                                            'axi_noc', 'psv_coresight_a720_pmu', 'psv_coresight_a720_cti',
+                                            'psv_coresight_a721_dbg', 'psv_coresight_a721_etm', 
+                                            'psv_coresight_a721_pmu', 'psv_coresight_a721_cti',
+                                            'psv_coresight_a721_pmu', 'psv_coresight_a721_cti',
+                                            'psv_coresight_apu_ela', 'psv_coresight_apu_etf',
+                                            'psv_coresight_apu_fun', 'psv_coresight_cpm_atm', 'psv_coresight_cpm_cti2a']
                           for node1 in node_list:
                               match = 0
                               if 'tcm' in node1.name:
@@ -118,6 +127,10 @@
                                       match += 1
                               if match == 0:
                                   invalid_nodes.append(node1)
+                              ignore_node = [node1 for ipname in ignore_ip_list if re.search(ipname, node1.name)]
+                              if ignore_node:
+                                  invalid_nodes.append(ignore_node[0])
+
                           for node1 in invalid_nodes:
                               tree.delete(node1)
                       ";
@@ -156,6 +169,9 @@
                         n = node.tree['/']
                         for i in n.subnodes():
                             if 'xlnx,axi-intc-4.1' in i.propval('compatible'):
+                                tree.delete(i)
+                            // Delete the un needed axi_noc node if present
+                            if re.search('axi_noc@', i.name):
                                 tree.delete(i)
                        ";
                 };
