@@ -79,6 +79,9 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
         schema = yaml.safe_load(stream)
         res_list = list(schema.keys())
         tmp_node_list = []
+        device = sdt.tree['/'].propval('device_id')
+        if device != ['']:
+            device_type_dict['device_id'] = device[0]
         for res in res_list:
             dev_type = schema[res]['device_type']
             if re.search("processor", dev_type):
