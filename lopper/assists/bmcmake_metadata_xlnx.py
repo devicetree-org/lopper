@@ -209,10 +209,12 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chos
             name = drv + str(".yaml")
             drv_yamlpath = [y for x in os.walk(repo_path) for y in glob.glob(os.path.join(x[0], name))]
             nodes = getmatch_nodes(sdt, node_list, drv_yamlpath[0], options)
-            if standalone:
-                name_list = [get_label(sdt, symbol_node, node) for node in nodes]
-            else:
-                name_list = [node.name for node in nodes]
+            name_list = []
+            for node in nodes:
+                if node.propval('xlnx,name') != ['']:
+                    name_list.append(node.propval('xlnx,name', list)[0])
+                else:
+                    name_list.append(get_label(sdt, symbol_node, node))
             fd.write("set(%s_NUM_DRIVER_INSTANCES %s)\n" % (drv.upper(), to_cmakelist(name_list)))
             for index,node in enumerate(nodes):
                 val_list = []
@@ -241,7 +243,10 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chos
             lwiptype_index += 1
         if standalone:
             stdin_node = get_stdin(sdt, chosen_node, node_list)
-            fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(get_label(sdt, symbol_node, stdin_node)))
+            if stdin_node.propval('xlnx,name') != ['']:
+                fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(stdin_node.propval('xlnx,name', list)[0]))
+            else:
+                fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(get_label(sdt, symbol_node, stdin_node)))
 
     if topology_data:
         lwip_topolgy(sdt.outdir, topology_data)
