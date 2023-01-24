@@ -332,34 +332,35 @@ class LopperDumper(yaml.Dumper):
     def increase_indent(self, flow=False, indentless=False):
         return super(LopperDumper, self).increase_indent(flow, False)
 
-class LopperYAML():
-    """YAML read/writer for Lopper
+class LopperJSON():
+    """JSON read/writer for Lopper
 
-    A Lopper "container" around a yaml input/output.
+    A Lopper "container" around a json input/output.
 
-    This class is capable of reading a yaml inputfile, and
+    This class is capable of reading a json inputfile, and
     creating a LopperTree. It is also capabable of taking a
-    LopperTree and creating a yaml description of that tree.
+    LopperTree and creating a json description of that tree.
 
-    This is done by internally storing either a yaml or lopper tree input as a
-    generic tree structure. The generic tree structure can be converted to a
-    LopperTree or Yaml file on demand. Hence we have the capability of
-    converting between the two formats as required.
+    This is done by internally storing either a json or lopper tree
+    input as a generic tree structure. The generic tree structure can
+    be converted to a LopperTree or json file on demand. Hence we have
+    the capability of converting between the two formats as required.
+
     """
-    def __init__( self, yaml_file = None, tree = None, json = None, config = None ):
+    def __init__( self, tree = None, json = None, config = None ):
         """
-        Initialize a a LopperYAML representation from either a yaml file
+        Initialize a a LopperJSON representation from either a json file
         or from a LopperTree.
 
         Args:
-           yaml_file (string,optional): path to a yaml input file
            tree (LopperTree,optional): reference to a LopperTree
+           json (string,optional): path to a json input file
+           config (configparser,optional): configuration instructions
 
         Returns:
            LopperYAML object: self
         """
         self.dct = None
-        self.yaml_source = yaml_file
         self.json_source = json
         self.anytree = None
         self.tree = tree
@@ -367,175 +368,57 @@ class LopperYAML():
         self.boolean_as_int = False
         self.lists_as_nodes = False
         self.scalar_as_lists = False
-        if config:
-            try:
-                self.boolean_as_int = config.getboolean( 'yaml','bool_as_int' )
-            except:
-                pass
-
-            try:
-                self.lists_as_nodes = config.getboolean( 'yaml','lists_as_nodes' )
-            except:
-                pass
-
-            try:
-                self.scalar_as_lists = config.getboolean( 'yaml','scalar_as_lists' )
-            except:
-                pass
-
-        if self.yaml_source and self.tree:
-            print( "[ERROR]: both yaml and lopper tree provided" )
-            sys.exit(1)
 
         if self.json_source:
             self.load_json( self.json_source )
 
-        if self.yaml_source:
-            self.load_yaml( self.yaml_source )
-
         if self.tree:
             self.load_tree( self.tree )
 
-    def to_yaml( self, outfile = None, verbose = 0 ):
-        """ Export LopperYAML tree to a yaml output file
+    def load_json( self, filename = None ):
+        """Load/Read a json file into tree structure
+
+        Create an internal tree object from an input json file. The file can be
+        passed directly to this routine, or already be part of the object
+        through initialization.
 
         Args:
-           outfile (string): path to a yaml output file
+            filename (string,optional): path to json file to read
 
         Returns:
-           Nothing
+            Nothing
         """
-        if self.anytree:
-            # if there's only one child, we use that, which allows us to skip the Anytree
-            # "root" node, without any tricks.
-            no_root = False
-            start_node = self.anytree
-            if no_root:
-                if len(self.anytree.children) == 1:
-                    start_node = self.anytree.children[0]
+        in_name = self.json_source
 
-            # at high verbosity, use an ordered dict for debug reasons
-            if verbose > 2:
-                dcttype=OrderedDict
-            else:
-                dcttype=dict
+        if filename:
+            in_name = filename
+        if not in_name:
+            print( "[ERROR]: no json source provided" )
 
-            dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
 
-            if verbose > 1:
-                print( "[DBG++]: dumping exporting dictionary" )
-                pprint( dct )
+        # option1: use anytree importer
 
-            if not outfile:
-                print(yaml.dump(dct))
-            else:
-                if verbose > 1:
-                    print( "[DBG++]: dumping generated yaml to stdout:" )
-                    print(yaml.dump(dct))
+        # with open(in_name) as f:
+        #     json_data = f.read()
+        # importer = JsonImporter()
+        # root = importer.import_(json_data)
 
-                with open( outfile, "w") as file:
-                    yaml.dump(dct, file)
+        # option2: use the same path as the yaml import
 
-    def to_json( self, outfile = None, verbose = 0 ):
-        """ Export LopperYAML tree to a json output file
+        inj = open( in_name )
+        self.dct = json.load(inj)
+        if not self.dct:
+            print( "[ERROR]: no data available to load" )
+            sys.exit(1)
 
-        Args:
-           outfile (string): path to a json output file
+        # flatten the dictionary so we can look up aliases and anchors
+        # by identity later .. without needing to recurse
+        self.dct_flat = flatten_dict(self.dct,separator="/")
+        importer = LopperDictImporter(Node)
+        importer.lists_as_nodes = self.lists_as_nodes
+        self.anytree = importer.import_(self.dct)
 
-        Returns:
-           Nothing
-        """
-        if self.anytree:
-            # if there's only one child, we use that, which allows us to skip the Anytree
-            # "root" node, without any tricks.
-            no_root = False
-            start_node = self.anytree
-            if no_root:
-                if len(self.anytree.children) == 1:
-                    start_node = self.anytree.children[0]
-
-            # at high verbosity, use an ordered dict for debug reasons
-            if verbose > 2:
-                dcttype=OrderedDict
-            else:
-                dcttype=dict
-
-            dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
-
-            if verbose > 1:
-                print( "[DBG++]: dumping exporting dictionary" )
-                pprint( dct )
-
-            if not outfile:
-                print(json.dump(dct))
-            else:
-                pjson = json.dumps(dct, indent=4, separators=(',', ': '))
-                if verbose > 1:
-                    print( "[DBG++]: dumping generated json to stdout:" )
-                    print(pjson)
-
-                with open( outfile, "w") as file:
-                    file.write(pjson)
-
-    def prop_expand( self, prop ):
-        """Expand a property into a format a device tree can represent
-
-        This routine is for use when json is not available as a serialization
-        mechanism for imported yaml. It expands lists and dictionaries into
-        a ":::" separate string, that can be carried in a device tree.
-
-        This is mostly obsolete, but is kept for compatibility
-
-        Args:
-           Anytree Property
-
-        Returns:
-           string: serialized representation of the property
-        """
-        # expands a complex property type into something a device tree
-        # can represent.
-        prop_list = []
-        if type(prop) == list:
-            for item in prop:
-                if type(item) == dict:
-                    prop_list.extend( self.prop_expand( item ) )
-                    if item != prop[-1]:
-                        prop_list.append( ":::" )
-                else:
-                    prop_list.append( item )
-
-            return prop_list
-        elif type(prop) == dict:
-            value_types = None
-            uniform_values = True
-            for k,v in prop.items():
-                if not value_types:
-                    value_types = type(v)
-                else:
-                    if value_types != type(v):
-                        uniform_values = False
-
-            # temporarily turning off uniform values, to see if it makes
-            # processing easier
-            uniform_values = False
-
-            for k,v in prop.items():
-                # expand again, in case the value is a dictionary ...
-                v_exp = self.prop_expand( v )
-                # unwind lists of one, only at this level
-                if type(v_exp) == list and len(v_exp) == 1:
-                    v_exp = v_exp[0]
-
-                if uniform_values:
-                    # type #2
-                    prop_list.append( v_exp )
-                else:
-                    # type #1
-                    prop_list.append( str(k) + ":" + str(v_exp) )
-
-            return prop_list
-        else:
-            return prop
+        # print(RenderTree(self.anytree.root))
 
     def to_tree( self ):
         """ Export LopperYAML to a LopperTree
@@ -853,6 +736,108 @@ class LopperYAML():
         lt.sync()
         return lt
 
+    def to_json( self, outfile = None, verbose = 0 ):
+        """ Export LopperJSON tree to a json output file
+
+        Args:
+           outfile (string): path to a json output file
+
+        Returns:
+           Nothing
+        """
+        if self.anytree:
+            # if there's only one child, we use that, which allows us to skip the Anytree
+            # "root" node, without any tricks.
+            no_root = False
+            start_node = self.anytree
+            if no_root:
+                if len(self.anytree.children) == 1:
+                    start_node = self.anytree.children[0]
+
+            # at high verbosity, use an ordered dict for debug reasons
+            if verbose > 2:
+                dcttype=OrderedDict
+            else:
+                dcttype=dict
+
+            dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
+
+            if verbose > 1:
+                print( "[DBG++]: dumping exporting dictionary" )
+                pprint( dct )
+
+            if not outfile:
+                print(json.dump(dct))
+            else:
+                pjson = json.dumps(dct, indent=4, separators=(',', ': '))
+                if verbose > 1:
+                    print( "[DBG++]: dumping generated json to stdout:" )
+                    print(pjson)
+
+                with open( outfile, "w") as file:
+                    file.write(pjson)
+
+    def prop_expand( self, prop ):
+        """Expand a property into a format a device tree can represent
+
+        This routine is for use when json is not available as a serialization
+        mechanism for imported yaml. It expands lists and dictionaries into
+        a ":::" separate string, that can be carried in a device tree.
+
+        This is mostly obsolete, but is kept for compatibility
+
+        Args:
+           Anytree Property
+
+        Returns:
+           string: serialized representation of the property
+        """
+        # expands a complex property type into something a device tree
+        # can represent.
+        prop_list = []
+        if type(prop) == list:
+            for item in prop:
+                if type(item) == dict:
+                    prop_list.extend( self.prop_expand( item ) )
+                    if item != prop[-1]:
+                        prop_list.append( ":::" )
+                else:
+                    prop_list.append( item )
+
+            return prop_list
+        elif type(prop) == dict:
+            value_types = None
+            uniform_values = True
+            for k,v in prop.items():
+                if not value_types:
+                    value_types = type(v)
+                else:
+                    if value_types != type(v):
+                        uniform_values = False
+
+            # temporarily turning off uniform values, to see if it makes
+            # processing easier
+            uniform_values = False
+
+            for k,v in prop.items():
+                # expand again, in case the value is a dictionary ...
+                v_exp = self.prop_expand( v )
+                # unwind lists of one, only at this level
+                if type(v_exp) == list and len(v_exp) == 1:
+                    v_exp = v_exp[0]
+
+                if uniform_values:
+                    # type #2
+                    prop_list.append( v_exp )
+                else:
+                    # type #1
+                    prop_list.append( str(k) + ":" + str(v_exp) )
+
+            return prop_list
+        else:
+            return prop
+
+
     def print( self ):
         """ Print/Render tree representation of the YAML input
 
@@ -867,7 +852,7 @@ class LopperYAML():
     def props( self, node ):
         """Create a dictionary representation of Node attributes
 
-        Gather a dictionary representation of the properties of a LopperYAML
+        Gather a dictionary representation of the properties of a LopperJSON
         Node.
 
         This routine skips internal members of a node, and returns only
@@ -958,51 +943,123 @@ class LopperYAML():
                 out[key] = val
         return out
 
+    def load_tree( self, tree = None ):
+        """Load/Read a LopperTree into a YAML representation
 
-    def load_json( self, filename = None ):
-        """Load/Read a json file into tree structure
-
-        Create an internal tree object from an input json file. The file can be
+        Create an internal tree object from an input LopperTree. The tree can be
         passed directly to this routine, or already be part of the object
         through initialization.
 
         Args:
-            filename (string,optional): path to json file to read
+            tree (LopperTree,optional): LopperTree representation of a device tree
 
         Returns:
             Nothing
         """
-        in_name = self.json_source
+        in_tree = tree
+        if not in_tree:
+            in_tree = self.tree
 
-        if filename:
-            in_name = filename
-        if not in_name:
-            print( "[ERROR]: no json source provided" )
-
-
-        # option1: use anytree importer
-
-        # with open(in_name) as f:
-        #     json_data = f.read()
-        # importer = JsonImporter()
-        # root = importer.import_(json_data)
-
-        # option2: use the same path as the yaml import
-
-        inj = open( in_name )
-        self.dct = json.load(inj)
-        if not self.dct:
-            print( "[ERROR]: no data available to load" )
+        if not in_tree:
+            print( "[ERROR]: no tree provided" )
             sys.exit(1)
 
-        # flatten the dictionary so we can look up aliases and anchors
-        # by identity later .. without needing to recurse
-        self.dct_flat = flatten_dict(self.dct,separator="/")
-        importer = LopperDictImporter(Node)
-        importer.lists_as_nodes = self.lists_as_nodes
-        self.anytree = importer.import_(self.dct)
+        importer = LopperTreeImporter(Node)
+        importer.boolean_as_int = self.boolean_as_int
+        self.anytree = importer.import_(in_tree["/"])
 
-        # print(RenderTree(self.anytree.root))
+class LopperYAML(LopperJSON):
+    """YAML read/writer for Lopper
+
+    A Lopper "container" around a yaml input/output.
+
+    This class is capable of reading a yaml inputfile, and
+    creating a LopperTree. It is also capabable of taking a
+    LopperTree and creating a yaml description of that tree.
+
+    See LopperJSON for the details of conversion between the
+    formats.
+    """
+    def __init__( self, yaml_file = None, tree = None, config = None ):
+        """
+        Initialize a a LopperYAML representation from either a yaml file
+        or from a LopperTree.
+
+        Args:
+           yaml_file (string,optional): path to a yaml input file
+           tree (LopperTree,optional): reference to a LopperTree
+           config (configparser,optional): configuration instructions
+
+        Returns:
+           LopperYAML object: self
+        """
+        super().__init__( tree, json = None, config = config )
+
+        self.yaml_source = yaml_file
+
+        if config:
+            try:
+                self.boolean_as_int = config.getboolean( 'yaml','bool_as_int' )
+            except:
+                pass
+
+            try:
+                self.lists_as_nodes = config.getboolean( 'yaml','lists_as_nodes' )
+            except:
+                pass
+
+            try:
+                self.scalar_as_lists = config.getboolean( 'yaml','scalar_as_lists' )
+            except:
+                pass
+
+        if self.yaml_source and self.tree:
+            print( "[ERROR]: both yaml and lopper tree provided" )
+            sys.exit(1)
+
+        if self.yaml_source:
+            self.load_yaml( self.yaml_source )
+
+
+    def to_yaml( self, outfile = None, verbose = 0 ):
+        """ Export LopperYAML tree to a yaml output file
+
+        Args:
+           outfile (string): path to a yaml output file
+
+        Returns:
+           Nothing
+        """
+        if self.anytree:
+            # if there's only one child, we use that, which allows us to skip the Anytree
+            # "root" node, without any tricks.
+            no_root = False
+            start_node = self.anytree
+            if no_root:
+                if len(self.anytree.children) == 1:
+                    start_node = self.anytree.children[0]
+
+            # at high verbosity, use an ordered dict for debug reasons
+            if verbose > 2:
+                dcttype=OrderedDict
+            else:
+                dcttype=dict
+
+            dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
+
+            if verbose > 1:
+                print( "[DBG++]: dumping exporting dictionary" )
+                pprint( dct )
+
+            if not outfile:
+                print(yaml.dump(dct))
+            else:
+                if verbose > 1:
+                    print( "[DBG++]: dumping generated yaml to stdout:" )
+                    print(yaml.dump(dct))
+
+                with open( outfile, "w") as file:
+                    yaml.dump(dct, file)
 
 
     def load_yaml( self, filename = None ):
@@ -1038,30 +1095,4 @@ class LopperYAML():
         importer = LopperDictImporter(Node)
         importer.lists_as_nodes = self.lists_as_nodes
         self.anytree = importer.import_(self.dct)
-
-    def load_tree( self, tree = None ):
-        """Load/Read a LopperTree into a YAML representation
-
-        Create an internal tree object from an input LopperTree. The tree can be
-        passed directly to this routine, or already be part of the object
-        through initialization.
-
-        Args:
-            tree (LopperTree,optional): LopperTree representation of a device tree
-
-        Returns:
-            Nothing
-        """
-        in_tree = tree
-        if not in_tree:
-            in_tree = self.tree
-
-        if not in_tree:
-            print( "[ERROR]: no tree provided" )
-            sys.exit(1)
-
-        importer = LopperTreeImporter(Node)
-        importer.boolean_as_int = self.boolean_as_int
-        self.anytree = importer.import_(in_tree["/"])
-
 

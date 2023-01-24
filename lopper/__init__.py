@@ -201,7 +201,7 @@ class LopperSDT:
                             sdt_extended_trees.append( yaml_tree )
                         elif re.search( ".json$", f ):
                             # look for a special front end, for this or any file for that matter
-                            json = LopperYAML( json=f, config=config )
+                            json = LopperJSON( json=f, config=config )
                             json_tree = json.to_tree()
 
                             # save the tree for future processing (and joining with the main
@@ -303,7 +303,7 @@ class LopperSDT:
                 sdt_files.append( sdt_file )
                 fp = sdt_file
 
-            json = LopperYAML( json=fp, config=config )
+            json = LopperJSON( json=fp, config=config )
             lt = json.to_tree()
 
             self.dtb = None
@@ -397,7 +397,7 @@ class LopperSDT:
                 lop.tree = yaml_tree
                 self.lops.append( lop )
             elif re.search( ".json$", ifile ):
-                json = LopperYAML( json=ifile, config=config )
+                json = LopperJSON( json=ifile, config=config )
                 json_tree = json.to_tree()
 
                 lop = LopperFile( ifile )
