@@ -99,6 +99,21 @@ sram flags definitions and usage:
 
 ~~~
 
+Implicit Flags Example
+----------------------
+
+The Implicit Flags Properties in the system devicetree specification
+can also be defined in YAML. For example:
+
+~~~
+  access-implicit-default:
+    secure: true
+    allow-secure: true
+    requested: true
+    coherent: false
+    virtualized: true
+    qos: 99
+~~~
 
 Bus Firewalls
 -------------
