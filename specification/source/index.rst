@@ -17,3 +17,4 @@ System Devicetree Specification
    chapter3-execution-domains
    chapter4-implicit-flags
    chapter5-bus-firewalls
+   references

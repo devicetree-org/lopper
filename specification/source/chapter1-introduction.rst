@@ -1,101 +1,141 @@
 Introduction
 ============
 
-System Device Trees extends traditional Device Trees to handle
-heterogeneous SoCs with multiple CPUs and Execution Domains. An
-Execution Domain can be seen as an address space that is running a
-software image, whether an operating system, a hypervisor or firmware
-that has a set of cpus, memory and devices attached to it. I.e. Each
-individual CPU/core that is not part of an SMP cluster is a separate
-Execution Domain as is the different Execution Levels on an ARMv8-A
-architecture. Trusted and not trusted environment can also be viewed as
-separate Execution Domains.
+Purpose and Scope
+-----------------
 
-A design goal of System Device Trees is that no current client of Device
-Trees should have to change at all, unless it wants to take advantage of
-the extra information. This means that Linux in particular does not need
-to change since it will see a Device Tree that it can handle with the
-current implementation, potentially with some extra information it can
-ignore.
+This document, the System Devicetree Specification, extends the
+Devicetree Specification to handle heterogeneous SoCs with
+multiple CPUs, possibly of different architectures, as well as the
+*execution domains* running on the CPUs.
 
-System Device Trees must handle two types of heterogeneous additions:
+An execution domain can be seen as an address space that is running a
+software image, whether an operating system, a hypervisor, or firmware
+that has a set of CPUs, memory and devices attached to it.
 
-1. Being able to specify different cpu clusters and the actual memory
-   and devices hard-wired to them
+Relationship to the Devicetree Specification
+--------------------------------------------
 
-    - This is done through the new Hardware Descriptions, such as
-      "cpu,cluster" and "indirect-bus"
-    - This information is provided by the SoC vendor and is typically
-      fixed for a given SoC/board
+The System Devicetree Specification is an extension of the Devicetree
+Specification [DTSpec]_. A system devicetree is written in the DTS
+format defined by the Devicetree Specification, but contains extra
+information and enhanced semantics in order to address the use cases
+introduced above.
 
-2. Being able to assign hardware resources that can be configured by
-   software to be used by one or more Execution Domains
+This document uses the terms *base specification* to refer to the
+Devicetree Specification, and *standard devicetree* to refer to a
+devicetree that complies with the base specification and does not
+include any of the extensions defined in the System Devicetree
+Specification.
 
-    - This is done through the Execution Domain configuration
-    - This information is provided by a System Architect and will be
-      different for different use cases, even for the same board
+A design goal of this specification is that it should be possible to
+adopt it in ways that do not require existing devicetree clients to
+change, while also allowing clients that are aware of this specification
+to take advantage of the extra information present in a system
+devicetree. In particular, Linux's [Linux]_ devicetree implementation
+will not require changes as a result of this document, since a running
+Linux kernel will be provided with a DTB that it can handle with
+the current implementation, potentially with some extra information it
+can ignore.
 
-        - E.g. How much memory and which devices goes to Linux vs. an
-          RTOS can be different from one boot to another
+Summary of Extensions
+---------------------
 
-    - This information should be separated from the hard-wired
-      information for two reasons
+This document defines the following main extensions to the base
+specification:
 
-        - A different persona will add and edit the information
-        - Configuration should be separated from specification since it
-          has a different rate of change
+1. Additional *bindings* for describing multiple distinct CPU clusters
+   in a single heterogeneous SoC, as well as the memories and devices
+   connected to them.
 
-The System Device Trees and Execution Domain information are used in two
-major use cases:
+   This information is usually provided by the SoC vendor, and
+   is typically fixed for a given SoC.
 
-1. Exclusively on the host by using a tool like Lopper that will "prune"
-   the System Device Tree
+2. Additional *nodes* which define the execution domains running on the
+   SoC and assign hardware resources to them. This is done through a new
+   node, ``/domains``, and additional bindings related to it.
 
-    - Each domain will get its own "traditional" Device Tree that only
-      sees one address space and has one "cpus" node, etc.
-    - Lopper has pluggable backends to it can also generate information
-      for clients that is using a different format
+   This information is usually provided by the board designer or another
+   user of the SoC, and typically differs by use case. For example, the
+   memory allocated to a general purpose operating system and an RTOS
+   running on separate CPU cores on an SoC can be described via this
+   node. This allocation may differ across designs based on the SoC, or
+   between boots on the same design.
 
-        - E.g. It can generate a bunch of "#defines" that can be
-          included and compiled in to an RTOS
-2. System Device Trees can be used by a "master" target environment that
-   manages multiple Execution Domains:
+Usage Environments
+------------------
 
-    - a firmware that can set up hardware protection and use it to
-      restart individual domains
+The concepts defined in this specification are intended to be used in
+two main environments:
 
-        - E.g. Protect the Linux memory so the R5 OS can't reach it
+1. Exclusively on the host system in a cross-compilation development
+   environment targeting a heterogeneous SoC as the target device.
 
-    - any other operating system or hypervisor that has sub-domains
+   In this use case, a tool like Lopper [Lopper]_ running on the host
+   converts the system devicetree into one or more standard devicetrees.
+   Using Lopper, a standard devicetree can be created for each execution
+   domain, with a single address space, one ``/cpus`` node instead of
+   multiple CPU cluster nodes, etc. Lopper also has pluggable backends,
+   so it can also generate information derived from the devicetree in
+   other formats, such as a C header file defining macros that can be
+   included and compiled in to an RTOS.
 
-        - E.g. Xen can use the Execution Domains to get info about the Xen
-          guests (also called domains)
-        - E.g. Linux could use the default domain for its own
-          configuration and the domains to manage other CPUs
-        - Since System Device Trees are backwards compatible with Device
-          Trees, the only changes needed in Linux would be any new code
-          taking advantage of the Domain information
-        - a default master has access to all resources (CPUs, memories,
-          devices), it has to make sure it stops using the resource
-          itself when it "gives it away" to a sub-domain
+2. In a "master" target environment that manages multiple execution
+   domains.
 
-There is a concept of a default Execution Domain in System Device Trees,
-which corresponds to /cpus. The default domain is compatible with the
-current traditional Device Tree. It is useful for a couple of reasons:
+   Such an environment typically has access to all hardware resources
+   (CPUs, memories, devices, etc.) on the SoC. It will typically assign
+   these resources to the other execution domains it manages, then
+   prevent itself from accessing them.
 
-1. As a way to specify the default place to assign added hardware (see
-   use case #1)
+   An example of such a target environment is firmware running on the
+   SoC may consume the system devicetree in order to set up hardware
+   protection and use it to restart individual domains. For example, the
+   firmware may protect a general purpose operating system domain's
+   memory, so an RTOS running on different CPUs cannot access it.
 
-    - A default domain does not have to list the all the HW resources
-      allocated to it. It gets everything not allocated elsewhere by
-      Lopper.
-    - This minimizes the amount of information needed in the Domain
-      configuration.
-    - This is also useful for dynamic hardware such as add-on boards and
-      FPGA images that are adding new devices.
+   Other examples are other operating systems or hypervisors that
+   manage execution domains:
 
-2. The default domain can be used to specify what a master environment
-   sees (see use case #2)
+     - A Xen hypervisor [Xen]_ can use ``/domains`` to get information
+       about the Xen guests (also called domains)
+     - A Linux kernel could use the default domain for its own
+       configuration and other domains to manage additional CPUs on the
+       SoC. Since system devicetrees are backwards compatible with
+       standard devicetrees, the only changes needed in Linux would be
+       any new code taking advantage of the information in ``/domains``.
 
-    - E.g. the default domain is what is configuring Linux or Xen, while
-      the other domains specify domains to be managed by the master
+Definition of Terms
+-------------------
+
+.. glossary::
+
+   base specification
+     The Devicetree Specification [DTSpec]_, which this document extends.
+
+   binding
+     Devicetree binding. See [DTSpec]_.
+
+   DTS
+     Devicetree syntax. See [DTSpec]_.
+
+   DTB
+     Devicetree blob. See [DTSpec]_.
+
+   execution domain
+     a collection of software, firmware, and board configurations that
+     enable an operating system or an application to run a cpus cluster
+
+   node
+     Devicetree node. See [DTSpec]_.
+
+   SoC
+     System on chip.
+
+   SMP
+     Symmetric multiprocessing.
+
+   standard devicetree
+     A devicetree that complies with the base Devicetree Specification and
+     does not include any of the extensions defined in the System Devicetree
+     Specification.
