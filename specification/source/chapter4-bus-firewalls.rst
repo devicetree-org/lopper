@@ -178,8 +178,8 @@ listed in the firewallconf property:
 .. code-block:: none
 
    firewallconf-default = <block-desirable 8>,
-   firewallconf = <&domain-0 allow 0>,
-                  <&domain-1 allow 0>;
+   firewallconf = <&domain0 allow 0>,
+                  <&domain1 allow 0>;
 
 In this example, we want to block all bus-master-ids except for the ones
 of domain-0 and domain-1.
