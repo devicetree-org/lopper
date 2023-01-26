@@ -16,4 +16,8 @@ System Devicetree Specification
    chapter2-hardware
    chapter3-execution-domains
    chapter4-bus-firewalls
+   chapter5-remoteproc
+   chapter6-simplified-yaml
+   chapter7-domains-yaml
+   appendix-example
    references

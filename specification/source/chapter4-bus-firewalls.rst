@@ -1,8 +1,13 @@
-Bus Firewalls: Hardware Description
-===================================
+Bus Firewalls (Under Discussion)
+================================
+
+.. include:: under-discussion.txt
+
+Hardware Description
+--------------------
 
 Bus Firewall Controllers
-------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bus Firewalls Controllers are hardware blocks like Xilinx XMPU and XPPU
 that allow for the configuration of system-wide DMA transactions
@@ -36,7 +41,7 @@ indicates the presence of firewall-specific extra information (none in
 this example.)
 
 Device Protection
------------------
+~~~~~~~~~~~~~~~~~
 
 Each device node protected by a firewall links to the relevant firewall
 controller, for instance can0 is protected by lpd_xppu:
@@ -68,7 +73,7 @@ the Bus Master ID of the device:
    };
 
 Full Example
-------------
+~~~~~~~~~~~~
 
 .. code-block:: dts
 
@@ -123,8 +128,8 @@ Full Example
            };
    };
 
-Bus Firewalls: Configuration
-============================
+Configuration
+-------------
 
 Bus firewalls configuration is based on Execution Domains. They are the
 natural place to describe the desired firewalls configurations because
@@ -133,7 +138,7 @@ to the assignments. To do that, we add two new properties "firewallconf"
 and "firewallconf-default".
 
 firewallconf
-------------
+~~~~~~~~~~~~
 
 firewallconf is a new property that can be used in a domain node. It
 applies to all address ranges in the domain it appears in.
@@ -165,7 +170,7 @@ configuration to protect as much as possible according to the priorities
 we set.
 
 firewallconf-default
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 firewallconf-default applies to all bus-master-ids except for the ones
 listed in the firewallconf property:
@@ -180,7 +185,7 @@ In this example, we want to block all bus-master-ids except for the ones
 of domain-0 and domain-1.
 
 Full Example
-------------
+~~~~~~~~~~~~
 
 Two domains are block access from everybody else to their resources with
 the exception of two devices, ethernet and serial0, which are shared

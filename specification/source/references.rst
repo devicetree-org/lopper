@@ -15,6 +15,8 @@
 .. [Linux] The Linux kernel, see `About Linux Kernel
            <https://kernel.org/linux.html>`
 
+.. [OpenAMP] `The OpenAMP Project <https://www.openampproject.org/>`_
+
 .. [RHEL] `Red Hat Enterprise Linux
           <https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux>`_
 
