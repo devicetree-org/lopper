@@ -170,7 +170,7 @@
                         for i in n.subnodes():
                             if 'xlnx,axi-intc-4.1' in i.propval('compatible'):
                                 tree.delete(i)
-                            // Delete the un needed axi_noc node if present
+                            # Delete the un needed axi_noc node if present
                             if re.search('axi_noc@', i.name):
                                 tree.delete(i)
                        ";
