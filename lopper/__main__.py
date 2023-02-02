@@ -235,7 +235,7 @@ def main():
             print( "Error: input file %s does not exist" % i )
             sys.exit(1)
 
-        valid_ifile_types = [ ".dtsi", ".dtb", ".dts", ".yaml" ]
+        valid_ifile_types = [ ".json", ".dtsi", ".dtb", ".dts", ".yaml" ]
         itype = lopper.Lopper.input_file_type(i)
         if not itype in valid_ifile_types:
             print( "[ERROR]: unrecognized input file type passed" )

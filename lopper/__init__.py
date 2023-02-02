@@ -155,7 +155,7 @@ class LopperSDT:
                     sdt_files.append( ifile )
             elif re.search( ".dtb$", ifile ):
                 lop_files.append( ifile )
-            elif re.search( ".yaml$", ifile ):
+            elif re.search( ".yaml$", ifile ) or re.search( ".json$", ifile):
                 if yaml_support:
                     with open(ifile) as f:
                         datafile = f.readlines()
@@ -171,6 +171,9 @@ class LopperSDT:
                 else:
                     print( "[ERROR]. YAML support is not loaded, check dependencies" )
                     sys.exit(1)
+            else:
+                print( "[ERROR]: input file %s cannot be processed (no handler)" % ifile )
+                sys.exit(1)
 
         # is the sdt a dts ?
         sdt_extended_trees = []
