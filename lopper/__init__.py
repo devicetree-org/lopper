@@ -96,6 +96,7 @@ class LopperSDT:
         self.load_paths = []
         self.permissive = False
         self.merge = False
+        self.support_files = False
 
     def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True, config=None):
         """executes setup and initialization tasks for a system device tree
@@ -137,6 +138,7 @@ class LopperSDT:
 
         lop_files = []
         sdt_files = []
+        support_files = []
         for ifile in input_files:
             if re.search( ".dts$", ifile ) or re.search( ".dtsi$", ifile ):
                 # an input file is either a lopper operation file, or part of the
@@ -160,16 +162,22 @@ class LopperSDT:
                     with open(ifile) as f:
                         datafile = f.readlines()
                         found = False
+                        dts_found = False
                         for line in datafile:
                             if not found:
                                 if re.search( "system-device-tree-v1,lop", line ):
                                     lop_files.append( ifile )
                                     found = True
+                                if re.search( "/dts-v1/", line ):
+                                    found = True
+                                    sdt_files.append( ifile )
 
+                    # it didn't have a dts identifier in the input json or yaml file
+                    # so it a supporting input. We need to store it as such.
                     if not found:
-                        sdt_files.append( ifile )
+                        support_files.append( ifile )
                 else:
-                    print( "[ERROR]. YAML support is not loaded, check dependencies" )
+                    print( "[ERROR]. YAML/JSON support is not loaded, check dependencies" )
                     sys.exit(1)
             else:
                 print( "[ERROR]: input file %s cannot be processed (no handler)" % ifile )
@@ -355,6 +363,8 @@ class LopperSDT:
 
         # exceptions are carrying us on and causing us trouble!
         #os._exit(1)
+
+        self.support_files = support_files
 
         if self.verbose:
             print( "" )
