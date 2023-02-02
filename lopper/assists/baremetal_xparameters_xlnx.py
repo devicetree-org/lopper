@@ -289,6 +289,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             plat.buf('\n\n#define XPAR_CPU_CORE_CLOCK_FREQ_HZ %s\n' % cpu_freq)
             pss_ref = match_cpunode['xlnx,pss-ref-clk-freq'].value[0]
             plat.buf('#define XPAR_PSU_PSS_REF_CLK_FREQ_HZ %s\n' % pss_ref)
+            timestamp_clk = match_cpunode['xlnx,timestamp-clk-freq'].value[0]
+            plat.buf('#define XPAR_CPU_TIMESTAMP_CLK_FREQ %s\n' % timestamp_clk)
         except KeyError:
             pass
 
