@@ -7,32 +7,15 @@
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
 
-import struct
 import sys
-import types
-import unittest
 import os
-import getopt
 import re
-import subprocess
 import shutil
-from pathlib import Path
-from pathlib import PurePath
-from io import StringIO
-import contextlib
-import importlib
-from lopper import Lopper
-from lopper import LopperFmt
-import lopper
-from lopper.tree import *
-from re import *
-import yaml
+import glob
 
 sys.path.append(os.path.dirname(__file__))
-from baremetalconfig_xlnx import *
-from baremetallinker_xlnx import *
-from baremetal_xparameters_xlnx import get_label
-from bmcmake_metadata_xlnx import to_cmakelist
+from baremetalconfig_xlnx import get_mapped_nodes, get_label, compat_list
+import common_utils as utils
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetal_gentestapp_xlnx", compat_string_to_test):
@@ -60,126 +43,145 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
            pass
 
     node_list = get_mapped_nodes(sdt, node_list, options)
-    tmpdir = sdt.outdir
-    file_fd = open(os.path.join(tmpdir, 'file_list.txt'), 'w')
-    file_fd.write('testperiph.c')
-    file_fd.write("\n")
-    plat = DtbtoCStruct(os.path.join(tmpdir,'testperiph.c'))
-    src_dir = options['args'][1]
-    os.chdir(src_dir)
-    os.chdir("XilinxProcessorIPLib/drivers/")
-    cwd = os.getcwd()
-    files = os.listdir(cwd)
-    plat.buf('#include <stdio.h>\n')
-    plat.buf('#include "xparameters.h"\n')
-    plat.buf('#include "xil_printf.h"\n')
+
+    test_file_string = f'''
+#include <stdio.h>
+#include "xparameters.h"
+#include "xil_printf.h"
+'''
+    periph_file_list = []
+
+    repo_path_data = options['args'][1]
+    yaml_file_list = []
+
+    if utils.is_file(repo_path_data):
+        repo_schema = utils.load_yaml(repo_path_data)
+        drv_data = repo_schema['driver']
+        for entries in drv_data.keys():
+            drv_path_in_yaml = drv_data[entries]['vless']
+            drv_name_in_yaml = os.path.basename(drv_path_in_yaml)
+            yaml_file_list += [os.path.join(drv_path_in_yaml, 'data', f"{drv_name_in_yaml}.yaml")]
+    else:
+        drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers")
+        if utils.is_dir(drv_dir):
+            yaml_file_list = glob.glob(drv_dir + '/**/data/*.yaml', recursive=True)
+
     testapp_data = {}
     testapp_name = {}
-    for name in files:
-        os.chdir(cwd)
-        if os.path.isdir(name):
-            os.chdir(name)
-            if os.path.isdir("data"):
-                os.chdir("data")
-                yamlfile = name + str(".yaml")
-                try:
-                    with open(yamlfile, 'r') as stream:
-                        schema = yaml.safe_load(stream)
-                        driver_compatlist = compat_list(schema)
-                        driver_nodes = []
-                        try:
-                            drvname = schema['config']
-                            drvname = drvname[0].rsplit("_", 1)[-2]
-                        except KeyError:
-                            drvname = name
-                        try:
-                            testapp_schema = schema['tapp']
-                            tmp_str = str("x") + str(name) + str(".h") 
-                            plat.buf("#include %s" % '"{}"\n'.format(tmp_str))
-                            tmp_str = str(name) + str("_header.h") 
-                            plat.buf("#include %s" % '"{}"\n'.format(tmp_str))
-                            headerfile = os.getcwd() + str("/") + tmp_str
-                            hdr_file = tmpdir + str("/") + tmp_str
-                            shutil.copyfile(headerfile, hdr_file)
-                            file_fd.write(hdr_file)
-                            file_fd.write("\n")
-                            with open(hdr_file, 'r+') as fd:
-                                content = fd.readlines()
-                                content.insert(0, "#define TESTAPP_GEN\n")
-                                fd.seek(0, 0)
-                                fd.writelines(content)
+    for yaml_file in yaml_file_list:
+        schema = utils.load_yaml(yaml_file)
+        driver_compatlist = compat_list(schema)
+        driver_nodes = []
+        drv_name = utils.get_base_name(yaml_file).replace('.yaml','')
+        drv_data_path = utils.get_dir_path(yaml_file)
+        drv_path = utils.get_dir_path(drv_data_path)
+        try:
+            drv_config_name = schema['config']
+            drv_config_name = drv_config_name[0].rsplit("_", 1)[-2]
+        except KeyError:
+            drv_config_name = drv_name
+        try:
+            testapp_schema = schema['tapp']
+            tapp_drv_header_file_name = f"{drv_name}_header.h"
+            tapp_drv_header_src_file = os.path.join(drv_data_path, tapp_drv_header_file_name)
+            tapp_drv_header_dst_file = os.path.join(sdt.outdir, tapp_drv_header_file_name)
+            periph_file_list += [tapp_drv_header_dst_file]
+            utils.copy_file(tapp_drv_header_src_file, tapp_drv_header_dst_file)
 
-                            for compat in driver_compatlist:
-                                for node in node_list:
-                                    compat_string = node['compatible'].value[0]
-                                    label_name = get_label(sdt, symbol_node, node)
-                                    if compat in compat_string:
-                                        driver_nodes.append(node)
-                                        dec = []
-                                        for app,prop in testapp_schema.items():
-                                            filename = os.getcwd() + str("/../examples/") + app
-                                            destination = tmpdir + str("/") + app
-                                            try:
-                                                has_hwdep = testapp_schema[app]['hwproperties'][0]
-                                                try:
-                                                    val = node[has_hwdep].value
-                                                    has_hwdep = 0
-                                                except KeyError:
-                                                    has_hwdep = 1
-                                            except KeyError:
-                                                has_hwdep = 0
+            test_file_string += f'''
+#include "x{drv_name}.h"
+#include "{tapp_drv_header_file_name}"
+'''
+            with open(tapp_drv_header_dst_file, 'r+') as fd:
+                content = fd.readlines()
+                content.insert(0, "#define TESTAPP_GEN\n")
+                fd.seek(0, 0)
+                fd.writelines(content)
 
-                                            if not has_hwdep:
-                                                shutil.copyfile(filename, destination)
-                                                file_fd.write(destination)
-                                                file_fd.write("\n")
-                                                with open(destination, 'r+') as fd:
-                                                    content = fd.readlines()
-                                                    content.insert(0, "#define TESTAPP_GEN\n")
-                                                    fd.seek(0, 0)
-                                                    fd.writelines(content)
-                                                dec.append(testapp_schema[app]['declaration'])
-                                        testapp_data.update({label_name:dec})
-                                        testapp_name.update({label_name:drvname})
-                        except KeyError:
-                            testapp_schema = {}
-                except FileNotFoundError:
-                    pass
+            for compat in driver_compatlist:
+                for node in node_list:
+                    compat_string = node['compatible'].value[0]
+                    label_name = get_label(sdt, symbol_node, node)
+                    if compat in compat_string:
+                        driver_nodes.append(node)
+                        dec = []
+                        for app,prop in testapp_schema.items():
+                            example_dir = os.path.join(drv_path, "examples")
+                            example_file_src_path = os.path.join(example_dir, app)
+                            example_file_dst_path = os.path.join(sdt.outdir, app)
+                            try:
+                                has_hwdep = testapp_schema[app]['hwproperties'][0]
+                                try:
+                                    val = node[has_hwdep].value
+                                    has_hwdep = 0
+                                except KeyError:
+                                    has_hwdep = 1
+                            except KeyError:
+                                has_hwdep = 0
 
-    file_fd.close()
-    plat.buf('\nint main ()\n{\n')
-    for node,drvname in testapp_name.items():
-        plat.buf('   static %s %s;\n' % (drvname, node))
+                            if not has_hwdep and utils.is_file(example_file_src_path):
+                                periph_file_list += [example_file_dst_path]
+                                utils.copy_file(example_file_src_path, example_file_dst_path)
+                                with open(example_file_dst_path, 'r+') as fd:
+                                    content = fd.readlines()
+                                    content.insert(0, "#define TESTAPP_GEN\n")
+                                    fd.seek(0, 0)
+                                    fd.writelines(content)
+                                dec.append(testapp_schema[app]['declaration'])
+                        testapp_data.update({label_name:dec})
+                        testapp_name.update({label_name:drv_config_name})
+        except KeyError:
+            testapp_schema = {}
 
-    plat.buf('\n\tprint("---Entering main---%s");' % r"\n\r")
-    plat.buf('\n')
-    for node,testapp in testapp_data.items():
-        xpar_def = str("XPAR_") + node.upper() + str("_BASEADDR")
+
+    test_file_string += f'''int main ()
+{{
+'''
+    for node,drv_config_name in testapp_name.items():
+        test_file_string += f'''
+    static {drv_config_name} {node};'''
+
+    test_file_string += f'''
+
+    print("---Entering main---\\n\\r");
+'''
+
+    for node, testapp in testapp_data.items():
+        xpar_def = f"XPAR_{node.upper()}_BASEADDR"
+
         for app in testapp:
-            plat.buf("\n\t{\n")
-            plat.buf("\t\tint status;\n\n")
-            tmp_str = r"\r\n" + str("Running ") + app + str(" for ") + node + str("...") + r"\r\n"
-            plat.buf('\t\tprint("%s");' % tmp_str)
-            is_selftest = re.search('SelfTest', app)
-            if is_selftest:
-                plat.buf('\n\t\tstatus = %s(%s);\n' % (app, xpar_def))
+            if 'SelfTest' in app:
+                status_assignment = f"status = {app}({xpar_def});"
             else:
-                plat.buf('\n\t\tstatus = %s(&%s, %s);\n' % (app, node, xpar_def))
-            plat.buf('\t\tif (status == 0) {\n')
-            plat.buf('\t\t\t print("%s PASSED%s");\n' % (app, r"\r\n"))
-            plat.buf('\t\t} else {\n')
-            plat.buf('\t\t\t print("%s FAILED%s");\n' % (app, r"\r\n"))
-            plat.buf('\t\t}\n')
-            plat.buf("\t}\n")
-    plat.buf('\n\tprint("---Exiting main---");\n')
-    plat.buf('\treturn 0;\n')
-    plat.buf('}')
-    os.chdir(tmpdir)
-    # Remove duplicate lines
-    with open('file_list.txt', 'r') as f:
-        unique_lines = set(f.readlines())
-    with open('file_list.txt', 'w') as f:
-        f.writelines(unique_lines)
-    plat.out(''.join(plat.get_buf()))
+                status_assignment = f"status = {app}(&{node}, {xpar_def});"
+
+            test_file_string += f'''
+    {{
+        int status;
+        print("\\r\\nRunning {app} for {node} ... \\r\\n");
+        {status_assignment}
+        if (status == 0) {{
+            print("{app} PASSED \\r\\n");
+        }} else {{
+            print("{app} FAILED \\r\\n");
+        }}
+    }}
+'''
+
+    test_file_string += f'''
+    print("---Exiting main---");
+    return 0;
+}}
+'''
+
+    testperiph_file = os.path.join(sdt.outdir, 'testperiph.c')
+    with open(testperiph_file, 'w') as file_handle:
+        file_handle.writelines(test_file_string)
+        periph_file_list += [testperiph_file]
+
+    with open(os.path.join(sdt.outdir, 'file_list.txt'), 'w') as file_handle:
+        periph_file_list = set(periph_file_list)
+        for entry in periph_file_list:
+            file_handle.writelines(f'{entry}\n')
 
     return True

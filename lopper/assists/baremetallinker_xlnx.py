@@ -7,31 +7,15 @@
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
 
-import struct
 import sys
-import types
-import unittest
 import os
-import getopt
 import re
-import subprocess
-import shutil
-from pathlib import Path
-from pathlib import PurePath
-from io import StringIO
-import contextlib
-import importlib
-from lopper import Lopper
-from lopper import LopperFmt
-import lopper
 import lopper_lib
-from lopper.tree import *
-from re import *
 
 sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node
-from bmcmake_metadata_xlnx import to_cmakelist
-from domain_access import *
+from common_utils import to_cmakelist
+from domain_access import domain_get_subnodes
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetallinker_xlnx", compat_string_to_test):

@@ -7,50 +7,27 @@
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
 
-import struct
 import sys
-import types
 import os
-import getopt
 import re
-from pathlib import Path
-from pathlib import PurePath
-from lopper import Lopper
-from lopper import LopperFmt
-import lopper
-from lopper.tree import *
-from re import *
-import yaml
 import glob
-from collections import OrderedDict
 
 sys.path.append(os.path.dirname(__file__))
-from baremetalconfig_xlnx import *
+import common_utils as utils
+import baremetalconfig_xlnx as bm_config
 
 def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
     driver_compatlist = []
-    src_dir = src_dir.rstrip(os.path.sep)
-    drvname = os.path.basename(os.path.dirname(src_dir))
-    yaml_file = Path( os.path.join(os.path.dirname(src_dir), "data", f"{drvname}.yaml"))
-    try:
-        yaml_file_abs = yaml_file.resolve()
-    except FileNotFoundError:
-        yaml_file_abs = ""
-
-    if yaml_file_abs:
-        yamlfile = str(yaml_file_abs)
-    else:
-        print("Driver doesn't have yaml file")
+    drvname = utils.get_base_name(utils.get_dir_path(src_dir))
+    yaml_file = os.path.join(utils.get_dir_path(src_dir), "data", f"{drvname}.yaml")
+    if not utils.is_file(yaml_file):
+        print(f"{drvname} Driver doesn't have yaml file")
         return False
 
     # Get the example_schema
-    with open(yamlfile, 'r') as stream:
-        schema = yaml.safe_load(stream)
-        driver_compatlist = compat_list(schema)
-        try:
-            example_schema = schema['examples']
-        except KeyError:
-            example_schema = {}
+    schema = utils.load_yaml(yaml_file)
+    driver_compatlist = compat_list(schema)
+    example_schema = schema.get('examples',{})
        
     driver_nodes = []
     for compat in driver_compatlist:
@@ -60,15 +37,16 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                if compat in compat_string:
                    driver_nodes.append(node)
 
-    driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
-    driver_nodes = list(dict.fromkeys(driver_nodes))
+    driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
+    driver_nodes = list(set(driver_nodes))
     nodename_list = []
     reg_list = []
     example_dict = {}
     depreg_dict = {}
+
     for node in driver_nodes:
         depreg_list = []
-        reg, size = scan_reg_size(node, node['reg'].value, 0)
+        reg, size = bm_config.scan_reg_size(node, node['reg'].value, 0)
         nodename_list.append(node.name)
         reg_list.append(hex(reg))
         
@@ -85,10 +63,10 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                             if '' in val:
                                 val = 1
                             if e == "axistream-connected":
-                                reg = get_phandle_regprop(sdt, e, val)
+                                reg = bm_config.get_phandle_regprop(sdt, e, val)
                                 val = reg & 0xF
                             if prop_val == "phandle":
-                                depreg_list.append(hex(get_phandle_regprop(sdt, e, val)))
+                                depreg_list.append(hex(bm_config.get_phandle_regprop(sdt, e, val)))
                                 valid_phandle = 1
                         except KeyError:
                             val = 0
@@ -123,32 +101,29 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
         example_dict.update({node.name:validex_list})
         depreg_dict.update({node.name:depreg_list})
 
-    drvname = os.path.basename(yamlfile).replace('.yaml', '')
     cmake_file = os.path.join(sdt.outdir, f"{drvname.capitalize()}Example.cmake")
     with open(cmake_file, 'a') as fd:
-        fd.write("set(NUM_DRIVER_INSTANCES %s)\n" % to_cmakelist(nodename_list))
-        fd.write("set(REG_LIST %s)\n" % to_cmakelist(reg_list))
+        fd.write(f"set(NUM_DRIVER_INSTANCES {utils.to_cmakelist(nodename_list)})\n")
+        fd.write(f"set(REG_LIST {utils.to_cmakelist(reg_list)})\n")
         for index,name in enumerate(nodename_list):
-            fd.write("set(EXAMPLE_LIST%s %s)\n" % (index, to_cmakelist(example_dict[name])))
-            fd.write("set(DEPDRV_REG_LIST%s %s)\n" % (index, to_cmakelist(depreg_dict[name])))
-            fd.write("list(APPEND TOTAL_EXAMPLE_LIST EXAMPLE_LIST%s)\n" % index)
-            fd.write("list(APPEND TOTAL_DEPDRV_REG_LIST DEPDRV_REG_LIST%s)\n" % index)
+            fd.write(f"set(EXAMPLE_LIST{index} {utils.to_cmakelist(example_dict[name])})\n")
+            fd.write(f"set(DEPDRV_REG_LIST{index} {utils.to_cmakelist(depreg_dict[name])})\n")
+            fd.write(f"list(APPEND TOTAL_EXAMPLE_LIST EXAMPLE_LIST{index})\n")
+            fd.write(f"list(APPEND TOTAL_DEPDRV_REG_LIST DEPDRV_REG_LIST{index})\n")
 
-def getmatch_nodes(sdt, node_list, yamlfile, options):
+def getmatch_nodes(sdt, node_list, yaml_file, options):
     # Get the example_schema
-    with open(yamlfile, 'r') as stream:
-        schema = yaml.safe_load(stream)
-        driver_compatlist = compat_list(schema)
-       
+    schema = utils.load_yaml(yaml_file)
     driver_nodes = []
+    driver_compatlist = bm_config.compat_list(schema)
     for compat in driver_compatlist:
         for node in node_list:
            compat_string = node['compatible'].value[0]
            if compat in compat_string:
                driver_nodes.append(node)
 
-    driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
-    driver_nodes = list(dict.fromkeys(driver_nodes))
+    driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
+    driver_nodes = list(set(driver_nodes))
     return driver_nodes
 
 def getxlnx_phytype(sdt, value):
@@ -158,78 +133,78 @@ def getxlnx_phytype(sdt, value):
 
 def lwip_topolgy(outdir, config):
     topology_fd = open(os.path.join(outdir, 'xtopology_g.c'), 'w')
-    tmp_str = "netif/xtopology.h"
-    tmp_str = '"{}"'.format(tmp_str)
-    topology_fd.write("\n#include %s\n" % tmp_str)
-    tmp_str = "xil_types.h"
-    tmp_str = '"{}"'.format(tmp_str)
-    topology_fd.write("#include %s\n\n" % tmp_str)
-    topology_fd.write("struct xtopology_t xtopology[] = {\n")
-    for index, data in enumerate(config):
-        if (index % 2) == 0:
-            topology_fd.write("\t{\n")
-        topology_fd.write("\t\t%s,\n" % data)
-        if (index % 2) != 0:
-            topology_fd.write("\n\t},\n")
-    topology_fd.write("\t{\n")
-    topology_fd.write("\t\tNULL\n")
-    topology_fd.write("\t}\n")
-    topology_fd.write("};")
+    topology_str = f'''
+#include "netif/xtopology.h"
+#include "xil_types.h"
 
-def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chosen_node, symbol_node):
-    meta_dict = {}
+struct xtopology_t xtopology[] = {{'''
+    for key, value in config.items():
+        topology_str += f'''
+    {{
+        {key},
+        {value},
+    }},'''
+    topology_str += f'''
+    {{
+        NULL
+    }}
+}};'''
+    topology_fd.write(topology_str)
+
+def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options, chosen_node, symbol_node):
     src_path = src_path.rstrip(os.path.sep)
-    name = os.path.basename(os.path.dirname(src_path))
-    yaml_file = Path( os.path.join(os.path.dirname(src_path), "data", f"{name}.yaml"))
-    try:
-        yaml_file_abs = yaml_file.resolve()
-    except FileNotFoundError:
-        yaml_file_abs = ""
+    name = utils.get_base_name(utils.get_dir_path(src_path))
+    yaml_file = os.path.join(utils.get_dir_path(src_path), "data", f"{name}.yaml")
 
-    if yaml_file_abs:
-        yamlfile = str(yaml_file_abs)
-    else:
-        print("Driver doesn't have yaml file")
+    if not utils.is_file(yaml_file):
+        print(f"{drvname} Driver doesn't have yaml file")
         return False
 
-    with open(yamlfile, 'r') as stream:
-        schema = yaml.safe_load(stream)
-        try:
-            meta_dict = schema['depends']
-        except:
-            pass
+    schema = utils.load_yaml(yaml_file)
+    meta_dict = schema.get('depends',{})
 
     lwip = re.search("lwip211", name)
     standalone = re.search("standalone", name)
     cmake_file = os.path.join(sdt.outdir, f"{name.capitalize()}Example.cmake")
-    topology_data = []
+    topology_data = {}
     with open(cmake_file, "a") as fd:
         lwiptype_index = 0
         for drv, prop_list in sorted(meta_dict.items(), key=lambda kv:(kv[0], kv[1])):
-            name = drv + str(".yaml")
-            drv_yamlpath = [y for x in os.walk(repo_path) for y in glob.glob(os.path.join(x[0], name))]
-            nodes = getmatch_nodes(sdt, node_list, drv_yamlpath[0], options)
+            if utils.is_file(repo_path_data):
+                repo_schema = utils.load_yaml(repo_path_data)
+                drv_data = repo_schema['driver']
+                drv_dir = drv_data.get(drv,{}).get('vless','')
+            else:
+                drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers", drv)
+
+            drv_yamlpath = os.path.join(drv_dir, "data", f"{drv}.yaml")
+
+            if not utils.is_file(drv_yamlpath):
+                print(f"{drv} yaml file {drv_yamlpath} doesnt exist")
+                return False
+
+            nodes = getmatch_nodes(sdt, node_list, drv_yamlpath, options)
             name_list = []
             for node in nodes:
                 if node.propval('xlnx,name') != ['']:
                     name_list.append(node.propval('xlnx,name', list)[0])
                 else:
-                    name_list.append(get_label(sdt, symbol_node, node))
-            fd.write("set(%s_NUM_DRIVER_INSTANCES %s)\n" % (drv.upper(), to_cmakelist(name_list)))
+                    name_list.append(bm_config.get_label(sdt, symbol_node, node))
+
+            fd.write(f"set({drv.upper()}_NUM_DRIVER_INSTANCES {utils.to_cmakelist(name_list)})\n")
             for index,node in enumerate(nodes):
                 val_list = []
                 for prop in prop_list:
                     if prop == "reg":
-                       reg,size = scan_reg_size(node, node[prop].value, 0)
+                       reg,size = bm_config.scan_reg_size(node, node[prop].value, 0)
                        val = hex(reg)
                        if lwip:
-                           topology_data.append(val)
-                           topology_data.append(lwiptype_index)
+                           topology_data[val] = lwiptype_index
                     elif prop == "interrupts":
-                       val = get_interrupt_prop(sdt, node, node[prop].value)
+                       val = bm_config.get_interrupt_prop(sdt, node, node[prop].value)
                        val = val[0]
                     elif prop == "axistream-connected":
-                       val = hex(get_phandle_regprop(sdt, prop, node[prop].value))
+                       val = hex(bm_config.get_phandle_regprop(sdt, prop, node[prop].value))
                     elif prop == "phy-handle":
                        try:
                            val = getxlnx_phytype(sdt, node[prop].value)
@@ -238,15 +213,16 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path, options, chos
                     else:
                         val = hex(node[prop].value[0])
                     val_list.append(val)
-                fd.write("set(%s%s_PROP_LIST %s)\n" % (drv.upper(), index, to_cmakelist(val_list)))
-                fd.write("list(APPEND TOTAL_%s_PROP_LIST %s%s_PROP_LIST)\n" % (drv.upper(), drv.upper(), index))
+                fd.write(f"set({drv.upper()}{index}_PROP_LIST {utils.to_cmakelist(val_list)})\n")
+                fd.write(f"list(APPEND TOTAL_{drv.upper()}_PROP_LIST {drv.upper()}{index}_PROP_LIST)\n")
             lwiptype_index += 1
         if standalone:
-            stdin_node = get_stdin(sdt, chosen_node, node_list)
+            stdin_node = bm_config.get_stdin(sdt, chosen_node, node_list)
+            print(stdin_node.propval('xlnx,name'))
             if stdin_node.propval('xlnx,name') != ['']:
-                fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(stdin_node.propval('xlnx,name', list)[0]))
+                fd.write(f'set(STDIN_INSTANCE "{stdin_node.propval("xlnx,name")[0]}")\n')
             else:
-                fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(get_label(sdt, symbol_node, stdin_node)))
+                fd.write(f'set(STDIN_INSTANCE "{bm_config.get_label(sdt, symbol_node, stdin_node)}")\n')
 
     if topology_data:
         lwip_topolgy(sdt.outdir, topology_data)
@@ -256,11 +232,6 @@ def is_compat( node, compat_string_to_test ):
         return xlnx_generate_cmake_metadata
     return ""
 
-def to_cmakelist(pylist):
-    cmake_list = ';'.join(pylist)
-    cmake_list = '"{}"'.format(cmake_list)
-
-    return cmake_list
 
 def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]

@@ -7,25 +7,14 @@
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
 import sys
-import types
 import os
-import getopt
 import re
-from pathlib import Path
-from pathlib import PurePath
-from io import StringIO
-import contextlib
-import importlib
-from lopper import Lopper
-from lopper import LopperFmt
-import lopper
-from lopper.tree import *
-from re import *
 import yaml
 
 sys.path.append(os.path.dirname(__file__))
-from bmcmake_metadata_xlnx import *
-from domain_access import *
+
+import common_utils as utils
+from domain_access import domain_get_subnodes
 
 def get_label(sdt, symbol_node, node):
     prop_dict = symbol_node.__props__
@@ -38,24 +27,19 @@ def get_label(sdt, symbol_node, node):
 def get_cpu_node(sdt, options):
     cpu_name = options['args'][0]
     symbol_node = sdt.tree['/__symbols__']
-    prop_dict = symbol_node.__props__
     nodes = sdt.tree.nodes('/cpu.*')
-    cpu_lables = []
-    match_cpu_node = []
+    cpu_labels = []
+    matched_label = None
     for node in nodes:
-        match = [label for label,node_abs in prop_dict.items() if re.match(node_abs[0], node.abs_path) and len(node_abs[0]) == len(node.abs_path)]
-        if match:
-            if match[0] == cpu_name:
-                match_cpu_node = node
-            else:
-                if node.propval('reg') != ['']:
-                    cpu_lables.append(match[0])
+        matched_label = get_label(sdt, symbol_node, node)
+        if matched_label is not None:
+            if matched_label == cpu_name:
+                return node
+            elif node.propval('reg') != ['']:
+                cpu_labels.append(matched_label)
 
-    if not match_cpu_node:
-        print("ERROR: In valid CPU Name valid Processors for a given SDT are %s\n"%' '.join(cpu_lables))
-        sys.exit(1)
-
-    return match_cpu_node
+    print(f"ERROR: In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
+    sys.exit(1)
 
 def item_generator(json_input, lookup_key):
     if isinstance(json_input, dict):
@@ -75,7 +59,8 @@ def item_generator(json_input, lookup_key):
 
 # This API reads the schema and returns the compatible list
 def compat_list(schema):
-    if 'compatible' in schema['properties'].keys():
+    compatible_list = []
+    if schema and 'compatible' in schema.get('properties',{}).keys():
         sch = schema['properties']['compatible']
         compatible_list = []
         for l in item_generator(sch, 'enum'):
@@ -91,7 +76,7 @@ def compat_list(schema):
             for l in item_generator(sch['contains'], 'const'):
                 compatible_list.extend(l)
         compatible_list = list(set(compatible_list))
-        return compatible_list
+    return compatible_list
 
 """
 This API scans the device-tree node and returns the address
@@ -398,36 +383,21 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     except IndexError:
         pass
 
-    drvpath = os.path.dirname(src_dir.rstrip(os.sep))
-    drvname = os.path.basename(drvpath)
-    yaml_file = Path(os.path.join(drvpath, f"data/{drvname}.yaml"))
-    try:
-        yaml_file_abs = yaml_file.resolve()
-    except FileNotFoundError:
-        yaml_file_abs = ""
-
-    if yaml_file_abs:
-        yamlfile = str(yaml_file_abs)
-    else:
-        print("Driver doesn't have yaml file")
+    drvpath = utils.get_dir_path(src_dir.rstrip(os.sep))
+    drvname = utils.get_base_name(drvpath)
+    yaml_file = os.path.join(drvpath, f"data/{drvname}.yaml")
+    if not utils.is_file(yaml_file):
+        print(f"{drvname} Driver doesn't have yaml file")
         return False
 
     driver_compatlist = []
-    driver_proplist = []
     # Read the yaml file and get the driver supported compatible list
     # and config data file required driver properties
-    with open(yamlfile, 'r') as stream:
-        schema = yaml.safe_load(stream)
-        driver_compatlist = compat_list(schema)
-        driver_proplist = schema['required']
-        try:
-            config_struct = schema['config']
-        except KeyError:
-            config_struct = []
-        try:
-            driver_optproplist = schema['optional']
-        except KeyError:
-            driver_optproplist = []
+    schema = utils.load_yaml(yaml_file)
+    driver_compatlist = compat_list(schema)
+    driver_proplist = schema.get('required',[])
+    config_struct = schema.get('config',[])
+    driver_optproplist = schema.get('optional',[])
 
     driver_nodes = []
     for compat in driver_compatlist:
@@ -438,17 +408,15 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                    driver_nodes.append(node)
 
     # Remove duplicate nodes
-    driver_nodes = list(dict.fromkeys(driver_nodes))
+    driver_nodes = list(set(driver_nodes))
     driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
-    # config file name: x<driver_name>_g.c 
-    driver_name = yamlfile.split('/')[-1].split('.')[0]
     if not config_struct:
-        config_struct = str("X") + driver_name.capitalize() + str("_Config")
+        config_struct = str("X") + drvname.capitalize() + str("_Config")
     else:
         config_struct = config_struct[0]
-        driver_name = config_struct.split('_Config')[0].lower()
-        driver_name = driver_name[1:]
-    outfile = os.path.join(sdt.outdir,f"x{driver_name}_g.c")
+        drvname = config_struct.split('_Config')[0].lower()
+        drvname = drvname[1:]
+    outfile = os.path.join(sdt.outdir,f"x{drvname}_g.c")
 
     plat = DtbtoCStruct(outfile)
     nodename_list = []
@@ -458,7 +426,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     cmake_file = drvname.upper() + str("Config.cmake")
     cmake_file = os.path.join(sdt.outdir,f"{cmake_file}")
     with open(cmake_file, 'a') as fd:
-       fd.write("set(DRIVER_INSTANCES %s)\n" % to_cmakelist(nodename_list))
+       fd.write("set(DRIVER_INSTANCES %s)\n" % utils.to_cmakelist(nodename_list))
        if stdin:
            match = [x for x in nodename_list if re.search(x, stdin_node.name)]
            if match:
@@ -468,7 +436,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         drvprop_list = []
         drvoptprop_list = []
         if index == 0:
-            plat.buf('#include "x%s.h"\n' % driver_name)
+            plat.buf('#include "x%s.h"\n' % drvname)
             plat.buf('\n%s %s __attribute__ ((section (".drvcfg_sec"))) = {\n' % (config_struct, config_struct + str("Table[]")))
         for i, prop in enumerate(driver_proplist):
             pad = 0
@@ -632,8 +600,8 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                     pass
 
         with open(cmake_file, 'a') as fd:
-           fd.write("set(DRIVER_PROP_%s_LIST %s)\n" % (index, to_cmakelist(drvprop_list)))
-           fd.write("set(DRIVER_OPTPROP_%s_LIST %s)\n" % (index, to_cmakelist(drvoptprop_list)))
+           fd.write("set(DRIVER_PROP_%s_LIST %s)\n" % (index, utils.to_cmakelist(drvprop_list)))
+           fd.write("set(DRIVER_OPTPROP_%s_LIST %s)\n" % (index, utils.to_cmakelist(drvoptprop_list)))
            fd.write("list(APPEND TOTAL_DRIVER_PROP_LIST DRIVER_PROP_%s_LIST)\n" % index)
     plat.out(''.join(plat.get_buf()))
 
