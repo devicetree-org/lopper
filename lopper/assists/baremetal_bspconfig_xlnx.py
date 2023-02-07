@@ -13,9 +13,10 @@ import os
 import glob
 
 sys.path.append(os.path.dirname(__file__))
+
 from baremetalconfig_xlnx import compat_list, get_cpu_node
 from baremetallinker_xlnx import get_memranges
-from bmcmake_metadata_xlnx import to_cmakelist
+from common_utils import to_cmakelist
 
 def is_compat( node, compat_string_to_test ):
     if "module,baremetal_bspconfig_xlnx" in compat_string_to_test:
