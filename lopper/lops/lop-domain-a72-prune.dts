@@ -20,23 +20,20 @@
                 };
                 lop_1 {
                         // modify to "nothing", is a remove operation
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/cpus-r5@3::";
-                };
-                lop_1_0 {
-                        // modify to "nothing", is a remove operation
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/cpus-r5@4::";
+                        compatible = "system-device-tree-v1,lop,select-v1";
+                        select_1;
+                        select_2 = "/.*:compatible:.*arm,cortex-r5.*";
+                        select_3 = "/.*:compatible:.*pmc-microblaze.*";
+                        select_4 = "/.*:compatible:.*psm-microblaze.*";
                 };
                 lop_2 {
-                        // modify to "nothing", is a remove operation
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/cpus_microblaze@1::";
-                };
-                lop_3 {
-                        // modify to "nothing", is a remove operation
-                        compatible = "system-device-tree-v1,lop,modify";
-                        modify = "/cpus_microblaze@2::";
+                        compatible = "system-device-tree-v1,lop,code-v1";
+                        code = "
+                            # Check for domain node
+                            for s in tree.__selected__:
+                                tree.delete(s.parent)
+                                tree.delete(s)
+                        ";
                 };
                 lop_4 {
                         // modify to "nothing", is a remove operation
