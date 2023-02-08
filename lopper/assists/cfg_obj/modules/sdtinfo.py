@@ -155,9 +155,9 @@ class SdtInfo:
                                     None
                 if node.name == "cpus-a53@0":
                     self.masters["psu_cortexa53_0"]["slaves"] = slaves
-                elif node.name == "cpus-r5@1":
+                elif node.name == "cpus-r5@0":
                     self.masters["psu_cortexr5_0"]["slaves"] = slaves
-                elif node.name == "cpus-r5@2":
+                elif node.name == "cpus-r5@1":
                     self.masters["psu_cortexr5_1"]["slaves"] = slaves
             except:
                 None
