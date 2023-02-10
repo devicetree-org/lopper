@@ -26,7 +26,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
 
     # Get the example_schema
     schema = utils.load_yaml(yaml_file)
-    driver_compatlist = compat_list(schema)
+    driver_compatlist = bm_config.compat_list(schema)
     example_schema = schema.get('examples',{})
        
     driver_nodes = []
