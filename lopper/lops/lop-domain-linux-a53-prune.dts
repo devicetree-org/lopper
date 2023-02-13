@@ -127,6 +127,25 @@
                                   pass
                               if node1.props('compatible') != [] and 'xlnx,zynqmp-ipi-mailbox' in node1.props('compatible')[0].value:
                                   invalid_nodes.append(node1)
+                              if node1.props('xlnx,ip-name') and 'sd_fec' in node1.props('xlnx,ip-name')[0].value:
+                                  sd_fec_valid_prop_vals = [
+                                      'clock-names', 'clocks', 'compatible', 'interrupt-names', 'interrupt-parent', 'interrupts',
+                                      'reg', 'xlnx,sdfec-code', 'xlnx,sdfec-din-width', 'xlnx,sdfec-din-words', 'xlnx,sdfec-dout-width',
+                                      'xlnx,sdfec-dout-words', 'xlnx,ip-name', 'xlnx,name', 'status', 'phandle'
+                                  ]
+                                  node_prop_list = list(node1.__props__.keys())
+                                  for prop in node_prop_list:
+                                      if prop not in sd_fec_valid_prop_vals:
+                                          node1.delete(prop)
+                              if node1.props('xlnx,ip-name') and 'usp_rf_data_converter' in node1.props('xlnx,ip-name')[0].value:
+                                  usp_rfdc_valid_prop_vals = [
+                                      'clock-names', 'clocks', 'compatible', 'num-insts', 'param-list', 'reg', 'xlnx,ip-name',
+                                      'xlnx,name', 'status', 'phandle'
+                                  ]
+                                  node_prop_list = list(node1.__props__.keys())
+                                  for prop in node_prop_list:
+                                      if prop not in usp_rfdc_valid_prop_vals:
+                                          node1.delete(prop)
                               ignore_node = [node1 for ipname in ignore_list if re.search(ipname, node1.name)]
                               if ignore_node:
                                   invalid_nodes.append(ignore_node[0])
