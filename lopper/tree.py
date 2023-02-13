@@ -24,6 +24,7 @@ from collections import Counter
 import copy
 import json
 
+import lopper.base
 from lopper.fmt import LopperFmt
 
 # must be set to the Lopper class to call
@@ -33,6 +34,12 @@ global Lopper
 # is 32 bit, or not.
 def check_32_bit(n):
     return (n & 0xFFFFFFFF00000000) == 0
+
+def chunks(l, n):
+    # For item i in a range that is a length of l,
+    for i in range(0, len(l), n):
+        # Create an index range for l of n items:
+        yield l[i:i+n]
 
 # used in node_filter
 class LopperAction(Enum):
@@ -2566,6 +2573,120 @@ class LopperNode(object):
 
         if self.__dbg__ > 2:
             print( "[DGB++]: node resolution end: %s" % self)
+
+    def address(self, child_addr=None, nest_count=1):
+        """Get the translated Address of the node.
+
+        Returns the unit address of the node as trranslated by the ranges
+        of the devie tree.
+
+        """
+
+        self.__dbg__ = 2
+        if self.__dbg__ > 1:
+            print( f"[INFO]:{chr(0x20)*nest_count}address translation for: {self.abs_path} ({self.name})" )
+
+        unit_address = child_addr
+        if not child_addr:
+            try:
+                unit_address = int(self.name.split('@')[1],16)
+                if self.__dbg__ > 1:
+                    print( f"[INFO]:{chr(0x20)*nest_count}unit address: {hex(unit_address)}" )
+            except Exception as e:
+                if self.__dbg__ > 1:
+                    print( "[ERROR]: node %s has no unit address: %s" % self.name )
+                # No @ or it isn't a hex, so we have nothing to translate
+                return None
+
+        # translate the address
+
+        # Do we have a parent node with a ranges property ? If not, then
+        # the translation is just the unit address
+        if self.parent:
+            pranges = self.parent.props("ranges")
+            if not pranges:
+                if self.__dbg__ > 1:
+                    print( f"[INFO]:{chr(0x20)*nest_count}no parent ranges, "
+                           f"returning address: {hex(unit_address)}" )
+                return unit_address
+
+            if self.__dbg__ > 1:
+                print( f"[INFO]:{chr(0x20)*nest_count}parent ranges: {pranges[0]}" )
+
+            pranges_values = pranges[0].value
+
+            # if the node had just "ranges;", we continue up to the parent
+            # since this means the child and parent are 1:1 mapping
+            if len(pranges[0]) == 1:
+                if self.__dbg__ > 1:
+                    print( f"[INFO]:{chr(0x20)*nest_count}'ranges;' found, "
+                           f"recursing to parent: {self.parent.abs_path}" )
+                return self.parent.address( unit_address, nest_count + 4 )
+        else:
+            # no parent
+            return unit_address
+
+        # do the translation
+
+        address_cells = self.propval( "#address-cells" )[0]
+        if not address_cells:
+            address_cells = 2
+
+        parent_address_cells = self.parent.propval( "#address-cells" )[0]
+        if not parent_address_cells:
+            parent_address_cells = 2
+
+        size_cells = self.propval( "#size-cells" )[0]
+        if not size_cells:
+            size_cells = 1
+
+        if self.__dbg__ > 1:
+            print( f"[INFO]:{chr(0x20)*nest_count}address cells in: {self.abs_path} and {self.parent.abs_path}" )
+            print( f"       {chr(0x20)*nest_count}child address cells: {address_cells}" )
+            print( f"       {chr(0x20)*nest_count}parent address cells: {parent_address_cells}" )
+            print( f"       {chr(0x20)*nest_count}child size cells: {size_cells}" )
+
+        # Break things into chunks and translate
+
+        # https://elinux.org/Device_Tree_Usage#Ranges_.28Address_Translation.29
+
+        # Each entry in the ranges table is a tuple containing the child address,
+        # the parent address, and the size of the region in the child address space
+
+        # The size of each field is determined by taking the child's #address-cells value,
+        # the parent's #address-cells value, and the child's #size-cells value
+
+        item_size = int(size_cells) + int(address_cells) + int(parent_address_cells)
+        address_chunks = chunks(pranges_values,item_size)
+
+        for address_entry in address_chunks:
+            if self.__dbg__ > 1:
+                print( f"[INFO]:{chr(0x20)*nest_count}address entry: {address_entry}" )
+
+            child_address = address_entry[0:address_cells]
+            child_address = lopper.base.lopper_base.encode_byte_array( child_address )
+            child_address = int.from_bytes(child_address,"big")
+
+            parent_address = address_entry[address_cells:address_cells + parent_address_cells]
+            parent_address = lopper.base.lopper_base.encode_byte_array( parent_address )
+            parent_address = int.from_bytes(parent_address,"big")
+
+            region_size = address_entry[-size_cells:]
+            region_size = lopper.base.lopper_base.encode_byte_array( region_size )
+            region_size = int.from_bytes(region_size,"big")
+
+            if self.__dbg__ > 1:
+                print( f"       {chr(0x20)*nest_count}child address: {child_address}" )
+                print( f"       {chr(0x20)*nest_count}parent_address: {hex(parent_address)}" )
+                print( f"       {chr(0x20)*nest_count}region_size: {hex(region_size)}" )
+
+            if child_address <= unit_address <= child_address + region_size:
+                if self.__dbg__ > 1:
+                    print( f"[INFO]:{chr(0x20)*nest_count}unit address {unit_address} is "
+                           "within a translation range, recursively translating" )
+                return self.parent.address( parent_address + unit_address - child_address, nest_count + 4 )
+
+        return unit_address
 
 class LopperTree:
     """Class for walking a device tree, and providing callbacks at defined points
