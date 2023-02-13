@@ -542,6 +542,7 @@ def cfg_obj_write(root_node, sdt, options):
         final_lines = section_obj.replace_section(final_lines)
 
     outfile_name = options["args"][0]
-    outfile = open(outfile_name, 'w')
+    outfile = os.path.join(sdt.outdir, outfile_name)
+    outfile = open(outfile, 'w')
     outfile.writelines(final_lines)
     return True
