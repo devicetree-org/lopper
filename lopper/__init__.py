@@ -573,7 +573,7 @@ class LopperSDT:
                 print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
                 sys.exit(1)
 
-            yaml = LopperYAML( None, self.tree, config=self.config )
+            yaml = LopperYAML( None, tree_to_write, config=self.config )
             yaml.to_yaml( output_filename )
         elif re.search( ".json", output_filename ):
             o = Path(output_filename)

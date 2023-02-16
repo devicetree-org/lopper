@@ -939,6 +939,10 @@ class LopperProp():
 
         elif prop_type == int:
             outstring = "{0} = <{1}>;".format( self.name, hex(prop_val) )
+        elif prop_type == "json":
+            # if this is a json property type, we need to escape any nested double
+            # quotes. Otherwise, dtc won't be able to compile the dts.
+            outstring = "{0} = \"{1}\";".format( self.name, self.value.replace('"', '\\"') )
         elif prop_type == list:
             # if the length is one, and the only element is empty '', then
             # we just put out the name

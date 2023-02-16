@@ -72,7 +72,26 @@ class LopperTreeImporter(object):
         for p in node.__props__:
             # if the node is from a yaml source, it may have been json encoded,
             # so try that first and otherwise assign it directly.
-            if node._source == "yaml" or node.__props__[p].pclass == "json":
+
+            json_encoded_string = False
+            if node._source != "yaml" and node.__props__[p].pclass != "json":
+                # if the property isn't tagged as yaml or json, we do a double
+                # check to see if it is a json encoded string. The test is simple.
+                # try and decode it. If no exception is thrown, we consider that it
+                # was valid json.
+                if type(node.__props__[p].value) == list and len(node.__props__[p].value) == 1:
+                    val = node.__props__[p].value[0]
+                else:
+                    val = node.__props__[p].value
+
+                decode_val = val
+                try:
+                    val = json.loads(decode_val)
+                    json_encoded_string = True
+                except Exception as e:
+                    pass
+
+            if node._source == "yaml" or node.__props__[p].pclass == "json" or json_encoded_string:
                 # property with no value is an encoded boolean "true" as an
                 # empty list. So check for a value, try json, fallback to
                 # assignment.
@@ -327,7 +346,7 @@ class LopperDumper(yaml.Dumper):
     this class.
 
     Currently it only increases the indent on yaml sequences, but may
-    container more adjustments in the future.
+    contain more adjustments in the future.
     """
     def increase_indent(self, flow=False, indentless=False):
         return super(LopperDumper, self).increase_indent(flow, False)
@@ -763,7 +782,7 @@ class LopperJSON():
             dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
 
             if verbose > 1:
-                print( "[DBG++]: dumping exporting dictionary" )
+                print( "[DBG++]: dumping export dictionary" )
                 pprint( dct )
 
             if not outfile:
@@ -1048,7 +1067,7 @@ class LopperYAML(LopperJSON):
             dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
 
             if verbose > 1:
-                print( "[DBG++]: dumping exporting dictionary" )
+                print( "[DBG++]: to_yaml: dumping export dictionary" )
                 pprint( dct )
 
             if not outfile:
