@@ -1075,10 +1075,16 @@ class LopperYAML(LopperJSON):
             else:
                 if verbose > 1:
                     print( "[DBG++]: dumping generated yaml to stdout:" )
-                    print(yaml.dump(dct))
+                    print(yaml.dump(dct,
+                                    default_flow_style=False,
+                                    canonical=False,
+                                    default_style=None))
 
                 with open( outfile, "w") as file:
-                    yaml.dump(dct, file)
+                    yaml.dump(dct, file,
+                              default_flow_style=False,
+                              canonical=False,
+                              default_style=None)
 
 
     def load_yaml( self, filename = None ):
