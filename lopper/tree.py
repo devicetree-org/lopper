@@ -1744,6 +1744,19 @@ class LopperNode(object):
 
         return flat_list
 
+    def children( self ):
+        """Return the immediate children of this node
+
+        Args:
+           None
+
+        Returns:
+           A list of child LopperNodes
+
+        """
+        # we are just a wrapper around the generic subnodes method
+        return self.subnodes(max_depth=1,children_only=True)
+
     def subnodes( self, depth=0, max_depth=None, children_only = False ):
         """Return all the subnodes of this node
 
