@@ -95,7 +95,7 @@
 		};
 	};
 
-	amba : axi {
+	amba: axi {
 		u-boot,dm-pre-reloc;
 		compatible = "simple-bus";
 		#address-cells = <0x1>;
