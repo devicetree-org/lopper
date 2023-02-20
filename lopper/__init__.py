@@ -949,6 +949,8 @@ class LopperSDT:
                                 print( "    %s" % p )
                             print( "}" )
 
+            return True
+
         if re.search( ".*,select.*$", lop_type ):
             select_props = lop_node.props( 'select.*' )
 
@@ -1116,6 +1118,11 @@ class LopperSDT:
             # update the tree selection with our results
             tree.__selected__ = selected_nodes
 
+            if tree.__selected__:
+                return True
+
+            return False
+
         if re.search( ".*,meta.*$", lop_type ):
             if re.search( "phandle-desc", lop_args ):
                 if self.verbose > 1:
@@ -1149,6 +1156,8 @@ class LopperSDT:
                                 pass
                         else:
                             Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
+
+            return True
 
         if re.search( ".*,output$", lop_type ):
             try:
@@ -1283,6 +1292,7 @@ class LopperSDT:
             else:
                 print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
 
+            return True
         if re.search( ".*,tree$", lop_type ):
             # TODO: consolidate this with the output lop
             try:
@@ -1388,6 +1398,7 @@ class LopperSDT:
                 print( "[ERROR]: no tree created, exiting" )
                 sys.exit(1)
 
+            return True
 
         if re.search( ".*,assist-v1$", lop_type ):
             # also note: this assist may change from being called as
@@ -1428,7 +1439,7 @@ class LopperSDT:
                     print( "[ERROR]: cannot find assist target node in tree" )
                     sys.exit(1)
                 else:
-                    return
+                    return False
 
             if self.verbose:
                 print( "[INFO]: assist lop detected" )
@@ -1450,9 +1461,14 @@ class LopperSDT:
                         # exit if warnings are treated as errors
                         if self.werror:
                             sys.exit(1)
+
+                        return False
             else:
                 if self.verbose:
                     print( "[INFO]: no compatible assist found, skipping: %s %s" % (cb_tgt_node_name,cb))
+                return False
+
+            return True
 
         if re.search( ".*,lop,load$", lop_type ):
             prop_id = ""
@@ -1541,6 +1557,8 @@ class LopperSDT:
 
                     self.assists.append( LopperAssist( mod_file.name, imported_module, assist_properties ) )
 
+            return True
+
         if re.search( ".*,lop,add$", lop_type ):
             if self.verbose:
                 print( "[INFO]: node add lop" )
@@ -1587,6 +1605,8 @@ class LopperSDT:
             else:
                 print( "[ERROR]: unable to copy node: %s" % src_node_name )
                 sys.exit(1)
+
+            return True
 
         if re.search( ".*,lop,conditional.*$", lop_type ):
             if self.verbose:
@@ -1747,6 +1767,8 @@ class LopperSDT:
                                 break
                 except Exception as e:
                     print( "[WARNING]: conditional false block had exception: %s" % e )
+
+            return ret
 
         if re.search( ".*,lop,code.*$", lop_type ) or re.search( ".*,lop,xlate.*$", lop_type ):
             # execute a block of python code against a specified start_node
@@ -2031,7 +2053,6 @@ class LopperSDT:
                                     # no node at the dest
                                     pass
 
-
                                 # change the name of the node
                                 node.name = modify_val
                                 tree.sync()
@@ -2053,6 +2074,8 @@ class LopperSDT:
                                 tree.sync()
                             except:
                                 print( "[WARNING]: could not remove node number: %s" % node_to_remove.abs_path )
+
+            return True
 
         # if the lop didn't return, we return false by default
         return False
@@ -2151,6 +2174,7 @@ class LopperSDT:
         if self.verbose > 2:
             print( "[DBG+]: lops runqueue: %s" % lops_runqueue )
 
+        lop_results = {}
         # iterate over the lops (by lop-file priority)
         for pri in range(1,10):
             for x in lops_runqueue[pri]:
@@ -2176,6 +2200,19 @@ class LopperSDT:
                     except:
                         noexec = False
 
+                    try:
+                        cond_exec = f['cond'].value[0]
+                        tgt_lop = fdt_tree.pnode(cond_exec)
+                        cond_exec_value = lop_results[tgt_lop.name]
+                        if self.verbose > 1:
+                            print( "[INFO]: conditional %s has result %s" % (tgt_lop.name,cond_exec_value))
+                        if cond_exec_value:
+                            noexec = False
+                        else:
+                            noexec = True
+                    except Exception as e:
+                        pass
+
                     if noexec or f in skip_list:
                         if self.verbose > 1:
                             print( "[DBG+]: noexec or skip set for: %s" % f.abs_path )
@@ -2184,7 +2221,10 @@ class LopperSDT:
                     if self.verbose:
                         print( "[INFO]: ------> processing lop: %s" % f.abs_path )
 
-                    self.exec_lop( f, fdt_tree )
+                    result = self.exec_lop( f, fdt_tree )
+                    lop_results[f.name] = result
+                    if self.verbose:
+                        print( "[INFO]: ------> logged result %s for lop %s" % (result,f.name))
 
 
 class LopperFile:
