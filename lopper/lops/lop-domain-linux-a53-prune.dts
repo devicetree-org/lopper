@@ -55,6 +55,7 @@
                       compatible = "system-device-tree-v1,lop,code-v1";
                       code = "
                           # Check for domain node
+                          from domain_access import update_mem_node
                           domain_node = []
                           for n in __selected__:
                               if re.search('domains', n.name):
@@ -152,6 +153,32 @@
 
                           for node1 in invalid_nodes:
                               tree.delete(node1)
+
+                          # Update memory nodes as per address-map cluster mapping
+                          memnode_list = tree.nodes('/memory@.*')
+                          for node1 in memnode_list:
+                              # Check whether the memory node is mapped to cpu cluster or not
+                              mem_phandles = [handle for handle in phandles if handle == node1.phandle]
+                              prop_val = []
+                              if mem_phandles:
+                                  mem_phandles = list(dict.fromkeys(mem_phandles))
+                                  indx_list = [index for index,handle in enumerate(address_map) for val in mem_phandles if handle == val]
+                                  for inx in indx_list:
+                                      start = [address_map[inx+i+1] for i in range(na)]
+                                      # start addresss is non zero means 40-bit address update it accordingly
+                                      if na == 2 and start[0] != 0:
+                                          val = str(start[1])
+                                          pad = 8 - len(val)
+                                          val = val.ljust(pad + len(val), '0')
+                                          reg = int((str(hex(start[0])) + val), base=16)
+                                          prop_val.append(reg)
+                                      elif na == 2:
+                                          prop_val.append(start[1])
+                                      else:
+                                          prop_val.append(start[0])
+                                      prop_val.append(address_map[inx+2*na])
+                              modify_val = update_mem_node(node1, prop_val)
+                              node1['reg'].value = modify_val
                       ";
                 };
         };
