@@ -2594,12 +2594,18 @@ class LopperNode(object):
     def address(self, child_addr=None, nest_count=1):
         """Get the translated Address of the node.
 
-        Returns the unit address of the node as trranslated by the ranges
-        of the devie tree.
+        Returns the unit address of the node as translated by the ranges
+        of the device tree.
 
+        Args:
+           child_addr (int): current translated address
+           nest_count (int,optional): recursion count
+
+        Returns:
+            translated node address (int): translated address, or None
+            if no translation is possible
         """
 
-        self.__dbg__ = 2
         if self.__dbg__ > 1:
             print( f"[INFO]:{chr(0x20)*nest_count}address translation for: {self.abs_path} ({self.name})" )
 
@@ -2611,7 +2617,7 @@ class LopperNode(object):
                     print( f"[INFO]:{chr(0x20)*nest_count}unit address: {hex(unit_address)}" )
             except Exception as e:
                 if self.__dbg__ > 1:
-                    print( "[ERROR]: node %s has no unit address: %s" % self.name )
+                    print( "[WARNING]: node %s has no unit address: %s" % (self.name,unit_address) )
                 # No @ or it isn't a hex, so we have nothing to translate
                 return None
 
@@ -3761,6 +3767,82 @@ class LopperTree:
             return nodes
 
         return nodes
+
+    def cnodes( self, compatible_string ):
+        """Returns the nodes in a tree that are compatible with the passed type
+
+        Utility function to search a tree for nodes of a given "type"
+
+        Args:
+           compatible_string (string): compatibility string to match
+
+        Returns:
+           list (LopperNode): the matching nodes if found, [] otherwise
+
+        """
+        matching_nodes = []
+        for n in self:
+            try:
+                compat_prop = n["compatible"]
+                if compat_prop and compatible_string in compat_prop.value:
+                    matching_nodes.append( n )
+            except:
+                pass
+
+        return matching_nodes
+
+    def addr_node(self, address):
+        """Find a node in the tree based on an address
+
+        This routine searches the tree for a node (device) that is
+        at a given address. Only nodes with @ in their name are
+        considered, since by the device tree spec, these are the
+        required unit address.
+
+        Note: the unit adress is only the starting point. Each
+        identified node has its device translation performed (using
+        the address() function). It is those translated addresses
+        which are used to locate a target node (if one exists).
+
+        Args:
+          address (int): target translated address to match
+
+        Returns:
+          target node (LopperNode): the matching node, None otherwise
+        """
+
+        if self.__dbg__ > 2:
+            print( f"[DBG]: addr_node {address}" )
+
+        target_node = None
+
+        # TODO: this may be better to calculate once, and then cache
+        #       in a dictionary indexed by address, or add an
+        #       "address" field to each node and consult it. But we
+        #       would have to recalculate it on tree operations that
+        #       modify properties that impact memory mapping.
+
+        # gather the nodes with @ in their name
+        address_nodes = []
+        for n in self.__nodes__.values():
+            if "@"  in n.name:
+                address_nodes.append( n )
+
+        # calculate all the addresses
+        address_dict = {}
+        for n in address_nodes:
+            node_address = n.address()
+            if node_address:
+                if self.__dbg__ > 2:
+                    print( "[DEBUG]: node %s has address: %s" % (n.abs_path,hex(node_address)) )
+                address_dict[hex(node_address)] = n
+
+        try:
+            target_node = address_dict[address]
+        except:
+            target_node = None
+
+        return target_node
 
     def exec_cmd( self, node, cmd, env = None, module_list=[], module_load_paths=[] ):
         """Execute a (limited) code block against a node
