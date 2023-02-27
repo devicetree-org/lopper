@@ -157,8 +157,43 @@ class LopperDictExporter(DictExporter):
         attriter = self.attriter or (lambda attr_values: attr_values)
         return self.__export(node, self.dictcls, attriter, self.childiter)
 
+    def _lopper_iter_attr_values(self, node):
+        """ Copy of Anytree default iterator generator. Used if the
+            default behaviour is required (tuples), but we need to
+            debug or instrument.
+        """
+        # print( "lopoper itert. dict type %s" % type(node.__dict__))
+        for k, v in node.__dict__.items():
+            if k in ('_NodeMixin__children', '_NodeMixin__parent'):
+                continue
+            # print( "    yeilding: %s %s" % (k,v))
+            yield k, v
+
+    # this is an override of the default anytree iterator (see above
+    # for an exact copy. The issue with the iterator generator used by
+    # anytree is that the resulting tuple gets sorted alphabetically
+    # (even when yielded in the order of properties). This means that
+    # our resulting dictionary has a different order then the nodes
+    # and properties, and hence the yaml.
+    #
+    # To preserve the order, we use more memory (TBD if this is an
+    # issue with a really large tree) and generate a list of all the
+    # elements in the loop, and return the list. The maintains the
+    # order and we don't get unwanted alphabetic sorting.
+    def _lopper_attr_values_list(self, node):
+        ret = []
+        for k, v in node.__dict__.items():
+            if k in ('_NodeMixin__children', '_NodeMixin__parent'):
+                continue
+            ret.append( (k, v) )
+
+        return ret
+
     def __export(self, node, dictcls, attriter, childiter, level=1, verbose = 0):
-        attr_values = attriter(self._iter_attr_values(node))
+        # attr_values = attriter(self._iter_attr_values(node))
+        # attr_values = attriter(self._lopper_iter_attr_values(node))
+        # data = dictcls(attr_values)
+        attr_values = self._lopper_attr_values_list(node)
         data = dictcls(attr_values)
         maxlevel = self.maxlevel
 
@@ -182,7 +217,8 @@ class LopperDictExporter(DictExporter):
                     print( "[DBG+++]: node: %s has children: %s" % (name,children) )
 
                 new_dict = {}
-                for c in reversed(children):
+                #for c in reversed(children):
+                for c in children:
                     if verbose > 2:
                         print( "[DBG+++]:        merging dict: %s" % c )
                     new_dict.update( c )
@@ -1062,7 +1098,8 @@ class LopperYAML(LopperJSON):
             if verbose > 2:
                 dcttype=OrderedDict
             else:
-                dcttype=dict
+                #dcttype=dict
+                dcttype=OrderedDict
 
             dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
 
@@ -1070,6 +1107,9 @@ class LopperYAML(LopperJSON):
                 print( "[DBG++]: to_yaml: dumping export dictionary" )
                 pprint( dct )
 
+            # This stops tags from being output.
+            # We could make this a configuration option in the future
+            yaml.emitter.Emitter.process_tag = lambda self, *args, **kw: None
             if not outfile:
                 print(yaml.dump(dct))
             else:
