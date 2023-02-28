@@ -162,8 +162,9 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
 
     schema = utils.load_yaml(yaml_file)
     meta_dict = schema.get('depends',{})
+    comp_type = schema.get('type',{})
 
-    lwip = re.search("lwip211", name)
+    lwip = re.search("lwip", name)
     standalone = re.search("standalone", name)
     cmake_file = os.path.join(sdt.outdir, f"{name.capitalize()}Example.cmake")
     topology_data = {}
@@ -198,7 +199,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                     if prop == "reg":
                        reg,size = bm_config.scan_reg_size(node, node[prop].value, 0)
                        val = hex(reg)
-                       if lwip:
+                       if lwip and comp_type == "library":
                            topology_data[val] = lwiptype_index
                     elif prop == "interrupts":
                        val = bm_config.get_interrupt_prop(sdt, node, node[prop].value)
