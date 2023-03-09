@@ -148,7 +148,7 @@ def get_memranges(tgt_node, sdt, options):
                     is_valid_noc_ch = 0
                     if "axi_noc" in key:
                         for ch_name, ran in sorted(versal_noc_ch_ranges.items(), reverse=True):
-                            if ran <= hex(valid_range[0]):
+                            if int(ran, base=16) <= int(hex(valid_range[0]), base=16):
                                 is_valid_noc_ch = ch_name
                                 break
 
