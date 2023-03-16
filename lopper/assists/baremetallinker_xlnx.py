@@ -222,12 +222,18 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     has_ddr = [x for x in mem_ranges.keys() for ddr in lower_ddrs if re.search(ddr, x)]
     if has_ddr and not memtest_config:
         default_ddr = has_ddr[0]
+    ## For memory tests configuration default memory should be ocm if available
+    has_ocm = [x for x in mem_ranges.keys() if "ocm" in x]
+    if has_ocm and memtest_config:
+        default_ddr = has_ocm[0]
 
     cfd.write("set(DDR %s)\n" % default_ddr)
     memip_list = []
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
         memip_list.append(key)
         cfd.write("set(%s %s)\n" % (key, to_cmakelist([hex(value[0]), hex(value[1])])))
+    if has_ocm and memtest_config:
+        memip_list.insert(0, memip_list.pop(memip_list.index(has_ocm[0])))
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
     cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
     return True
