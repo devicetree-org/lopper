@@ -104,8 +104,8 @@ Execution Domain Binding, v1
                                                                    the default value is zero.
    ``sram``                            SD    ``<prop encoded       See :numref:`domains-sram`. Specifies
                                              array>``              the MMIO SRAM assigned to the domain.
-   ``id``                              R     ``<u32>``             A 32-bit integer that uniquely
-                                                                   identifies the domain
+   ``id``                              SD    ``<u32>``             See :numref:`domains-id`. A 32-bit integer
+                                                                   that uniquely identifies the domain.
    ``os,type``                         SD    ``<string>``          See :numref:`domains-os-type`
    ``#access-implicit-default-cells``  SD    ``<u32>``             See :numref:`domains-implicit-flags`
    ``access-implicit-default``         SD    array                 See :numref:`domains-implicit-flags`
@@ -297,6 +297,24 @@ Within each triplet:
   property.
 - *flags* contains domain-specific flags. The number of cells in each flag is
   defined by the *#sram-flags-cells* property of the execution domain.
+
+.. _domains-id:
+
+id Property
+~~~~~~~~~~~
+
+This property may be used to provide a unique numeric identifier for the
+domain.
+
+Although it is optional in general, the *id* property is required if the
+*compatible* property of the domain node contains any string which matches one
+of the following patterns:
+
+- "xilinx,subsystem*"
+- "xen,domain*"
+
+For example, a domain whose *compatible* property includes
+"xilinx,subsystem-v1" must have an *id* property.
 
 .. _domains-os-type:
 
