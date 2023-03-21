@@ -89,7 +89,7 @@ Execution Domain Binding, v1
                                                                    device in the *access* property. If absent,
                                                                    the default value is zero.
    ``access``                          SD    ``<prop encoded       See :numref:`domains-access`. Specifies
-                                             array>``              devices configured to only be accessible
+                                             array>``              devices configured to be accessible
                                                                    by this domain (the node in which the
                                                                    *access* property appears).
    ``#memory-flags-cells``             O     ``<u32>``             Specifies the number of ``<u32>`` cells used
@@ -188,10 +188,29 @@ access Property
    Value type  Optional ``<prop-encoded-array>`` encoded as an arbitrary
                number of (*device*, *flags*) pairs.
 
-   Description A list of devices the domain shall have exclusive access to,
+   Description A list of devices the domain shall have access to,
                using bus firewalls or other similar technologies.
    Example     ``access = <&mmc0>;``
    =========== ==============================================================
+
+The device access configured by this property is not exclusive. For instance,
+domains ``foo`` and ``bar`` both have access to the device node with phandle
+``&mmc0`` in this example:
+
+.. code-block:: DTS
+
+   foo {
+           /* ... */
+           access = <&mmc0>;
+   };
+   bar {
+           /* ... */
+           access = <&mmc0>;
+   };
+
+Note that most devices don't support concurrent accesses by multiple
+independent parties. It is responsibility of the two domains to
+arbitrate access to the device appropriately.
 
 Within each pair:
 
