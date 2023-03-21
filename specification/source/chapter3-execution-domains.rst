@@ -224,9 +224,6 @@ Within each pair:
 memory Property
 ~~~~~~~~~~~~~~~
 
-.. FIXME: start and size #cells are unclear:
-   https://github.com/devicetree-org/lopper/issues/138
-
 .. FIXME: specify content of flags:
    https://github.com/devicetree-org/lopper/issues/137
 
@@ -249,10 +246,12 @@ Within each triplet:
 
 - *start* is the physical address of the start of the memory range. The
   number of cells used to represent the start address is determined by
-  the *#address-cells* property.
+  the *#address-cells* property of the parent node of the domain containing
+  the *memory* property.
 - *size* is the size of the memory range, in bytes. The number of cells
   used to represent the size is determined by the *#size-cells*
-  property.
+  property of the parent node of the domain containing
+  the *memory* property.
 - *flags* contains domain-specific flags. The number of cells in each flag is
   defined by the *#memory-flags-cells* property of the execution domain.
 
@@ -284,9 +283,6 @@ between two domains.
 sram Property
 ~~~~~~~~~~~~~
 
-.. FIXME: start and size #cells are unclear:
-   https://github.com/devicetree-org/lopper/issues/138
-
 .. FIXME: specify content of flags:
    https://github.com/devicetree-org/lopper/issues/137
 
@@ -310,10 +306,12 @@ Within each triplet:
 
 - *start* is the physical address of the start of the memory range. The
   number of cells used to represent the start address is determined by
-  the *#address-cells* property.
+  the *#address-cells* property of the parent node of the domain containing
+  the *sram* property.
 - *size* is the size of the memory range, in bytes. The number of cells
   used to represent the size is determined by the *#size-cells*
-  property.
+  property of the parent node of the domain containing
+  the *sram* property.
 - *flags* contains domain-specific flags. The number of cells in each flag is
   defined by the *#sram-flags-cells* property of the execution domain.
 
