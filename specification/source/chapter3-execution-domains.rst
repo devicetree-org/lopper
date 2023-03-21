@@ -151,6 +151,33 @@ Within the triplet:
   the domain runs on
 - *execution-level* is a cluster-specific execution level for the domain
 
+A zero value for the *cpu-mask* cell must be treated as though the bits for all
+CPUs in the node with phandle *cpu-cluster* were set. For example, with the
+following CPU cluster:
+
+.. code-block:: DTS
+
+   cpus_r5: cpus-r5 {
+           compatible = "cpus,cluster";
+
+           /* ... */
+
+           cpu@0 { /* ... */ };
+           cpu@1 { /* ... */ };
+   };
+
+This *cpus* property value:
+
+.. code-block:: none
+
+   cpus = <&cpus_r5 0x0 0x80000001>;
+
+must be treated identically to:
+
+.. code-block:: none
+
+   cpus = <&cpus_r5 0x3 0x80000001>;
+
 The execution level is the most privileged level that the domain can
 make use of. The permissible values for the *execution-level* cell in a
 *cpus* property depend on the CPU cluster hardware. The following
