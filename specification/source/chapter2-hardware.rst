@@ -169,11 +169,12 @@ Within each quartet:
    Property    ``#ranges-address-cells``
    =========== ==============================================================
    Value type  ``<u32>``
-   Description The number of cells used to represent an address within
-               the memory map of a CPU cluster node (the node in which the
-               *#ranges-address-cells* property appears). This should
-               be large enough to represent the maximum size of an address
-               in the data model of the cluster's CPU nodes.
+   Description Required; the number of cells used to represent an address
+               within the memory map of a CPU cluster node (the node in
+               which the *#ranges-address-cells* property appears).
+
+               This should be large enough to represent the maximum size of
+               an address in the data model of the cluster's CPU nodes.
    Example     CPUs have 64-bit addresses: ``#ranges-address-cells = <2>;``
    =========== ==============================================================
 
@@ -189,9 +190,10 @@ Within each quartet:
    Property    ``#ranges-size-cells``
    =========== ==============================================================
    Value type  ``<u32>``
-   Description The number of cells used to represent the size of a range of
-               addresses in the memory map of a CPU cluster node (the node
-               in which the *#ranges-size-cells* property appears), in bytes.
+   Description Required; the number of cells used to represent the size of a
+               range of addresses in the memory map of a CPU cluster node
+               (the node in which the *#ranges-size-cells* property
+               appears), in bytes.
 
                This must be large enough to specify all address ranges
                within the CPU cluster node's *address-map* property.
