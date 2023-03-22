@@ -95,8 +95,14 @@ def destinations( tree ):
 
 
 iso_cpus_to_device_tree_map = {
-                                "APU*": "arm,cortex-a72",
-                                "RPU*": "arm,cortex-r5"
+                                "APU*": {
+                                          "compatible": "arm,cortex-a72",
+                                          "el": 3
+                                        },
+                                "RPU*": {
+                                          "compatible": "arm,cortex-r5",
+                                          "el": None
+                                        }
                               }
 
 def isospec_process_cpus( cpus_info, sdt, json_tree ):
@@ -104,20 +110,23 @@ def isospec_process_cpus( cpus_info, sdt, json_tree ):
         of any found cpus. These can be converted to json for future
         encoding into device tree properties
     """
-    _info( f"isospec_process_cpus: {cpus_info} [{type(cpus_info)}] [{cpus_info.pclass}]" )
+    _info( f"isospec_process_cpus: {cpus_info} [{type(cpus_info)}] [{cpus_info}]" )
 
     cpus_list = []
-    cpus_json_list = []
-    for c in range(len(cpus_info)):
-        # this gets us the json chunked and loaded cpu dict
-        cpu = cpus_info[c]
-        _info( f"    processing cpu: {cpu}" )
-        cpu_name = cpu["name"]
+    cpus = cpus_info["SMIDs"]
+    for cpu_name in cpus:
+        _info( f"    processing cpu: {cpu_name}" )
 
-        device_tree_compat = ""
+        cpu_map = {}
         for n,dn in iso_cpus_to_device_tree_map.items():
             if re.search( n, cpu_name ):
-                device_tree_compat = dn
+                cpu_map = dn
+
+        if cpu_map:
+            compat_string = cpu_map["compatible"]
+            device_tree_compat = compat_string
+        else:
+            _error( f"unrecognized cpu {cpu_name}" )
 
         # did we have a mapped compatible string in the device tree ?
         if device_tree_compat:
@@ -158,44 +167,46 @@ def isospec_process_cpus( cpus_info, sdt, json_tree ):
                 # cpu mode checks.
                 #    secure
                 #    el
+                try:
+                    cpu_flags = cpus_info["flags"]
+                except:
+                    cpu_flags = {}
+
                 secure = False
                 mode_mask = 0
                 try:
-                    secure_val = cpu["secure"]
+                    secure_val = cpu_flags["secure"]
                     secure = secure_val
-                except:
+                except Exception as e:
                     pass
 
                 try:
-                    mode = cpu["mode"]
+                    mode = cpu_flags["mode"]
                     if mode == "el":
                         mode_mask = set_bit( mode_mask, 0 )
                         mode_mask = set_bit( mode_mask, 1 )
                 except:
-                    pass
+                    # no passed mode, use the el level from the cpu_map
+                    if cpu_map:
+                        mode_mask = cpu_map["el"]
 
-                # print( f"secure: {secure} mode: {mode_mask}" )
-                cpus_list.append( { "cluster" : cluster_name,
-                                    "cpumask" : hex(cluster_mask),
-                                    "mode" : { "secure": secure,
-                                               "el": hex(mode_mask)
-                                               }
-                                    }
-                                  )
-                cpus_json_list.append( f"{{\"cluster\": \"{cluster_name}\", \"cpumask\": \"{hex(cluster_mask)}\", \"mode\": {{\"secure\": {secure}, \"el\": \"{hex(mode_mask)}\"}}}}" )
+                if mode_mask:
+                    cpu_entry = { "cluster" : cluster_name,
+                                  "cpumask" : hex(cluster_mask),
+                                  "mode" : { "secure": secure,
+                                             "el": hex(mode_mask)
+                                            }
+                                 }
+                else:
+                    cpu_entry = { "cluster" : cluster_name,
+                                  "cpumask" : hex(cluster_mask),
+                                  "mode" : { "secure": secure }
+                                 }
 
+                cpus_list.append( cpu_entry )
         else:
             _warning( f"cpus entry {cpus_info[c]} has no device tree mapping" )
 
-    cpus_json_string = "["
-    for index,element in enumerate(cpus_json_list):
-        cpus_json_string = cpus_json_string + element
-        if index != len(cpus_json_list) - 1:
-            cpus_json_string = cpus_json_string + ","
-        pass
-    cpus_json_string = cpus_json_string + "]"
-
-    #_info( "cpus_json_string: %s" % cpus_json_string )
     _info( "cpus_list: %s" % cpus_list )
 
     return cpus_list
@@ -204,27 +215,37 @@ def isospec_device_flags( device_name, defs, json_tree ):
 
     domain_flag_dict = {}
 
-    # try 1: is it a property ?
-    flags = defs.propval( "flags" )
-
-    # try 2: is it a subnode ?
-    if not flags[0]:
-        for n in defs.children():
-            if n.name == "flags":
-                for p in n:
-                    flags.append( p )
-
-    # map the flags to something domains.yaml can output
-    # create a flags dictionary, so we can next it into the access
-    # structure below, which will then be transformed into yaml later.
-    for flag in flags:
+    if type(defs) == dict:
+        _info( f"isospec_device_flags: {defs}" )
         try:
-            if flag.value != '':
-                # if a flag is present, it means it was set to "true", it
-                # won't even be here in the false case.
-                domain_flag_dict[flag.name] = True
+            flags = defs["flags"]
+            for flag,value in flags.items():
+                if value:
+                    domain_flag_dict[flag] = True
         except:
-            pass
+            return domain_flag_dict
+    else:
+        # try 1: is it a property ?
+        flags = defs.propval( "flags" )
+
+        # try 2: is it a subnode ?
+        if not flags[0]:
+            for n in defs.children():
+                if n.name == "flags":
+                    for p in n:
+                        flags.append( p )
+
+        # map the flags to something domains.yaml can output
+        # create a flags dictionary, so we can next it into the access
+        # structure below, which will then be transformed into yaml later.
+        for flag in flags:
+            try:
+                if flag.value != '':
+                    # if a flag is present, it means it was set to "true", it
+                    # won't even be here in the false case.
+                    domain_flag_dict[flag.name] = True
+            except:
+                pass
 
     _info( "isospec_device_flags: %s %s" % (device_name,domain_flag_dict) )
 
@@ -335,70 +356,90 @@ def isospec_process_access( access_node, sdt, json_tree ):
     access_list = []
     memory_list = []
     sram_list = []
-    for access in access_node.children():
-        _info( f"process_access: {access.name} [{access.abs_path}]" )
+    cpu_list = []
+
+    # access_node is a chunked json string
+    _info( f"=======> isospec_process_access: {access_node}" )
+
+    for a in range(len(access_node)):
+        access = access_node[a]
+        _info( f"process_access: {access}" )
         try:
-            same_as_default = access["same_as_default"]
-
-            _info( f"{access.abs_path} has default settings, looking up" )
-
-            # same_as_default was set, we need to locate it
-            defs = isospec_device_defaults( access.name, json_tree )
-            if not defs:
-                _error( "cannot find default settings" )
-
-            # defs.print()
+            try:
+                same_as_default = access["same_as_default"]
+                _info( f"{access} has default settings for '{same_as_default}', looking up" )
+                # same_as_default was set, we need to locate it
+                defs = isospec_device_defaults( same_as_default, json_tree )
+                if not defs:
+                    _error( "cannot find default settings" )
+            except:
+                same_as_default = None
+                # inline values
+                defs = access
 
             _info( f"found device defaults: {defs}", defs )
-            _debug( f"default has destinations: {defs.propval( 'destinations' )}" )
 
-            flag_mapping = isospec_device_flags( access.name, defs, json_tree )
+            # look at the type of access. that dictates where we find
+            # the destinations / target.
+            try:
+                access_type = defs["type"]
+            except:
+                access_type = "device"
 
-            # find the destinations in the isospec json tree
-            dests = isospec_device_destination( defs.propval("destinations"), json_tree )
+            if access_type == "cpu_list":
+                iso_cpus = defs["SMIDs"]
+                iso_cpu_list = isospec_process_cpus( defs, sdt, json_tree )
+                cpu_list.extend( iso_cpu_list )
+                _info( f"isospec_process_access: cpus list collected: {cpu_list}")
+            elif access_type == "device":
+                _info( f"ispospec_process_actions: device with destinations: {defs['destinations']}" )
 
-            # we now need to locate the destination device in the device tree, all
-            # we have is the address to use for the lookup
-            for d in dests:
-                try:
-                    address = d['addr']
-                    name = d['name']
-                    tnode = sdt.tree.addr_node( address )
-                    if tnode:
-                        _info( f"    found node at address {address}: {tnode}", tnode )
-                        access_list.append( {
-                                              "dev": tnode.name,
-                                              "flags": flag_mapping
-                                            }
-                                          )
-                    else:
-                        raise Exception( f"no node found for {name} => {d}" )
-                except Exception as e:
-                    mem_found = None
-                    for n,v in iso_memory_device_map.items():
-                        if re.search( n, d['name'] ):
-                            _info( f"    device is memory: {n} matches {d['name']}" )
-                            mem_found = v
+                flag_mapping = isospec_device_flags( defs["name"], defs, json_tree )
 
-                    # no warning if we failed on memory in the try clause
-                    if mem_found:
-                        ml = isospec_process_memory( d['name'], d, sdt, json_tree )
-                        if "memory" == isospec_memory_type(d['name']):
-                            memory_list.extend( ml )
-                        if "sram" == isospec_memory_type(d['name']):
-                            sram_list.extend( ml )
+                # find the destinations in the isospec json tree
+                dests = isospec_device_destination( defs["destinations"], json_tree )
 
-                        # no warning for memory
-                        continue
+                # we now need to locate the destination device in the device tree, all
+                # we have is the address to use for the lookup
+                for d in dests:
+                    try:
+                        address = d['addr']
+                        name = d['name']
+                        tnode = sdt.tree.addr_node( address )
+                        if tnode:
+                            _info( f"    found node at address {address}: {tnode}", tnode )
+                            access_list.append( {
+                                                  "dev": tnode.name,
+                                                  "flags": flag_mapping
+                                                }
+                                              )
+                        else:
+                            raise Exception( f"no node found for {name} => {d}" )
+                    except Exception as e:
+                        mem_found = None
+                        for n,v in iso_memory_device_map.items():
+                            if re.search( n, d['name'] ):
+                                _info( f"    device is memory: {n} matches {d['name']}" )
+                                mem_found = v
 
-                    # it was something other than a dict returned as a dest
-                    _warning( f"isospec: process_access: {e}" )
+                        # no warning if we failed on memory in the try clause
+                        if mem_found:
+                            ml = isospec_process_memory( d['name'], d, sdt, json_tree )
+                            if "memory" == isospec_memory_type(d['name']):
+                                memory_list.extend( ml )
+                            if "sram" == isospec_memory_type(d['name']):
+                                sram_list.extend( ml )
+
+                            # no warning for memory
+                            continue
+
+                        # it was something other than a dict returned as a dest
+                        _warning( f"isospec: process_access: {e}" )
 
         except Exception as e:
             pass
-            # print( "Exception %s" % e )
 
-    return access_list, memory_list, sram_list
+    return access_list, cpu_list, memory_list, sram_list
 
 def isospec_device_defaults( device_name, isospec_json_tree ):
     """
@@ -418,8 +459,14 @@ def isospec_device_defaults( device_name, isospec_json_tree ):
         if s.name == "default":
             default_subsystem = s
 
+    # _info( " default settings, default subsystem found!" )
     if not default_subsystem:
         return None
+
+    ### Note: we should probably be matching up the "id" that is part
+    ### of this subsystem the requestor, since not all
+    ### "same_as_default" values must be in the subsysystem named
+    ### "default"
 
     # we now (finally) have the default subsystem. The subnodes and
     # properties of this node contain our destinations with default
@@ -429,10 +476,15 @@ def isospec_device_defaults( device_name, isospec_json_tree ):
     # and construct a dictionary to consult later.
 
     try:
-        default_access = [child for child in default_subsystem.children() if child.name == "access"][0]
-        device_default = [child for child in default_access.children() if child.name == device_name][0]
+        default_access = default_subsystem["access"]
+        access_list = []
+        for d in range(len(default_access)):
+            access_list.append( default_access[d] )
+
+        device_default = [d for d in access_list if d["name"] == device_name][0]
     except Exception as e:
         # no settings, return none
+        _info( f"exception while doing default settings {e}" )
         return None
 
     return device_default
@@ -545,6 +597,7 @@ def isospec_domain( tgt_node, sdt, options ):
 
     for n in iso_subsystems.children():
         _info( f"infospec_domain: processing subsystem: {n}" )
+        # n.print()
 
         isospec_domain_node = json_tree[f"/design/subsystems/{n.name}"]
         domain_id = isospec_domain_node["id"]
@@ -552,26 +605,20 @@ def isospec_domain( tgt_node, sdt, options ):
         domains_tree = domains_tree_add_subsystem( domains_tree, n.name, domain_id )
         subsystem_node = domains_tree[f"/domains/{n.name}"]
 
-        # cpus
+        # access and memory AND now cpus
         try:
-            iso_cpus = isospec_domain_node["cpus"]
-            cpus_list = isospec_process_cpus( iso_cpus, sdt, json_tree )
-            subsystem_node["cpus"] = json.dumps(cpus_list)
-            subsystem_node.pclass = "json"
-        except KeyError as e:
-            _info( f"no cpus in /design/subsystems/{n.name}" )
-        except Exception as e:
-            _error( f"problem during subsystem processing: {e}" )
+            iso_access = json_tree[f"/design/subsystems/{n.name}"]["access"]
+            _info( f"access: {iso_access}" )
 
-        # access and memory
-        try:
-            iso_access = json_tree[f"/design/subsystems/{n.name}/access"]
-            access_list,memory_list,sram_list = isospec_process_access( iso_access, sdt, json_tree )
+            access_list,cpus_list,memory_list,sram_list = isospec_process_access( iso_access, sdt, json_tree )
+            if cpus_list:
+                subsystem_node["cpus"] = json.dumps(cpus_list)
+                subsystem_node.pclass = "json"
             if memory_list:
                 _info( f"memory: {memory_list}" )
                 subsystem_node["memory"] = json.dumps(memory_list)
             if sram_list:
-                _info( "sram: {memory_list}" )
+                _info( f"sram: {memory_list}" )
                 subsystem_node["sram"] = json.dumps(sram_list)
             subsystem_node["access"] = json.dumps(access_list)
         except KeyError as e:
