@@ -289,6 +289,12 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         plat.buf(f"\n#define STDOUT_BASEADDRESS {hex(val)}")
         plat.buf(f"\n#define STDIN_BASEADDRESS {hex(val)}\n")
 
+    #Define for NUMBER_OF_SLRS
+    if sdt.tree[tgt_node].propval('slrcount') != ['']:
+        val = sdt.tree[tgt_node].propval('slrcount', list)[0]
+        plat.buf(f"\n/* Number of SLRs */")
+        plat.buf(f"\n#define NUMBER_OF_SLRS {hex(val)}\n")
+
     plat.buf('\n#endif  /* end of protection macro */')
     plat.out(''.join(plat.get_buf()))
 
