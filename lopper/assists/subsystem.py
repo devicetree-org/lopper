@@ -239,7 +239,15 @@ def access_expand( tree, subnode, verbose = 0 ):
     if not access_props:
         return
 
-    access_chunks = json.loads(access_props[0].value)
+    if not access_props[0]:
+        return
+
+    if type(access_props[0].value) == list:
+        access_prop_string = access_props[0].value.join()
+    else:
+        access_prop_string = access_props[0].value
+
+    access_chunks = json.loads(access_prop_string)
     access_list = []
 
     ap = access_props[0]
@@ -479,6 +487,10 @@ def cpu_expand( tree, subnode, verbose = 0):
                     pass
 
             mask = c['cpumask']
+            try:
+                mask = int(mask,16)
+            except:
+                pass
         else:
             mode_mask = 0x0
             mask = 0x0
