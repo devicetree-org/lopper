@@ -142,6 +142,9 @@ class LopperTreeImporter(object):
 
             attrs[p] = val
 
+        if type(attrs) == list and len(attrs) == 1:
+            attrs = attrs[0]
+
         nnode = self.nodecls(parent=parent, **attrs)
 
         for child in node.child_nodes:
@@ -1102,6 +1105,11 @@ class LopperYAML(LopperJSON):
                 dcttype=OrderedDict
 
             dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
+            # This converts the ordered dicts to regular dicts at the last moment
+            # As a result, the order is preserved AND we don't get YAML that is all
+            # list based, which is what you get from OrderedDicts when they are dumped
+            # to yaml.
+            dct = json.loads(json.dumps(dct))
 
             if verbose > 1:
                 print( "[DBG++]: to_yaml: dumping export dictionary" )
@@ -1114,17 +1122,22 @@ class LopperYAML(LopperJSON):
                 print(yaml.dump(dct))
             else:
                 if verbose > 1:
+                    print(RenderTree(self.anytree.root))
                     print( "[DBG++]: dumping generated yaml to stdout:" )
-                    print(yaml.dump(dct,
-                                    default_flow_style=False,
-                                    canonical=False,
-                                    default_style=None))
+                    # print(yaml.dump(dct,
+                    #                 default_flow_style=False,
+                    #                 canonical=False,
+                    #                 default_style=None))
+                    print( yaml.round_trip_dump(dct,
+                                                default_flow_style=False,
+                                                canonical=False,
+                                                default_style=None) )
 
                 with open( outfile, "w") as file:
-                    yaml.dump(dct, file,
-                              default_flow_style=False,
-                              canonical=False,
-                              default_style=None)
+                    yaml.round_trip_dump(dct, file,
+                                         default_flow_style=False,
+                                         canonical=False,
+                                         default_style=None)
 
 
     def load_yaml( self, filename = None ):
@@ -1161,3 +1174,4 @@ class LopperYAML(LopperJSON):
         importer.lists_as_nodes = self.lists_as_nodes
         self.anytree = importer.import_(self.dct)
 
+        #print(RenderTree(self.anytree.root))
