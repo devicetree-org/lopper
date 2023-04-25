@@ -356,6 +356,183 @@ def get_mapped_nodes(sdt, node_list, options):
     valid_nodes = [node for node in node_list for handle in valid_phandles if handle == node.phandle]
     return valid_nodes
 
+def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, is_subnode):
+    for i, prop in enumerate(driver_proplist):
+        pad = 0
+        phandle_prop = 0
+        subnode_gen = 0
+        # Few drivers has multiple data interface type (AXI4 or AXI4-lite),
+        # Driver config structures of these SoftIP's contains baseaddress entry for each possible data interface type.
+        # Device-tree node reg property may or may not contain all the possible entries that driver config structure
+        # is expecting, In that case we need to add dummy entries(0xFF) in the config structure in order to avoid
+        # compilation errors.
+        #
+        # Yaml meta-data representation/syntax will be like below
+        # reg: <range of baseaddress>
+        # interrupts: <supported range of interrupts>
+        if isinstance(prop, dict):
+            pad = list(prop.values())[0]
+            prop = list(prop.keys())[0]
+            if isinstance(pad, dict):
+                subnode_prop = prop
+                prop = list(pad.keys())[0]
+                subnode_prop_list = list(pad.values())[0]
+                if prop == "subnode_phandle":
+                    subnode_gen = 1
+                    pad = 0
+                    phandle_prop = 0
+            if pad == "phandle":
+                phandle_prop = 1
+    
+        if i == 0 and is_subnode:
+            plat.buf('\n\t\t{')
+        elif i == 0:
+            plat.buf('\n\t{')
+
+        if not subnode_gen:
+            xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop)
+        else:
+            # Get the sub node
+            try:
+                phandle_value = node[subnode_prop].value[0]
+            except KeyError:
+                print(f"ERROR: In valid property name {subnode_prop}\n")
+                sys.exit(1)
+                
+            sub_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == phandle_value]
+            xlnx_generate_config_struct(sdt, sub_node[0], drvprop_list, plat, subnode_prop_list, 1)
+    
+        if i == len(driver_proplist)-1:
+            if "subnode_phandle" not in prop:
+                plat.buf(' /* %s */' % prop)
+            if is_subnode:
+                plat.buf('\n\t\t}')
+            else:
+                plat.buf('\n\t},')
+        else:
+            plat.buf(',')
+            if "subnode_phandle" not in prop:
+                plat.buf(' /* %s */' % prop)
+
+def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
+    if prop == "reg":
+        val, size = scan_reg_size(node, node[prop].value, 0)
+        drvprop_list.append(hex(val))
+        plat.buf('\n\t\t%s' % hex(val))
+        if pad:
+            for j in range(1, pad):
+                try:
+                    val, size = scan_reg_size(node, node[prop].value, j)
+                    drvprop_list.append(hex(val))
+                    plat.buf(',\n\t\t%s' % hex(val))
+                except IndexError:
+                    plat.buf(',\n\t\t%s' % hex(0xFFFF))
+    elif prop == "compatible":
+        plat.buf('\n\t\t%s' % '"{}"'.format(node[prop].value[0]))
+        drvprop_list.append(node[prop].value[0])
+    elif prop == "interrupts":
+        try:
+            intr = get_interrupt_prop(sdt, node, node[prop].value)
+        except KeyError:
+            intr = [hex(0xFFFF)]
+
+        if pad:
+            plat.buf('\n\t\t{')
+            for j in range(0, pad):
+                try:
+                    plat.buf('%s' % intr[j])
+                    drvprop_list.append(intr[j])
+                except IndexError:
+                    plat.buf('%s' % hex(0xFFFF))
+                    drvprop_list.append(hex(0xFFFF))
+                if j != pad-1:
+                    plat.buf(',  ')
+            plat.buf('}')
+        else:
+            plat.buf('\n\t\t%s' % intr[0])
+            drvprop_list.append(intr[0])
+    elif prop == "interrupt-parent":
+        try:
+            intr_parent = get_intrerrupt_parent(sdt, node[prop].value)
+        except KeyError:
+            intr_parent = 0xFFFF
+        plat.buf('\n\t\t%s' % hex(intr_parent))
+        drvprop_list.append(hex(intr_parent))
+    elif prop == "clocks":
+        clkprop_val = get_clock_prop(sdt, node[prop].value)
+        plat.buf('\n\t\t%s' % hex(clkprop_val))
+        drvprop_list.append(hex(clkprop_val))
+    elif prop == "child,required":
+        plat.buf('\n\t\t{')
+        for j,child in enumerate(list(node.child_nodes.items())):
+            if len(pad) != 1:
+                plat.buf('\n\t\t\t{')
+            for k,p in enumerate(pad):
+                try:
+                    plat.buf('\n\t\t\t\t%s' % hex(child[1][p].value[0]))
+                    drvprop_list.append(hex(child[1][p].value[0]))
+                except KeyError:
+                    plat.buf('\n\t\t\t\t%s' % hex(0xFFFF))
+                    drvprop_list.append(hex(0xFFFF))
+                if k != (len(pad) - 1) or len(pad) == 1:
+                    plat.buf(',')
+                plat.buf(' /* %s */' % p)
+            if len(pad) != 1:
+                if j != (len(list(node.child_nodes.items())) - 1):
+                    plat.buf('\n\t\t\t},')
+                else:
+                    plat.buf('\n\t\t\t}')
+        plat.buf('\n\t\t}')
+    elif phandle_prop:
+        try:
+            prop_val = get_phandle_regprop(sdt, prop, node[prop].value)
+        except KeyError:
+            prop_val = 0
+        plat.buf('\n\t\t%s' % hex(prop_val))
+        drvprop_list.append(hex(prop_val))
+    elif prop == "ranges":
+        try:
+            device_type = node['device_type'].value[0]
+            if device_type == "pci":
+                device_ispci = 1
+        except KeyError:
+            device_ispci = 0
+        if device_ispci:
+            prop_vallist = get_pci_ranges(node, node[prop].value, pad)
+            for j, prop_val in enumerate(prop_vallist):
+                plat.buf('\n\t\t%s' % prop_val)
+                if j != (len(prop_vallist) - 1):
+                    plat.buf(',')
+                drvprop_list.append(prop_val)
+    else:
+        try:
+            prop_val = node[prop].value
+            # For boolean property if present LopperProp will return
+            # empty string convert it to baremetal config struct expected value
+            if '' in prop_val:
+                prop_val = [1]
+        except KeyError:
+            prop_val = [0]
+
+        if ('/bits/' in prop_val):
+            prop_val = [int(prop_val[-1][3:-1], base=16)]
+
+        if len(prop_val) > 1:
+            plat.buf('\n\t\t{')
+            for k,item in enumerate(prop_val):
+                if isinstance(item, int):
+                    drvprop_list.append(hex(item))
+                else:
+                    drvprop_list.append(item)
+                plat.buf('%s' % item)
+                if k != len(prop_val)-1:
+                    plat.buf(',  ')
+            plat.buf('}')
+        else:
+            drvprop_list.append(hex(prop_val[0]))
+            plat.buf('\n\t\t%s' % hex(prop_val[0]))
+
+
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 # options: baremetal driver meta-data file path
@@ -438,149 +615,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         if index == 0:
             plat.buf('#include "x%s.h"\n' % drvname)
             plat.buf('\n%s %s __attribute__ ((section (".drvcfg_sec"))) = {\n' % (config_struct, config_struct + str("Table[]")))
-        for i, prop in enumerate(driver_proplist):
-            pad = 0
-            phandle_prop = 0
-            # Few drivers has multiple data interface type (AXI4 or AXI4-lite),
-            # Driver config structures of these SoftIP's contains baseaddress entry for each possible data interface type.
-            # Device-tree node reg property may or may not contain all the possible entries that driver config structure
-            # is expecting, In that case we need to add dummy entries(0xFF) in the config structure in order to avoid
-            # compilation errors.
-            #
-            # Yaml meta-data representation/syntax will be like below
-            # reg: <range of baseaddress>
-            # interrupts: <supported range of interrupts>
-            if isinstance(prop, dict):
-               pad = list(prop.values())[0]
-               prop = list(prop.keys())[0]
-               if pad == "phandle":
-                   phandle_prop = 1
-            if i == 0:
-                 plat.buf('\n\t{')
-
-            if prop == "reg":
-                val, size = scan_reg_size(node, node[prop].value, 0)
-                drvprop_list.append(hex(val))
-                plat.buf('\n\t\t%s' % hex(val))
-                if pad:
-                    for j in range(1, pad):
-                        try:
-                            val, size = scan_reg_size(node, node[prop].value, j)
-                            drvprop_list.append(hex(val))
-                            plat.buf(',\n\t\t%s' % hex(val))
-                        except IndexError:
-                            plat.buf(',\n\t\t%s' % hex(0xFFFF))
-            elif prop == "compatible":
-                plat.buf('\n\t\t%s' % '"{}"'.format(node[prop].value[0]))
-                drvprop_list.append(node[prop].value[0])
-            elif prop == "interrupts":
-                try:
-                    intr = get_interrupt_prop(sdt, node, node[prop].value)
-                except KeyError:
-                    intr = [hex(0xFFFF)]
-
-                if pad:
-                    plat.buf('\n\t\t{')
-                    for j in range(0, pad):
-                        try:
-                            plat.buf('%s' % intr[j])
-                            drvprop_list.append(intr[j])
-                        except IndexError:
-                            plat.buf('%s' % hex(0xFFFF))
-                            drvprop_list.append(hex(0xFFFF))
-                        if j != pad-1:
-                            plat.buf(',  ')
-                    plat.buf('}')
-                else:
-                    plat.buf('\n\t\t%s' % intr[0])
-                    drvprop_list.append(intr[0])
-            elif prop == "interrupt-parent":
-                try:
-                    intr_parent = get_intrerrupt_parent(sdt, node[prop].value)
-                except KeyError:
-                    intr_parent = 0xFFFF
-                plat.buf('\n\t\t%s' % hex(intr_parent))
-                drvprop_list.append(hex(intr_parent))
-            elif prop == "clocks":
-                clkprop_val = get_clock_prop(sdt, node[prop].value)
-                plat.buf('\n\t\t%s' % hex(clkprop_val))
-                drvprop_list.append(hex(clkprop_val))
-            elif prop == "child,required":
-                plat.buf('\n\t\t{')
-                for j,child in enumerate(list(node.child_nodes.items())):
-                    if len(pad) != 1:
-                        plat.buf('\n\t\t\t{')
-                    for k,p in enumerate(pad):
-                        try:
-                            plat.buf('\n\t\t\t\t%s' % hex(child[1][p].value[0]))
-                            drvprop_list.append(hex(child[1][p].value[0]))
-                        except KeyError:
-                            plat.buf('\n\t\t\t\t%s' % hex(0xFFFF))
-                            drvprop_list.append(hex(0xFFFF))
-                        if k != (len(pad) - 1) or len(pad) == 1:
-                            plat.buf(',')
-                        plat.buf(' /* %s */' % p)
-                    if len(pad) != 1:
-                        if j != (len(list(node.child_nodes.items())) - 1):
-                            plat.buf('\n\t\t\t},')
-                        else:
-                            plat.buf('\n\t\t\t}')
-                plat.buf('\n\t\t}')
-            elif phandle_prop:
-                try:
-                    prop_val = get_phandle_regprop(sdt, prop, node[prop].value)
-                except KeyError:
-                    prop_val = 0
-                plat.buf('\n\t\t%s' % hex(prop_val))
-                drvprop_list.append(hex(prop_val))
-            elif prop == "ranges":
-                try:
-                    device_type = node['device_type'].value[0]
-                    if device_type == "pci":
-                        device_ispci = 1
-                except KeyError:
-                    device_ispci = 0
-                if device_ispci:
-                    prop_vallist = get_pci_ranges(node, node[prop].value, pad)
-                    for j, prop_val in enumerate(prop_vallist):
-                        plat.buf('\n\t\t%s' % prop_val)
-                        if j != (len(prop_vallist) - 1):
-                            plat.buf(',')
-                        drvprop_list.append(prop_val)
-            else:
-                try:
-                    prop_val = node[prop].value
-                    # For boolean property if present LopperProp will return
-                    # empty string convert it to baremetal config struct expected value
-                    if '' in prop_val:
-                        prop_val = [1]
-                except KeyError:
-                    prop_val = [0]
-
-                if ('/bits/' in prop_val):
-                    prop_val = [int(prop_val[-1][3:-1], base=16)]
-
-                if len(prop_val) > 1:
-                    plat.buf('\n\t\t{')
-                    for k,item in enumerate(prop_val):
-                        if isinstance(item, int):
-                            drvprop_list.append(hex(item))
-                        else:
-                            drvprop_list.append(item)
-                        plat.buf('%s' % item)
-                        if k != len(prop_val)-1:
-                            plat.buf(',  ')
-                    plat.buf('}')
-                else:
-                    drvprop_list.append(hex(prop_val[0]))
-                    plat.buf('\n\t\t%s' % hex(prop_val[0]))
-
-            if i == len(driver_proplist)-1:
-                plat.buf(' /* %s */' % prop)
-                plat.buf('\n\t},')
-            else:
-                plat.buf(',')
-                plat.buf(' /* %s */' % prop)
+        xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 0)
         if index == len(driver_nodes)-1:
             plat.buf('\n\t {\n\t\t NULL\n\t}')
             plat.buf('\n};')
