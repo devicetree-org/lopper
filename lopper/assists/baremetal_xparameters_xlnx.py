@@ -76,6 +76,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             schema = utils.load_yaml(yaml_file_abs)
             driver_compatlist = bm_config.compat_list(schema)
             driver_proplist = schema.get('required',{})
+            if schema.get('additionalProperties', {}):
+                driver_proplist.extend(schema.get('additionalProperties',{}))
             match_nodes = []
             for comp in driver_compatlist:
                 for node,compatible_list in sorted(node_dict.items(), key=lambda e: e[0], reverse=False):
