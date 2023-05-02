@@ -45,7 +45,7 @@ Lopper is in a single repository, and is available via git or pypi:
 
    i.e.:
 
-   % pip install loppper[server,yaml,dt,pcpp]
+   % pip install lopper[server,yaml,dt,pcpp]
 
    **Note:** lopper (via clone or pip) contains a vendored python libfdt (from dtc), since
    it is not available via a pip dependency. If the vendored versions do not match
