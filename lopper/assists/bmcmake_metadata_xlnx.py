@@ -11,10 +11,26 @@ import sys
 import os
 import re
 import glob
+import yaml
 
 sys.path.append(os.path.dirname(__file__))
 import common_utils as utils
 import baremetalconfig_xlnx as bm_config
+
+class YamlDumper(yaml.Dumper):
+    def increase_indent(self, flow=False, indentless=False):
+        return super(YamlDumper, self).increase_indent(flow, False)
+
+def write_yaml(filepath, data):
+    """
+    Write the data into a yaml file format
+
+    Args:
+        | filepath: the yaml file path
+        | data: the data
+    """
+    with open(filepath, 'w') as outfile:
+        yaml.dump(data, outfile, Dumper=YamlDumper, default_flow_style=False, sort_keys=False, indent=4, width=32768)
 
 def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
     driver_compatlist = []
@@ -46,7 +62,10 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
     for node in driver_nodes:
         depreg_list = []
         reg, size = bm_config.scan_reg_size(node, node['reg'].value, 0)
-        nodename_list.append(node.name)
+        if node.propval('xlnx,name') != ['']:
+            nodename_list.append(node.propval('xlnx,name', list)[0])
+        else:
+            nodename_list.append(node.name)
         reg_list.append(hex(reg))
         
         validex_list = []
@@ -54,6 +73,8 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
             valid_ex = 0
             match_list = []
             for p in prop:
+                if "dependency_files" in p:
+                    continue
                 if isinstance(p, dict):
                     for e,prop_val in p.items():
                         valid_phandle = 0
@@ -97,8 +118,14 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
             if valid_ex:
                 validex_list.append(example)
 
-        example_dict.update({node.name:validex_list})
-        depreg_dict.update({node.name:depreg_list})
+        if node.propval('xlnx,name') != ['']:
+            example_dict.update({node.propval('xlnx,name', list)[0]:validex_list})
+        else:
+            example_dict.update({node.name:validex_list})
+        if node.propval('xlnx,name') != ['']:
+            depreg_dict.update({node.propval('xlnx,name', list)[0]:depreg_list})
+        else:
+            depreg_dict.update({node.name:depreg_list})
 
     cmake_file = os.path.join(sdt.outdir, f"{drvname.capitalize()}Example.cmake")
     with open(cmake_file, 'a') as fd:
@@ -109,6 +136,18 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
             fd.write(f"set(DEPDRV_REG_LIST{index} {utils.to_cmakelist(depreg_dict[name])})\n")
             fd.write(f"list(APPEND TOTAL_EXAMPLE_LIST EXAMPLE_LIST{index})\n")
             fd.write(f"list(APPEND TOTAL_DEPDRV_REG_LIST DEPDRV_REG_LIST{index})\n")
+    yaml_file = os.path.join(sdt.outdir, f"{drvname}_exlist.yaml")
+    new_ex_dict = {}
+    for ip,ex_list in example_dict.items():
+        update_exdict = {}
+        for ex in ex_list:
+            if "dependency_files" in example_schema[ex][0]:
+                update_exdict.update({ex:example_schema[ex][0]['dependency_files']})
+            else:
+                update_exdict.update({ex:[]})
+            new_ex_dict.update({ip:update_exdict})
+        example_dict = new_ex_dict
+    write_yaml(yaml_file, example_dict)
 
 def getmatch_nodes(sdt, node_list, yaml_file, options):
     # Get the example_schema
@@ -217,7 +256,6 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
             lwiptype_index += 1
         if standalone:
             stdin_node = bm_config.get_stdin(sdt, chosen_node, node_list)
-            print(stdin_node.propval('xlnx,name'))
             if stdin_node.propval('xlnx,name') != ['']:
                 fd.write(f'set(STDIN_INSTANCE "{stdin_node.propval("xlnx,name")[0]}")\n')
             else:
