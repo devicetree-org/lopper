@@ -191,10 +191,12 @@ struct xtopology_t xtopology[] = {{'''
 def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options, chosen_node, symbol_node):
     src_path = src_path.rstrip(os.path.sep)
     name = utils.get_base_name(utils.get_dir_path(src_path))
+    # Incase of versioned component strip the version info
+    name = re.sub(r"_v.*_.*$", "", name)
     yaml_file = os.path.join(utils.get_dir_path(src_path), "data", f"{name}.yaml")
 
     if not utils.is_file(yaml_file):
-        print(f"{drvname} Driver doesn't have yaml file")
+        print(f"{name} Driver doesn't have yaml file")
         return False
 
     schema = utils.load_yaml(yaml_file)
