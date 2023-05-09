@@ -47,7 +47,7 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
     mapped_nodelist = get_mapped_nodes(sdt, node_list, options)
     for node in mapped_nodelist:
         compatible_dict.update({node: node["compatible"].value})
-        node_ip_name = node.propval('xlnx,ip-name')
+        node_ip_name = node.propval('xlnx,name')
         if node_ip_name != ['']:
             mapped_ip_list += node_ip_name
 
@@ -81,7 +81,7 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
                     driver_list += [drv_name]
                     if schema.get('depends',{}):
                         driver_list += list(schema['depends'].keys())
-                    ip_name = node.propval('xlnx,ip-name')
+                    ip_name = node.propval('xlnx,name')
                     driver_ip_list += ip_name
                     if ip_name != ['']:
                         ip_dict.update({ip_name[0]:drv_name})
