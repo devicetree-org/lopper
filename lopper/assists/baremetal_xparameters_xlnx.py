@@ -10,6 +10,7 @@
 import sys
 import os
 import re
+import glob
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -70,7 +71,16 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         else:
             drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers", drv)
 
-        yaml_file_abs = os.path.join(drv_dir, "data", f"{drv}.yaml")
+        if not drv_dir:
+            has_drivers = [dir_name for dir_name in os.listdir(utils.get_dir_path(sdt.dts)) if "drivers" in dir_name]
+            if has_drivers:
+                has_drivers = os.path.join(utils.get_dir_path(sdt.dts), "drivers")
+                yaml_list = glob.glob(has_drivers + '/**/data/*.yaml', recursive=True)
+                yaml_file_abs = [yaml for yaml in yaml_list if f"{drv}.yaml" in yaml]
+                if yaml_file_abs:
+                    yaml_file_abs = yaml_file_abs[0]
+        else:
+            yaml_file_abs = os.path.join(drv_dir, "data", f"{drv}.yaml")
 
         if utils.is_file(yaml_file_abs):
             schema = utils.load_yaml(yaml_file_abs)

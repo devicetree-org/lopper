@@ -62,6 +62,12 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
             # Incase of versioned driver strip the version info
             drv_name = re.sub(r"_v.*_.*$", "", drv_name)
             yaml_file_list += [os.path.join(drv_path, 'data', f"{drv_name}.yaml")]
+        has_drivers = [dir_name for dir_name in os.listdir(utils.get_dir_path(sdt.dts)) if "drivers" in dir_name]
+        if has_drivers:
+            has_drivers = os.path.join(utils.get_dir_path(sdt.dts), "drivers")
+            if utils.is_dir(has_drivers, silent_discard=False):
+                yaml_list = glob.glob(has_drivers + '/**/data/*.yaml', recursive=True)
+                yaml_file_list.extend(yaml_list)
     else:
         drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers")
         if utils.is_dir(drv_dir, silent_discard=False):
