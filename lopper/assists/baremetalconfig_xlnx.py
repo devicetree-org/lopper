@@ -504,6 +504,11 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
                 if j != (len(prop_vallist) - 1):
                     plat.buf(',')
                 drvprop_list.append(prop_val)
+    elif prop == "Handler-table":
+        # In the driver config structure this property is of type struct
+        # to avoid Missing braces around initializer warning add braces
+        # around value (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53119)
+        plat.buf('\n\t\t{{0U}}')
     else:
         try:
             prop_val = node[prop].value
