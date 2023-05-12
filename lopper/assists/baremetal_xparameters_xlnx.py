@@ -281,6 +281,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         try:
             cpu_freq = match_cpunode['xlnx,freq'].value[0]
             plat.buf(f'\n#define XPAR_CPU_CORE_CLOCK_FREQ_HZ {cpu_freq}\n')
+            ddr_sa = match_cpunode['xlnx,ddr-reserve-sa'].value[0]
+            plat.buf(f'\n#define XPAR_MICROBLAZE_DDR_RESERVE_SA {hex(ddr_sa)}\n')
         except KeyError:
             pass
     else:
