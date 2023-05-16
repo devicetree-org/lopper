@@ -171,7 +171,8 @@ class LopperSDT:
                                 if re.search( "/dts-v1/", line ):
                                     found = True
                                     sdt_files.append( ifile )
-                                if re.search( "compatible: .*subsystem", line ):
+                                if re.search( "compatible: .*subsystem", line ) or \
+                                   re.search( ",domain-v1", line ):
                                     sdt_files.append( ifile )
 
                     # it didn't have a dts identifier in the input json or yaml file
