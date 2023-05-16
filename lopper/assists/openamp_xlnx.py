@@ -224,10 +224,10 @@ def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
     root_node = tree["/"]
     root_compat = root_node.props("compatible")[0].value
     for compat in root_compat:
-        if "zynqmp" in compat:
+        if "zynqmp" in compat or 'zcu102' in compat:
             platform = SOC_TYPE.ZYNQMP
             break
-        elif "versal" in compat:
+        elif "versal" in compat or 'vck190' in compat:
             platform = SOC_TYPE.VERSAL
             break
     openamp_channel_info["platform"] = platform
