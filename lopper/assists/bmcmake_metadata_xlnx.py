@@ -35,6 +35,8 @@ def write_yaml(filepath, data):
 def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
     driver_compatlist = []
     drvname = utils.get_base_name(utils.get_dir_path(src_dir))
+    # Incase of versioned component strip the version info
+    drvname = re.sub(r"_v.*_.*$", "", drvname)
     yaml_file = os.path.join(utils.get_dir_path(src_dir), "data", f"{drvname}.yaml")
     if not utils.is_file(yaml_file):
         print(f"{drvname} Driver doesn't have yaml file")
