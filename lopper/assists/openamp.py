@@ -36,6 +36,8 @@ def is_compat( node, compat_string_to_test ):
         return process_domain
     if re.search( "openamp,domain-processing", compat_string_to_test):
         return openamp_parse
+    if re.search( "module,openamp", compat_string_to_test):
+        return openamp_parse
     return ""
 
 # tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
@@ -184,7 +186,7 @@ def openamp_parse(root_node, tree, options ):
 
     for i in root_node["compatible"].value:
         if "xlnx" in i:
-            return xlnx_openamp_parse(tree, verbose)
+            return xlnx_openamp_parse(tree, options, verbose)
 
     return False
 
