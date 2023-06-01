@@ -57,7 +57,10 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
         repo_schema = utils.load_yaml(repo_path_data)
         drv_data = repo_schema['driver']
         for entries in drv_data.keys():
-            drv_path = drv_data[entries]['vless']
+            try:
+                drv_path = drv_data[entries]['vless']
+            except KeyError:
+                drv_path = drv_data[entries]['path'][0]
             drv_name = os.path.basename(drv_path)
             # Incase of versioned driver strip the version info
             drv_name = re.sub(r"_v.*_.*$", "", drv_name)

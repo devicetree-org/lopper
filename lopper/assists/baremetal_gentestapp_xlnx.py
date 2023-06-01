@@ -58,7 +58,10 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         repo_schema = utils.load_yaml(repo_path_data)
         drv_data = repo_schema['driver']
         for entries in drv_data.keys():
-            drv_path_in_yaml = drv_data[entries]['vless']
+            try:
+                drv_path_in_yaml = drv_data[entries]['vless']
+            except KeyError:
+                drv_path_in_yaml = drv_data[entries]['path'][0]
             drv_name_in_yaml = os.path.basename(drv_path_in_yaml)
             yaml_file_list += [os.path.join(drv_path_in_yaml, 'data', f"{drv_name_in_yaml}.yaml")]
     else:
