@@ -79,7 +79,10 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
     libs_dict = path_schema.get('library', {})
 
     for app_name in list(apps_dict.keys()):
-        supported_proc_list, supported_os_list, description, dep_lib_list = get_yaml_data(app_name, apps_dict[app_name]['vless'])
+        try:
+            supported_proc_list, supported_os_list, description, dep_lib_list = get_yaml_data(app_name, apps_dict[app_name]['vless'])
+        except KeyError:
+            supported_proc_list, supported_os_list, description, dep_lib_list = get_yaml_data(app_name, apps_dict[app_name]['path'][0])
         if proc_ip_name in supported_proc_list:
             app_dict = {app_name : {'description': description, 'depends_libs': dep_lib_list}}
             if 'standalone' in supported_os_list:
@@ -90,12 +93,20 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
     for lib_name in list(libs_dict.keys()):
         cur_lib_dict = libs_dict[lib_name]
         version_list = list(cur_lib_dict.keys())
-        version_list.sort(key = float, reverse = True)
-        sorted_lib_dict = {version: cur_lib_dict[version] for version in version_list}
-        lib_dir = cur_lib_dict[version_list[0]]
+        if 'path' in version_list:
+            lib_dir = cur_lib_dict['path'][0]
+            sorted_lib_dict = {version: cur_lib_dict[version] for version in version_list}
+        else:
+            version_list.sort(key = float, reverse = True)
+            lib_dir = cur_lib_dict[version_list[0]]
+            sorted_lib_dict = {version: cur_lib_dict[version] for version in version_list}
+
         supported_proc_list, supported_os_list, description, dep_lib_list = get_yaml_data(lib_name, lib_dir)
         if proc_ip_name in supported_proc_list:
-            lib_dict = {lib_name : {'description': description, 'depends_libs': dep_lib_list, 'versions': sorted_lib_dict}}
+            if 'path' in version_list:
+                lib_dict = {lib_name : {'description': description, 'depends_libs': dep_lib_list, 'path': sorted_lib_dict['path']}}
+            else:
+                lib_dict = {lib_name : {'description': description, 'depends_libs': dep_lib_list, 'versions': sorted_lib_dict}}
             if 'standalone' in supported_os_list:
                 supported_libs_dict[proc_name]['standalone'].update(lib_dict)
             if "freertos10_xilinx" in supported_os_list:
