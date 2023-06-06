@@ -42,14 +42,15 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
         except:
            pass
 
-    driver_ip_list = []
-    mapped_ip_list = []
+    driver_ip_dict = {}
+    mapped_ip_dict = {}
     mapped_nodelist = get_mapped_nodes(sdt, node_list, options)
     for node in mapped_nodelist:
         compatible_dict.update({node: node["compatible"].value})
-        node_ip_name = node.propval('xlnx,name')
-        if node_ip_name != ['']:
-            mapped_ip_list += node_ip_name
+        node_name = node.propval('xlnx,name')
+        node_ip_name = node.propval('xlnx,ip-name')
+        if node_ip_name != [''] and node_name != ['']:
+            mapped_ip_dict.update({node_name[0]:node_ip_name[0]})
 
     yaml_file_list = []
     repo_path_data = options['args'][1]
@@ -90,14 +91,15 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
                     driver_list += [drv_name]
                     if schema.get('depends',{}):
                         driver_list += list(schema['depends'].keys())
-                    ip_name = node.propval('xlnx,name')
-                    driver_ip_list += ip_name
+                    node_name = node.propval('xlnx,name')
+                    ip_name = node.propval('xlnx,ip-name')
+                    driver_ip_dict.update({node_name[0]:ip_name[0]})
                     if ip_name != ['']:
-                        ip_dict.update({ip_name[0]:drv_name})
+                        ip_dict.update({node_name[0]:[ip_name[0], drv_name]})
 
-    generic_driver_set = list(set(mapped_ip_list) - set(driver_ip_list))
-    for entries in generic_driver_set:
-        ip_dict.update({entries:"None"})
+    generic_driver_dict = list(set(mapped_ip_dict.items()) - set(driver_ip_dict.items()))
+    for entries,ip_name in generic_driver_dict:
+        ip_dict.update({entries:[ip_name, "None"]})
 
     ip_dict_keys = list(ip_dict.keys())
     ip_dict_keys.sort()
