@@ -121,3 +121,18 @@ def copy_file(src: str, dest: str, follow_symlinks: bool = False, silent_discard
     """
     is_file(src, silent_discard)
     shutil.copy2(src, dest, follow_symlinks=follow_symlinks)
+
+def find_files(search_pattern, search_path):
+    """
+    This api find the files matching regex directories and returns absolute
+    path of files, if file exists
+
+    Args:
+        | search_pattern: The regex pattern to be searched in file names
+        | search_path: The directory that needs to be searched
+    Returns:
+        string: All the file paths that matches the pattern in the searched path.
+
+    """
+
+    return glob.glob(f"{search_path}{os.path.sep}{search_pattern}")
