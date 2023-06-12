@@ -598,9 +598,16 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         config_struct = str("X") + drvname.capitalize() + str("_Config")
     else:
         config_struct = config_struct[0]
+
+    out_g_file_name = utils.find_files("*_g.c", src_dir)
+    if out_g_file_name:
+        out_g_file_name = utils.get_base_name(out_g_file_name[0])
+        drvname = out_g_file_name.replace('_g.c','')
+    else:
         drvname = config_struct.split('_Config')[0].lower()
-        drvname = drvname[1:]
-    outfile = os.path.join(sdt.outdir,f"x{drvname}_g.c")
+        drvname = f"x{drvname[1:]}"
+        out_g_file_name = f"{drvname}_g.c"
+    outfile = os.path.join(sdt.outdir, out_g_file_name)
 
     plat = DtbtoCStruct(outfile)
     nodename_list = []
@@ -620,7 +627,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         drvprop_list = []
         drvoptprop_list = []
         if index == 0:
-            plat.buf('#include "x%s.h"\n' % drvname)
+            plat.buf('#include "%s.h"\n' % drvname)
             plat.buf('\n%s %s __attribute__ ((section (".drvcfg_sec"))) = {\n' % (config_struct, config_struct + str("Table[]")))
         xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 0)
         if index == len(driver_nodes)-1:
