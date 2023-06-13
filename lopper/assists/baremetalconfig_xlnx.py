@@ -614,7 +614,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     for node in driver_nodes:
         nodename_list.append(node.name)
 
-    cmake_file = drvname.upper() + str("Config.cmake")
+    cmake_file = drvname[1:].upper() + str("Config.cmake")
     cmake_file = os.path.join(sdt.outdir,f"{cmake_file}")
     with open(cmake_file, 'a') as fd:
        fd.write("set(DRIVER_INSTANCES %s)\n" % utils.to_cmakelist(nodename_list))
