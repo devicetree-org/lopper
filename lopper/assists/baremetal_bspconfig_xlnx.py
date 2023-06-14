@@ -40,6 +40,13 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
         mem_size_list = []
         for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=True):
             start,size = value[0], value[1]
+            """
+            PS7 DDR initial 1MB is reserved memory
+            Adjust the size and start address accordingly.
+            """
+            if "ps7_ddr" in key:
+                start = 1048576
+                size -= start
             name = f"XPAR_{key.upper()}_BASEADDRESS"
             mem_name_list.append(name)
             name = f"XPAR_{key.upper()}_HIGHADDRESS"
