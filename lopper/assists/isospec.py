@@ -300,7 +300,7 @@ def isospec_process_memory( name, dest, sdt, json_tree ):
             try:
                 if "memory" in n["device_type"].value:
                     reg = n["reg"]
-                    _info( "  reg %s" % reg.value )
+                    _info( f"  reg {reg.value}" )
 
                     # we could do this more generically and look it up in the
                     # parent, but 2 is the default, so doing this for initial
@@ -308,20 +308,24 @@ def isospec_process_memory( name, dest, sdt, json_tree ):
                     address_cells = 2
                     size_cells = 2
 
-                    start = reg.value[0:address_cells]
-                    start = lopper.base.lopper_base.encode_byte_array( start )
-                    start = int.from_bytes(start,"big")
-                    size =  reg.value[address_cells:]
-                    size = lopper.base.lopper_base.encode_byte_array( size )
-                    size = int.from_bytes(size,"big")
+                    reg_chunks = lopper_lib.chunks( reg.value, address_cells + size_cells )
+                    for reg_chunk in reg_chunks:
+                        start = reg_chunk[0:address_cells]
+                        start = lopper.base.lopper_base.encode_byte_array( start )
+                        start = int.from_bytes(start,"big")
 
-                    _info( f"  start: {hex(start)} size: {hex(size)}" )
+                        size =  reg_chunk[address_cells:]
 
-                    memory_list.append( {
-                                           "start": start,
-                                           "size": size
-                                         }
-                                       )
+                        size = lopper.base.lopper_base.encode_byte_array( size )
+                        size = int.from_bytes(size,"big")
+
+                        _info( f"  start: {hex(start)} size: {hex(size)}" )
+
+                        memory_list.append( {
+                                              "start": start,
+                                              "size": size
+                                            }
+                                           )
 
             except Exception as e:
                 _debug( f"Exception {e}" )
