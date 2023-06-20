@@ -322,8 +322,8 @@ def isospec_process_memory( name, dest, sdt, json_tree ):
                         _info( f"  start: {hex(start)} size: {hex(size)}" )
 
                         memory_list.append( {
-                                              "start": start,
-                                              "size": size
+                                              "start": hex(start),
+                                              "size": hex(size)
                                             }
                                            )
 
