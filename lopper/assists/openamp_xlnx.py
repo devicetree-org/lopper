@@ -28,6 +28,7 @@ import lopper
 from lopper.tree import *
 from re import *
 from enum import Enum
+from string import Template
 
 sys.path.append(os.path.dirname(__file__))
 from openamp_xlnx_common import *
@@ -35,7 +36,7 @@ from openamp_xlnx_common import *
 RPU_PATH = "/rpu@ff9a0000"
 REMOTEPROC_D_TO_D = "openamp,remoteproc-v1"
 RPMSG_D_TO_D = "openamp,rpmsg-v1"
-output_file = "openamp-channel-info.txt"
+output_file = "amd_platform_info.h"
 
 class CPU_CONFIG(Enum):
     RPU_LOCKSTEP = 0
@@ -514,7 +515,7 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
 
 
 channel_index = 0
-def xlnx_construct_text_file(openamp_channel_info, channel_id, verbose = 0 ):
+def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0 ):
     global channel_index
     text_file_contents = ""
     rpmsg_native = openamp_channel_info["rpmsg_native_"+channel_id]
@@ -536,8 +537,6 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, verbose = 0 ):
         else:
             name = "VDEV0BUFFER"
 
-        text_file_contents += "CHANNEL"+str(channel_index)+name+"BASE=\""+base+"\"\n"
-        text_file_contents += "CHANNEL"+str(channel_index)+name+"SIZE=\""+size+"\"\n"
 
     if not rpmsg_native:
         tx = "FW_RSC_U32_ADDR_ANY"
@@ -545,10 +544,14 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, verbose = 0 ):
 
     elfbase = None
     elfsize = None
+    SHARED_MEM_PA = 0
+    SHARED_BUF_OFFSET = 0
     for e in elfload:
         if e.props("start") != []: # filter to only parse ELF LOAD node
             elfbase = hex(e.props("start")[0].value)
             elfsize = hex(e.props("size")[0].value)
+            SHARED_MEM_PA = hex(e.props("start")[0].value + e.props("size")[0].value)
+            SHARED_BUF_OFFSET = hex( e.props("size")[0].value * 2 )
             break
 
     host_ipi = openamp_channel_info["host_ipi_" + channel_id]
@@ -561,26 +564,32 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, verbose = 0 ):
     remote_ipi_irq_vect_id = hex(openamp_channel_info["remote_ipi_irq_vect_id" + channel_id])
     remote_ipi_base = hex(openamp_channel_info["remote_ipi_base"+channel_id])
 
-    text_file_contents += "CHANNEL"+str(channel_index)+name+"RX=\""+rx+"\"\n"
-    text_file_contents += "CHANNEL"+str(channel_index)+name+"TX=\""+tx+"\"\n"
-    text_file_contents += "CHANNEL"+str(channel_index)+"ELFBASE=\""+elfbase+"\"\n"
-    text_file_contents += "CHANNEL"+str(channel_index)+"ELFSIZE=\""+elfsize+"\"\n"
-    text_file_contents += "CHANNEL"+str(channel_index)+"TO_HOST=\""+ host_ipi_base  +"\"\n"
-    text_file_contents += "CHANNEL"+str(channel_index)+"TO_HOST-BITMASK=\"" + host_ipi_bitmask + "\"\n"
-    text_file_contents += "CHANNEL"+str(channel_index)+"TO_HOST-IPIIRQVECTID=\"" + host_ipi_irq_vect_id + "\"\n"
-    text_file_contents += "CHANNEL"+str(channel_index)+"TO_REMOTE=\""+ remote_ipi_base  +"\"\n"
-    text_file_contents += "CHANNEL"+str(channel_index)+"TO_REMOTE-BITMASK=\"" + remote_ipi_bitmask + "\"\n"
-    text_file_contents += "CHANNEL"+str(channel_index)+"TO_REMOTE-IPIIRQVECTID=\"" + remote_ipi_irq_vect_id + "\"\n"
+    IPI_IRQ_VECT_ID = remote_ipi_irq_vect_id if role == 'remote' else host_ipi_irq_vect_id
+    POLL_BASE_ADDR = remote_ipi_base if role == 'remote' else host_ipi_base
+    # flip this as we are kicking other side with the bitmask value
+    IPI_CHN_BITMASK = host_ipi_bitmask if role == 'remote' else remote_ipi_bitmask
+
+    inputs = {
+        "IPI_IRQ_VECT_ID": IPI_IRQ_VECT_ID,
+        "POLL_BASE_ADDR" : POLL_BASE_ADDR,
+        "IPI_CHN_BITMASK": IPI_CHN_BITMASK,
+        "RING_TX":tx,
+        "RING_RX":rx,
+        "SHARED_MEM_PA": SHARED_MEM_PA,
+        "SHARED_MEM_SIZE":"0x100000UL",
+        "SHARED_BUF_OFFSET":SHARED_BUF_OFFSET,
+    }
 
     f = open(output_file, "w")
-    f.write(text_file_contents)
+    output = Template(platform_info_header_template)
+    f.write(output.substitute(inputs))
     f.close()
 
     channel_index += 1
     return True
 
 
-def xlnx_rpmsg_parse(tree, node, openamp_channel_info, verbose = 0 ):
+def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
     # Xilinx OpenAMP subroutine to collect RPMsg information from RPMsg
     # relation
     remote = node.props("remote")
@@ -641,10 +650,15 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, verbose = 0 ):
     if ret != True:
         return False
 
-    # generate text file
-    ret = xlnx_construct_text_file(openamp_channel_info, channel_id, verbose)
-    if not ret:
-        return ret
+    # generate text file if a role is provided
+    if options['args'] != []:
+        role = options['args'][0]
+        if role not in ['host', 'remote']:
+            print('Role value is not proper. Expect either "host" or "remote".')
+            return False
+        ret = xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose)
+        if not ret:
+            return ret
 
     # remove definitions
     defn_node =  tree["/definitions"]
@@ -861,7 +875,7 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
     return xlnx_remoteproc_update_tree(tree, node, remote_node, openamp_channel_info, verbose = 0 )
 
 
-def xlnx_openamp_parse(sdt, verbose = 0 ):
+def xlnx_openamp_parse(sdt, options, verbose = 0 ):
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
     tree = sdt.tree
@@ -876,7 +890,7 @@ def xlnx_openamp_parse(sdt, verbose = 0 ):
                 if node_compat == REMOTEPROC_D_TO_D:
                     ret = xlnx_remoteproc_parse(tree, n, openamp_channel_info, verbose)
                 elif node_compat == RPMSG_D_TO_D:
-                    ret = xlnx_rpmsg_parse(tree, n, openamp_channel_info, verbose)
+                    ret = xlnx_rpmsg_parse(tree, n, openamp_channel_info, options, verbose)
 
                 if ret == False:
                     return ret
