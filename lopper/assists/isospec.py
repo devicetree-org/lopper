@@ -400,6 +400,12 @@ def isospec_process_access( access_node, sdt, json_tree ):
 
                 flag_mapping = isospec_device_flags( defs["name"], defs, json_tree )
 
+                try:
+                    device_requested = flag_mapping["requested"]
+                except:
+                    _info( f'device \"{defs["name"]}\" was found, but not requested. skipping' )
+                    continue
+
                 # find the destinations in the isospec json tree
                 dests = isospec_device_destination( defs["destinations"], json_tree )
 
@@ -414,6 +420,7 @@ def isospec_process_access( access_node, sdt, json_tree ):
                             _info( f"    found node at address {address}: {tnode}", tnode )
                             access_list.append( {
                                                   "dev": tnode.name,
+                                                  "label": tnode.label,
                                                   "flags": flag_mapping
                                                 }
                                               )
@@ -550,6 +557,49 @@ def domains_tree_add_subsystem( domains_tree, subsystem_name="default-subsystem"
 
     return domains_tree
 
+def domains_tree_add_domain( domains_tree, domain_name="default", parent_domain = None, id=0 ):
+
+    if not parent_domain:
+        domain_node = LopperNode( abspath=f"/domains/{domain_name}", name=domain_name )
+        domain_node["compatible"] = "openamp,domain-v1"
+        domain_node["id"] = id
+        domains_tree = domains_tree + domain_node
+    else:
+        domain_node = LopperNode( name=domain_name )
+        domain_node["compatible"] = "openamp,domain-v1"
+        domain_node["id"] = id
+        parent_domain + domain_node
+
+    return domain_node
+
+def process_domain( domain_node, iso_node, json_tree, sdt ):
+    _info( f"infospec_domain: process_domain: processing: {iso_node.name}" )
+    # iso_node.print()
+
+    # access and memory AND now cpus
+    try:
+        iso_access = json_tree[f"{iso_node.abs_path}"]["access"]
+        _info( f"access: {iso_access}" )
+
+        access_list,cpus_list,memory_list,sram_list = isospec_process_access( iso_access, sdt, json_tree )
+        if cpus_list:
+            domain_node["cpus"] = json.dumps(cpus_list)
+            domain_node.pclass = "json"
+        if memory_list:
+            _info( f"memory: {memory_list}" )
+            domain_node["memory"] = json.dumps(memory_list)
+        if sram_list:
+            _info( f"sram: {memory_list}" )
+            domain_node["sram"] = json.dumps(sram_list)
+        domain_node["access"] = json.dumps(access_list)
+    except KeyError as e:
+        _error( f"no access list in {iso_node.abs_path}" )
+    except Exception as e:
+        _error( f"problem during subsystem processing: {e}" )
+
+    return domain_node
+
+
 def isospec_domain( tgt_node, sdt, options ):
     """assist entry point, called from lopper when a node is
        identified, or passed as a command line assist
@@ -598,37 +648,38 @@ def isospec_domain( tgt_node, sdt, options ):
     # TODO: make the tree manipulations and searching a library function
     domains_tree = domains_tree_start()
     iso_subsystems = json_tree["/design/subsystems"]
+    try:
+        iso_domains = json_tree["/design/subsystems/" ]
+    except:
+        pass
 
-    for n in iso_subsystems.children():
-        _info( f"infospec_domain: processing subsystem: {n}" )
-        # n.print()
+    iso_subsystems.print()
+    print( iso_subsystems.children() )
 
-        isospec_domain_node = json_tree[f"/design/subsystems/{n.name}"]
-        domain_id = isospec_domain_node["id"]
+    for iso_node in iso_subsystems.children():
+        isospec_domain_node = json_tree[f"{iso_node.abs_path}"]
+        domain_id = iso_node["id"]
+        domain_node = domains_tree_add_domain( domains_tree, iso_node.name, None, domain_id )
+        domain_node = process_domain( domain_node, iso_node, json_tree, sdt )
 
-        domains_tree = domains_tree_add_subsystem( domains_tree, n.name, domain_id )
-        subsystem_node = domains_tree[f"/domains/{n.name}"]
-
-        # access and memory AND now cpus
         try:
-            iso_access = json_tree[f"/design/subsystems/{n.name}"]["access"]
-            _info( f"access: {iso_access}" )
+            sub_domains = json_tree[f"{iso_node.abs_path}" + "/domains"]
+            # sub_domains.print()
+            sub_domain_node = LopperNode( name="domains" )
+            domain_node = domain_node + sub_domain_node
+            for s in sub_domains.children():
+                try:
+                    domain_id = s["id"]
+                except:
+                    # copy the subsystem's id
+                    domain_id = iso_node["id"]
+                sub_domain_node = domains_tree_add_domain( domains_tree, s.name, sub_domain_node, domain_id )
+                sub_domain_node = process_domain( sub_domain_node, s, json_tree, sdt )
+        except:
+            pass
 
-            access_list,cpus_list,memory_list,sram_list = isospec_process_access( iso_access, sdt, json_tree )
-            if cpus_list:
-                subsystem_node["cpus"] = json.dumps(cpus_list)
-                subsystem_node.pclass = "json"
-            if memory_list:
-                _info( f"memory: {memory_list}" )
-                subsystem_node["memory"] = json.dumps(memory_list)
-            if sram_list:
-                _info( f"sram: {memory_list}" )
-                subsystem_node["sram"] = json.dumps(sram_list)
-            subsystem_node["access"] = json.dumps(access_list)
-        except KeyError as e:
-            _error( f"no access list in /design/subsystems/{n.name}" )
-        except Exception as e:
-            _error( f"problem during subsystem processing: {e}" )
+
+    # domains_tree.print()
 
     # write the yaml tree
     _info( f"writing domain file: {domain_yaml_file}" )
