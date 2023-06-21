@@ -266,6 +266,12 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                 fd.write(f'set(STDIN_INSTANCE "{stdin_node.propval("xlnx,name")[0]}")\n')
             else:
                 fd.write(f'set(STDIN_INSTANCE "{bm_config.get_label(sdt, symbol_node, stdin_node)}")\n')
+            if sdt.tree['/'].propval('slrcount') != ['']:
+                val = sdt.tree['/'].propval('slrcount', list)[0]
+                fd.write(f'set(NUMBER_OF_SLRS {hex(val)} CACHE STRING "Number of slrs")\n')
+            if sdt.tree['/'].propval('device_id') != ['']:
+                val = sdt.tree['/'].propval('device_id', list)[0]
+                fd.write(f'set(DEVICE_ID "{val}" CACHE STRING "Device Id")\n')
 
     if topology_data:
         lwip_topolgy(sdt.outdir, topology_data)

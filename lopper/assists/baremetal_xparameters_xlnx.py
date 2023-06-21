@@ -311,6 +311,12 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         plat.buf(f"\n/* Number of SLRs */")
         plat.buf(f"\n#define NUMBER_OF_SLRS {hex(val)}\n")
 
+    #Define for DEVICE_ID
+    if sdt.tree[tgt_node].propval('device_id') != ['']:
+        val = sdt.tree[tgt_node].propval('device_id', list)[0]
+        plat.buf(f"\n/* Device ID */")
+        plat.buf(f'\n#define XPAR_DEVICE_ID "{val}"\n')
+
     plat.buf('\n#endif  /* end of protection macro */')
     plat.out(''.join(plat.get_buf()))
 
