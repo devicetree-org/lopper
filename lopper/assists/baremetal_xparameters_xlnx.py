@@ -291,12 +291,15 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         try:
             cpu_freq = match_cpunode['xlnx,cpu-clk-freq-hz'].value[0]
             plat.buf(f'\n\n#define XPAR_CPU_CORE_CLOCK_FREQ_HZ {cpu_freq}\n')
-            pss_ref = match_cpunode['xlnx,pss-ref-clk-freq'].value[0]
-            plat.buf(f'#define XPAR_PSU_PSS_REF_CLK_FREQ_HZ {pss_ref}\n')
             timestamp_clk = match_cpunode['xlnx,timestamp-clk-freq'].value[0]
             plat.buf(f'#define XPAR_CPU_TIMESTAMP_CLK_FREQ {timestamp_clk}\n')
         except KeyError:
             pass
+
+    #PSS REF clocks define
+    if match_cpunode.propval('xlnx,pss-ref-clk-freq') != ['']:
+        pss_ref = match_cpunode.propval('xlnx,pss-ref-clk-freq', list)[0]
+        plat.buf(f'#define XPAR_PSU_PSS_REF_CLK_FREQ_HZ {pss_ref}\n')
 
     #Defines for STDOUT and STDIN Baseaddress
     if chosen_node:
