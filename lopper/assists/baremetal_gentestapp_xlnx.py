@@ -27,6 +27,7 @@ def is_compat( node, compat_string_to_test ):
 # options: baremetal application source path
 def xlnx_generate_testapp(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
+    compatible_dict = {}
     root_sub_nodes = root_node.subnodes()
     node_list = []
     # Traverse the tree and find the nodes having status=ok property
@@ -43,6 +44,8 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
            pass
 
     node_list = get_mapped_nodes(sdt, node_list, options)
+    for node in node_list:
+        compatible_dict.update({node: node["compatible"].value})
 
     test_file_string = f'''
 #include <stdio.h>
@@ -78,6 +81,14 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         drv_name = utils.get_base_name(yaml_file).replace('.yaml','')
         drv_data_path = utils.get_dir_path(yaml_file)
         drv_path = utils.get_dir_path(drv_data_path)
+        drv_is_active = 0
+        for comp in driver_compatlist:
+            for node,c in compatible_dict.items():
+                match = [x for x in c if comp == x]
+                if match:
+                    drv_is_active = 1
+        if not drv_is_active:
+            continue
         try:
             drv_config_name = schema['config']
             drv_config_name = drv_config_name[0].rsplit("_", 1)[-2]
