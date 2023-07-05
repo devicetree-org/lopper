@@ -415,6 +415,7 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
                 plat.buf(' /* %s */' % prop)
 
 def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
+    nosub = 0
     if prop == "reg":
         val, size = scan_reg_size(node, node[prop].value, 0)
         drvprop_list.append(hex(val))
@@ -468,20 +469,28 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
             if len(pad) != 1:
                 plat.buf('\n\t\t\t{')
             for k,p in enumerate(pad):
-                try:
-                    plat.buf('\n\t\t\t\t%s' % hex(child[1][p].value[0]))
-                    drvprop_list.append(hex(child[1][p].value[0]))
-                except KeyError:
-                    plat.buf('\n\t\t\t\t%s' % hex(0xFFFF))
-                    drvprop_list.append(hex(0xFFFF))
-                if k != (len(pad) - 1) or len(pad) == 1:
-                    plat.buf(',')
-                plat.buf(' /* %s */' % p)
+                if p == "nosub":
+                    nosub = 1
+                if len(p) == 1:
+                    pv = list(p.values())
+                    xlnx_generate_prop(sdt, child[1], prop, drvprop_list, plat, pv[0], phandle_prop)
+                else:
+                    try:
+                        plat.buf('\n\t\t\t\t%s' % str(child[1][p].value[0]))
+                        drvprop_list.append(str(child[1][p].value[0]))
+                        if k != (len(pad) - 1) or len(pad) == 1:
+                            plat.buf(',')
+                        plat.buf(' /* %s */' % p)
+                    except KeyError:
+                        #print(f"nf\n")
+                        if nosub == 0:
+                            plat.buf('\n\t\t\t\t%s' % hex(0xFFFF))
+                            drvprop_list.append(hex(0xFFFF))
             if len(pad) != 1:
                 if j != (len(list(node.child_nodes.items())) - 1):
                     plat.buf('\n\t\t\t},')
                 else:
-                    plat.buf('\n\t\t\t}')
+                    plat.buf('\n\t\t\t},')
         plat.buf('\n\t\t}')
     elif phandle_prop:
         try:
@@ -518,6 +527,12 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
                 prop_val = [1]
         except KeyError:
             prop_val = [0]
+
+        if ('{' in str(prop_val[0])):
+                prop_val_temp = []
+                for k in (str(prop_val[0]).split()[1]).split(","):
+                    prop_val_temp.append(int(k, 16))
+                prop_val = prop_val_temp
 
         if ('/bits/' in prop_val):
             prop_val = [int(prop_val[-1][3:-1], base=16)]
