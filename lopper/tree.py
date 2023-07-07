@@ -27,6 +27,12 @@ import json
 import lopper.base
 from lopper.fmt import LopperFmt
 
+from lopper.log import _warning, _info, _error, _debug
+import logging
+
+lopper.log._init( __name__ )
+lopper.log._init( "tree.py" )
+
 # must be set to the Lopper class to call
 global Lopper
 

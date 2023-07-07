@@ -34,9 +34,8 @@ from itertools import chain
 import json
 import humanfriendly
 
+from lopper.log import _init, _warning, _info, _error, _debug
 import logging
-
-logging.basicConfig( format='[%(levelname)s]: %(message)s' )
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "isospec,isospec-v1", compat_string_to_test):
@@ -44,24 +43,6 @@ def is_compat( node, compat_string_to_test ):
     if re.search( "module,isospec", compat_string_to_test):
         return isospec_domain
     return ""
-
-def _warning( message ):
-    logging.warning( message )
-
-def _info( message, output_if_true = True ):
-    if output_if_true:
-        logging.info( message )
-
-def _error( message, also_exit = True ):
-    logging.error( message )
-    if also_exit:
-        sys.exit(1)
-
-def _debug( message, object_to_print = None ):
-    logging.debug( message )
-    if object_to_print:
-        if logging.getLogger().isEnabledFor( logging.DEBUG ):
-            object_to_print.print()
 
 # tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
 def check_bit_set(n, k):
@@ -609,10 +590,13 @@ def isospec_domain( tgt_node, sdt, options ):
     except:
         verbose = 0
 
+    lopper.log._init( __name__ )
+
     if verbose:
-        logging.getLogger().setLevel( level=logging.INFO )
+        lopper.log._level( logging.INFO, __name__ )
     if verbose > 1:
-        logging.getLogger().setLevel( level=logging.DEBUG )
+        lopper.log._level( logging.DEBUG, __name__ )
+        #logging.getLogger().setLevel( level=logging.DEBUG )
 
     _info( f"cb: isospec_domain( {tgt_node}, {sdt}, {verbose} )" )
 
@@ -653,8 +637,8 @@ def isospec_domain( tgt_node, sdt, options ):
     except:
         pass
 
-    iso_subsystems.print()
-    print( iso_subsystems.children() )
+    #iso_subsystems.print()
+    #print( iso_subsystems.children() )
 
     for iso_node in iso_subsystems.children():
         isospec_domain_node = json_tree[f"{iso_node.abs_path}"]

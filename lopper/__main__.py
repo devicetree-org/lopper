@@ -17,6 +17,9 @@ import re
 
 from lopper import LopperSDT
 
+from lopper.log import _warning, _info, _error, _debug
+import logging
+
 lopper_directory = os.path.dirname(os.path.realpath(__file__))
 
 global device_tree
@@ -312,6 +315,26 @@ def main():
     device_tree = LopperSDT( sdt )
 
     atexit.register(at_exit_cleanup)
+
+    lopper.log._init( __name__ )
+    lopper.log._init( "___main.py__" )
+
+    # iterate registered loggers and set their default level to a
+    # consistent value.
+    for lname,logger in logging.root.manager.loggerDict.items():
+        if type(logger) == logging.Logger:
+            # default to showing WARNING and above
+            logger.setLevel( logging.WARNING )
+            if verbose == 1:
+                logger.setLevel( logging.INFO )
+            elif verbose == 2:
+                logger.setLevel( logging.DEBUG )
+            elif verbose == 3:
+                logger.setLevel( logging.DEBUG )
+            elif verbose > 3:
+                logger.setLevel( logging.DEBUG )
+            else:
+                logger.setLevel( logging.WARNING )
 
     # set some flags before we process the tree.
     device_tree.dryrun = dryrun
