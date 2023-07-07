@@ -158,7 +158,7 @@ def getmatch_nodes(sdt, node_list, yaml_file, options):
     driver_compatlist = bm_config.compat_list(schema)
     for compat in driver_compatlist:
         for node in node_list:
-           compat_string = node['compatible'].value[0]
+           compat_string = node['compatible'].value
            if compat in compat_string:
                driver_nodes.append(node)
 
