@@ -537,7 +537,10 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
         if ('/bits/' in prop_val):
             prop_val = [int(prop_val[-1][3:-1], base=16)]
 
-        if len(prop_val) > 1:
+        if isinstance(prop_val[0], str):
+            plat.buf('\n\t\t%s' % '"{}"'.format(node[prop].value[0]))
+            drvprop_list.append(node[prop].value[0])
+        elif len(prop_val) > 1:
             plat.buf('\n\t\t{')
             for k,item in enumerate(prop_val):
                 if isinstance(item, int):
