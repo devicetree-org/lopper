@@ -162,6 +162,8 @@ def getmatch_nodes(sdt, node_list, yaml_file, options):
            if compat in compat_string:
                driver_nodes.append(node)
 
+    # Remove duplicate nodes
+    driver_nodes = list(set(driver_nodes))
     driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
     return driver_nodes
 
