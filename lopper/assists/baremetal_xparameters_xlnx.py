@@ -214,7 +214,11 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             prop_val = [int(prop_val[-1][3:-1], base=16)]
                         prop = prop.replace("-", "_")
                         prop = prop.replace("xlnx,", "")
-                        if len(prop_val) > 1:
+
+                        if isinstance(prop_val[0], str):
+                            canondef_dict.update({prop:f"{prop_val[0]}"})
+                            plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} "{prop_val[0]}"')
+                        elif len(prop_val) > 1:
                             for k,item in enumerate(prop_val):
                                 cannon_prop = prop + str("_") + str(k)
                                 canondef_dict.update({cannon_prop:item})
