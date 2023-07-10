@@ -164,7 +164,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         xpar_def = f"XPAR_{node.upper()}_BASEADDR"
 
         for app in testapp:
-            if 'SelfTest' in app:
+            if 'SelfTest' in app or 'selftest' in app:
                 status_assignment = f"status = {app}({xpar_def});"
             else:
                 status_assignment = f"status = {app}(&{node}, {xpar_def});"
