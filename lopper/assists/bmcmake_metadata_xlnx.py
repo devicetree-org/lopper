@@ -218,16 +218,15 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                 repo_schema = utils.load_yaml(repo_path_data)
                 drv_data = repo_schema['driver']
                 drv_dir = drv_data.get(drv,{}).get('vless','')
-                if not drv_dir:
+                if not drv_dir and drv_data.get(drv,{}).get('path',''):
                     drv_dir = drv_data.get(drv,{}).get('path','')[0]
             else:
                 drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers", drv)
 
             drv_yamlpath = os.path.join(drv_dir, "data", f"{drv}.yaml")
-
             if not utils.is_file(drv_yamlpath):
                 print(f"{drv} yaml file {drv_yamlpath} doesnt exist")
-                return False
+                continue
 
             nodes = getmatch_nodes(sdt, node_list, drv_yamlpath, options)
             name_list = []
