@@ -1,0 +1,39 @@
+/*
+ * Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
+ *
+ * Author:
+ *       Onkar Harsh <onkar.harsh@amd.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1,lop";
+        lops {
+                compatible = "system-device-tree-v1,lop";
+                lop_0 {
+                        compatible = "system-device-tree-v1,lop,assist-v1";
+                        node = "/axi/imux";
+                        id = "imux,imux-v1";
+                        noexec;
+                };
+                lop_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      // clear any old selections
+                      select_1;
+                      select_2 = "/.*:interrupt-parent:&imux";
+                };
+                lop_2 {
+                      compatible = "system-device-tree-v1,lop,modify";
+                      // this will use the selected nodes above, to add a property
+                      modify = ":interrupt-parent:&gic_r52";
+                };
+                lop_3 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        // delete the interrupt-multiplex
+                        modify = "/axi/interrupt-multiplex::";
+                };
+        };
+};
