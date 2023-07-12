@@ -290,6 +290,9 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         if match_cpunode.propval('xlnx,ddr-reserve-sa') != ['']:
             ddr_sa = match_cpunode.propval('xlnx,ddr-reserve-sa', list)[0]
             plat.buf(f'\n#define XPAR_MICROBLAZE_DDR_RESERVE_SA {hex(ddr_sa)}\n')
+        if match_cpunode.propval('xlnx,addr-size') != ['']:
+            addr_size = match_cpunode.propval('xlnx,addr-size', list)[0]
+            plat.buf(f'\n#define XPAR_MICROBLAZE_ADDR_SIZE {addr_size}\n')
     else:
         if match_cpunode.propval('xlnx,cpu-clk-freq-hz') != ['']:
             cpu_freq = match_cpunode.propval('xlnx,cpu-clk-freq-hz', list)[0]
