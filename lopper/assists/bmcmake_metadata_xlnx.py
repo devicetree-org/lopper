@@ -212,7 +212,6 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
     cmake_file = os.path.join(sdt.outdir, f"{name.capitalize()}Example.cmake")
     topology_data = {}
     with open(cmake_file, "a") as fd:
-        lwiptype_index = 0
         for drv, prop_list in sorted(meta_dict.items(), key=lambda kv:(kv[0], kv[1])):
             if utils.is_file(repo_path_data):
                 repo_schema = utils.load_yaml(repo_path_data)
@@ -244,7 +243,14 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                        reg,size = bm_config.scan_reg_size(node, node[prop].value, 0)
                        val = hex(reg)
                        if lwip and comp_type == "library":
-                           topology_data[val] = lwiptype_index
+                           if drv == "emaclite":
+                                topology_data[val] = 0
+                           elif drv == "ll_temac":
+                                topology_data[val] = 1
+                           elif drv == "axi_ethernet":
+                                topology_data[val] = 2
+                           elif drv == "emacps":
+                                topology_data[val] = 3
                     elif prop == "interrupts":
                        val = bm_config.get_interrupt_prop(sdt, node, node[prop].value)
                        val = val[0]
@@ -260,7 +266,6 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                     val_list.append(val)
                 fd.write(f"set({drv.upper()}{index}_PROP_LIST {utils.to_cmakelist(val_list)})\n")
                 fd.write(f"list(APPEND TOTAL_{drv.upper()}_PROP_LIST {drv.upper()}{index}_PROP_LIST)\n")
-            lwiptype_index += 1
         if standalone:
             stdin_node = bm_config.get_stdin(sdt, chosen_node, node_list)
             if stdin_node.propval('xlnx,name') != ['']:
