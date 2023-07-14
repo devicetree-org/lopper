@@ -158,10 +158,12 @@ def getmatch_nodes(sdt, node_list, yaml_file, options):
     driver_compatlist = bm_config.compat_list(schema)
     for compat in driver_compatlist:
         for node in node_list:
-           compat_string = node['compatible'].value[0]
+           compat_string = node['compatible'].value
            if compat in compat_string:
                driver_nodes.append(node)
 
+    # Remove duplicate nodes
+    driver_nodes = list(set(driver_nodes))
     driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
     return driver_nodes
 
@@ -210,22 +212,20 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
     cmake_file = os.path.join(sdt.outdir, f"{name.capitalize()}Example.cmake")
     topology_data = {}
     with open(cmake_file, "a") as fd:
-        lwiptype_index = 0
         for drv, prop_list in sorted(meta_dict.items(), key=lambda kv:(kv[0], kv[1])):
             if utils.is_file(repo_path_data):
                 repo_schema = utils.load_yaml(repo_path_data)
                 drv_data = repo_schema['driver']
                 drv_dir = drv_data.get(drv,{}).get('vless','')
-                if not drv_dir:
+                if not drv_dir and drv_data.get(drv,{}).get('path',''):
                     drv_dir = drv_data.get(drv,{}).get('path','')[0]
             else:
                 drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers", drv)
 
             drv_yamlpath = os.path.join(drv_dir, "data", f"{drv}.yaml")
-
             if not utils.is_file(drv_yamlpath):
                 print(f"{drv} yaml file {drv_yamlpath} doesnt exist")
-                return False
+                continue
 
             nodes = getmatch_nodes(sdt, node_list, drv_yamlpath, options)
             name_list = []
@@ -243,7 +243,14 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                        reg,size = bm_config.scan_reg_size(node, node[prop].value, 0)
                        val = hex(reg)
                        if lwip and comp_type == "library":
-                           topology_data[val] = lwiptype_index
+                           if drv == "emaclite":
+                                topology_data[val] = 0
+                           elif drv == "ll_temac":
+                                topology_data[val] = 1
+                           elif drv == "axi_ethernet":
+                                topology_data[val] = 2
+                           elif drv == "emacps":
+                                topology_data[val] = 3
                     elif prop == "interrupts":
                        val = bm_config.get_interrupt_prop(sdt, node, node[prop].value)
                        val = val[0]
@@ -259,7 +266,6 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                     val_list.append(val)
                 fd.write(f"set({drv.upper()}{index}_PROP_LIST {utils.to_cmakelist(val_list)})\n")
                 fd.write(f"list(APPEND TOTAL_{drv.upper()}_PROP_LIST {drv.upper()}{index}_PROP_LIST)\n")
-            lwiptype_index += 1
         if standalone:
             stdin_node = bm_config.get_stdin(sdt, chosen_node, node_list)
             if stdin_node.propval('xlnx,name') != ['']:

@@ -214,7 +214,11 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             prop_val = [int(prop_val[-1][3:-1], base=16)]
                         prop = prop.replace("-", "_")
                         prop = prop.replace("xlnx,", "")
-                        if len(prop_val) > 1:
+
+                        if isinstance(prop_val[0], str):
+                            canondef_dict.update({prop:f"{prop_val[0]}"})
+                            plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} "{prop_val[0]}"')
+                        elif len(prop_val) > 1:
                             for k,item in enumerate(prop_val):
                                 cannon_prop = prop + str("_") + str(k)
                                 canondef_dict.update({cannon_prop:item})
@@ -280,21 +284,22 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     #CPU Freq related defines
     match_cpunode = bm_config.get_cpu_node(sdt, options)
     if re.search("microblaze", match_cpunode['compatible'].value[0]):
-        try:
-            cpu_freq = match_cpunode['xlnx,freq'].value[0]
+        if match_cpunode.propval('xlnx,freq') != ['']:
+            cpu_freq = match_cpunode.propval('xlnx,freq', list)[0]
             plat.buf(f'\n#define XPAR_CPU_CORE_CLOCK_FREQ_HZ {cpu_freq}\n')
-            ddr_sa = match_cpunode['xlnx,ddr-reserve-sa'].value[0]
+        if match_cpunode.propval('xlnx,ddr-reserve-sa') != ['']:
+            ddr_sa = match_cpunode.propval('xlnx,ddr-reserve-sa', list)[0]
             plat.buf(f'\n#define XPAR_MICROBLAZE_DDR_RESERVE_SA {hex(ddr_sa)}\n')
-        except KeyError:
-            pass
+        if match_cpunode.propval('xlnx,addr-size') != ['']:
+            addr_size = match_cpunode.propval('xlnx,addr-size', list)[0]
+            plat.buf(f'\n#define XPAR_MICROBLAZE_ADDR_SIZE {addr_size}\n')
     else:
-        try:
-            cpu_freq = match_cpunode['xlnx,cpu-clk-freq-hz'].value[0]
+        if match_cpunode.propval('xlnx,cpu-clk-freq-hz') != ['']:
+            cpu_freq = match_cpunode.propval('xlnx,cpu-clk-freq-hz', list)[0]
             plat.buf(f'\n\n#define XPAR_CPU_CORE_CLOCK_FREQ_HZ {cpu_freq}\n')
-            timestamp_clk = match_cpunode['xlnx,timestamp-clk-freq'].value[0]
+        if match_cpunode.propval('xlnx,timestamp-clk-freq') != ['']:
+            timestamp_clk = match_cpunode.propval('xlnx,timestamp-clk-freq', list)[0]
             plat.buf(f'#define XPAR_CPU_TIMESTAMP_CLK_FREQ {timestamp_clk}\n')
-        except KeyError:
-            pass
 
     #PSS REF clocks define
     if match_cpunode.propval('xlnx,pss-ref-clk-freq') != ['']:
