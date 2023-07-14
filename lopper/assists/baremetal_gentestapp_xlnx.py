@@ -114,7 +114,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
 
             for compat in driver_compatlist:
                 for node in node_list:
-                    compat_string = node['compatible'].value[0]
+                    compat_string = node['compatible'].value
                     label_name = get_label(sdt, symbol_node, node)
                     if compat in compat_string:
                         driver_nodes.append(node)
