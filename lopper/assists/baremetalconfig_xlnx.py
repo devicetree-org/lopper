@@ -353,6 +353,8 @@ def get_mapped_nodes(sdt, node_list, options):
     # Remove shared phandles from invalid phandles list
     invalid_phandles_list = [phandle for phandle in invalid_phandles if phandle not in shared_phandles]
     valid_phandles = [phandle for phandle in all_phandles if phandle not in invalid_phandles_list]
+    # Make sure node order is preserved
+    node_list.sort(key=lambda n: n.phandle, reverse=False)
     valid_nodes = [node for node in node_list for handle in valid_phandles if handle == node.phandle]
     return valid_nodes
 
