@@ -465,6 +465,8 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
         drvprop_list.append(hex(clkprop_val))
     elif prop == "child,required":
         plat.buf('\n\t\t{')
+        numsplits = 0
+        splitidx = 0
         for j,child in enumerate(list(node.child_nodes.items())):
             if len(pad) != 1:
                 plat.buf('\n\t\t\t{')
@@ -472,6 +474,12 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
                 if p == "nosub":
                     nosub = 1
                 if len(p) == 1:
+                    if 'split' in p.keys():
+                        splitidxs = []
+                        for idx in str(p['split']).split(' '):
+                            splitidxs.append(int(idx))
+                        numsplits = len(splitidxs);
+                        continue
                     pv = list(p.values())
                     xlnx_generate_prop(sdt, child[1], prop, drvprop_list, plat, pv[0], phandle_prop)
                 else:
@@ -482,7 +490,6 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
                             plat.buf(',')
                         plat.buf(' /* %s */' % p)
                     except KeyError:
-                        #print(f"nf\n")
                         if nosub == 0:
                             plat.buf('\n\t\t\t\t%s' % hex(0xFFFF))
                             drvprop_list.append(hex(0xFFFF))
@@ -491,7 +498,12 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
                     plat.buf('\n\t\t\t},')
                 else:
                     plat.buf('\n\t\t\t},')
-        plat.buf('\n\t\t}')
+            if numsplits:
+                if splitidx < numsplits:
+                    if j == splitidxs[splitidx]:
+                        plat.buf('\n},\n{')
+                        splitidx = splitidx + 1
+        plat.buf('\n\t\t},')
     elif phandle_prop:
         try:
             prop_val = get_phandle_regprop(sdt, prop, node[prop].value)
