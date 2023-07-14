@@ -114,7 +114,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
 
             for compat in driver_compatlist:
                 for node in node_list:
-                    compat_string = node['compatible'].value[0]
+                    compat_string = node['compatible'].value
                     label_name = get_label(sdt, symbol_node, node)
                     if compat in compat_string:
                         driver_nodes.append(node)
@@ -164,7 +164,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         xpar_def = f"XPAR_{node.upper()}_BASEADDR"
 
         for app in testapp:
-            if 'SelfTest' in app:
+            if 'SelfTest' in app or 'selftest' in app:
                 status_assignment = f"status = {app}({xpar_def});"
             else:
                 status_assignment = f"status = {app}(&{node}, {xpar_def});"

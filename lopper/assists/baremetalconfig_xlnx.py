@@ -353,6 +353,8 @@ def get_mapped_nodes(sdt, node_list, options):
     # Remove shared phandles from invalid phandles list
     invalid_phandles_list = [phandle for phandle in invalid_phandles if phandle not in shared_phandles]
     valid_phandles = [phandle for phandle in all_phandles if phandle not in invalid_phandles_list]
+    # Make sure node order is preserved
+    node_list.sort(key=lambda n: n.phandle, reverse=False)
     valid_nodes = [node for node in node_list for handle in valid_phandles if handle == node.phandle]
     return valid_nodes
 
@@ -537,7 +539,10 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
         if ('/bits/' in prop_val):
             prop_val = [int(prop_val[-1][3:-1], base=16)]
 
-        if len(prop_val) > 1:
+        if isinstance(prop_val[0], str):
+            plat.buf('\n\t\t%s' % '"{}"'.format(node[prop].value[0]))
+            drvprop_list.append(node[prop].value[0])
+        elif len(prop_val) > 1:
             plat.buf('\n\t\t{')
             for k,item in enumerate(prop_val):
                 if isinstance(item, int):

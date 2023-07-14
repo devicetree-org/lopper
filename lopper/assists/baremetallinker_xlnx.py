@@ -79,7 +79,7 @@ def get_memranges(tgt_node, sdt, options):
                         node['reg'].value = modify_val
 
     #Maintain a static memory IP list this is needed inorder to capture proper ip name in the linker script
-    xlnx_memipname = {"axi_bram": 0, "ps7_ddr": 0, "psu_ddr": 0, "psv_ddr": 0, "mig": 0, "lmb_bram": 0, "axi_noc": 0, "psu_ocm": 0,  "psv_ocm": 0, "ddr4": 0, "mig_7series": 0}
+    xlnx_memipname = {"axi_bram": 0, "ps7_ddr": 0, "psu_ddr": 0, "psv_ddr": 0, "mig": 0, "lmb_bram": 0, "axi_noc2": 0, "axi_noc": 0,"psu_ocm": 0,  "psv_ocm": 0, "psx_ocm": 0, "ddr4": 0, "ddr5": 0, "mig_7series": 0}
     for node in root_sub_nodes:
         try:
             device_type = node["device_type"].value
@@ -200,6 +200,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         mem_sec += '\n\tpsv_r5_0_atcm_lockstep_MEM_0 : ORIGIN = 0xFFE10000, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_0_btcm_MEM_0 : ORIGIN = 0x20000, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_0_btcm_lockstep_MEM_0 : ORIGIN = 0xFFE30000, LENGTH = 0x10000'
+        mem_sec += '\n\tpsv_pmc_ram_psv_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
         mem_sec += '\n\tpsv_r5_0_data_cache_MEM_0 : ORIGIN = 0xFFE50000, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_0_instruction_cache_MEM_0 : ORIGIN = 0xFFE40000, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_1_data_cache_MEM_0 : ORIGIN = 0xFFED0000, LENGTH = 0x10000'
@@ -208,6 +209,28 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         mem_sec += '\n\tpsv_r5_1_atcm_global_MEM_0 : ORIGIN = 0xFFE90000, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_0_btcm_global_MEM_0 : ORIGIN = 0xFFE20000, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_1_btcm_global_MEM_0 : ORIGIN = 0xFFEB0000, LENGTH = 0x10000'
+    if machine == "psv_cortexa72_0":
+        mem_sec += '\n\tpsv_pmc_ram_psv_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
+        mem_sec += '\n\tpsv_r5_0_atcm_global_MEM_0 : ORIGIN = 0xFFE00000, LENGTH = 0x40000'
+        mem_sec += '\n\tpsv_r5_1_atcm_global_MEM_0 : ORIGIN = 0xFFE90000, LENGTH = 0x10000'
+        mem_sec += '\n\tpsv_r5_1_btcm_global_MEM_0 : ORIGIN = 0xFFEB0000, LENGTH = 0x10000'
+    if machine == "psx_cortexa78_0":
+        mem_sec += '\n\tpsx_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
+        mem_sec += '\n\tpsx_r52_0a_atcm_global : ORIGIN = 0xEBA00000, LENGTH = 0x10000'
+        mem_sec += '\n\tpsx_r52_0a_btcm_global : ORIGIN = 0xEBA10000, LENGTH = 0x8000'
+        mem_sec += '\n\tpsx_r52_0a_ctcm_global : ORIGIN = 0xEBA20000, LENGTH = 0x8000'
+        mem_sec += '\n\tpsx_r52_1a_atcm_global : ORIGIN = 0xEBA40000, LENGTH = 0x10000'
+        mem_sec += '\n\tpsx_r52_1a_btcm_global : ORIGIN = 0xEBA50000, LENGTH = 0x8000'
+        mem_sec += '\n\tpsx_r52_1a_ctcm_global : ORIGIN = 0xEBA60000, LENGTH = 0x8000'
+        mem_sec += '\n\tpsx_r52_0b_atcm_global : ORIGIN = 0xEBA80000, LENGTH = 0x10000'
+        mem_sec += '\n\tpsx_r52_0b_btcm_global : ORIGIN = 0xEBA90000, LENGTH = 0x8000'
+        mem_sec += '\n\tpsx_r52_0b_ctcm_global : ORIGIN = 0xEBAA0000, LENGTH = 0x8000'
+        mem_sec += '\n\tpsx_r52_1b_atcm_global : ORIGIN = 0xEBAC0000, LENGTH = 0x10000'
+        mem_sec += '\n\tpsx_r52_1b_btcm_global : ORIGIN = 0xEBAD0000, LENGTH = 0x8000'
+        mem_sec += '\n\tpsx_r52_1b_ctcm_global : ORIGIN = 0xEBAE0000, LENGTH = 0x8000'
+    if machine == "psx_cortexr52_0":
+        mem_sec += '\n\tpsx_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
+        mem_sec += '\n\tpsx_r52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
 
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
         if default_ddr is None:
