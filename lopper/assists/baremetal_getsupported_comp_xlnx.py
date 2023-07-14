@@ -114,7 +114,7 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
 
 
     with open(os.path.join(sdt.outdir, 'app_list.yaml'), 'w') as fd:
-        fd.write(yaml.dump(supported_app_dict, sort_keys=False, indent=2, width=32768))
+        fd.write(yaml.dump(supported_app_dict, sort_keys=False, indent=2, width=32768, Dumper=VerboseSafeDumper))
 
     with open(os.path.join(sdt.outdir, 'lib_list.yaml'), 'w') as fd:
         fd.write(yaml.dump(supported_libs_dict, sort_keys=False, indent=2, width=32768, Dumper=VerboseSafeDumper))
