@@ -187,17 +187,21 @@
                                    if n['xlnx,endianness'].value[0] == 1:
                                        libpath.append('le/')
 
+                                   if n['xlnx,data-size'].value[0] == 64:
+                                       libpath.append('m64/')
+
                                    if n['xlnx,use-barrel'].value[0] == 1:
                                        libpath.append('bs/')
-                
-                                   if n['xlnx,use-fpu'].value[0] > 0:
-                                       libpath.append('fpd/')
         
                                    if n['xlnx,use-pcmp-instr'].value[0] == 1:
                                        libpath.append('p/')
                 
                                    if n['xlnx,use-hw-mul'].value[0] > 0:
                                        libpath.append('m/')
+
+                                   if n['xlnx,use-fpu'].value[0] > 0:
+                                       libpath.append('fpd/')
+
                                    libdir = ''.join(libpath)
                                    cflags_data['cflags'] = cflags
                                    cflags_data['libpath'] = libdir
