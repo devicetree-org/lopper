@@ -150,6 +150,7 @@
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze";
+                      select_3 = ":model:";
                       lop_11_1_1 {
                           compatible = "system-device-tree-v1,lop,code-v1";
                           code = "
