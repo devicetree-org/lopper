@@ -280,7 +280,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                 fd.write(f'set(DEVICE_ID "{val}" CACHE STRING "Device Id")\n')
             if sdt.tree['/'].propval('board') != ['']:
                 val = sdt.tree['/'].propval('board', list)[0]
-                fd.write(f'set(BOARD "{val}" CACHE STRING "Device Id")\n')
+                fd.write(f'set(BOARD "{val}" CACHE STRING "BOARD")\n')
 
     if topology_data:
         lwip_topolgy(sdt.outdir, topology_data)

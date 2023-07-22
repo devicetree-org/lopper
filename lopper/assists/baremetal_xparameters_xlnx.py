@@ -270,8 +270,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     board_name = [b for b in board_list for board in root_compat if b in board]
     if sdt.tree[tgt_node].propval('board') != ['']:
         board = sdt.tree[tgt_node].propval('board', list)[0]
-        plat.buf(f"\n/*  BOARD  */")
-        plat.buf(f"\n#define XPAR_BOARD_{board.upper()}\n")
+        plat.buf(f"\n/*  BOARD definition */")
+        plat.buf(f"\n#define XPS_BOARD_{board.upper()}\n")
     elif board_name:
         plat.buf(f'\n\n#define XPS_BOARD_{board_name[0].upper()}\n')
     
