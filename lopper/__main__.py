@@ -321,20 +321,30 @@ def main():
 
     # iterate registered loggers and set their default level to a
     # consistent value.
-    for lname,logger in logging.root.manager.loggerDict.items():
+    # This loop is repeatidly setting the root logger, but that is
+    # easier than making a second conditional just to make the root
+    # deafult match.
+    loggers = logging.root.manager.loggerDict.items()
+    for lname,logger in loggers:
         if type(logger) == logging.Logger:
             # default to showing WARNING and above
             logger.setLevel( logging.WARNING )
+            logging.getLogger().setLevel( logging.WARNING )
             if verbose == 1:
                 logger.setLevel( logging.INFO )
+                logging.getLogger().setLevel( logging.INFO )
             elif verbose == 2:
                 logger.setLevel( logging.DEBUG )
+                logging.getLogger().setLevel( logging.DEBUG )
             elif verbose == 3:
                 logger.setLevel( logging.DEBUG )
+                logging.getLogger().setLevel( logging.DEBUG )
             elif verbose > 3:
                 logger.setLevel( logging.DEBUG )
+                logging.getLogger().setLevel( logging.DEBUG )
             else:
                 logger.setLevel( logging.WARNING )
+                logging.getLogger().setLevel( logging.WARNING )
 
     # set some flags before we process the tree.
     device_tree.dryrun = dryrun
