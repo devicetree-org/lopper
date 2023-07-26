@@ -68,7 +68,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             repo_schema = utils.load_yaml(repo_path_data)
             drv_data = repo_schema['driver']
             drv_dir = drv_data.get(drv,{}).get('vless','')
-            if not drv_dir:
+            if not drv_dir and drv_data.get(drv,{}).get('path',''):
                 drv_dir = drv_data.get(drv,{}).get('path','')[0]
         else:
             drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers", drv)
