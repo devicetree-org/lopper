@@ -281,6 +281,11 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
             if sdt.tree['/'].propval('board') != ['']:
                 val = sdt.tree['/'].propval('board', list)[0]
                 fd.write(f'set(BOARD "{val}" CACHE STRING "BOARD")\n')
+            match_cpunode = bm_config.get_cpu_node(sdt, options)
+            if re.search("microblaze", match_cpunode['compatible'].value[0]):
+                if match_cpunode.propval('xlnx,family') != ['']:
+                    family = match_cpunode.propval('xlnx,family', list)[0]
+                    fd.write(f'set(CMAKE_MACHINE "{family}" CACHE STRING "CMAKE MACHINE")\n')
 
     if topology_data:
         lwip_topolgy(sdt.outdir, topology_data)
