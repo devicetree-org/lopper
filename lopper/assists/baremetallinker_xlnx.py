@@ -14,6 +14,7 @@ import lopper_lib
 
 sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node
+import common_utils as utils
 from common_utils import to_cmakelist
 from domain_access import domain_get_subnodes
 
@@ -177,8 +178,32 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     except IndexError:
         pass
 
-    src_dir = options['args'][1].rstrip(os.path.sep)
-    appname = os.path.basename(os.path.dirname(src_dir))
+    src_dir = options['args'][1]
+    app_path = utils.get_dir_path(src_dir.rstrip(os.sep))
+    appname = utils.get_base_name(app_path)
+    yaml_file = os.path.join(app_path, "data", f"{appname}.yaml")
+    match_cpunode = get_cpu_node(sdt, options)
+    if match_cpunode.propval('xlnx,ip-name') != ['']:
+        ip_name = match_cpunode.propval('xlnx,ip-name', list)[0]
+        if "microblaze" in ip_name:
+            stack_size = 0x400
+            heap_size = 0x400
+        else:
+            stack_size = 0x2000
+            heap_size = 0x2000
+    else:
+        stack_size = None
+        heap_size = None
+    if not utils.is_file(yaml_file):
+        print(f"{appname} doesn't have yaml file")
+    else:
+        schema = utils.load_yaml(yaml_file)
+        if schema.get("linker_constraints"):
+            if schema.get("linker_constraints").get("stack"):
+                stack_size = schema["linker_constraints"]["stack"]
+            if schema.get("linker_constraints").get("heap"):
+                heap_size = schema["linker_constraints"]["heap"]
+
     cmake_file = os.path.join(sdt.outdir, f"{appname.capitalize()}Example.cmake")
     cfd = open(cmake_file, 'a')
     if memtest_config:
@@ -282,4 +307,9 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         memip_list.insert(0, memip_list.pop(memip_list.index(has_ocm[0])))
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
     cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
+    if stack_size:
+        cfd.write(f'set(STACK_SIZE {hex(stack_size)})\n')
+    if heap_size:
+        cfd.write(f'set(HEAP_SIZE {hex(heap_size)})\n')
+
     return True
