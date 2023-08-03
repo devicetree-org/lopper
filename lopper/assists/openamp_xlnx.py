@@ -523,6 +523,8 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
     elfload = openamp_channel_info["elfload"+channel_id]
     tx = None
     rx = None
+    SHARED_BUF_PA = 0
+    SHARED_BUF_SIZE = 0
 
     for c in carveouts:
         base = hex(c.props("start")[0].value)
@@ -536,6 +538,8 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
             rx = base
         else:
             name = "VDEV0BUFFER"
+            SHARED_BUF_PA = base
+            SHARED_BUF_SIZE = size
 
 
     if not rpmsg_native:
@@ -546,13 +550,17 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
     elfsize = None
     SHARED_MEM_PA = 0
     SHARED_BUF_OFFSET = 0
+    RSC_MEM_PA = 0
     for e in elfload:
         if e.props("start") != []: # filter to only parse ELF LOAD node
             elfbase = hex(e.props("start")[0].value)
             elfsize = hex(e.props("size")[0].value)
+            RSC_MEM_PA = hex(e.props("start")[0].value + 0x20000)
             SHARED_MEM_PA = hex(e.props("start")[0].value + e.props("size")[0].value)
             SHARED_BUF_OFFSET = hex( e.props("size")[0].value * 2 )
             break
+
+    SHM_DEV_NAME = "\"" + RSC_MEM_PA + '.shm\"'
 
     host_ipi = openamp_channel_info["host_ipi_" + channel_id]
     host_ipi_bitmask = hex(host_ipi.props("xlnx,ipi-bitmask")[0].value[0])
@@ -578,6 +586,13 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
         "SHARED_MEM_PA": SHARED_MEM_PA,
         "SHARED_MEM_SIZE":"0x100000UL",
         "SHARED_BUF_OFFSET":SHARED_BUF_OFFSET,
+        "SHM_DEV_NAME":SHM_DEV_NAME,
+        "DEV_BUS_NAME":"\"platform\"",
+        "IPI_DEV_NAME":"\"" + POLL_BASE_ADDR+".ipi\"",
+        "RSC_MEM_SIZE":'0x2000UL',
+        "RSC_MEM_PA":RSC_MEM_PA,
+        "SHARED_BUF_PA":SHARED_BUF_PA,
+        "SHARED_BUF_SIZE":SHARED_BUF_SIZE,
     }
 
     f = open(output_file, "w")
