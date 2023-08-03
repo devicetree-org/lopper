@@ -329,6 +329,16 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         plat.buf(f"\n/* Device ID */")
         plat.buf(f'\n#define XPAR_DEVICE_ID "{val}"\n')
 
+    #Define for XSEM_CFRSCAN_EN
+    if sdt.tree[tgt_node].propval('semmem-scan') != ['']:
+        val = sdt.tree[tgt_node].propval('semmem-scan', list)[0]
+        plat.buf(f'\n#define XSEM_CFRSCAN_EN {val}\n')
+
+    #Define for XSEM_NPISCAN_EN
+    if sdt.tree[tgt_node].propval('semnpi-scan') != ['']:
+        val = sdt.tree[tgt_node].propval('semnpi-scan', list)[0]
+        plat.buf(f'\n#define XSEM_NPISCAN_EN {val}\n')
+
     plat.buf('\n#endif  /* end of protection macro */')
     plat.out(''.join(plat.get_buf()))
 
