@@ -247,7 +247,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                                 topology_data[val] = 0
                            elif drv == "ll_temac":
                                 topology_data[val] = 1
-                           elif drv == "axi_ethernet":
+                           elif drv == "axiethernet":
                                 topology_data[val] = 2
                            elif drv == "emacps":
                                 topology_data[val] = 3
