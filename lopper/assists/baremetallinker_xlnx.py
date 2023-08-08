@@ -286,9 +286,13 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     if has_ddr and not memtest_config:
         default_ddr = has_ddr[0]
     ## For memory tests configuration default memory should be ocm if available
-    has_ocm = [x for x in mem_ranges.keys() if "ocm" in x or "ram" in x]
-    if has_ocm and memtest_config:
-        default_ddr = has_ocm[0]
+    if memtest_config:
+        has_ocm = [x for x in mem_ranges.keys() if "ocm" in x]
+        has_ram = [x for x in mem_ranges.keys() if "ram" in x]
+        if has_ocm:
+            default_ddr = has_ocm[0]
+        elif has_ram:
+            default_ddr = has_ram[0]
 
     cfd.write("set(DDR %s)\n" % default_ddr)
     memip_list = []
