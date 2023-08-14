@@ -542,32 +542,43 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
         except KeyError:
             prop_val = [0]
 
-        if ('{' in str(prop_val[0])):
-                prop_val_temp = []
-                for k in (str(prop_val[0]).split()[1]).split(","):
-                    prop_val_temp.append(int(k, 16))
-                prop_val = prop_val_temp
-
-        if ('/bits/' in prop_val):
-            prop_val = [int(prop_val[-1][3:-1], base=16)]
-
-        if isinstance(prop_val[0], str):
-            plat.buf('\n\t\t%s' % '"{}"'.format(node[prop].value[0]))
-            drvprop_list.append(node[prop].value[0])
-        elif len(prop_val) > 1:
-            plat.buf('\n\t\t{')
-            for k,item in enumerate(prop_val):
-                if isinstance(item, int):
-                    drvprop_list.append(hex(item))
+        if pad:
+            address_prop = ""
+            for index in range(0,pad):
+                if index == 0:
+                    address_prop = hex(node[prop].value[index])
                 else:
-                    drvprop_list.append(item)
-                plat.buf('%s' % item)
-                if k != len(prop_val)-1:
-                    plat.buf(',  ')
-            plat.buf('}')
+                    address_prop += f"{node[prop].value[index]:08x}"
+            if address_prop:
+                plat.buf(f'\n\t\t{address_prop}')
+                drvprop_list.append(address_prop)
         else:
-            drvprop_list.append(hex(prop_val[0]))
-            plat.buf('\n\t\t%s' % hex(prop_val[0]))
+            if ('{' in str(prop_val[0])):
+                    prop_val_temp = []
+                    for k in (str(prop_val[0]).split()[1]).split(","):
+                        prop_val_temp.append(int(k, 16))
+                    prop_val = prop_val_temp
+
+            if ('/bits/' in prop_val):
+                prop_val = [int(prop_val[-1][3:-1], base=16)]
+
+            if isinstance(prop_val[0], str):
+                plat.buf('\n\t\t%s' % '"{}"'.format(node[prop].value[0]))
+                drvprop_list.append(node[prop].value[0])
+            elif len(prop_val) > 1:
+                plat.buf('\n\t\t{')
+                for k,item in enumerate(prop_val):
+                    if isinstance(item, int):
+                        drvprop_list.append(hex(item))
+                    else:
+                        drvprop_list.append(item)
+                    plat.buf('%s' % item)
+                    if k != len(prop_val)-1:
+                        plat.buf(',  ')
+                plat.buf('}')
+            else:
+                drvprop_list.append(hex(prop_val[0]))
+                plat.buf('\n\t\t%s' % hex(prop_val[0]))
 
 
 # tgt_node: is the baremetal config top level domain node number
