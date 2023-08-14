@@ -166,6 +166,10 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                     elif prop == "child,required":
                         for j,child in enumerate(list(node.child_nodes.items())):
                             for k,p in enumerate(pad):
+                                if type(p) is dict:
+                                    break
+                                if p == "nosub":
+                                    continue
                                 try:
                                     val = hex(child[1][p].value[0])
                                 except KeyError:
