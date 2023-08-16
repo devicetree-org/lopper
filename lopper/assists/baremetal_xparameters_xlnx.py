@@ -214,22 +214,36 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         except KeyError:
                             prop_val = [0]
 
-                        if ('/bits/' in prop_val):
-                            prop_val = [int(prop_val[-1][3:-1], base=16)]
-                        prop = prop.replace("-", "_")
-                        prop = prop.replace("xlnx,", "")
-
-                        if isinstance(prop_val[0], str):
-                            canondef_dict.update({prop:f"{prop_val[0]}"})
-                            plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} "{prop_val[0]}"')
-                        elif len(prop_val) > 1:
-                            for k,item in enumerate(prop_val):
-                                cannon_prop = prop + str("_") + str(k)
-                                canondef_dict.update({cannon_prop:item})
-                                plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()}_{k} {item}')
+                        if pad:
+                            address_prop = ""
+                            for index in range(0,pad):
+                                if index == 0:
+                                    address_prop = hex(node[prop].value[index])
+                                elif index < len(node[prop].value):
+                                    address_prop += f"{node[prop].value[index]:08x}"
+                            prop = prop.replace("-", "_")
+                            prop = prop.replace("xlnx,", "")
+                            if address_prop:
+                                canondef_dict.update({prop:address_prop})
+                                plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {address_prop}')
                         else:
-                            canondef_dict.update({prop:hex(prop_val[0])})
-                            plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {hex(prop_val[0])}')
+                            if ('/bits/' in prop_val):
+                                prop_val = [int(prop_val[-1][3:-1], base=16)]
+
+                            prop = prop.replace("-", "_")
+                            prop = prop.replace("xlnx,", "")
+
+                            if isinstance(prop_val[0], str):
+                                canondef_dict.update({prop:f"{prop_val[0]}"})
+                                plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} "{prop_val[0]}"')
+                            elif len(prop_val) > 1:
+                                for k,item in enumerate(prop_val):
+                                    cannon_prop = prop + str("_") + str(k)
+                                    canondef_dict.update({cannon_prop:item})
+                                    plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()}_{k} {item}')
+                            else:
+                                canondef_dict.update({prop:hex(prop_val[0])})
+                                plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {hex(prop_val[0])}')
 
                 plat.buf(f'\n\n/* Canonical definitions for peripheral {label_name} */')
                 for prop,val in sorted(canondef_dict.items(), key=lambda e: e[0][0], reverse=False):
