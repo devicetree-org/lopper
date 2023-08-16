@@ -547,7 +547,7 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
             for index in range(0,pad):
                 if index == 0:
                     address_prop = hex(node[prop].value[index])
-                else:
+                elif index < len(node[prop].value):
                     address_prop += f"{node[prop].value[index]:08x}"
             if address_prop:
                 plat.buf(f'\n\t\t{address_prop}')
