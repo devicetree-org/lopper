@@ -277,10 +277,13 @@ def is_compat(node, compat_string_to_test):
     return ""
 
 def get_stdin(sdt, chosen_node, node_list):
-    prop_val = chosen_node['stdout-path'].value
-    serial_node = sdt.tree.alias_node(prop_val[0].split(':')[0])
-    match = [x for x in node_list if re.search(x.name, serial_node.name)]
-    return match[0]
+    if chosen_node.propval('stdout-path') != ['']:
+        prop_val = chosen_node['stdout-path'].value
+        serial_node = sdt.tree.alias_node(prop_val[0].split(':')[0])
+        match = [x for x in node_list if re.search(x.name, serial_node.name)]
+        return match[0]
+    else:
+        return 0
 
 def get_mapped_nodes(sdt, node_list, options):
     # Yocto Machine to CPU compat mapping
@@ -662,9 +665,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     with open(cmake_file, 'a') as fd:
        fd.write("set(DRIVER_INSTANCES %s)\n" % utils.to_cmakelist(nodename_list))
        if stdin:
-           match = [x for x in nodename_list if re.search(x, stdin_node.name)]
-           if match:
-               fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(match[0]))
+           if stdin_node:
+               match = [x for x in nodename_list if re.search(x, stdin_node.name)]
+               if match:
+                   fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(match[0]))
 
     for index,node in enumerate(driver_nodes):
         drvprop_list = []
