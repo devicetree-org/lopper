@@ -219,11 +219,11 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
 
                         if pad:
                             address_prop = ""
-                            for index in range(0,pad):
-                                if index == 0:
-                                    address_prop = hex(node[prop].value[index])
-                                elif index < len(node[prop].value):
-                                    address_prop += f"{node[prop].value[index]:08x}"
+                            for pad_num in range(0,pad):
+                                if pad_num == 0:
+                                    address_prop = hex(node[prop].value[pad_num])
+                                elif pad_num < len(node[prop].value):
+                                    address_prop += f"{node[prop].value[pad_num]:08x}"
                             prop = prop.replace("-", "_")
                             prop = prop.replace("xlnx,", "")
                             if address_prop:
