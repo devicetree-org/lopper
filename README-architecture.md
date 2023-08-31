@@ -235,6 +235,10 @@ NOTE/TODO: bindings will be written for the lopper operations.
                         // id: string to pass to assist modules to identify compatible
                         //     assists
                         id = "openamp,domain-v1";
+                        // output is optional, specify if a different output from the
+                        // lopper default is required. lopper does no managment of files
+                        // or this directory.
+                        // output = "<output directory>";
                 };
 
 # modify: a general purpose node and property modify/delete/add/move operation
@@ -368,11 +372,11 @@ NOTE/TODO: bindings will be written for the lopper operations.
 		       nodes = "axi.*";
 	        };
 		lop_17 {
-                       compatible = "system-device-tree-v1,lop,output";
+               compatible = "system-device-tree-v1,lop,output";
 		       outfile = "plm.cdo";
 		       // * is "all nodes"
 		       nodes = "*";
-                       // lopper output assist will kick in
+               // lopper output assist will kick in
 		       id = "xlnx,output,cdo";
 	        };
 		lop_18 {
@@ -988,9 +992,11 @@ If compatible, lopper calls the assist routine with the arguments set to:
   - the lopper system device tree object
   - the assist options dictionary
 
-The options dictionary minimally contains the 'verbose' key, which indicates the
-level of verbosity that lopper is using. Additional options (such as command
-line inputs) will be added in the future.
+The options dictionary minimally contains the following keys:
+
+   'verbose': indicates the level of verbosity that lopper is using. 
+   'outdir': indicates the lopper output directory (from a lop or command line)
+   'args': any remaining assist specific arguments (from a lop or command line)
 
 Once called, the function can use the node number and the system device tree
 (with its embedded FDT) to discover more information about the tree and
