@@ -1416,6 +1416,7 @@ class LopperSDT:
                 print( "[ERROR]: cannot find target node for the assist" )
                 sys.exit(1)
 
+            cb_outdir = self.outdir
             try:
                 cb = lop_node.propval('assist')[0]
                 cb_id = lop_node.propval('id')[0]
@@ -1425,6 +1426,8 @@ class LopperSDT:
                     cb_opts = cb_opts.split( ' ' )
                 else:
                     cb_opts = []
+                if lop_node.propval('outdir') != ['']:
+                    cb_outdir = lop_node.propval('outdir')[0]
             except Exception as e:
                 print( "[ERROR]: callback options are missing: %s" % e )
                 sys.exit(1)
@@ -1451,7 +1454,7 @@ class LopperSDT:
             if cb_funcs:
                 for cb_func in cb_funcs:
                     try:
-                        if not cb_func( cb_node, self, { 'verbose' : self.verbose, 'outdir' : self.outdir, 'args': cb_opts } ):
+                        if not cb_func( cb_node, self, { 'verbose' : self.verbose, 'outdir' : cb_outdir, 'args': cb_opts } ):
                             print( "[WARNING]: the assist returned false, check for errors ..." )
                     except Exception as e:
                         print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )
