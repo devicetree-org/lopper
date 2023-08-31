@@ -592,6 +592,8 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     root_sub_nodes = root_node.subnodes()
     node_list = []
     chosen_node = ""
+    if options.get('outdir', {}):
+        sdt.outdir = options['outdir']
     # Traverse the tree and find the nodes having status=ok property
     for node in root_sub_nodes:
         try:

@@ -299,6 +299,8 @@ def is_compat( node, compat_string_to_test ):
 def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
+    if options.get('outdir', {}):
+        sdt.outdir = options['outdir']
 
     node_list = []
     chosen_node = ""

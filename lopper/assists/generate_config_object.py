@@ -521,6 +521,8 @@ def generate_tpl_lines():
     return final_lines
 
 def cfg_obj_write(root_node, sdt, options):
+    if options.get('outdir', {}):
+        sdt.outdir = options['outdir']
     sdtinfo_obj = SdtInfo(sdt, options)
 
     final_lines = generate_tpl_lines()
