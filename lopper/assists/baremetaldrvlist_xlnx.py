@@ -25,6 +25,8 @@ def is_compat(node, compat_string_to_test):
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
+    if options.get('outdir', {}):
+        sdt.outdir = options['outdir']
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     compatible_dict = {}
