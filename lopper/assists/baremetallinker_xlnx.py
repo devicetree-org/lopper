@@ -199,9 +199,10 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     else:
         schema = utils.load_yaml(yaml_file)
         if schema.get("linker_constraints"):
-            if schema.get("linker_constraints").get("stack"):
+            linker_constraint_opts = list(schema["linker_constraints"].keys())
+            if "stack" in linker_constraint_opts:
                 stack_size = schema["linker_constraints"]["stack"]
-            if schema.get("linker_constraints").get("heap"):
+            if "heap" in linker_constraint_opts:
                 heap_size = schema["linker_constraints"]["heap"]
 
     cmake_file = os.path.join(sdt.outdir, f"{appname.capitalize()}Example.cmake")
@@ -316,9 +317,9 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             memip_list.insert(0, memip_list.pop(memip_list.index(has_ram[0])))
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
     cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
-    if stack_size:
+    if stack_size is not None:
         cfd.write(f'set(STACK_SIZE {hex(stack_size)})\n')
-    if heap_size:
+    if heap_size is not None:
         cfd.write(f'set(HEAP_SIZE {hex(heap_size)})\n')
 
     return True
