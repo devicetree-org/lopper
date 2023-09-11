@@ -3452,7 +3452,7 @@ class LopperTree:
 
         if existing_node:
             if not merge:
-                lopper.log._warning( f"add: node: {node.abs_path} already exists" )
+                lopper.log._debug( f"add: node: {node.abs_path} already exists" )
                 return self
             else:
                 lopper.log._debug( f"add: node: {node.abs_path} exists, merging properties" )
