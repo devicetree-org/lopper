@@ -384,8 +384,7 @@ def isospec_process_access( access_node, sdt, json_tree ):
                 try:
                     device_requested = flag_mapping["requested"]
                 except:
-                    _info( f'device \"{defs["name"]}\" was found, but not requested. skipping' )
-                    continue
+                    _info( f'device \"{defs["name"]}\" was found, but not requested. adding to domain' )
 
                 # find the destinations in the isospec json tree
                 dests = isospec_device_destination( defs["destinations"], json_tree )
@@ -644,6 +643,7 @@ def isospec_domain( tgt_node, sdt, options ):
         isospec_domain_node = json_tree[f"{iso_node.abs_path}"]
         domain_id = iso_node["id"]
         domain_node = domains_tree_add_domain( domains_tree, iso_node.name, None, domain_id )
+        ## these are subsystems, which have nested domains
         domain_node = process_domain( domain_node, iso_node, json_tree, sdt )
 
         try:
@@ -657,8 +657,10 @@ def isospec_domain( tgt_node, sdt, options ):
                 except:
                     # copy the subsystem's id
                     domain_id = iso_node["id"]
-                sub_domain_node = domains_tree_add_domain( domains_tree, s.name, sub_domain_node, domain_id )
-                sub_domain_node = process_domain( sub_domain_node, s, json_tree, sdt )
+                sub_domain_node_new = domains_tree_add_domain( domains_tree, s.name, sub_domain_node, domain_id )
+                sub_domain_node_new = process_domain( sub_domain_node_new, s, json_tree, sdt )
+
+                domain_node.print()
         except:
             pass
 
