@@ -30,14 +30,17 @@ from anytree import PreOrderIter
 from anytree import AnyNode
 from anytree import Node
 
+from lopper.log import _warning, _info, _error, _debug, _init
+import logging
+
+_init( __name__ )
+_init( "yaml.py" )
 
 def flatten_dict(dd, separator ='_', prefix =''):
     return { prefix + separator + k if prefix else k : v
              for kk, vv in dd.items()
              for k, v in flatten_dict(vv, separator, kk).items()
     } if isinstance(dd, dict) else { prefix : dd }
-
-
 
 class LopperTreeImporter(object):
 
@@ -106,8 +109,7 @@ class LopperTreeImporter(object):
 
                 if decode:
                     try:
-                        if verbose:
-                            print( "[DBG++]: LopperTreeImporter: json load for prop %s : %s" % (p,node.__props__[p].value))
+                        _debug( f"LopperTreeImporter: json load for prop {p} : {node.__props__[p].value}" )
 
                         decode_val = ""
                         val = []
@@ -216,14 +218,12 @@ class LopperDictExporter(DictExporter):
                 # if there are children returned, we merge them into a single dictionary, so
                 # that output can represent them as child nodes of the current one (see how
                 # we return data)
-                if verbose > 2:
-                    print( "[DBG+++]: node: %s has children: %s" % (name,children) )
+                _debug( f"node: {name} has children: {children}" )
 
                 new_dict = {}
                 #for c in reversed(children):
                 for c in children:
-                    if verbose > 2:
-                        print( "[DBG+++]:        merging dict: %s" % c )
+                    _debug( f"        merging dict: {c}" )
                     new_dict.update( c )
 
                 data.update( new_dict )
@@ -279,9 +279,8 @@ class LopperDictImporter(object):
         attrs = dict(data)
         verbose = 0
 
-        if verbose:
-            print( "[DBG]: ===> __import (%s)" % name )
-            print( "            attrs: %s" % attrs )
+        _debug( f"===> __import ({name})" )
+        _debug( f"            attrs: {attrs}" )
 
         if name:
             attrs['name'] = name
@@ -298,8 +297,7 @@ class LopperDictImporter(object):
                 cdict['name'] = k
                 cdict['fdt_name'] = k
 
-                if verbose:
-                    print( "[DBG]      queuing child from dict node: name: %s props: %s" % (k,cdict))
+                _debug( f"      queuing child from dict node: name: {k} props: {cdict}" )
 
                 children.append( cdict )
                 # queue it for removal, since we don't want the child attributes to be
@@ -369,8 +367,7 @@ class LopperDictImporter(object):
                 first_val = attrs[first_key]
                 attrs['name'] = first_val
 
-        if verbose:
-            print( "[DBG]      creating node with attrs: %s" % attrs )
+        _debug( f"      creating node with attrs: {attrs}" )
 
         node = self.nodecls(parent=parent, **attrs)
         for child in children:
@@ -451,7 +448,7 @@ class LopperJSON():
         if filename:
             in_name = filename
         if not in_name:
-            print( "[ERROR]: no json source provided" )
+            _error( f"no json source provided" )
 
 
         # option1: use anytree importer
@@ -466,7 +463,7 @@ class LopperJSON():
         inj = open( in_name )
         self.dct = json.load(inj)
         if not self.dct:
-            print( "[ERROR]: no data available to load" )
+            _error( f"no data available to load" )
             sys.exit(1)
 
         # flatten the dictionary so we can look up aliases and anchors
@@ -488,7 +485,7 @@ class LopperJSON():
           LopperTree object representation of YAML object
         """
         if not self.anytree:
-            print( "[ERROR]: cannot export tree, nothing is loaded" )
+            _error( f"cannot export tree, nothing is loaded" )
             return None
 
         lt = LopperTree()
@@ -517,8 +514,7 @@ class LopperJSON():
 
             props = self.props( node )
             for p in props:
-                if verbose:
-                    print( "[DBG+]: prop: %s (%s)" % (p,props[p]) )
+                _debug( f" prop: {p} ({props[p]})" )
 
                 if serialize_json:
                     use_json = False
@@ -577,7 +573,7 @@ class LopperJSON():
                             # add the prop the node
                             ln + lp
                         else:
-                            print( "[INFO]: not encoding false boolean type: %s" % p)
+                            _info( f"not encoding false boolean type: {p}" )
                     elif type(props[p]) == dict:
                         # we need to check if there are embedded dictionaries, and if so, expand them.
                         # since a dictionary doesn't map directly to device tree output.
@@ -607,8 +603,7 @@ class LopperJSON():
                 # "<<*" is a node extended expand
                 expand_string = "<<+"
                 if p.name == "<<*":
-                    if verbose:
-                        print( "[DBG]: node extension <<* detected in node %s" % p.node.abs_path )
+                    _debug( f"node extension <<* detected in node {p.node.abs_path}" )
                     # to make the standard processing work below, we upgrade the
                     # property to json formatted if it already isn't
                     expand_string = "<<*"
@@ -625,27 +620,23 @@ class LopperJSON():
                     #         print( "[DBG]: target found, pulling properties" )
 
                 if p.pclass == "json":
-                    if verbose:
-                        print( "[DBG]: json: %s (len: %s)" % (p.value,len(p)) )
+                    _debug( f"json: {p.value} (len: {len(p)})" )
                     extension_found = False
                     for x in range(0, len(p)):
                         try:
                             m_val = p[x][expand_string]
                             extension_found = True
-                            if verbose:
-                                print( "[DBG]; found extension marker: %s" % m_val )
+                            _debug( f"found extension marker: {m_val}" )
                         except:
                             pass
 
                     if not extension_found:
                         if p.name == expand_string:
                             extension_found = True
-                            if verbose:
-                                print( "[DBG]: found extension name (%s)" % expand_string)
+                            _debug( f"found extension name ({expand_string})" )
 
                     for x in range(0, len(p)):
-                        if verbose:
-                            print("[DBG]     [%s] chunk: %s (%s)" % (x,p[x],type(p[x]) ) )
+                        _debug( f"     [{x}] chunk: {p[x]} ({type(p[x])})" )
                         try:
                             # an exception is raised if the chunk doesn't have an index
                             # with <<+, so everything below can assume this is true.
