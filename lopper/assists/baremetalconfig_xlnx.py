@@ -641,7 +641,8 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
 
     # Remove duplicate nodes
     driver_nodes = list(set(driver_nodes))
-    driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
+    if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
+        driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
     if not config_struct:
         config_struct = str("X") + drvname.capitalize() + str("_Config")
     else:

@@ -43,7 +43,8 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         except:
            pass
 
-    node_list = get_mapped_nodes(sdt, node_list, options)
+    if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
+        node_list = get_mapped_nodes(sdt, node_list, options)
     for node in node_list:
         compatible_dict.update({node: node["compatible"].value})
 
