@@ -46,7 +46,10 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
 
     driver_ip_dict = {}
     mapped_ip_dict = {}
-    mapped_nodelist = get_mapped_nodes(sdt, node_list, options)
+    if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
+        mapped_nodelist = get_mapped_nodes(sdt, node_list, options)
+    else:
+        mapped_nodelist = node_list
     for node in mapped_nodelist:
         compatible_dict.update({node: node["compatible"].value})
         node_name = node.propval('xlnx,name')

@@ -55,7 +55,8 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                if compat in compat_string:
                    driver_nodes.append(node)
 
-    driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
+    if sdt.tree['/'].propval('pruned-sdt') == ['']:
+        driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
     nodename_list = []
     reg_list = []
     example_dict = {}
@@ -164,7 +165,8 @@ def getmatch_nodes(sdt, node_list, yaml_file, options):
 
     # Remove duplicate nodes
     driver_nodes = list(set(driver_nodes))
-    driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
+    if sdt.tree['/'].propval('pruned-sdt') == ['']:
+        driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
     return driver_nodes
 
 def getxlnx_phytype(sdt, value):

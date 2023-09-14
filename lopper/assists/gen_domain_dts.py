@@ -131,4 +131,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         if prop not in match_label_list:
             sdt.tree['/__symbols__'].delete(prop)
 
+    # Add new property which will be consumed by other assists
+    sdt.tree['/']['pruned-sdt'] = 1
+
     return True

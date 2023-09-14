@@ -104,7 +104,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                        node_list = [x for x in node_list if not(x.abs_path == node)]
                        if node1:
                            match_nodes.append(node1[0])
-            match_nodes = bm_config.get_mapped_nodes(sdt, match_nodes, options)
+            if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
+                match_nodes = bm_config.get_mapped_nodes(sdt, match_nodes, options)
             for index, node in enumerate(match_nodes):
                 label_name = bm_config.get_label(sdt, symbol_node, node)
                 label_name = label_name.upper()
@@ -256,7 +257,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                 plat.buf('\n')
                                     
     # Generate Defines for Generic Nodes
-    node_list = bm_config.get_mapped_nodes(sdt, node_list, options)
+    if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
+        node_list = bm_config.get_mapped_nodes(sdt, node_list, options)
     prev = ""
     count = 0
     for node in node_list:
