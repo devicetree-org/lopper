@@ -530,9 +530,18 @@ class LopperProp():
             phandle_idx = 0
             property_desc_idx = 0
             latch_sub_list = False
+            # field val is set to a non-zero value when encounter a phandle
+            # description that has #<field-nane>. We reset it to zero each
+            # time a new phandle check is done (when phandle_idx == idx)
+            # This allows us to set a jump ahead (if greater than zero), or
+            # to increment by one if a placeholder (non phandle) field didn't
+            # specify a variable size
+            field_val = 0
             for idx,val in enumerate(prop_val):
                 phandle_desc = ""
                 if idx == phandle_idx:
+                    field_val = 0
+
                     if latch_sub_list:
                         phandle_map.append( phandle_sub_list )
                         latch_sub_list = False
@@ -582,6 +591,12 @@ class LopperProp():
                     phandle_idx = phandle_idx + field_val
                 else:
                     # not a phandle
+                    # if field_val is still at zero, no phandle description
+                    # was found and did not set a lookahead. So we increment
+                    # the phandle_idx by one, so the next field will be
+                    # examined
+                    if not field_val:
+                        phandle_idx = phandle_idx + 1
                     phandle_sub_list.append( 0 )
 
             # append the last collected set of phandle or not indications
@@ -1923,6 +1938,9 @@ class LopperNode(object):
 
         new_ph = self.tree.phandle_gen()
         self.phandle = new_ph
+
+        newprop = LopperProp(name='phandle',value=new_ph)
+        self + newprop
 
         return new_ph
 
