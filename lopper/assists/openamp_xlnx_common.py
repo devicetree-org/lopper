@@ -240,7 +240,53 @@ def resolve_host_remote( tree, subnode, verbose = 0 ):
         domain_node + LopperProp(name="phandle", value=domain_node.phandle)
     return True
 
-platform_info_header_template = """
+platform_info_header_a9_template = """
+/*
+ * Copyright (c) 2023 AMD, Inc.
+ * All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#ifndef _AMD_GENERATED_H_
+#define _AMD_GENERATED_H_
+
+/* Interrupt vectors */
+#define SGI_TO_NOTIFY           $SGI_TO_NOTIFY
+#define SGI_NOTIFICATION        $SGI_NOTIFICATION
+
+#define NUM_VRINGS              0x02
+#define VRING_ALIGN             0x1000
+#define VRING_SIZE              256
+
+#define RING_TX                 $RING_TX
+#define RING_RX                 $RING_RX
+
+#define SHARED_MEM_PA           $SHARED_MEM_PA
+#define SHARED_MEM_SIZE         $SHARED_MEM_SIZE
+#define SHARED_BUF_OFFSET       $SHARED_BUF_OFFSET
+
+#define SCUGIC_DEV_NAME         $SCUGIC_DEV_NAME
+#define SCUGIC_BUS_NAME         $SCUGIC_BUS_NAME
+#define SCUGIC_PERIPH_BASE      $SCUGIC_PERIPH_BASE
+#define SCUGIC_DIST_BASE        ($SCUGIC_PERIPH_BASE + 0x00001000)
+
+/* Memory attributes */
+#define NORM_NONCACHE 0x11DE2   /* Normal Non-cacheable */
+#define STRONG_ORDERED 0xC02    /* Strongly ordered */
+#define DEVICE_MEMORY 0xC06 /* Device memory */
+#define RESERVED 0x0        /* reserved memory */
+
+/* Zynq CPU ID mask */
+#define ZYNQ_CPU_ID_MASK 0x1UL
+
+/* Another APU core ID. In this demo, the other APU core is 0. */
+#define A9_CPU_ID   0UL
+
+#endif /* _AMD_GENERATED_H_ */
+"""
+
+platform_info_header_r5_template = """
 /*
  * Copyright (c) 2023 AMD, Inc.
  * All rights reserved.
