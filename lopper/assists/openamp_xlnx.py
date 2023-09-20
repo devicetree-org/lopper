@@ -220,19 +220,6 @@ def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
         print("WARNING no remote to host IPI channel has been found.")
         return False
 
-    # set platform
-    platform = None
-    root_node = tree["/"]
-    root_compat = root_node.props("compatible")[0].value
-    for compat in root_compat:
-        if "zynqmp" in compat or 'zcu102' in compat:
-            platform = SOC_TYPE.ZYNQMP
-            break
-        elif "versal" in compat or 'vck190' in compat:
-            platform = SOC_TYPE.VERSAL
-            break
-    openamp_channel_info["platform"] = platform
-
     # store IPI IRQ Vector IDs
     platform =  openamp_channel_info["platform"]
     host_ipi_base = host_ipi.props("reg")[0][1]
@@ -454,6 +441,10 @@ def xlnx_rpmsg_update_ipis(tree, host_ipi, remote_ipi, core_node, channel_id, op
         gic_node_phandle = tree["/apu-bus/interrupt-controller@f9000000"].phandle
     elif platform == SOC_TYPE.ZYNQMP:
         gic_node_phandle = tree["/apu-bus/interrupt-controller@f9010000"].phandle
+    elif platform == SOC_TYPE.ZYNQ:
+        gic_node_phandle = tree["/axi/interrupt-controller@f8f01000"].phandle
+        core_node + LopperProp(name="interrupt-parent",value=[gic_node_phandle])
+        return True
     else:
         print("invalid platform")
         return False
@@ -467,18 +458,26 @@ def xlnx_rpmsg_update_ipis(tree, host_ipi, remote_ipi, core_node, channel_id, op
 
 
 def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose = 0 ):
-    cpu_config =  openamp_channel_info["cpu_config"+channel_id]
+    platform = openamp_channel_info["platform"]
+    cpu_config = None
+    host_ipi = None
+    remote_ipi = None
+    rpu_core = None
     carveouts_nodes = openamp_channel_info["carveouts_"+ channel_id]
-    host_ipi = openamp_channel_info["host_ipi_"+ channel_id]
-    remote_ipi = openamp_channel_info["remote_ipi_"+ channel_id]
-    native = openamp_channel_info["rpmsg_native_"+ channel_id]
     amba_node = None
+    native = False
+    rpmsg_carveouts = []
+
+    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP ]:
+        native = openamp_channel_info["rpmsg_native_"+ channel_id]
+        cpu_config =  openamp_channel_info["cpu_config"+channel_id]
+        host_ipi = openamp_channel_info["host_ipi_"+ channel_id]
+        remote_ipi = openamp_channel_info["remote_ipi_"+ channel_id]
+        rpu_core = openamp_channel_info["rpu_core" + channel_id]
+
     elfload_node = None
     if native:
         amba_node = openamp_channel_info["amba_node"]
-    rpu_core = openamp_channel_info["rpu_core" + channel_id]
-    rpmsg_carveouts = []
-
 
     # if Amba node exists, then this is for RPMsg native.
     # in this case find elfload node in case of native RPMsg as it may be contiguous
@@ -492,8 +491,11 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
                                          amba_node=amba_node, elfload_node=elfload_node, verbose=verbose)
     if ret == False:
         return ret
+    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP ]:
+        core_node = tree["/rf5ss@ff9a0000/r5f_" + str(rpu_core.value)]
+    else:
+        core_node = tree["/remoteproc@0"]
 
-    core_node = tree["/rf5ss@ff9a0000/r5f_" + str(rpu_core.value)]
     mem_region_prop = core_node.props("memory-region")[0]
 
     # add rpmsg carveouts to cluster core node if using rpmsg kernel driver
@@ -508,8 +510,9 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
     if ret != True:
         return False
 
-    tree - host_ipi
-    tree - remote_ipi
+    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP ]:
+        tree - host_ipi
+        tree - remote_ipi
 
     return True
 
@@ -521,6 +524,7 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
     rpmsg_native = openamp_channel_info["rpmsg_native_"+channel_id]
     carveouts = openamp_channel_info["carveouts_"+channel_id]
     elfload = openamp_channel_info["elfload"+channel_id]
+    platform = openamp_channel_info["platform"]
     tx = None
     rx = None
     SHARED_BUF_PA = 0
@@ -562,41 +566,64 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
 
     SHM_DEV_NAME = "\"" + RSC_MEM_PA + '.shm\"'
 
-    host_ipi = openamp_channel_info["host_ipi_" + channel_id]
-    host_ipi_bitmask = hex(host_ipi.props("xlnx,ipi-bitmask")[0].value[0])
-    host_ipi_irq_vect_id = hex(openamp_channel_info["host_ipi_irq_vect_id" + channel_id])
-    host_ipi_base = hex(openamp_channel_info["host_ipi_base"+channel_id])
+    template = None
 
-    remote_ipi = openamp_channel_info["remote_ipi_" + channel_id]
-    remote_ipi_bitmask = hex(remote_ipi.props("xlnx,ipi-bitmask")[0].value[0])
-    remote_ipi_irq_vect_id = hex(openamp_channel_info["remote_ipi_irq_vect_id" + channel_id])
-    remote_ipi_base = hex(openamp_channel_info["remote_ipi_base"+channel_id])
+    if platform in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL ]:
+        host_ipi = openamp_channel_info["host_ipi_" + channel_id]
+        host_ipi_bitmask = hex(host_ipi.props("xlnx,ipi-bitmask")[0].value[0])
+        host_ipi_irq_vect_id = hex(openamp_channel_info["host_ipi_irq_vect_id" + channel_id])
+        host_ipi_base = hex(openamp_channel_info["host_ipi_base"+channel_id])
 
-    IPI_IRQ_VECT_ID = remote_ipi_irq_vect_id if role == 'remote' else host_ipi_irq_vect_id
-    POLL_BASE_ADDR = remote_ipi_base if role == 'remote' else host_ipi_base
-    # flip this as we are kicking other side with the bitmask value
-    IPI_CHN_BITMASK = host_ipi_bitmask if role == 'remote' else remote_ipi_bitmask
+        remote_ipi = openamp_channel_info["remote_ipi_" + channel_id]
+        remote_ipi_bitmask = hex(remote_ipi.props("xlnx,ipi-bitmask")[0].value[0])
+        remote_ipi_irq_vect_id = hex(openamp_channel_info["remote_ipi_irq_vect_id" + channel_id])
+        remote_ipi_base = hex(openamp_channel_info["remote_ipi_base"+channel_id])
 
-    inputs = {
-        "IPI_IRQ_VECT_ID": IPI_IRQ_VECT_ID,
-        "POLL_BASE_ADDR" : POLL_BASE_ADDR,
-        "IPI_CHN_BITMASK": IPI_CHN_BITMASK,
-        "RING_TX":tx,
-        "RING_RX":rx,
-        "SHARED_MEM_PA": SHARED_MEM_PA,
-        "SHARED_MEM_SIZE":"0x100000UL",
-        "SHARED_BUF_OFFSET":SHARED_BUF_OFFSET,
-        "SHM_DEV_NAME":SHM_DEV_NAME,
-        "DEV_BUS_NAME":"\"platform\"",
-        "IPI_DEV_NAME":"\"" + POLL_BASE_ADDR+".ipi\"",
-        "RSC_MEM_SIZE":'0x2000UL',
-        "RSC_MEM_PA":RSC_MEM_PA,
-        "SHARED_BUF_PA":SHARED_BUF_PA,
-        "SHARED_BUF_SIZE":SHARED_BUF_SIZE,
-    }
+        IPI_IRQ_VECT_ID = remote_ipi_irq_vect_id if role == 'remote' else host_ipi_irq_vect_id
+        POLL_BASE_ADDR = remote_ipi_base if role == 'remote' else host_ipi_base
+        # flip this as we are kicking other side with the bitmask value
+        IPI_CHN_BITMASK = host_ipi_bitmask if role == 'remote' else remote_ipi_bitmask
+
+        template = platform_info_header_r5_template
+
+        inputs = {
+            "POLL_BASE_ADDR":POLL_BASE_ADDR,
+            "SHM_DEV_NAME":SHM_DEV_NAME,
+            "RSC_MEM_SIZE":'0x2000UL',
+            "RSC_MEM_PA":RSC_MEM_PA,
+            "DEV_BUS_NAME":"generic",
+            "IPI_DEV_NAME":"ipi",
+            "IPI_IRQ_VECT_ID":IPI_IRQ_VECT_ID,
+            "IPI_CHN_BITMASK":IPI_CHN_BITMASK,
+            "RING_TX":tx,
+            "RING_RX":rx,
+            "SHARED_MEM_PA": SHARED_MEM_PA,
+            "SHARED_MEM_SIZE":"0x100000UL",
+            "SHARED_BUF_OFFSET":SHARED_BUF_OFFSET,
+            "SHARED_BUF_PA":SHARED_BUF_PA,
+            "SHARED_BUF_SIZE":SHARED_BUF_SIZE,
+        }
+    elif platform == SOC_TYPE.ZYNQ:
+        inputs = {
+            "RING_TX":tx,
+            "RING_RX":rx,
+            "SHARED_MEM_PA": SHARED_MEM_PA,
+            "SHARED_MEM_SIZE":"0x100000UL",
+            "SHARED_BUF_OFFSET":SHARED_BUF_OFFSET,
+            "SHARED_BUF_PA":SHARED_BUF_PA,
+            "SHARED_BUF_SIZE":SHARED_BUF_SIZE,
+            "SGI_TO_NOTIFY":15,
+            "SGI_NOTIFICATION":14,
+            "SCUGIC_DEV_NAME":"scugic_dev",
+            "SCUGIC_BUS_NAME":"generic",
+            "SCUGIC_PERIPH_BASE":"0xF8F00000UL",
+        }
+
+        template = platform_info_header_a9_template
+       
 
     f = open(output_file, "w")
-    output = Template(platform_info_header_template)
+    output = Template(template)
     f.write(output.substitute(inputs))
     f.close()
 
@@ -610,6 +637,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
     remote = node.props("remote")
     carveouts_nodes = []
     carveouts_prop = node.props("carveouts")
+    platform = openamp_channel_info["platform"]
     amba_node = None
 
     # skip rpmsg remote node which will link to its host via 'host' property
@@ -639,6 +667,8 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
     native = node.props("openamp-xlnx-native")
     if native != [] and native[0].value[0] == 1:
         native = True
+        if native and platform == SOC_TYPE.ZYNQ:
+            print("ERROR: Native RPMsg not supported for Zynq")
         # if native is true, then find and store amba bus
         # to store IPI and SHM nodes
         try:
@@ -656,10 +686,14 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
     else:
         native = False
 
-    ret = xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
-                         remote_node, channel_id, native, verbose)
-    if ret != True:
-        return False
+    # Zynq has hard-coded IPIs in driver
+    if platform in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL ]:
+        ret = xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
+                             remote_node, channel_id, native, verbose)
+        if ret != True:
+            return False
+    elif platform == SOC_TYPE.ZYNQ: # Zynq does not support rpmsg native
+        openamp_channel_info["rpmsg_native_"+channel_id] = False
 
     ret = xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose )
     if ret != True:
@@ -768,6 +802,7 @@ def xlnx_remoteproc_construct_carveouts(tree, carveouts, new_ddr_nodes, verbose 
 
 def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_nodes, host_node, remote_node, openamp_channel_info, verbose = 0):
     channel_id = "_"+host_node.name+"_"+remote_node.name
+    platform = openamp_channel_info["platform"]
     cluster_node = None
     if cpu_config in [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT ]:
         try:
@@ -796,7 +831,6 @@ def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_n
         tree.add(core_node)
 
         srams = []
-        memory_region = []
         for carveout in elfload_nodes:
             if carveout.props("status") != []:
                 srams.append(carveout.phandle)
@@ -804,23 +838,36 @@ def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_n
                 carveout + LopperProp(name="power-domain",
                                       value=copy.deepcopy( carveout.props("power-domains")[0].value ))
 
-        # there may be new nodes created in linux reserved-memory node to account for
-        for phandle_val in new_ddr_nodes:
-            memory_region.append(phandle_val)
 
-        core_node + LopperProp(name="memory-region", value=memory_region)
         core_node + LopperProp(name="sram", value=srams)
+    elif platform == SOC_TYPE.ZYNQ:
+        core_node = LopperNode(-1, "/remoteproc@0")
+        core_node + LopperProp(name="compatible", value = "xlnx,zynq_remoteproc")
+        core_node + LopperProp(name="firmware", value = "firmware")
+
+        tree.add(core_node)
 
     else:
         return False
+
+    # there may be new nodes created in linux reserved-memory node to account for
+    memory_region = []
+    for phandle_val in new_ddr_nodes:
+        memory_region.append(phandle_val)
+    core_node + LopperProp(name="memory-region", value=memory_region)
 
     return True
 
 def xlnx_remoteproc_update_tree(tree, node, remote_node, openamp_channel_info, verbose = 0 ):
     channel_id = "_"+node.parent.parent.name+"_"+remote_node.name
-    cpu_config =  openamp_channel_info["cpu_config"+channel_id]
     elfload_nodes = openamp_channel_info["elfload"+channel_id]
     new_ddr_nodes = []
+    platform = openamp_channel_info["platform"]
+
+    if platform in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL]:
+        cpu_config =  openamp_channel_info["cpu_config"+channel_id]
+    else:
+        cpu_config = 0
 
     ret = xlnx_remoteproc_construct_carveouts(tree, elfload_nodes, new_ddr_nodes, verbose)
     if ret == False:
@@ -832,17 +879,7 @@ def xlnx_remoteproc_update_tree(tree, node, remote_node, openamp_channel_info, v
     return True
 
 
-def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
-    # Xilinx OpenAMP subroutine to collect RPMsg information from Remoteproc
-    # relation
-    remote = node.props("remote")
-    elfload_nodes = []
-    elfload_prop = node.props("elfload")
-
-    if remote == []:
-        print("WARNING: ", node, "is missing remote property")
-        return False
-
+def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote, elfload_nodes):
     remote_node = tree.pnode( remote[0].value[0] )
     cpu_config = determine_cpus_config(remote_node)
 
@@ -852,15 +889,6 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
             return False
     else:
         return False
-
-    if elfload_prop == []:
-        print("WARNING: ", node, " is missing elfload property")
-        return False
-    else:
-        elfload_prop = elfload_prop[0].value
-
-    for p in elfload_prop:
-        elfload_nodes.append ( tree.pnode(p) )
 
     rpu_cluster_node = tree.pnode(remote_node.props("cpus")[0].value[0])
     rpu_core_node = rpu_cluster_node.abs_path + "/cpu@"
@@ -886,6 +914,59 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
     openamp_channel_info["rpu_core_pd_prop"+channel_id] = rpu_core_pd_prop
     openamp_channel_info["cpu_config"+channel_id] = cpu_config
     openamp_channel_info["rpu_core"+channel_id] = rpu_core
+
+    return True
+
+
+def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
+    # Xilinx OpenAMP subroutine to collect RPMsg information from Remoteproc
+    # relation
+    remote = node.props("remote")
+    remote_node = tree.pnode( remote[0].value[0] )
+    elfload_nodes = []
+    elfload_prop = node.props("elfload")
+
+    # set platform
+    platform = None
+    root_node = tree["/"]
+    root_compat = root_node.props("compatible")[0].value
+
+    for compat in root_compat:
+        if "zynqmp" in compat or 'zcu102' in compat:
+            platform = SOC_TYPE.ZYNQMP
+            break
+        elif "versal" in compat or 'vck190' in compat:
+            platform = SOC_TYPE.VERSAL
+            break
+        elif "xlnx,zynq-7000" in compat:
+            platform = SOC_TYPE.ZYNQ
+    if platform == None:
+        print("Unsupported platform: ", root_compat)
+        return False
+
+    openamp_channel_info["platform"] = platform
+
+    if remote == []:
+        print("WARNING: ", node, "is missing remote property")
+        return False
+
+
+    if elfload_prop == []:
+        print("WARNING: ", node, " is missing elfload property")
+        return False
+    else:
+        elfload_prop = elfload_prop[0].value
+
+    for p in elfload_prop:
+        elfload_nodes.append ( tree.pnode(p) )
+
+    if platform in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL]:
+        ret = xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote, elfload_nodes)
+        if not ret:
+            return ret
+
+    channel_id = "_"+node.parent.parent.name+"_"+remote_node.name
+    openamp_channel_info["elfload"+channel_id] = elfload_nodes
 
     return xlnx_remoteproc_update_tree(tree, node, remote_node, openamp_channel_info, verbose = 0 )
 
@@ -914,11 +995,29 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
 
 def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
     # Xilinx-specific YAML expansion of RPMsg description.
+    platform = None
+    root_node = tree["/"]
+    root_compat = root_node.props("compatible")[0].value
+
+    for compat in root_compat:
+        if "zynqmp" in compat or 'zcu102' in compat:
+            platform = SOC_TYPE.ZYNQMP
+            break
+        elif "versal" in compat or 'vck190' in compat:
+            platform = SOC_TYPE.VERSAL
+            break
+        elif "xlnx,zynq-7000" in compat:
+            platform = SOC_TYPE.ZYNQ
+    if platform == None:
+        print("Unsupported platform: ", root_compat)
+        return False
+
     ret = resolve_host_remote( tree, subnode, verbose)
     if ret == False:
         return ret
     ret = resolve_rpmsg_mbox( tree, subnode, verbose)
-    if ret == False:
+    # Zynq platform has mailboxes set in driver
+    if ret == False and platform != SOC_TYPE.ZYNQ:
         return ret
     ret = resolve_rpmsg_carveouts( tree, subnode, verbose)
     if ret == False:
