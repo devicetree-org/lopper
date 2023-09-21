@@ -179,65 +179,73 @@ def resolve_rpmsg_carveouts( tree, subnode, verbose = 0 ):
         new_prop_val.append(current_node.phandle)
 
     # update value of property to have phandles
-    prop.value = new_prop_val
+    subnode.props("carveouts")[0].value = new_prop_val
 
     return True
 
 def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
-    mbox_node = None
-    prop = None
+    mbox_nodes = []
+    props = []
+    search_strs = []
+    new_prop_val = []
 
     if subnode.props("mbox") == []:
         print("WARNING:", "rpmsg relation does not have mbox")
         return False
 
-    prop = subnode.props("mbox")[0]
-    search_str = prop.value.strip()
+    props = subnode.props("mbox")[0].value
 
-    for n in subnode.tree["/"].subnodes():
-        if search_str == n.name or search_str == n.label:
-            mbox_node = n
-            break
+    for prop in props:
+        search_strs.append ( prop.strip() )
 
-    if mbox_node == None:
-        print("resolve_rpmsg_mbox: ", tree.lnodes(n.name, exact = False) )
+    for search_str in search_strs:
+        for n in subnode.tree["/"].subnodes():
+            if search_str == n.name or search_str == n.label:
+                mbox_nodes.append( n )
+                break
 
-    if mbox_node == None or mbox_node == []:
-        print("WARNING:", "rpmsg relation can't find mbox name: ", prop.value)
-        return False
+    for i, mbox_node in enumerate(mbox_nodes):
+        prop = props[i]
+        if mbox_node == None:
+            print("resolve_rpmsg_mbox: ", tree.lnodes(n.name, exact = False) )
+        if mbox_node == None or mbox_node == []:
+            print("WARNING:", "rpmsg relation can't find mbox name: ", prop.value)
+            return False
 
-    if mbox_node.phandle == 0:
-        mbox_node.phandle_or_create()
 
-    prop.value = mbox_node.phandle
-    if mbox_node.props("phandle") == []:
-        mbox_node + LopperProp(name="phandle", value=mbox_node.phandle)
+        if mbox_node.phandle == 0:
+            mbox_node.phandle_or_create()
+        if mbox_node.props("phandle") == []:
+            mbox_node + LopperProp(name="phandle", value=mbox_node.phandle)
+
+        new_prop_val.append( mbox_node.phandle )
+
+    subnode.props("mbox")[0].value = new_prop_val
+
     return True
 
 def resolve_host_remote( tree, subnode, verbose = 0 ):
-    prop = None
-    domain_node = None
-
-    if subnode.props("host") != [] and subnode.props("remote") != []:
+    prop_names = [ "host", "remote" ]
+            
+    if subnode.props(prop_names[0]) != [] and subnode.props(prop_names[1]) != []:
         print("WARNING:", "relation has both host and remote")
         return False
-    elif subnode.props("host") != []:
-        prop = subnode.props("host")[0]
-    else:
-        prop = subnode.props("remote")[0]
-
-
-    for n in tree["/domains"].subnodes():
-        if prop.value in n.name:
-            domain_node = n
-            break
-
-    if domain_node.phandle == 0:
-        domain_node.phandle_or_create()
-
-    prop.value = domain_node.phandle
-    if domain_node.props("phandle") == []:
-        domain_node + LopperProp(name="phandle", value=domain_node.phandle)
+    for pn in prop_names:
+        if subnode.props(pn) != [] and subnode.props(pn) != []:
+            prop_val = subnode.props(pn)[0].value
+            new_prop_val = []
+            for p in prop_val:
+                # find each host/remote matching domain node in tree
+                for n in tree["/domains"].subnodes():
+                    if p in n.name:
+                        # give matching node phandle if needed
+                        if n.phandle == 0:
+                            n.phandle_or_create()
+                        if n.props("phandle") == []:
+                            n + LopperProp(name="phandle", value=n.phandle)
+                        new_prop_val.append( n.phandle )
+            subnode.props(pn)[0].value = new_prop_val
+    
     return True
 
 platform_info_header_a9_template = """
