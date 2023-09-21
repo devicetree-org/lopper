@@ -687,7 +687,6 @@ def xlnx_rpmsg_parse_get_channel(options, len_remote_nodes):
 
         if len_remote_nodes == 1 or len(options['args']) == 1:
             channel = 0
-            
 
         return channel
 
@@ -763,10 +762,9 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
             return False
 
         channel = xlnx_rpmsg_parse_get_channel(options, len(remote_nodes))
-        if not channel:
+        if not isinstance(channel, int):
             print("WARNING: xlnx_rpmsg_parse_get_channel failed.")
             return False
-
         ret = xlnx_construct_text_file(openamp_channel_info, channel_ids[channel], role, verbose)
         if not ret:
             return ret
