@@ -518,6 +518,11 @@ class LopperProp():
             # we need the values in hex. This could be a utility routine in the
             # future .. convert to hex.
 
+            # if this is a json type, we can't possibly find anything useful
+            # by iterating, so just return the empty map
+            if self.pclass == "json":
+                return phandle_map
+
             ## not required, remove
             prop_val = []
             for f in self.value:
@@ -530,6 +535,7 @@ class LopperProp():
             phandle_idx = 0
             property_desc_idx = 0
             latch_sub_list = False
+
             # field val is set to a non-zero value when encounter a phandle
             # description that has #<field-nane>. We reset it to zero each
             # time a new phandle check is done (when phandle_idx == idx)
@@ -541,7 +547,6 @@ class LopperProp():
                 phandle_desc = ""
                 if idx == phandle_idx:
                     field_val = 0
-
                     if latch_sub_list:
                         phandle_map.append( phandle_sub_list )
                         latch_sub_list = False
@@ -557,20 +562,39 @@ class LopperProp():
 
                 if re.search( '^phandle', phandle_desc ):
                     derefs = phandle_desc.split(':')
-                    if len(derefs) == 2:
+                    if len(derefs) >= 2:
+                        # We've been instructed to look up a property in the phandle.
+                        # that tells us how many elements to jump before we look for
+                        # the next phandle.
+                        #
+                        # step 1) lookup the node
                         node_deref = self.node.tree.deref( val )
+
                         try:
+                            # step 2) look for the property in the deferneced node. If the
+                            #         node wasn't found, we'll trigger an exception, and just
+                            #         set a default value of 1.
                             cell_count = node_deref[derefs[1]].value[0]
-                            cell_count = cell_count + 1
                         except:
                             cell_count = 1
 
+                        # step 3)
+                        # if the length is 3, that means there was an expression added
+                        # to the definition to adjust the value we found. We pull it out
+                        # and evaluate it to get the answer.
+                        if len(derefs) == 3:
+                            expression = str(cell_count) + derefs[2]
+                            expression = eval( expression )
+                            cell_count = expression
+
+                        # this is the next index to check for a phandle
                         phandle_idx = phandle_idx + cell_count
                     else:
                         node_deref = None
                         if self.node:
                             node_deref = self.node.tree.deref( val )
-                        # no deref, bump our phandle_idx by one
+
+                        # deref, bump our phandle_idx by one
                         phandle_idx = phandle_idx + 1
 
                     if node_deref == None:
@@ -590,13 +614,13 @@ class LopperProp():
                     phandle_sub_list.append( 0 )
                     phandle_idx = phandle_idx + field_val
                 else:
-                    # not a phandle
-                    # if field_val is still at zero, no phandle description
-                    # was found and did not set a lookahead. So we increment
-                    # the phandle_idx by one, so the next field will be
-                    # examined
-                    if not field_val:
+                    # no phandle was found in any of the cases above, but
+                    # we did do a phandle check (since the indexes match).
+                    # bump the phandle_idx ahead by one, so we'll check the
+                    # next field.
+                    if idx == phandle_idx:
                         phandle_idx = phandle_idx + 1
+
                     phandle_sub_list.append( 0 )
 
             # append the last collected set of phandle or not indications
@@ -918,7 +942,6 @@ class LopperProp():
             prop_type = "label"
         else:
             # we could make this smarter, and use the Lopper Guessed type
-
             # if the class was json, only change the type if the value is
             # no longer a string .. since if it is still a string, is is
             # json encoded and should be left alone.
