@@ -30,7 +30,7 @@ from anytree import PreOrderIter
 from anytree import AnyNode
 from anytree import Node
 
-from lopper.log import _warning, _info, _error, _debug, _init
+from lopper.log import _warning, _info, _error, _debug, _init, _level
 import logging
 
 _init( __name__ )
@@ -492,6 +492,9 @@ class LopperJSON():
 
         excluded_props = [ "name", "fdt_name" ]
         serialize_json = True
+
+        # _level( logging.DEBUG, "yaml.py" )
+        # _level( logging.DEBUG, __name__ )
         verbose = 0
 
         for node in PreOrderIter(self.anytree):
@@ -553,9 +556,10 @@ class LopperJSON():
                     if not skip:
                         if not p in excluded_props:
                             lp = LopperProp( p, -1, ln, x )
-                            lp.resolve()
                             if use_json:
                                 lp.pclass = "json"
+
+                            lp.resolve()
                             # add the property to the node
                             ln + lp
                 else:
