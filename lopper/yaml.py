@@ -652,7 +652,11 @@ class LopperJSON():
                                 dict_check = x
                             if verbose:
                                 print( "[DBG]                      mval %s (%s)" % (m_val,dict_check))
-                            if type(m_val) == list and len(m_val) == 1 and type(m_val[dict_check]) == dict:
+                            # Whether we allow chunks greater than 1 to go through this loop changes
+                            # the output nodes (versus json strings). Keeping the old condition around
+                            # as a reference, since this may become a tunable in the future
+                            # if type(m_val) == list and len(m_val) == 1 and type(m_val[dict_check]) == dict:
+                            if type(m_val) == list and len(m_val) > 0 and type(m_val[dict_check]) == dict:
                                 if verbose:
                                     print( "[DBG]: -------> promote json to a node: %s (%s)" % (p.name,p.abs_path) )
 
@@ -660,6 +664,7 @@ class LopperJSON():
                                 new_name = p.name
                                 if p.name == expand_string:
                                     try:
+                                        # this can be overriden by an anchor name, if discovered below
                                         new_name = p.node.name + "@" + str(x)
                                     except Exception as e:
                                         print( "[DBG]: Exception during new node name creation: %s" % e )
@@ -710,6 +715,8 @@ class LopperJSON():
                                 except:
                                     pass
 
+                                ## note: in the list > 1 entry list, we could do something smart with repeating
+                                ##       values and make them @<x> properties.
                                 new_node = LopperNode( -1, name=new_name )
                                 for i,v in m_val[dict_check].items():
                                     if verbose:
