@@ -658,6 +658,9 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         out_g_file_name = f"{drvname}_g.c"
     outfile = os.path.join(sdt.outdir, out_g_file_name)
 
+    if driver_nodes == []:
+        return True
+
     plat = DtbtoCStruct(outfile)
     nodename_list = []
     for node in driver_nodes:
