@@ -119,7 +119,7 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
             path = node.abs_path
             ret = path.split('/')
             pl = 0
-            rt = len(ret)
+            rt = len(ret) - 1
             child_len = len(node.child_nodes)
 
             # Only check for the nodes under amba_pl
@@ -138,24 +138,21 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                     # Create overlay0: __overlay__ node as first node under fragment@0
                     plat.buf('/dts-v1/;')
                     plat.buf('\n/plugin/;')
-                    plat.buf('\n/ {')
-                    plat.buf('\n\tfragment@0 {')
                     if platform == "cortexa53-zynqmp":
-                        plat.buf('\n\t\ttarget = <&fpga_full>;')
+                        plat.buf('\n&fpga_full{')
                     else:
-                        plat.buf('\n\t\ttarget = <&fpga>;')
-                    plat.buf('\n\t\toverlay0: __overlay__ {')
-                    plat.buf('\n\t\t\t#address-cells = <2>;')
-                    plat.buf('\n\t\t\t#size-cells = <2>;')
+                        plat.buf('\n&fpga{')
+                    plat.buf('\n\t#address-cells = <2>;')
+                    plat.buf('\n\t#size-cells = <2>;')
                     try:
                        if config == "full":
                            if platform == "cortexa53-zynqmp":
-                               plat.buf('\n\t\t\t%s' % node['firmware-name'])
+                               plat.buf('\n\t%s' % node['firmware-name'])
                            elif platform == "cortexa72-versal":
                                if external_flag == "external_fpga":
-                                   plat.buf('\n\t\t\texternal-fpga-config;')
+                                   plat.buf('\n\texternal-fpga-config;')
                                else:
-                                   plat.buf('\n\t\t\t%s' % node['firmware-name'])
+                                   plat.buf('\n\t%s' % node['firmware-name'])
                            else:
                                print('%s is not a valid Machine' % str(platform))
                                sys.exit(1)        
@@ -163,35 +160,29 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                     except:
                         pass
 
-                    plat.buf('\n\t\t};')
-                    plat.buf('\n\t};')
+                    plat.buf('\n};')
 
                     # Create overlay1: __overlay__ node under fragment@1
-                    plat.buf('\n\tfragment@1 {')
-                    plat.buf('\n\t\ttarget = <&amba>;')
-                    plat.buf('\n\t\toverlay1: __overlay__ {')
-                    plat.buf('\n\t\t\t#address-cells = <2>;')
-                    plat.buf('\n\t\t\t#size-cells = <2>;')
+                    plat.buf('\n&amba{')
+                    plat.buf('\n\t#address-cells = <2>;')
+                    plat.buf('\n\t#size-cells = <2>;')
 
                     # Add afi and clocking nodes to fragment@1     
                     if platform == "cortexa53-zynqmp":
                         for inode in ignore_list:
                             label_name = get_label(sdt, symbol_node, inode)
-                            plat.buf('\n\t\t\t%s: %s {' % (label_name, inode.name))
+                            plat.buf('\n\t%s: %s {' % (label_name, inode.name))
                             for p in inode.__props__.values():
                                 if re.search("phandle =", str(p)) or str(p) == '':
                                     continue
-                                plat.buf('\n\t\t\t\t%s' % p)
-                            plat.buf('\n\t\t\t};')
-                        plat.buf('\n\t\t};')
-                        plat.buf('\n\t};')
+                                plat.buf('\n\t\t%s' % p)
+                            plat.buf('\n\t};')
+                        plat.buf('\n};')
                     
                         # Create overlaye2: __overlay__ node under fragment@2
-                        plat.buf('\n\tfragment@2 {')
-                        plat.buf('\n\t\ttarget = <&amba>;')
-                        plat.buf('\n\t\toverlay2: __overlay__ {')
-                        plat.buf('\n\t\t\t#address-cells = <2>;')
-                        plat.buf('\n\t\t\t#size-cells = <2>;')
+                        plat.buf('\n&amba{')
+                        plat.buf('\n\t#address-cells = <2>;')
+                        plat.buf('\n\t#size-cells = <2>;')
 
                     root = 0
 
@@ -214,7 +205,6 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
 
                     label_name = get_label(sdt, symbol_node, node)
                     plat.buf('\n')
-                    rt = int(rt+1)
                     plat.buf('\t' * int(rt-1))
                     plat.buf('%s: %s {' % (label_name, node.name))
                     for p in node.__props__.values():
@@ -244,8 +234,6 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         except:
            pass
 
-    plat.buf('\n\t\t};')
-    plat.buf('\n\t};')
     plat.buf('\n};')
     plat.out(''.join(plat.get_buf()))
 
