@@ -53,7 +53,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     cpunode_list = sdt.tree.nodes('/cpu.*@.*')
     clustercpu_nodes = []
     for node in cpunode_list:
-        if node.parent.phandle != match_cpunode.parent.phandle:
+        if node.parent.phandle != match_cpunode.parent.phandle and node.phandle != match_cpunode.parent.phandle:
             clustercpu_nodes.append(node.parent)
     clustercpu_nodes = list(dict.fromkeys(clustercpu_nodes))
     for node in clustercpu_nodes:
