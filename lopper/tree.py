@@ -1085,6 +1085,7 @@ class LopperProp():
                                                 pass
 
                                         drop_sub_record = True
+                                        pval_index = pval_index + 1
                                         continue
                                 else:
                                     if r.label:
@@ -1098,6 +1099,8 @@ class LopperProp():
                                 phandle_sub_record.append( "{0}".format( phandle_tgt_name ) )
 
                             else:
+                                # r is not set, so this was a "0" in the phandle map, which just
+                                # means "not a phandle". So it is a value we have to encode for output
                                 element = prop_val[pval_index]
                                 if self.binary:
                                     phandle_sub_record.append( "{0:02X}".format( element ) )
@@ -1110,7 +1113,7 @@ class LopperProp():
                                             lower = element & 0x00000000FFFFFFFF
                                             hex_string = '0x{:08x}'.format(upper) + ' 0x{:08x}'.format(lower)
                                     except Exception as e:
-                                        hex_string = '{0}'.format( element ) 
+                                        hex_string = '{0}'.format( element )
 
                                     phandle_sub_record.append( hex_string )
 
