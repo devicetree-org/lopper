@@ -106,12 +106,16 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                            match_nodes.append(node1[0])
             if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
                 match_nodes = bm_config.get_mapped_nodes(sdt, match_nodes, options)
+            canonical_name = f"X{drv.upper()}"
+            if schema.get('xparam_prefix',""):
+                canonical_name = schema["xparam_prefix"].upper()
+
             for index, node in enumerate(match_nodes):
                 label_name = bm_config.get_label(sdt, symbol_node, node)
                 label_name = label_name.upper()
                 canondef_dict = {}
                 if index == 0:
-                    plat.buf(f'\n#define XPAR_X{drv.upper()}_NUM_INSTANCES {len(match_nodes)}\n')
+                    plat.buf(f'\n#define XPAR_{canonical_name}_NUM_INSTANCES {len(match_nodes)}\n')
                 for i, prop in enumerate(driver_proplist):
                     pad = 0
                     phandle_prop = 0
@@ -253,7 +257,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
 
                 plat.buf(f'\n\n/* Canonical definitions for peripheral {label_name} */')
                 for prop,val in sorted(canondef_dict.items(), key=lambda e: e[0][0], reverse=False):
-                    plat.buf(f'\n#define XPAR_X{drv.upper()}_{index}_{prop.upper()} {val}')
+                    plat.buf(f'\n#define XPAR_{canonical_name}_{index}_{prop.upper()} {val}')
                 plat.buf('\n')
                                     
     # Generate Defines for Generic Nodes
