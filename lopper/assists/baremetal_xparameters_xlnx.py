@@ -259,33 +259,28 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     # Generate Defines for Generic Nodes
     if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
         node_list = bm_config.get_mapped_nodes(sdt, node_list, options)
-    prev = ""
-    count = 0
-    for node in node_list:
-        label_name = bm_config.get_label(sdt, symbol_node, node)
-        node_name = node.name
-        node_name = node_name.split("@")
-        node_name = node_name[0]
-        if prev != node_name:
-            count = 0
-        else:
-            count = count + 1
 
-        prev = node_name
-        label_name = label_name.upper()
-        node_name = node_name.upper()
+    node_ip_count_dict = {}
+    for node in node_list:
         try:
+            label_name = bm_config.get_label(sdt, symbol_node, node)
+            label_name = label_name.upper()
             val = bm_config.scan_reg_size(node, node['reg'].value, 0)
             plat.buf(f'\n/* Definitions for peripheral {label_name} */')
             plat.buf(f'\n#define XPAR_{label_name}_BASEADDR {hex(val[0])}\n')
             plat.buf(f'#define XPAR_{label_name}_HIGHADDR {hex(val[0] + val[1] - 1)}\n')
-            temp_label = label_name.rsplit("_", 1)
-            temp_label = temp_label[0]
-            if temp_label != node_name:
-                plat.buf(f'\n/* Canonical definitions for peripheral {label_name} */')
-                node_name = node_name.replace("-", "_")
-                plat.buf(f'\n#define XPAR_{node_name}_{count}_BASEADDR {hex(val[0])}\n')
-                plat.buf(f'#define XPAR_{node_name}_{count}_HIGHADDR {hex(val[0] + val[1] - 1)}\n')
+
+            node_ip_name = node['xlnx,ip-name'].value[0]
+            if node_ip_name not in node_ip_count_dict.keys():
+                node_ip_count_dict[node_ip_name] = 0
+            else:
+                node_ip_count_dict[node_ip_name] += 1
+
+            canonical_name = node_ip_name.upper().replace("-", "_")
+
+            plat.buf(f'\n/* Canonical definitions for peripheral {label_name} */')
+            plat.buf(f'\n#define XPAR_{canonical_name}_{node_ip_count_dict[node_ip_name]}_BASEADDR {hex(val[0])}\n')
+            plat.buf(f'#define XPAR_{canonical_name}_{node_ip_count_dict[node_ip_name]}_HIGHADDR {hex(val[0] + val[1] - 1)}\n')
         except KeyError:
             pass
 
