@@ -611,8 +611,8 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
             "SHM_DEV_NAME":SHM_DEV_NAME,
             "RSC_MEM_SIZE":'0x2000UL',
             "RSC_MEM_PA":RSC_MEM_PA,
-            "DEV_BUS_NAME":"generic",
-            "IPI_DEV_NAME":"ipi",
+            "DEV_BUS_NAME":"\"generic\"",
+            "IPI_DEV_NAME":"\"ipi\"",
             "IPI_IRQ_VECT_ID":IPI_IRQ_VECT_ID,
             "IPI_CHN_BITMASK":IPI_CHN_BITMASK,
             "RING_TX":tx,
@@ -634,8 +634,8 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
             "SHARED_BUF_SIZE":SHARED_BUF_SIZE,
             "SGI_TO_NOTIFY":15,
             "SGI_NOTIFICATION":14,
-            "SCUGIC_DEV_NAME":"scugic_dev",
-            "SCUGIC_BUS_NAME":"generic",
+            "SCUGIC_DEV_NAME":"\"scugic_dev\"",
+            "SCUGIC_BUS_NAME":"\"generic\"",
             "SCUGIC_PERIPH_BASE":"0xF8F00000UL",
         }
 
