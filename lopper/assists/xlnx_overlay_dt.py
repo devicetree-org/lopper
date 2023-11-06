@@ -41,6 +41,17 @@ def get_label(sdt, symbol_node, node):
     else:
         return None
 
+def remove_node_ref(sdt, tgt_node, ref_node):
+    prop_dict = ref_node.__props__.copy()
+    match_label_list = []
+    for node in sdt.tree[tgt_node].subnodes():
+        matched_label = get_label(sdt, ref_node, node)
+        if matched_label:
+            match_label_list.append(matched_label)
+    for prop,node1 in prop_dict.items():
+        if prop not in match_label_list:
+            sdt.tree['/' + ref_node.name].delete(prop)
+
 def usage():
     prog = os.path.basename(sys.argv[0])
     print('Usage: %s <system device tree> -- <xlnx_overlay_dt.py> <machine name> <configuration>' % prog)
@@ -112,7 +123,10 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         usage()
         sys.exit(1)        
 
+    pl_node = None
     for node in root_sub_nodes:
+        if node.name == "amba_pl":
+            pl_node = node
         set_ignore = 0
 
         try:
@@ -236,5 +250,9 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
 
     plat.buf('\n};')
     plat.out(''.join(plat.get_buf()))
+    if pl_node:
+        sdt.tree.delete(pl_node)
+        remove_node_ref(sdt, tgt_node, sdt.tree['/__symbols__'])
+        remove_node_ref(sdt, tgt_node, sdt.tree['/aliases'])
 
     return True
