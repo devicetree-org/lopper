@@ -672,24 +672,6 @@ def xlnx_rpmsg_parse_generate_native_amba_node(tree):
 
     return amba_node
 
-def xlnx_rpmsg_parse_get_channel(options, len_remote_nodes):
-        channel = None
-        # specify Channel ID
-        if len(options['args']) == 2:
-            if options['args'][1] is None:
-                print("WARNING: Channel value not correct.", options['args'][1])
-                return False
-
-            channel = int(options['args'][1])
-            if (len_remote_nodes - 1) < channel:
-                print("WARNING: Channel input: ", channel, "is greater max index of remote channels:", len_remote_nodes - 1)
-                return False
-
-        if len_remote_nodes == 1 or len(options['args']) == 1:
-            channel = 0
-
-        return channel
-
 def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
     # Xilinx OpenAMP subroutine to collect RPMsg information from RPMsg
     # relation
@@ -754,23 +736,59 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
 
         channel_ids.append( channel_id )
 
-    # generate text file if a role is provided
-    if options['args'] != []:
-        role = options['args'][0]
-        if role not in ['host', 'remote']:
-            print('WARNING: Role value is not proper. Expect either "host" or "remote".')
-            return False
-
-        channel = xlnx_rpmsg_parse_get_channel(options, len(remote_nodes))
-        if not isinstance(channel, int):
-            print("WARNING: xlnx_rpmsg_parse_get_channel failed.")
-            return False
-        ret = xlnx_construct_text_file(openamp_channel_info, channel_ids[channel], role, verbose)
-        if not ret:
-            return ret
-    else:
-        print("WARNING: Args list for OpenAMP Module is empty")
+    try:
+        args = options['args']
+    except:
+        print("No arguments passed for OpenAMP Module. Need role property")
         return False
+
+    # Here try for key value pair arguments
+    opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_role=", "openamp_host=", "openamp_remote=" ] )
+    if opts == [] and args2 == []:
+        print('WARNING: No arguments passed for OpenAMP Module. Erroring out now.')
+        return False
+
+    role = None
+    arg_host = None
+    arg_remote = None
+
+    for o,a in opts:
+        if o in ('-l', "--openamp_role"):
+            role = a
+        elif o in ('-m', "--openamp_host"):
+            arg_host = a
+        elif o in ('-n', "--openamp_remote"):
+            arg_remote = a
+        else:
+            print("Argument: ",o, " is not recognized. Erroring out.")
+
+    if role not in ['host', 'remote']:
+        print('WARNING: Role value is not proper. Expect either "host" or "remote". Got: ', role)
+        return False
+
+    valid_core_inputs = []
+    pattern = re.compile('_openamp_([0-9a-z]+_[0-9])_')
+    for i in channel_ids:
+        for j in pattern.findall(i):
+            valid_core_inputs.append(j)
+    valid_core_inputs = set(valid_core_inputs)
+
+    if arg_host not in valid_core_inputs or arg_remote not in arg_remote:
+        print('WARNING: OpenAMP Host or Remote value is not proper. Valid inputs are:', valid_core_inputs)
+        return False
+
+    chan_id = None
+    for i in channel_ids:
+        if arg_remote in i and arg_host in i:
+            chan_id = i
+    if chan_id == None:
+        print("Unable to find channel with pair", arg_host, arg_remote)
+        return False
+
+    # Generate Text file to configure OpenAMP Application
+    ret = xlnx_construct_text_file(openamp_channel_info, chan_id, role, verbose)
+    if not ret:
+        return ret
 
     # remove definitions
     defn_node =  tree["/definitions"]
