@@ -145,8 +145,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         except KeyError:
                             pass
                     elif prop == "compatible":
-                        plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {node[prop].value[0]}')
-                        canondef_dict.update({prop:node[prop].value[0]})
+                        plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} "{node[prop].value[0]}"')
+                        canondef_dict.update({prop:f'"{node[prop].value[0]}"'})
                     elif prop == "interrupts":
                         try:
                             intr = bm_config.get_interrupt_prop(sdt, node, node[prop].value)
@@ -244,7 +244,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             prop = prop.replace("xlnx,", "")
 
                             if isinstance(prop_val[0], str):
-                                canondef_dict.update({prop:f"{prop_val[0]}"})
+                                canondef_dict.update({prop:f'"{prop_val[0]}"'})
                                 plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} "{prop_val[0]}"')
                             elif len(prop_val) > 1:
                                 for k,item in enumerate(prop_val):
