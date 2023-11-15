@@ -120,6 +120,10 @@
                               if 'tcm' in node1.name:
                                   continue
 
+                              if node1.propval('status') != ['']:
+                                  if 'disabled' in node1.propval('status', list)[0]:
+                                      continue
+
                               for handle in phandles:
                                   if handle == node1.phandle:
                                       match += 1

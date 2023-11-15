@@ -113,6 +113,9 @@
                                          'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou']
                           for node1 in node_list:
                               match = 0
+                              if node1.propval('status') != ['']:
+                                  if 'disabled' in node1.propval('status', list)[0]:
+                                      continue
                               for handle in phandles:
                                   if handle and handle == node1.phandle:
                                       try:
