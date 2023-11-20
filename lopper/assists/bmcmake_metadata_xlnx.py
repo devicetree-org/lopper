@@ -289,6 +289,9 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                 if match_cpunode.propval('xlnx,family') != ['']:
                     family = match_cpunode.propval('xlnx,family', list)[0]
                     fd.write(f'set(CMAKE_MACHINE "{family}" CACHE STRING "CMAKE MACHINE")\n')
+            if match_cpunode.propval('reg') != ['']:
+                cpu_id = match_cpunode.propval('reg', list)[0]
+                fd.write(f'set(XPAR_CPU_ID "{cpu_id}")\n')
 
     if topology_data:
         lwip_topolgy(sdt.outdir, topology_data)
