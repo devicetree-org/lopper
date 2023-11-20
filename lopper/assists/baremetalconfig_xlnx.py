@@ -148,6 +148,20 @@ def get_interrupt_prop(sdt, node, value):
 
     return intr
 
+def get_interrupt_id(sdt, node, value):
+    intr = []
+    inp =  node['interrupt-parent'].value[0]
+    intr_parent = [node for node in sdt.tree['/'].subnodes() if node.phandle == inp]
+    inc = intr_parent[0]["#interrupt-cells"].value[0]
+    nintr = len(value)/inc
+    tmp = inc % 2
+    for val in range(0, int(nintr)):
+        intr_id = value[tmp]
+        intr.append(int(hex(intr_id), 16))
+        tmp += inc
+    return intr
+
+
 #Return the base address of the parent node.
 def get_phandle_regprop(sdt, prop, value):
     parent_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == value[0]]
