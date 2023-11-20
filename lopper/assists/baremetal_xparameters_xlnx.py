@@ -161,6 +161,27 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                     plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()}_{j} {intr[j]}')
                                 except IndexError:
                                     pass
+
+                        try:
+                            intr_id = bm_config.get_interrupt_id(sdt, node, node[prop].value)
+                            if node.propval('xlnx,is-pl') != ['']:
+                                is_pl = node.propval('xlnx,is-pl', list)[0]
+                                if is_pl:
+                                    plat.buf(f'\n#define XPAR_FABRIC_{label_name}_INTR {intr_id[0]}')
+                                    canondef_dict.update({"FABRIC":intr_id[0]})
+                            else:
+                                plat.buf(f'\n#define XPAR_{label_name}_INTR {intr_id[0]}')
+                                canondef_dict.update({"INTR":intr_id[0]})
+                        except KeyError:
+                            intr_id = [0xFFFF]
+
+                        if pad:
+                            for j in range(1, pad):
+                                try:
+                                    plat.buf(f'\n#define XPAR_{label_name}_INTR_{j} {intr[j]}')
+                                except IndexError:
+                                    pass
+
                     elif prop == "interrupt-parent":
                         try:
                             intr_parent = bm_config.get_intrerrupt_parent(sdt, node[prop].value)
@@ -257,7 +278,10 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
 
                 plat.buf(f'\n\n/* Canonical definitions for peripheral {label_name} */')
                 for prop,val in sorted(canondef_dict.items(), key=lambda e: e[0][0], reverse=False):
-                    plat.buf(f'\n#define XPAR_{canonical_name}_{index}_{prop.upper()} {val}')
+                    if prop == "FABRIC":
+                        plat.buf(f'\n#define XPAR_FABRIC_{canonical_name}_{index}_INTR {val}')
+                    else:
+                        plat.buf(f'\n#define XPAR_{canonical_name}_{index}_{prop.upper()} {val}')
                 plat.buf('\n')
                                     
     # Generate Defines for Generic Nodes
