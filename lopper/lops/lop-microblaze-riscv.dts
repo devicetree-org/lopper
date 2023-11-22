@@ -1,0 +1,160 @@
+/*
+ * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+ * Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1,lop";
+        lops {
+                lop_1_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_3 = ":xlnx,use-muldiv:1";
+                      lop_1_1_1 {
+                          compatible = "system-device-tree-v1,lop,code-v1";
+                          code = "
+                               for n in tree.__selected__:
+                                   n['xlnx,use-muldiv'].tunes = 'm'
+                          ";
+                      };
+                };
+                lop_2_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_3 = ":xlnx,use-atomic:!0";
+                      lop_2_1_1 {
+                          compatible = "system-device-tree-v1,lop,code-v1";
+                          code = "
+                              for n in __selected__:
+                                   n['xlnx,use-atomic'].tunes = 'a'
+                          ";
+                      };
+                };
+                lop_3_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_3 = ":xlnx,use-fpu:!0";
+                      lop_3_1_1 {
+                          compatible = "system-device-tree-v1,lop,code-v1";
+                          code = "
+                               for n in tree.__selected__:
+                                   if n['xlnx,use-fpu'].value[0] > 1:
+                                       n['xlnx,use-fpu'].tunes = 'fd'
+                                   else:
+                                       n['xlnx,use-fpu'].tunes = 'f'
+                          ";
+                      };
+                };
+                lop_4_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_3 = ":xlnx,use-compression:1";
+                      lop_4_1_1 {
+                          compatible = "system-device-tree-v1,lop,code-v1";
+                          code = "
+                               for n in tree.__selected__:
+                                   n['xlnx,use-compression'].tunes = 'c'
+                          ";
+                      };
+                };
+
+
+               lop_5_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_3 = ":xlnx,data-size:!0";
+                      lop_5_1_1 {
+                          compatible = "system-device-tree-v1,lop,code-v1";
+                          code = "
+                               from pprint import pprint
+                               for n in tree.__selected__:
+                                   pprint(vars(n['xlnx,data-size']))
+                                   if n['xlnx,data-size'].value[0] == 64:
+                                       n['xlnx,data-size'].tunes = 'rv64i'
+                                   else:
+                                       n['xlnx,data-size'].tunes = 'rv32i'
+                          ";
+                      };
+                };
+
+                lop_output_tunes {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      select_1;
+                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      lop_output_code {
+                           compatible = "system-device-tree-v1,lop,code-v1";
+                           code = "
+                               import yaml
+
+                               for n in tree.__selected__:
+                                   proplist= ['xlnx,data-size', 'xlnx,use-muldiv', 'xlnx,use-atomic', 'xlnx,use-fpu', 'xlnx,use-compression']
+
+                                   archflags = []
+                                   libpath = []
+                                   libpath.append('riscv64-unknown-elf/riscv32-xilinx-elf/usr/lib/')
+                                   cflags_data = {}
+
+                                   for property in proplist:
+                                       try:
+                                           archflags.append(n[property].tunes)
+                                           if property == 'xlnx,use-compression':
+                                               archflags_libpath = ''.join(archflags)
+                                               arch_option = '-march='
+                                               arch_linkflags = ''.join(archflags)
+                                               bsp_linkflags = arch_option + arch_linkflags
+                                               archflags.append('_zicsr_zifencei')
+                   
+                                       except:
+                                           if property == 'xlnx,use-compression':
+                                               archflags_libpath = ''.join(archflags)
+                                               arch_option = '-march='
+                                               arch_linkflags = ''.join(archflags)
+                                               bsp_linkflags = arch_option + arch_linkflags
+                                               archflags.append('_zicsr_zifencei')
+                                           continue
+
+                                   libpath.append(archflags_libpath)
+                                   libpath.append('/')
+
+                                   if n['xlnx,use-dcache'].value[0] == 1 or n['xlnx,use-icache'].value[0] == 1:
+                                       archflags.append('_zicbom')
+
+                                   if n['xlnx,data-size'].value[0] == 64:
+                                       libpath.append('lp64')
+                                       archflags.append(' -mabi=lp64') 
+                                   else:
+                                       libpath.append('ilp32')
+                                       archflags.append(' -mabi=ilp32') 
+
+                                   if n['xlnx,use-fpu'].value[0] == 1:
+                                       libpath.append('f')
+                                   elif n['xlnx,use-fpu'].value[0] == 2:
+                                       libpath.append('d')
+                                   
+                                   libpath.append('/')
+
+                                   archflags.insert(0, '-march=')
+                                   n.tunes = archflags
+
+                                   libdir = ''.join(libpath)
+
+                                   flags = ''.join(archflags) 
+                                   cflags_data['cflags'] = flags
+                                   cflags_data['libpath'] = libdir 
+                                   cflags_data['linkflags'] = bsp_linkflags
+
+                                   with open('cflags.yaml', 'w') as fd:
+                                         fd.write(yaml.dump(cflags_data, indent = 4))
+                               ";
+                      };
+                };
+        };
+};
