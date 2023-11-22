@@ -263,11 +263,11 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             default_ddr = key
         start,size = value[0], value[1]
         """
-        LMB BRAM initial 80 bytes being used by the linker vectors section
+        LMB BRAM initial 80 bytes being used by the linker vectors section in case of Microblaze
         Adjust the size and start address accordingly.
         """
-        if "lmb_bram" in key:
-            start = 80
+        if "lmb_bram" in key and not "microblaze_riscv" in machine and not "cortex" in machine:
+            start += 80
             size -= start
         """
         For R5 PSU DDR initial 1MB is reserved for tcm
@@ -302,11 +302,11 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
         start,size = value[0], value[1]
         """
-        LMB BRAM initial 80 bytes being used by the linker vectors section
+        LMB BRAM initial 80 bytes being used by the linker vectors section in case of Microblaze
         Adjust the size and start address accordingly.
         """
-        if "lmb_bram" in key:
-            start = 80
+        if "lmb_bram" in key and not "microblaze_riscv" in machine and not "cortex" in machine:
+            start += 80
             size -= start
         memip_list.append(key)
         cfd.write("set(%s %s)\n" % (key, to_cmakelist([hex(start), hex(size)])))
