@@ -196,40 +196,33 @@ def get_intrerrupt_parent(sdt, value):
     return reg
 
 """
-This API scans the device-tree node and returns the address
-and size of the ranges property for the user provided index.
+This API scans the pci node's range property and returns the required address
+and size.
 
 Args:
-    node: LopperNode object
-    value: property value
-    idx: index
+    range_value: List containing one range values.
+    ns: size cells value for the pci node.
 """
-def scan_ranges_size(node, value, idx):
-    na = node["#address-cells"].value[0]
-    ns = node["#size-cells"].value[0]
-    cells = na + ns + 2
+def scan_ranges_size(range_value, ns):
+    """
+    Both address and size can be either 32 bit or 64 bit.
+    Check the higher cell for both and if that is not zero,
+    concatenate the higher and the lower cells.
+    e.g. <0x4 0x80000000> => 0x480000000
+    """
+    addr = hex(range_value[2])
+    high_addr_cell = hex(range_value[1])
+    if high_addr_cell != "0x0":
+        addr = high_addr_cell + addr.lstrip('0x')
 
-    addr = 0
-    size = 0
+    size = hex(range_value[-1])
+    high_size_cell = hex(range_value[-2])
+    # If ns = 1, then there is no use of high_size_cells
+    if high_size_cell != "0x0" and ns > 1:
+        size = high_size_cell + size.lstrip('0x')
 
-    addr1 = value[cells * idx + 1]
-    if addr1 != 0:
-        val = str(value[cells * idx + ns])
-        pad = 8 - len(val)
-        val = val.ljust(pad + len(val), '0')
-        addr = int((str(hex(addr1)) + val), base=16)
-    else:
-        addr = value[cells * idx + ns]
+    return int(addr, base=16), int(size, base=16)
 
-    size1 = value[cells * idx + na + 2]
-    if size1 != 0:
-        val = str(hex(value[cells * idx + na + 3]))[2:]
-        pad = 8 - len(str(hex(size1)))
-        val = val.ljust(pad + len(str(hex(size1))), '0')
-        size = int((str(hex(size1)) + val), base=16)
-    else:
-        size = value[cells * idx + na + ns + 1]
-    return addr, size
 
 def get_clock_prop(sdt, value):
     clk_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == value[0]]
@@ -242,16 +235,46 @@ def get_clock_prop(sdt, value):
     return value[1]
 
 def get_pci_ranges(node, value, pad):
-    pci_ranges = []
+    """
+    For pci range, address cells is always 3, size-cells may vary between 1 or 2 (usually it is 2).
+    Sample pci range for address-cells = 3 and size-cells = 2:
+    eg.1: <0x43000000 0x00000080 0x00000000 0x00000080 0x00000000 0x00000000 0x80000000>
+    eg.2: <0x42000000 0 0x80000000  0x80000000  0 0x20000000>
+    cell[0] => chip-select (Flag for 32bit or 64 bit PCIe Bar)
+    cell[1] cell[2] => PCIe address (needed in the config structure)
+    cell[-2] cell[-1] => Size of the PCIe Bus (needed to get High address in config table)
+    Middle cells (cell[3] cell[4] => In example 1, cell[3] => in example 2)
+      => The CPU host address where the PCIe address will be mapped
+      => The middle cell size (i.e. 2 or 1) depends on the SoC bus width.
+    """
+    na = node["#address-cells"].value[0]
+    ns = node["#size-cells"].value[0]
+    """
+    Probable combinations for pci range are:
+    <3 address cells> <2 cpu host addr cell> <2 size cells>
+    <3 address cells> <1 cpu host addr cell> <2 size cells>
+    <3 address cells> <1 cpu host addr cell> <1 size cells>
+
+    cell_size = na + (2*ns) covers first and third conditions
+    if condition covers the second one.
+    """
+    cell_size = na + (2 * ns)
+
+    if len(value) % 6 == 0:
+        cell_size = 6
+
+    pci_range_split = []
     for i in range(pad):
-        try:
-            reg, size = scan_ranges_size(node, value, i)
+        pci_range_split.append(value[i*cell_size:(i+1)*cell_size])
+
+    pci_ranges = []
+    for ranges in pci_range_split:
+        if ranges:
+            reg, size = scan_ranges_size(ranges, ns)
             high_addr = reg + size - 1
-            pci_ranges.append(hex(reg))
-            pci_ranges.append(hex(high_addr))
-        except IndexError:
-            pci_ranges.append(hex(0))
-            pci_ranges.append(hex(0))
+            pci_ranges += [hex(reg), hex(high_addr)]
+        else:
+            pci_ranges += [hex(0), hex(0)]
     return pci_ranges
 
 class DtbtoCStruct(object):
