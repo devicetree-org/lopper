@@ -12,6 +12,15 @@ zynqmp_ipi_to_irq_vect_id = {
   0xff380000 : 67,
 }
 
+versal_net_ipi_to_irq_vect_id = {
+    0xeb330000 : 0x39,
+    0xeb340000 : 0x3a,
+    0xeb350000 : 0x3b,
+    0xeb360000 : 0x3c,
+    0xeb370000 : 0x3d,
+    0xeb380000 : 0x3e,
+}
+
 versal_ipi_to_irq_vect_id = {
     0xff330000 : 62,
     0xff340000 : 63,
@@ -96,6 +105,7 @@ class SOC_TYPE:
     VERSAL = 0
     ZYNQMP = 1
     ZYNQ = 2
+    VERSAL_NET = 3
 
 
 def resolve_remoteproc_carveouts( tree, subnode, verbose = 0 ):
