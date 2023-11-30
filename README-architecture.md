@@ -235,6 +235,10 @@ NOTE/TODO: bindings will be written for the lopper operations.
                         // id: string to pass to assist modules to identify compatible
                         //     assists
                         id = "openamp,domain-v1";
+                        // output is optional, specify if a different output from the
+                        // lopper default is required. lopper does no managment of files
+                        // or this directory.
+                        // output = "<output directory>";
                 };
 
 # modify: a general purpose node and property modify/delete/add/move operation
@@ -368,11 +372,11 @@ NOTE/TODO: bindings will be written for the lopper operations.
 		       nodes = "axi.*";
 	        };
 		lop_17 {
-                       compatible = "system-device-tree-v1,lop,output";
+               compatible = "system-device-tree-v1,lop,output";
 		       outfile = "plm.cdo";
 		       // * is "all nodes"
 		       nodes = "*";
-                       // lopper output assist will kick in
+               // lopper output assist will kick in
 		       id = "xlnx,output,cdo";
 	        };
 		lop_18 {
@@ -885,6 +889,65 @@ NOTE/TODO: bindings will be written for the lopper operations.
                       mynewproperty = "phandle field field";
                 };
 
+# conditional execution or inhibiting of a lop execution
+
+There are two properties that can be used to control the execution of a
+lop.
+
+  - "noexec"
+  - "cond"
+
+"noexec" takes no values and when present, the lop will not be exected:
+
+	    lop_2 {
+                  compatible = "system-device-tree-v1,lop,select-v1";
+		  // do not run this lop
+		  noexec;
+                  // clear any old selections
+                  select_1;
+                  select_2 = "/:compatible:.*xlnx,zynq-zc702.*";
+            };
+
+"cond" specifies a target lop phandle. If the result of that lop
+is "True", then the specifying lop will be executed. If the result
+of the target lop is False, then the lop will not be exected. This
+is typically used to trigger execution of lops based on selected
+nodes, or a property found in a tree.
+
+In the following example, either lop_1 or lop_1_1 are valid targets
+of the "cond" property of lop_1_1_1. The result would be the same if
+either was specified (and both are provided to show a long and short
+form of the operation). If a matching compatible node is found in the
+tree, then lop_1_1_1 will be executed.
+
+	    lop_1: lop_1 {
+		  compatible = "system-device-tree-v1,lop,select-v1";
+		  // clear any old selections
+		  select_1;
+		  select_2 = "/:compatible:.*xlnx,versal-vc-p-a2197-00-revA.*";
+	    };
+	    lop_1_1: lop_1_1 {
+		  compatible = "system-device-tree-v1,lop,code-v1";
+		  code = "
+			  if __selected__:
+			      print( 'Compatible dts (type1) found: %s' % node )
+
+			  if __selected__:
+			      return True
+			  else:
+			      return False
+		      ";
+	    };
+	    lop_1_1_1 {
+		  compatible = "system-device-tree-v1,lop,code-v1";
+		  cond = <&lop_1>;
+		  code = "
+			 print( 'Conditional Code is running!' )
+			 ";
+	     };
+
+
+
 Note: the lopper_sanity.py utility has an embedded lops file that can be
 used as a reference, as well as embedded LopperTree sanity tests.
 
@@ -929,9 +992,11 @@ If compatible, lopper calls the assist routine with the arguments set to:
   - the lopper system device tree object
   - the assist options dictionary
 
-The options dictionary minimally contains the 'verbose' key, which indicates the
-level of verbosity that lopper is using. Additional options (such as command
-line inputs) will be added in the future.
+The options dictionary minimally contains the following keys:
+
+   'verbose': indicates the level of verbosity that lopper is using. 
+   'outdir': indicates the lopper output directory (from a lop or command line)
+   'args': any remaining assist specific arguments (from a lop or command line)
 
 Once called, the function can use the node number and the system device tree
 (with its embedded FDT) to discover more information about the tree and

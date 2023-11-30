@@ -23,6 +23,8 @@ from lopper.fmt import LopperFmt
 from lopper.tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
 import lopper.tree
 
+import lopper.log
+
 lopper_directory = os.path.dirname(os.path.realpath(__file__))
 
 try:
@@ -115,9 +117,8 @@ class LopperSDT:
            Nothing
 
         """
-        if self.verbose and libfdt:
-            print( "[INFO]: loading dtb and using libfdt to manipulate tree" )
-
+        if libfdt:
+            lopper.log._info( f"loading dtb and using libfdt to manipulate tree" )
 
         # check for required support applications
         if libfdt:
@@ -126,10 +127,9 @@ class LopperSDT:
             support_bins = [ "cpp" ]
 
         for s in support_bins:
-            if self.verbose:
-                print( "[INFO]: checking for support binary: %s" % s )
+            lopper.log._info( f"checking for support binary: {s}" )
             if not shutil.which(s):
-                print( "[ERROR]: support application '%s' not found, exiting" % s )
+                lopper.log._error( f"support application '{s}' not found, exiting" )
                 sys.exit(2)
 
         self.use_libfdt = libfdt
@@ -180,10 +180,10 @@ class LopperSDT:
                     if not found:
                         support_files.append( ifile )
                 else:
-                    print( "[ERROR]. YAML/JSON support is not loaded, check dependencies" )
+                    lopper.log._error( f"YAML/JSON support is not loaded, check dependencies" )
                     sys.exit(1)
             else:
-                print( "[ERROR]: input file %s cannot be processed (no handler)" % ifile )
+                lopper.log._error( f"input file {ifile} cannot be processed (no handler)" )
                 sys.exit(1)
 
         # is the sdt a dts ?
@@ -243,8 +243,7 @@ class LopperSDT:
             if self.use_libfdt:
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
             else:
-                if self.verbose:
-                    print( "[INFO]: using python devicetree for parsing" )
+                lopper.log._info( f"using python devicetree for parsing" )
 
                 # TODO: "FDT" should now be "token" or something equally generic
                 self.FDT = self.dtb
@@ -268,7 +267,7 @@ class LopperSDT:
             fpp.close()
         elif re.search( ".yaml$", self.dts ):
             if not yaml_support:
-                print( "[ERROR]: no yaml support detected, but system device tree is yaml" )
+                lopper.log._error( f"no yaml support detected, but system device tree is yaml" )
                 sys.exit(1)
 
             fp = ""
@@ -298,7 +297,7 @@ class LopperSDT:
             self.tree = lt
         elif re.search( ".json$", self.dts ):
             if not yaml_support:
-                print( "[ERROR]: no json detected, but system device tree is json" )
+                lopper.log._error( f"no json detected, but system device tree is json" )
                 sys.exit(1)
 
             fp = ""
@@ -331,7 +330,7 @@ class LopperSDT:
             self.dtb = sdt_file
             self.dts = sdt_file
             if not self.use_libfdt:
-                print( "[ERROR]: dtb system device tree passed (%s), and libfdt is disabled" % self.dts )
+                lopper.log._error( f"dtb system device tree passed ({self.dts}), and libfdt is disabled" )
                 sys.exit(1)
             self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
             self.tree = LopperTree()
@@ -341,8 +340,7 @@ class LopperSDT:
         try:
             lops = self.tree["/lops"]
             if lops:
-                if self.verbose:
-                    print( "[INFO]: embedded lops detected, extracting and queuing" )
+                lopper.log._info( f"embedded lops detected, extracting and queuing" )
 
                 # free the lops from the input tree
                 self.tree.delete(lops)
@@ -389,7 +387,7 @@ class LopperSDT:
                 compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force, self.outdir,
                                                    self.save_temps, self.verbose )
                 if not compiled_file:
-                    print( "[ERROR]: could not compile file %s" % ifile )
+                    lopper.log._error( f"could not compile file {ifile}" )
                     sys.exit(1)
 
                 if self.use_libfdt:
@@ -442,8 +440,8 @@ class LopperSDT:
     def assist_autorun_setup( self, module_name, module_args = [] ):
         lt = LopperTree()
 
-        if self.verbose > 2:
-            print( "[INFO]: setting up module %s with args: %s" % (module_name,module_args))
+        lopper.log._debug( f"setting up module {module_name} with args:{module_args}" )
+
         lt['/']['compatible'] = [ 'system-device-tree-v1' ]
         lt['/']['priority'] = [ 3 ]
 
@@ -475,8 +473,7 @@ class LopperSDT:
         lop.fdt = None
         lop.tree = lt
 
-        if self.verbose > 1:
-            print( "[INFO]: generated assist run for %s" % module_name )
+        lopper.log._debug( f"generated assist run for {module_name}" )
 
         self.lops.insert( 0, lop )
 
@@ -549,13 +546,13 @@ class LopperSDT:
                 Lopper.sync( fdt, tree_to_write.export() )
                 Lopper.write_fdt( fdt, output_filename, overwrite, self.verbose )
             else:
-                print( "[ERROR]: dtb output selected (%s), but libfdt is not enabled" % output_filename )
+                lopper.log._error( f"dtb output selected ({output_filename}), but libfdt is not enabled" )
                 sys.exit(1)
 
         elif re.search( ".dts", output_filename ):
             o = Path(output_filename)
             if o.exists() and not overwrite:
-                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                lopper.log._error( f"output file {output_filename} exists and force overwrite is not enabled" )
                 sys.exit(1)
 
             printer = LopperTreePrinter( True, output_filename, self.verbose )
@@ -573,7 +570,7 @@ class LopperSDT:
         elif re.search( ".yaml", output_filename ):
             o = Path(output_filename)
             if o.exists() and not overwrite:
-                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                lopper.log._error( f"output file {output_filename} exists and force overwrite is not enabled"  )
                 sys.exit(1)
 
             yaml = LopperYAML( None, tree_to_write, config=self.config )
@@ -581,7 +578,7 @@ class LopperSDT:
         elif re.search( ".json", output_filename ):
             o = Path(output_filename)
             if o.exists() and not overwrite:
-                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                lopper.log._error( f"output file {output_filename} exists and force overwrite is not enabled" )
                 sys.exit(1)
 
             json = LopperYAML( None, self.tree, config=self.config )
@@ -597,19 +594,18 @@ class LopperSDT:
                         out_tree.load( tree_to_write.export() )
                         out_tree.strict = not self.permissive
                         if not cb_func( 0, out_tree, { 'outfile': output_filename, 'verbose' : self.verbose } ):
-                            print( "[WARNING]: output assist returned false, check for errors ..." )
+                            lopper.log._warning( f"output assist returned false, check for errors ..." )
                     except Exception as e:
-                        print( "[WARNING]: output assist %s failed: %s" % (cb_func,e) )
+                        lopper.log._warning( f"output assist {cb_func} failed: {e}" )
                         exc_type, exc_obj, exc_tb = sys.exc_info()
                         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                         print(exc_type, fname, exc_tb.tb_lineno)
                         if self.werror:
                             sys.exit(1)
             else:
-                if self.verbose:
-                    print( "[INFO]: no compatible output assist found, skipping" )
+                lopper.log._info( f"no compatible output assist found, skipping" )
                 if self.werror:
-                    print( "[ERROR]: werror is enabled, and no compatible output assist found, exiting" )
+                    lopper.log._error( f"werror is enabled, and no compatible output assist found, exiting" )
                     sys.exit(2)
 
     def assist_find(self, assist_name, local_load_paths = []):
@@ -631,8 +627,7 @@ class LopperSDT:
         mod_file = Path( assist_name )
         mod_file_wo_ext = mod_file.with_suffix('')
 
-        if self.verbose > 1:
-            print( "[DBG+]: assist_find: %s local search: %s" % (assist_name,local_load_paths) )
+        lopper.log._info( f"assist_find: {assist_name} local search: {local_load_paths}" )
 
 
         # anything less than python 3.6.x doesn't take "true" as a parameter to
@@ -676,7 +671,7 @@ class LopperSDT:
 
 
             if not mod_file_abs:
-                print( "[ERROR]: module file %s not found" % assist_name )
+                lopper.log._error( f"module file {assist_name} not found" )
                 if self.werror:
                     sys.exit(1)
                 return None
@@ -720,8 +715,7 @@ class LopperSDT:
 
                 ln = ln + lop_node
 
-                if self.verbose > 1:
-                    print( "[INFO]: generated load lop for assist %s" % a )
+                lopper.log._debug( f"generated load lop for assist {a}" )
 
                 assist_count = assist_count + 1
 
@@ -848,9 +842,9 @@ class LopperSDT:
                         #    func = getattr( m, cbname )
                         # but for now, we don't
                 else:
-                    print( "[WARNING]: a configured assist has no module loaded" )
+                    lopper.log._warning( f"a configured assist has no module loaded" )
         else:
-            print( "[WARNING]: no modules loaded, no compat search is possible" )
+            lopper.log._warning( f"no modules loaded, no compat search is possible" )
 
         return cb_func
 
@@ -881,12 +875,10 @@ class LopperSDT:
         except:
             lop_args = ""
 
-        if self.verbose > 1:
-            print( "[DBG++]: executing lop: %s" % lop_type )
+        lopper.log._debug( f"executing lop: {lop_type}" )
 
         if re.search( ".*,exec.*$", lop_type ):
-            if self.verbose > 1:
-                print( "[DBG++]: code exec jump" )
+            lopper.log._debug( f"code exec jump" )
             try:
                 try:
                     node_spec = lop_node['node'].value[0]
@@ -912,9 +904,8 @@ class LopperSDT:
 
                 exec_tgt = lop_node['exec'].value[0]
                 target_node = lops_tree.pnode( exec_tgt )
-                if self.verbose > 1:
-                    lop_node.print()
-                    print( "[DBG++]: exec phandle: %s target: %s" % (hex(exec_tgt),target_node))
+
+                lopper.log._debug( f"exec phandle: {hex(exec_tgt)} target: {target_node}", lop_node )
 
                 if target_node:
                     try:
@@ -923,7 +914,7 @@ class LopperSDT:
 
                         ret = self.exec_lop( target_node, lops_tree, options )
                     except Exception as e:
-                        print( "[WARNING]: exec block caused exception: %s" % e )
+                        lopper.log._warning( f"exec block caused exception: {e}" )
                         ret = False
 
                     return ret
@@ -931,7 +922,7 @@ class LopperSDT:
                     return False
 
             except Exception as e:
-                print( "[WARNING]: exec lop exception: %s" % e )
+                lopper.log._warning( f"exec lop exception: {e}" )
                 return False
 
         if re.search( ".*,print.*$", lop_type ):
@@ -949,6 +940,8 @@ class LopperSDT:
                                 print( "    %s" % p )
                             print( "}" )
 
+            return True
+
         if re.search( ".*,select.*$", lop_type ):
             select_props = lop_node.props( 'select.*' )
 
@@ -957,7 +950,7 @@ class LopperSDT:
                 try:
                     tree = self.subtrees[tree_name]
                 except:
-                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
+                    lopper.log._error( f"tree name provided ({tree_name}), but not found" )
                     sys.exit(1)
             except:
                 tree = self.tree
@@ -975,15 +968,13 @@ class LopperSDT:
             selected_nodes_possible = []
             for sel in select_props:
                 if sel.value == ['']:
-                    if self.verbose > 1:
-                        print( "[DBG++]: clearing selected nodes" )
+                    lopper.log._debug( f"clearing selected nodes" )
                     tree.__selected__ = []
                 else:
                     # if different node regex + properties are listed in the same
                     # select = "foo","bar","blah", they are always AND conditions.
                     for s in sel.value:
-                        if self.verbose > 1:
-                            print( "[DBG++]: running node selection: %s (%s)" % (s,selected_nodes_possible) )
+                        lopper.log._debug( f"running node selection: {s} ({selected_nodes_possible})" )
                         try:
                             node_regex, prop, prop_val = s.split(":")
                         except:
@@ -1012,18 +1003,17 @@ class LopperSDT:
                             else:
                                 selected_nodes_possible = tree.__selected__
 
-                        if self.verbose > 1:
-                            print( "[DBG++]: selected potential nodes:" )
-                            for n in selected_nodes_possible:
-                                print( "       %s" % n )
+                            if self.verbose > 1:
+                                lopper.log._debug( f"selected potential nodes:" )
+                                for n in selected_nodes_possible:
+                                    print( "       %s" % n )
 
                         if prop and prop_val:
                             invert_result = False
                             if re.search( "\!", prop_val ):
                                 invert_result = True
                                 prop_val = re.sub( '^\!', '', prop_val )
-                                if self.verbose > 1:
-                                    print( "[DBG++]: select: inverting result" )
+                                lopper.log._debug( f"select: inverting result" )
 
                             # in case this is a formatted list, ask lopper to convert
                             prop_val = Lopper.property_convert( prop_val )
@@ -1105,7 +1095,7 @@ class LopperSDT:
 
 
                     if self.verbose > 1:
-                        print( "[DBG++]: select pass done: selected nodes:" )
+                        lopper.log._debug( f"select pass done: selected nodes:" )
                         for n in selected_nodes:
                             print( "    %s" % n )
 
@@ -1116,10 +1106,14 @@ class LopperSDT:
             # update the tree selection with our results
             tree.__selected__ = selected_nodes
 
+            if tree.__selected__:
+                return True
+
+            return False
+
         if re.search( ".*,meta.*$", lop_type ):
             if re.search( "phandle-desc", lop_args ):
-                if self.verbose > 1:
-                    print( "[DBG++]: processing phandle meta data (%s)" % type(Lopper))
+                lopper.log._debug( f"processing phandle meta data {type(Lopper)}")
 
                 # grab all the defaults
                 Lopper.phandle_possible_prop_dict = Lopper.phandle_possible_properties()
@@ -1134,8 +1128,7 @@ class LopperSDT:
                     # of the node, not a meta data entry. Everything else is though
                     if p.name != "compatible":
                         if re.search( r'^reset$', p.name ):
-                            if self.verbose > 1:
-                                print( "[DBG++]: resetting phandle table" )
+                            lopper.log._debug( f"resetting phandle table" )
                             Lopper.phandle_possible_prop_dict = OrderedDict()
                         elif re.search( r'^lopper-comment.*', p.name ):
                             # skip
@@ -1150,22 +1143,23 @@ class LopperSDT:
                         else:
                             Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
 
+            return True
+
         if re.search( ".*,output$", lop_type ):
             try:
                 output_file_name = lop_node['outfile'].value[0]
             except:
-                print( "[ERROR]: cannot get output file name from lop" )
+                lopper.log._error( f"cannot get output file name from lop" )
                 sys.exit(1)
 
-            if self.verbose > 1:
-                print( "[DBG+]: outfile is: %s" % output_file_name )
+            lopper.log._debug( f"outfile is: {output_file_name}" )
 
             try:
                 tree_name = lop_node['tree'].value[0]
                 try:
                     tree = self.subtrees[tree_name]
                 except:
-                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
+                    lopper.log._error( f"tree name provided ({tree_name}), but not found" )
                     sys.exit(1)
             except:
                 tree = self.tree
@@ -1184,8 +1178,7 @@ class LopperSDT:
             if not output_regex and not output_nodes:
                 return False
 
-            if self.verbose > 1:
-                print( "[DBG+]: output regex: %s" % output_regex )
+            lopper.log._debug( f"output regex: {output_regex}" )
 
             output_tree = None
             if output_regex:
@@ -1230,8 +1223,7 @@ class LopperSDT:
                                     pass
 
                             for o in o_nodes:
-                                if self.verbose > 2:
-                                    print( "[DBG++] output lop, checking node: %s" % o.abs_path )
+                                lopper.log._debug( f"output lop, checking node: {o.abs_path}" )
 
                                 # we test for a property in the node if it was defined
                                 if o_prop_name:
@@ -1246,11 +1238,11 @@ class LopperSDT:
                                         output_nodes.append( o )
 
                         except Exception as e:
-                            print( "[WARNING]: except caught during output processing: %s" % e )
+                            lopper.log._warning( f"exception caught during output processing: {e}" )
 
                 if output_regex:
                     if self.verbose > 2:
-                        print( "[DBG++] output lop, final nodes:" )
+                        lopper.log._debug( f"output lop, final nodes:" )
                         for oo in output_nodes:
                             print( "       %s" % oo.abs_path )
 
@@ -1281,18 +1273,18 @@ class LopperSDT:
                     # if going to dts, since that is already easily done with the tree.
                     self.write( output_tree, output_file_full, True, self.enhanced )
             else:
-                print( "[NOTE]: dryrun detected, not writing output file %s" % output_file_name )
+                lopper.log._info( f"dryrun detected, not writing output file {output_file_name}" )
 
+            return True
         if re.search( ".*,tree$", lop_type ):
             # TODO: consolidate this with the output lop
             try:
                 tree_name = lop_node['tree'].value[0]
             except:
-                print( "[ERROR]: tree lop: cannot get tree name from lop" )
+                lopper.log._error( f"tree lop: cannot get tree name from lop" )
                 sys.exit(1)
 
-            if self.verbose > 1:
-                print( "[DBG+]: tree lop: tree is: %s" % tree_name )
+            lopper.log._debug( f"tree lop: tree is: {tree_name}" )
 
             tree_nodes = []
             try:
@@ -1305,7 +1297,7 @@ class LopperSDT:
                     tree_nodes = self.tree.__selected__
 
             if not tree_regex and not tree_nodes:
-                print( "[WARNING]: tree lop: no nodes or regex proviced for tree, returning" )
+                lopper.log._warning( f"tree lop: no nodes or regex proviced for tree, returning" )
                 return False
 
             new_tree = None
@@ -1367,7 +1359,7 @@ class LopperSDT:
                                         tree_nodes.append( o )
 
                         except Exception as e:
-                            print( "[WARNING]: except caught during tree processing: %s" % e )
+                            lopper.log._warning( f"exception caught during tree processing: {e}" )
 
                 if not new_tree and tree_nodes:
                     new_tree = LopperTreePrinter()
@@ -1385,9 +1377,10 @@ class LopperSDT:
             if new_tree:
                 self.subtrees[tree_name] = new_tree
             else:
-                print( "[ERROR]: no tree created, exiting" )
+                lopper.log._error( f"no tree created, exiting" )
                 sys.exit(1)
 
+            return True
 
         if re.search( ".*,assist-v1$", lop_type ):
             # also note: this assist may change from being called as
@@ -1402,9 +1395,10 @@ class LopperSDT:
             try:
                 cb_tgt_node_name = lop_node['node'].value[0]
             except:
-                print( "[ERROR]: cannot find target node for the assist" )
+                lopper.log._error( f"cannot find target node for assist" )
                 sys.exit(1)
 
+            cb_outdir = self.outdir
             try:
                 cb = lop_node.propval('assist')[0]
                 cb_id = lop_node.propval('id')[0]
@@ -1414,8 +1408,10 @@ class LopperSDT:
                     cb_opts = cb_opts.split( ' ' )
                 else:
                     cb_opts = []
+                if lop_node.propval('outdir') != ['']:
+                    cb_outdir = lop_node.propval('outdir')[0]
             except Exception as e:
-                print( "[ERROR]: callback options are missing: %s" % e )
+                lopper.log._error( f"callback options are missing: {e}" )
                 sys.exit(1)
 
             try:
@@ -1425,13 +1421,13 @@ class LopperSDT:
 
             if not cb_node:
                 if self.werror:
-                    print( "[ERROR]: cannot find assist target node in tree" )
+                    lopper.log._error( f"cannot find assist target node in tree" )
                     sys.exit(1)
                 else:
-                    return
+                    return False
 
             if self.verbose:
-                print( "[INFO]: assist lop detected" )
+                lopper.log._info( f"assist lop detected" )
                 if cb:
                     print( "        cb: %s" % cb )
                 print( "        id: %s opts: %s" % (cb_id,cb_opts) )
@@ -1440,19 +1436,23 @@ class LopperSDT:
             if cb_funcs:
                 for cb_func in cb_funcs:
                     try:
-                        if not cb_func( cb_node, self, { 'verbose' : self.verbose, 'outdir' : self.outdir, 'args': cb_opts } ):
-                            print( "[WARNING]: the assist returned false, check for errors ..." )
+                        if not cb_func( cb_node, self, { 'verbose' : self.verbose, 'outdir' : cb_outdir, 'args': cb_opts } ):
+                            lopper.log._warning( f"the assist returned false, check for errors ..." )
                     except Exception as e:
-                        print( "[WARNING]: assist %s failed: %s" % (cb_func,e) )
+                        lopper.log._warning( f"assist %{cb_func} failed: {e}" )
                         exc_type, exc_obj, exc_tb = sys.exc_info()
                         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                         print(exc_type, fname, exc_tb.tb_lineno)
                         # exit if warnings are treated as errors
                         if self.werror:
                             sys.exit(1)
+
+                        return False
             else:
-                if self.verbose:
-                    print( "[INFO]: no compatible assist found, skipping: %s %s" % (cb_tgt_node_name,cb))
+                lopper.log._info( f"no compatible assist found, skipping: {cb_tgt_node_name}{cb}")
+                return False
+
+            return True
 
         if re.search( ".*,lop,load$", lop_type ):
             prop_id = ""
@@ -1469,12 +1469,11 @@ class LopperSDT:
                     if p not in sys.path:
                         sys.path.append( p )
 
-                if self.verbose:
-                    print( "[INFO]: loading module %s" % load_prop )
+                lopper.log._info( f"loading module {load_prop}" )
 
                 mod_file = self.assist_find( load_prop, self.load_paths )
                 if not mod_file:
-                    print( "[ERROR]: unable to find assist (%s)" % load_prop )
+                    lopper.log._error( f"unable to find assist ({load_prop })" )
                     sys.exit(1)
 
                 mod_file_abs = mod_file.resolve()
@@ -1485,7 +1484,7 @@ class LopperSDT:
                 try:
                     imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
                 except Exception as e:
-                    print( "[ERROR]: could not load assist: %s: %s" % (mod_file_abs,e) )
+                    lopper.log._error( f"could not load assist: {mod_file_abs}: {e}" )
                     sys.exit(1)
 
                 assist_properties = {}
@@ -1535,20 +1534,18 @@ class LopperSDT:
                         except:
                             pass
                 if not already_loaded:
-                    if self.verbose > 1:
-                        if prop_extension:
-                            print( "[INFO]: loading assist with properties (%s,%s)" % (prop_extension, prop_id) )
-
+                    lopper.log._info( f"loading assist with properties ({prop_extension}, {prop_id})", prop_extension )
                     self.assists.append( LopperAssist( mod_file.name, imported_module, assist_properties ) )
 
+            return True
+
         if re.search( ".*,lop,add$", lop_type ):
-            if self.verbose:
-                print( "[INFO]: node add lop" )
+            lopper.log._info( f"node add lop" )
 
             try:
                 src_node_name = lop_node['node_src'].value[0]
             except:
-                print( "[ERROR]: node add detected, but no node name found" )
+                lopper.log._error( f"node add detected, but no node name found" )
                 sys.exit(1)
 
             try:
@@ -1556,8 +1553,7 @@ class LopperSDT:
                 try:
                     tree = self.subtrees[tree_name]
                 except:
-                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
-                    sys.exit(1)
+                    lopper.log._error( f"tree name provided ({tree_name}), but not found", True )
             except:
                 tree = self.tree
 
@@ -1570,8 +1566,8 @@ class LopperSDT:
             except:
                 dest_node_path = "/" + src_node_name
 
-            if self.verbose:
-                print( "[INFO]: add node name: %s node path: %s" % (src_node_path, dest_node_path) )
+
+            lopper.log._info( f"add node name: {src_node_path} node path: {dest_node_path}" )
 
 
             if tree:
@@ -1585,20 +1581,19 @@ class LopperSDT:
                 # add it to the tree, and this will adjust the children appropriately
                 tree + dst_node
             else:
-                print( "[ERROR]: unable to copy node: %s" % src_node_name )
-                sys.exit(1)
+                lopper.log._error( f"unable to copy node: {src_node_name}", True )
+
+            return True
 
         if re.search( ".*,lop,conditional.*$", lop_type ):
-            if self.verbose:
-                print( "[INFO]: conditional lop found" )
+            lopper.log._info( f"conditional lop found" )
 
             try:
                 tree_name = lop_node['tree'].value[0]
                 try:
                     tree = self.subtrees[tree_name]
                 except:
-                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
-                    sys.exit(1)
+                    lopper.log._error( f"tree name provided ({tree_name}), but not found", True)
             except:
                 tree = self.tree
 
@@ -1614,7 +1609,7 @@ class LopperSDT:
             try:
                 conditional_start = lops_tree[lop_node.abs_path + "/" + root]
             except:
-                print( "[INFO]: conditional node %s not found, returning" % lop_node.abs_path + "/" + root )
+                lopper.log._info( f"conditional node {lop_node.abs_path + '/' + root} not found, returning" )
                 return False
 
             try:
@@ -1638,8 +1633,7 @@ class LopperSDT:
 
             sdt_tgt_nodes = tree.nodes(cond_path)
             if not sdt_tgt_nodes:
-                if self.verbose > 1:
-                    print( "[DBG++]: no target nodes found at: %s, returning" % cond_path )
+                lopper.log._debug( f"no target nodes found at: {cond_path}, returning" )
                 return False
 
             tgt_matches = []
@@ -1654,8 +1648,8 @@ class LopperSDT:
                 if cond_prop.name.endswith( "__not__" ):
                     cond_prop_name = re.sub( "__not__$", "", cond_prop.name )
                     invert_check = "not"
-                if self.verbose > 1:
-                    print( "[DBG++]: conditional property:  %s tgt_nodes: %s" % (cond_prop_name,sdt_tgt_nodes) )
+
+                lopper.log._debug( f"conditional property: {cond_prop_name} tgt_nodes: {sdt_tgt_nodes}" )
 
                 for tgt_node in sdt_tgt_nodes:
                     # is the property present in the target node ?
@@ -1670,8 +1664,7 @@ class LopperSDT:
 
                         # if there was an inversion in the name, flip the result
                         check_val_final = eval( "{0} {1}".format(invert_check, check_val ))
-                        if self.verbose > 1:
-                            print ( "[DBG++]   ({0}:{1}) condition check final value: {2} {3} was {4}".format(tgt_node.abs_path,tgt_node_prop.value[0],invert_check, check_val, check_val_final ))
+                        lopper.log._debug( f"   ({tgt_node.abs_path}:{tgt_node_prop.value[0]}) condition check final value: {invert_check} {check_val} was {check_val_final}")
                         if check_val_final:
                             # if not already in the list, we need to add the target node
                             if not tgt_node in tgt_matches:
@@ -1686,9 +1679,7 @@ class LopperSDT:
                                 tgt_false_matches.append(tgt_node)
                     else:
                         # if it doesn't have it, that has to be a false!
-                        if self.verbose:
-                            print( "[DBG]: system device tree node '%s' does not have property '%s'" %
-                                   (tgt_node,cond_prop_name))
+                        lopper.log._debug( f"system device tree node '{tgt_node}' does not have property '{cond_prop_name}'" )
 
                         # if subsequent props are not True, then we need to yank out
                         # the node from our match list
@@ -1706,23 +1697,21 @@ class LopperSDT:
                     # start with "true", it is a nested lop that we will execute
                     for n in this_lop_subnodes:
                         if n.name.startswith( "true" ):
-                            if self.verbose > 1:
-                                print( "[DBG++]: true subnode found with lop: %s" % (n['compatible'].value[0] ) )
+                            lopper.log._debug( f"true subnode found with lop:{n['compatible'].value[0]}" )
                             try:
                                 # run the lop, passing the target node as an option (the lop may
                                 # or may not use it)
                                 ret = self.exec_lop( n, lops_tree, { 'start_node' : tgt_match.abs_path } )
                             except Exception as e:
-                                print( "[WARNING]: true block had an exception: %s" % e )
+                                lopper.log._warning( f"true block had an exception: {e}" )
                                 ret = False
 
                             # no more looping if the called lop return False
                             if ret == False:
-                                if self.verbose > 1:
-                                    print( "[DBG++]: code block returned false, stop executing true blocks" )
+                                lopper.log._debug( f"code block returned false, stop executing true blocks" )
                                 break
                 except Exception as e:
-                    print( "[WARNING]: conditional had exception: %s" % e )
+                    lopper.log._warning( f"conditional had exception: {e}" )
 
             # just like the target matches, we iterate any failed matches to see
             # if false blocks were defined.
@@ -1731,22 +1720,22 @@ class LopperSDT:
                 try:
                     for n in this_lop_subnodes:
                         if n.name.startswith( "false" ):
-                            if self.verbose > 1:
-                                print( "[DBG++]: false subnode found with lop: %s" % (n['compatible'].value[0] ) )
+                            lopper.log._debug( f"false subnode found with lop: {n['compatible'].value[0]}" )
 
                             try:
                                 ret = self.exec_lop( n, lops_tree, { 'start_node' : tgt_match.abs_path } )
                             except Exception as e:
-                                print( "[WARNING]: false block had an exception: %s" % e )
+                                lopper.log._warning( f"false block had an exception: {e}" )
                                 ret = False
 
                             # if any of the blocks return False, we are done
                             if ret == False:
-                                if self.verbose > 1:
-                                    print( "[DBG++]: code block returned false, stop executing true blocks" )
+                                lopper.log._debug( f"code block returned false, stop executing true blocks" )
                                 break
                 except Exception as e:
-                    print( "[WARNING]: conditional false block had exception: %s" % e )
+                    lopper.log._warning( f"conditional false block had exception: {e}" )
+
+            return ret
 
         if re.search( ".*,lop,code.*$", lop_type ) or re.search( ".*,lop,xlate.*$", lop_type ):
             # execute a block of python code against a specified start_node
@@ -1765,8 +1754,7 @@ class LopperSDT:
                 try:
                     tree = self.subtrees[tree_name]
                 except:
-                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
-                    sys.exit(1)
+                    lopper.log._error( f"tree name provided ({tree_name}), but not found", True )
             except:
                 tree = self.tree
 
@@ -1791,8 +1779,7 @@ class LopperSDT:
             except:
                 inherit_list = []
 
-            if self.verbose:
-                print ( "[DBG]: code lop found, node context: %s" % start_node )
+            lopper.log._debug( f"code lop found, node context: {start_node}" )
 
             if re.search( ".*,lop,xlate.*$", lop_type ):
                 inherit_list.append( "lopper_lib" )
@@ -1815,8 +1802,7 @@ class LopperSDT:
 
         if re.search( ".*,lop,modify$", lop_type ):
             node_name = lop_node.name
-            if self.verbose:
-                print( "[INFO]: node %s is a compatible modify lop" % node_name )
+            lopper.log._info( f"node {node_name} is a compatible modify lop" )
             try:
                 prop = lop_node["modify"].value[0]
             except:
@@ -1827,8 +1813,7 @@ class LopperSDT:
                 try:
                     tree = self.subtrees[tree_name]
                 except:
-                    print( "[ERROR]: tree name provided (%s), but not found" % tree_name )
-                    sys.exit(1)
+                    lopper.log._error( f"tree name provided ({tree_name}), but not found", True )
             except:
                 tree = self.tree
 
@@ -1837,8 +1822,7 @@ class LopperSDT:
             except:
                 nodes_selection = ""
             if prop:
-                if self.verbose:
-                    print( "[INFO]: modify property found: %s" % prop )
+                lopper.log._debug( f"modify property found: {prop}" )
 
                 # format is: "path":"property":"replacement"
                 #    - modify to "nothing", is a remove operation
@@ -1848,18 +1832,18 @@ class LopperSDT:
                 modify_path = modify_expr[0]
                 modify_prop = modify_expr[1]
                 modify_val = modify_expr[2]
-                if self.verbose:
-                    print( "[INFO]: modify path: %s" % modify_expr[0] )
-                    print( "        modify prop: %s" % modify_expr[1] )
-                    print( "        modify repl: %s" % modify_expr[2] )
-                    if nodes_selection:
-                        print( "        modify regex: %s" % nodes_selection )
+
+                lopper.log._info( f"modify path: {modify_expr[0]}" )
+                lopper.log._info( f"modify prop: {modify_expr[1]}" )
+                lopper.log._info( f"modify repl: {modify_expr[2]}" )
+                if nodes_selection:
+                    lopper.log._info( f"modify regex: {nodes_selection}" )
 
                 # if modify_expr[0] (the nodes) is empty, we use the selected nodes
                 # if they are available
                 if not modify_path:
                     if not tree.__selected__:
-                        print( "[WARNING]: no nodes supplied to modify, and no nodes are selected" )
+                        lopper.log._warning( f"no nodes supplied to modify, and no nodes are selected" )
                         return False
                     else:
                         nodes = tree.__selected__
@@ -1867,15 +1851,13 @@ class LopperSDT:
                     try:
                         nodes = tree.subnodes( tree[modify_path] )
                     except Exception as e:
-                        if self.verbose > 1:
-                            print( "[DBG+] modify lop: node issue: %s" % e )
+                        lopper.log._debug( f"modify lop: node issue: {e}" )
                         nodes = []
 
                 if modify_prop:
                     # property operation
                     if not modify_val:
-                        if self.verbose:
-                            print( "[INFO]: property remove operation detected: %s %s" % (modify_path, modify_prop))
+                        lopper.log._info( f"property remove operation detected: {modify_path} {modify_prop}" )
 
                         try:
                             # TODO: make a special case of the property_modify_below
@@ -1885,18 +1867,15 @@ class LopperSDT:
                                 try:
                                     n.delete( modify_prop )
                                 except:
-                                    if self.verbose:
-                                        print( "[WARNING]: property %s not found, and not deleted" % modify_prop )
+                                    lopper.log._warning( f"property {modify_prop} not found, and not deleted" )
                                     # no big deal if it doesn't have the property
                                     pass
 
                             tree.sync()
                         except Exception as e:
-                            print( "[WARNING]: unable to remove property %s/%s (%s)" % (modify_path,modify_prop,e))
-                            sys.exit(1)
+                            lopper.log._error( f"unable to remove property {modify_path}/{modify_prop} ({e})", True )
                     else:
-                        if self.verbose:
-                            print( "[INFO]: property modify operation detected" )
+                        lopper.log._info( f"property modify operation detected" )
 
                         # set the tree state to "syncd", so we'll be able to test for changed
                         # state later.
@@ -1911,8 +1890,7 @@ class LopperSDT:
                             nodes = tree.__selected__
 
                         if not nodes:
-                            if self.verbose:
-                                print( "[WARNING]: node %s not found,  property %s not modified " % (modify_path,modify_prop))
+                            lopper.log._warning( f"node {modify_path} not found,  property {modify_prop} not modified " )
 
                         # if the value has a "&", it is a phandle, and we need
                         # to try and look it up.
@@ -1967,8 +1945,7 @@ class LopperSDT:
 
                         tree.sync()
                 else:
-                    if self.verbose > 1:
-                        print( "[DBG+]: modify lop, node operation" )
+                    lopper.log._warning( f"modify lop, node operation" )
 
                     # drop the list, since if we are modifying a node, it is just one
                     # target node.
@@ -1978,8 +1955,7 @@ class LopperSDT:
                         node = None
 
                     if not node:
-                        print( "[ERROR]: no nodes found for %s" % modify_path )
-                        sys.exit(1)
+                        lopper.log._error( f"no nodes found for {modify_path}", True )
 
                     # node operation
                     # in case /<name>/ was passed as the new name, we need to drop them
@@ -1993,9 +1969,7 @@ class LopperSDT:
                             modify_dest_path = Path( "/" + modify_val )
 
                         if modify_source_path.parent != modify_dest_path.parent:
-                            if self.verbose > 1:
-                                print( "[DBG++]: [%s] node move: %s -> %s" %
-                                       (tree,modify_source_path,modify_dest_path))
+                            lopper.log._debug( f"[{tree}] node move: {modify_source_path} -> {modify_dest_path}" )
                             # deep copy the node
                             new_dst_node = node()
                             new_dst_node.abs_path = modify_val
@@ -2008,9 +1982,7 @@ class LopperSDT:
                             tree.sync()
 
                         if modify_source_path.name != modify_dest_path.name:
-                            if self.verbose > 1:
-                                print( "[DBG++]: [%s] node rename: %s -> %s" %
-                                       (tree,modify_source_path.name,modify_dest_path.name))
+                            lopper.log._debug( f"[{tree}] node rename: {modify_source_path.name} -> {modify_dest_path.name}" )
 
                             modify_val = modify_val.replace( '/', '' )
                             try:
@@ -2023,28 +1995,26 @@ class LopperSDT:
                                         # then let the rename happen. But really, you can just
                                         # write a lop that takes care of that before calling such
                                         # a bad rename lop.
-                                        if self.verbose > 1:
-                                            print( "[NOTE]: node exists at rename target: %s"  % old_node.abs_path )
-                                            print( "        Deleting it, to allow rename to continue" )
+                                        lopper.log._debug( f"node exists at rename target: {old_node.abs_path}" )
+                                        lopper.log._debug( f"Deleting it, to allow rename to continue" )
+
                                         tree.delete( old_node )
                                 except Exception as e:
                                     # no node at the dest
                                     pass
-
 
                                 # change the name of the node
                                 node.name = modify_val
                                 tree.sync()
 
                             except Exception as e:
-                                print( "[ERROR]:cannot rename node '%s' to '%s' (%s)" % (node.abs_path, modify_val, e))
-                                sys.exit(1)
+                                lopper.log._error( f"cannot rename node '{node.abs_path}' to '{modify_val}' ({e})", True )
                     else:
                         # first we see if the node prefix is an exact match
                         node_to_remove = node
 
                         if not node_to_remove:
-                            print( "[WARNING]: Cannot find node %s for delete operation" % node.abs_path )
+                            lopper.log._warning( f"Cannot find node {node.abs_path} for delete operation"  )
                             if self.werror:
                                 sys.exit(1)
                         else:
@@ -2052,7 +2022,9 @@ class LopperSDT:
                                 tree.delete( node_to_remove )
                                 tree.sync()
                             except:
-                                print( "[WARNING]: could not remove node number: %s" % node_to_remove.abs_path )
+                                lopper.log._warning( f"could not remove node number: {node_to_remove.abs_path}" )
+
+            return True
 
         # if the lop didn't return, we return false by default
         return False
@@ -2105,8 +2077,7 @@ class LopperSDT:
         if self.dryrun:
             self.verbose = 2
 
-        if self.verbose:
-            print( "[NOTE]: \'%d\' lopper operation files will be processed" % len(self.lops))
+        lopper.log._info( f"\'{len(self.lops)}\' lopper operation files will be processed" )
 
         lops_runqueue = {}
         for pri in range(1,10):
@@ -2130,15 +2101,14 @@ class LopperSDT:
                 try:
                     dct = Lopper.export( lops_fdt, strict=True )
                 except Exception as e:
-                    print( "[ERROR]: (%s) %s" % (x.dts,e) )
-                    sys.exit(1)
+                    lopper.log._error( f"({x}) {e}", True)
+
                 lops_tree.load( dct )
 
                 x.tree = lops_tree
 
             if not lops_tree:
-                print( "[ERROR]: invalid lop file %s, cannot process" % x )
-                sys.exit(1)
+                lopper.log._error( f"invalid lop file {x}, cannot process", True )
 
             try:
                 ln = lops_tree['/']
@@ -2148,9 +2118,9 @@ class LopperSDT:
 
             lops_runqueue[lops_file_priority].append(x)
 
-        if self.verbose > 2:
-            print( "[DBG+]: lops runqueue: %s" % lops_runqueue )
+        lopper.log._debug( f"lops runqueue: {lops_runqueue}" )
 
+        lop_results = {}
         # iterate over the lops (by lop-file priority)
         for pri in range(1,10):
             for x in lops_runqueue[pri]:
@@ -2176,15 +2146,29 @@ class LopperSDT:
                     except:
                         noexec = False
 
-                    if noexec or f in skip_list:
+                    try:
+                        cond_exec = f['cond'].value[0]
+                        tgt_lop = fdt_tree.pnode(cond_exec)
+                        cond_exec_value = lop_results[tgt_lop.name]
                         if self.verbose > 1:
-                            print( "[DBG+]: noexec or skip set for: %s" % f.abs_path )
+                            print( "[INFO]: conditional %s has result %s" % (tgt_lop.name,cond_exec_value))
+                        if cond_exec_value:
+                            noexec = False
+                        else:
+                            noexec = True
+                    except Exception as e:
+                        pass
+
+                    if noexec or f in skip_list:
+                        lopper.log._debug( f"noexec or skip set for:{f.abs_path}" )
                         continue
 
-                    if self.verbose:
-                        print( "[INFO]: ------> processing lop: %s" % f.abs_path )
+                    lopper.log._info( f"------> processing lop: {f.abs_path}" )
 
-                    self.exec_lop( f, fdt_tree )
+                    result = self.exec_lop( f, fdt_tree )
+                    lop_results[f.name] = result
+                    if self.verbose:
+                        print( "[INFO]: ------> logged result %s for lop %s" % (result,f.name))
 
 
 class LopperFile:

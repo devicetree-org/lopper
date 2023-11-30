@@ -263,3 +263,157 @@ Full Example
          ti,fifo-depth: 0x1
          ti,dp83867-rxctrl-strap-quirk
 
+
+Anchors, aliases and Merge Key Language-Independent Type
+--------------------------------------------------------
+
+Simplified YAML can not only use standard YAML anchors and aliases, it
+can also leverage extended processing when sentinel key values are
+detected.
+
+While these sentinels are valid YAML keys and will pass standard
+parsing, to expand these keys, tooling such as Lopper must be used to
+process the YAML post parsing.
+
+These special key values are an extension to YAML merge keys: <<+ and <<*
+
+<<+: Indicates that multiple alias mappings should be merged, with
+     standard processing of duplicate keys. A list should be used
+     to specify multiple aliases, if a single alias is specified
+     (in a list or not) then this is equivalent to <<
+
+<<*: Future: Indicates that node expansion/inheritance should be
+     performed. This allows the multiple inheritance of YAML
+     nodes (in the current implementation it is functionally
+     equivalent to <<+)
+
+Whether or not the sentinel value is used in a map, or in a list
+changes the way they are expanded.
+
+map: the alias or aliases (if in a value list) should be expanded
+     and numbered nodes created to keep duplicate keys separate
+
+list: the alias or aliases (if in a value list) should be expanded
+      and duplicate values encoded in a json string for future
+      processing.
+
+Example:
+
+.. code-block:: YAML
+
+  definitions:
+      OpenAMP:
+           rproc_reserved0: &rproc_reserved0
+               - ranges: 1
+                 start: 0x3ed00000
+                 size: 0x40000
+                 no-map: 1
+
+      openamp-channel-0-access-srams: &openamp_channel0_access_srams
+          - dev: psu_r5_0_atcm_global
+          - dev: psu_r5_0_btcm_global
+
+      openamp-channel-1-access-srams: &openamp_channel1_access_srams
+          - dev: psu_r5_1_atcm_global
+
+  domains:
+      openamp_a72_0_cluster:
+          compatible:
+              - "openamp,domain-v1"
+          cpus:
+              - cluster: cpus-a72@0
+                cpumask: 0x1
+                mode:
+                   secure: true
+                   el: 0x3
+
+          reserved-memory:
+              ranges: true
+              <<+: *rproc_reserved0
+
+          reserved-memory-2:
+              ranges: true
+              <<+: [ *rproc_reserved0 ]
+
+          reserved-memory-3:
+              ranges: true
+              <<+: [ *rproc_reserved0, *openamp_channel0_access_srams, *openamp_channel1_access_srams ]
+
+          reserved-memory-4:
+              <<*: *rproc_reserved0
+
+          channels:
+              - dev: bar0
+              - <<+: [ *openamp_channel0_access_srams, *openamp_channel1_access_srams ]
+
+
+Represents the followig dts:
+
+.. code-block:: dts
+
+  /dts-v1/;
+
+  / {
+
+          definitions {
+                  openamp-channel-0-access-srams = "[{\"dev\": \"psu_r5_0_atcm_global\"}, {\"dev\": \"psu_r5_0_btcm_global\"}]";
+                  openamp-channel-1-access-srams = "[{\"dev\": \"psu_r5_1_atcm_global\"}]";
+
+                  OpenAMP {
+                          rproc_reserved0 = "[{\"ranges\": 1, \"start\": 1053818880, \"size\": 262144, \"no-map\": 1}]";
+                  };
+          };
+
+          domains {
+
+                  openamp_a72_0_cluster {
+                          compatible = "openamp,domain-v1";
+                          cpus = "[{\"cluster\": \"cpus-a72@0\", \"cpumask\": 1, \"mode\": {\"secure\": true, \"el\": 3}}]";
+                          channels = "[{\"dev\": \"bar0\"}, {\"dev\": \"psu_r5_0_atcm_global\"}, {\"dev\": \"psu_r5_0_btcm_global\"}, {\"dev\": \"psu_r5_1_atcm_global\"}]";
+
+                          reserved-memory {
+                                  ranges = <0x1>;
+                                  start = <0x3ed00000>;
+                                  size = <0x40000>;
+                                  no-map = <0x1>;
+                          };
+
+                          reserved-memory-2 {
+                                  ranges = <0x1>;
+
+                                  rproc_reserved0 {
+                                          ranges = <0x1>;
+                                          start = <0x3ed00000>;
+                                          size = <0x40000>;
+                                          no-map = <0x1>;
+                                  };
+                          };
+
+                          reserved-memory-3 {
+                                  ranges = <0x1>;
+
+                                  rproc_reserved0 {
+                                          ranges = <0x1>;
+                                          start = <0x3ed00000>;
+                                          size = <0x40000>;
+                                          no-map = <0x1>;
+                                  };
+
+                                  openamp-channel-0-access-srams {
+                                          dev = "psu_r5_0_atcm_global";
+                                  };
+
+                                  openamp-channel-1-access-srams {
+                                          dev = "psu_r5_1_atcm_global";
+                                  };
+                          };
+
+                          reserved-memory-4 {
+                                  ranges = <0x1>;
+                                  start = <0x3ed00000>;
+                                  size = <0x40000>;
+                                  no-map = <0x1>;
+                          };
+                  };
+          };
+  };

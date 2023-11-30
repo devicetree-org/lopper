@@ -1,0 +1,54 @@
+/dts-v1/;
+
+/ {
+    compatible = "system-device-tree-v1";
+    lops {
+	    lop_1: lop_1 {
+                  compatible = "system-device-tree-v1,lop,select-v1";
+                  // clear any old selections
+                  select_1;
+                  select_2 = "/:compatible:.*xlnx,versal-vc-p-a2197-00-revA.*";
+            };
+            lop_1_1: lop_1_1 {
+                  compatible = "system-device-tree-v1,lop,code-v1";
+                  code = "
+                          tree.process = False
+                          if __selected__:
+                              print( 'Compatible dts (type1) found: %s' % node )
+                              tree.process = True
+
+                          if __selected__:
+                              return True
+                          else:
+                              return False
+                      ";
+		  lop_1_1_1 {
+                        compatible = "system-device-tree-v1,lop,code-v1";
+			cond = <&lop_1>;
+                        code = "
+                                 print( 'Conditional Code is running!' )
+                               ";
+                  };
+		  lop_1_1_2 {
+                        compatible = "system-device-tree-v1,lop,code-v1";
+                        code = "
+                                 if tree.process:
+                                     print( 'Conditional Code2 is running!' )
+                               ";
+                  };
+            };
+	    lop_2 {
+                  compatible = "system-device-tree-v1,lop,select-v1";
+                  // clear any old selections
+                  select_1;
+                  select_2 = "/:compatible:.*xlnx,zynq-zc702.*";
+            };
+            lop_2_1 {
+                  compatible = "system-device-tree-v1,lop,code-v1";
+                  code = "
+			  if __selected__:
+			      print( 'Compatible dts (type2) found: %s' % node )
+                      ";
+            };
+    };
+};

@@ -55,7 +55,8 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                if compat in compat_string:
                    driver_nodes.append(node)
 
-    driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
+    if sdt.tree['/'].propval('pruned-sdt') == ['']:
+        driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
     nodename_list = []
     reg_list = []
     example_dict = {}
@@ -164,7 +165,8 @@ def getmatch_nodes(sdt, node_list, yaml_file, options):
 
     # Remove duplicate nodes
     driver_nodes = list(set(driver_nodes))
-    driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
+    if sdt.tree['/'].propval('pruned-sdt') == ['']:
+        driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
     return driver_nodes
 
 def getxlnx_phytype(sdt, value):
@@ -228,6 +230,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                 continue
 
             nodes = getmatch_nodes(sdt, node_list, drv_yamlpath, options)
+            nodes = [node for node in nodes if node.props('xlnx,is-hierarchy') == []]
             name_list = []
             for node in nodes:
                 if node.propval('xlnx,name') != ['']:
@@ -247,7 +250,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                                 topology_data[val] = 0
                            elif drv == "ll_temac":
                                 topology_data[val] = 1
-                           elif drv == "axi_ethernet":
+                           elif drv == "axiethernet":
                                 topology_data[val] = 2
                            elif drv == "emacps":
                                 topology_data[val] = 3
@@ -280,7 +283,15 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                 fd.write(f'set(DEVICE_ID "{val}" CACHE STRING "Device Id")\n')
             if sdt.tree['/'].propval('board') != ['']:
                 val = sdt.tree['/'].propval('board', list)[0]
-                fd.write(f'set(BOARD "{val}" CACHE STRING "Device Id")\n')
+                fd.write(f'set(BOARD "{val}" CACHE STRING "BOARD")\n')
+            match_cpunode = bm_config.get_cpu_node(sdt, options)
+            if re.search("microblaze", match_cpunode['compatible'].value[0]):
+                if match_cpunode.propval('xlnx,family') != ['']:
+                    family = match_cpunode.propval('xlnx,family', list)[0]
+                    fd.write(f'set(CMAKE_MACHINE "{family}" CACHE STRING "CMAKE MACHINE")\n')
+            if match_cpunode.propval('reg') != ['']:
+                cpu_id = match_cpunode.propval('reg', list)[0]
+                fd.write(f'set(XPAR_CPU_ID "{cpu_id}")\n')
 
     if topology_data:
         lwip_topolgy(sdt.outdir, topology_data)
@@ -294,6 +305,8 @@ def is_compat( node, compat_string_to_test ):
 def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
+    if options.get('outdir', {}):
+        sdt.outdir = options['outdir']
 
     node_list = []
     chosen_node = ""

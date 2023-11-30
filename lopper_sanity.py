@@ -38,6 +38,8 @@ import sys
 from io import StringIO
 import sys
 
+import lopper.log
+
 class Capturing(list):
     def __enter__(self):
         self._stdout = sys.stdout
@@ -2155,7 +2157,7 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
 
 def assists_sanity_test( device_tree, lop_file, verbose ):
     device_tree.setup( dt, [lop_file], "", True, libfdt = libfdt )
-    device_tree.assists_setup( [ "lopper/assists/domain-access.py" ] )
+    device_tree.assists_setup( [ "lopper/assists/domain_access.py" ] )
 
     print( "[TEST]: running assist against tree" )
     device_tree.perform_lops()
@@ -2414,6 +2416,8 @@ if __name__ == "__main__":
         lopper.lopper_type(lopper.dt.LopperDT)
 
     Lopper = lopper.Lopper
+
+    lopper.log.init( verbose )
 
     if tree:
         dt = setup_device_tree( outdir )

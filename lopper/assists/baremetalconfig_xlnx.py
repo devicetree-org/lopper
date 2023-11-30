@@ -148,6 +148,20 @@ def get_interrupt_prop(sdt, node, value):
 
     return intr
 
+def get_interrupt_id(sdt, node, value):
+    intr = []
+    inp =  node['interrupt-parent'].value[0]
+    intr_parent = [node for node in sdt.tree['/'].subnodes() if node.phandle == inp]
+    inc = intr_parent[0]["#interrupt-cells"].value[0]
+    nintr = len(value)/inc
+    tmp = inc % 2
+    for val in range(0, int(nintr)):
+        intr_id = value[tmp]
+        intr.append(int(hex(intr_id), 16))
+        tmp += inc
+    return intr
+
+
 #Return the base address of the parent node.
 def get_phandle_regprop(sdt, prop, value):
     parent_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == value[0]]
@@ -182,40 +196,33 @@ def get_intrerrupt_parent(sdt, value):
     return reg
 
 """
-This API scans the device-tree node and returns the address
-and size of the ranges property for the user provided index.
+This API scans the pci node's range property and returns the required address
+and size.
 
 Args:
-    node: LopperNode object
-    value: property value
-    idx: index
+    range_value: List containing one range values.
+    ns: size cells value for the pci node.
 """
-def scan_ranges_size(node, value, idx):
-    na = node["#address-cells"].value[0]
-    ns = node["#size-cells"].value[0]
-    cells = na + ns + 2
+def scan_ranges_size(range_value, ns):
+    """
+    Both address and size can be either 32 bit or 64 bit.
+    Check the higher cell for both and if that is not zero,
+    concatenate the higher and the lower cells.
+    e.g. <0x4 0x80000000> => 0x480000000
+    """
+    addr = hex(range_value[2])
+    high_addr_cell = hex(range_value[1])
+    if high_addr_cell != "0x0":
+        addr = high_addr_cell + addr.lstrip('0x')
 
-    addr = 0
-    size = 0
+    size = hex(range_value[-1])
+    high_size_cell = hex(range_value[-2])
+    # If ns = 1, then there is no use of high_size_cells
+    if high_size_cell != "0x0" and ns > 1:
+        size = high_size_cell + size.lstrip('0x')
 
-    addr1 = value[cells * idx + 1]
-    if addr1 != 0:
-        val = str(value[cells * idx + ns])
-        pad = 8 - len(val)
-        val = val.ljust(pad + len(val), '0')
-        addr = int((str(hex(addr1)) + val), base=16)
-    else:
-        addr = value[cells * idx + ns]
+    return int(addr, base=16), int(size, base=16)
 
-    size1 = value[cells * idx + na + 2]
-    if size1 != 0:
-        val = str(hex(value[cells * idx + na + 3]))[2:]
-        pad = 8 - len(str(hex(size1)))
-        val = val.ljust(pad + len(str(hex(size1))), '0')
-        size = int((str(hex(size1)) + val), base=16)
-    else:
-        size = value[cells * idx + na + ns + 1]
-    return addr, size
 
 def get_clock_prop(sdt, value):
     clk_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == value[0]]
@@ -228,16 +235,46 @@ def get_clock_prop(sdt, value):
     return value[1]
 
 def get_pci_ranges(node, value, pad):
-    pci_ranges = []
+    """
+    For pci range, address cells is always 3, size-cells may vary between 1 or 2 (usually it is 2).
+    Sample pci range for address-cells = 3 and size-cells = 2:
+    eg.1: <0x43000000 0x00000080 0x00000000 0x00000080 0x00000000 0x00000000 0x80000000>
+    eg.2: <0x42000000 0 0x80000000  0x80000000  0 0x20000000>
+    cell[0] => chip-select (Flag for 32bit or 64 bit PCIe Bar)
+    cell[1] cell[2] => PCIe address (needed in the config structure)
+    cell[-2] cell[-1] => Size of the PCIe Bus (needed to get High address in config table)
+    Middle cells (cell[3] cell[4] => In example 1, cell[3] => in example 2)
+      => The CPU host address where the PCIe address will be mapped
+      => The middle cell size (i.e. 2 or 1) depends on the SoC bus width.
+    """
+    na = node["#address-cells"].value[0]
+    ns = node["#size-cells"].value[0]
+    """
+    Probable combinations for pci range are:
+    <3 address cells> <2 cpu host addr cell> <2 size cells>
+    <3 address cells> <1 cpu host addr cell> <2 size cells>
+    <3 address cells> <1 cpu host addr cell> <1 size cells>
+
+    cell_size = na + (2*ns) covers first and third conditions
+    if condition covers the second one.
+    """
+    cell_size = na + (2 * ns)
+
+    if len(value) % 6 == 0:
+        cell_size = 6
+
+    pci_range_split = []
     for i in range(pad):
-        try:
-            reg, size = scan_ranges_size(node, value, i)
+        pci_range_split.append(value[i*cell_size:(i+1)*cell_size])
+
+    pci_ranges = []
+    for ranges in pci_range_split:
+        if ranges:
+            reg, size = scan_ranges_size(ranges, ns)
             high_addr = reg + size - 1
-            pci_ranges.append(hex(reg))
-            pci_ranges.append(hex(high_addr))
-        except IndexError:
-            pci_ranges.append(hex(0))
-            pci_ranges.append(hex(0))
+            pci_ranges += [hex(reg), hex(high_addr)]
+        else:
+            pci_ranges += [hex(0), hex(0)]
     return pci_ranges
 
 class DtbtoCStruct(object):
@@ -277,10 +314,13 @@ def is_compat(node, compat_string_to_test):
     return ""
 
 def get_stdin(sdt, chosen_node, node_list):
-    prop_val = chosen_node['stdout-path'].value
-    serial_node = sdt.tree.alias_node(prop_val[0].split(':')[0])
-    match = [x for x in node_list if re.search(x.name, serial_node.name)]
-    return match[0]
+    if chosen_node.propval('stdout-path') != ['']:
+        prop_val = chosen_node['stdout-path'].value
+        serial_node = sdt.tree.alias_node(prop_val[0].split(':')[0])
+        match = [x for x in node_list if re.search(x.name, serial_node.name)]
+        return match[0]
+    else:
+        return 0
 
 def get_mapped_nodes(sdt, node_list, options):
     # Yocto Machine to CPU compat mapping
@@ -542,32 +582,43 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
         except KeyError:
             prop_val = [0]
 
-        if ('{' in str(prop_val[0])):
-                prop_val_temp = []
-                for k in (str(prop_val[0]).split()[1]).split(","):
-                    prop_val_temp.append(int(k, 16))
-                prop_val = prop_val_temp
-
-        if ('/bits/' in prop_val):
-            prop_val = [int(prop_val[-1][3:-1], base=16)]
-
-        if isinstance(prop_val[0], str):
-            plat.buf('\n\t\t%s' % '"{}"'.format(node[prop].value[0]))
-            drvprop_list.append(node[prop].value[0])
-        elif len(prop_val) > 1:
-            plat.buf('\n\t\t{')
-            for k,item in enumerate(prop_val):
-                if isinstance(item, int):
-                    drvprop_list.append(hex(item))
-                else:
-                    drvprop_list.append(item)
-                plat.buf('%s' % item)
-                if k != len(prop_val)-1:
-                    plat.buf(',  ')
-            plat.buf('}')
+        if pad:
+            address_prop = ""
+            for index in range(0,pad):
+                if index == 0:
+                    address_prop = hex(node[prop].value[index])
+                elif index < len(node[prop].value):
+                    address_prop += f"{node[prop].value[index]:08x}"
+            if address_prop:
+                plat.buf(f'\n\t\t{address_prop}')
+                drvprop_list.append(address_prop)
         else:
-            drvprop_list.append(hex(prop_val[0]))
-            plat.buf('\n\t\t%s' % hex(prop_val[0]))
+            if ('{' in str(prop_val[0])):
+                    prop_val_temp = []
+                    for k in (str(prop_val[0]).split()[1]).split(","):
+                        prop_val_temp.append(int(k, 16))
+                    prop_val = prop_val_temp
+
+            if ('/bits/' in prop_val):
+                prop_val = [int(prop_val[-1][3:-1], base=16)]
+
+            if isinstance(prop_val[0], str):
+                plat.buf('\n\t\t%s' % '"{}"'.format(node[prop].value[0]))
+                drvprop_list.append(node[prop].value[0])
+            elif len(prop_val) > 1:
+                plat.buf('\n\t\t{')
+                for k,item in enumerate(prop_val):
+                    if isinstance(item, int):
+                        drvprop_list.append(hex(item))
+                    else:
+                        drvprop_list.append(item)
+                    plat.buf('%s' % item)
+                    if k != len(prop_val)-1:
+                        plat.buf(',  ')
+                plat.buf('}')
+            else:
+                drvprop_list.append(hex(prop_val[0]))
+                plat.buf('\n\t\t%s' % hex(prop_val[0]))
 
 
 # tgt_node: is the baremetal config top level domain node number
@@ -578,6 +629,8 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     root_sub_nodes = root_node.subnodes()
     node_list = []
     chosen_node = ""
+    if options.get('outdir', {}):
+        sdt.outdir = options['outdir']
     # Traverse the tree and find the nodes having status=ok property
     for node in root_sub_nodes:
         try:
@@ -625,7 +678,8 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
 
     # Remove duplicate nodes
     driver_nodes = list(set(driver_nodes))
-    driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
+    if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
+        driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
     if not config_struct:
         config_struct = str("X") + drvname.capitalize() + str("_Config")
     else:
@@ -641,6 +695,9 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         out_g_file_name = f"{drvname}_g.c"
     outfile = os.path.join(sdt.outdir, out_g_file_name)
 
+    if driver_nodes == []:
+        return True
+
     plat = DtbtoCStruct(outfile)
     nodename_list = []
     for node in driver_nodes:
@@ -651,9 +708,10 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     with open(cmake_file, 'a') as fd:
        fd.write("set(DRIVER_INSTANCES %s)\n" % utils.to_cmakelist(nodename_list))
        if stdin:
-           match = [x for x in nodename_list if re.search(x, stdin_node.name)]
-           if match:
-               fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(match[0]))
+           if stdin_node:
+               match = [x for x in nodename_list if re.search(x, stdin_node.name)]
+               if match:
+                   fd.write("set(STDIN_INSTANCE %s)\n" % '"{}"'.format(match[0]))
 
     for index,node in enumerate(driver_nodes):
         drvprop_list = []

@@ -29,6 +29,8 @@ def is_compat( node, compat_string_to_test ):
 def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
+    if options.get('outdir', {}):
+        sdt.outdir = options['outdir']
    
     mem_ranges = get_memranges(tgt_node, sdt, options)
     if not mem_ranges:

@@ -43,7 +43,8 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         except:
            pass
 
-    node_list = get_mapped_nodes(sdt, node_list, options)
+    if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
+        node_list = get_mapped_nodes(sdt, node_list, options)
     for node in node_list:
         compatible_dict.update({node: node["compatible"].value})
 
@@ -66,6 +67,8 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
             except KeyError:
                 drv_path_in_yaml = drv_data[entries]['path'][0]
             drv_name_in_yaml = os.path.basename(drv_path_in_yaml)
+            # Incase of versioned component strip the version info
+            drv_name_in_yaml = re.sub(r"_v.*_.*$", "", drv_name_in_yaml)
             yaml_file_list += [os.path.join(drv_path_in_yaml, 'data', f"{drv_name_in_yaml}.yaml")]
     else:
         drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers")

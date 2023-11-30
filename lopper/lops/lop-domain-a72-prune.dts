@@ -64,6 +64,7 @@
                 lop_8 {
                       compatible = "system-device-tree-v1,lop,code-v1";
                       code = "
+                          from baremetalconfig_xlnx import get_label
                           # Check for domain node
                           domain_node = []
                           for n in __selected__:
@@ -119,6 +120,10 @@
                               if 'tcm' in node1.name:
                                   continue
 
+                              if node1.propval('status') != ['']:
+                                  if 'disabled' in node1.propval('status', list)[0]:
+                                      continue
+
                               for handle in phandles:
                                   if handle == node1.phandle:
                                       match += 1
@@ -130,18 +135,21 @@
 
                           for node1 in invalid_nodes:
                               tree.delete(node1)
+
+                          # Update symbol node referneces
+                          symbol_node = tree['/__symbols__']
+                          prop_list = list(symbol_node.__props__.keys())
+                          match_label_list = []
+                          for n in tree['/'].subnodes():
+                              matched_label = get_label(tree, symbol_node, n)
+                              if matched_label:
+                                  match_label_list.append(matched_label)
+                          for prop in prop_list:
+                              if prop not in match_label_list:
+                                  tree['/__symbols__'].delete(prop)
                       ";
                 };
                 lop_9 {
-                compatible = "system-device-tree-v1,lop,code-v1";
-                code = "
-                        n = node.tree['/amba_pl']
-                        for i in n.subnodes():
-                            if i.propval('compatible') == ['xlnx,axi-dma-mm2s-channel'] or i.propval('compatible') == ['xlnx,axi-dma-s2mm-channel']:
-                                tree.delete(i)
-                       ";
-                };
-                lop_10 {
                        // this is removing a clock and breaking output
                        // remove all SRAM banks that are not referenced via phandle in openamp use case
                        compatible = "system-device-tree-v1,lop,code-v1";
@@ -158,18 +166,6 @@
                             for compat in compat_strs:
                                 if compat in i.propval('compatible') and i.phandle not in phandles:
                                     tree.delete(i)
-                       ";
-                };
-                lop_11 {
-                compatible = "system-device-tree-v1,lop,code-v1";
-                code = "
-                        n = node.tree['/']
-                        for i in n.subnodes():
-                            if 'xlnx,axi-intc-4.1' in i.propval('compatible'):
-                                tree.delete(i)
-                            # Delete the un needed axi_noc node if present
-                            if re.search('axi_noc@', i.name):
-                                tree.delete(i)
                        ";
                 };
 

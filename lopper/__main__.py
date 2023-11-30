@@ -17,6 +17,9 @@ import re
 
 from lopper import LopperSDT
 
+from lopper.log import _warning, _info, _error, _debug
+import logging
+
 lopper_directory = os.path.dirname(os.path.realpath(__file__))
 
 global device_tree
@@ -312,6 +315,11 @@ def main():
     device_tree = LopperSDT( sdt )
 
     atexit.register(at_exit_cleanup)
+
+    lopper.log._init( __name__ )
+    lopper.log._init( "___main.py__" )
+
+    lopper.log.init( verbose )
 
     # set some flags before we process the tree.
     device_tree.dryrun = dryrun

@@ -14,6 +14,7 @@ import lopper_lib
 
 sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node
+import common_utils as utils
 from common_utils import to_cmakelist
 from domain_access import domain_get_subnodes
 
@@ -177,8 +178,33 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     except IndexError:
         pass
 
-    src_dir = options['args'][1].rstrip(os.path.sep)
-    appname = os.path.basename(os.path.dirname(src_dir))
+    src_dir = options['args'][1]
+    app_path = utils.get_dir_path(src_dir.rstrip(os.sep))
+    appname = utils.get_base_name(app_path)
+    yaml_file = os.path.join(app_path, "data", f"{appname}.yaml")
+    match_cpunode = get_cpu_node(sdt, options)
+    if match_cpunode.propval('xlnx,ip-name') != ['']:
+        ip_name = match_cpunode.propval('xlnx,ip-name', list)[0]
+        if "microblaze" in ip_name:
+            stack_size = 0x400
+            heap_size = 0x400
+        else:
+            stack_size = 0x2000
+            heap_size = 0x2000
+    else:
+        stack_size = None
+        heap_size = None
+    if not utils.is_file(yaml_file):
+        print(f"{appname} doesn't have yaml file")
+    else:
+        schema = utils.load_yaml(yaml_file)
+        if schema.get("linker_constraints"):
+            linker_constraint_opts = list(schema["linker_constraints"].keys())
+            if "stack" in linker_constraint_opts:
+                stack_size = schema["linker_constraints"]["stack"]
+            if "heap" in linker_constraint_opts:
+                heap_size = schema["linker_constraints"]["heap"]
+
     cmake_file = os.path.join(sdt.outdir, f"{appname.capitalize()}Example.cmake")
     cfd = open(cmake_file, 'a')
     if memtest_config:
@@ -191,11 +217,11 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     For cortexr5 processor in ZynqMP and Versal SOC TCM memory map is fixed
     update the memory section for the same.
     """
-    if machine == "psu_cortexr5_0":
+    if "psu_cortexr5" in machine:
         mem_sec += '\n\tpsu_r5_0_atcm_MEM_0 : ORIGIN = 0x0, LENGTH = 0x10000'
         mem_sec += '\n\tpsu_r5_0_btcm_MEM_0 : ORIGIN = 0x20000, LENGTH = 0x10000'
         mem_sec += '\n\tpsu_r5_tcm_ram_0_MEM_0 : ORIGIN = 0x0, LENGTH = 0x40000'
-    if machine == "psv_cortexr5_0":
+    if "psv_cortexr5" in machine:
         mem_sec += '\n\tpsv_r5_0_atcm_MEM_0 : ORIGIN = 0x0, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_0_atcm_lockstep_MEM_0 : ORIGIN = 0xFFE10000, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_0_btcm_MEM_0 : ORIGIN = 0x20000, LENGTH = 0x10000'
@@ -209,12 +235,12 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         mem_sec += '\n\tpsv_r5_1_atcm_global_MEM_0 : ORIGIN = 0xFFE90000, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_0_btcm_global_MEM_0 : ORIGIN = 0xFFE20000, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_1_btcm_global_MEM_0 : ORIGIN = 0xFFEB0000, LENGTH = 0x10000'
-    if machine == "psv_cortexa72_0":
+    if "psv_cortexa72" in machine:
         mem_sec += '\n\tpsv_pmc_ram_psv_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
         mem_sec += '\n\tpsv_r5_0_atcm_global_MEM_0 : ORIGIN = 0xFFE00000, LENGTH = 0x40000'
         mem_sec += '\n\tpsv_r5_1_atcm_global_MEM_0 : ORIGIN = 0xFFE90000, LENGTH = 0x10000'
         mem_sec += '\n\tpsv_r5_1_btcm_global_MEM_0 : ORIGIN = 0xFFEB0000, LENGTH = 0x10000'
-    if machine == "psx_cortexa78_0":
+    if "psx_cortexa78" in machine:
         mem_sec += '\n\tpsx_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
         mem_sec += '\n\tpsx_r52_0a_atcm_global : ORIGIN = 0xEBA00000, LENGTH = 0x10000'
         mem_sec += '\n\tpsx_r52_0a_btcm_global : ORIGIN = 0xEBA10000, LENGTH = 0x8000'
@@ -228,7 +254,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         mem_sec += '\n\tpsx_r52_1b_atcm_global : ORIGIN = 0xEBAC0000, LENGTH = 0x10000'
         mem_sec += '\n\tpsx_r52_1b_btcm_global : ORIGIN = 0xEBAD0000, LENGTH = 0x8000'
         mem_sec += '\n\tpsx_r52_1b_ctcm_global : ORIGIN = 0xEBAE0000, LENGTH = 0x8000'
-    if machine == "psx_cortexr52_0":
+    if "psx_cortexr52" in machine:
         mem_sec += '\n\tpsx_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
         mem_sec += '\n\tpsx_r52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
 
@@ -260,10 +286,16 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     has_ddr = [x for x in mem_ranges.keys() for ddr in lower_ddrs if re.search(ddr, x)]
     if has_ddr and not memtest_config:
         default_ddr = has_ddr[0]
+    has_ocm = None
+    has_ram = None
     ## For memory tests configuration default memory should be ocm if available
-    has_ocm = [x for x in mem_ranges.keys() if "ocm" in x or "ram" in x]
-    if has_ocm and memtest_config:
-        default_ddr = has_ocm[0]
+    if memtest_config:
+        has_ocm = [x for x in mem_ranges.keys() if "ocm" in x]
+        has_ram = [x for x in mem_ranges.keys() if "ram" in x]
+        if has_ocm:
+            default_ddr = has_ocm[0]
+        elif has_ram:
+            default_ddr = has_ram[0]
 
     cfd.write("set(DDR %s)\n" % default_ddr)
     memip_list = []
@@ -278,8 +310,16 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             size -= start
         memip_list.append(key)
         cfd.write("set(%s %s)\n" % (key, to_cmakelist([hex(start), hex(size)])))
-    if has_ocm and memtest_config:
-        memip_list.insert(0, memip_list.pop(memip_list.index(has_ocm[0])))
+    if memtest_config:
+        if has_ocm:
+            memip_list.insert(0, memip_list.pop(memip_list.index(has_ocm[0])))
+        elif has_ram:
+            memip_list.insert(0, memip_list.pop(memip_list.index(has_ram[0])))
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
     cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
+    if stack_size is not None:
+        cfd.write(f'set(STACK_SIZE {hex(stack_size)})\n')
+    if heap_size is not None:
+        cfd.write(f'set(HEAP_SIZE {hex(heap_size)})\n')
+
     return True

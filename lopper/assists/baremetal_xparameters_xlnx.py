@@ -27,6 +27,8 @@ def is_compat( node, compat_string_to_test ):
 def xlnx_generate_xparams(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
+    if options.get('outdir', {}):
+        sdt.outdir = options['outdir']
 
     node_dict = {}
     node_list = []
@@ -68,7 +70,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             repo_schema = utils.load_yaml(repo_path_data)
             drv_data = repo_schema['driver']
             drv_dir = drv_data.get(drv,{}).get('vless','')
-            if not drv_dir:
+            if not drv_dir and drv_data.get(drv,{}).get('path',''):
                 drv_dir = drv_data.get(drv,{}).get('path','')[0]
         else:
             drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers", drv)
@@ -89,7 +91,10 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             driver_compatlist = bm_config.compat_list(schema)
             driver_proplist = schema.get('required',{})
             if schema.get('additionalProperties', {}):
-                driver_proplist.extend(schema.get('additionalProperties',{}))
+                if driver_proplist:
+                    driver_proplist.extend(schema.get('additionalProperties',{}))
+                else:
+                    driver_proplist = schema.get('additionalProperties',{})
             match_nodes = []
             for comp in driver_compatlist:
                 for node,compatible_list in sorted(node_dict.items(), key=lambda e: e[0], reverse=False):
@@ -99,13 +104,18 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                        node_list = [x for x in node_list if not(x.abs_path == node)]
                        if node1:
                            match_nodes.append(node1[0])
-            match_nodes = bm_config.get_mapped_nodes(sdt, match_nodes, options)
+            if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
+                match_nodes = bm_config.get_mapped_nodes(sdt, match_nodes, options)
+            canonical_name = f"X{drv.upper()}"
+            if schema.get('xparam_prefix',""):
+                canonical_name = schema["xparam_prefix"].upper()
+
             for index, node in enumerate(match_nodes):
                 label_name = bm_config.get_label(sdt, symbol_node, node)
                 label_name = label_name.upper()
                 canondef_dict = {}
                 if index == 0:
-                    plat.buf(f'\n#define XPAR_X{drv.upper()}_NUM_INSTANCES {len(match_nodes)}\n')
+                    plat.buf(f'\n#define XPAR_{canonical_name}_NUM_INSTANCES {len(match_nodes)}\n')
                 for i, prop in enumerate(driver_proplist):
                     pad = 0
                     phandle_prop = 0
@@ -135,8 +145,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         except KeyError:
                             pass
                     elif prop == "compatible":
-                        plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {node[prop].value[0]}')
-                        canondef_dict.update({prop:node[prop].value[0]})
+                        plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} "{node[prop].value[0]}"')
+                        canondef_dict.update({prop:f'"{node[prop].value[0]}"'})
                     elif prop == "interrupts":
                         try:
                             intr = bm_config.get_interrupt_prop(sdt, node, node[prop].value)
@@ -151,6 +161,27 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                     plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()}_{j} {intr[j]}')
                                 except IndexError:
                                     pass
+
+                        try:
+                            intr_id = bm_config.get_interrupt_id(sdt, node, node[prop].value)
+                            if node.propval('xlnx,is-pl') != ['']:
+                                is_pl = node.propval('xlnx,is-pl', list)[0]
+                                if is_pl:
+                                    plat.buf(f'\n#define XPAR_FABRIC_{label_name}_INTR {intr_id[0]}')
+                                    canondef_dict.update({"FABRIC":intr_id[0]})
+                            else:
+                                plat.buf(f'\n#define XPAR_{label_name}_INTR {intr_id[0]}')
+                                canondef_dict.update({"INTR":intr_id[0]})
+                        except KeyError:
+                            intr_id = [0xFFFF]
+
+                        if pad:
+                            for j in range(1, pad):
+                                try:
+                                    plat.buf(f'\n#define XPAR_{label_name}_INTR_{j} {intr[j]}')
+                                except IndexError:
+                                    pass
+
                     elif prop == "interrupt-parent":
                         try:
                             intr_parent = bm_config.get_intrerrupt_parent(sdt, node[prop].value)
@@ -166,6 +197,10 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                     elif prop == "child,required":
                         for j,child in enumerate(list(node.child_nodes.items())):
                             for k,p in enumerate(pad):
+                                if type(p) is dict:
+                                    break
+                                if p == "nosub":
+                                    continue
                                 try:
                                     val = hex(child[1][p].value[0])
                                 except KeyError:
@@ -210,70 +245,78 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         except KeyError:
                             prop_val = [0]
 
-                        if ('/bits/' in prop_val):
-                            prop_val = [int(prop_val[-1][3:-1], base=16)]
-                        prop = prop.replace("-", "_")
-                        prop = prop.replace("xlnx,", "")
-
-                        if isinstance(prop_val[0], str):
-                            canondef_dict.update({prop:f"{prop_val[0]}"})
-                            plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} "{prop_val[0]}"')
-                        elif len(prop_val) > 1:
-                            for k,item in enumerate(prop_val):
-                                cannon_prop = prop + str("_") + str(k)
-                                canondef_dict.update({cannon_prop:item})
-                                plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()}_{k} {item}')
+                        if pad:
+                            address_prop = ""
+                            for pad_num in range(0,pad):
+                                if pad_num == 0:
+                                    address_prop = hex(node[prop].value[pad_num])
+                                elif pad_num < len(node[prop].value):
+                                    address_prop += f"{node[prop].value[pad_num]:08x}"
+                            prop = prop.replace("-", "_")
+                            prop = prop.replace("xlnx,", "")
+                            if address_prop:
+                                canondef_dict.update({prop:address_prop})
+                                plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {address_prop}')
                         else:
-                            canondef_dict.update({prop:hex(prop_val[0])})
-                            plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {hex(prop_val[0])}')
+                            if ('/bits/' in prop_val):
+                                prop_val = [int(prop_val[-1][3:-1], base=16)]
+
+                            prop = prop.replace("-", "_")
+                            prop = prop.replace("xlnx,", "")
+
+                            if isinstance(prop_val[0], str):
+                                canondef_dict.update({prop:f'"{prop_val[0]}"'})
+                                plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} "{prop_val[0]}"')
+                            elif len(prop_val) > 1:
+                                for k,item in enumerate(prop_val):
+                                    cannon_prop = prop + str("_") + str(k)
+                                    canondef_dict.update({cannon_prop:item})
+                                    plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()}_{k} {item}')
+                            else:
+                                canondef_dict.update({prop:hex(prop_val[0])})
+                                plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {hex(prop_val[0])}')
 
                 plat.buf(f'\n\n/* Canonical definitions for peripheral {label_name} */')
                 for prop,val in sorted(canondef_dict.items(), key=lambda e: e[0][0], reverse=False):
-                    plat.buf(f'\n#define XPAR_X{drv.upper()}_{index}_{prop.upper()} {val}')
+                    if prop == "FABRIC":
+                        plat.buf(f'\n#define XPAR_FABRIC_{canonical_name}_{index}_INTR {val}')
+                    else:
+                        plat.buf(f'\n#define XPAR_{canonical_name}_{index}_{prop.upper()} {val}')
                 plat.buf('\n')
                                     
     # Generate Defines for Generic Nodes
-    node_list = bm_config.get_mapped_nodes(sdt, node_list, options)
-    prev = ""
-    count = 0
-    for node in node_list:
-        label_name = bm_config.get_label(sdt, symbol_node, node)
-        node_name = node.name
-        node_name = node_name.split("@")
-        node_name = node_name[0]
-        if prev != node_name:
-            count = 0
-        else:
-            count = count + 1
+    if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
+        node_list = bm_config.get_mapped_nodes(sdt, node_list, options)
 
-        prev = node_name
-        label_name = label_name.upper()
-        node_name = node_name.upper()
+    node_ip_count_dict = {}
+    for node in node_list:
         try:
+            label_name = bm_config.get_label(sdt, symbol_node, node)
+            label_name = label_name.upper()
             val = bm_config.scan_reg_size(node, node['reg'].value, 0)
             plat.buf(f'\n/* Definitions for peripheral {label_name} */')
             plat.buf(f'\n#define XPAR_{label_name}_BASEADDR {hex(val[0])}\n')
             plat.buf(f'#define XPAR_{label_name}_HIGHADDR {hex(val[0] + val[1] - 1)}\n')
-            temp_label = label_name.rsplit("_", 1)
-            temp_label = temp_label[0]
-            if temp_label != node_name:
-                plat.buf(f'\n/* Canonical definitions for peripheral {label_name} */')
-                node_name = node_name.replace("-", "_")
-                plat.buf(f'\n#define XPAR_{node_name}_{count}_BASEADDR {hex(val[0])}\n')
-                plat.buf(f'#define XPAR_{node_name}_{count}_HIGHADDR {hex(val[0] + val[1] - 1)}\n')
+
+            node_ip_name = node['xlnx,ip-name'].value[0]
+            if node_ip_name not in node_ip_count_dict.keys():
+                node_ip_count_dict[node_ip_name] = 0
+            else:
+                node_ip_count_dict[node_ip_name] += 1
+
+            canonical_name = node_ip_name.upper().replace("-", "_")
+
+            plat.buf(f'\n/* Canonical definitions for peripheral {label_name} */')
+            plat.buf(f'\n#define XPAR_{canonical_name}_{node_ip_count_dict[node_ip_name]}_BASEADDR {hex(val[0])}\n')
+            plat.buf(f'#define XPAR_{canonical_name}_{node_ip_count_dict[node_ip_name]}_HIGHADDR {hex(val[0] + val[1] - 1)}\n')
         except KeyError:
             pass
 
     # Define for Board
-    board_list = ["zcu102", "kc705", "kcu105"]
-    root_compat = sdt.tree['/']['compatible'].value
-    board_name = [b for b in board_list for board in root_compat if b in board]
     if sdt.tree[tgt_node].propval('board') != ['']:
         board = sdt.tree[tgt_node].propval('board', list)[0]
-        plat.buf(f"\n/*  BOARD  */")
-        plat.buf(f"\n#define XPAR_BOARD_{board.upper()}\n")
-    elif board_name:
-        plat.buf(f'\n\n#define XPS_BOARD_{board_name[0].upper()}\n')
+        plat.buf(f"\n/*  BOARD definition */")
+        plat.buf(f"\n#define XPS_BOARD_{board.upper()}\n")
     
     # Memory Node related defines
     mem_ranges = get_memranges(tgt_node, sdt, options)
@@ -313,9 +356,10 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     #Defines for STDOUT and STDIN Baseaddress
     if chosen_node:
         stdin_node = bm_config.get_stdin(sdt, chosen_node, total_nodes)
-        val, size = bm_config.scan_reg_size(stdin_node, stdin_node['reg'].value, 0)
-        plat.buf(f"\n#define STDOUT_BASEADDRESS {hex(val)}")
-        plat.buf(f"\n#define STDIN_BASEADDRESS {hex(val)}\n")
+        if stdin_node:
+            val, size = bm_config.scan_reg_size(stdin_node, stdin_node['reg'].value, 0)
+            plat.buf(f"\n#define STDOUT_BASEADDRESS {hex(val)}")
+            plat.buf(f"\n#define STDIN_BASEADDRESS {hex(val)}\n")
 
     #Define for NUMBER_OF_SLRS
     if sdt.tree[tgt_node].propval('slrcount') != ['']:
@@ -328,6 +372,16 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         val = sdt.tree[tgt_node].propval('device_id', list)[0]
         plat.buf(f"\n/* Device ID */")
         plat.buf(f'\n#define XPAR_DEVICE_ID "{val}"\n')
+
+    #Define for XSEM_CFRSCAN_EN
+    if sdt.tree[tgt_node].propval('semmem-scan') != ['']:
+        val = sdt.tree[tgt_node].propval('semmem-scan', list)[0]
+        plat.buf(f'\n#define XSEM_CFRSCAN_EN {val}\n')
+
+    #Define for XSEM_NPISCAN_EN
+    if sdt.tree[tgt_node].propval('semnpi-scan') != ['']:
+        val = sdt.tree[tgt_node].propval('semnpi-scan', list)[0]
+        plat.buf(f'\n#define XSEM_NPISCAN_EN {val}\n')
 
     plat.buf('\n#endif  /* end of protection macro */')
     plat.out(''.join(plat.get_buf()))

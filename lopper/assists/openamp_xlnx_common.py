@@ -12,6 +12,15 @@ zynqmp_ipi_to_irq_vect_id = {
   0xff380000 : 67,
 }
 
+versal_net_ipi_to_irq_vect_id = {
+    0xeb330000 : 0x39,
+    0xeb340000 : 0x3a,
+    0xeb350000 : 0x3b,
+    0xeb360000 : 0x3c,
+    0xeb370000 : 0x3d,
+    0xeb380000 : 0x3e,
+}
+
 versal_ipi_to_irq_vect_id = {
     0xff330000 : 62,
     0xff340000 : 63,
@@ -96,6 +105,7 @@ class SOC_TYPE:
     VERSAL = 0
     ZYNQMP = 1
     ZYNQ = 2
+    VERSAL_NET = 3
 
 
 def resolve_remoteproc_carveouts( tree, subnode, verbose = 0 ):
@@ -179,68 +189,122 @@ def resolve_rpmsg_carveouts( tree, subnode, verbose = 0 ):
         new_prop_val.append(current_node.phandle)
 
     # update value of property to have phandles
-    prop.value = new_prop_val
+    subnode.props("carveouts")[0].value = new_prop_val
 
     return True
 
 def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
-    mbox_node = None
-    prop = None
+    mbox_nodes = []
+    props = []
+    search_strs = []
+    new_prop_val = []
 
     if subnode.props("mbox") == []:
         print("WARNING:", "rpmsg relation does not have mbox")
         return False
 
-    prop = subnode.props("mbox")[0]
-    search_str = prop.value.strip()
+    props = subnode.props("mbox")[0].value
 
-    for n in subnode.tree["/"].subnodes():
-        if search_str == n.name or search_str == n.label:
-            mbox_node = n
-            break
+    for prop in props:
+        search_strs.append ( prop.strip() )
 
-    if mbox_node == None:
-        print("resolve_rpmsg_mbox: ", tree.lnodes(n.name, exact = False) )
+    for search_str in search_strs:
+        for n in subnode.tree["/"].subnodes():
+            if search_str == n.name or search_str == n.label:
+                mbox_nodes.append( n )
+                break
 
-    if mbox_node == None or mbox_node == []:
-        print("WARNING:", "rpmsg relation can't find mbox name: ", prop.value)
-        return False
+    for i, mbox_node in enumerate(mbox_nodes):
+        prop = props[i]
+        if mbox_node == None:
+            print("resolve_rpmsg_mbox: ", tree.lnodes(n.name, exact = False) )
+        if mbox_node == None or mbox_node == []:
+            print("WARNING:", "rpmsg relation can't find mbox name: ", prop.value)
+            return False
 
-    if mbox_node.phandle == 0:
-        mbox_node.phandle_or_create()
 
-    prop.value = mbox_node.phandle
-    if mbox_node.props("phandle") == []:
-        mbox_node + LopperProp(name="phandle", value=mbox_node.phandle)
+        if mbox_node.phandle == 0:
+            mbox_node.phandle_or_create()
+        if mbox_node.props("phandle") == []:
+            mbox_node + LopperProp(name="phandle", value=mbox_node.phandle)
+
+        new_prop_val.append( mbox_node.phandle )
+
+    subnode.props("mbox")[0].value = new_prop_val
+
     return True
 
 def resolve_host_remote( tree, subnode, verbose = 0 ):
-    prop = None
-    domain_node = None
-
-    if subnode.props("host") != [] and subnode.props("remote") != []:
+    prop_names = [ "host", "remote" ]
+            
+    if subnode.props(prop_names[0]) != [] and subnode.props(prop_names[1]) != []:
         print("WARNING:", "relation has both host and remote")
         return False
-    elif subnode.props("host") != []:
-        prop = subnode.props("host")[0]
-    else:
-        prop = subnode.props("remote")[0]
-
-
-    for n in tree["/domains"].subnodes():
-        if prop.value in n.name:
-            domain_node = n
-            break
-
-    if domain_node.phandle == 0:
-        domain_node.phandle_or_create()
-
-    prop.value = domain_node.phandle
-    if domain_node.props("phandle") == []:
-        domain_node + LopperProp(name="phandle", value=domain_node.phandle)
+    for pn in prop_names:
+        if subnode.props(pn) != [] and subnode.props(pn) != []:
+            prop_val = subnode.props(pn)[0].value
+            new_prop_val = []
+            for p in prop_val:
+                # find each host/remote matching domain node in tree
+                for n in tree["/domains"].subnodes():
+                    if p in n.name:
+                        # give matching node phandle if needed
+                        if n.phandle == 0:
+                            n.phandle_or_create()
+                        if n.props("phandle") == []:
+                            n + LopperProp(name="phandle", value=n.phandle)
+                        new_prop_val.append( n.phandle )
+            subnode.props(pn)[0].value = new_prop_val
+    
     return True
 
-platform_info_header_template = """
+platform_info_header_a9_template = """
+/*
+ * Copyright (c) 2023 AMD, Inc.
+ * All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#ifndef _AMD_GENERATED_H_
+#define _AMD_GENERATED_H_
+
+/* Interrupt vectors */
+#define SGI_TO_NOTIFY           $SGI_TO_NOTIFY
+#define SGI_NOTIFICATION        $SGI_NOTIFICATION
+
+#define NUM_VRINGS              0x02
+#define VRING_ALIGN             0x1000
+#define VRING_SIZE              256
+
+#define RING_TX                 $RING_TX
+#define RING_RX                 $RING_RX
+
+#define SHARED_MEM_PA           $SHARED_MEM_PA
+#define SHARED_MEM_SIZE         $SHARED_MEM_SIZE
+#define SHARED_BUF_OFFSET       $SHARED_BUF_OFFSET
+
+#define SCUGIC_DEV_NAME         $SCUGIC_DEV_NAME
+#define SCUGIC_BUS_NAME         $SCUGIC_BUS_NAME
+#define SCUGIC_PERIPH_BASE      $SCUGIC_PERIPH_BASE
+#define SCUGIC_DIST_BASE        ($SCUGIC_PERIPH_BASE + 0x00001000)
+
+/* Memory attributes */
+#define NORM_NONCACHE 0x11DE2   /* Normal Non-cacheable */
+#define STRONG_ORDERED 0xC02    /* Strongly ordered */
+#define DEVICE_MEMORY 0xC06 /* Device memory */
+#define RESERVED 0x0        /* reserved memory */
+
+/* Zynq CPU ID mask */
+#define ZYNQ_CPU_ID_MASK 0x1UL
+
+/* Another APU core ID. In this demo, the other APU core is 0. */
+#define A9_CPU_ID   0UL
+
+#endif /* _AMD_GENERATED_H_ */
+"""
+
+platform_info_header_r5_template = """
 /*
  * Copyright (c) 2023 AMD, Inc.
  * All rights reserved.
@@ -266,6 +330,14 @@ platform_info_header_template = """
 #define SHARED_MEM_PA           $SHARED_MEM_PA
 #define SHARED_MEM_SIZE         $SHARED_MEM_SIZE
 #define SHARED_BUF_OFFSET       $SHARED_BUF_OFFSET
+
+#define SHM_DEV_NAME            $SHM_DEV_NAME
+#define DEV_BUS_NAME            $DEV_BUS_NAME
+#define IPI_DEV_NAME            $IPI_DEV_NAME
+#define RSC_MEM_SIZE            $RSC_MEM_SIZE
+#define RSC_MEM_PA              $RSC_MEM_PA
+#define SHARED_BUF_PA           $SHARED_BUF_PA
+#define SHARED_BUF_SIZE         $SHARED_BUF_SIZE
 
 #endif /* _AMD_GENERATED_H_ */
 """
