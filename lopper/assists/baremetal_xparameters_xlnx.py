@@ -50,6 +50,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
            pass
 
     repo_path_data = options['args'][1]
+    cci_en = None
     for node in node_list:
         try:
             prop_val = node['dma-coherent'].value
