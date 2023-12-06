@@ -610,6 +610,11 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
     SHM_DEV_NAME = "\"" + RSC_MEM_PA + '.shm\"'
 
     template = None
+    irq_vect_ids = {
+      SOC_TYPE.ZYNQMP: zynqmp_ipi_to_irq_vect_id,
+      SOC_TYPE.VERSAL: versal_ipi_to_irq_vect_id,
+      SOC_TYPE.VERSAL_NET: versal_net_ipi_to_irq_vect_id,
+    }
 
     if platform in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]:
         host_ipi = openamp_channel_info["host_ipi_" + channel_id]
@@ -622,10 +627,34 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
         remote_ipi_irq_vect_id = hex(openamp_channel_info["remote_ipi_irq_vect_id" + channel_id])
         remote_ipi_base = hex(openamp_channel_info["remote_ipi_base"+channel_id])
 
+        # update IPIs for remote role on Versal NET
+        soc_ipi_map = irq_vect_ids[platform]
+        if platform == SOC_TYPE.VERSAL_NET and role == 'remote':
+            for key in soc_ipi_map.keys():
+                value = soc_ipi_map[key]
+                soc_ipi_map[key] = value + 32
+
+            remote_ipi_irq_vect_id = int(remote_ipi_irq_vect_id, 16)
+            remote_ipi_irq_vect_id += 32
+            remote_ipi_irq_vect_id = hex(remote_ipi_irq_vect_id)
+
+            no_buf_offset = 0x1000
+            start_no_buf = 96
+            end_no_buf = 101
+            for nobuf_ipi in range(start_no_buf, end_no_buf + 1):
+                nobuf_ipi_key = 0xEB3B0000 + no_buf_offset * (nobuf_ipi - start_no_buf)
+                soc_ipi_map[nobuf_ipi_key] = nobuf_ipi
+
         IPI_IRQ_VECT_ID = remote_ipi_irq_vect_id if role == 'remote' else host_ipi_irq_vect_id
         POLL_BASE_ADDR = remote_ipi_base if role == 'remote' else host_ipi_base
         # flip this as we are kicking other side with the bitmask value
         IPI_CHN_BITMASK = host_ipi_bitmask if role == 'remote' else remote_ipi_bitmask
+
+        # Add IPI Info for convenience
+        EXTRAS = "\n"
+        for key in soc_ipi_map.keys():
+            EXTRAS += "#define IPI_" + str(soc_ipi_map[key]) + "_BASE_ADDR " + hex(key) + "UL\n"
+            EXTRAS += "#define IPI_" + str(soc_ipi_map[key]) + "_VECT_ID " + str(soc_ipi_map[key]) + "U\n"
 
         template = platform_info_header_r5_template
         inputs = {
@@ -644,6 +673,7 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
             "SHARED_BUF_OFFSET":SHARED_BUF_OFFSET,
             "SHARED_BUF_PA":SHARED_BUF_PA,
             "SHARED_BUF_SIZE":SHARED_BUF_SIZE,
+            "EXTRAS":EXTRAS,
         }
     elif platform == SOC_TYPE.ZYNQ:
         inputs = {
