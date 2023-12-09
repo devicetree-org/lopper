@@ -400,6 +400,7 @@ def isospec_process_access( access_node, sdt, json_tree ):
                             _info( f"    found node at address {address}: {tnode}", tnode )
                             access_list.append( {
                                                   "dev": tnode.name,
+                                                  "spec_name": name,
                                                   "label": tnode.label,
                                                   "flags": flag_mapping
                                                 }
@@ -580,6 +581,42 @@ def process_domain( domain_node, iso_node, json_tree, sdt ):
     return domain_node
 
 
+def build_device_access( isospec_json_tree ):
+    device_dict = {}
+    print( "======================> build_device_access" )
+    try:
+        design_cells = isospec_json_tree["/design/cells"]
+    except:
+        print( "ERROR: no design/cells found in isolation spec" )
+        return device_dict
+
+    print( "walking cells: %s" % design_cells )
+    for cell in design_cells.children():
+        print( "  cell: %s" % cell.name )
+        try:
+            dests = cell["destinations"]
+            print( "           we have destinations %s %s %s" % (dests.name,type(dests),len(dests) ))
+            for d in range(len(dests)):
+                dest = dests[d]
+                print( "                d: %s" % dest )
+                try:
+                    nodeid = dest["nodeid"]
+                    print( "                              destination has nodeid: %s" % nodeid )
+                    device_dict[dest["name"]] = { "refcount": 0,
+                                                  "dest": dest }
+                except:
+                    # no nodeid, skip
+                    print( "                              destination has no nodeid, skipping" )
+                    True
+        except:
+            True
+
+    # print( "device dict created:" )
+    # print( device_dict )
+
+    return device_dict
+
+
 def isospec_domain( tgt_node, sdt, options ):
     """assist entry point, called from lopper when a node is
        identified, or passed as a command line assist
@@ -590,7 +627,7 @@ def isospec_domain( tgt_node, sdt, options ):
         verbose = 0
 
     lopper.log._init( __name__ )
-
+  
     if verbose:
         lopper.log._level( logging.INFO, __name__ )
     if verbose > 1:
@@ -598,7 +635,7 @@ def isospec_domain( tgt_node, sdt, options ):
         #logging.getLogger().setLevel( level=logging.DEBUG )
 
     _info( f"cb: isospec_domain( {tgt_node}, {sdt}, {verbose} )" )
-
+    
     if sdt.support_files:
         isospec = sdt.support_files.pop()
     else:
@@ -636,6 +673,9 @@ def isospec_domain( tgt_node, sdt, options ):
     except:
         pass
 
+    print( "going to build a list of all devices" )
+    device_dict = build_device_access( json_tree )
+    #os._exit(1)
     #iso_subsystems.print()
     #print( iso_subsystems.children() )
 
@@ -643,8 +683,29 @@ def isospec_domain( tgt_node, sdt, options ):
         isospec_domain_node = json_tree[f"{iso_node.abs_path}"]
         domain_id = iso_node["id"]
         domain_node = domains_tree_add_domain( domains_tree, iso_node.name, None, domain_id )
+
         ## these are subsystems, which have nested domains
         domain_node = process_domain( domain_node, iso_node, json_tree, sdt )
+
+        ## if i assign a pclass of json to the access_property, I should be
+        ## able to avoid some of the below.
+        # Global accounting based on what we found in the domain
+        access_json = json.loads(domain_node["access"].value)
+        print( "domain has the following access list: %s" % access_json )
+        print( "DDDDDDDDDDDDDDDDDDDDDDDD: %s" % len(access_json) )
+        for v in range(len(access_json)):
+            dev = access_json[v]
+            print( "         d: %s" % dev )
+            print( "             name: %s spec_name: %s" %  (dev["dev"],dev["spec_name"]) )
+
+            # check the device dict
+            try:
+                gdevice = device_dict[dev["spec_name"]]
+                print( "                             found global device: %s" % gdevice )
+                # increment the refcount
+                gdevice["refcount"] += 1
+            except:
+                print( "                             could not find device in global dict" )
 
         try:
             sub_domains = json_tree[f"{iso_node.abs_path}" + "/domains"]
@@ -660,10 +721,67 @@ def isospec_domain( tgt_node, sdt, options ):
                 sub_domain_node_new = domains_tree_add_domain( domains_tree, s.name, sub_domain_node, domain_id )
                 sub_domain_node_new = process_domain( sub_domain_node_new, s, json_tree, sdt )
 
-                domain_node.print()
+                # domain_node.print()
         except:
             pass
 
+
+    #sys.exit(1)
+    print( "\n\n\nDDDDDDDDDDDDDDDDDDDD start processing unreferenced devices DDDDDDDDDDDDDDDDDDDDDDDD" )
+    domains_list = []
+    for domain in domains_tree:
+        try:
+            compat = domain["compatible"].value
+            if compat == "openamp,domain-v1":
+                # this is a valid domain, add it to the list
+                domains_list.append( domain )
+        except:
+            True
+        
+    # print( "domains list: %s" % domains_list )
+    # sys.exit(1)
+                
+    for d,device in device_dict.items():
+        if device["refcount"] == 0:
+            print( "unreferenced device found: %s" % device )
+            # these need to be added to all domains.
+            for domain in domains_tree:
+                try:
+                    #print("------------" )
+                    #domain.print()
+                    #print("============" )
+                    compat = domain["compatible"].value
+                    #print( "c: %s" % compat )
+                    if compat == "openamp,domain-v1":
+                        print( "pppppppppppppppppppppp domain %s found" % domain.name )
+                        print( "                       adding device: %s" % device["dest"] )
+                        print( "                       looking up at: %s" % device['dest']['addr'] )
+                        print( "                       access is: %s" % domain["access"] )
+                        tnode = sdt.tree.addr_node( device["dest"]["addr"] )
+                        if tnode:
+                            address = device["dest"]['addr']
+                            name = device["dest"]['name']
+                            print( "                    found sdt node %s" % tnode.name )
+                            access_json = json.loads(domain["access"].value)
+                            print( "ooooooooooooooooooooooooooooooooooooooooooo %s %s" % (type(access_json),access_json ))
+                            
+                            #os._exit(1)
+                            access_json.append( {
+                                                  "dev": tnode.name,
+                                                  "spec_name": name,
+                                                  "label": tnode.label,
+                                                  "flags": {}
+                                }
+                            )
+                            domain["access"] = json.dumps(access_json)
+                            
+                            print( "           access json is updated" )
+                except Exception as e:
+                    # print( "boooooooooooooooooooooooooooooooooo: %s" % e )
+                    True
+            
+    print( "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD" )
+    #os._exit(1)
 
     # domains_tree.print()
 
