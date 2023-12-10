@@ -49,9 +49,12 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
             if "ps7_ddr" in key:
                 start = 1048576
                 size -= start
-            name = f"XPAR_{key.upper()}_BASEADDRESS"
+            suffix = "ADDRESS"
+            if "axi_noc" in key:
+                suffix = "ADDR"
+            name = f"XPAR_{key.upper()}_BASE{suffix}"
             mem_name_list.append(name)
-            name = f"XPAR_{key.upper()}_HIGHADDRESS"
+            name = f"XPAR_{key.upper()}_HIGH{suffix}"
             mem_name_list.append(name)
             mem_size_list.append(hex(start))
             mem_size_list.append(hex(start + size))
