@@ -89,7 +89,35 @@ def get_memranges(tgt_node, sdt, options):
         except:
            pass
 
-    versal_noc_ch_ranges =  {"DDR_CH_1": "0x50000000000", "DDR_CH_2": "0x60000000000", "DDR_CH_3": "0x70000000000"}
+    # Ensure that the region addresses are always in descending order of addresses
+    # This order is necessary to employ the comparison while mapping the available regions.
+    versal_noc_region_ranges =  {
+        "0x70000000000": "DDR_CH_3",
+        "0x60000000000": "DDR_CH_2",
+        "0x50000000000": "DDR_CH_1",
+        "0x10000000000": "DDR_LOW_3",
+        "0xC000000000": "DDR_LOW_2",
+        "0x800000000": "DDR_LOW_1",
+        "0x0": "DDR_LOW_0"
+    }
+
+    # Ensure that the region addresses are always in descending order of addresses
+    # This order is necessary to employ the comparison while mapping the available regions.
+    versal_net_noc2_region_ranges = {
+        "0x198000000000" : "DDR_CH_4",
+        "0x190000000000" : "DDR_CH_3A",
+        "0x188000000000" : "DDR_CH_3",
+        "0x180000000000" : "DDR_CH_2A",
+        "0x70000000000" : "DDR_CH_2",
+        "0x60000000000" : "DDR_CH_1A",
+        "0x50000000000" : "DDR_CH_1",
+        "0x10000000000" : "DDR_LOW_3",
+        "0xC000000000" : "DDR_LOW_2",
+        "0x800000000" : "DDR_LOW_1",
+        "0x0" : "DDR_LOW_0"
+    }
+
+    noc_regions = versal_noc_region_ranges
 
     # Yocto Machine to CPU compat mapping
     match_cpunode = get_cpu_node(sdt, options)
@@ -148,9 +176,11 @@ def get_memranges(tgt_node, sdt, options):
                     key = match[0].replace("-", "_")
                     is_valid_noc_ch = 0
                     if "axi_noc" in key:
-                        for ch_name, ran in sorted(versal_noc_ch_ranges.items(), reverse=True):
-                            if int(ran, base=16) <= int(hex(valid_range[0]), base=16):
-                                is_valid_noc_ch = ch_name
+                        if "axi_noc2" in key:
+                            noc_regions = versal_net_noc2_region_ranges
+                        for region_addr_range in noc_regions.keys():
+                            if int(region_addr_range, base=16) <= int(hex(valid_range[0]), base=16):
+                                is_valid_noc_ch = noc_regions[region_addr_range]
                                 break
 
                     if is_valid_noc_ch:
@@ -282,7 +312,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         mem_sec += f'\n\t{key} : ORIGIN = {hex(start)}, LENGTH = {hex(size)}'
 
     ## To inline with existing tools point default ddr for linker to lower DDR
-    lower_ddrs = ["axi_noc_0", "psu_ddr_0", "ps7_ddr_0"]
+    lower_ddrs = ["axi_noc", "psu_ddr_0", "ps7_ddr_0"]
     has_ddr = [x for x in mem_ranges.keys() for ddr in lower_ddrs if re.search(ddr, x)]
     if has_ddr and not memtest_config:
         default_ddr = has_ddr[0]

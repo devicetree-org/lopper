@@ -323,8 +323,11 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     mem_ranges = get_memranges(tgt_node, sdt, options)
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=True):
         start,size = value[0], value[1]
-        plat.buf(f"\n#define XPAR_{key.upper()}_BASEADDRESS {hex(start)}")
-        plat.buf(f"\n#define XPAR_{key.upper()}_HIGHADDRESS {hex(start + size)}")
+        suffix = "ADDRESS"
+        if "axi_noc" in key:
+            suffix = "ADDR"
+        plat.buf(f"\n#define XPAR_{key.upper()}_BASE{suffix} {hex(start)}")
+        plat.buf(f"\n#define XPAR_{key.upper()}_HIGH{suffix} {hex(start + size - 1)}")
 
     if cci_en:
         plat.buf("\n#define XPAR_CACHE_COHERENT \n")
