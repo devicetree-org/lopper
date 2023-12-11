@@ -49,6 +49,12 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     na = match_cpunode.parent["#ranges-address-cells"].value[0]
     ns = match_cpunode.parent["#ranges-size-cells"].value[0]
 
+    linux_dt = None
+    try:
+        linux_dt = options['args'][1]
+    except IndexError:
+        pass
+
     # Delete other CPU Cluster nodes
     cpunode_list = sdt.tree.nodes('/cpu.*@.*')
     clustercpu_nodes = []
@@ -56,8 +62,9 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         if node.parent.phandle != match_cpunode.parent.phandle and node.phandle != match_cpunode.parent.phandle:
             clustercpu_nodes.append(node.parent)
     clustercpu_nodes = list(dict.fromkeys(clustercpu_nodes))
+
     for node in clustercpu_nodes:
-        if node.name != '':
+        if node.name != '' and node.name != "idle-states":
             sdt.tree.delete(node)
 
     cells = na + ns
@@ -69,7 +76,13 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
     node_list = []
     for node in root_sub_nodes:
+        if linux_dt and node.name == "memory@fffc0000":
+            sdt.tree.delete(node)
         if node.propval('status') != ['']:
+            if linux_dt and node.name == "smmu@fd800000" and machine == "psu_cortexa53_0":
+                # It needs to be disabled only for ZynqMP
+                if "okay" in node.propval('status', list)[0]:
+                    node.propval('status', list)[0] = "disabled"
             if "okay" in node.propval('status', list)[0]:
                 node_list.append(node)
         if node.propval('device_type') != ['']:
@@ -82,6 +95,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
     # Update memory nodes as per address-map cluster mapping
     memnode_list = sdt.tree.nodes('/memory@.*')
+    invalid_memnode = []
     for node in memnode_list:
         # Check whether the memory node is mapped to cpu cluster or not
         mem_phandles = [handle for handle in all_phandles if handle == node.phandle]
@@ -120,30 +134,67 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     val = val.ljust(pad + len(val), '0')
                     size = str(hex(size_cells[0])) + val
                 prop_val.append(int(size, base=16))
+        else:
+            invalid_memnode.append(node)
 
         modify_val = update_mem_node(node, prop_val)
         node['reg'].value = modify_val
 
+    if invalid_memnode:
+        for node in invalid_memnode:
+            sdt.tree.delete(node)
+
+    linux_ignore_ip_list = ['xlconstant', 'proc_sys_reset', 'noc_mc_ddr4', 'psv_apu', 'psv_coresight_a720_dbg', 'psv_coresight_a720_etm',
+                            'axi_noc', 'psv_coresight_a720_pmu', 'psv_coresight_a720_cti', 'psv_coresight_a721_dbg',
+                            'psv_coresight_a721_etm', 'psv_coresight_a721_pmu', 'psv_coresight_a721_cti',
+                            'psv_coresight_a721_pmu', 'psv_coresight_a721_cti', 'psv_coresight_apu_ela',
+                            'psv_coresight_apu_etf', 'psv_coresight_apu_fun', 'psv_coresight_cpm_atm', 'psv_coresight_cpm_cti2a',
+                            'psv_tcm_global', 'psv_r5_tcm', 'psu_apu', 'psu_bbram_0', 'psu_cci_gpv', 'psu_crf_apb', 'psu_crl_apb',
+                            'psu_csu_0', 'psu_ddr_phy', 'psu_ddr_qos_ctrl', 'psu_ddr_xmpu0_cfg', 'psu_ddr_xmpu1_cfg',
+                            'psu_ddr_xmpu2_cfg', 'psu_ddr_xmpu3_cfg', 'psu_ddr_xmpu4_cfg', 'psu_ddr_xmpu5_cfg', 'psu_efuse',
+                            'psu_fpd_gpv', 'psu_fpd_slcr', 'psu_fpd_slcr_secure', 'psu_fpd_xmpu_cfg', 'psu_fpd_xmpu_sink',
+                            'psu_iou_scntr', 'psu_iou_scntrs', 'psu_iousecure_slcr', 'psu_iouslcr_0', 'psu_lpd_slcr',
+                            'psu_lpd_slcr_secure', 'psu_lpd_xppu_sink', 'psu_mbistjtag', 'psu_message_buffers', 'psu_ocm_xmpu_cfg',
+                            'psu_pcie_attrib_0', 'psu_pcie_dma', 'psu_pcie_high1', 'psu_pcie_high2', 'psu_pcie_low',
+                            'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou', 'psu_ipi', 'psu_r5_tcm_ram']
+
     for node in root_sub_nodes:
+        if linux_dt:
+            if node.propval('xlnx,ip-name') != ['']:
+                val = node.propval('xlnx,ip-name', list)[0]
+                if val in linux_ignore_ip_list:
+                    sdt.tree.delete(node)
+            elif node.name == "rpu-bus":
+                sdt.tree.delete(node)
         if node not in mapped_nodelist:
             if node.propval('device_type') != ['']:
                 if "cpu" in node.propval('device_type', list)[0]:
                     continue
             if node.propval('status') != ['']:
-                sdt.tree.delete(node)
+                if 'disabled' in node.propval('status', list)[0] and linux_dt:
+                    continue
+                else:
+                    sdt.tree.delete(node)
 
     # Remove symbol node referneces
-    prop_dict = symbol_node.__props__.copy()
+    symbol_node = sdt.tree['/__symbols__']
+    prop_list = list(symbol_node.__props__.keys())
     match_label_list = []
-    for node in sdt.tree[tgt_node].subnodes():
+    for node in sdt.tree['/'].subnodes():
         matched_label = get_label(sdt, symbol_node, node)
         if matched_label:
             match_label_list.append(matched_label)
-    for prop,node1 in prop_dict.items():
+    for prop in prop_list:
         if prop not in match_label_list:
             sdt.tree['/__symbols__'].delete(prop)
 
     # Add new property which will be consumed by other assists
-    sdt.tree['/']['pruned-sdt'] = 1
+    if not linux_dt:
+        sdt.tree['/']['pruned-sdt'] = 1
+    else:
+        match_cpunode.parent.name = "cpus"
+        sdt.tree.sync()
+        if sdt.tree['/cpus'].propval('address-map') != ['']:
+            sdt.tree['/cpus'].delete('address-map')
 
     return True
