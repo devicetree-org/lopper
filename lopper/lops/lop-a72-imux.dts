@@ -35,5 +35,15 @@
                         // delete the interrupt-multiplex
                         modify = "/axi/interrupt-multiplex::";
                 };
+                lop_4 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        // Rename the interrupt controller node
+                        modify = "/apu-bus/interrupt-controller@f9000000::/axi/interrupt-controller@f9000000";
+                };
+                lop_5 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        // Rename the interrupt controller node
+                        modify = "/apu-bus/::";
+                };
         };
 };
