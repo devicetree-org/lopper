@@ -106,9 +106,20 @@ def update_mem_node(node, mem_val):
             elif high_addr != 1:
                 new_mem_val.append(0)
         for j in range(0, sc):
+            high_size = 0
+            val = str(hex(size_list[i]))[2:]
+            if len(val) > 8:
+                high_size = 1
             if j == sc-1:
-                new_mem_val.append(size_list[i])
-            else:
+                if len(val) > 8:
+                    pad = len(val) - 8
+                    upper_val = val[:pad]
+                    lower_val = val[pad:]
+                    new_mem_val.append(int(upper_val, base=16))
+                    new_mem_val.append(int(lower_val, base=16))
+                else:
+                     new_mem_val.append(size_list[i])
+            elif high_size != 1:
                 new_mem_val.append(0)
     return new_mem_val
 

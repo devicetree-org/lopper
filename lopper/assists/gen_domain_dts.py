@@ -91,11 +91,13 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             # Get all indexes of the address-map for this node
             tmp = na
             indx_list = []
-            while tmp < len(address_map):
+            handle = na
+            while handle < len(address_map):
+                phandle = address_map[handle]
                 for val in mem_phandles:
-                    if val == address_map[tmp]:
-                        indx_list.append(tmp)
-                tmp = tmp + cells + na + 1
+                    if phandle == val:
+                        indx_list.append(handle)
+                handle = handle + cells + na + 1
             for inx in indx_list:
                 start = [address_map[inx+i+1] for i in range(na)]
                 if na == 2 and start[0] != 0:
@@ -108,7 +110,17 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     prop_val.append(start[1])
                 else:
                     prop_val.append(start[0])
-                prop_val.append(address_map[inx+2*na])
+
+                size_cells = [address_map[inx+na+i+1] for i in range(ns)]
+                size = hex(size_cells[-1])
+                high_size_cell = hex(size_cells[-2])
+                if high_size_cell != "0x0" and ns > 1:
+                    val = hex(size_cells[1]).lstrip('0x')
+                    pad = 8 - len(val)
+                    val = val.ljust(pad + len(val), '0')
+                    size = str(hex(size_cells[0])) + val
+                prop_val.append(int(size, base=16))
+
         modify_val = update_mem_node(node, prop_val)
         node['reg'].value = modify_val
 
