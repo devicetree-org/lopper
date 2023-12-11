@@ -268,51 +268,83 @@ def isospec_memory_dest( name ):
 def isospec_process_memory( name, dest, sdt, json_tree, debug = False ):
     _info( f"isospec_process_memory: {dest}" )
 
+
+    # xxxxxxxxxxxxxxxxxxxxxxxxxxxxx this is not picking up sram, even though the
+    # xxxxxxxxxxxxxxxxxxxxxxxxxxxxx caller calls it sram and then places it on the
+    # xxxxxxxxxxxxxxxxxxxxxxxxxxxxx sram list .. the values are wrong
+
     try:
         # is it explicitly tagged as memory ?
         mem_dest_flag = dest["mem"]
         memory_dest = "memory@.*"
         memory_type = "memory"
     except:
+        # if it isn't, we have a regex match to figure
+        # out what type of memory it may be
+        memory_dest = isospec_memory_dest( name )
+        memory_type = isospec_memory_type( name )
+        if memory_type == "sram":
+            print( "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" )
+            os._exit(1)
+
+    possible_mem_nodes = []
+    if memory_type == "memory":
+        # we have a node to lookup in the device tree
+        try:
+            # Q: here's the problem. For SRAM this is called because
+            #    there wasn't an address match when we looked up the
+            #    memory. BUT, there are memory nodes in the tree, so
+            #    this will return options. The SRAM may fall into one
+            #    of the ranges, so we use that start/end address which
+            #    then updates in the yaml. But that means the start
+            #    address, etc, are lost (as is the type).
+            #
+            # Q: should we only declare a match if the start address
+            #    matches, versus just being in the start + size of
+            #    memory ? Only for SRAM or for all types of memory ?
+            #
+            possible_mem_nodes = sdt.tree.nodes(memory_dest)
+            if debug:
+                _info( f"possible mem nodes: {possible_mem_nodes}" )
+        except Exception as e:
+            _info( f"Exception looking for memory: {e}" )
+
+    # if there's no possible device nodes, then we double
+    # check the type mapping
+    if not possible_mem_nodes:
         memory_dest = isospec_memory_dest( name )
         memory_type = isospec_memory_type( name )
 
-    # we really only need the address for now, since we don't
-    # care if this is fully contained in a memory range .. but
-    # we might in the future if we don't end up adjusting the
-    # device tree, or if there are multiple possible memory
-    # nodes, we could find the best fit.
+    # Q: do we need to check if it is fully contained ?
+    # We really only need the address for now, since we don't care if
+    # this is fully contained in a memory range .. but we might in the
+    # future if we don't end up adjusting the device tree, or if there
+    # are multiple possible memory nodes, we could find the best fit.
     dest_start = int(dest['addr'],16)
     dest_size = dest['size']
 
     memory_node = None
     memory_list = []
     if memory_type == "memory":
-        _info( f"  memory {memory_dest}" )
-        # we have a node to lookup in the device tree
-        try:
-            possible_mem_nodes = sdt.tree.nodes(memory_dest)
-        except Exception as e:
-            possible_mem_nodes = []
-            _info( f"Exception looking for memory: {e}" )
+        _info( f"  memory: {memory_dest}" )
 
+        ##
         ## This may no longer be correct. But this is looking at the
         ## isospec memory, and seeing which system device tree nodes
         ## it may fall into. Those nodes are then used to create
         ## entries in the domains.yaml based on what we return here.
         ##
         ## If we are trying to adjust the SDT based on what is in the
-        ## isospec, then this is not correct. We need to clarify.
+        ## isospec, then this maybe not be correct. We need to
+        ## clarify.
         ##
         memory_node_found=False
         for n in possible_mem_nodes:
-            if debug:
-                print( f"  possible_mem_nodes: {n.abs_path} type: {n['device_type']}" )
             _info( f"  possible_mem_nodes: {n.abs_path} type: {n['device_type']}" )
             try:
                 if "memory" in n["device_type"].value:
                     reg = n["reg"]
-                    _info( f"  reg {reg.value}" )
+                    _info( f"    reg {reg.value}" )
 
                     # we could do this more generically and look it up
                     # in the parent, but 2 is the default, so doing
@@ -331,29 +363,29 @@ def isospec_process_memory( name, dest, sdt, json_tree, debug = False ):
                         size = lopper.base.lopper_base.encode_byte_array( size )
                         size = int.from_bytes(size,"big")
 
-                        if debug:
-                            print( f"  start: {hex(start)} size: {hex(size)}" )
-                        _info( f"  start: {hex(start)} size: {hex(size)}" )
+                        _info( f"    start: {hex(start)} size: {hex(size)}" )
 
                         ##
-                        ## Should we be checking if our address falls into this
-                        ## range ? or should be be checking if the range should
-                        ## be adjusted ? Something else ?
+                        ## Q: Should we be checking if our address
+                        ##    falls into this range ? or should be be
+                        ##    checking if the range should be adjusted
+                        ##    ? Something else ?
                         ##
-                        ## Checking the range seems correct, and then when we
-                        ## add this to domains.yaml, it will adjust the device
-                        ## during final processing
+                        ## Checking the range seems correct, and then
+                        ## when we add this to domains.yaml, it will
+                        ## adjust the device during final processing
                         ##
-                        ## Without this, we get multiple mem entries per isospec
-                        ## target, and that is not useful
+                        ## Without this, we get multiple mem entries
+                        ## per isospec target, and that is not useful
                         ##
-                        ## ** Open Question: should the start/size be the memory
-                        ##    start/size from the device tree, or from the isospec ?
-                        ##    if they aren't from the isospec, we don't have the
-                        ##    information to adjust the output devie tree.
+                        ## Q: Should the start/size be the memory
+                        ##    start/size from the device tree, or from
+                        ##    the isospec ?  if they aren't from the
+                        ##    isospec, we don't have the information
+                        ##    to adjust the output devie tree.
                         ##
                         if dest_start >= start and dest_start <= start + size:
-                            _info( f"  memory is in range, adding: {name}" )
+                            _info( f"    memory is in range, adding: {name}" )
                             memory_node_found = True
                             memory_list.append( { "dev": name,          # remove before writing to yaml (if no roundtrip)
                                                   "spec_name": name,    # remove before writing to yaml (if no roundtrip)
@@ -367,25 +399,22 @@ def isospec_process_memory( name, dest, sdt, json_tree, debug = False ):
 
         if not memory_node_found:
             # we could create one to match if this is the case, but for now, we warn.
-            print( "[WARNING]: no memory node found that contains %s" % dest )
-        # if debug:
-        #     os._exit(1)
-
+            _warning( f"no memory node found that contains '{dest}'" )
 
     elif memory_type == "sram":
         # no memory dest
-        _info( f"sram memory type" )
+        _info( f"sram memory type: {memory_dest}" )
         address = dest['addr']
         tnode = sdt.tree.addr_node( address )
         if tnode:
             # pull the start and size out of the device tree node
             # don't have a device tree to test this yet
-            _warning( f"target node {tnode.abs_path} found, but no processing is available" )
+            _warning( f"    target node {tnode.abs_path} found, but no processing is implemented" )
         else:
             size = dest['size']
             # size = humanfriendly.parse_size( size, True )
             start = address
-            _info( f"sram start: {start} size: {size}" )
+            _info( f"    sram start: {start} size: {size}" )
             memory_list.append( {
                                   "dev": name,        # remove before writing to yaml (if no roundtrip)
                                   "spec_name": name,  # remove before writing to yaml (if no roundtrip)
@@ -442,10 +471,6 @@ def isospec_process_access( access_node, sdt, json_tree, debug=False ):
             elif access_type == "device":
                 _info( f"ispospec_process_actions: device with destinations: {defs['destinations']}" )
 
-                if debug and defs["name"] == "access":
-                    print( "dddddddddddaaaaaaaaaoooooooooooooooooooooooooooooo debug and the access!" )
-                    #os._exit(1)
-
                 flag_mapping = isospec_device_flags( defs["name"], defs, json_tree )
                 try:
                     device_requested = flag_mapping["requested"]
@@ -454,21 +479,21 @@ def isospec_process_access( access_node, sdt, json_tree, debug=False ):
 
                 # find the destinations in the isospec json tree
                 dests = isospec_device_destination( defs["destinations"], json_tree )
-
-                if debug and defs["name"] == "access_1":
-                    print( "           we found the following destinations:" )
-                    print( dests )
-                    #os._exit(1)
                 
                 # we now need to locate the destination device in the device tree, all
                 # we have is the address to use for the lookup
                 for d in dests:
+                    _info( f"isospec_process_access: ----> prcessing destination: {d['name']}" )
                     try:
+                        ## Q: what should we do with entries that are tagged as "mem", but
+                        ##    we find a matchig node by address ? Should they be the device
+                        ##    or be added as a device ?
                         address = d['addr']
                         name = d['name']
+                        _info( f"    {d['name']}: checking for device tree matching address {address}" )
                         tnode = sdt.tree.addr_node( address )
                         if tnode:
-                            _info( f"    found node at address {address}: {tnode}", tnode )
+                            _info( f"      {d['name']}: found node at address {address}: {tnode}" )
                             access_list.append( {
                                                   "dev": tnode.name,
                                                   "spec_name": name,
@@ -477,43 +502,47 @@ def isospec_process_access( access_node, sdt, json_tree, debug=False ):
                                                 }
                                               )
                         else:
-                            raise Exception( f"no node found for {name} => {d}" )
+                            raise Exception( f"No node found for {name} => {d}" )
                     except Exception as e:
+                        _info( f"    memory: checking dest {d['name']} [{e}]" )
                         mem_found = None
-
-                        if debug:
-                            print( "checking for memory in debug domain" )
-                            #                            os._exit(1)
-
                         try:
                             # does the target have "mem": True ? if so, then we definitely
                             # have memory. If not, we check for the mapping of memory names
                             # defined in the iso_memory_device_map dictionary against the
                             # name of the dest.
                             mem_found = d["mem"]
-                            memory_type = "memory"
+
+                            # if we are here, then the destination didn't have a node
+                            # in the device tree we could match, so we can use our
+                            # name mapping to decide if it is sram or memory
+                            memory_type = isospec_memory_type(d['name'])
+                            _info( f"    memory with no node, returned type: {memory_type}" )
+                            if not memory_type:
+                                memory_type = "memory"
                         except:
-                            if debug:
-                                print( "trying to map memory: %s" % d['name'] )
+                            _info( f"    regex test of checking dest {d['name']} as memory" )
                             memory_type = isospec_memory_type(d['name'])
 
                             # this should be calling isospec_memory_dest() ...
                             for n,v in iso_memory_device_map.items():
                                 if re.search( n, d['name'] ):
-                                    _info( f"    device is memory: {n} matches {d['name']}" )
                                     mem_found = v
-
-                        if debug:
-                            print( "checking for memory in debug domain .. was it found? %s (%s)" % (mem_found,d) )
-                            #os._exit(1)
 
                         # no warning if we failed on memory in this try clause
                         if mem_found:
-                            ml = isospec_process_memory( d['name'], d, sdt, json_tree, True )
+                            _info( f"    dest {d['name']} identified as memory of type: {memory_type}" )
 
-                            if debug:
-                                print( "           the processed memory is: %s" % ml )
-                                #os._exit(1)
+                            debug = False
+                            if memory_type == "sram":
+                                debug = True
+
+                            # Q: the memory question is outstanding, what to do when memory
+                            #    falls within a device tree range.
+                            ml = isospec_process_memory( d['name'], d, sdt, json_tree, debug )
+
+                            #if memory_type == "sram":
+                            #    os._exit(1)
 
                             if memory_type == "memory":
                                 memory_list.extend( ml )
@@ -656,10 +685,6 @@ def process_domain( domain_node, iso_node, json_tree, sdt ):
     # iso_node.print()
 
     debug = False
-    if domain_node.name == "default":
-        debug = True
-        print( "DDDDDDDDDAAAAAAAAAAAAAAAAAAAAAAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG: %s" % iso_node.name )
-        #os._exit(1)
 
     # access and memory AND now cpus
     try:
@@ -671,9 +696,6 @@ def process_domain( domain_node, iso_node, json_tree, sdt ):
             domain_node["cpus"] = json.dumps(cpus_list)
             domain_node.pclass = "json"
         if memory_list:
-            if domain_node.name == "RPU_0":
-                print( "                     rpu has a memory list!" )
-                #os._exit(1)
             _info( f"memory: {memory_list}" )
             domain_node["memory"] = json.dumps(memory_list)
         if sram_list:
@@ -688,28 +710,36 @@ def process_domain( domain_node, iso_node, json_tree, sdt ):
 
     return domain_node
 
-
-def build_device_access( isospec_json_tree ):
+#
+# This collects all of the possible devices in the isospec
+# into a dictionary.
+#
+# That dictionarty is indexed by the name of the device
+# and points to a dictionary that contains a reference count
+# and the definition in the spec (the destination line)
+#
+def device_collect( isospec_json_tree ):
     device_dict = {}
-    print( "======================> build_device_access" )
+    _info( f"collecting alll possible devices" )
     try:
         design_cells = isospec_json_tree["/design/cells"]
     except:
-        print( "ERROR: no design/cells found in isolation spec" )
+        _warning( "no design/cells found in isolation spec" )
         return device_dict
 
-    print( "walking cells: %s" % design_cells )
     for cell in design_cells.children():
-        print( "  cell: %s" % cell.name )
         try:
             dests = cell["destinations"]
-            print( "           we have destinations %s %s %s" % (dests.abs_path,type(dests),len(dests) ))
+            _debug( f"processing cell: {cell.name}" )
+            _debug( f"           destinations {dests.abs_path} [{len(dests)}]" )
             for d in range(len(dests)):
                 dest = dests[d]
-                print( "                d: %s" % dest )
+                _debug( f"                dest: {dest}" )
+                # A device has to have a nodeid for us to consider it, since
+                # otherwise it can't be referenced. The exception to this is
+                # memory, since memory entries never have nodeids.
                 try:
                     nodeid = dest["nodeid"]
-                    print( "                              destination has nodeid: %s" % nodeid )
                     device_dict[dest["name"]] = {
                                                   "refcount": 0,
                                                   "dest": dest
@@ -721,9 +751,12 @@ def build_device_access( isospec_json_tree ):
                         is_it_mem = False
                         True
 
+                    # this may be controlled by a command line option
+                    # in the future
                     skip_memory = False
-                    ## We need to decide if memory always shows up in the global
-                    ## device list, even without a nodeid.
+
+                    ## Q: We need to decide if memory always shows up in the global
+                    ##    device list, even without a nodeid.
                     if is_it_mem:
                         if not skip_memory:
                             device_dict[dest["name"]] = {
@@ -731,15 +764,12 @@ def build_device_access( isospec_json_tree ):
                                 "dest": dest
                             }
                         else:
-                            print( "                              memory detected, currently skipping (no nodeid)" )
+                            _debug( "                memory detected (skipping (no nodeid))" )
                     else:
                         # no nodeid, skip
-                        print( "                              destination has no nodeid, skipping" )
+                        _debug( "                   ** destination has no nodeid, skipping" )
         except:
             True
-
-    # print( "device dict created:" )
-    # print( device_dict )
 
     return device_dict
 
@@ -753,8 +783,34 @@ def isospec_domain( tgt_node, sdt, options ):
     except:
         verbose = 0
 
+    try:
+        args = options['args']
+    except:
+        args = []
+
     lopper.log._init( __name__ )
-  
+
+    opts,args2 = getopt.getopt( args, "mpvh", [ "help", "verbose", "permissive", "nomemory" ] )
+
+    if opts == [] and args2 == []:
+        usage()
+        sys.exit(1)
+
+    memory = True
+    for o,a in opts:
+        # print( "o: %s a: %s" % (o,a))
+        if o in ('-m', "--nomemory" ):
+            memory = False
+        elif o in ('-v', "--verbose"):
+            verbose = verbose + 1
+        elif o in ('-c', "--compare"):
+            compare_list.append( a )
+        elif o in ('-p', "--permissive"):
+            permissive = True
+        elif o in ('-h', "--help"):
+            # usage()
+            sys.exit(1)
+
     if verbose:
         lopper.log._level( logging.INFO, __name__ )
     if verbose > 1:
@@ -762,23 +818,21 @@ def isospec_domain( tgt_node, sdt, options ):
         #logging.getLogger().setLevel( level=logging.DEBUG )
 
     _info( f"cb: isospec_domain( {tgt_node}, {sdt}, {verbose} )" )
-    
+
     if sdt.support_files:
         isospec = sdt.support_files.pop()
     else:
         try:
-            args = options['args']
-            if not args:
+            if not args2[0]:
                 _error( "isospec: no isolation specification passed" )
-            isospec = args.pop(0)
+            isospec = args2.pop(0)
         except Exception as e:
             _error( f"isospec: no isolation specification passed: {e}" )
             sys.exit(1)
 
     domain_yaml_file = "domains.yaml"
     try:
-        args = options['args']
-        domain_yaml_file = args.pop(0)
+        domain_yaml_file = args2.pop(0)
     except:
         pass
 
@@ -799,14 +853,11 @@ def isospec_domain( tgt_node, sdt, options ):
         iso_domains = json_tree["/design/subsystems/" ]
     except:
         pass
+    
+    device_dict = device_collect( json_tree )
 
-    print( "**** building a list of all possible devices" )
-    device_dict = build_device_access( json_tree )
-
-    #os._exit(1)
-
-    #iso_subsystems.print()
-    #print( iso_subsystems.children() )
+    # iso_subsystems.print()
+    # print( iso_subsystems.children() )
 
     for iso_node in iso_subsystems.children():
         isospec_domain_node = json_tree[f"{iso_node.abs_path}"]
@@ -817,37 +868,7 @@ def isospec_domain( tgt_node, sdt, options ):
         ## these are subsystems, which have nested domains
         domain_node = process_domain( domain_node, iso_node, json_tree, sdt )
 
-        ## if i assign a pclass of json to the access_property, I should be
-        ## able to avoid some of the below.
-        # Global accounting based on what we found in the domain
-        ## we should really do this when processing the domains, to optimize
-        ## the processing time.
-
-        ## we need to check the "access", "memory" and "sram" lists (and possibly "cpus")
-        for domain_ref_type in [ "access", "memory", "sram" ]:
-            try:
-                domain_json = json.loads(domain_node[domain_ref_type].value)
-            except Exception as e:
-                print( "domain [%s] has no entries of type: %s (%s) .. skipping the type" % (domain_node.name,domain_ref_type,e) )
-                continue
-
-            print( "domain [%s] has the following type [%s] %s list: %s" % (domain_node.name,domain_ref_type,iso_node.name,domain_json ))
-            print( "    access_json: %s" % len(domain_json) )
-            for v in range(len(domain_json)):
-                dev = domain_json[v]
-                print( "         d: %s" % dev )
-                print( "             name: %s spec_name: %s" %  (dev["dev"],dev["spec_name"]) )
-
-                # check the device dict
-                try:
-                    gdevice = device_dict[dev["spec_name"]]
-                    print( "                             found global device: %s" % gdevice )
-                    # increment the refcount
-                    gdevice["refcount"] += 1
-                except:
-                    print( "                             could not find device in global dict" )
-        
-
+        # add the domain to the domains tree, and process any subdomains
         try:
             sub_domains = json_tree[f"{iso_node.abs_path}" + "/domains"]
             # sub_domains.print()
@@ -861,14 +882,12 @@ def isospec_domain( tgt_node, sdt, options ):
                     domain_id = iso_node["id"]
                 sub_domain_node_new = domains_tree_add_domain( domains_tree, s.name, sub_domain_node, domain_id )
                 sub_domain_node_new = process_domain( sub_domain_node_new, s, json_tree, sdt )
-
                 # domain_node.print()
         except:
             pass
 
-
-    #sys.exit(1)
-    print( "\n\n\nDDDDDDDDDDDDDDDDDDDD processing unreferenced devices DDDDDDDDDDDDDDDDDDDDDDDD" )
+    # gather a list of all created domains, so we can avoid this check
+    # in the upcoming code.
     domains_list = []
     for domain in domains_tree:
         try:
@@ -877,72 +896,123 @@ def isospec_domain( tgt_node, sdt, options ):
                 # this is a valid domain, add it to the list
                 domains_list.append( domain )
         except:
+            # if it isn't a domain, skip
             True
-        
-    # print( "domains list: %s" % domains_list )
-    # sys.exit(1)
-                
+
+    #
+    # Global accounting based on what we found in the domain
+    # processing. This is currently just a reference count for
+    # anything in the access list of the domain.
+    #
+    # Note/TODO: It should be possible to assign a pclass of json
+    #            to the access_property, and avoid the explicit
+    #            json loading and chunking below.
+    #
+    # Note: It might be possible to do this when processing the
+    #       domains, to optimize the processing time.
+    #
+    # This currently checks the "access", "memory" and "sram"
+    # lists (and possibly "cpus" in the future)
+    #
+    for domain in domains_list:            
+        for domain_ref_type in [ "access", "memory", "sram" ]:
+            _info( f"refcounting domain: '{domain_node.name}' type: {domain_ref_type}" )
+            try:
+                domain_json = json.loads(domain_node[domain_ref_type].value)
+            except Exception as e:
+                _info( f"no entries found .. skipping" )
+                continue
+
+            _debug( f"{iso_node.abs_path} [{len(domain_json)}] list: {domain_json}" )
+            for v in range(len(domain_json)):
+                dev = domain_json[v]
+                _info( f"   device: {dev}" )
+                # check the device dict
+                try:
+                    # this throws an exception if the device wasn't
+                    # setup as something we are tracking
+                    gdevice = device_dict[dev["spec_name"]]
+                    # increment the refcount
+                    gdevice["refcount"] += 1
+                    _info( f"      tracked element: {gdevice}: refcounted" )
+                except:
+                    _info( f"      element: {gdevice} is not a tracked" )
+
+
+
+    _info( "Unreferenced device processing" )
     for d,device in device_dict.items():
         if device["refcount"] == 0:
-            print( "*************> unreferenced device found: %s" % device )
-            # these need to be added to all domains.
-            for domain in domains_list:
+            _info( f"    unreferenced device: {device}" )
+
+            unrefed_device_entry = {}
+            unrefed_memory_entry = {}
+
+            # We won't find memory, sram or cpus in the device
+            # tree (tnode will be empty), so they won't get
+            # added to the access list.  They will be added as
+            # umapped memory (to all domains).
+            try:
+                tnode = sdt.tree.addr_node( device["dest"]["addr"] )
+            except:
+                # If the device has no address, consider it as memory ?
+                tnode = None
+            if tnode:
+                _info( f"      device tree node '{tnode.name}' found at address: {device['dest']['addr']}" )
+
+                name = device["dest"]['name']
+                unrefed_device_entry = {
+                                          "dev": tnode.name,     # remove before writing to yaml (if no roundtrip)
+                                          "spec_name": name,     # remove before writing to yaml (if no roundtrip)
+                                          "label": tnode.label,
+                                          "flags": {}
+                                       }
+            else:
+                # was it memory ?
                 try:
-                    # We won't find memory, sram or cpus in the device tree, so they
-                    # won't get added to the access list. They should be added as
-                    # umapped memory (to all domains).
-                    # print( "                       access is: %s" % domain["access"] )
-                    tnode = sdt.tree.addr_node( device["dest"]["addr"] )
-                    if tnode:
-                        print( "                       device tree node %s found at address %s" % (tnode.name,device['dest']['addr'] ))
-                        print( "                       [%s] adding device: %s" % (domain.name,device["dest"] ))
+                    ##
+                    ## Q: do we need to handle SRAM ?
+                    ##
 
-                        # address = device["dest"]['addr']
-                        name = device["dest"]['name']
-                        access_json = json.loads(domain["access"].value)
-                        access_json.append( {
-                                              "dev": tnode.name,     # remove before writing to yaml (if no roundtrip)
-                                              "spec_name": name,     # remove before writing to yaml (if no roundtrip)
-                                              "label": tnode.label,
-                                              "flags": {}
-                            }
-                        )
-                        domain["access"] = json.dumps(access_json)
+                    ## 
+                    ## This may become conditional with an isospec
+                    ## command line option.
+                    ##
 
-                        print( "           access json is updated" )
-                    else:
-                        # was it memory ?
-                        try:
-                            ## 
-                            ## we could also make this conditional with an isospec command
-                            ## line option.
-                            ##
-
-                            # this throws an exception if we aren't memory and we skip all
-                            # the rest of the processing
-                            is_it_memory = device["dest"]["mem"]
-                            name = device["dest"]["name"]
-                            start = device["dest"]["addr"]
-                            size = device["dest"]["size"]
-                            print( "[INFO] unreferenced memory detected: %s" % device["dest"]["name"] )
-                            memory_json = json.loads(domain["memory"].value)
-                            memory_json.append( { "dev": name,          # remove before writing to yaml (if no roundtrip)
-                                                  "spec_name": name,    # remove before writing to yaml (if no roundtrip)
-                                                  "start": start,
-                                                  "size": size
-                                                 }
-                                               )
-                            domain["memory"] = json.dumps(memory_json)
-                        except Exception as e:
-                            True
-                            # print( "ooops: %s" % e )
-                            # os._exit(1)
+                    # This throws an exception if we aren't memory and
+                    # we skip all the rest of the processing
+                    is_it_memory = device["dest"]["mem"]
+                    name = device["dest"]["name"]
+                    start = device["dest"]["addr"]
+                    size = device["dest"]["size"]
+                    _info( f"      unreferenced memory detected: {device['dest']['name']}" )
+                    unrefed_memory_entry = { "dev": name,          # remove before writing to yaml (if no roundtrip)
+                                             "spec_name": name,    # remove before writing to yaml (if no roundtrip)
+                                             "start": start,
+                                             "size": size
+                                           }
                 except Exception as e:
-                    # If the device has no address, consider it as memory ?
-                    True
+                    _debug( f"    unreferenced device {device} has no device tree node, and is not memory. skipping" )
+
+            # Unreferenced devices/memory are added to all domains
+            for domain in domains_list:
+                if unrefed_device_entry:
+                    _info( f"        [%s] adding device: %s" % (domain.name,device["dest"] ))
+                    access_json = json.loads(domain["access"].value)
+                    access_json.append( unrefed_device_entry )
+                    domain["access"] = json.dumps(access_json)
+
+                if unrefed_memory_entry:
+                    _info( f"        [%s] adding memory: %s" % (domain.name,device["dest"] ))
+                    try:
+                        memory_json = json.loads(domain["memory"].value)
+                    except:
+                        memory_json = []
+
+                    memory_json.append( unrefed_memory_entry)
+                    domain["memory"] = json.dumps(memory_json)
             
-    print( "DDDDDDDDDDDDDDDDDDDDDDDDDDD done processing unreferenced devices DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD" )
-    #os._exit(1)
+    _info( f"unreferenced device processing complete" )
 
     # domains_tree.print()
 
