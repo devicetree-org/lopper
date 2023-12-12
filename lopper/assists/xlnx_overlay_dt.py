@@ -1,5 +1,6 @@
 #/*
 # * Copyright (c) 2021 Xilinx Inc. All rights reserved.
+# * Copyright (c) 2023, Advanced Micro Devices, Inc. All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
@@ -56,7 +57,7 @@ def usage():
     prog = os.path.basename(sys.argv[0])
     print('Usage: %s <system device tree> -- <xlnx_overlay_dt.py> <machine name> <configuration>' % prog)
     print('  machine name:         cortexa53-zynqmp or cortexa72-versal')
-    print('  configuration:        should be \'full\'' )
+    print('  configuration:        full or dfx-static or dfx-partial' )
 
 """
 This API generates the overlay dts file by taking pl.dtsi
@@ -66,7 +67,7 @@ Args:
     sdt:      is the system device-tree
     options:  There are two valid options
               Machine name as cortexa53-zynqmp or cortexa72-versal
-              An optional argument full/partial
+              An optional argument full/dfx-static/dfx-partial
                   The default will be full
 """
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
@@ -100,16 +101,11 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     tab_len = 0
     platform = "None"
     config = "None"
-    external_flag = 1
     parent_node = ""
     parent_tab = 0
     try:
         platform = options['args'][0]
-        if options['args'][1] == "external_fpga":
-            external_flag = options['args'][1]
-        else:
-            config = options['args'][1]
-            external_flag = options['args'][2]
+        config = options['args'][1]
     except:
         pass
 
@@ -118,7 +114,9 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     if config == "None":
         config = "full"
 
-    if config != "full":
+    # TODO - dfx-partial is not yet implemented, once implemented remove this
+    #        comments.
+    if config != "full" and config != "dfx-static" and config != "dfx-partial":
         print('%s is not a valid argument' % str(config))
         usage()
         sys.exit(1)        
@@ -159,17 +157,24 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                     plat.buf('\n\t#address-cells = <2>;')
                     plat.buf('\n\t#size-cells = <2>;')
                     try:
-                       if config == "full":
-                           if platform == "cortexa53-zynqmp":
-                               plat.buf('\n\t%s' % node['firmware-name'])
-                           elif platform == "cortexa72-versal":
-                               if external_flag == "external_fpga":
-                                   plat.buf('\n\texternal-fpga-config;')
-                               else:
-                                   plat.buf('\n\t%s' % node['firmware-name'])
-                           else:
-                               print('%s is not a valid Machine' % str(platform))
-                               sys.exit(1)        
+                        # There is no cortexa9-zynq platform but this is a place
+                        # holder. If platform is microblaze then exit as dt overlays
+                        # are not supported for microblaze platform.
+                        #
+                        # configuration "full" is used for Zynq 7000(full),
+                        # ZynqMP(full) and Versal(segmented configuration) requires
+                        # firmware-name dt property.
+                        #
+                        # configuration "dfx-static" is used for ZynqMP(DFx-Static)
+                        # and Versal(DFx-Static). For Versal DFx Static we need
+                        # external-fpga-config dt property.
+                        if platform != "microblaze":
+                            plat.buf('\n\t%s' % node['firmware-name'])
+                        elif config == "dfx-static" and platform != "microblaze" and platform != "cortexa9-zynq" and platform != "cortexa53-zynqmp":
+                            plat.buf('\n\texternal-fpga-config;')
+                        else:
+                            print('%s is not a valid Machine' % str(platform))
+                            sys.exit(1)
                                
                     except:
                         pass
