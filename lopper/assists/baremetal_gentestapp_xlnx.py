@@ -119,6 +119,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                 for node in node_list:
                     compat_string = node['compatible'].value
                     label_name = get_label(sdt, symbol_node, node)
+                    drvconfig_name = None
                     if compat in compat_string:
                         driver_nodes.append(node)
                         dec = []
@@ -145,8 +146,11 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                                     fd.seek(0, 0)
                                     fd.writelines(content)
                                 dec.append(testapp_schema[app]['declaration'])
+                                if not 'SelfTest' in app and not 'selftest' in app:
+                                    drvconfig_name = True
                         testapp_data.update({label_name:dec})
-                        testapp_name.update({label_name:drv_config_name})
+                        if drvconfig_name:
+                            testapp_name.update({label_name:drv_config_name})
         except KeyError:
             testapp_schema = {}
 
