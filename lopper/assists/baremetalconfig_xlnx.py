@@ -213,13 +213,13 @@ def scan_ranges_size(range_value, ns):
     addr = hex(range_value[2])
     high_addr_cell = hex(range_value[1])
     if high_addr_cell != "0x0":
-        addr = high_addr_cell + addr.lstrip('0x')
+        addr = high_addr_cell + addr.lstrip('0x').ljust(8, '0')
 
     size = hex(range_value[-1])
     high_size_cell = hex(range_value[-2])
     # If ns = 1, then there is no use of high_size_cells
     if high_size_cell != "0x0" and ns > 1:
-        size = high_size_cell + size.lstrip('0x')
+        size = high_size_cell + size.lstrip('0x').ljust(8, '0')
 
     return int(addr, base=16), int(size, base=16)
 
