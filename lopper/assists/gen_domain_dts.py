@@ -64,6 +64,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     clustercpu_nodes = list(dict.fromkeys(clustercpu_nodes))
 
     for node in clustercpu_nodes:
+        if node.name != '' and node in match_cpunode.parent.subnodes():
+            continue
         if node.name != '' and node.name != "idle-states":
             sdt.tree.delete(node)
 
@@ -76,7 +78,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
     node_list = []
     for node in root_sub_nodes:
-        if linux_dt and node.name == "memory@fffc0000":
+        if linux_dt and node.name == "memory@fffc0000" or node.name == "memory@bbf00000":
             sdt.tree.delete(node)
         if node.propval('status') != ['']:
             if linux_dt and node.name == "smmu@fd800000" and machine == "psu_cortexa53_0":
@@ -156,7 +158,9 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psu_iou_scntr', 'psu_iou_scntrs', 'psu_iousecure_slcr', 'psu_iouslcr_0', 'psu_lpd_slcr',
                             'psu_lpd_slcr_secure', 'psu_lpd_xppu_sink', 'psu_mbistjtag', 'psu_message_buffers', 'psu_ocm_xmpu_cfg',
                             'psu_pcie_attrib_0', 'psu_pcie_dma', 'psu_pcie_high1', 'psu_pcie_high2', 'psu_pcie_low',
-                            'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou', 'psu_ipi', 'psu_r5_tcm_ram']
+                            'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou', 'psu_ipi', 'psu_r5_tcm_ram',
+                            'psx_tcm_global', 'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu',
+                            'psx_fpd_gpv']
 
     for node in root_sub_nodes:
         if linux_dt:
