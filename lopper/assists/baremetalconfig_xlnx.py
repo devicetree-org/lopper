@@ -21,6 +21,8 @@ def get_label(sdt, symbol_node, node):
     match = [label for label,node_abs in prop_dict.items() if re.match(node_abs[0], node.abs_path) and len(node_abs[0]) == len(node.abs_path)]
     if match:
         return match[0]
+    elif node.propval('xlnx,name') != ['']:
+        return node.propval('xlnx,name', list)[0]
     else:
         return None
 
