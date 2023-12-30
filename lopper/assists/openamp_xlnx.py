@@ -422,9 +422,9 @@ def xlnx_rpmsg_kernel_update_mboxes(tree, host_ipi, remote_ipi, gic_node_phandle
     remote_host_request = remote_host_request[0].value[0]
 
     remote_controller_node + LopperProp(name="reg", value = [
+                                                         host_remote_request,  0x20,
                                                          host_remote_response, 0x20,
-                                                         host_remote_request, 0x20,
-                                                         remote_host_request, 0x20,
+                                                         remote_host_request,  0x20,
                                                          remote_host_response, 0x20])
 
     core_node + LopperProp(name="mboxes", value = [remote_controller_node.phandle, 0, remote_controller_node.phandle, 1])
