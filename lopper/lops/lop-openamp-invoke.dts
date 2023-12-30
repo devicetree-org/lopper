@@ -1,8 +1,6 @@
 /*
- * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+ * Copyright (c) 2023 Xilinx Inc. All rights reserved.
  *
- * Author:
- *	   Ben Levinsky <blevinsk@xilinx.com>
  *
  * this lop file will hold all the basic information for openamp use cases
  *
@@ -26,6 +24,7 @@
 			compatible = "system-device-tree-v1,lop,assist-v1";
 			node = "/";
 			id = "openamp,domain-processing";
+			options = "--openamp_role=host --openamp_host=a53_0 --openamp_remote=r5_0";
 
 		};
 		lop_5_2 {

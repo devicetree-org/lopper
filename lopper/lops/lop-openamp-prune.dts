@@ -1,0 +1,52 @@
+/*
+ * Copyright (c) 2023 AMD-Xilinx All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1";
+        lops {
+               // compatible = "system-device-tree-v1,lop";
+                lop_6 {
+                        // modify to "nothing", is a remove operation
+                        compatible = "system-device-tree-v1,lop,select-v1";
+                        select_1;
+                        select_2 = "/.*:compatible:.*xlnx,zynqmp-ipi-mailbox*";
+                };
+                lop_7 {
+                        compatible = "system-device-tree-v1,lop,code-v1";
+                        code = "
+                            # Check for domain node
+                            for s in tree.__selected__:
+                                if s.props('xlnx,ipi-bitmask') != []:
+                                    tree.delete(s)
+                        ";
+                };
+                lop_8 {
+                        // node delete
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/domains::";
+
+                };
+               // compatible = "system-device-tree-v1,lop";
+                lop_9 {
+                        // modify to "nothing", is a remove operation
+                        compatible = "system-device-tree-v1,lop,select-v1";
+                        select_1;
+                        select_2 = "/.*:compatible:.*cpus,cluster*";
+			select_3 = "/.*:compatible:.*indirect-bus*";
+                };
+                lop_10 {
+                        compatible = "system-device-tree-v1,lop,code-v1";
+                        code = "
+                            # Keep Linux domain node
+                            for s in tree.__selected__:
+                                if 'a78' not in s.name and 'a53' not in s.name and 'a72' not in s.name:
+                                    tree.delete(s)
+                        ";
+                };
+        };
+};
