@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(__file__))
 
 from baremetalconfig_xlnx import compat_list, get_cpu_node, get_mapped_nodes, get_label
 from common_utils import to_cmakelist
+import common_utils as utils
 from domain_access import update_mem_node
 
 def is_compat( node, compat_string_to_test ):
@@ -168,6 +169,11 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu',
                             'psx_fpd_gpv']
 
+    if linux_dt:
+        yaml_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "xlnx,xdma-host.yaml")
+        schema = utils.load_yaml(yaml_file)
+        driver_compatlist = compat_list(schema)
+        driver_proplist = schema.get('required',[])
     for node in root_sub_nodes:
         if linux_dt:
             if node.propval('xlnx,ip-name') != ['']:
@@ -189,6 +195,13 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     continue
                 else:
                     sdt.tree.delete(node)
+        elif node.propval('compatible') != [''] and linux_dt:
+            is_xdma_node = [compat for compat in driver_compatlist if compat in node.propval('compatible', list)]
+            if is_xdma_node:
+                prop_list = list(node.__props__.keys())
+                for prop in prop_list:
+                    if prop not in driver_proplist:
+                        node.delete(prop)
 
     # Remove symbol node referneces
     symbol_node = sdt.tree['/__symbols__']
