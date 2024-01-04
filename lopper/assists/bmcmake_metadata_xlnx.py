@@ -255,8 +255,11 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                            elif drv == "emacps":
                                 topology_data[val] = 3
                     elif prop == "interrupts":
-                       val = bm_config.get_interrupt_prop(sdt, node, node[prop].value)
-                       val = val[0]
+                        if node.propval('interrupts') != ['']:
+                            val = bm_config.get_interrupt_prop(sdt, node, node[prop].value)
+                            val = val[0]
+                        else:
+                            continue
                     elif prop == "axistream-connected":
                        val = hex(bm_config.get_phandle_regprop(sdt, prop, node[prop].value))
                     elif prop == "phy-handle":
