@@ -129,7 +129,10 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
                 size_cells = [address_map[inx+na+i+1] for i in range(ns)]
                 size = hex(size_cells[-1])
-                high_size_cell = hex(size_cells[-2])
+                if ns > 1:
+                    high_size_cell = hex(size_cells[-2])
+                else:
+                    high_size_cell = "0x0"
                 if high_size_cell != "0x0" and ns > 1:
                     val = hex(size_cells[1]).lstrip('0x')
                     pad = 8 - len(val)
