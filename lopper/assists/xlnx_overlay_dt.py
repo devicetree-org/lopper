@@ -75,7 +75,8 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     root_sub_nodes = root_node.subnodes()
 
     symbol_node = ""
-    plat = DtbtoCStruct('pl.dtsi')
+    outfile = os.path.join(sdt.outdir, 'pl.dtsi')
+    plat = DtbtoCStruct(outfile)
     for node in root_sub_nodes:
         try:
             if node.name == "__symbols__":
