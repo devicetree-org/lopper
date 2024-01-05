@@ -183,18 +183,6 @@
                                       prop_val.append(address_map[inx+2*na])
                               modify_val = update_mem_node(node1, prop_val)
                               node1['reg'].value = modify_val
-
-                              # Update symbol node referneces
-                              symbol_node = tree['/__symbols__']
-                              prop_list = list(symbol_node.__props__.keys())
-                              match_label_list = []
-                              for n in tree['/'].subnodes():
-                                  matched_label = get_label(tree, symbol_node, n)
-                                  if matched_label:
-                                      match_label_list.append(matched_label)
-                              for prop in prop_list:
-                                  if prop not in match_label_list:
-                                      tree['/__symbols__'].delete(prop)
                       ";
                 };
         };

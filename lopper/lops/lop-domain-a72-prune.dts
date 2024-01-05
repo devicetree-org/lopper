@@ -136,17 +136,6 @@
                           for node1 in invalid_nodes:
                               tree.delete(node1)
 
-                          # Update symbol node referneces
-                          symbol_node = tree['/__symbols__']
-                          prop_list = list(symbol_node.__props__.keys())
-                          match_label_list = []
-                          for n in tree['/'].subnodes():
-                              matched_label = get_label(tree, symbol_node, n)
-                              if matched_label:
-                                  match_label_list.append(matched_label)
-                          for prop in prop_list:
-                              if prop not in match_label_list:
-                                  tree['/__symbols__'].delete(prop)
                       ";
                 };
                 lop_9 {
