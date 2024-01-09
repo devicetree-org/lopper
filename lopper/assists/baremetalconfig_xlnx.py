@@ -670,6 +670,8 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     config_struct = schema.get('config',[])
     driver_optproplist = schema.get('optional',[])
 
+    if driver_proplist == []:
+        return True
     driver_nodes = []
     for compat in driver_compatlist:
         for node in node_list:
