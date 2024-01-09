@@ -69,7 +69,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     for node in clustercpu_nodes:
         if node.name != '' and node in match_cpunode.parent.subnodes():
             continue
-        if node.name != '' and node.name != "idle-states":
+        if node.name != '' and node.name != "idle-states" and node.name != "amba_pl":
             sdt.tree.delete(node)
 
     cells = na + ns
