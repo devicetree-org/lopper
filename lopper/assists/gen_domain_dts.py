@@ -40,6 +40,9 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     3. Delete the other cpu cluster nodes.
     4. Rename the procsessor cpu cluster node to cpus.
     5. Remove delete node lables from symbol node.
+    For Linux Device-tree it does the below updates as well
+    6. Keeps the status disabled nodes in the final device-tree.
+    7. Delete the nodes that have an xlnx,ip-name property value mentioned in the linux_ignore_ip_list.
     """
     machine = options['args'][0]
     symbol_node = sdt.tree['/__symbols__']
