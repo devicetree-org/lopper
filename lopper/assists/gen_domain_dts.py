@@ -157,15 +157,15 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psv_coresight_a721_etm', 'psv_coresight_a721_pmu', 'psv_coresight_a721_cti',
                             'psv_coresight_a721_pmu', 'psv_coresight_a721_cti', 'psv_coresight_apu_ela',
                             'psv_coresight_apu_etf', 'psv_coresight_apu_fun', 'psv_coresight_cpm_atm', 'psv_coresight_cpm_cti2a',
-                            'psv_tcm_global', 'psv_r5_tcm', 'psu_apu', 'psu_bbram_0', 'psu_cci_gpv', 'psu_crf_apb', 'psu_crl_apb',
+                            'psu_apu', 'psu_bbram_0', 'psu_cci_gpv', 'psu_crf_apb', 'psu_crl_apb',
                             'psu_csu_0', 'psu_ddr_phy', 'psu_ddr_qos_ctrl', 'psu_ddr_xmpu0_cfg', 'psu_ddr_xmpu1_cfg',
                             'psu_ddr_xmpu2_cfg', 'psu_ddr_xmpu3_cfg', 'psu_ddr_xmpu4_cfg', 'psu_ddr_xmpu5_cfg', 'psu_efuse',
                             'psu_fpd_gpv', 'psu_fpd_slcr', 'psu_fpd_slcr_secure', 'psu_fpd_xmpu_cfg', 'psu_fpd_xmpu_sink',
                             'psu_iou_scntr', 'psu_iou_scntrs', 'psu_iousecure_slcr', 'psu_iouslcr_0', 'psu_lpd_slcr',
                             'psu_lpd_slcr_secure', 'psu_lpd_xppu_sink', 'psu_mbistjtag', 'psu_message_buffers', 'psu_ocm_xmpu_cfg',
                             'psu_pcie_attrib_0', 'psu_pcie_dma', 'psu_pcie_high1', 'psu_pcie_high2', 'psu_pcie_low',
-                            'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou', 'psu_ipi', 'psu_r5_tcm_ram',
-                            'psx_tcm_global', 'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu',
+                            'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou', 'psu_ipi',
+                            'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu',
                             'psx_fpd_gpv']
 
     for node in root_sub_nodes:
@@ -173,6 +173,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             if node.propval('xlnx,ip-name') != ['']:
                 val = node.propval('xlnx,ip-name', list)[0]
                 if val in linux_ignore_ip_list:
+                    sdt.tree.delete(node)
+                elif 'xlnx,zynqmp-ipi-mailbox' in node.propval('compatible'):
                     sdt.tree.delete(node)
             elif node.name == "rpu-bus":
                 sdt.tree.delete(node)
@@ -182,6 +184,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     continue
             if node.propval('status') != ['']:
                 if 'disabled' in node.propval('status', list)[0] and linux_dt:
+                    continue
+                elif "tcm" in node.propval('compatible', list)[0]:
                     continue
                 else:
                     sdt.tree.delete(node)
