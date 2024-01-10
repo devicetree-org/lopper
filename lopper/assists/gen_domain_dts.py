@@ -197,6 +197,10 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     for prop in prop_list:
         if prop not in match_label_list:
             sdt.tree['/__symbols__'].delete(prop)
+        if prop == "gic_a53" or prop == "gic_a72" and linux_dt:
+            val = sdt.tree['/__symbols__'].propval(prop, list)[0]
+            val = val.replace("apu-bus", "axi")
+            sdt.tree['/__symbols__'].propval(prop, list)[0] = val
 
     # Add new property which will be consumed by other assists
     if not linux_dt:
