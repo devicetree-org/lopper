@@ -35,5 +35,10 @@
                         compatible = "system-device-tree-v1,lop,load";
                         load = "assists/openamp_xlnx.py";
                 };
+                lop_3 {
+                        compatible = "system-device-tree-v1,lop,load";
+                        load = "assists/gen_domain_dts.py";
+                };
+
         };
 };

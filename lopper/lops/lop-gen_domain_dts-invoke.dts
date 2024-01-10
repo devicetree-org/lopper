@@ -1,0 +1,45 @@
+/*
+ * Copyright (c) 2023 Xilinx Inc. All rights reserved.
+ *
+ *
+ * this lop file will hold all the basic information for openamp use cases
+ *
+ * there should be reserved-mem, remoteproc driver code, interrupts,
+ * shared mem resources and specify remote's information
+ *
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+
+/dts-v1/;
+
+/ {
+	compatible = "system-device-tree-v1,lop";
+	lops {
+	/* common for both linux kernel or rpmsg userspace to rpus  */
+	/* handle linux kernel space to rpus case */
+
+		lop_5_1 {
+			compatible = "system-device-tree-v1,lop,assist-v1";
+			node = "/";
+			id = "module,gen_domain_dts";
+			options = " psv_cortexa72_0 linux_dt ";
+
+		};
+		lop_5_2 {
+			compatible = "system-device-tree-v1,lop,meta-v1","phandle-desc-v1";
+			// mbox
+			mbox = "phandle";
+			// remote
+			remote = "phandle";
+			// host
+			host = "phandle";
+			// carveouts
+			carveouts = "phandle";
+			// elfload
+			elfload = "phandle";
+
+		};
+	};
+};
