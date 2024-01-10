@@ -75,12 +75,27 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     root_sub_nodes = root_node.subnodes()
 
     symbol_node = ""
+    gic_node = ""
+    platform = "None"
+    config = "None"
+    imux_node = ""
+    try:
+        platform = options['args'][0]
+        config = options['args'][1]
+    except:
+        pass
     outfile = os.path.join(sdt.outdir, 'pl.dtsi')
     plat = DtbtoCStruct(outfile)
     for node in root_sub_nodes:
         try:
             if node.name == "__symbols__":
                 symbol_node = node
+            if node.name == "interrupt-multiplex":
+                imux_node = node
+            if platform == "cortexa53-zynqmp" and node.name == "interrupt-controller@f9010000":
+                gic_node = node
+            elif platform == "cortexa72-versal" and node.name == "interrupt-controller@f9000000":
+                gic_node = node
         except:
            pass
 
@@ -100,15 +115,8 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     # Initialize the variables to its defaults
     root = 1
     tab_len = 0
-    platform = "None"
-    config = "None"
     parent_node = ""
     parent_tab = 0
-    try:
-        platform = options['args'][0]
-        config = options['args'][1]
-    except:
-        pass
 
     # If no config option is provided then the default is
     # full bit stream support
@@ -235,6 +243,10 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                         if re.search("clocks =", str(p)):
                             plat.buf('%s' % node['clocks'])
                         else:
+                            if p.name == "interrupt-parent":
+                                if gic_node and imux_node:
+                                    if p.value[0] == imux_node.phandle:
+                                        p.value =  gic_node.phandle
                             plat.buf('%s' % p)
 
                     plat.buf('\n')
