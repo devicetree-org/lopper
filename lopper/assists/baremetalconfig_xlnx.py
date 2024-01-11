@@ -319,10 +319,10 @@ def get_stdin(sdt, chosen_node, node_list):
     if chosen_node.propval('stdout-path') != ['']:
         prop_val = chosen_node['stdout-path'].value
         serial_node = sdt.tree.alias_node(prop_val[0].split(':')[0])
-        match = [x for x in node_list if re.search(x.name, serial_node.name)]
-        return match[0]
-    else:
-        return 0
+        if serial_node:
+            match = [x for x in node_list if re.search(x.name, serial_node.name)]
+            return match[0]
+    return 0
 
 def get_mapped_nodes(sdt, node_list, options):
     # Yocto Machine to CPU compat mapping
