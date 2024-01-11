@@ -112,6 +112,16 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         except:
            pass
 
+    fpga_ignore_list = []
+    for node in root_sub_nodes:
+
+        try:
+            if re.search("fpga-PR*" , node.name):
+               fpga_ignore_list.append(node)
+
+        except:
+           pass
+
     # Initialize the variables to its defaults
     root = 1
     tab_len = 0
@@ -188,6 +198,14 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                     except:
                         pass
 
+                    for inode in fpga_ignore_list:
+                        label_name = get_label(sdt, symbol_node, inode)
+                        plat.buf('\n\t%s: %s {' % (label_name, inode.name))
+                        for p in inode.__props__.values():
+                            if re.search("phandle =", str(p)) or str(p) == '':
+                                continue
+                            plat.buf('\n\t\t%s' % p)
+                        plat.buf('\n\t};')
                     plat.buf('\n};')
 
                     # Create overlay1: __overlay__ node under fragment@1
@@ -217,6 +235,10 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                 # Now add all the nodes except the nodes that are added
                 # that are added under fragment@1
                 for ignoreip in ignore_list:
+                    if re.match(ignoreip.name , node.name):
+                       set_ignore = 1
+
+                for ignoreip in fpga_ignore_list:
                     if re.match(ignoreip.name , node.name):
                        set_ignore = 1
 
