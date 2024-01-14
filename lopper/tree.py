@@ -255,7 +255,9 @@ class LopperProp():
         """
         if self.pclass == 'json':
             loaded_j = json.loads( self.value )
-            yield 'value', loaded_j
+            for chunk in loaded_j:
+                yield chunk
+            #yield 'value', loaded_j
         else:
             if type( self.value ) == list:
                 yield 'value', self.value
