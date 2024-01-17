@@ -170,9 +170,6 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 if is_pl:
                                     plat.buf(f'\n#define XPAR_FABRIC_{label_name}_INTR {intr_id[0]}')
                                     canondef_dict.update({"FABRIC":intr_id[0]})
-                            else:
-                                plat.buf(f'\n#define XPAR_{label_name}_INTR {intr_id[0]}')
-                                canondef_dict.update({"INTR":intr_id[0]})
                         except KeyError:
                             intr_id = [0xFFFF]
 
