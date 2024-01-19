@@ -81,7 +81,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
     node_list = []
     for node in root_sub_nodes:
-        if linux_dt and node.name == "memory@fffc0000" or node.name == "memory@bbf00000":
+        if linux_dt and (node.name == "memory@fffc0000" or node.name == "memory@bbf00000"):
             sdt.tree.delete(node)
         if node.propval('status') != ['']:
             if linux_dt and node.name == "smmu@fd800000" and machine == "psu_cortexa53_0":
