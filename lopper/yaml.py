@@ -7,12 +7,14 @@
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
 
-import ruamel.yaml as yaml
+import ruamel
+from ruamel.yaml import YAML
 
 import json
 import sys
 import copy
 import os
+from packaging import version
 
 from collections import OrderedDict
 
@@ -374,18 +376,6 @@ class LopperDictImporter(object):
             self.__import(child, parent=node)
 
         return node
-
-class LopperDumper(yaml.Dumper):
-    """Lopper specific dumper
-
-    Any simple formating changes to the yaml output are contained in
-    this class.
-
-    Currently it only increases the indent on yaml sequences, but may
-    contain more adjustments in the future.
-    """
-    def increase_indent(self, flow=False, indentless=False):
-        return super(LopperDumper, self).increase_indent(flow, False)
 
 class LopperJSON():
     """JSON read/writer for Lopper
@@ -1117,29 +1107,46 @@ class LopperYAML(LopperJSON):
                 print( "[DBG++]: to_yaml: dumping export dictionary" )
                 pprint( dct )
 
+            if ruamel.yaml.version_info < (0, 15):
+                yaml = ruamel.yaml
+            else:
+                yaml = YAML(typ='safe')
+
             # This stops tags from being output.
             # We could make this a configuration option in the future
-            yaml.emitter.Emitter.process_tag = lambda self, *args, **kw: None
+
+            # The emitter is only valid for a non ruamel yaml, which is no longer
+            # supported
+            # yaml.emitter.Emitter.process_tag = lambda self, *args, **kw: None
             if not outfile:
                 print(yaml.dump(dct))
             else:
                 if verbose > 1:
                     print(RenderTree(self.anytree.root))
                     print( "[DBG++]: dumping generated yaml to stdout:" )
-                    # print(yaml.dump(dct,
-                    #                 default_flow_style=False,
-                    #                 canonical=False,
-                    #                 default_style=None))
-                    print( yaml.round_trip_dump(dct,
-                                                default_flow_style=False,
-                                                canonical=False,
-                                                default_style=None) )
+                    if ruamel.yaml.version_info < (0, 15):
+                        print(ruamel.yaml.dump(dct,
+                                               default_flow_style=False,
+                                               canonical=False,
+                                               default_style=None))
+                    else:
+                        yaml.default_flow_style = False
+                        yaml.canonical = False
+                        yaml.default_style = None
+                        print( yaml.dump(dct) )
 
                 with open( outfile, "w") as file:
-                    yaml.round_trip_dump(dct, file,
-                                         default_flow_style=False,
-                                         canonical=False,
-                                         default_style=None)
+                    if ruamel.yaml.version_info < (0, 15):
+                        ruamel.yaml.round_trip_dump(dct, file,
+                                                    default_flow_style=False,
+                                                    canonical=False,
+                                                    default_style=None)
+                    else:
+                        yaml.default_flow_style = False
+                        yaml.canonical = False
+                        yaml.default_style = None
+                        yaml.dump(dct, file )
+
 
 
     def load_yaml( self, filename = None ):
@@ -1163,7 +1170,12 @@ class LopperYAML(LopperJSON):
             print( "[ERROR]: no yaml source provided" )
 
         iny = open( in_name )
-        self.dct = yaml.safe_load( iny )
+
+        if ruamel.yaml.version_info < (0, 15):
+            self.dct = ruamel.yaml.safe_load( iny )
+        else:
+            yaml = YAML(typ='safe')
+            self.dct = yaml.load( iny )
 
         if not self.dct:
             print( "[ERROR]: no data available to load" )
