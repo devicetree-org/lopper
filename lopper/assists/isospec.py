@@ -938,6 +938,17 @@ class isospec(object):
                                         except:
                                             pass
 
+                            try:
+                                mem = yaml_node["memory"]
+                                if len(mem) == 1:
+                                    # force an empty entry if there's only one cpu, since this
+                                    # ensures that the yaml will be in list form. If we don't
+                                    # do this, then assists down the pipeline have to deal with
+                                    # either lists or yaml nodes
+                                    mem.value.append( {} )
+                            except:
+                                pass
+
                         except:
                             pass
                     elif access_type == "cpu_list":
@@ -952,6 +963,14 @@ class isospec(object):
                                 # add the cpus to the node
                                 domains_tree.cpu_add( yaml_node, c )
                                 self.track_ref(spec_node.name, c, "cpu", False)
+
+                            if len(cpus) == 1:
+                                # force an empty entry if there's only one cpu, since this
+                                # ensures that the yaml will be in list form. If we don't
+                                # do this, then assists down the pipeline have to deal with
+                                # either lists or yaml nodes
+                                cpu_list = yaml_node["cpus"]
+                                cpu_list.value.append( {} )
 
                         except Exception as e:
                             _info( f"exception procesing cpus: {e}" )
