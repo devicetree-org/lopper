@@ -386,6 +386,11 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
 
         mem_list = []
         for m in mem:
+
+            # skip empty memory entries
+            if not m:
+                continue
+
             try:
                 start = str(m['start'])
             except:
@@ -400,15 +405,29 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
                 flags_names = LopperProp(prop_name+'-flags-names',value = str(flags))
                 subnode + flags_names
 
-            #print( "memory expand: start/size as read: %s/%s" % (start,size))
-            start = humanfriendly.parse_size( start, True )
-            size = humanfriendly.parse_size( size, True )
-            #print( "memory expand: start/size as converted: %s/%s" % (start,size))
+            # print( "memory expand: start/size as read: %s/%s" % (start,size))
+            try:
+                start = humanfriendly.parse_size( start, True )
+            except:
+                try:
+                    start = int(start,16)
+                except:
+                    start = int(start)
+            try:
+                size = humanfriendly.parse_size( size, True )
+            except:
+                try:
+                    size = int(size,16)
+                except:
+                    size = int(size)
+
+            # print( "memory expand: start/size as converted: %s/%s" % (start,size))
 
             mem_list.append(int(start))
             mem_list.append(int(size))
 
     except Exception as e:
+        # print( "Exception expanding memory: %s" % e )
         mem_list = [0xdead, 0xffff ]
 
     if verbose:
@@ -424,9 +443,12 @@ def cpu_expand( tree, subnode, verbose = 0):
     if not cpus:
         return
 
-    cpus_chunks = [cpus[0][0]]
+    verbose = 0
     cpus_list = []
-    for c in cpus_chunks:
+    for c in cpus[0]:
+        # empty dict ? if so, skip
+        if not c:
+            continue
         if verbose:
             print( "[DBG]: cpu: %s" % c )
             if type(c) == dict:
