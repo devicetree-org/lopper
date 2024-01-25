@@ -14,7 +14,6 @@ import yaml
 sys.path.append(os.path.dirname(__file__))
 
 import common_utils as utils
-from domain_access import domain_get_subnodes
 
 def get_label(sdt, symbol_node, node):
     prop_dict = symbol_node.__props__
@@ -338,66 +337,9 @@ def get_mapped_nodes(sdt, node_list, options):
         all_phandles.append(address_map[tmp])
         tmp = tmp + cells + na + 1
 
-    # Get all Domains and see if any other peripheral is accessing the mapped node
-    # If Mapped delete it from valid_nodes
-    domain_nodes = domain_get_subnodes(sdt.tree)
-
-    # Get all nodes in that remove BM domain nodes
-    invalid_phandles = []
-    shared_phandles = []
-    for domain_node in domain_nodes:
-        bm_domain = []
-        if domain_node.propval('os,type') != ['']:
-            if re.search('baremetal', domain_node.propval('os,type', list)[0]):
-                    bm_domain.append(domain_node)
-        elif domain_node.propval('cpus') != ['']:
-                print('ERROR: os,type property is missing in the domain', domain_node.name)
-
-        if bm_domain:
-            if domain_node['cpus'].value[0] == match_cpunode.parent.phandle:
-               # Baremetal access property
-               # Check for shared resources
-               if domain_node.propval('access') != ['']:
-                   shared_phandles.extend(domain_node['access'].value)
-
-               if domain_node.propval('include') != ['']:
-                   rsc_domain = domain_node['include'].value
-                   for rsc in rsc_domain:
-                       match = [node for node in domain_nodes if node.phandle == rsc]
-                       if match:
-                           try:
-                               shared_phandles.extend(match[0]['access'].value)
-                           except:
-                               pass
-            else:
-                if domain_node.propval('access') != ['']:
-                   invalid_phandles.extend(domain_node['access'].value)
-        else:
-            if domain_node.propval('access') != ['']:
-                invalid_phandles.extend(domain_node['access'].value)
-
-    # Remove duplicate phandle
-    all_phandles = list(dict.fromkeys(all_phandles))
-    invalid_phandles = list(dict.fromkeys(invalid_phandles))
-
-    """
-    Create a valid node list, Here valid node list means
-    1) Without any domains cpu cluster address-map property mapped nodes are valid nodes
-    2) With domains below are assumptions
-        i) If the domain node has access property then it takes priority than address-map property
-           (i.e if any other domain node contains access property and the same peripheral node is
-            not mapped in our domain access node then it should be removed from the valid_node list)
-        ii) If the same peripheral node is mapped in our domain and other domain access node then
-            the node should include it in the valid_node list,
-        iii) If the peripheral node is in a shared resource and if it is mapped for the baremetal domain
-             then include it in the valid node list else remove it from the valid node list.
-    """
-    # Remove shared phandles from invalid phandles list
-    invalid_phandles_list = [phandle for phandle in invalid_phandles if phandle not in shared_phandles]
-    valid_phandles = [phandle for phandle in all_phandles if phandle not in invalid_phandles_list]
     # Make sure node order is preserved
     node_list.sort(key=lambda n: n.phandle, reverse=False)
-    valid_nodes = [node for node in node_list for handle in valid_phandles if handle == node.phandle]
+    valid_nodes = [node for node in node_list for handle in all_phandles if handle == node.phandle]
     return valid_nodes
 
 def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, is_subnode):

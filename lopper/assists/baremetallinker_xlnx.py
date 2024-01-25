@@ -16,7 +16,6 @@ sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node
 import common_utils as utils
 from common_utils import to_cmakelist
-from domain_access import domain_get_subnodes
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetallinker_xlnx", compat_string_to_test):
@@ -31,53 +30,6 @@ def get_memranges(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     mem_nodes = []
-
-    domain_nodes = domain_get_subnodes(sdt.tree)
-    # Get the Baremetal Domain
-    for domain_node in domain_nodes:
-        bm_domain = []
-        if domain_node.propval('os,type') != ['']:
-            if re.search('baremetal', domain_node.propval('os,type', list)[0]):
-                    bm_domain.append(domain_node)
-        elif domain_node.propval('cpus') != ['']:
-                print('ERROR: os,type property is missing in the domain', domain_node.name)
-
-        match_cpunode = get_cpu_node(sdt, options)
-
-        # Check whether domain is mapped for current processor or not
-        if bm_domain:
-            shared_mem = []
-            if not domain_node['cpus'][0] == match_cpunode.parent.phandle:
-                continue
-            else:
-               if domain_node.propval('include') != ['']:
-                   rsc_domain = lopper_lib.includes( sdt.tree, domain_node['include'] )
-                   for rscdomain in rsc_domain:
-                       if rscdomain.propval('memory') != ['']:
-                           shared_mem.extend(rscdomain.propval('memory'))
-
-            mem_nodes = sdt.tree.nodes('/memory@.*')
-            for node in mem_nodes:
-                update_shared_mem = []
-                reg, size = scan_reg_size(node, node['reg'].value, 0)
-                if shared_mem:
-                    start_addr = shared_mem[0]
-                    if start_addr in range(reg, reg+size):
-                        update_shared_mem.extend(shared_mem)
-
-                if domain_node.propval('memory') != ['']:
-                    start_addr = domain_node['memory'].value[0]
-                    if start_addr in range(reg, reg+size):
-                        if update_shared_mem:
-                            update_shared_mem.extend(domain_node['memory'].value)
-                            modify_val = update_mem_node(node, update_shared_mem)
-                        else:
-                            modify_val = update_mem_node(node, domain_node['memory'].value)
-                        node['reg'].value = modify_val
-                else:
-                    if update_shared_mem:
-                        modify_val = update_mem_node(node, update_shared_mem)
-                        node['reg'].value = modify_val
 
     #Maintain a static memory IP list this is needed inorder to capture proper ip name in the linker script
     xlnx_memipname = {"axi_bram": 0, "ps7_ddr": 0, "psu_ddr": 0, "psv_ddr": 0, "mig": 0, "lmb_bram": 0, "axi_noc2": 0, "axi_noc": 0,"psu_ocm": 0,  "psv_ocm": 0, "psx_ocm": 0, "ddr4": 0, "ddr5": 0, "mig_7series": 0, "ps7_ram": 0}
