@@ -57,7 +57,7 @@ def usage():
     prog = os.path.basename(sys.argv[0])
     print('Usage: %s <system device tree> -- <xlnx_overlay_dt.py> <machine name> <configuration>' % prog)
     print('  machine name:         cortexa53-zynqmp or cortexa72-versal')
-    print('  configuration:        full or dfx-static or dfx-partial' )
+    print('  configuration:        full or dfx' )
 
 """
 This API generates the overlay dts file by taking pl.dtsi
@@ -67,8 +67,7 @@ Args:
     sdt:      is the system device-tree
     options:  There are two valid options
               Machine name as cortexa53-zynqmp or cortexa72-versal
-              An optional argument full/dfx-static/dfx-partial
-                  The default will be full
+              An optional argument full/dfx. The default will be full.
 """
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
@@ -133,9 +132,7 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     if config == "None":
         config = "full"
 
-    # TODO - dfx-partial is not yet implemented, once implemented remove this
-    #        comments.
-    if config != "full" and config != "dfx-static" and config != "dfx-partial":
+    if config != "full" and config != "dfx":
         print('%s is not a valid argument' % str(config))
         usage()
         sys.exit(1)        
@@ -184,12 +181,12 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                         # ZynqMP(full) and Versal(segmented configuration) requires
                         # firmware-name dt property.
                         #
-                        # configuration "dfx-static" is used for ZynqMP(DFx-Static)
-                        # and Versal(DFx-Static). For Versal DFx Static we need
+                        # configuration "dfx" is used for ZynqMP(DFx) and
+                        # Versal(DFx). For Versal DFx Static we need
                         # external-fpga-config dt property.
-                        if platform != "microblaze":
+                        if config == "full" and platform != "microblaze" or config == "dfx" and platform == "cortexa53-zynqmp":
                             plat.buf('\n\t%s' % node['firmware-name'])
-                        elif config == "dfx-static" and platform != "microblaze" and platform != "cortexa9-zynq" and platform != "cortexa53-zynqmp":
+                        elif config == "dfx" and platform != "microblaze" and platform != "cortexa9-zynq" and platform != "cortexa53-zynqmp":
                             plat.buf('\n\texternal-fpga-config;')
                         else:
                             print('%s is not a valid Machine' % str(platform))
