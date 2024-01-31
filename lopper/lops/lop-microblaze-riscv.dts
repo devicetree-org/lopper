@@ -13,7 +13,7 @@
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
-                      select_3 = ":xlnx,use-muldiv:1";
+                      select_3 = ":xlnx,use-muldiv:!0";
                       lop_1_1_1 {
                           compatible = "system-device-tree-v1,lop,code-v1";
                           code = "
@@ -136,8 +136,10 @@
 
                                    if n['xlnx,use-fpu'].value[0] == 1:
                                        libpath.append('f')
+                                       archflags.append('f') 
                                    elif n['xlnx,use-fpu'].value[0] == 2:
                                        libpath.append('d')
+                                       archflags.append('d') 
                                    
                                    libpath.append('/')
 
