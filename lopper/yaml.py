@@ -1107,7 +1107,7 @@ class LopperYAML(LopperJSON):
                 print( "[DBG++]: to_yaml: dumping export dictionary" )
                 pprint( dct )
 
-            if ruamel.yaml.version_info < (0, 15):
+            if version.parse(ruamel.yaml.__version__) < version.parse("0.18"):
                 yaml = ruamel.yaml
             else:
                 yaml = YAML(typ='safe')
@@ -1124,7 +1124,7 @@ class LopperYAML(LopperJSON):
                 if verbose > 1:
                     print(RenderTree(self.anytree.root))
                     print( "[DBG++]: dumping generated yaml to stdout:" )
-                    if ruamel.yaml.version_info < (0, 15):
+                    if version.parse(ruamel.yaml.__version__) < version.parse("0.18"):
                         print(ruamel.yaml.dump(dct,
                                                default_flow_style=False,
                                                canonical=False,
@@ -1136,7 +1136,7 @@ class LopperYAML(LopperJSON):
                         print( yaml.dump(dct) )
 
                 with open( outfile, "w") as file:
-                    if ruamel.yaml.version_info < (0, 15):
+                    if version.parse(ruamel.yaml.__version__) < version.parse("0.18"):
                         ruamel.yaml.round_trip_dump(dct, file,
                                                     default_flow_style=False,
                                                     canonical=False,
@@ -1171,7 +1171,7 @@ class LopperYAML(LopperJSON):
 
         iny = open( in_name )
 
-        if ruamel.yaml.version_info < (0, 15):
+        if version.parse(ruamel.yaml.__version__) < version.parse("0.18"):
             self.dct = ruamel.yaml.safe_load( iny )
         else:
             yaml = YAML(typ='safe')
