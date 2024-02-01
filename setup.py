@@ -37,7 +37,7 @@ setuptools.setup(
     include_package_data=True,
     install_requires=[ "humanfriendly","configparser" ],
     extras_require={ "server": ["flask>=1.1.2","flask_restful>=0.3.8","pandas"],
-                     "yaml": ["pyaml","ruamel.yaml","anytree"],
+                     "yaml": ["pyaml","ruamel.yaml","anytree","packaging"],
                      "dt" : ["devicetree"],
                      "pcpp" : ["pcpp"],
                     },
