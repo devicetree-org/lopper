@@ -91,10 +91,6 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                 symbol_node = node
             if node.name == "interrupt-multiplex":
                 imux_node = node
-            if platform == "cortexa53-zynqmp" and node.name == "interrupt-controller@f9010000":
-                gic_node = node
-            elif platform == "cortexa72-versal" and node.name == "interrupt-controller@f9000000":
-                gic_node = node
         except:
            pass
 
@@ -103,11 +99,14 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     # while reading the tree to add nodes under fragment@2/overlay@2
     ignore_list = []
     for node in root_sub_nodes:
-
         try:
+            label_name = get_label(sdt, symbol_node, node)
+            if platform == "cortexa53-zynqmp" and label_name == "gic_a53":
+                gic_node = node
+            elif platform == "cortexa72-versal" and label_name == "gic_a72":
+                gic_node = node
             if re.search("afi0" , node.name) or re.search("clocking" , node.name):
                ignore_list.append(node)
-               
         except:
            pass
 
