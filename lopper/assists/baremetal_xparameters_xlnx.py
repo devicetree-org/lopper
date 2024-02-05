@@ -120,9 +120,18 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                 for i, prop in enumerate(driver_proplist):
                     pad = 0
                     phandle_prop = 0
+                    subnode_gen = 0
                     if isinstance(prop, dict):
                         pad = list(prop.values())[0]
                         prop = list(prop.keys())[0]
+                        if isinstance(pad, dict):
+                            subnode_prop = prop
+                            prop = list(pad.keys())[0]
+                            subnode_prop_list = list(pad.values())[0]
+                            if prop == "subnode_phandle":
+                                subnode_gen = 1
+                                pad = 0
+                                phandle_prop = 0
                         if pad == "phandle":
                             phandle_prop = 1
 
@@ -211,6 +220,15 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             prop_val = bm_config.get_phandle_regprop(sdt, prop, node[prop].value)
                             plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {hex(prop_val)}')
                             canondef_dict.update({prop:hex(prop_val)})
+                        except KeyError:
+                            pass
+                    elif subnode_gen:
+                        try:
+                            phandle_value = node[subnode_prop].value[0]
+                            prop_val = 1
+                            subnode_prop = subnode_prop.replace("-", "_")
+                            plat.buf(f'\n#define XPAR_{label_name}_{subnode_prop.upper()} {hex(prop_val)}')
+                            canondef_dict.update({subnode_prop:hex(prop_val)})
                         except KeyError:
                             pass
                     elif prop == "ranges":
