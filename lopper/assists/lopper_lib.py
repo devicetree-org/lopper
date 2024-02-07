@@ -180,6 +180,50 @@ def node_accesses( tree, node ):
 
     return accessed_nodes
 
+# utility routine to take a list of cells and return a value from
+# the list. Both the value and the cells used to construct the value
+# are returned. The number of cells used to construct the value is
+# dictated by the cell_size parameter.
+def cell_value_get( cells, cell_size, start_idx = 0 ):
+    used_cells = []
+    if cell_size == 2:
+        memory_value = (cells[start_idx] << 32) | cells[start_idx+1]
+        used_cells.append(cells[start_idx])
+        used_cells.append(cells[start_idx+1])
+    else:
+        memory_value = cells[start_idx]
+        used_cells.append(cells[start_idx])
+
+    return memory_value, used_cells
+
+# utility routine to take a value, which can be 32bit or
+# 64bit and split it into a number of cells (dictated by
+# the cell_size parameter)
+def cell_value_split( value, cell_size ):
+    ret_val = []
+
+    if cell_size == 2:
+        ret_val.append((value & 0xFFFFFFFF00000000) >> 32)
+        ret_val.append((value & 0x00000000FFFFFFFF))
+        mem_changed_flag = True
+    else:
+        ret_val.append(value)
+
+    return ret_val
+
+# returns a list of all properties in the tree that
+# reference a given node (via phandle)
+def all_refs( tree, node ):
+    nodes = []
+
+    # get a list of all properties that reference a given node
+    for n in tree:
+        for p in n:
+            phandles = p.resolve_phandles()
+            if node in phandles:
+                nodes.append( p )
+
+    return nodes
 
 # returns True if a node is compatible with the passed string
 # (or list of strings)

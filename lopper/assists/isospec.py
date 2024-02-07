@@ -941,7 +941,7 @@ class isospec(object):
                             try:
                                 mem = yaml_node["memory"]
                                 if len(mem) == 1:
-                                    # force an empty entry if there's only one cpu, since this
+                                    # force an empty entry if there's only one memory, since this
                                     # ensures that the yaml will be in list form. If we don't
                                     # do this, then assists down the pipeline have to deal with
                                     # either lists or yaml nodes

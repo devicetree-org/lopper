@@ -405,7 +405,7 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
                 flags_names = LopperProp(prop_name+'-flags-names',value = str(flags))
                 subnode + flags_names
 
-            # print( "memory expand: start/size as read: %s/%s" % (start,size))
+            print( "memory expand: start/size as read: %s/%s" % (start,size))
             try:
                 start = humanfriendly.parse_size( start, True )
             except:
@@ -421,7 +421,8 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
                 except:
                     size = int(size)
 
-            # print( "memory expand: start/size as converted: %s/%s" % (start,size))
+            print( "memory expand: start/size as converted: %s/%s" % (start,size))
+            #os._exit(1)
 
             mem_list.append(int(start))
             mem_list.append(int(size))
@@ -430,7 +431,7 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
         # print( "Exception expanding memory: %s" % e )
         mem_list = [0xdead, 0xffff ]
 
-    if verbose:
+    if verbose or True:
         # dump the memory as hex
         print( '[DBG] memory: [{}]'.format(', '.join(hex(x) for x in mem_list)) )
 
@@ -822,8 +823,10 @@ def subsystem_expand( tgt_node, sdt, verbose = 0 ):
             ## cpu processing
             cpu_expand( tree, subnode, verbose )
 
+            print( "DDDDDDDDDDDDDDDDDDDDDDDDDDDD" )
             ## memory processing
             memory_expand( tree, subnode, verbose )
+            print ( "AAAAAAAAAAAAAAAAAAAAAAAAAAAAA" )
 
             ## access processing
             access_expand( tree, subnode, verbose )

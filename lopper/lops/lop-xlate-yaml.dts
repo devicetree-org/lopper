@@ -215,6 +215,8 @@
                                             subsystem.access_expand( tree, n, 0 )
 
                                         if n.propval('memory') != ['']:
+                                            print( 'expanding memory: ' )
+                                            n.print()
                                             subsystem.memory_expand( tree, n )
                                         if n.propval('sram') != ['']:
                                             subsystem.memory_expand( tree, n, prop_name = 'sram' )

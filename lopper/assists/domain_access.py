@@ -27,6 +27,7 @@ from lopper.tree import LopperAction
 import lopper
 import lopper_lib
 from itertools import chain
+from lopper_lib import chunks
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "access-domain,domain-v1", compat_string_to_test):
@@ -34,13 +35,6 @@ def is_compat( node, compat_string_to_test ):
     if re.search( "module,domain_access", compat_string_to_test):
         return core_domain_access
     return ""
-
-# tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
-def check_bit_set(n, k):
-    if n & (1 << (k)):
-        return True
-
-    return False
 
 # tree: is the lopper system device-tree
 def domain_get_subnodes(tree):
@@ -74,6 +68,23 @@ def domain_get_subnodes(tree):
     # Remove duplicate entries
     direct_node_refs = list(dict.fromkeys(direct_node_refs))
     return direct_node_refs
+
+def memory_get_size(mem_node, start_address):
+    ac = mem_node.parent['#address-cells'][0]
+    sc = mem_node.parent['#size-cells'][0]
+
+    matching_memory = []
+
+    reg_val = mem_node["reg"].value
+    memory_chunks = chunks( reg_val, ac + sc )
+    for memory_entry in memory_chunks:
+        start_address_value,cells = lopper_lib.cell_value_get( memory_entry, ac )
+        size_value,cells = lopper_lib.cell_value_get(memory_entry, sc, ac )
+
+        if start_address_value == start_address:
+            return size_value
+
+    return None
 
 # node: is the domain node number
 # mem_val: Memory node address and size value to be updated
@@ -293,38 +304,134 @@ def core_domain_access( tgt_node, sdt, options ):
         memory_hex = 0x0
         memory_int = 0
 
-    # This may be moved to the top of the domain process and then when we are
-    # processing cpus and bus nodes, we can apply the memory to ranges <>, etc,
-    # and modify them accordingly.
-    if verbose > 1:
+    # This may be moved to the top of the domain process and then when
+    # we are processing cpus and bus nodes, we can apply the memory to
+    # ranges <>, etc, and modify them accordingly.
+    if verbose:
         print( "[INFO]: core_domain_access: memory property: %s" % memory_hex )
 
-    # 1) find if there's a top level memory node
-    try:
-        memory_node = sdt.tree["/memory@.*"]
-    except:
-        memory_node = None
+    # Get all top level memory nodes, we'll be checking them for any
+    # required size adjustments
+    memory_nodes = sdt.tree.nodes("/memory@.*")
 
-    if memory_node:
+    # The memory chunks are what we've built up from the yaml and .iss
+    # file Check them against the memory nodes in the tree to see if
+    # anything needs to be adjusted.
+    domain_memory_chunks = chunks( domain_node['memory'].value, 2 )
+
+    modified_memory_nodes = []
+    for memory_entry in domain_memory_chunks:
+        memory_start_addr = memory_entry[0]
+        memory_size = memory_entry[1]
         if verbose:
-            print( "[INFO]: core_domain_access: memory node found (%s), modifying to match domain memory" % memory_node )
+            print("[INFO]: processing domain memory entry: %s (start: %s, size: %s)" %
+                             (memory_entry,hex(memory_start_addr),hex(memory_size) ) )
 
-        # 2) modify that memory property to match the node we have here
-        # memprop_old = sdt.FDT.getprop(memory_node, 'reg' )
-        # num_bits = len(memprop_old)
-        # a = 0
-        # b = 1
-        # c = 0
-        # d = 1
-        # val = a.to_bytes(4,byteorder='big') + b.to_bytes(4,byteorder='big') + c.to_bytes(4,byteorder='big') + d.to_bytes(4,byteorder='big')
+        for mem_node in memory_nodes:
+            try:
+                ac = mem_node.parent['#address-cells'][0]
+                sc = mem_node.parent['#size-cells'][0]
+            except Exception as e:
+                print( "[ERROR]: cannot get cell sizes from %s" % mem_node.parent )
 
-        # TODO: this seems to be shortening up the system memory node. Check to see
-        #       if the openamp node is being propery interpreted
+            # "reg" is the memory node record list, we'll process it
+            # to see if it needs to be udpated.
+            reg_val = mem_node["reg"].value
 
-        try:
-            memory_node['reg'].value = memory_int
-        except:
-            pass
+            # the reg is of size "address cells" + "size cells"
+            memory_chunks = chunks( reg_val, ac + sc )
+            # This will collect both unchanged and changed values, so we
+            # can rewrite the record if needed (on a change)
+            mem_reg_val_new = []
+            mem_changed_flag = False
+            for memory_entry in memory_chunks:
+                start_address_value, cells = lopper_lib.cell_value_get( memory_entry, ac )
+                mem_reg_val_new.extend( cells )
+
+                size_value, size_cells  = lopper_lib.cell_value_get( memory_entry, sc, ac )
+                if verbose:
+                    print( "[INFO]:   node %s has memory entry: address: %s size: %s" %
+                           (mem_node,hex(start_address_value),hex(size_value) ))
+
+                if start_address_value == memory_start_addr:
+                    if verbose:
+                        print( "[INFO]:     matching memory start address: %s" % (hex(start_address_value)))
+
+                    # Now to check the size ...
+                    if memory_size != size_value:
+                        if verbose:
+                            print("[INFO]:      size value differs: %s vs %s" % (hex(memory_size),hex(size_value)))
+
+                        mem_reg_val_new.extend( lopper_lib.cell_value_split( memory_size, sc ) )
+                        mem_changed_flag = True
+                    else:
+                        mem_reg_val_new.extend( size_cells )
+                else:
+                    mem_reg_val_new.extend( size_cells )
+
+            if mem_changed_flag:
+                if verbose:
+                    print( "[INFO]:      *** changed value detected, updating memory node to: %s" % mem_reg_val_new )
+                mem_node["reg"].value = mem_reg_val_new
+                modified_memory_nodes.append( mem_node )
+
+
+    # if any memory was modified, we have to update the address-maps to be
+    # consistent.
+    if modified_memory_nodes:
+        for mn in modified_memory_nodes:
+            if verbose:
+                print( "[INFO]: processing modified memory node: %s (phandle: %s)" % (mn,mn.phandle ))
+
+            all_memory_prop_refs = lopper_lib.all_refs( sdt.tree, mn )
+            for ref_prop in all_memory_prop_refs:
+
+                # we are are only updating address-map properties with
+                # the new memory node values
+                if ref_prop.name != "address-map":
+                    continue
+
+                cpu_node = ref_prop.node
+                try:
+                    acells = cpu_node['#ranges-address-cells'][0]
+                    scells = cpu_node['#ranges-size-cells'][0]
+                    root_node_acells = sdt.tree['/']['#address-cells'][0]
+                except Exception as e:
+                    print( "[ERROR]: could not determine cell sizes for address-map fixup: %s" % e )
+                    sys.exit(1)
+
+                if verbose:
+                    print( "[INFO]:   updating address-map for node: %s" % cpu_node )
+
+                phandle_idx = acells
+                address_map_idx = 0
+                # The address map entry is "adddress cells" + phandle + "root node address size" + "size cells"
+                address_map_chunks = chunks( cpu_node["address-map"].value, acells + 1 + root_node_acells + scells )
+                for achunk in address_map_chunks:
+                    if achunk[phandle_idx] == mn.phandle:
+                        if verbose:
+                            print( "[INFO]:      matching phandle found in the address-map" )
+
+                        memory_address,cells = lopper_lib.cell_value_get( achunk, acells )
+                        address_map_len,cells = lopper_lib.cell_value_get( achunk, root_node_acells, acells + 1 + root_node_acells )
+
+                        ## we need to get the new size from the memory node
+                        memory_len = memory_get_size( mn, memory_address )
+
+                        if verbose:
+                            print( "[INFO]:        memory size: %s" % hex(memory_len) )
+                            print( "[INFO]:        address map size: %s" % hex(address_map_len) )
+                        if address_map_len != memory_len:
+                            # size difference, we need to update it
+                            new_memory_length = lopper_lib.cell_value_split( memory_len, scells )
+
+                            # update fields +5 and +6 to the new len
+                            start_idx = address_map_idx + 5
+                            for m in new_memory_length:
+                                cpu_node["address-map"].value[start_idx] = m
+                                start_idx += 1
+
+                    address_map_idx += acells + 1 + root_node_acells + scells
 
     # final) deal with unreferenced nodes
     refd_nodes = sdt.tree.refd()
@@ -342,8 +449,5 @@ def core_domain_access( tgt_node, sdt, options ):
             # of values. We could refernece those nodes explicitly if we want
             # to use this as a final house cleaning step in the future.
             # sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
-
-
-    #sys.exit(1)
 
     return True
