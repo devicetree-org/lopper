@@ -379,14 +379,25 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
             xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop)
         else:
             # Get the sub node
+            dummy_struct = None
             try:
                 phandle_value = node[subnode_prop].value[0]
             except KeyError:
-                print(f"ERROR: In valid property name {subnode_prop}\n")
-                sys.exit(1)
-                
-            sub_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == phandle_value]
-            xlnx_generate_config_struct(sdt, sub_node[0], drvprop_list, plat, subnode_prop_list, 1)
+	        # Need to create dummy entries
+                dummy_struct = True
+
+            if dummy_struct:
+                for k,subnode_prop in enumerate(subnode_prop_list):
+                    if k == 0:
+                        plat.buf('\n\t\t{')
+                    plat.buf('\n\t\t%s' % hex(0x00))
+                    if k == len(subnode_prop_list)-1:
+                        plat.buf('\n\t\t}')
+                    else:
+                        plat.buf(',')
+            else:
+                sub_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == phandle_value]
+                xlnx_generate_config_struct(sdt, sub_node[0], drvprop_list, plat, subnode_prop_list, 1)
     
         if i == len(driver_proplist)-1:
             if "subnode_phandle" not in prop:
