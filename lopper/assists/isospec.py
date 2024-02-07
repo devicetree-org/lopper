@@ -975,6 +975,9 @@ class isospec(object):
                         except Exception as e:
                             _info( f"exception procesing cpus: {e}" )
 
+                    elif access_type == "ss_management":
+                        _info( f"spec type ss_management: {access}" )
+                        _info( f"no action required, skipping" )
                     else:
                         _error( f"unknown spec type: {access_type}" )
 
