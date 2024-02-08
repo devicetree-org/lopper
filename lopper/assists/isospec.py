@@ -978,6 +978,9 @@ class isospec(object):
                     elif access_type == "ss_management":
                         _info( f"spec type ss_management: {access}" )
                         _info( f"no action required, skipping" )
+                    elif access_type == "ss_permissions":
+                        _info( f"spec type ss_permissions: {access}" )
+                        _info( f"no action required, skipping" )
                     else:
                         _error( f"unknown spec type: {access_type}" )
 
