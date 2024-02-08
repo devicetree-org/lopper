@@ -183,8 +183,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 if node.propval('xlnx,ip-name') != ['']:
                                     ip_name = node.propval('xlnx,ip-name', list)[0]
                                     if ip_name in ["psu_ipi", "psv_ipi", "psx_ipi", "psxl_ipi"]:
-                                        plat.buf(f'\n#define XPAR_{label_name}_INTR {intr_id[0]}')
-                                        canondef_dict.update({"INTR":intr_id[0]})
+                                        plat.buf(f'\n#define XPAR_{label_name}_INTR {hex(intr_id[0]+32)}')
+                                        canondef_dict.update({"INTR":hex(intr_id[0]+32)})
                         except KeyError:
                             intr_id = [0xFFFF]
 
