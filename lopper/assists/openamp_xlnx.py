@@ -1087,11 +1087,14 @@ def get_platform(tree):
             break
         elif "versal-net" in compat:
             platform = SOC_TYPE.VERSAL_NET
-        elif "versal" in compat or 'vck190' in compat:
+        elif "versal" in compat or 'vck190' in compat or 'vmk180' in compat:
             platform = SOC_TYPE.VERSAL
             break
         elif "xlnx,zynq-7000" in compat:
             platform = SOC_TYPE.ZYNQ
+
+    if platform == None:
+        print("Unable to find data for platform: ", root_compat)
 
     return platform
 
@@ -1176,19 +1179,10 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
 
 def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
     # Xilinx-specific YAML expansion of RPMsg description.
-    platform = None
     root_node = tree["/"]
     root_compat = root_node.props("compatible")[0].value
+    platform = get_platform(tree)
 
-    for compat in root_compat:
-        if "zynqmp" in compat or 'zcu102' in compat:
-            platform = SOC_TYPE.ZYNQMP
-            break
-        elif "versal" in compat or 'vck190' in compat:
-            platform = SOC_TYPE.VERSAL
-            break
-        elif "xlnx,zynq-7000" in compat:
-            platform = SOC_TYPE.ZYNQ
     if platform == None:
         print("Unsupported platform: ", root_compat)
         return False
