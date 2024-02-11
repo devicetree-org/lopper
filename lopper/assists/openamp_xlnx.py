@@ -1081,17 +1081,28 @@ def get_platform(tree):
     root_node = tree["/"]
     root_compat = root_node.props("compatible")[0].value
 
+    zynqmp = [ 'xlnx,zcu102', 'xlnx,zcu104', 'xlnx,zcu106', 'xlnx,zcu111', 'xlnx,zcu208-sdfec-zynqmp', 'xlnx,zcu208', 'xlnx,zcu216' 'zcu102', 'zynqmp' ]
+    versal = [ 'xlnx,vmk180', 'xlnx,vck190-emmc-versal', 'xlnx,vck190-ospi-versal', 'xlnx,vck190-versal', 'xlnx,vmk180-emmc-versal', 'xlnx,vmk180-ospi-versal', 'xlnx,vmk180-versal', 'xlnx,vpk120-versal', 'xlnx,vpk180-versal', 'vck190', 'vmk180' ]
+    versalnet = [ 'versal-net' ]
+    zynq = [ 'xlnx,zynq-7000' ]
+
     for compat in root_compat:
-        if "zynqmp" in compat or 'zcu102' in compat:
+        if compat in zynqmp:
             platform = SOC_TYPE.ZYNQMP
             break
-        elif "versal-net" in compat:
+        elif compat in versalnet:
             platform = SOC_TYPE.VERSAL_NET
-        elif "versal" in compat or 'vck190' in compat or 'vmk180' in compat:
+        elif compat in versal:
             platform = SOC_TYPE.VERSAL
             break
-        elif "xlnx,zynq-7000" in compat:
+        elif compat in zynq:
             platform = SOC_TYPE.ZYNQ
+            break
+        else:
+            platform = None
+
+    if platform == None:
+        print("Unable to find data for platform: ", root_compat)
 
     if platform == None:
         print("Unable to find data for platform: ", root_compat)
