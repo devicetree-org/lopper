@@ -357,9 +357,42 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     if cci_en:
         plat.buf("\n#define XPAR_CACHE_COHERENT \n")
 
-    #CPU Freq related defines
+    #CPU parameters related defines
     match_cpunode = bm_config.get_cpu_node(sdt, options)
-    if re.search("microblaze", match_cpunode['compatible'].value[0]):
+    if re.search("microblaze-riscv", match_cpunode['compatible'].value[0]):
+        plat.buf(f"\n\n/*  CPU parameters definition */\n")
+        if match_cpunode.propval('xlnx,freq') != ['']:
+            cpu_freq = match_cpunode.propval('xlnx,freq', list)[0]
+            plat.buf(f'#define XPAR_CPU_CORE_CLOCK_FREQ_HZ {cpu_freq}\n')
+
+        if match_cpunode.propval('xlnx,use-dcache') != ['']:
+            use_dcache = match_cpunode.propval('xlnx,use-dcache', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_DCACHE {use_dcache}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_DCACHE 0')
+        if match_cpunode.propval('xlnx,dcache-line-len') != ['']:
+            dcache_line_len = match_cpunode.propval('xlnx,dcache-line-len', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_DCACHE_LINE_LEN {dcache_line_len}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_DCACHE_LINE_LEN 0\n')
+        if match_cpunode.propval('xlnx,dcache-byte-size') != ['']:
+            dcache_byte_size = match_cpunode.propval('xlnx,dcache-byte-size', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_DCACHE_BYTE_SIZE {dcache_byte_size}\n')
+        if match_cpunode.propval('xlnx,use-icache') != ['']:
+            use_icache = match_cpunode.propval('xlnx,use-icache', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_ICACHE {use_icache}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_ICACHE 0')
+        if match_cpunode.propval('xlnx,icache-line-len') != ['']:
+            icache_line_len = match_cpunode.propval('xlnx,icache-line-len', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_ICACHE_LINE_LEN {icache_line_len}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_ICACHE_LINE_LEN 0\n')
+        if match_cpunode.propval('xlnx,icache-byte-size') != ['']:
+            icache_byte_size = match_cpunode.propval('xlnx,icache-byte-size', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_ICACHE_BYTE_SIZE {icache_byte_size}\n')
+
+    elif re.search("microblaze", match_cpunode['compatible'].value[0]):
         if match_cpunode.propval('xlnx,freq') != ['']:
             cpu_freq = match_cpunode.propval('xlnx,freq', list)[0]
             plat.buf(f'\n#define XPAR_CPU_CORE_CLOCK_FREQ_HZ {cpu_freq}\n')
