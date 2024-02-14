@@ -210,7 +210,9 @@ class domain_yaml(object):
                     for c in compatible_nodes:
                         if re.search( "cpu@" + cpu_number, c.name ):
                             cluster_mask = set_bit( cluster_mask, int(cpu_number) )
+                            cluster_cpu_label = c.label
                 else:
+                    cluster_cpu_label = ''
                     cluster_mask = 0xf
 
                 # cpu mode checks.
@@ -241,8 +243,9 @@ class domain_yaml(object):
 
                 if mode_mask:
                     cpu_entry = { "dev": cluster_name,    # remove before writing to yaml (if no roundtrip)
-                                  "spec_name": cpu_name,  # rmeove before writing to yaml (if no roundtrip)
+                                  "spec_name": cpu_name,  # remove before writing to yaml (if no roundtrip)
                                   "cluster" : cluster_name,
+                                  "cluster_cpu" : cluster_cpu_label,
                                   "cpumask" : hex(cluster_mask),
                                   "mode" : { "secure": secure,
                                              "el": hex(mode_mask)
@@ -250,8 +253,9 @@ class domain_yaml(object):
                                  }
                 else:
                     cpu_entry = { "dev": cluster_name,    # remove before writing to yaml (if no roundtrip)
-                                  "spec_name": cpu_name,  # rmeove before writing to yaml (if no roundtrip)
+                                  "spec_name": cpu_name,  # remove before writing to yaml (if no roundtrip)
                                   "cluster" : cluster_name,
+                                  "cluster_cpu" : cluster_cpu_label,
                                   "cpumask" : hex(cluster_mask),
                                   "mode" : { "secure": secure }
                                  }
