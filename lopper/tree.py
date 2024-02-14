@@ -3131,6 +3131,8 @@ class LopperTree:
         """
         if parent_nodes:
             refd_nodes = starting_node.resolve_all_refs( [".*"] )
+        else:
+            refd_nodes = []
 
         subnodes_to_ref = starting_node.subnodes()
 

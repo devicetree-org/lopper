@@ -169,7 +169,31 @@ def core_domain_access( tgt_node, sdt, options ):
     for anode in a_nodes:
         # add a refcount to the node and it's parents
         sdt.tree.ref_all( anode, True )
+        if verbose:
+            print( "[INFO]: adding reference to: %s" % anode )
         direct_node_refs.append( anode )
+
+    # 1a) indirect references. Any phandles referenced the direct
+    # nodes should be ref'd as well.
+    indirect_refs = []
+    for d in direct_node_refs:
+        # if we allow parent references nothing will be deleted
+        # since ref_all does the node and all subnodes. So if
+        # we want to get all parent refs, we can't use ref_all()
+        # to increment the refcount
+        all_refs = d.resolve_all_refs(parents=True)
+        for r in all_refs:
+            if r not in indirect_refs and r not in direct_node_refs:
+                indirect_refs.append( r )
+
+    for d in indirect_refs:
+        if verbose:
+            print( "[INFO]: adding indirect reference to: %s" % d )
+        # ref_all will also reference count subnodes, we
+        # don't want that, so we go directly are the refcount
+        # field
+        # sdt.tree.ref_all( d, False )
+        d.ref = 1
 
     # 2) are there resource group includes ?, they can have access = <> as well
     try:
@@ -232,7 +256,7 @@ def core_domain_access( tgt_node, sdt, options ):
                     print( "[WARNING]: %s" % e )
 
     # 4) directly accessed nodes. Check their type. If they are busses,
-    #    we have some sedoncary processing to do.
+    #    we have some seecondary processing to do.
     nodes_to_filter = []
     for anode in direct_node_refs:
         node_types = lopper_lib.node_ancestor_types( anode )
@@ -241,7 +265,7 @@ def core_domain_access( tgt_node, sdt, options ):
             for i,s in enumerate(simple_bus):
                 if not s in nodes_to_filter:
                     if verbose > 1:
-                        print( "[INFO]: core_domain_access: rsimple bus processing for: %s" % anode.name )
+                        print( "[INFO]: core_domain_access: simple bus processing for: %s" % anode.name )
 
                     nodes_to_filter.append( s )
 
@@ -291,7 +315,7 @@ def core_domain_access( tgt_node, sdt, options ):
                    return False
                """
         if verbose:
-            print( "[INFO]: core_domain_access: filtering on:\n------%s\n-------\n" % code )
+            print( "[INFO]: core_domain_access (%s): filtering on:\n------%s\n-------\n" % (n,code) )
 
         sdt.tree.filter( n + "/", LopperAction.DELETE, code, None, verbose )
 
