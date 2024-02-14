@@ -51,7 +51,7 @@ def extract( tgt_node, sdt, options ):
     except:
         args = []
 
-    if verbose or True:
+    if verbose:
         print( "[INFO]: cb: extract( %s, %s, %s, %s )" % (tgt_node, sdt, verbose, args))
 
     opts,args2 = getopt.getopt( args, "i:pvt:o:x:", [ "verbose", "permissive" ] )

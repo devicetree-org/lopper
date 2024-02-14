@@ -431,7 +431,7 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
         # print( "Exception expanding memory: %s" % e )
         mem_list = [0xdead, 0xffff ]
 
-    if verbose or True:
+    if verbose:
         # dump the memory as hex
         print( '[DBG] memory: [{}]'.format(', '.join(hex(x) for x in mem_list)) )
 
