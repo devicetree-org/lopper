@@ -97,19 +97,13 @@ def scan_reg_size(node, value, idx):
     if cells > 2:
         reg1 = value[cells * idx]
         if reg1 != 0:
-            val = str(hex(value[cells * idx + 1]))[2:]
-            pad = 8 - len(val)
-            val = val.ljust(pad + len(val), '0')
-            reg = int((str(hex(reg1)) + val), base=16)
+            reg = int(f"{hex(reg1)}{value[cells * idx + 1]:08x}", base=16)
         else:
             reg = value[cells * idx + 1]
 
         size1 = value[cells * idx + na]
         if size1 != 0:
-            val = str(hex(value[cells * idx + ns + 1]))[2:]
-            pad = 8 - len(val)
-            val = val.ljust(pad + len(val), '0')
-            size = int((str(hex(size1)) + val), base=16)
+            size = int(f"{hex(size1)}{value[cells * idx + ns + 1]:08x}", base=16)
         else:
             size = value[cells * idx + ns + 1]
     elif cells == 2:
@@ -211,19 +205,18 @@ def scan_ranges_size(range_value, ns):
     concatenate the higher and the lower cells.
     e.g. <0x4 0x80000000> => 0x480000000
     """
-    addr = hex(range_value[2])
-    high_addr_cell = hex(range_value[1])
-    if high_addr_cell != "0x0":
-        addr = high_addr_cell + addr.lstrip('0x').ljust(8, '0')
+    addr = range_value[2]
+    high_addr_cell = range_value[1]
+    if high_addr_cell != 0:
+        addr = int(f"{hex(high_addr_cell)}{addr:08x}", base=16)
 
-    size = hex(range_value[-1])
-    high_size_cell = hex(range_value[-2])
+    size = range_value[-1]
+    high_size_cell = range_value[-2]
     # If ns = 1, then there is no use of high_size_cells
-    if high_size_cell != "0x0" and ns > 1:
-        size = high_size_cell + size.lstrip('0x').ljust(8, '0')
+    if high_size_cell != 0 and ns > 1:
+        size = int(f"{hex(high_size_cell)}{size:08x}", base=16)
 
-    return int(addr, base=16), int(size, base=16)
-
+    return addr, size
 
 def get_clock_prop(sdt, value):
     clk_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == value[0]]

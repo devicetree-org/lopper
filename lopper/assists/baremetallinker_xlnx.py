@@ -101,10 +101,7 @@ def get_memranges(tgt_node, sdt, options):
                start = [address_map[inx+i+1] for i in range(na)]
                size_list.append(address_map[inx+2*na])
                if na == 2 and start[0] != 0:
-                   val = str(start[1])
-                   pad = 8 - len(val)
-                   val = val.ljust(pad + len(val), '0')
-                   reg = int((str(hex(start[0])) + val), base=16)
+                   reg = int(f"{hex(start[0])}{start[1]:08x}", base=16)
                    addr_list.append(reg)
                elif na == 2:
                    addr_list.append(start[1])

@@ -120,10 +120,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             for inx in indx_list:
                 start = [address_map[inx+i+1] for i in range(na)]
                 if na == 2 and start[0] != 0:
-                    val = str(start[1])
-                    pad = 8 - len(val)
-                    val = val.ljust(pad + len(val), '0')
-                    reg = int((str(hex(start[0])) + val), base=16)
+                    reg = int(f"{hex(start[0])}{start[1]:08x}", base=16)
                     prop_val.append(reg)
                 elif na == 2:
                     prop_val.append(start[1])
@@ -137,10 +134,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 else:
                     high_size_cell = "0x0"
                 if high_size_cell != "0x0" and ns > 1:
-                    val = hex(size_cells[1]).lstrip('0x')
-                    pad = 8 - len(val)
-                    val = val.ljust(pad + len(val), '0')
-                    size = str(hex(size_cells[0])) + val
+                    size = f"{hex(size_cells[0])}{size_cells[1]:08x}"
                 prop_val.append(int(size, base=16))
         else:
             invalid_memnode.append(node)
