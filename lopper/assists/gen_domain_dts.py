@@ -19,6 +19,18 @@ from common_utils import to_cmakelist
 import common_utils as utils
 from domain_access import update_mem_node
 
+def delete_unused_props( node, driver_proplist ):
+    child_list = list(node.child_nodes.keys())
+    for child in child_list:
+        child_node = node.child_nodes[child]
+        delete_unused_props( child_node, driver_proplist)
+        if not child_node.child_nodes.keys() and not child_node.__props__.keys():
+            node.delete(child_node)
+    prop_list = list(node.__props__.keys())
+    for prop in prop_list:
+        if prop not in driver_proplist:
+            node.delete(prop)
+
 def is_compat( node, compat_string_to_test ):
     if "module,gen_domain_dts" in compat_string_to_test:
         return xlnx_generate_domain_dts
@@ -164,10 +176,14 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psx_fpd_gpv']
 
     if linux_dt:
-        yaml_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "xlnx,xdma-host.yaml")
-        schema = utils.load_yaml(yaml_file)
-        driver_compatlist = compat_list(schema)
-        driver_proplist = schema.get('required',[])
+        yaml_prune_list = ["xlnx,xdma-host.yaml", "xlnx,rfdc.yaml"]
+        driver_compatlist = []
+        driver_proplist = []
+        for yaml_prune in yaml_prune_list:
+            yaml_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), yaml_prune)
+            schema = utils.load_yaml(yaml_file)
+            driver_compatlist = driver_compatlist + compat_list(schema)
+            driver_proplist = driver_proplist + schema.get('required',[])
     for node in root_sub_nodes:
         if linux_dt:
             if node.propval('xlnx,ip-name') != ['']:
@@ -190,12 +206,9 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 else:
                     sdt.tree.delete(node)
         elif node.propval('compatible') != [''] and linux_dt:
-            is_xdma_node = [compat for compat in driver_compatlist if compat in node.propval('compatible', list)]
-            if is_xdma_node:
-                prop_list = list(node.__props__.keys())
-                for prop in prop_list:
-                    if prop not in driver_proplist:
-                        node.delete(prop)
+            is_prune_node = [compat for compat in driver_compatlist if compat in node.propval('compatible', list)]
+            if is_prune_node:
+                delete_unused_props( node, driver_proplist)
 
     # Remove symbol node referneces
     symbol_node = sdt.tree['/__symbols__']
