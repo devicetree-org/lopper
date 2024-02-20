@@ -69,7 +69,7 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
                 drv_path = drv_data[entries]['path'][0]
             drv_name = os.path.basename(drv_path)
             # Incase of versioned driver strip the version info
-            drv_name = re.sub(r"_v.*_.*$", "", drv_name)
+            drv_name = re.split("_v(\d+)_(\d+)", drv_name)[0]
             yaml_file_list += [os.path.join(drv_path, 'data', f"{drv_name}.yaml")]
         has_drivers = [dir_name for dir_name in os.listdir(utils.get_dir_path(sdt.dts)) if "drivers" in dir_name]
         if has_drivers:
