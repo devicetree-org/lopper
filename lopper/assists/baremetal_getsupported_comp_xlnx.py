@@ -58,7 +58,7 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
         for entries in files:
             dir_path = utils.get_dir_path(utils.get_dir_path(entries))
             comp_name = utils.get_base_name(dir_path)
-            comp_name =  re.sub("_v(\d+)_(\d+)", "", comp_name)
+            comp_name = re.split("_v(\d+)_(\d+)", comp_name)[0]
             yaml_data = utils.load_yaml(entries)
             version = yaml_data.get('version','vless')
 

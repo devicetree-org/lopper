@@ -604,7 +604,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     drvpath = utils.get_dir_path(src_dir.rstrip(os.sep))
     drvname = utils.get_base_name(drvpath)
     # Incase of versioned driver strip the version info
-    drvname = re.sub(r"_v.*_.*$", "", drvname)
+    drvname = re.split("_v(\d+)_(\d+)", drvname)[0]
     yaml_file = os.path.join(drvpath, f"data/{drvname}.yaml")
     if not utils.is_file(yaml_file):
         print(f"{drvname} Driver doesn't have yaml file")
