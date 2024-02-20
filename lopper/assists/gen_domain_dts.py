@@ -176,7 +176,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psx_fpd_gpv']
 
     if linux_dt:
-        yaml_prune_list = ["xlnx,xdma-host.yaml", "xlnx,rfdc.yaml"]
+        yaml_prune_list = ["xlnx,xdma-host.yaml", "xlnx,rfdc.yaml", "xlnx,sd-fec.yaml"]
         driver_compatlist = []
         driver_proplist = []
         for yaml_prune in yaml_prune_list:
