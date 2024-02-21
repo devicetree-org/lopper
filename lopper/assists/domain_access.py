@@ -384,6 +384,7 @@ def core_domain_access( tgt_node, sdt, options ):
 
             mem_reg_val_new = []
             mem_changed_flag = False
+            mem_matched_val_flag = False
             for sdt_memory_entry in sdt_memory_node_chunks:
                 start_address_value, cells = lopper_lib.cell_value_get( sdt_memory_entry, ac )
 
@@ -398,6 +399,7 @@ def core_domain_access( tgt_node, sdt, options ):
                 if domain_memory_start_addr >= start_address_value and \
                       domain_memory_start_addr + domain_memory_size <= start_address_value + size_value:
 
+                    mem_matched_val_flag = True
                     if verbose:
                         print( "[INFO]:     %s/%s falls inside memory range %s/%s" %
                                (hex(domain_memory_start_addr),hex(domain_memory_size), hex(start_address_value), hex(size_value)) )
@@ -434,7 +436,12 @@ def core_domain_access( tgt_node, sdt, options ):
 
             if mem_changed_flag:
                 if verbose:
-                    print( "[INFO]:      *** changed value(s) detected, updating memory node to: %s" % mem_reg_val_new )
+                    print( "[INFO]:      *** changed value(s) detected, extending memory node with: %s" % [hex(i) for i in mem_reg_val_new])
+                item["reg_val"].extend( mem_reg_val_new )
+
+            if mem_matched_val_flag and not mem_changed_flag:
+                if verbose:
+                    print( "[INFO]:      *** matched memory value(S) detected, extending memory node with: %s" % [hex(i) for i in mem_reg_val_new])
                 item["reg_val"].extend( mem_reg_val_new )
 
 
