@@ -1,0 +1,8 @@
+anytree
+humanfriendly
+packaging
+pcpp
+PyYAML
+ruamel.yaml
+ruamel.yaml.clib
+six
