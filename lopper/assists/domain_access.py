@@ -503,7 +503,7 @@ def core_domain_access( tgt_node, sdt, options ):
             for achunk in address_map_chunks:
                 if achunk[phandle_idx] == mn.phandle:
                     if mn.phandle in skip_handles:
-                        if vebose:
+                        if verbose:
                             print( "[INFO]: address-map for phandle %s has been updated, skipping existing entry" % mn.phandle )
                         continue
 
