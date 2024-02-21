@@ -21,7 +21,8 @@ Lopper is in a single repository, and is available via git or pypi:
 
    In addition to the standard libraries, Lopper uses: pcpp (or cpp), humanfriendly,
    dtc and libfdt for processing and manipulating device trees. These tools must be
-   installed and on the PATH.
+   installed and on the PATH. You can also use the [venv](https://docs.python.org/3/library/venv.html)
+   to install and manage the python dependencies, more on this below.
 
    **Note:** (python cpp) pcpp is optional (available on PyPi), and if not available cpp
    will be used for pre-processing input files. If comments are to be maintained
@@ -30,6 +31,37 @@ Lopper is in a single repository, and is available via git or pypi:
 
    For yaml file processing, lopper has an optional dependency on python's yaml
    and ruamel as well as anytree for importing the contents of yaml files.
+
+#### Using [venv](https://docs.python.org/3/library/venv.html) based flow with git:
+
+   Using python3's venv is very powerful and makes doing lopper development and usage easier.
+   Please refer to python documentation to get more information about this topic.
+
+First time virtual env setup:
+
+```
+    cd <lopper-repo>
+    python3 -m venv .venv
+    source .venv/bin/activate
+    # this will install all lopper dependencies locally within the virtual env
+    (.venv) % pip3 install -r requirements.txt
+    (.venv) % pip list
+    deactivate
+```
+Now, everytime you'd like to use lopper, just activate and deactivate within any shell:
+
+```
+    # Activate the virtual env on demand
+    cd <lopper-repo>
+    source .venv/bin/activate
+
+    # Now, you are inside a virtual env
+    # Use lopper, do development etc.
+    # (.venv) % ./lopper.py ...
+
+    # when done, deactivate virtual env
+    deactivate
+```
 
 ### pypi:
 
@@ -63,7 +95,7 @@ chose whichever matches your preferred workflow.
 
 For pull requests and issues:
 
-  - Use the Lopoper github: https://github.com/devicetree-org/lopper
+  - Use the Lopper github: https://github.com/devicetree-org/lopper
 
 For Patches:
 
@@ -75,7 +107,7 @@ For Patches:
 
 For discussion:
 
-  - Use the mailing list or the github wiki/dicussions/issue tracker
+  - Use the mailing list or the github wiki/discussions/issue tracker
 
 # Lopper overview:
 
