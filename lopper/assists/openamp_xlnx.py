@@ -1082,7 +1082,7 @@ def get_platform(tree):
     root_compat = root_node.props("compatible")[0].value
 
     zynqmp = [ 'zynqmp', 'zcu' ]
-    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'xlnx,versal-vhk158', 'xlnx,versal', 'vek280' ]
+    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'xlnx,versal-vhk158', 'xlnx,versal', 'vek280', 'vhk158' ]
     versalnet = [ 'versal-net', 'vc-p', 'a2197' ]
     zynq = [ 'xlnx,zynq-7000', 'zc7' ]
 
@@ -1120,6 +1120,9 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
     # Xilinx OpenAMP subroutine to collect RPMsg information from Remoteproc
     # relation
     elfload_nodes = []
+    root_node_acells = tree['/']['#address-cells'][0]
+    root_node_scells = tree['/']['#size-cells'][0]
+
     platform = get_platform(tree)
     if platform == None:
         print("Unsupported platform: ", root_compat)
@@ -1139,7 +1142,25 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
     elfload_prop = node.props("elfload")[0]
 
     for i, remote_node in enumerate(remote_nodes):
+        if remote_node.props("cpus") == []:
+            print("xlnx_remoteproc_parse: ",remote_node, " is missing cpus property")
+            return False
+
+        rpu_node = tree.pnode( remote_node.props("cpus")[0][0] )
+        address_map_chunks = chunks( rpu_node["address-map"].value, root_node_acells + root_node_scells )
+
+        # traverse domain for relevant mapped TCM nodes
+        tcm_compat = "tcm-global-1"
         channel_elfload_nodes = []
+
+        for j in address_map_chunks:
+            mapped_node = tree.pnode(j[1])
+            mapped_node_compat = mapped_node.propval("compatible", list)
+            for k in mapped_node_compat:
+                if tcm_compat in k:
+                    channel_elfload_nodes.append( mapped_node )
+                    print('added node ', mapped_node)
+
         row_width = int(len(elfload_prop) / len(remote_nodes))
         for current_elfload in range(0,row_width):
             idx = row_width * i + current_elfload
