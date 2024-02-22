@@ -438,11 +438,15 @@ def core_domain_access( tgt_node, sdt, options ):
                 if verbose:
                     print( "[INFO]:      *** changed value(s) detected, extending memory node with: %s" % [hex(i) for i in mem_reg_val_new])
                 item["reg_val"].extend( mem_reg_val_new )
+                # refcount it
+                sdt.tree.ref_all( item["node"], True )
 
             if mem_matched_val_flag and not mem_changed_flag:
                 if verbose:
                     print( "[INFO]:      *** matched memory value(S) detected, extending memory node with: %s" % [hex(i) for i in mem_reg_val_new])
                 item["reg_val"].extend( mem_reg_val_new )
+                # refcount it
+                sdt.tree.ref_all( item["node"], True )
 
 
     # if any memory was modified, we have to update the address-maps to be
@@ -545,6 +549,25 @@ def core_domain_access( tgt_node, sdt, options ):
             # put our rebuilt address-map back into the node, we'll repeat this
             # for all modified memory nodes
             cpu_node["address-map"].value = address_map_new
+
+    # delete unreferenced memory nodes
+    prop = "memory"
+    code = """
+           p = node.propval( 'device_type' )
+           if p and "{0}" in p:
+               r = node.ref
+               if r <= 0:
+                   return True
+               else:
+                   return False
+           else:
+               return False
+           """.format( prop )
+
+    if verbose:
+        print( "[INFO]: core_domain_access: deleting unreferenced memory:\n------%s\n-------\n" % code )
+
+    sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
 
 
     # final) deal with unreferenced nodes
