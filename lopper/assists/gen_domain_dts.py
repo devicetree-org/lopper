@@ -192,9 +192,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     sdt.tree.delete(node)
                 elif 'xlnx,zynqmp-ipi-mailbox' in node.propval('compatible'):
                     sdt.tree.delete(node)
-                elif "tcm" in node.propval('compatible', list)[0] and "global" in node.propval('compatible', list)[0]:
-                    sdt.tree.delete(node)
-
             elif node.name == "rpu-bus":
                 sdt.tree.delete(node)
         if node not in mapped_nodelist:
