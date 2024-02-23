@@ -372,9 +372,15 @@ class domain_yaml(object):
 
         try:
             address = device['addr']
-            tnode = self.sdt.tree.addr_node( address )
-            if not tnode:
+            tnodes = self.sdt.tree.addr_node( address, True )
+            if not tnodes:
                 raise Exception( f"No node found for: {device}" )
+
+            # we take the first node, as that will be the parent node
+            # in any sets of nodes with a 1:1 mapping, and is likely
+            # what we want.
+            tnode = tnodes[0]
+
         except Exception as e:
             _info( f"Exception while looking up node by address: {e}" )
             ## TODO: this may mean it is memory, processing should go
