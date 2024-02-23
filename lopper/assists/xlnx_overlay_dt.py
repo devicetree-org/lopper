@@ -284,6 +284,10 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         except:
            pass
 
+    if parent_tab == 1:
+        plat.buf('\n')
+        plat.buf('\t' * int(rt))
+        plat.buf('};')
     plat.buf('\n};')
     plat.out(''.join(plat.get_buf()))
     if pl_node:
