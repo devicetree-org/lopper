@@ -1082,7 +1082,7 @@ def get_platform(tree):
     root_compat = root_node.props("compatible")[0].value
 
     zynqmp = [ 'zynqmp', 'zcu' ]
-    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'xlnx,versal-vhk158', 'xlnx,versal', 'vek280' ]
+    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'vhk158', 'xlnx,versal', 'vek280' ]
     versalnet = [ 'versal-net', 'vc-p', 'a2197' ]
     zynq = [ 'xlnx,zynq-7000', 'zc7' ]
 
