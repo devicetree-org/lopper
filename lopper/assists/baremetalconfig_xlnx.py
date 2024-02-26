@@ -330,8 +330,6 @@ def get_mapped_nodes(sdt, node_list, options):
         all_phandles.append(address_map[tmp])
         tmp = tmp + cells + na + 1
 
-    # Make sure node order is preserved
-    node_list.sort(key=lambda n: n.phandle, reverse=False)
     valid_nodes = [node for node in node_list for handle in all_phandles if handle == node.phandle]
     return valid_nodes
 
@@ -627,10 +625,9 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
            compat_string = node['compatible'].value
            for compa in compat_string:
                if compat in compa:
-                   driver_nodes.append(node)
+                   if not node in driver_nodes:
+                       driver_nodes.append(node)
 
-    # Remove duplicate nodes
-    driver_nodes = list(set(driver_nodes))
     if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
         driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
     if not config_struct:

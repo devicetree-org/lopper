@@ -161,10 +161,9 @@ def getmatch_nodes(sdt, node_list, yaml_file, options):
         for node in node_list:
            compat_string = node['compatible'].value
            if compat in compat_string:
-               driver_nodes.append(node)
+               if not node in driver_nodes:
+                   driver_nodes.append(node)
 
-    # Remove duplicate nodes
-    driver_nodes = list(set(driver_nodes))
     if sdt.tree['/'].propval('pruned-sdt') == ['']:
         driver_nodes = bm_config.get_mapped_nodes(sdt, driver_nodes, options)
     return driver_nodes
