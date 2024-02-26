@@ -451,6 +451,7 @@ class lopper_base:
                     "access" : [ 'phandle flags' ],
                     "cpus" : [ 'phandle mask mode' ],
                     "clocks" : [ 'phandle:#clock-cells:+1' ],
+                    "reset-gpios" : [ 'phandle field field' ],
                 }
         except:
             return {}
