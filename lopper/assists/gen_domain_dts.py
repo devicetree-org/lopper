@@ -178,7 +178,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     if linux_dt:
         yaml_prune_list = ["xlnx,xdma-host.yaml", "xlnx,rfdc.yaml", "xlnx,sd-fec.yaml"]
         driver_compatlist = []
-        driver_proplist = []
+        # Shouldn't delete properties
+        driver_proplist = ["#interrupt-cells", "#address-cells", "#size-cells", "device_type"]
         for yaml_prune in yaml_prune_list:
             yaml_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), yaml_prune)
             schema = utils.load_yaml(yaml_file)
