@@ -1079,29 +1079,28 @@ def get_platform(tree):
     # set platform
     platform = None
     root_node = tree["/"]
-    root_compat = root_node.props("compatible")[0].value
+    root_model = str(root_node.props("model")[0].value)
 
     zynqmp = [ 'zynqmp', 'zcu' ]
-    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'vhk158', 'xlnx,versal', 'vek280' ]
-    versalnet = [ 'versal-net', 'vc-p', 'a2197' ]
-    zynq = [ 'xlnx,zynq-7000', 'zc7' ]
+    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'vhk158', 'xlnx,versal', 'vek280', 'versal' ]
+    versalnet = [ 'versal-net', 'vc-p', 'a2197', 'Versal NET' ]
+    zynq = [ 'xlnx,zynq-7000', 'zc7', 'zynq' ]
 
-    for compat in root_compat:
-        for i in zynqmp:
-            if compat in i or i in compat:
-                return SOC_TYPE.ZYNQMP
-        for i in versalnet:
-            if compat in i or i in compat:
-                return SOC_TYPE.VERSAL_NET
-        for i in versal:
-            if compat in i or i in compat:
-                return SOC_TYPE.VERSAL
-        for i in zynq:
-            if compat in i or i in compat:
-                return SOC_TYPE.ZYNQ
+    for i in zynqmp:
+        if root_model.lower() in i or i in root_model.lower():
+            return SOC_TYPE.ZYNQMP
+    for i in versalnet:
+        if root_model.lower() in i or i in root_model.lower():
+            return SOC_TYPE.VERSAL_NET
+    for i in versal:
+        if root_model.lower() in i or i in root_model.lower():
+            return SOC_TYPE.VERSAL
+    for i in zynq:
+        if root_model.lower() in i or i in root_model.lower():
+            return SOC_TYPE.ZYNQ
 
     if platform == None:
-        print("Unable to find data for platform: ", root_compat)
+        print("Unable to find data for platform: ", root_model)
 
     return platform
 
