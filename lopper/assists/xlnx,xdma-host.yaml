@@ -73,6 +73,7 @@ required:
   - interrupts
   - interrupt-map
   - interrupt-map-mask
+  - interrupt-names
   - "#interrupt-cells"
   - interrupt-controller
 
