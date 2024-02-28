@@ -372,7 +372,7 @@ class domain_yaml(object):
 
         try:
             address = device['addr']
-            tnodes = self.sdt.tree.addr_node( address, True )
+            tnodes = self.sdt.tree.addr_node( address )
             if not tnodes:
                 raise Exception( f"No node found for: {device}" )
 

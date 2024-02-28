@@ -3835,7 +3835,7 @@ class LopperTree:
         # calculate all the addresses
         address_dict = {}
         for n in address_nodes:
-            node_address = n.address(debug=debug)
+            node_address = n.address()
             ## you are here. we shouldn't clobber existing (parent) addresses if we get a match from
             ## a child
             if node_address:
