@@ -166,7 +166,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         ip_name = match_cpunode.propval('xlnx,ip-name', list)[0]
         if "microblaze" in ip_name:
             stack_size = 0x400
-            heap_size = 0x400
+            heap_size = 0x800
         else:
             stack_size = 0x2000
             heap_size = 0x2000
