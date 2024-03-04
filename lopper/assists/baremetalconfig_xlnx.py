@@ -111,6 +111,16 @@ def scan_reg_size(node, value, idx):
         size = value[idx * cells + 1]
     else:
         reg = value[0]
+
+    # 4 GB (0xFFFFFFFF) is a boundary condition for a 32-bit cell size. Size is calculated
+    # using (high_addr - low_addr + 1) in SDT. When the complete 4 GB DDR is used for a
+    # 32 bit processor, the size becomes 0x100000000 using the above calculation and result
+    # into an overflow for a 32-bit cell size in SDT. To avoid this overflow, (+1) is
+    # removed in SDT for this particular boundary condition and it is being done here in
+    # assist to get the correct size in linker and xparameters.
+    if size == 4294967295 and reg == 0:
+        size = 4294967296
+
     return reg, size
 
 def get_interrupt_prop(sdt, node, value):
