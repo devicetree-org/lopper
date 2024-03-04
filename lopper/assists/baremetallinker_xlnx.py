@@ -248,8 +248,8 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         Initial 80 bytes is being used by the linker vectors section in case of Microblaze.
         Adjust the size and start address accordingly.
         """
-        if cpu_ip_name == "microblaze":
-            start += 80
+        if cpu_ip_name == "microblaze" and start < 80:
+            start = 80
             size -= start
         """
         For R5 PSU DDR initial 1MB is reserved for tcm
