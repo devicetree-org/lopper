@@ -291,6 +291,9 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
             if re.search("microblaze", match_cpunode['compatible'].value[0]):
                 if match_cpunode.propval('xlnx,family') != ['']:
                     family = match_cpunode.propval('xlnx,family', list)[0]
+                    # Special handling for Versal platform update the variable to inline with PS processors.
+                    if family == "versal":
+                        family = "Versal"
                     fd.write(f'set(CMAKE_MACHINE "{family}" CACHE STRING "CMAKE MACHINE")\n')
             if match_cpunode.propval('reg') != ['']:
                 cpu_id = match_cpunode.propval('reg', list)[0]
