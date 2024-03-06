@@ -179,6 +179,12 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
                 driver_list.append(drv)
                 nodes = getmatch_nodes(sdt, node_list, drv_yamlpath, options)
                 if nodes:
+                    """
+                    For emacps driver phy-handle property presence is optional
+                    remove the same from the list if exists.
+                    """
+                    if (drv == "emacps") and ("phy-handle" in prop_list):
+                        prop_list.remove("phy-handle")
                     valid_hw = nodes[0],prop_list
         if valid_hw:
             prop_dict = check_required_prop(sdt, valid_hw[0], valid_hw[1])
