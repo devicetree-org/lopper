@@ -124,6 +124,18 @@
                                    libpath.append(archflags_libpath)
                                    libpath.append('/')
 
+                                   if n['xlnx,use-bitman-a'].value[0] == 1:
+                                       archflags.append('_zba')
+					
+                                   if n['xlnx,use-bitman-b'].value[0] == 1:
+                                       archflags.append('_zbb')
+
+                                   if n['xlnx,use-bitman-c'].value[0] == 1:
+                                       archflags.append('_zbc')
+
+                                   if n['xlnx,use-bitman-s'].value[0] == 1:
+                                       archflags.append('_zbs')
+
                                    if n['xlnx,use-dcache'].value[0] == 1 or n['xlnx,use-icache'].value[0] == 1:
                                        archflags.append('_zicbom')
 
