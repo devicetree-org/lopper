@@ -173,10 +173,10 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psu_pcie_attrib_0', 'psu_pcie_dma', 'psu_pcie_high1', 'psu_pcie_high2', 'psu_pcie_low',
                             'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou', 'psu_ipi',
                             'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu',
-                            'psx_fpd_gpv']
+                            'psx_fpd_gpv', 'ddr4']
 
     if linux_dt:
-        yaml_prune_list = ["xlnx,xdma-host.yaml", "xlnx,rfdc.yaml", "xlnx,sd-fec.yaml"]
+        yaml_prune_list = ["xlnx,xdma-host.yaml", "xlnx,rfdc.yaml", "xlnx,sd-fec.yaml", "xlnx,clocking-wizard.yaml"]
         driver_compatlist = []
         # Shouldn't delete properties
         driver_proplist = ["#interrupt-cells", "#address-cells", "#size-cells", "device_type"]
