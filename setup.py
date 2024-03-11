@@ -33,7 +33,7 @@ setuptools.setup(
         'Operating System :: POSIX :: Linux',
     ],
     packages=setuptools.find_packages(include=('lopper',)),
-    python_requires='>=3.10',
+    python_requires='>=3.8',
     include_package_data=True,
     install_requires=[ "humanfriendly","configparser" ],
     extras_require={ "server": ["flask>=1.1.2","flask_restful>=0.3.8","pandas"],
