@@ -1,5 +1,6 @@
 #/*
 # * Copyright (c) 2021 Xilinx Inc. All rights reserved.
+# * Copyright (C) 2024 Advanced Micro Devices, Inc.  All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
@@ -153,7 +154,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                                     fd.seek(0, 0)
                                     fd.writelines(content)
                                 dec.append(testapp_schema[app]['declaration'])
-                                if not 'SelfTest' in app and not 'selftest' in app:
+                                if 'selftest' not in app.lower() and 'selftest' not in testapp_schema[app]['declaration'].lower():
                                     drvconfig_name = True
                         testapp_data.update({label_name:dec})
                         if drvconfig_name:
