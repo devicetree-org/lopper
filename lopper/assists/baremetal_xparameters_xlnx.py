@@ -391,6 +391,41 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         if match_cpunode.propval('xlnx,icache-byte-size') != ['']:
             icache_byte_size = match_cpunode.propval('xlnx,icache-byte-size', list)[0]
             plat.buf(f'#define XPAR_MICROBLAZE_RISCV_ICACHE_BYTE_SIZE {icache_byte_size}\n')
+        if match_cpunode.propval('xlnx,use-fpu') != ['']:
+            use_fpu = match_cpunode.propval('xlnx,use-fpu', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_FPU {use_fpu}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_FPU 0\n')
+        if match_cpunode.propval('xlnx,use-mmu') != ['']:
+            use_mmu = match_cpunode.propval('xlnx,use-mmu', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_MMU {use_mmu}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_MMU 0\n')
+        if match_cpunode.propval('xlnx,use-sleep') != ['']:
+            use_sleep = match_cpunode.propval('xlnx,use-sleep', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_SLEEP {use_sleep}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_SLEEP 0\n')
+        if match_cpunode.propval('xlnx,fault-tolerant') != ['']:
+            is_fault_tolerant = match_cpunode.propval('xlnx,fault-tolerant', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_FAULT_TOLERANT {is_fault_tolerant}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_FAULT_TOLERANT 0\n')
+        if match_cpunode.propval('xlnx,d-lmb') != ['']:
+            d_lmb = match_cpunode.propval('xlnx,d-lmb', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_D_LMB {d_lmb}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_D_LMB 0\n')
+        if match_cpunode.propval('xlnx,use-branch-target-cache') != ['']:
+            use_branch_target_cache = match_cpunode.propval('xlnx,use-branch-target-cache', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_BRANCH_TARGET_CACHE {use_branch_target_cache}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_BRANCH_TARGET_CACHE 0\n')
+        if match_cpunode.propval('xlnx,branch-target-cache-size') != ['']:
+            branch_target_cache_size = match_cpunode.propval('xlnx,branch-target-cache-size', list)[0]
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_BRANCH_TARGET_CACHE_SIZE {branch_target_cache_size}\n')
+        else:
+            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_BRANCH_TARGET_CACHE_SIZE 0\n')
 
     elif re.search("microblaze", match_cpunode['compatible'].value[0]):
         if match_cpunode.propval('xlnx,freq') != ['']:
