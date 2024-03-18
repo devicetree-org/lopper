@@ -111,6 +111,8 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
         if name == "memory_tests":
             if proc_ip_name == "microblaze":
                 mem_type = "bram"
+            elif proc_ip_name == "ps7_cortexa9":
+                mem_type = "ps7_ram"
             else:
                 mem_type = "ocm"
         required_mem = required_mem_schema[mem_type]
