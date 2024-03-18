@@ -224,6 +224,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                     elif phandle_prop:
                         try:
                             prop_val = bm_config.get_phandle_regprop(sdt, prop, node[prop].value)
+                            prop = prop.replace("-", "_")
                             plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {hex(prop_val)}')
                             canondef_dict.update({prop:hex(prop_val)})
                         except KeyError:
