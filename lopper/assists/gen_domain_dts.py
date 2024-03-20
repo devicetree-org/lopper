@@ -97,6 +97,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         if linux_dt:
             if node.name == "memory@fffc0000" or node.name == "memory@bbf00000":
                 sdt.tree.delete(node)
+            if node.propval('memory_type', list) == ['linear_flash']:
+                sdt.tree.delete(node)
             for entry in node.propval('compatible', list):
                 if entry.startswith("xlnx,ddr4-"):
                     sdt.tree.delete(node)
