@@ -1,8 +1,9 @@
 #/*
 # * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+# * Copyright (c) 2024 Advanced Micro Devices, Inc.  All rights reserved.
 # *
 # * Author:
-# *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+# *       Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
 # *
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
@@ -145,8 +146,15 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             plat.buf(f'\n#define XPAR_{label_name}_HIGHADDR {hex(val + size -1)}')
                             canondef_dict.update({"BASEADDR":hex(val)})
                             canondef_dict.update({"HIGHADDR":hex(val + size - 1)})
-                            if pad:
-                                for j in range(1, pad):
+                            """
+                            Generate defines for all the available baseaddresses
+                            """
+                            na = node.parent["#address-cells"].value[0]
+                            ns = node.parent["#size-cells"].value[0]
+                            cells = na + ns
+                            num_of_addr = int(len(node[prop].value)/cells)
+                            if num_of_addr > 1:
+                                for j in range(1, num_of_addr):
                                     try:
                                         val, size = bm_config.scan_reg_size(node, node[prop].value, j)
                                         plat.buf(f'\n#define XPAR_{label_name}_BASEADDR_{j} {hex(val)}')
@@ -165,8 +173,18 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         except KeyError:
                             intr = [0xFFFF]
 
-                        if pad:
-                            for j in range(1, pad):
+                        """
+                        Generate interrupt defines for all the interrupts
+                        """
+                        try:
+                            inp =  node['interrupt-parent'].value[0]
+                            intr_parent = [node for node in sdt.tree['/'].subnodes() if node.phandle == inp]
+                            inc = intr_parent[0]["#interrupt-cells"].value[0]
+                            num_of_intrs = int(len(node[prop].value)/inc)
+                        except KeyError:
+                            num_of_intrs = 0
+                        if num_of_intrs > 1:
+                            for j in range(1, num_of_intrs):
                                 try:
                                     plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()}_{j} {intr[j]}')
                                 except IndexError:
@@ -174,26 +192,21 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
 
                         try:
                             intr_id = bm_config.get_interrupt_id(sdt, node, node[prop].value)
-                            if node.propval('xlnx,is-pl') != ['']:
-                                is_pl = node.propval('xlnx,is-pl', list)[0]
-                                if is_pl:
+                            if node.parent.name != "":
+                                if node.parent.name == "amba_pl":
                                     plat.buf(f'\n#define XPAR_FABRIC_{label_name}_INTR {intr_id[0]}')
                                     canondef_dict.update({"FABRIC":intr_id[0]})
-                            else:
-                                if node.propval('xlnx,ip-name') != ['']:
-                                    ip_name = node.propval('xlnx,ip-name', list)[0]
-                                    if ip_name in ["psu_ipi", "psv_ipi", "psx_ipi", "psxl_ipi"]:
-                                        plat.buf(f'\n#define XPAR_{label_name}_INTR {hex(intr_id[0]+32)}')
-                                        canondef_dict.update({"INTR":hex(intr_id[0]+32)})
+                                    if num_of_intrs > 1:
+                                        for j in range(1, num_of_intrs):
+                                            plat.buf(f'\n#define XPAR_FABRIC_{label_name}_INTR_{j} {intr_id[j]}')
+                                else:
+                                    if node.propval('xlnx,ip-name') != ['']:
+                                        ip_name = node.propval('xlnx,ip-name', list)[0]
+                                        if ip_name in ["psu_ipi", "psv_ipi", "psx_ipi", "psxl_ipi"]:
+                                            plat.buf(f'\n#define XPAR_{label_name}_INTR {hex(intr_id[0]+32)}')
+                                            canondef_dict.update({"INTR":hex(intr_id[0]+32)})
                         except KeyError:
                             intr_id = [0xFFFF]
-
-                        if pad:
-                            for j in range(1, pad):
-                                try:
-                                    plat.buf(f'\n#define XPAR_{label_name}_INTR_{j} {intr[j]}')
-                                except IndexError:
-                                    pass
 
                     elif prop == "interrupt-parent":
                         try:
