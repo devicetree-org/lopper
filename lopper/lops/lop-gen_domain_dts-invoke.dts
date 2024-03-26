@@ -24,7 +24,7 @@
 			compatible = "system-device-tree-v1,lop,assist-v1";
 			node = "/";
 			id = "module,gen_domain_dts";
-			options = " psv_cortexa72_0 linux_dt ";
+			options = " psv_cortexa72_0 linux_dt keep_tcm ";
 
 		};
 		lop_5_2 {
