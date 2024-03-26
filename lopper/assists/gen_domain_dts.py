@@ -71,6 +71,12 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     except IndexError:
         pass
 
+    keep_tcms = None
+    try:
+        keep_tcms = options['args'][2]
+    except IndexError:
+        pass
+
     # Delete other CPU Cluster nodes
     cpunode_list = sdt.tree.nodes('/cpu.*@.*')
     clustercpu_nodes = []
@@ -96,6 +102,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     for node in root_sub_nodes:
         if linux_dt:
             if node.name == "memory@fffc0000" or node.name == "memory@bbf00000":
+                sdt.tree.delete(node)
+            if keep_tcms == None and 'tcm' in node.name:
                 sdt.tree.delete(node)
             if node.propval('memory_type', list) == ['linear_flash']:
                 sdt.tree.delete(node)
