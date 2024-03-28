@@ -1083,7 +1083,7 @@ def get_platform(tree):
 
     zynqmp = [ 'zynqmp', 'zcu' ]
     versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'vhk158', 'xlnx,versal', 'vek280', 'versal' ]
-    versalnet = [ 'versal-net', 'vc-p', 'a2197', 'Versal NET' ]
+    versalnet = [ 'versal-net', 'vc-p', 'Versal NET' ]
     zynq = [ 'xlnx,zynq-7000', 'zc7', 'zynq' ]
 
     for i in zynqmp:
