@@ -453,7 +453,7 @@ class lopper_base:
                     "clocks" : [ 'phandle:#clock-cells:+1' ],
                     "reset-gpios" : [ 'phandle field field' ],
                     "resets" : [ 'phandle field' ],
-                    "assigned-clocks" : [ 'phandle field' ],
+                    "assigned-clocks" : [ 'phandle:#clock-cells:+1' ],
                 }
         except:
             return {}
