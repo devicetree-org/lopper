@@ -71,6 +71,12 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     except IndexError:
         pass
 
+    keep_tcms = None
+    try:
+        keep_tcms = options['args'][2]
+    except IndexError:
+        pass
+
     # Delete other CPU Cluster nodes
     cpunode_list = sdt.tree.nodes('/cpu.*@.*')
     clustercpu_nodes = []
@@ -97,8 +103,13 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         if linux_dt:
             if node.name == "memory@fffc0000" or node.name == "memory@bbf00000":
                 sdt.tree.delete(node)
+            if keep_tcms == None and 'tcm' in node.name:
+                sdt.tree.delete(node)
+            if node.propval('memory_type', list) == ['linear_flash']:
+                sdt.tree.delete(node)
             for entry in node.propval('compatible', list):
-                if entry.startswith("xlnx,ddr4-"):
+                pl_memory_compatible_list = ["xlnx,ddr4","xlnx,mig-7series","xlnx,lmb-bram","xlnx,axi-bram"]
+                if any(entry.startswith(compatible_prefix) for compatible_prefix in pl_memory_compatible_list):
                     sdt.tree.delete(node)
                     break
 
@@ -228,7 +239,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     for prop in prop_list:
         if prop not in match_label_list:
             sdt.tree['/__symbols__'].delete(prop)
-        if prop == "gic_a53" or prop == "gic_a72" and linux_dt:
+        if prop == "gic_a53" or prop == "gic_a72" or prop == "gic_its":
             val = sdt.tree['/__symbols__'].propval(prop, list)[0]
             val = val.replace("apu-bus", "axi")
             sdt.tree['/__symbols__'].propval(prop, list)[0] = val

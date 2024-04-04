@@ -109,8 +109,10 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
     if required_mem_schema:
         mem_type = list(required_mem_schema.keys())[0]
         if name == "memory_tests":
-            if proc_ip_name == "microblaze":
+            if proc_ip_name == "microblaze" or proc_ip_name == "microblaze_riscv":
                 mem_type = "bram"
+            elif proc_ip_name == "ps7_cortexa9":
+                mem_type = "ps7_ram"
             else:
                 mem_type = "ocm"
         required_mem = required_mem_schema[mem_type]
@@ -155,7 +157,7 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
             else:
                 dev_dict.update({hw_type:[{drv:prop_list}]})
         else:
-            return True
+            dev_dict.update({drv:[{drv:prop_list}]})
 
     for dev_type, dev_list in dev_dict.items():
         valid_hw = None

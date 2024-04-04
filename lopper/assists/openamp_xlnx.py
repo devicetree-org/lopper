@@ -732,7 +732,8 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
     if node.props("host") != []:
         return True
 
-    platform = get_platform(tree)
+    platform = get_platform(tree, verbose)
+    root_compat = tree['/'].props("compatible")[0]
     if platform == None:
         print("Unsupported platform: ", root_compat)
         return False
@@ -1027,9 +1028,9 @@ def xlnx_remoteproc_update_tree(tree, node, remote_node, openamp_channel_info, v
     return True
 
 
-def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, elfload_nodes):
+def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, elfload_nodes, verbose = 0):
     cpu_config = determine_cpus_config(remote_node)
-    platform = get_platform(tree)
+    platform = get_platform(tree, verbose)
     rpu_core = None
 
     if cpu_config in [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT]:
@@ -1075,23 +1076,40 @@ def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, elf
     openamp_channel_info["rpu_core"+channel_id] = rpu_core
     return True
 
-def get_platform(tree):
+def get_platform(tree, verbose = 0):
     # set platform
     platform = None
     root_node = tree["/"]
     root_model = str(root_node.props("model")[0].value)
+    root_compat = root_node.props("compatible")[0].value
 
-    zynqmp = [ 'zynqmp', 'zcu' ]
+    zynqmp = [ 'zynqmp', 'zcu', 'Xilinx ZynqMP', 'Ultra96' ]
     versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'vhk158', 'xlnx,versal', 'vek280', 'versal' ]
-    versalnet = [ 'versal-net', 'vc-p', 'a2197', 'Versal NET' ]
+    versalnet = [ 'versal-net', 'vc-p', 'Versal NET' ]
     zynq = [ 'xlnx,zynq-7000', 'zc7', 'zynq' ]
+
+    if verbose > 0:
+        print("[DBG++]: OPENAMP: XLNX: ")
+        print("\troot_model: ", root_model)
+        print("\troot_compat: ", root_compat)
+        print("\tstatic tables to compare against:")
+        print("\t\tzynqmp: ", zynqmp)
+        print("\t\tversal: ", versal)
+        print("\t\tversalnet: ", versalnet)
+        print("\t\tzynq: ", zynq)
 
     for i in zynqmp:
         if root_model.lower() in i or i in root_model.lower():
             return SOC_TYPE.ZYNQMP
+        for j in root_compat:
+            if i in j:
+                return SOC_TYPE.ZYNQMP
     for i in versalnet:
         if root_model.lower() in i or i in root_model.lower():
             return SOC_TYPE.VERSAL_NET
+        for j in root_compat:
+            if i in j:
+                return SOC_TYPE.VERSAL_NET
     for i in versal:
         if root_model.lower() in i or i in root_model.lower():
             return SOC_TYPE.VERSAL
@@ -1119,7 +1137,8 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
     # Xilinx OpenAMP subroutine to collect RPMsg information from Remoteproc
     # relation
     elfload_nodes = []
-    platform = get_platform(tree)
+    platform = get_platform(tree, verbose)
+    root_compat = tree['/'].props("compatible")[0]
     if platform == None:
         print("Unsupported platform: ", root_compat)
         return False
@@ -1146,7 +1165,7 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
             channel_elfload_nodes.append ( elfloadnode )
 
         if platform in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET]:
-            ret = xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, channel_elfload_nodes)
+            ret = xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, channel_elfload_nodes, verbose)
             if not ret:
                 print("ret xlnx_remoteproc_rpu_parse false")
                 return ret
@@ -1187,7 +1206,7 @@ def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
     # Xilinx-specific YAML expansion of RPMsg description.
     root_node = tree["/"]
     root_compat = root_node.props("compatible")[0].value
-    platform = get_platform(tree)
+    platform = get_platform(tree, verbose)
 
     if platform == None:
         print("Unsupported platform: ", root_compat)

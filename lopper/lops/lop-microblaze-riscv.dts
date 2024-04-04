@@ -101,6 +101,18 @@
                                    libpath = []
                                    libpath.append('riscv64-unknown-elf/riscv32-xilinx-elf/usr/lib/')
                                    cflags_data = {}
+                                   archflags_lib_map = {
+                                       'rv32i' : 'rv32i',
+                                       'rv32im' : 'rv32im',
+                                       'rv32iac' : 'rv32iac',
+                                       'rv32imc' : 'rv32imc',
+                                       'rv32imac' : 'rv32imac',
+                                       'rv32imafc' : 'rv32imafc',
+                                       'rv32imafdc' : 'rv32imafdc',
+                                       'rv32ic' : 'rv32i',
+                                       'rv32ia' : 'rv32i',
+                                       'rv32ima' : 'rv32im'
+                                   }
 
                                    for property in proplist:
                                        try:
@@ -120,6 +132,11 @@
                                                bsp_linkflags = arch_option + arch_linkflags
                                                archflags.append('_zicsr_zifencei')
                                            continue
+
+
+                                   for val in archflags_lib_map.keys():
+                                       if val == archflags_libpath:
+                                           archflags_libpath = archflags_lib_map[val]
 
                                    libpath.append(archflags_libpath)
                                    libpath.append('/')
