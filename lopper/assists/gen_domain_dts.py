@@ -176,8 +176,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         for node in invalid_memnode:
             sdt.tree.delete(node)
 
-    linux_ignore_ip_list = ['xlconstant', 'proc_sys_reset', 'noc_mc_ddr4', 'psv_apu', 'psv_coresight_a720_dbg', 'psv_coresight_a720_etm',
-                            'axi_noc', 'psv_coresight_a720_pmu', 'psv_coresight_a720_cti', 'psv_coresight_a721_dbg',
+    linux_ignore_ip_list = ['xlconstant', 'proc_sys_reset', 'psv_apu', 'psv_coresight_a720_dbg', 'psv_coresight_a720_etm',
+                            'psv_coresight_a720_pmu', 'psv_coresight_a720_cti', 'psv_coresight_a721_dbg',
                             'psv_coresight_a721_etm', 'psv_coresight_a721_pmu', 'psv_coresight_a721_cti',
                             'psv_coresight_a721_pmu', 'psv_coresight_a721_cti', 'psv_coresight_apu_ela',
                             'psv_coresight_apu_etf', 'psv_coresight_apu_fun', 'psv_coresight_cpm_atm', 'psv_coresight_cpm_cti2a',
