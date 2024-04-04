@@ -1,5 +1,6 @@
 #/*
 # * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+# * Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
@@ -46,7 +47,7 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
             PS7 DDR initial 1MB is reserved memory
             Adjust the size and start address accordingly.
             """
-            if "ps7_ddr" in key:
+            if "ps7_ddr" in key and start == 0:
                 start = 1048576
                 size -= start
             suffix = "ADDRESS"
