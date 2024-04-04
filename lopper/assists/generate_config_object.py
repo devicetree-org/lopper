@@ -1,5 +1,5 @@
 # /*
-# * Copyright (c) 2022 - 2023 Advanced Micro Devices, Inc. All Rights Reserved.
+# * Copyright (c) 2022 - 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 # *
 # * Author:
 # *       Madhav Bhatt <madhav.bhatt@amd.com>
@@ -431,6 +431,49 @@ def generate_power_section_data(sdtinfo_obj):
     out_lines.append("\n")
     return out_lines
 
+def get_periph_perm_mask_txt_for_rst_line(reset_line, sdtinfo_obj):
+    macro_list1 = []
+    macro_list2 = []
+    reset_management_master_list = get_list_of_management_master("reset", sdtinfo_obj)
+
+    line_node = chc.reset_line_map[reset_line]['node']
+    periph_name = chc.node_map[line_node]['periph']
+    periph_type = chc.node_map[line_node]['type']
+
+    if periph_type == 'slave':
+        for master in sdtinfo_obj.masters.keys():
+            slave_list = get_slaves_for_master(sdtinfo_obj, master)
+            for slave in slave_list:
+                if periph_name == slave and (is_ipi_present(master, sdtinfo_obj) != ""):
+                    master_ipi_mask_txt = get_ipi_mask_txt(master, sdtinfo_obj)
+                    macro_list1.append(master_ipi_mask_txt)
+                    if master_ipi_mask_txt in reset_management_master_list:
+                        macro_list2.append(master_ipi_mask_txt)
+    elif periph_type == 'memory':
+        if periph_name == 'psu_ddr':
+            mem_perms = get_mem_perm_mask(periph_name, sdtinfo_obj)
+        elif periph_name == 'psu_ocm_0':
+            ocm_bank_0_perms = get_mem_perm_mask('psu_ocm_0', sdtinfo_obj)
+            ocm_bank_1_perms = get_mem_perm_mask('psu_ocm_1', sdtinfo_obj)
+            ocm_bank_2_perms = get_mem_perm_mask('psu_ocm_2', sdtinfo_obj)
+            ocm_bank_3_perms = get_mem_perm_mask('psu_ocm_3', sdtinfo_obj)
+            mem_perms = ocm_bank_0_perms | ocm_bank_1_perms | ocm_bank_2_perms | ocm_bank_3_perms
+        else:
+            mem_perms = 0
+        for master in sdtinfo_obj.masters.keys():
+            if (mem_perms & get_ipi_mask(master, sdtinfo_obj)) != 0 and (is_ipi_present(master, sdtinfo_obj)) != "":
+                master_ipi_mask_txt = get_ipi_mask_txt(master, sdtinfo_obj)
+                macro_list1.append(master_ipi_mask_txt)
+                if master_ipi_mask_txt in reset_management_master_list:
+                    macro_list2.append(master_ipi_mask_txt)
+
+    if macro_list2:
+        return " | ".join(macro_list2)
+    elif macro_list1:
+        return " | ".join(macro_list1)
+    else:
+        return "0U"
+
 def generate_reset_section_data(sdtinfo_obj):
     out_lines = ["\n"]
     reset_management_master_list = get_list_of_management_master("reset", sdtinfo_obj)
@@ -451,34 +494,35 @@ def generate_reset_section_data(sdtinfo_obj):
             out_lines.append("\t" + line_name + ", " + get_all_masters_mask_txt(sdtinfo_obj) + ",\n")
         elif (0 == is_all_master_enabled("reset", sdtinfo_obj)) and ((line_type == "rst_periph") or (line_type == "rst_shared" ) or (line_type == "rst_proc")) :
             if line_type == "rst_periph":
-                perms = get_periph_perm_mask_txt_for_rst_line(reset_line)
+                perms = get_periph_perm_mask_txt_for_rst_line(reset_line, sdtinfo_obj)
                 out_lines.append("\t" + line_name + ", " + perms + ",\n")
             elif line_type == "rst_shared":
                 out_lines.append("\t" + line_name + ", " + reset_management_master_list + ",\n")
             elif line_type == "rst_proc":
                 line_proc = chc.reset_line_map[reset_line]["proc"]
-                macro_list  = []
-                master_txt = []
+                macro_list  = ""
+                master_txt = ""
                 if line_proc == "APU":
-                    master_txt.append(get_ipi_mask_txt("psu_cortexa53_0", sdtinfo_obj))
-                elif (line_proc == "RPU_1") or (line_proc == "RPU" and is_rpu_lockstep(sdtinfo_obj)) or line_proc == "RPU_0" :
-                    master_txt.append(get_ipi_mask_txt("psu_cortexr5_0", sdtinfo_obj))
+                    master_txt += get_ipi_mask_txt("psu_cortexa53_0", sdtinfo_obj)
+                elif (((line_proc == "RPU_1") or (line_proc == "RPU")) and is_rpu_lockstep(sdtinfo_obj)) or line_proc == "RPU_0" :
+                    master_txt += get_ipi_mask_txt("psu_cortexr5_0", sdtinfo_obj)
                 elif line_proc == "RPU_1":
-                    master_txt.append(get_ipi_mask_txt("psu_cortexr5_1", sdtinfo_obj))
+                    master_txt += get_ipi_mask_txt("psu_cortexr5_1", sdtinfo_obj)
                 elif line_proc == "RPU":
                     master_rpu_0 = get_ipi_mask_txt("psu_cortexr5_0", sdtinfo_obj)
                     master_rpu_1 = get_ipi_mask_txt("psu_cortexr5_1", sdtinfo_obj)
-                    if ((master_rpu_0 in reset_management_master_list) and len(master_rpu_0) > 0) and \
-                       ((master_rpu_1 in reset_management_master_list) and len(master_rpu_1) > 0):
-                        master_txt.append(master_rpu_0 + " | " + master_rpu_1)
-                if (master_txt in reset_management_master_list) and len(master_txt) > 0:
-                    macro_list.append(master_txt)
-                if "0U" == reset_management_master_list:
+                    if ((master_rpu_0 not in reset_management_master_list) and len(master_rpu_0) > 0) and \
+                       ((master_rpu_1 not in reset_management_master_list) and len(master_rpu_1) > 0):
+                        master_txt = master_txt + master_rpu_0 + " | " + master_rpu_1
+                if (master_txt not in reset_management_master_list) and len(master_txt) > 0:
+                    macro_list += master_txt
+                if "0U" != reset_management_master_list:
                     if len(macro_list) > 0:
-                        macro_list.append(" | ")
-                    macro_list.append(reset_management_master_list)
+                        macro_list += " | "
+                    macro_list += reset_management_master_list
                 if len(macro_list) == 0:
-                    out_lines.append("\t" + line_name + ",  " + macro_list + ",\n")
+                    macro_list += "0U"
+                out_lines.append("\t" + line_name + ", " + macro_list + ",\n")
         else:
             out_lines.append("\t" + line_name + ", 0,\n")
     out_lines.append("\n")
