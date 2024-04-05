@@ -258,6 +258,8 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         if cpu_ip_name == "microblaze" and start < 80:
             start = 80
             size -= start
+            if size <= 0x2000:
+                heap_size = 0x400
         """
         For R5 PSU DDR initial 1MB is reserved for tcm
         Adjust the size and start address accordingly.
