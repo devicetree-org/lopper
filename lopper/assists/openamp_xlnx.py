@@ -1113,6 +1113,9 @@ def get_platform(tree, verbose = 0):
     for i in versal:
         if root_model.lower() in i or i in root_model.lower():
             return SOC_TYPE.VERSAL
+        for j in root_compat:
+            if i in j:
+                return SOC_TYPE.VERSAL
     for i in zynq:
         if root_model.lower() in i or i in root_model.lower():
             return SOC_TYPE.ZYNQ
