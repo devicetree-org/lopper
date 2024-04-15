@@ -1,5 +1,5 @@
 # /*
-# * Copyright (c) 2022 - 2023 Advanced Micro Devices, Inc. All Rights Reserved.
+# * Copyright (c) 2022 - 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 # *
 # * Author:
 # *       Madhav Bhatt <madhav.bhatt@amd.com>
@@ -169,11 +169,7 @@ class SdtInfo:
             self.proc_type = chc.hardcoded_proc_type
         return
 
-    def __init__(self, sdt, options):
-        self.__sdt__ = sdt
-        self.__get_proc_type(options)
-
-        # Hard coded values
+    def __set_default_properties(self):
         self.rpu0_as_power_management_master = chc.rpu0_as_power_management_master
         self.rpu1_as_power_management_master = chc.rpu1_as_power_management_master
         self.apu_as_power_management_master = chc.apu_as_power_management_master
@@ -183,6 +179,45 @@ class SdtInfo:
         self.rpu0_as_overlay_config_master = chc.rpu0_as_overlay_config_master
         self.rpu1_as_overlay_config_master = chc.rpu1_as_overlay_config_master
         self.apu_as_overlay_config_master = chc.apu_as_overlay_config_master
+
+    def __set_properties(self, props):
+        try:
+            for prop in props:
+                if ':' in prop:
+                    key, value = prop.split(':')
+                    if 'true' == value:
+                        bool_value = True
+                    else:
+                        bool_value = False
+                    if "XILPM_rpu0_as_power_management_master" == key:
+                        self.rpu0_as_power_management_master = bool_value
+                    elif "XILPM_rpu1_as_power_management_master" == key:
+                        self.rpu1_as_power_management_master = bool_value
+                    elif "XILPM_apu_as_power_management_master" == key:
+                        self.apu_as_power_management_master = bool_value
+                    elif "XILPM_rpu0_as_reset_management_master" == key:
+                        self.rpu0_as_reset_management_master = bool_value
+                    elif "XILPM_rpu1_as_reset_management_master" == key:
+                        self.rpu1_as_reset_management_master = bool_value
+                    elif "XILPM_apu_as_reset_management_master" == key:
+                        self.apu_as_reset_management_master = bool_value
+                    elif "XILPM_rpu0_as_overlay_config_master" == key:
+                        self.rpu0_as_overlay_config_master = bool_value
+                    elif "XILPM_rpu1_as_overlay_config_master" == key:
+                        self.rpu1_as_overlay_config_master = bool_value
+                    elif "XILPM_apu_as_overlay_config_master" == key:
+                        self.apu_as_overlay_config_master = bool_value
+        except:
+            self.__set_default_proprties()
+        return
+
+    def __init__(self, sdt, options):
+        self.__sdt__ = sdt
+        self.__get_proc_type(options)
+
+        # Hard coded values
+        self.__set_default_properties()
+        self.__set_properties(options['args'][2:])
         self.subsys_str = chc.subsys_str
 
         # Parsing values from SDT

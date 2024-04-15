@@ -258,6 +258,8 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         if cpu_ip_name == "microblaze" and start < 80:
             start = 80
             size -= start
+            if size <= 0x2000:
+                heap_size = 0x400
         """
         For R5 PSU DDR initial 1MB is reserved for tcm
         Adjust the size and start address accordingly.
@@ -289,6 +291,8 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     cfd.write("set(DDR %s)\n" % default_ddr)
     memip_list = []
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
+        if "psu_qspi_linear" in key or "ps7_qspi_linear" in key or "axi_emc" in key:
+            continue
         start,size = value[0], value[1]
         """
         LMB BRAM initial 80 bytes being used by the linker vectors section in case of Microblaze

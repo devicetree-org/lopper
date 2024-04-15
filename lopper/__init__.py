@@ -1945,7 +1945,7 @@ class LopperSDT:
 
                         tree.sync()
                 else:
-                    lopper.log._warning( f"modify lop, node operation" )
+                    lopper.log._info( f"modify lop, node operation" )
 
                     # drop the list, since if we are modifying a node, it is just one
                     # target node.

@@ -1084,8 +1084,8 @@ def get_platform(tree, verbose = 0):
     root_compat = root_node.props("compatible")[0].value
 
     zynqmp = [ 'zynqmp', 'zcu', 'Xilinx ZynqMP', 'Ultra96' ]
-    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'vhk158', 'xlnx,versal', 'vek280', 'versal' ]
-    versalnet = [ 'versal-net', 'vc-p', 'Versal NET' ]
+    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'vhk158', 'xlnx,versal', 'vek280', 'versal', 'vc-p' ]
+    versalnet = [ 'versal-net', 'vn-p', 'Versal NET' ]
     zynq = [ 'xlnx,zynq-7000', 'zc7', 'zynq' ]
 
     if verbose > 0:
@@ -1113,6 +1113,9 @@ def get_platform(tree, verbose = 0):
     for i in versal:
         if root_model.lower() in i or i in root_model.lower():
             return SOC_TYPE.VERSAL
+        for j in root_compat:
+            if i in j:
+                return SOC_TYPE.VERSAL
     for i in zynq:
         if root_model.lower() in i or i in root_model.lower():
             return SOC_TYPE.ZYNQ
