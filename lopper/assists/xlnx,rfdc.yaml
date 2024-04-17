@@ -16,6 +16,9 @@ properties:
   reg:
     maxItems: 1
 
+  num-insts:
+    maxItems: 1
+
   interrupts:
     maxItems: 3
 
@@ -37,6 +40,7 @@ properties:
 required:
   - compatible
   - reg
+  - num-insts
   - interrupts
   - interrupt-parent
   - interrupt-names
@@ -59,6 +63,7 @@ examples:
         usp_rf_data_converter@ae040000 {
             compatible = "usp-rf-data-converter-2.6";
             reg = <0x0 0xae040000 0x0 0x40000>;
+            num-insts = <0x1>;
             interrupt-names = "irq";
             interrupt-parent = <&gic_a53>;
             interrupts = <0x0 0x59 0x4>;
