@@ -157,7 +157,7 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
             else:
                 dev_dict.update({hw_type:[{drv:prop_list}]})
         else:
-            dev_dict.update({drv:[{drv:prop_list}]})
+            continue
 
     for dev_type, dev_list in dev_dict.items():
         valid_hw = None
