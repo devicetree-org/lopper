@@ -161,7 +161,18 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                                 has_hwdep = testapp_schema[app]['hwproperties'][0]
                                 try:
                                     val = node[has_hwdep].value
-                                    has_hwdep = 0
+                                    if "interrupts" in testapp_schema[app]['hwproperties']:
+                                        intr_parent_phandle = node["interrupt-parent"].value
+                                        intr_parent_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == intr_parent_phandle[0]]
+                                        # Ideally, the processor IP and the intr-parent combination should be checked for this case.
+                                        # But, that is a cumbersome process and this condition also works given the way gen-domain-dts
+                                        # behaves.
+                                        if intr_parent_node and intr_parent_node[0]["compatible"].value[0] != "interrupt-multiplex":
+                                            has_hwdep = 0
+                                        else:
+                                            has_hwdep = 1
+                                    else:
+                                        has_hwdep = 0
                                 except KeyError:
                                     has_hwdep = 1
                             except KeyError:
