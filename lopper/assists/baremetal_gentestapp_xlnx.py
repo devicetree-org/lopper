@@ -15,7 +15,7 @@ import shutil
 import glob
 
 sys.path.append(os.path.dirname(__file__))
-from baremetalconfig_xlnx import get_mapped_nodes, get_cpu_node, get_label, compat_list
+from baremetalconfig_xlnx import get_mapped_nodes, get_cpu_node, get_label, compat_list, scan_reg_size, get_stdin
 import common_utils as utils
 
 def is_compat( node, compat_string_to_test ):
@@ -35,8 +35,11 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     # Traverse the tree and find the nodes having status=ok property
     # and create a compatible_list from these nodes.
     symbol_node = ""
+    chosen_node = ""
     for node in root_sub_nodes:
         try:
+            if node.name == "chosen":
+                chosen_node = node
             if node.name == "__symbols__":
                 symbol_node = node
             status = node["status"].value
@@ -113,6 +116,13 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
             drv_config_name = drv_config_name[0].rsplit("_", 1)[-2]
         except KeyError:
             drv_config_name = drv_name
+
+        stdin_addr = None
+        if chosen_node:
+            stdin_node = get_stdin(sdt, chosen_node, node_list)
+            if stdin_node:
+                val, size = scan_reg_size(stdin_node, stdin_node['reg'].value, 0)
+                stdin_addr = val
         try:
             testapp_schema = schema['tapp']
             tapp_drv_header_file_name = f"{drv_name}_header.h"
@@ -133,6 +143,10 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
 
             for compat in driver_compatlist:
                 for node in node_list:
+                    if sdt.tree[node].propval('reg') != ['']:
+                        val, size = scan_reg_size(node, node['reg'].value, 0)
+                        if stdin_addr == val:
+                            continue
                     compat_string = node['compatible'].value
                     label_name = get_label(sdt, symbol_node, node)
                     drvconfig_name = None
