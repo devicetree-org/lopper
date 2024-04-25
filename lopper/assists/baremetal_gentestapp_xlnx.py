@@ -15,7 +15,7 @@ import shutil
 import glob
 
 sys.path.append(os.path.dirname(__file__))
-from baremetalconfig_xlnx import get_mapped_nodes, get_label, compat_list
+from baremetalconfig_xlnx import get_mapped_nodes, get_cpu_node, get_label, compat_list
 import common_utils as utils
 
 def is_compat( node, compat_string_to_test ):
@@ -27,6 +27,7 @@ def is_compat( node, compat_string_to_test ):
 # sdt: is the system device-tree
 # options: baremetal application source path
 def xlnx_generate_testapp(tgt_node, sdt, options):
+    ttc_node_list = []
     root_node = sdt.tree[tgt_node]
     compatible_dict = {}
     root_sub_nodes = root_node.subnodes()
@@ -47,7 +48,14 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
         node_list = get_mapped_nodes(sdt, node_list, options)
     for node in node_list:
+        if "cdns,ttc" in node["compatible"].value:
+            ttc_node_list += [node]
         compatible_dict.update({node: node["compatible"].value})
+    match_cpunode = get_cpu_node(sdt, options)
+    proc_ip_name = match_cpunode['xlnx,ip-name'].value
+    if proc_ip_name[0] in ["psu_cortexr5", "psv_cortexr5", "psx_cortexr52"] and ttc_node_list:
+        node_list.remove(ttc_node_list[-1])
+        compatible_dict.pop(ttc_node_list[-1])
 
     test_file_string = f'''
 #include <stdio.h>
@@ -162,7 +170,6 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         except KeyError:
             testapp_schema = {}
 
-
     test_file_string += f'''int main ()
 {{
 '''
@@ -174,7 +181,6 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
 
     print("---Entering main---\\n\\r");
 '''
-
     for node, testapp in testapp_data.items():
         xpar_def = f"XPAR_{node.upper()}_BASEADDR"
 
