@@ -102,16 +102,19 @@
                                    libpath.append('riscv64-unknown-elf/riscv32-xilinx-elf/usr/lib/')
                                    cflags_data = {}
                                    archflags_lib_map = {
-                                       'rv32i' : 'rv32i',
-                                       'rv32im' : 'rv32im',
-                                       'rv32iac' : 'rv32iac',
-                                       'rv32imc' : 'rv32imc',
-                                       'rv32imac' : 'rv32imac',
-                                       'rv32imafc' : 'rv32imafc',
-                                       'rv32imafdc' : 'rv32imafdc',
-                                       'rv32ic' : 'rv32i',
+                                       'rv32if' : 'rv32if_zicsr',
+                                       'rv32imf' : 'rv32imf_zicsr',
+                                       'rv32ifc' : 'rv32ifc_zicsr',
+                                       'rv32imfc' : 'rv32imfc_zicsr',
                                        'rv32ia' : 'rv32i',
-                                       'rv32ima' : 'rv32im'
+                                       'rv32ima' : 'rv32im',
+                                       'rv32iaf' : 'rv32if_zicsr',
+                                       'rv32imaf' : 'rv32imf_zicsr',
+                                       'rv32iac' : 'rv32ic',
+                                       'rv32imac' : 'rv32imc',
+                                       'rv32iafc' : 'rv32ifc_zicsr',
+                                       'rv32imafc' : 'rv32imfc_zicsr',
+                                       'rv32imfdc' : 'rv32imfdc_zicsr'
                                    }
 
                                    for property in proplist:
@@ -137,6 +140,7 @@
                                    for val in archflags_lib_map.keys():
                                        if val == archflags_libpath:
                                            archflags_libpath = archflags_lib_map[val]
+                                           bsp_linkflags = '-march=' + archflags_lib_map[val]
 
                                    libpath.append(archflags_libpath)
                                    libpath.append('/')
