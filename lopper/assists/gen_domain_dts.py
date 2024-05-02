@@ -193,7 +193,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psx_fpd_gpv', 'ddr4']
 
     if linux_dt:
-        yaml_prune_list = ["xlnx,xdma-host.yaml", "xlnx,rfdc.yaml", "xlnx,sd-fec.yaml", "xlnx,clocking-wizard.yaml"]
+        binding_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "yaml_bindings")
+        yaml_prune_list = utils.find_files("*.yaml", binding_dir)
         driver_compatlist = []
         # Shouldn't delete properties
         driver_proplist = ["#interrupt-cells", "#address-cells", "#size-cells", "device_type"]
