@@ -260,7 +260,10 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                         else:
                             continue
                     elif prop == "axistream-connected":
-                       val = hex(bm_config.get_phandle_regprop(sdt, prop, node[prop].value))
+                       try:
+                            val = hex(bm_config.get_phandle_regprop(sdt, prop, node[prop].value))
+                       except KeyError:
+                            val = hex(0)
                     elif prop == "phy-handle":
                        try:
                            val = getxlnx_phytype(sdt, node[prop].value)
