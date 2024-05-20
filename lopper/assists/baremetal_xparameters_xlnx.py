@@ -202,7 +202,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 else:
                                     if node.propval('xlnx,ip-name') != ['']:
                                         ip_name = node.propval('xlnx,ip-name', list)[0]
-                                        if ip_name in ["psu_ipi", "psv_ipi", "psx_ipi", "psxl_ipi"]:
+                                        if drv == "ipipsu":
                                             plat.buf(f'\n#define XPAR_{label_name}_INTR {hex(intr_id[0]+32)}')
                                             canondef_dict.update({"INTR":hex(intr_id[0]+32)})
                         except KeyError:
@@ -221,7 +221,9 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {hex(clkprop_val)}')
                         canondef_dict.update({prop:hex(clkprop_val)})
                     elif prop == "child,required":
+                        ipi_target_list = []
                         for j,child in enumerate(list(node.child_nodes.items())):
+                            ipi_child_dict = {}
                             for k,p in enumerate(pad):
                                 if type(p) is dict:
                                     break
@@ -234,6 +236,10 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 p = p.replace("-", "_")
                                 p = p.replace("xlnx,", "")
                                 plat.buf(f'\n#define XPAR_{label_name}_{j}_{p.upper()} {val}')
+                                if drv == "ipipsu":
+                                    ipi_child_dict[p.upper()]=val
+                            if ipi_child_dict:
+                                ipi_target_list.append(ipi_child_dict)
                     elif phandle_prop:
                         try:
                             prop_val = bm_config.get_phandle_regprop(sdt, prop, node[prop].value)
@@ -322,6 +328,12 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         plat.buf(f'\n#define XPAR_FABRIC_{canonical_name}_{index}_INTR {val}')
                     else:
                         plat.buf(f'\n#define XPAR_{canonical_name}_{index}_{prop.upper()} {val}')
+
+                #Generate Canonicals for IPI
+                if drv=="ipipsu":
+                    for target_channel, ipi_target_info in enumerate(ipi_target_list):
+                        for key, value in ipi_target_info.items():
+                            plat.buf(f'\n#define XPAR_{canonical_name}_{index}_CH{target_channel}_{key.upper()} {value}')
                 plat.buf('\n')
                                     
     # Generate Defines for Generic Nodes
