@@ -138,6 +138,19 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         sys.exit(1)        
 
     pl_node = None
+    has_valid_pl = False
+    has_pl = False
+
+    for node in root_sub_nodes:
+        if node.name == "amba_pl":
+            get_sub_node = node.subnodes()
+            for node in get_sub_node:
+                if node.propval('reg') != ['']:
+                    has_valid_pl = True
+                    break
+        if has_valid_pl:
+            break
+
     for node in root_sub_nodes:
         if node.name == "amba_pl":
             pl_node = node
@@ -205,13 +218,9 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                         plat.buf('\n\t};')
                     plat.buf('\n};')
 
-                    # Create overlay1: __overlay__ node under fragment@1
-                    plat.buf('\n&amba{')
-                    plat.buf('\n\t#address-cells = <2>;')
-                    plat.buf('\n\t#size-cells = <2>;')
-
                     # Add afi and clocking nodes to fragment@1     
                     if platform == "cortexa53-zynqmp":
+                        plat.buf('\n&amba{')
                         for inode in ignore_list:
                             label_name = get_label(sdt, symbol_node, inode)
                             plat.buf('\n\t%s: %s {' % (label_name, inode.name))
@@ -222,11 +231,10 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                             plat.buf('\n\t};')
                         plat.buf('\n};')
                     
-                        # Create overlaye2: __overlay__ node under fragment@2
+                    if has_valid_pl:
+                        has_valid_pl = False
+                        has_pl = True
                         plat.buf('\n&amba{')
-                        plat.buf('\n\t#address-cells = <2>;')
-                        plat.buf('\n\t#size-cells = <2>;')
-
                     root = 0
 
                 # Now add all the nodes except the nodes that are added
@@ -303,7 +311,8 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         plat.buf('\n')
         plat.buf('\t' * int(rt))
         plat.buf('};')
-    plat.buf('\n};')
+    if has_pl:
+        plat.buf('\n};')
     plat.out(''.join(plat.get_buf()))
     if pl_node:
         sdt.tree.delete(pl_node)
