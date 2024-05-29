@@ -51,11 +51,16 @@ def get_memranges(tgt_node, sdt, options):
     # Ensure that the region addresses are always in descending order of addresses
     # This order is necessary to employ the comparison while mapping the available regions.
     versal_noc_region_ranges =  {
-        "0x70000000000": "DDR_CH_3",
-        "0x60000000000": "DDR_CH_2",
-        "0x50000000000": "DDR_CH_1",
-        "0x10000000000": "DDR_LOW_3",
-        "0xC000000000": "DDR_LOW_2",
+        "0x70000000000": "DDR_CH_3", "0x60000000000": "DDR_CH_2", "0x50000000000": "DDR_CH_1",
+        "0x10000000000": "DDR_LOW_3", "0xC000000000": "DDR_LOW_2",
+        "0x47C0000000": "HBM15_PC1", "0x4780000000": "HBM15_PC0", "0x4740000000": "HBM14_PC1", "0x4700000000": "HBM14_PC0",
+        "0x46C0000000": "HBM13_PC1", "0x4680000000": "HBM13_PC0", "0x4640000000": "HBM12_PC1", "0x4600000000": "HBM12_PC0",
+        "0x45C0000000": "HBM11_PC1", "0x4580000000": "HBM11_PC0", "0x4540000000": "HBM10_PC1", "0x4500000000": "HBM10_PC0",
+        "0x44C0000000": "HBM9_PC1", "0x4480000000": "HBM9_PC0", "0x4440000000": "HBM8_PC1", "0x4400000000": "HBM8_PC0",
+        "0x43C0000000": "HBM7_PC1", "0x4380000000": "HBM7_PC0", "0x4340000000": "HBM6_PC1", "0x4300000000": "HBM6_PC0",
+        "0x42C0000000": "HBM5_PC1", "0x4280000000": "HBM5_PC0", "0x4240000000": "HBM4_PC1", "0x4200000000": "HBM4_PC0",
+        "0x41C0000000": "HBM3_PC1", "0x4180000000": "HBM3_PC0", "0x4140000000": "HBM2_PC1", "0x4100000000": "HBM2_PC0",
+        "0x40C0000000": "HBM1_PC1", "0x4080000000": "HBM1_PC0", "0x4040000000": "HBM0_PC1", "0x4000000000": "HBM0_PC0",
         "0x800000000": "DDR_LOW_1",
         "0x0": "DDR_LOW_0"
     }
