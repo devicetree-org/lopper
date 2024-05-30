@@ -33,6 +33,7 @@ from string import Template
 
 sys.path.append(os.path.dirname(__file__))
 from openamp_xlnx_common import *
+from baremetalconfig_xlnx import get_cpu_node
 
 RPU_PATH = "/rpu@ff9a0000"
 REMOTEPROC_D_TO_D = "openamp,remoteproc-v1"
@@ -87,14 +88,34 @@ def xlnx_rpmsg_native_update_carveouts(tree, elfload_node,
     return True
 
 
+# Given a domain node, get its corresponding node list from the carveouts
+# property. If no prop return empty list
+def get_carveout_nodes(tree, node):
+    carveouts_node = tree[node.abs_path + "/domain-to-domain/rpmsg-relation"]
+    if isinstance(carveouts_node, LopperNode):
+        node = carveouts_node
+    carveout_prop = node.props("carveouts")
+    if carveout_prop == []:
+        print("WARNING: ", node, " is missing carveouts property")
+        return []
+    carveouts_nodes = []
+    for phandle in carveout_prop[0].value:
+        tmp_node = tree.pnode( phandle )
+        carveouts_nodes.append ( tmp_node )
+
+    return carveouts_nodes
+
+
 native_shm_node_count = 0
-def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native,
-                                   amba_node = None, elfload_node = None, verbose = 0 ):
+def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, channel_id,
+                                   openamp_channel_info, amba_node = None,
+                                   elfload_node = None, verbose = 0 ):
     global native_shm_node_count
     res_mem_node = tree["/reserved-memory"]
     native_amba_shm_node = None
     native_shm_mem_area_size = 0
     native_shm_mem_area_start = 0xFFFFFFFF
+    remote_carveouts = get_carveout_nodes(tree, openamp_channel_info["remote_node_"+channel_id])
 
     if amba_node != None:
         native_amba_shm_node = LopperNode(-1, amba_node.abs_path + "/shm" + str(native_shm_node_count))
@@ -102,7 +123,6 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native,
         tree.add(native_amba_shm_node)
         tree.resolve()
         native_shm_node_count += 1
-
 
     # only applicable for DDR carveouts
     for carveout in carveouts:
@@ -140,6 +160,13 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native,
                 new_node + LopperProp(name="phandle", value = new_node.phandle)
                 rpmsg_carveouts.append(new_node)
 
+                validated = False
+                for rc in remote_carveouts:
+                    if carveout.name == rc.name:
+                        validated = True
+                if not validated:
+                    print("ERROR: carveout is not found in remote cluster: ", carveout.name)
+                    return False
         else:
             print("WARNING: invalid remoteproc elfload carveout", carveout)
             return False
@@ -257,7 +284,6 @@ def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_c
 def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
                          remote_node, channel_id, native, channel_index, 
                          verbose = 0 ):
-    carveouts_prop = node.props("carveouts")
     amba_node = None
     ipi_id_prop_name = "xlnx,ipi-id"
     host_to_remote_ipi = None
@@ -523,7 +549,7 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
             if node.props("start") != []:
                 elfload_node = node
 
-    ret = xlnx_rpmsg_construct_carveouts(tree, carveouts_nodes, rpmsg_carveouts, native,
+    ret = xlnx_rpmsg_construct_carveouts(tree, carveouts_nodes, rpmsg_carveouts, native, channel_id, openamp_channel_info,
                                          amba_node=amba_node, elfload_node=elfload_node, verbose=verbose)
     if ret == False:
         return ret
@@ -561,8 +587,54 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
 
     return True
 
+# Inputs: openamp-processed SDT, target processor
+# If there exists a DDR carveout for ELF-Loading, return the start and size
+# of the carveout
+def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
+    match_cpunode = get_cpu_node(sdt, options)
+    tree = sdt.tree
+    elfload_prop = None
+    remote_idx = -1
 
-def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0 ):
+    # 1. look for all remoteproc relations rr
+    # 2. for each rr, find its remote property
+    # 3. Get remote property's corresponding core cluster node
+    # 4. Map the host ELFLOAD node to the core cluster node to get index into
+    #    ELFLOAD node array
+    # 5. Get DDR node from ELFLOAD node array
+    # 6. Return above DDR node's start and size so this can propagate to linker
+    for n in tree["/"].subnodes():
+        if 'remoteproc-relation' in n.abs_path:
+            # keep count of remote nodes
+            remote_node_count = len(n.propval('remote'))
+            # find remote cluster
+            for phandle in n.propval('remote'):
+                remote_idx += 1
+                remote_node = tree.pnode(phandle)
+                # find core corresponding to remote cluster
+                cpus_val = remote_node.propval('cpus')
+                cpus_related_core_node = tree.pnode(cpus_val[0])
+
+                # look through the related elfload prop
+                if cpus_related_core_node.name in match_cpunode.abs_path:
+                    elfload_prop = n.propval('elfload')
+                    row_len = int(len(elfload_prop) / remote_node_count) # should be same for each remote
+                    elfload_idx = remote_idx * row_len
+
+                    # only look for phandles related to the remote cluster
+                    for i in elfload_prop[elfload_idx:elfload_idx+row_len]:
+                        elfload_node = tree.pnode(i)
+
+                        # DDR only - no SRAM for now
+                        if elfload_node.propval('power-domains') == ['']:
+                            elfload_start = elfload_node.propval('start')[0]
+                            elfload_sz = elfload_node.propval('size')[0]
+
+                            return [elfload_start, elfload_sz]
+    return None
+
+
+def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0 ):
     text_file_contents = ""
     rpmsg_native = openamp_channel_info["rpmsg_native_"+channel_id]
     carveouts = openamp_channel_info["carveouts_"+channel_id]
@@ -593,16 +665,12 @@ def xlnx_construct_text_file(openamp_channel_info, channel_id, role, verbose = 0
         tx = "FW_RSC_U32_ADDR_ANY"
         rx = "FW_RSC_U32_ADDR_ANY"
 
-    elfbase = None
-    elfsize = None
     SHARED_MEM_PA = 0
     SHARED_BUF_OFFSET = 0
     RSC_MEM_PA = 0
     for e in elfload:
         if e.props("start") != []: # filter to only parse ELF LOAD node
-            elfbase = hex(e.props("start")[0].value)
-            elfsize = hex(e.props("size")[0].value)
-            RSC_MEM_PA = hex(e.props("start")[0].value + 0x20000)
+            RSC_MEM_PA = hex(e.props("start")[0].value)
             SHARED_MEM_PA = hex(e.props("start")[0].value + e.props("size")[0].value)
             SHARED_BUF_OFFSET = hex( e.props("size")[0].value * 2 )
             break
@@ -750,12 +818,10 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
         print("WARNING: ", node, " is missing carveouts property")
         return False
 
-    carveout_prop = node.props("carveouts")[0]
-
     channel_ids = []
-
     for i, remote_node in enumerate(remote_nodes):
         channel_id = "_"+node.parent.parent.name+"_"+remote_node.name
+        openamp_channel_info["remote_node_"+channel_id] = remote_node
         channel_carveouts_nodes = xlnx_rpmsg_parse_get_carveout_nodes(tree, carveout_prop, len(remote_nodes), i)
         openamp_channel_info["carveouts_"+channel_id] = channel_carveouts_nodes
 
@@ -834,7 +900,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
         return False
 
     # Generate Text file to configure OpenAMP Application
-    ret = xlnx_construct_text_file(openamp_channel_info, chan_id, role, verbose)
+    ret = xlnx_openamp_gen_outputs(openamp_channel_info, chan_id, role, verbose)
     if not ret:
         return ret
 
