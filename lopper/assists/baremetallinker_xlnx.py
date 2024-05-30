@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node
 import common_utils as utils
 from common_utils import to_cmakelist
+from openamp_xlnx import xlnx_openamp_get_ddr_elf_load
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetallinker_xlnx", compat_string_to_test):
@@ -162,10 +163,16 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     mem_ranges = get_memranges(tgt_node, sdt, options)
     default_ddr = None
     memtest_config = None
+    openamp_config = None
     machine = options['args'][0]
 
     try:
-        memtest_config = options['args'][2]
+        extra_config = options['args'][2]
+        if extra_config == "memtest":
+            memtest_config = True
+        if extra_config == "openamp":
+            openamp_config = True
+
     except IndexError:
         pass
 
@@ -252,6 +259,14 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         mem_sec += '\n\tpsx_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
         mem_sec += '\n\tpsx_r52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
 
+    openamp_elfload_start = False
+    openamp_elfload_sz = False
+    if openamp_config:
+        elfload_tuple = xlnx_openamp_get_ddr_elf_load(machine, sdt, options)
+        if elfload_tuple != None:
+            openamp_elfload_start = elfload_tuple[0]
+            openamp_elfload_sz = elfload_tuple[1]
+
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
         if default_ddr is None:
             default_ddr = key
@@ -275,6 +290,12 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         if "axi_noc" in key and machine == "cortexr5-versal" and start == 0:
             start = 1048576
             size -= start
+        # Use OpenAMP DDR carveout in lieu of system DDR space if DDR OpenAMP carveout is present
+        if openamp_elfload_sz and ("psu_ddr" in key or "axi_noc" in key):
+                start = openamp_elfload_start
+                size = openamp_elfload_sz
+                cfd.write("set(RSC_TABLE %s)\n" % hex(openamp_elfload_start))
+
         mem_sec += f'\n\t{key} : ORIGIN = {hex(start)}, LENGTH = {hex(size)}'
 
     ## To inline with existing tools point default ddr for linker to lower DDR
@@ -296,7 +317,8 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     cfd.write("set(DDR %s)\n" % default_ddr)
     memip_list = []
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
-        if "psu_qspi_linear" in key or "ps7_qspi_linear" in key or "axi_emc" in key:
+        # Here skip adding DDR system mem to config if OpenAMP module is set
+        if "psu_qspi_linear" in key or "ps7_qspi_linear" in key or "axi_emc" in key or openamp_elfload_sz:
             continue
         start,size = value[0], value[1]
         """
