@@ -20,12 +20,6 @@ import common_utils as utils
 from domain_access import update_mem_node
 
 def delete_unused_props( node, driver_proplist ):
-    child_list = list(node.child_nodes.keys())
-    for child in child_list:
-        child_node = node.child_nodes[child]
-        delete_unused_props( child_node, driver_proplist)
-        if not child_node.child_nodes.keys() and not child_node.__props__.keys():
-            node.delete(child_node)
     prop_list = list(node.__props__.keys())
     for prop in prop_list:
         if prop not in driver_proplist:
