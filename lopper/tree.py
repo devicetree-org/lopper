@@ -954,7 +954,7 @@ class LopperProp():
             else:
                 prop_type = type(prop_val)
 
-        lopper.log._debug( f"strict: {strict}s property [{prop_type}] resolve: {self.name} val: {self.value}" )
+        lopper.log._debug( f"strict: {strict} property [{prop_type}] resolve: {self.name} val: {self.value}" )
 
         self.pclass = prop_type
 
@@ -1298,14 +1298,27 @@ class LopperNode(object):
         #      new_instance.__props__ = copy.deepcopy( self.__props__, memodict )
         new_instance.__props__ = OrderedDict()
         for p in reversed(self.__props__):
+            lopper.log._debug( f"    property deepcopy start: {p} {self.__props__[p].value}" )
+            self.__props__[p].__dbg__ = 2
             new_instance[p] = copy.deepcopy( self.__props__[p], memodict )
             new_instance[p].node = new_instance
+            lopper.log._debug( f"    property deepcopy has returned: {new_instance.__props__[p]} {new_instance.__props__[p].value}" )
 
-        new_instance.name = copy.deepcopy( self.name, memodict )
         new_instance.number = -1 # copy.deepcopy( self.number, memodict )
         new_instance.depth = copy.deepcopy( self.depth, memodict )
         new_instance.label = copy.deepcopy( self.label, memodict )
         new_instance.type = copy.deepcopy( self.type, memodict )
+
+        # consider appending a ".copied" to the name if the path
+        # manipulations to /copied/ below are not enough (when
+        # added via a flag)
+        new_instance.name = copy.deepcopy( self.name, memodict )
+
+        # It is up to the caller to adjust the copied node's path
+        # to avoid duplicates if added to a tree that contained
+        # the original node. We could consider a flag to the node
+        # copy that would do this automatically (i.e. prepend a
+        # /copied to the path, but for now, we leave it to the caller.
         new_instance.abs_path = copy.deepcopy( self.abs_path, memodict )
         new_instance.indent_char = self.indent_char
 
@@ -1317,6 +1330,11 @@ class LopperNode(object):
         new_instance.phandle = self.phandle
 
         new_instance.tree = None
+
+        # Note: the parent is not copied, this can cause issues
+        #       with deleting nodes, since you can't go up the tree
+        #       to remove it from subnodes(). but it is updated in
+        #       the copied children, to point at the new parent node
 
         new_instance.child_nodes = OrderedDict()
         for c in reversed(self.child_nodes.values()):
@@ -1697,6 +1715,34 @@ class LopperNode(object):
         else:
             self._ref = 0
 
+    def path(self,relative_to=None,sanity_check=False):
+        """dynamically calculate the path of a node
+
+        Args:
+           relative_to (String): return the path relative to the
+                                 passed path (not currently implemented)
+           sanity_check (Boolean): default Faklse. Perform path sanity
+                                   checking on the node.
+
+        Returns:
+           String: The absolute path of the node
+        """
+        npath = "/" + self.name
+
+        node = self
+        while node.parent:
+            node = node.parent
+            if node.name:
+                npath = "/" + node.name + npath
+
+        if sanity_check:
+            if self.tree:
+                try:
+                    scheck_node = self.tree[npath]
+                except Exception as e:
+                    raise e
+
+        return npath
 
     def label_set(self,value):
         # someone is labelling a node, the tree's lnodes need to be
@@ -2565,7 +2611,7 @@ class LopperNode(object):
 
         lopper.log._debug( f"node resolution end: {self}" )
 
-    def resolve( self, fdt = None ):
+    def resolve( self, fdt = None, resolve_children=True ):
         """resolve (calculate) node details against a FDT
 
         Some attributes of a node are not known at initialization time, or may
@@ -2592,6 +2638,8 @@ class LopperNode(object):
         Args:
            fdt (FDT): flattened device tree to sync to or None if no
                       tree is available
+           resolve_children (Boolean): default True. When resolving the
+                                       node, also resolve any child nodes.
 
         Returns:
            Nothing
@@ -2617,6 +2665,12 @@ class LopperNode(object):
 
         self.__nstate__ = "resolved"
         self.__modified__ = False
+
+        if resolve_children:
+            lopper.log._debug( f"node resolve: resolving child nodes: {self.child_nodes}" )
+
+            for cn in self.child_nodes.values():
+                cn.resolve( fdt, resolve_children )
 
         lopper.log._debug( f"node resolution end: {self}" )
 
@@ -3240,7 +3294,8 @@ class LopperTree:
             if nd:
                 dct[n.abs_path] = nd
             else:
-                lopper.log._warning( f"node with no annotations: {self.abs_path}" )
+                # keep me. This was causing an exception
+                lopper.log._warning( f"node with no properties (tree corruption?): {n.abs_path}" )
 
         if start_path == "/":
             if self.__memreserve__:
@@ -3331,6 +3386,7 @@ class LopperTree:
         #       Lopper.sync() call.
         #
         new_dct = self.export()
+
         self.load( new_dct )
 
         lopper.log._debug( f"[{fdt}]: tree sync end: {self}" )
@@ -3361,7 +3417,7 @@ class LopperTree:
 
         return self
 
-    def delete( self, node, delete_from_parent = True ):
+    def delete( self, node, delete_from_parent = True, force=False ):
         """delete a node from a tree
 
         If a node is resolved and syncd to the FDT, this routine deletes it
@@ -3383,12 +3439,16 @@ class LopperTree:
             # let any exceptions bubble back up
             n = self.__nnodes__[node]
 
+        if force:
+            n.__nstate__ = "resolved"
+
+        lopper.log._debug( f"{self} attempting to delete [{[n]}] node {n.abs_path}, state: {n.__nstate__}" )
         if n.__nstate__ == "resolved" and self.__must_sync__ == False:
             lopper.log._debug( f"{self} deleting [{[n]}] node {n.abs_path}" )
 
             if n.child_nodes:
                 for cn_path,cn in list(n.child_nodes.items()):
-                    self.delete( cn, False )
+                    self.delete( cn, False, force=force )
 
             try:
                 del self.__nodes__[n.abs_path]
@@ -3421,9 +3481,13 @@ class LopperTree:
             # state "deleted" below
             if n.parent and delete_from_parent:
                 try:
+                    ### we could try and iterate and check for object identity vs using the path here.
                     del n.parent.child_nodes[n.abs_path]
                 except Exception as e:
-                    lopper.log._warning( f"tree inconsistency. could not delete {n.abs_path} from {n.parent.abs_pathn.parent.abs_path}" )
+                    lopper.log._warning( f"tree inconsistency. could not delete {n.abs_path} from {n.parent.abs_path}" )
+                    lopper.log._warning( f"   parent child nodes: {n.parent.child_nodes}" )
+                    for pp,cn in n.parent.child_nodes.items():
+                        lopper.log._warning( f"       checking ids: {id(cn)} vs {id(n)}" )
 
             n.__nstate__ = "deleted"
             n.__modified__ = True
@@ -3451,6 +3515,38 @@ class LopperTree:
 
         return self
 
+    def move( self, node, old_path, new_path, dont_sync = False ):
+        """magic method for adding a node to a tree
+
+        Supports adding a node to a tree through "+"
+
+            tree + <LopperNode object>
+
+        Args:
+           other (LopperNode): node to add
+
+        Returns:
+           LopperTree: returns self, Exception on invalid input
+
+        """
+        self.delete( node )
+
+        existing_path = node.abs_path
+        node.abs_path = new_path
+        try:
+            self.add( node, dont_sync, merge=True )
+        except Exception as e:
+            lopper.log._warning( f"could not move node {node}, re-adding to tree" )
+
+            noode.abs_path = existing_path
+            self.add( node )
+
+            return False
+
+        return True
+
+
+
     def add( self, node, dont_sync = False, merge = False ):
         """Add a node to a tree
 
@@ -3475,6 +3571,32 @@ class LopperTree:
                            f"          phandle: {node.phandle}" )
 
         node_full_path = node.abs_path
+
+        # if a node is being added, we should check to see if the object
+        # is in the nodes list under a different path. because if it is
+        # there, we can have issues with an inconsistent tree. In this
+        # situation, it is really a move.
+        move = None
+        for pp,vv in self.__nodes__.items():
+            # Note: We could also do a path compare here
+            if id(vv) == id(node):
+                lopper.log._debug( f"   reference detected for node: {node}, will copy, and trigger a move ({vv} == {node})" )
+                lopper.log._debug( f"   ids are: {id(vv)} and {id(node)}" )
+                # make a copy, since we are going to be updating the path ensure
+                # it is fully deleted.
+                move = vv()
+                move.__nstate__ = "resolved"
+                move.abs_path = pp
+                move.resolve()
+                # we need the parent, so that it can be removed
+                # from the parents subnodes(). We could consider
+                # making this part of the deepcopy ... but a copied
+                # node really isn't part of the parent.
+                move.parent = vv.parent
+
+        if move:
+            lopper.log._debug( f"move detected, will delete node: {move} state: {move.__nstate__}" )
+            self.delete( move )
 
         # check all the path components, up until the last one (since
         # that's why this routine was called). If the nodes don't exist, we
@@ -4305,10 +4427,6 @@ class LopperTree:
                     node_check = self.__nodes__[node.abs_path]
                     if node_check:
                         lopper.log._error( f"tree inconsistency found, two nodes with the same path ({node_check.abs_path})" )
-                        node_check.print()
-                        # we need to exit the thread/backgound call AND the entire application, so
-                        # hit is with a hammer.
-                        os._exit(1)
                 except:
                     pass
 
