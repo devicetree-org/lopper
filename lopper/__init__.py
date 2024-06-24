@@ -434,6 +434,8 @@ class LopperSDT:
             a_file = self.assist_find( a )
             if a_file:
                 self.assists.append( LopperAssist( str(a_file.resolve()) ) )
+            else:
+                lopper.log_warning( f"assist {a_file} not found" )
 
         self.assists_wrap()
 
@@ -643,7 +645,7 @@ class LopperSDT:
         except FileNotFoundError:
             # check the path from which lopper is running, that directory + assists, and paths
             # specified on the command line
-            search_paths =  [ lopper_directory ] + [ lopper_directory + "/assists/" ] + local_load_paths
+            search_paths =  [ lopper_directory ] + [ lopper_directory + "/assists/" ] + local_load_paths + self.load_paths
             for s in search_paths:
                 mod_file = Path( s + "/" + mod_file.name )
                 try:
@@ -1480,6 +1482,12 @@ class LopperSDT:
                 # append the directory of the located module onto the search
                 # path. This is needed if that module imports something from
                 # its own directory
+
+                if lopper_directory not in sys.path:
+                    # TODO: might want to make this a utility function
+                    sys.path.append( lopper_directory )
+                    sys.path.append( lopper_directory + "/assists" )
+
                 sys.path.append( str(mod_file_abs.parent) )
                 try:
                     imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
