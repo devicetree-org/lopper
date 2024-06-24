@@ -1,0 +1,275 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/xlnx/xlnx,v-hdmi-tx-ss.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx HDMI 1.4/2.0 Transmitter Subsystem
+
+maintainers:
+  - Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+
+description: |
+  The Xilinx HDMI TX Subsystem contains several subcores to implement a HDMI
+  Transmitter. xilinx_drm_hdmi.c implements a DRM/KMS driver encoder/connector
+  interface in the output pipeline. There are 2 optional HDCP cores that can be
+  included in the IP configuration. Below provided sample device tree depicts
+  the configuration when both cores are included. If an optional core is
+  included then corresponding entries for the core parameters (interrupts,
+  key-management block address) must be included in the device tree.
+  Note: If HDCP cores are included in the design, the user must provide valid
+        HDCP keys for the encryption to work.
+  Note: This version of the driver interfaces with the new Xilinx DRM component
+        framework and is not backward compatible with the earlier encoder-slave
+        interface. As such compatibility string has been reved up to indicate
+        the new interface.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,v-hdmi-tx-ss-3.1
+
+  reg:
+    maxItems: 2
+
+  reg-names:
+    items:
+      - const: hdmi-txss
+      - const: hdcp1x-keymngmt
+
+  interrupts:
+    minItems: 1
+    maxItems: 5
+
+  interrupt-names:
+    items:
+      - const: irq
+      - const: hdcp14_irq
+      - const: hdcp14_timer_irq
+      - const: hdcp22_irq
+      - const: hdcp22_timer_irq
+
+  clocks:
+    description: Phandle of all the clocks required by IP are listed here
+    items:
+      - description: Clock for AXI4-Lite control interface
+      - description: Fixed link clock
+      - description: Audio clock
+      - description: video clock
+      - description: AXI4 Video clock
+      - description: Tx reference clock
+      - description: retimer clock
+
+  clock-names:
+    description: Names of all the clocks required by IP are listed here 
+    items:
+      - const: s_axi_cpu_aclk
+      - const: link_clk
+      - const: s_axis_audio_aclk
+      - const: video_clk
+      - const: s_axis_video_aclk
+      - const: txref-clk
+      - const: retimer-clk
+
+  phys:
+    description: |
+      This denotes phandles for phy lanes registered for HDMI protocol.
+      HDMI 1.4/2.0 always require 3 lanes
+
+  phy-names:
+    items:
+      - const: hdmi-phy0
+      - const: hdmi-phy1
+      - const: hdmi-phy2
+
+  xlnx,input-pixels-per-clock:
+    description: Configurable samples per clock.
+                 Possible values are 2, 4.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [2, 4]
+
+  xlnx,max-bits-per-component:
+    description: |
+      Maximum bits per component.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [ 8, 10, 12, 16 ]
+
+  xlnx,include-hdcp-1-4:
+    type: boolean
+    $ref: /schemas/types.yaml#/definitions/flag
+    description: |
+      Boolean parameter that denotes if hdcp14 is included. If present
+      indicates inclusion of the optional core.
+
+  xlnx,include-hdcp-2-2:
+    type: boolean
+    $ref: /schemas/types.yaml#/definitions/flag
+    description: |
+      Boolean parameter that denotes if hdcp22 is included. If present
+      indicates inclusion of the optional core.
+
+  xlnx,hdcp-authenticate:
+    description: |
+      Flag to enable/disable hdcp authentication.
+      Applicable when either hdcp14 or hdcp22 is included in the design
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,hdcp-encrypt:
+    description: |
+      Flag to enable/disable stream encryption Applicable when either hdcp14
+      or hdcp22 is included in the design
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,audio-enabled:
+    type: boolean
+    $ref: /schemas/types.yaml#/definitions/flag
+    description: |
+      Boolean parameter to convey that design has audioi functionality. If
+      present, indicates optional audio core needed for audio usecase is
+      included.
+
+  xlnx,snd-pcm:
+    description: |
+      Reference to audio formatter block. Add this if, audio formatter
+      is going to be used for HDMI audio. Needed only if "xlnx,audio-enabled"
+      is included.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  xlnx,vid-interface:
+    description: Supported video interface.
+                 Possible values are 0 for AXI4-Stream,
+                 1 for Native and 2 for Native-IDE interface.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1, 2]
+
+  xlnx,xlnx-hdmi-acr-ctrl:
+    description: |
+      Alias to audio clock recovery block.
+      Needed only if "xlnx,audio-enabled" is included.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  xlnx,vpss:
+    description: |
+      vpss phandle. Requied only when vpss is connected to HDMI as bridge.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  ports:
+    type: object
+
+    properties:
+      port@0:
+        type: object
+        description: |
+          Output / source port node, endpoint describing modules
+          connected the HDMI transmitter
+
+        properties:
+          reg:
+            const: 0
+
+          endpoint:
+            type: object
+
+            properties:
+
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - clocks
+  - clock-names
+  - phys
+  - phy-names
+  - xlnx,input-pixels-per-clock
+  - xlnx,max-bits-per-component
+  - xlnx,vid-interface
+  - xlnx,xlnx-hdmi-acr-ctrl
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+    hdmi_acr_ctrl_0: hdmi_acr_ctrl@a0059000 {
+      /* This is a place holder node for a custom IP, user may need to
+      update the entries */
+      compatible = "xlnx,hdmi-acr-ctrl-1.0";
+      reg = <0x0 0xa0059000 0x0 0x1000>;
+    };
+
+    v_hdmi_tx_ss: v_hdmi_tx_ss@80080000 {
+      compatible = "xlnx,v-hdmi-tx-ss-3.1";
+      reg = <0xa0080000  0x80000>, <0xa0280000 0x10000>;
+      reg-names = "hdmi-txss", "hdcp1x-keymngmt";
+      interrupt-parent = <&gic>;
+      interrupts = <0 91 4>, <0 106 4>, <0 107 4>, <0 110 4>, <0 111 4>;
+      interrupt-names = "irq", "hdcp14_irq", "hdcp14_timer_irq", "hdcp22_irq",
+      "hdcp22_timer_irq";
+      clock-names = "s_axi_cpu_aclk", "link_clk", "s_axis_audio_aclk",
+      "video_clk", "s_axis_video_aclk", "txref-clk", "retimer-clk";
+      clocks = <&zynqmp_clk 71>, <&misc_clk_1>, <&zynqmp_clk 71>, <&misc_clk_2>,
+      <&zynqmp_clk 72>, <&si5324 0>, <&dp159>;
+      phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2";
+      phys = <&txphy_lane0 0 1 1 1>, <&txphy_lane1 0 1 1 1>, <&txphy_lane2 0 1 1 1>;
+      xlnx,input-pixels-per-clock = <0x2>;
+      xlnx,max-bits-per-component = <0xa>;
+      xlnx,include-hdcp-1-4;
+      xlnx,include-hdcp-2-2;
+      xlnx,hdcp-authenticate = <0x1>;
+      xlnx,hdcp-encrypt = <0x1>;
+      xlnx,audio-enabled;
+      xlnx,xlnx-hdmi-acr-ctrl = <&hdmi_acr_ctrl_0>;
+      xlnx,snd-pcm = <&audio_ss_0_audio_formatter_0>;
+      xlnx,vid-interface = <0x1>;
+      xlnx,vpss = <&v_proc_ss_0>;
+      ports {
+         #address-cells = <1>;
+         #size-cells = <0>;
+         encoder_hdmi_port: port@0 {
+            reg = <0>;
+            hdmi_encoder: endpoint {
+              remote-endpoint = <&dmaengine_crtc>;
+            };
+         };
+      };
+    };
+
+    v_drm_dmaengine_drv: drm-dmaengine-drv {
+      compatible = "xlnx,pl-disp";
+      dmas = <&hdmi_output_v_frmbuf_rd_0 0>;
+      dma-names = "dma0";
+      xlnx,vformat = "BG24";
+      #address-cells = <1>;
+      #size-cells = <0>;
+      dmaengine_port: port@0 {
+        reg = <0>;
+        dmaengine_crtc: endpoint {
+          remote-endpoint = <&hdmi_encoder>;
+        };
+      };
+    };
+# Note:
+ #  The "retimer-clk" is optional but recommended. If specified, the corresponding
+ # driver should offer a CCF clock that supports .set_rate(). Through this,
+ # the device can retime/redrive the HDMI TX signal on the connector
+ # depending on the TX clock line rate. Tested with dp159.c driver.
+
+ # Documentation of "audio_ss_0_audio_formatter_0" node is located
+ # at Documentation/devicetree/bindings/sound/xlnx,audio-formatter.txt
+
+ # Documentation of "v_proc_ss_0" node is located at
+ # Documentation/devicetree/bindings/display/xlnx/xlnx,vpss-scaler.txt
+...
