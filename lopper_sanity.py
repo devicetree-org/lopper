@@ -1786,7 +1786,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     new_node2 = new_node()
 
     if verbose:
-        print( "node2: %s" % new_node2.abs_path )
+        print( "node: %s" % new_node.abs_path )
     #new_node2 = new_node2(new_node)
     if verbose:
         print( "node2: %s" % new_node2.abs_path )
@@ -2156,8 +2156,17 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
     device_tree.cleanup()
 
 def assists_sanity_test( device_tree, lop_file, verbose ):
-    device_tree.setup( dt, [lop_file], "", True, libfdt = libfdt )
-    device_tree.assists_setup( [ "lopper/assists/domain_access.py" ] )
+    if lop_file:
+        device_tree.setup( dt, [lop_file], "", True, libfdt = libfdt )
+        device_tree.assists_setup( [ "lopper/assists/domain_access.py" ] )
+    else:
+        device_tree.setup( dt, [], "", True, libfdt = libfdt )
+
+        device_tree.load_paths.append( "lopper/selftest/" )
+        # this loads the external assist
+        device_tree.assists_setup( [ "assist-sanity.py" ] )
+        # this makes sure it runs
+        device_tree.assist_autorun_setup( "assist-sanity", "" )
 
     print( "[TEST]: running assist against tree" )
     device_tree.perform_lops()
@@ -2475,7 +2484,11 @@ if __name__ == "__main__":
         device_tree.outdir = outdir
         device_tree.use_libfdt = libfdt
 
+        # built in tests
         assists_sanity_test( device_tree, lop_file, verbose )
+
+        # external assist
+        assists_sanity_test( device_tree, None, verbose )
 
     if format:
         dt = setup_format_tree( outdir )
