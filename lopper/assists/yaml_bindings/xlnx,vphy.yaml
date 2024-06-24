@@ -1,0 +1,243 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) %YAML 1.2
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/phy/xlnx,vphy.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Video PHY
+
+maintainers:
+  - Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+
+description: |
+  The Xilinx Video PHY is a high-level video-specific wrapper around different
+  versions of the GT PHY. Its driver is phy/phy-xilinx-vphy.c This now supports
+  HDMI on Versal too.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,vid-phy-controller-2.2
+          - xlnx,hdmi-gt-controller-1.0
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    description: List of clock specifiers
+    items:
+      - description: Input clock source to HDMI Connects to GTREFCLK00
+      - description: Input clock source to HDMI Connects to GTREFCLK00
+      - description: Input clock source to HDMI Connects to GTREFCLK10
+      - description: Input clock source to HDMI Connects to GTREFCLK11
+      - description: This must be connected to the ODIV2 output of the
+                     gtrefclk0/1_in input buffer. The ODIV2 output must be
+                     configured to output a divided-by-1 clock.
+      - description: This must be connected to the ODIV2 output of the
+                     gtrefclk0/1_in input buffer. The ODIV2 output must be
+                     configured to output a divided-by-1 clock.
+      - description: Transmit AXI4-Stream Link Data interface clock
+      - description: Receive AXI4-Stream Link Data interface clock
+      - description: Sideband interface clock. Connect to AXI4-Lite clock.
+      - description: AXI Bus clock
+      - description: Free running clock that is used to bring up the
+                     UltraScale device GT and to clock GT helper blocks.
+      - description: Clock input to the NI-DRU block
+
+  clock-names:
+    items:
+      - const: mgtrefclk0_pad_p_in
+      - const: mgtrefclk0_pad_n_in
+      - const: mgtrefclk1_pad_p_in
+      - const: mgtrefclk1_pad_n_in
+      - const: gtsouthrefclk0_in
+      - const: gtsouthrefclk0_odiv2_in
+      - const: vid_phy_tx_axi4s_aclk
+      - const: vid_phy_rx_axi4s_aclk
+      - const: vid_phy_sb_aclk
+      - const: vid_phy_axi4lite_aclk
+      - const: drpclk
+      - const: dru-clk
+
+  xlnx,input-pixels-per-clock:
+    description: |
+      Input number of pixel per clock that IP configured with.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [1, 2, 4]
+
+  xlnx,nidru:
+    description: Flag to indicate if DRU is present.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,nidru-refclk-sel:
+    description: Available reference clocks for NI-DRU(non-integer data rate
+                 unit) clock selection multiplexer.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 7
+
+  xlnx,rx-no-of-channels:
+    description: Max number of channels that Rx configured with.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  xlnx,rx-pll-selection:
+    description: Available reference clocks used to driver Rx datapath.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  xlnx,rx-protocol:
+    description: Protocol type that Tx is configured with.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 3
+
+  xlnx,rx-refclk-sel:
+    description: Available reference clocks for Rx PLL clock selection
+                 multiplexer.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 0
+    maximum: 6
+
+  xlnx,tx-no-of-channels:
+    description: Max number of channels that Tx configured with.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  xlnx,tx-pll-selection:
+    description: Available reference clocks used to driver Tx datapath.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  xlnx,tx-protocol:
+    description: Protocol type that Rx is configured with.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 3
+
+  xlnx,tx-refclk-sel:
+    description: Available reference clocks for Tx PLL clock selection
+                 multiplexer.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 0
+    maximum: 6
+
+  xlnx,transceiver-type:
+    description: |
+      Gigabit transceiver type that IP configured with.Possible values are as
+      below -
+
+  xlnx,transceiver-width:
+    description: Transceiver width that IP is configured with.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [2, 4]
+
+  xlnx,use-gt-ch4-hdmi:
+    description: |
+      use 4th GT channel as tx TMDS clock.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,tx-buffer-bypass:
+    description: Flag to indicate buffer bypass logic availability.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,hdmi-fast-switch:
+    description: Flag to indicate fast switching logic availability
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,err-irq-en:
+    description: Flag to indicate error irq logic availability
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,rx-clk-primitive:
+    description: |
+      Rx clock primitive type that IP is configured with. Value 0
+      indicates MMCM clock primitive and 1 indicates PLL clock primitive.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,tx-clk-primitive:
+    description: |
+      Tx clock primitive type that IP is configured with. Value 0 indicates
+      MMCM clock primitive and 1 indicates PLL clock primitive.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  "#phy-cells":
+    const: 0
+
+required:
+  - clock-names
+  - clocks
+  - compatible
+  - interrupts
+  - reg
+  - xlnx,transceiver-type
+  - xlnx,tx-no-of-channels
+  - xlnx,rx-no-of-channels
+  - xlnx,tx-refclk-sel
+  - xlnx,rx-refclk-sel
+  - xlnx,tx-pll-selection
+  - xlnx,rx-pll-selection
+  - xlnx,nidru-refclk-sel
+  - xlnx,nidru
+  - xlnx,rx-protocol
+  - xlnx,tx-protocol
+  - xlnx,transceiver-width
+  - xlnx,input-pixels-per-clock
+  - xlnx,use-gt-ch4-hdmi
+  - xlnx,rx-clk-primitive
+  - xlnx,tx-clk-primitive
+  - '#phy-cells'
+
+additionalProperties: false
+
+examples:
+  - |
+   vid_phy_controller: vid_phy_controller@80120000 {
+            compatible = "xlnx,vid-phy-controller-2.2";
+            reg = <0xa0090000 0x10000>;
+            interrupts = <0 92 4>;
+            interrupt-parent = <&gic>;
+            clock-names = "mgtrefclk0_pad_p_in", "mgtrefclk0_pad_n_in", "mgtrefclk1_pad_p_in",
+            "mgtrefclk1_pad_n_in", "gtsouthrefclk0_in", "gtsouthrefclk0_odiv2_in",
+            "vid_phy_tx_axi4s_aclk", "vid_phy_rx_axi4s_aclk", "vid_phy_sb_aclk",
+            "vid_phy_axi4lite_aclk", "drpclk", "dru-clk";
+            clocks = <&misc_clk_0>, <&misc_clk_0>, <&misc_clk_0>, <&misc_clk_0>,<&misc_clk_3>,
+            <&misc_clk_3>, <&misc_clk_1>, <&misc_clk_1>, <&zynqmp_clk 71>, <&zynqmp_clk 71>,
+            <&zynqmp_clk 71>, <&si570_2>;
+            xlnx,input-pixels-per-clock = <0x2>;
+            xlnx,nidru = <0x1>;
+            xlnx,nidru-refclk-sel = <0x4>;
+            xlnx,rx-no-of-channels = <0x3>;
+            xlnx,rx-pll-selection = <0x0>;
+            xlnx,rx-protocol = <0x1>;
+            xlnx,rx-refclk-sel = <0x1>;
+            xlnx,tx-no-of-channels = <0x3>;
+            xlnx,tx-pll-selection = <0x6>;
+            xlnx,tx-protocol = <0x1>;
+            xlnx,tx-refclk-sel = <0x0>;
+            xlnx,hdmi-fast-switch = <0x1>;
+            xlnx,transceiver-type = <0x5>;
+            xlnx,tx-buffer-bypass = <0x1>;
+            xlnx,transceiver-width = <0x2>;
+            xlnx,use-gt-ch4-hdmi = <0>;
+            xlnx,tx-clk-primitive = <0>;
+            xlnx,rx-clk-primitive = <0>;
+            #phy-cells = <0>;
+   };
+...
