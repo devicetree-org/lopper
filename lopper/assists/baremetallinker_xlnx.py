@@ -308,7 +308,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     ## For memory tests configuration default memory should be ocm if available
     if memtest_config:
         has_ocm = [x for x in mem_ranges.keys() if "ocm" in x]
-        has_ram = [x for x in mem_ranges.keys() if "ram" in x]
+        has_ram = [x for x in mem_ranges.keys() if "_ram" in x]
         if has_ocm:
             default_ddr = has_ocm[0]
         elif has_ram:
