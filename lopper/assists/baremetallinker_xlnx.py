@@ -305,14 +305,18 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         default_ddr = has_ddr[0]
     has_ocm = None
     has_ram = None
+    has_bram = None
     ## For memory tests configuration default memory should be ocm if available
     if memtest_config:
         has_ocm = [x for x in mem_ranges.keys() if "ocm" in x]
-        has_ram = [x for x in mem_ranges.keys() if "ram" in x]
+        has_ram = [x for x in mem_ranges.keys() if "_ram" in x]
+        has_bram = [x for x in mem_ranges.keys() if "_bram" in x]
         if has_ocm:
             default_ddr = has_ocm[0]
         elif has_ram:
             default_ddr = has_ram[0]
+        elif has_bram:
+            default_ddr = has_bram[0]
 
     cfd.write("set(DDR %s)\n" % default_ddr)
     memip_list = []
@@ -335,6 +339,8 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             memip_list.insert(0, memip_list.pop(memip_list.index(has_ocm[0])))
         elif has_ram:
             memip_list.insert(0, memip_list.pop(memip_list.index(has_ram[0])))
+        elif has_bram:
+            memip_list.insert(0, memip_list.pop(memip_list.index(has_bram[0])))
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
     cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
     if stack_size is not None:
