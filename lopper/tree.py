@@ -787,6 +787,9 @@ class LopperProp():
            Nothing
 
         """
+        if not self.node:
+            return
+
         if self.node.indent_char == ' ':
             indent = (self.node.depth * 8) + 8
         else:
@@ -1926,7 +1929,7 @@ class LopperNode(object):
         # explicitly passed "False" to not take us into the check.
         resolve_props = False
         if strict != None:
-            if self.tree.strict != strict:
+            if self.tree and self.tree.strict != strict:
                 resolve_props = True
 
         if self.abs_path != "/":
@@ -1967,7 +1970,7 @@ class LopperNode(object):
             #print( "/dts-v1/;\n\n/ {", file=output )
             print( "/dts-v1/;\n", file=output )
 
-            if self.tree.__memreserve__:
+            if self.tree and self.tree.__memreserve__:
                 mem_res_addr = hex(self.tree.__memreserve__[0] )
                 mem_res_len = hex(self.tree.__memreserve__[1] )
                 print( "/memreserve/ %s %s;\n" % (mem_res_addr,mem_res_len), file=output )
