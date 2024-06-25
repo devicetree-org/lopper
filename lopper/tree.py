@@ -510,6 +510,13 @@ class LopperProp():
         """
         phandle_map = []
         phandle_sub_list = []
+
+        if not self.node:
+            return phandle_map
+
+        if not self.node.tree:
+            return phandle_map
+
         phandle_props = Lopper.phandle_possible_properties()
         if self.name in phandle_props.keys():
             # This property can have phandles!
@@ -1747,6 +1754,21 @@ class LopperNode(object):
 
         return npath
 
+    def phandle_set(self,value):
+        old_phandle = self.phandle
+
+        self.phandle = value
+
+        # is there a phandle property ? That is only used
+        # in printing, but it should be updated to match
+        try:
+            phandle_prop = self.__props__["phandle"]
+            self.__props__["phandle"].value = self.phandle
+        except:
+            True
+
+        # TOOD: consider if we should update the tree, if we are assigned to one ?
+
     def label_set(self,value):
         # someone is labelling a node, the tree's lnodes need to be
         # updated
@@ -1766,6 +1788,10 @@ class LopperNode(object):
 
                 self.tree.__lnodes__[value] = self
                 self.label = value
+        else:
+            # there's no associated tree, so the __lnodes__ update
+            # will have too come when the node is added.
+            self.label = value
 
 
     def resolve_all_refs( self, property_mask=[], parents=True ):
@@ -2609,10 +2635,14 @@ class LopperNode(object):
             if not self.type:
                 self.type = [ "" ]
 
+            # this ensures any phandle properties are in sync
+            # with the phande assigned to the node
+            self.phandle_set( self.phandle )
+
             self.__nstate__ = "resolved"
             self.__modified__ = False
 
-        lopper.log._debug( f"node resolution end: {self}" )
+        lopper.log._debug( f"node load end: {self}" )
 
     def resolve( self, fdt = None, resolve_children=True ):
         """resolve (calculate) node details against a FDT
@@ -2659,6 +2689,14 @@ class LopperNode(object):
         ## We also may use this as recursive subnode resolve() call, so we
         ## can apply changes to a nodes properties and all subnode properties
 
+        ## Note:  if the node is not in a tree, the path will change to
+        ##        /<name>, and will likely need to be adjusted later
+        ## Note2: While keeping the interface simpler for adding nodes,
+        ##        this can break node move detection, and causes more
+        ##        issues. So until we resolve them, we comment out this
+        ##        helper.
+        # self.abs_path = self.path()
+
         if self.abs_path == "/":
             self.depth = 0
         else:
@@ -2674,6 +2712,10 @@ class LopperNode(object):
 
             for cn in self.child_nodes.values():
                 cn.resolve( fdt, resolve_children )
+
+        for p in self.__props__.values():
+            print( "resolving property: %s" % p.name )
+            p.resolve()
 
         lopper.log._debug( f"node resolution end: {self}" )
 
@@ -3669,8 +3711,27 @@ class LopperTree:
         if node.number >= 0:
             self.__nnodes__[node.number] = node
         if node.phandle > 0:
+            # we need to generate a new phandle on a collision
+            try:
+                if self.__pnodes__[node.phandle]:
+                    lopper.log._debug( f"node add: would duplicate phandle: {node.phandle}" )
+                    new_phandle = self.phandle_gen()
+                    node.phandle_set( new_phandle )
+            except:
+                pass
+
             self.__pnodes__[node.phandle] = node
         if node.label:
+            # we should check if there's already a node at the label
+            # value, and either warn, adjust or take some other appropriate
+            # action
+            try:
+                if self.__lnodes__[node.label]:
+                    node.label_set( node.label )
+                    lopper.log._debug( f"node add: duplicate label, generated a new one: {node.label}" )
+            except:
+                pass
+
             self.__lnodes__[node.label] = node
 
         # Check to see if the node has any children. If it does, are they already in
