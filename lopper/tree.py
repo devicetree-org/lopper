@@ -2713,7 +2713,6 @@ class LopperNode(object):
                 cn.resolve( fdt, resolve_children )
 
         for p in self.__props__.values():
-            print( "resolving property: %s" % p.name )
             p.resolve()
 
         lopper.log._debug( f"node resolution end: {self}" )
