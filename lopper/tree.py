@@ -115,7 +115,7 @@ class LopperProp():
         """
         if self.__dbg__ > 1:
             lopper.log._debug( f"property '{self.name}' deepcopy start: {[self]}" )
-            lopper.log._debug( f"         value type: {type(self.value)} value len: {len(self.value)} value: {self.value}" )
+            lopper.log._debug( f"         value type: {type(self.value)} value: {self.value}" )
 
         new_instance = LopperProp(self.name)
 
@@ -1309,7 +1309,6 @@ class LopperNode(object):
         new_instance.__props__ = OrderedDict()
         for p in reversed(self.__props__):
             lopper.log._debug( f"    property deepcopy start: {p} {self.__props__[p].value}" )
-            self.__props__[p].__dbg__ = 2
             new_instance[p] = copy.deepcopy( self.__props__[p], memodict )
             new_instance[p].node = new_instance
             lopper.log._debug( f"    property deepcopy has returned: {new_instance.__props__[p]} {new_instance.__props__[p].value}" )
