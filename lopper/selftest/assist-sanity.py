@@ -26,6 +26,7 @@ import lopper_lib
 from itertools import chain
 from lopper_lib import chunks
 import copy
+from collections import OrderedDict
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "assist,domain-v1", compat_string_to_test):
@@ -149,5 +150,21 @@ def assist_reference( tgt_node, sdt, options ):
         print( f"path: {path}" )
     except Exception as e:
         print( "oops: %s" % e )
-        
+
+    print( "[INFO]: copying and adding a new tcm node" )
+    new_tcm = sdt.tree["/tcm"]()
+    new_tcm.name = "tcm_new"
+    new_tcm.abs_path = new_tcm.path()
+    sdt.tree.add( new_tcm )
+
+    sdt.tree.sync()
+    sdt.tree.resolve()
+
+    try:
+        aa = sdt.tree['/'].reorder_child( "/tcm_new", "/tcm", after=True )
+    except Exception as e:
+        print( "ooops: %s" % e )
+
+    sdt.tree.print()
+
     return 1
