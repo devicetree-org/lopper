@@ -2827,6 +2827,54 @@ class LopperNode(object):
 
         return unit_address
 
+    def children_by_path( self ):
+        """
+        Get the children of the node sorted by path
+
+        Args:
+           None
+        Returns:
+           OrderedDict: A dictionary of child nodes sorted by path
+        """
+        return dict(sorted(self.child_nodes.items(), key=lambda item: item[0].split('/')[1]))
+
+    def reorder_child(self, path_to_move, path_to_move_next_to, after=True):
+        """
+        (re)order a specified child node next to another specified child
+
+        Args:
+           path_to_move(String): the path of the child to move / order
+           path_to_move_next_to (String): the path next to which the specified child path will be moved
+           after (boolean):  if True (default), move after path_to_move_next_to; if False, move before path_to_move_next_to
+
+        Returns:
+           OrderedDict - the modified ordered dictionary
+        """
+
+        od = self.child_nodes
+
+        if path_to_move not in od or path_to_move_next_to not in od:
+            raise KeyError("Both keys must be present in the OrderedDict")
+
+        items = list(od.items())
+        item_to_move = (path_to_move, od[path_to_move])
+
+        # Remove the item to move
+        items = [item for item in items if item[0] != path_to_move]
+
+        # Find the position to insert
+        pos = next(i for i, item in enumerate(items) if item[0] == path_to_move_next_to)
+        if after:
+            pos += 1
+
+        # Insert the item at the new position
+        items.insert(pos, item_to_move)
+
+        self.child_nodes = OrderedDict(items)
+
+        # Create a new OrderedDict from the reordered items
+        return OrderedDict(items)
+
 class LopperTree:
     """Class for walking a device tree, and providing callbacks at defined points
 
