@@ -1978,14 +1978,15 @@ class LopperSDT:
 
                         if modify_source_path.parent != modify_dest_path.parent:
                             lopper.log._debug( f"[{tree}] node move: {modify_source_path} -> {modify_dest_path}" )
+
+                            # delete the old node
+                            tree.delete( node )
+
                             # deep copy the node
                             new_dst_node = node()
                             new_dst_node.abs_path = modify_val
 
                             tree + new_dst_node
-
-                            # delete the old node
-                            tree.delete( node )
 
                             tree.sync()
 
