@@ -1296,7 +1296,11 @@ def isospec_domain( tgt_node, sdt, options ):
     # process the subsystems in the spec
     for sub in spec.subsystem():
         _info( f"processing: subsystem: {type(sub)} {sub}" )
-        subsystem_yaml_node = domains.subsystem_add( sub.name )
+        try:
+            sub_id = sub["id"].value
+        except:
+            sub_id = 0
+        subsystem_yaml_node = domains.subsystem_add( sub.name, sub_id )
         spec.isodomain_convert( sub, domains )
 
         # does the subsystem have domains ? if so, process them
