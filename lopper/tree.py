@@ -511,12 +511,6 @@ class LopperProp():
         phandle_map = []
         phandle_sub_list = []
 
-        if not self.node:
-            return phandle_map
-
-        if not self.node.tree:
-            return phandle_map
-
         phandle_props = Lopper.phandle_possible_properties()
         if self.name in phandle_props.keys():
             # This property can have phandles!
@@ -577,7 +571,10 @@ class LopperProp():
                         # the next phandle.
                         #
                         # step 1) lookup the node
-                        node_deref = self.node.tree.deref( val )
+                        if self.node and self.node.tree:
+                            node_deref = self.node.tree.deref( val )
+                        else:
+                            node_deref = []
 
                         try:
                             # step 2) look for the property in the deferneced node. If the
@@ -600,7 +597,7 @@ class LopperProp():
                         phandle_idx = phandle_idx + cell_count
                     else:
                         node_deref = None
-                        if self.node:
+                        if self.node and self.node.tree:
                             node_deref = self.node.tree.deref( val )
 
                         # deref, bump our phandle_idx by one
@@ -3658,8 +3655,8 @@ class LopperTree:
 
         """
 
-        lopper.log._debug( f" tree: node add: [{node.name}] {[ node ]} ({node.abs_path})({node.number})" 
-                           f"          phandle: {node.phandle}" )
+        lopper.log._debug( f"tree: node add: [{node.name}] {[ node ]} ({node.abs_path})({node.number})"
+                           f" phandle: {node.phandle}" )
 
         node_full_path = node.abs_path
 
@@ -3741,6 +3738,15 @@ class LopperTree:
         #       count on the current behaviour to not drop the properties.
         if node.phandle == -1:
             node.phandle = 0
+        elif node.phandle > 0:
+            # we need to generate a new phandle on a collision
+            try:
+                if self.__pnodes__[node.phandle]:
+                    lopper.log._debug( f"node add: would duplicate phandle: {hex(node.phandle)} ({node.phandle})" )
+                    new_phandle = self.phandle_gen()
+                    node.phandle_set( new_phandle )
+            except:
+                pass
 
         node.load( { '__path__' : node.abs_path,
                      '__fdt_name__' : node.name,
@@ -3748,7 +3754,7 @@ class LopperTree:
                    parent_path )
 
         lopper.log._debug( f"node add: {node.abs_path}, after load. depth is : {node.depth}"
-                           f"         phandle: {node.phandle}" )
+                           f"         phandle: {node.phandle} tree: {node.tree}" )
 
         self.__nodes__[node.abs_path] = node
 
@@ -3757,15 +3763,11 @@ class LopperTree:
         if node.number >= 0:
             self.__nnodes__[node.number] = node
         if node.phandle > 0:
-            # we need to generate a new phandle on a collision
-            try:
-                if self.__pnodes__[node.phandle]:
-                    lopper.log._debug( f"node add: would duplicate phandle: {node.phandle}" )
-                    new_phandle = self.phandle_gen()
-                    node.phandle_set( new_phandle )
-            except:
-                pass
-
+            # note: this should also have been done by node.load()
+            #       and the phandle_set() that was called in case of
+            #       a detected collision, but we assign it here to
+            #       be sure and to mark that we consider it part of the
+            #       tree at this point.
             self.__pnodes__[node.phandle] = node
         if node.label:
             # we should check if there's already a node at the label
