@@ -1,0 +1,329 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,v-vpss-scaler.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx VPROC_SS IP.
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description: |  
+  The Xilinx VPSS Scaler IP is a Video IP that supports up and down
+  scaling as well as color space conversion from RGB or YUV(444, 422, 420)
+  input to RGB or YUV(444, 422, 420) output.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,v-proc-ss-2.3
+          - xlnx,v-vpss-scaler-1.0
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to the AXI streaming clock feeding the Demosaic
+                 ap_clk.
+    maxItems: 1
+
+  clock-names:
+    items:
+      - const: ap_clk
+
+  xlnx,max-height:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: Maximum number of lines.
+    minimum: 64
+    maximum: 4320
+
+  xlnx,max-width:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: Maximum number of pixels in a line.
+    minimum: 64
+    maximum: 8192
+
+  reset-gpios:
+    maxItems: 1
+    description: Should contain GPIO reset phandle
+
+  xlnx,num-hori-taps:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: The number of horizontal taps for scaling filter.
+      A value of 2 represents bilinear filters.
+      A value of 4 represents bicubic. Values 6,8,10,12 represent
+      polyphase filters.
+    oneOf:
+      - enum: [2, 4, 6, 8, 10, 12]
+
+  xlnx,num-vert-taps:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: The number of vertical taps for scaling filter.
+      A value of 2 represents bilinear filters.
+      A value of 4 represents bicubic. Values 6,8,10,12 represent
+      polyphase filters.
+    allOf:
+      - enum: [2, 4, 6, 8, 10, 12]
+
+  xlnx,pix-per-clk:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: The pixels per clock property of the IP.
+    allOf:
+      - enum: [1, 2, 4, 8]
+
+  xlnx,colorspace-support:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: The colorspace property selected in the IP.
+    const: 0
+    
+  xlnx,csc-enable-window:
+    type: boolean
+    description: If csc window is enabled or not.
+
+  xlnx,enable-csc:
+    type: boolean
+    description: If csc is enabled or not.
+     
+  xlnx,h-scaler-phases:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: defines hscaler phase value for
+       polyphase algorithm.
+    const: 64
+
+  xlnx,h-scaler-taps:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: no of taps for h-scaler.
+    allOf:
+      - enum: [6, 8, 10, 12]
+
+  xlnx,samples-per-clk:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: samples per clock set in the IP.
+    allOf:
+      - enum: [1, 2, 4, 8]
+
+  xlnx,scaler-algorithm:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: Algorithm selected in the IP for scaling.
+    allOf:
+      - enum: [0, 1, 2]
+
+  xlnx,topology:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: Mode of operation selected for the IP.
+    allOf:
+      - enum: [0, 1, 2, 3, 4, 5]
+
+  xlnx,use-uram:
+    type: boolean
+    description: use uram or not selected in the IP.
+
+  xlnx,v-scaler-phases:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: Defines vscale phase value for the
+        polyphase algorithm.
+    const: 64
+
+  xlnx,v-scaler-taps:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: No of taps for vscaler.
+    allOf:
+      - enum: [6, 8, 10, 12]
+      
+
+  ports:
+    type: object
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+      port@0:
+        type: object
+        description: |
+          Input/sink port node, describing module connected to the
+          input of Demosaic IP.
+
+        properties:
+          reg:
+            description: |
+              Input/sink port number.
+            const: 0
+
+          xlnx,video-format:
+            $ref: /schemas/types.yaml#/definitions/uint16
+            description: |
+              Video format details for input and output port.
+              The possible values are -
+              0 - RGB
+              1 - YUV444
+              2 - YUV422
+              3 - YUV420
+            anyOf:
+              - enum: [0, 1, 2, 3] 
+
+          xlnx,video-width:
+            $ref: /schemas/types.yaml#/definitions/uint16
+            description: |
+              The video with to which input and output pads
+              of the VPSS IP are set.
+            anyOf:
+              - enum: [8, 10, 12, 16] 
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+            - reg
+            - xlnx,video-format
+            - xlnx,video-width   
+            - endpoint
+
+        additionalProperties: false
+
+      "port@1":
+        type: object
+        description: |
+          Output/source port node, describing module connected to the
+          output.
+
+        properties:
+          reg:
+            description: |
+              Output/source port number.
+            const: 1
+
+          xlnx,video-format:
+            $ref: /schemas/types.yaml#/definitions/uint16
+            description: |
+              Video format details for input and output port.
+              The possible values are 
+              0 - RGB
+              1 - YUV444
+              2 - YUV422
+              3 - YUV420
+            anyOf:
+              - enum: [0, 1, 2, 3] 
+  
+
+          xlnx,video-width:
+            $ref: /schemas/types.yaml#/definitions/uint16
+            description: |
+              The video with to which input and output pads
+              of the VPSS IP are set.
+            anyOf:
+              - enum: [8, 10, 12, 16] 
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+          - reg
+          - xlnx,video-format
+          - xlnx,video-width   
+          - endpoint
+
+        additionalProperties: false
+
+    required:
+      - "#address-cells"
+      - "#size-cells"
+      - port@0
+      - port@1
+
+    additionalProperties: false
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - clock-names
+  - xlnx,max-height
+  - xlnx,max-width
+  - reset-gpios
+  - ports
+  - xlnx,num-hori-taps
+  - xlnx,num-vert-taps
+  - xlnx,pix-per-clk
+  - xlnx,colorspace-support
+  - xlnx,csc-enable-window
+  - xlnx,enable-csc
+  - xlnx,h-scaler-phases
+  - xlnx,h-scaler-taps
+  - xlnx,samples-per-clk
+  - xlnx,scaler-algorithm
+  - xlnx,topology
+  - xlnx,use-uram
+  - xlnx,v-scaler-phases
+  - xlnx,v-scaler-taps
+
+additionalProperties: false
+
+examples:
+  - |
+   csc_1:csc@a0040000 {
+        compatible = "xlnx,v-vpss-scaler-1.0";
+        reg = <0xa0040000 0x10000>;
+        clocks = <&misc_clk_2>;
+        clock-names = "ap_clk";
+        xlnx,max-height = /bits/ 16 <2160>;
+        xlnx,max-width = /bits/ 16 <3840>;
+        reset-gpios = <&gpio 0 1>;
+        xlnx,num-hori-taps = /bits/ 16 <8>;
+        xlnx,num-vert-taps = /bits/ 16 <8>;
+        xlnx,pix-per-clk = /bits/ 16 <2>;
+        xlnx,colorspace-support = /bits/ 16 <0>;
+        xlnx,csc-enable-window;
+        xlnx,enable-csc;
+        xlnx,h-scaler-phases = /bits/ 16 <64>;
+        xlnx,h-scaler-taps = /bits/ 16 <8>;
+        xlnx,samples-per-clk = /bits/ 16 <2>;
+        xlnx,scaler-algorithm = /bits/ 16  <2>;
+        xlnx,topology = /bits/ 16  <0>;
+        xlnx,use-uram;
+        xlnx,v-scaler-phases = /bits/ 16 <64>;
+        xlnx,v-scaler-taps = /bits/ 16 <8>;
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            port@0 {
+                reg = <0>;
+                xlnx,video-format = /bits/ 16 <0>;
+                xlnx,video-width = /bits/ 16 <8>;
+                csc_in: endpoint {
+                    remote-endpoint = <&gamma_out>;
+                };
+
+            };
+            port@1 {
+                reg = <1>;
+                xlnx,video-format = /bits/ 16 <3>;
+                xlnx,video-width = /bits/ 16 <8>;
+                csc_out: endpoint {
+                    remote-endpoint = <&scaler_in>;
+                };
+
+            };
+        };
+    };
