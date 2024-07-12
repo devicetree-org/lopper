@@ -1,0 +1,185 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,v-gamma-lut.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Gamma LUT IP.
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description: |
+  The Xilinx Gamma LUT IP is used to provide RGB Gamma correction.
+  The IP provides a look up table for each R,G and B components.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,v-gamma-lut
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to the AXI streaming clock feeding the Demosaic
+                 ap_clk.
+    maxItems: 1
+
+  clock-names:
+    items:
+      - const: ap_clk
+
+  xlnx,max-height:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: Maximum number of lines.
+    minimum: 64
+    maximum: 4320
+
+  xlnx,max-width:
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: Maximum number of pixels in a line.
+    minimum: 64
+    maximum: 8192
+
+  reset-gpios:
+    maxItems: 1
+    description: Should contain GPIO reset phandle
+
+
+
+  ports:
+    type: object
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+      port@0:
+        type: object
+        description: |
+          Input/sink port node, describing module connected to the
+          input of Gamma LUT IP.
+
+        properties:
+          reg:
+            description: |
+              Input/sink port number.
+            const: 0
+
+          xlnx,video-width:
+            description: Number of bits per color.
+            allOf:
+              - $ref: /schemas/types.yaml#/definitions/uint32
+              - enum: [8, 16]
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+            - reg
+            - xlnx,video-width
+            - endpoint
+
+        additionalProperties: false
+
+      "port@1":
+        type: object
+        description: |
+          Output/source port node, describing module connected to the
+          output.
+
+        properties:
+          reg:
+            description: |
+              Output/source port number.
+            const: 1
+
+          xlnx,video-width:
+            description: Number of bits per color.
+            allOf:
+              - $ref: /schemas/types.yaml#/definitions/uint32
+              - enum: [8, 16]
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+            - reg
+            - xlnx,video-width
+            - endpoint
+
+        additionalProperties: false
+
+    required:
+      - "#address-cells"
+      - "#size-cells"
+      - port@0
+      - port@1
+
+    additionalProperties: false
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - xlnx,max-height
+  - xlnx,max-width
+  - reset-gpios
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+   gamma_lut_1: gamma_lut_1@a0080000 {
+        compatible = "xlnx,v-gamma-lut";
+        reg = <0xa0080000 0x10000>;
+        clocks = <&vid_stream_clk>;
+        reset-gpios = <&gpio 83 1>;
+        xlnx,max-height = /bits/ 16 <2160>;
+        xlnx,max-width = /bits/ 16 <3840>;
+
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            port@0 {
+                reg = <0>;
+                xlnx,video-width = <8>;
+
+                gamma_in: endpoint {
+                    remote-endpoint = <&demosaic_out>;
+                };
+            };
+
+            port@1 {
+                reg = <1>;
+                xlnx,video-width = <8>;
+
+                gamma_out: endpoint {
+                    remote-endpoint = <&csc_in>;
+                };
+            };
+        };
+    };
