@@ -109,7 +109,17 @@ def get_memranges(tgt_node, sdt, options):
         if mem_phandles:
            # Remove Duplicate phandle referenecs
            mem_phandles = list(dict.fromkeys(mem_phandles))
-           indx_list = [index for index,handle in enumerate(address_map) for val in mem_phandles if handle == val]
+           # Get all indexes of the address-map for this node
+           tmp = na
+           indx_list = []
+           handle = na
+           while handle < len(address_map):
+                phandle = address_map[handle]
+                for val in mem_phandles:
+                    if phandle == val:
+                        indx_list.append(handle)
+                handle = handle + cells + na + 1
+
            for inx in indx_list:
                start = [address_map[inx+i+1] for i in range(na)]
                size_list.append(address_map[inx+2*na])
