@@ -326,7 +326,15 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         elif has_ram:
             default_ddr = has_ram[0]
         elif has_bram:
-            default_ddr = has_bram[0]
+            if len(has_bram) > 1:
+                size = 0
+                for key, value in mem_ranges.items():
+                    if "_bram" in key:
+                        if size < value[1]:
+                            size = value[1]
+                            default_ddr = key
+            else:
+                default_ddr = has_bram[0]
 
     cfd.write("set(DDR %s)\n" % default_ddr)
     memip_list = []
@@ -350,7 +358,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         elif has_ram:
             memip_list.insert(0, memip_list.pop(memip_list.index(has_ram[0])))
         elif has_bram:
-            memip_list.insert(0, memip_list.pop(memip_list.index(has_bram[0])))
+            memip_list.insert(0, memip_list.pop(memip_list.index(default_ddr)))
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
     cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
     if stack_size is not None:
