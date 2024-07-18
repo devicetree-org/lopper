@@ -326,7 +326,15 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         elif has_ram:
             default_ddr = has_ram[0]
         elif has_bram:
-            default_ddr = has_bram[0]
+            if len(has_bram) > 1:
+                size = 0
+                for key, value in mem_ranges.items():
+                    if "_bram" in key:
+                        if size < value[1]:
+                            size = value[1]
+                            default_ddr = key
+            else:
+                default_ddr = has_bram[0]
 
     cfd.write("set(DDR %s)\n" % default_ddr)
     memip_list = []
