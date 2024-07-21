@@ -122,9 +122,9 @@ class LopperSDT:
 
         # check for required support applications
         if libfdt:
-            support_bins = [ "dtc", "cpp" ]
+            support_bins = [ os.environ.get("LOPPER_DTC", "dtc"), os.environ.get("LOPPER_CPP", "cpp") ]
         else:
-            support_bins = [ "cpp" ]
+            support_bins = [ os.environ.get("LOPPER_CPP", "cpp") ]
 
         for s in support_bins:
             lopper.log._info( f"checking for support binary: {s}" )

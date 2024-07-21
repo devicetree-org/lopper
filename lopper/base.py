@@ -112,7 +112,7 @@ class lopper_base:
 
         # try pcpp first
         ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("pcpp") or "").split()
-        if ppargs:
+        if ppargs and os.path.basename(ppargs[0]) == "pcpp":
             ppargs += "--passthru-comments".split()
         else:
             ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp") or "").split()
