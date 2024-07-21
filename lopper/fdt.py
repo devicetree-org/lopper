@@ -1876,7 +1876,7 @@ class LopperFDT(lopper.base.lopper_base):
             dtcargs += ["-i", i]
 
         dtcargs += ["-o", "{0}/{1}".format(outdir,output_dtb)]
-        dtcargs += ["-I", "dts", "-O", "dtb", preprocessed_name ]
+        dtcargs += ["-@", "-I", "dts", "-O", "dtb", preprocessed_name ]
         if verbose:
             print( "[INFO]: compiling dtb: %s" % dtcargs )
 
