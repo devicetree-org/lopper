@@ -93,7 +93,7 @@ def xppu_masteridlist():
             masterID_type = "Programmable"
             xppu_masterid_lines = xppu_masterid_lines + xppu_masterID_lines(n, masterID_type)
 
-        elif:
+        else:
             n = str(i)
             masterID_type = "Programmable"
             xppu_masterid_lines = xppu_masterid_lines + xppu_masterID_lines(n, masterID_type)
@@ -150,7 +150,7 @@ def xppu_aperpermlist():
             base_add4 = hex(int(base_add4, 16) + int(size_hex, 16))
             xppu_aperperm_lines = xppu_aperperm_lines + xppu_AperPerm_lines(n, size, base_add4, aperture_type)
  
-        elif:
+        else:
             n = str(i)
             size = "64K"
             size_hex = "10000"
