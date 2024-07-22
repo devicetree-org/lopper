@@ -203,6 +203,7 @@ required:
   - xlnx,rx-clk-primitive
   - xlnx,tx-clk-primitive
   - '#phy-cells'
+  - phandle
 
 additionalProperties: false
 
