@@ -11,6 +11,8 @@ import yaml
 import sys
 import os
 import glob
+import lopper
+import re
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -60,8 +62,13 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     ns = match_cpunode.parent["#ranges-size-cells"].value[0]
 
     linux_dt = None
+    zephyr_dt = None
     try:
-        linux_dt = options['args'][1]
+        if options['args'][1] == "zephyr_dt":
+            zephyr_dt = 1
+        elif options['args'][1] == "linux_dt":
+            linux_dt = 1
+
     except IndexError:
         pass
 
@@ -262,4 +269,153 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         if sdt.tree['/cpus'].propval('address-map') != ['']:
             sdt.tree['/cpus'].delete('address-map')
 
+    if zephyr_dt:
+        xlnx_generate_zephyr_domain_dts(tgt_node, sdt)
     return True
+
+def xlnx_generate_zephyr_domain_dts(tgt_node, sdt):
+    root_node = sdt.tree[tgt_node]
+    root_sub_nodes = root_node.subnodes()
+
+    max_mem_size = 0
+
+    for node in root_sub_nodes:
+
+        soc_kconfig_file = os.path.join(sdt.outdir, "Kconfig.soc")
+        soc_kconfig = open(soc_kconfig_file, 'a')
+
+        soc_defconfig_file = os.path.join(sdt.outdir, "Kconfig.defconfig")
+        defconfig_kconfig = open(soc_defconfig_file, 'a')
+
+        if node.name == "chosen":
+                var = sdt.tree[node].propval('stdout-path', list)[0]
+                dev_node = var.split(':')[0]
+                
+                sdt.tree[node]['zephyr,console'] = dev_node
+ 
+        if node.name == "amba_pl":
+                sdt.tree.delete(node)
+                new_dst_node = node()
+                new_dst_node.abs_path = "/soc"
+                new_dst_node.name = "soc"
+                sdt.tree + new_dst_node
+                sdt.tree.sync()
+
+                symbol_node = sdt.tree['/__symbols__']
+                prop_list = list(symbol_node.__props__.keys())
+                for prop in prop_list:
+                    val = sdt.tree['/__symbols__'].propval(prop, list)[0]
+                    val = val.replace("amba_pl", "soc")
+                    sdt.tree['/__symbols__'].propval(prop, list)[0] = val
+
+                symbol_node = sdt.tree['/aliases']
+                prop_list = list(symbol_node.__props__.keys())
+                for prop in prop_list:
+                    val = sdt.tree['/aliases'].propval(prop, list)[0]
+                    val = val.replace("amba_pl", "soc")
+                    sdt.tree['/aliases'].propval(prop, list)[0] = val
+
+        if node.propval('device_type') != ['']:
+            val = node.propval('device_type', list)[0]
+            if val == "memory":
+                mem_size = node.propval('reg', list)[1]
+                if mem_size > max_mem_size:
+                    sram_node = node.abs_path
+
+        if node.propval('xlnx,ip-name') != ['']:
+            val = node.propval('xlnx,ip-name', list)[0]
+            if val == "microblaze_riscv":
+                cflags_file = os.path.join(sdt.outdir, "cflags.yaml")
+                try:
+                    stream = open(cflags_file, 'r')
+                except FileNotFoundError:
+                    print("ERROR:cflags.yaml not found. Lops file lop-microblaze-riscv.dts need to be run for generating cflags.yaml.")
+                else:
+                    data = yaml.load(stream,  Loader=yaml.Loader)
+                    var = data.get('cflags')
+                    match = re.search(r"(?<=\=).+?(?=\ )",var)
+                    sdt.tree[node]['riscv,isa'] = match.group()
+                    isa = match.group()
+
+                    ''' Parse isa string and generate Kconfig.soc
+                        and Kconfig.defconfig based on that 
+                    ''' 
+
+                    soc_kconfig.write("config SOC_MBV32\n")
+                    soc_kconfig.write("  bool \"MBV32 system implementation\" \n")
+
+                    soc_kconfig.write("  select RISCV\n")
+                    soc_kconfig.write("  select ATOMIC_OPERATIONS_C\n")
+                    soc_kconfig.write("  select INCLUDE_RESET_VECTOR\n")
+
+                    if isa.find('_zicsr') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZICSR\n")
+
+                    if isa.find('_zifencei') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZIFENCEI\n")
+                    
+                    if isa.find('_zba') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBA\n")
+
+                    if isa.find('_zbb') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBB\n")
+
+                    if isa.find('_zbc') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBC\n")
+
+                    if isa.find('_zbs') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBS\n")
+
+                    isa = isa.split('_')[0]
+
+                    if isa.find('rv32i') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_RV32I\n")
+
+                    if isa.find('m') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_M\n")
+
+                    if isa.find('a') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_A\n")
+
+                    if isa.find('c') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_C\n")
+
+                    if isa.find('f') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_F\n")
+
+                    if isa.find('d') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_D\n")
+
+                    soc_kconfig.close()
+
+                    soc_defconfig_file = os.path.join(sdt.outdir, "Kconfig.defconfig")
+                    defconfig_kconfig = open(soc_defconfig_file, 'a')
+                    
+                    defconfig_kconfig.write("if SOC_MBV32\n")
+                    defconfig_kconfig.write("config SOC\n")
+                    defconfig_kconfig.write("  default \"mbv32\"\n")
+
+                    val = node.propval('clock-frequency', list)[0]
+                    defconfig_kconfig.write("config SYS_CLOCK_HW_CYCLES_PER_SEC\n")
+                    defconfig_kconfig.write("  default %s\n" % str(val))
+
+                    defconfig_kconfig.write("config RISCV_RESERVED_IRQ_ISR_TABLES_OFFSET\n")
+                    defconfig_kconfig.write("  default 12\n")
+
+                    defconfig_kconfig.close()
+
+        if node.propval('xlnx,ip-name') != ['']:
+            val = node.propval('xlnx,ip-name', list)[0]
+            if val == "axi_intc":
+                num_intr = node.propval('xlnx,num-intr-inputs', list)[0]
+                num_intr += 12
+
+    defconfig_kconfig = open(soc_defconfig_file, 'a')
+    defconfig_kconfig.write("config NUM_IRQS\n")
+    defconfig_kconfig.write("  default %s\n" % str(num_intr))
+    defconfig_kconfig.write("endif\n")
+    defconfig_kconfig.close()
+
+    sdt.tree['/chosen']['zephyr,sram'] = sram_node
+    return True
+
