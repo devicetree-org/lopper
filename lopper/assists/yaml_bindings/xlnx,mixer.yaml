@@ -1,0 +1,285 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/xlnx/xlnx,mixer.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Mixer IP.
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description: |
+  The Xilinx Mixer IP is used to mix multiple input streams
+  either as streaming or memory mapped input on single display.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,v-mix-5.2
+          - xlnx,mixer-3.0
+          - xlnx,mixer-4.0
+          - xlnx,mixer-5.0
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to video core clock.
+    maxItems: 1
+
+  clock-names:
+    items:
+      - const: ap_clk
+
+  xlnx,ppc:
+    description: Pixels per clock.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint8
+      - enum: [1, 2, 4, 8]
+
+  xlnx,bpc:
+    description: bits per component.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint8
+      - enum: [8, 10, 12, 16]
+
+  xlnx,dma-addr-width:
+    description: Size of dma address pointer in IP
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [ 32, 64 ]
+ 
+  reset-gpios:
+    maxItems: 1
+    description: Should contain GPIO reset phandle
+
+  interrupts:
+    maxItems: 1
+
+  xlnx,num-layers: 
+    $ref: /schemas/types.yaml#/definitions/uint16
+    description: Number of overlay layers enabled.
+    minimum: 0
+    maximum: 16
+
+  xlnx,logo-layer:
+    type: boolean
+    description: denotes logo layer is enabled.
+
+  xlnx,bridge:
+    description: phandle to bridge node. This handle is reequired only
+      when VTC is connected as bridge. 
+    maxItems: 1
+
+  port@0:
+    type: object
+    description: Input/sink port node, describing module connected to
+      the input
+
+    properties:    
+      reg:
+        description: |
+          Input/sink port number.
+        const: 0
+
+      endpoint:
+        type: object
+
+        properties:
+          remote-endpoint: true
+
+        required:
+          -  remote-enpoint
+
+        additionalProperties: false
+      
+    required:
+      - reg
+      - remote-endpoint
+
+    additionalProperties: false
+
+  patternProperties:
+    'layer_[0-16]':
+     type: object
+
+    properties:
+      xlnx,layer-id:
+        $ref: /schemas/types.yaml#/definitions/uint16
+        description: Number of overlay layers enabled.
+        minimum: 0
+        maximum: 16
+      
+      xlnx,vformat:
+        description: |          
+          Mixer IP Format    Driver supported Format String
+          BGR888                "RG24"
+          RGB888                "BG24"
+          XBGR2101010           "XB30"
+          XRGB8888              "XR24"
+          RGBA8888              "RA24"
+          ABGR8888              "AB24"
+          ARGB8888              "AR24"
+          XBGR8888              "XB24"
+          YUYV                  "YUYV"
+          UYVY                  "UYVY"
+          AYUV                  "AYUV"
+          NV12                  "NV12"
+          NV16                  "NV16"
+          Y8                    "GREY"
+          Y10                   "Y10 " (Note: Space included)
+          XVUY2101010           "XV30"
+          VUY888                "VU24"
+          XVUY8888              "XV24"
+          XV15                  "XV15"
+          XV20                  "XV20"
+        Note : Format strings are case sensitive.
+        allOf:
+          - $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+          - uniqueItems: true
+        
+      xlnx,layer-max-width:
+        $ref: /schemas/types.yaml#/definitions/uint16
+        description: Maximum number pixels in a line.
+        minimum: 64
+        maximum: 15360
+
+      xlnx,layer-height:
+        $ref: /schemas/types.yaml#/definitions/uint16
+        description: Maximum number of lines.
+        minimum: 64
+        maximum: 8640
+
+      dmas:
+        minItems: 1
+        maxItems: 2
+
+      dma-names:
+        maxItems: 1
+
+      xlnx,layer-streaming:
+        type: boolean
+        description: If input for overlay is streaming or memory mapped.
+
+      xlnx,layer-primary:
+        type: boolean
+        description: If overlay plane is primary or not.
+
+      xlnx,layer-alpha:
+        type: boolean
+        description: If alpha layer is enabled or not for
+          the particular plane.
+
+      xlnx,layer-scale:
+        type: boolean
+        description: If scaling is enabled or not for the plane.
+
+    required:
+      - xlnx,layer-id
+      - xlnx,vformat
+      - xlnx,layer-height
+      - xlnx,layer-max-width
+      - dmas
+      - dma-names
+      - xlnx,layer-streaming
+      - xlnx,layer-primary
+      - xlnx,layer-alpha 
+      - xlnx,layer-scale
+
+    additionalProperties: false
+
+required:
+  -  compatible
+  -  reg
+  -  interrupts
+  -  clocks
+  -  reset-gpios
+  -  xlnx,bpc
+  -  xlnx,ppc
+  -  xlnx,num-layers
+  -  port@0
+
+additionalProperties:
+  - xlnx,logo-layer 
+  - xlnx,bridge
+
+examples:
+  - |
+
+    hdmi_output_v_mix_0: v_mix@a0070000 {
+        clock-names = "ap_clk";
+        clocks = <&misc_clk_0>;
+        compatible = "xlnx,v-mix-5.2", "xlnx,mixer-3.0", "xlnx,mixer-4.0", "xlnx,mixer-5.0";
+        interrupt-names = "interrupt";
+        interrupt-parent = <&gic>;
+        interrupts = <0 95 4>;
+        reg = <0xa0070000 0x10000>;
+        reset-gpios = <&gpio 98 1>;
+        xlnx,bpc = /bits/ 8 <8>;
+        xlnx,dma-addr-width = <64>;
+        xlnx,num-layers = /bits/ 16 <9>;
+        xlnx,ppc = /bits/ 8 <2>;
+        crtc_mixer_porthdmi_output_v_mix_0: port@0 {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            reg = <0>;
+            mixer_crtchdmi_output_v_mix_0: endpoint {
+                remote-endpoint = <&hdmi_output_v_hdmi_tx_ss_0hdmi_output_v_mix_0>;
+            };
+        };
+        xx_mix_masterhdmi_output_v_mix_0: layer_0 {
+            dma-names = "dma0";
+            dmas = <&hdmi_output_v_frmbuf_rd_0 0>;
+            xlnx,layer-id = <0>;
+            xlnx,layer-max-height = <2160>;
+            xlnx,layer-max-width = <3840>;
+            xlnx,layer-primary ;
+            xlnx,layer-streaming ;
+            xlnx,vformat = "BG24";
+        };
+        xx_mix_overlay_1hdmi_output_v_mix_0: layer_1 {
+            xlnx,layer-id = <1>;
+            xlnx,layer-max-width = <1920>;
+            xlnx,vformat = "NV12";
+        };
+        xx_mix_overlay_2hdmi_output_v_mix_0: layer_2 {
+            xlnx,layer-id = <2>;
+            xlnx,layer-max-width = <1920>;
+            xlnx,vformat = "NV12";
+        };
+        xx_mix_overlay_3hdmi_output_v_mix_0: layer_3 {
+            xlnx,layer-id = <3>;
+            xlnx,layer-max-width = <1920>;
+            xlnx,vformat = "NV12";
+        };
+        xx_mix_overlay_4hdmi_output_v_mix_0: layer_4 {
+            xlnx,layer-id = <4>;
+            xlnx,layer-max-width = <1920>;
+            xlnx,vformat = "NV12";
+        };
+        xx_mix_overlay_5hdmi_output_v_mix_0: layer_5 {
+            xlnx,layer-id = <5>;
+            xlnx,layer-max-width = <1920>;
+            xlnx,vformat = "NV12";
+        };
+        xx_mix_overlay_6hdmi_output_v_mix_0: layer_6 {
+            xlnx,layer-id = <6>;
+            xlnx,layer-max-width = <1920>;
+            xlnx,vformat = "NV12";
+        };
+        xx_mix_overlay_7hdmi_output_v_mix_0: layer_7 {
+            xlnx,layer-id = <7>;
+            xlnx,layer-max-width = <1920>;
+            xlnx,vformat = "NV12";
+        };
+        xx_mix_overlay_8hdmi_output_v_mix_0: layer_8 {
+            xlnx,layer-id = <8>;
+            xlnx,layer-max-width = <1920>;
+            xlnx,vformat = "NV12";
+        };
+        xx_mix_logohdmi_output_v_mix_0: logo {
+            xlnx,layer-id = <9>;
+            xlnx,logo-height = <64>;
+            xlnx,logo-width = <64>;
+        };
+    };
