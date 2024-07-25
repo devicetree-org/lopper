@@ -157,10 +157,11 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                             example_dir = os.path.join(drv_path, "examples")
                             example_file_src_path = os.path.join(example_dir, app)
                             example_file_dst_path = os.path.join(sdt.outdir, app)
-                            try:
-                                has_hwdep = testapp_schema[app]['hwproperties'][0]
+                            list_of_hw_props = testapp_schema[app].get('hwproperties',[])
+                            valid_ex = 0
+                            match_list = []
+                            for prop_name in list_of_hw_props:
                                 try:
-                                    val = node[has_hwdep].value
                                     if "interrupts" in testapp_schema[app]['hwproperties']:
                                         intr_parent_phandle = node["interrupt-parent"].value
                                         intr_parent_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == intr_parent_phandle[0]]
@@ -168,17 +169,38 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                                         # But, that is a cumbersome process and this condition also works given the way gen-domain-dts
                                         # behaves.
                                         if intr_parent_node and intr_parent_node[0]["compatible"].value[0] != "interrupt-multiplex":
-                                            has_hwdep = 0
+                                            match_list.append(True)
                                         else:
-                                            has_hwdep = 1
+                                            match_list.append(False)
+                                    if isinstance(prop_name, dict):
+                                        for e,prop_val in prop_name.items():
+                                            val=node[e].value
+                                            if prop_val == val:
+                                                match_list.append(True)
+                                            elif isinstance(val, list):
+                                                if prop_val == val[0]:
+                                                    match_list.append(True)
+                                                else:
+                                                    match_list.append(False)
+                                            else:
+                                                match_list.append(False)
                                     else:
-                                        has_hwdep = 0
-                                except KeyError:
-                                    has_hwdep = 1
-                            except KeyError:
-                                has_hwdep = 0
+                                        try:
+                                            valid_ex = node[prop_name].value
+                                            if valid_ex:
+                                                match_list.append(True)
+                                        except KeyError:
+                                            match_list.append(False)
 
-                            if not has_hwdep and utils.is_file(example_file_src_path):
+                                except KeyError:
+                                    match_list.append(False)
+
+                            if False in match_list:
+                                valid_ex = 0
+                            else:
+                                valid_ex = 1
+
+                            if valid_ex and utils.is_file(example_file_src_path):
                                 periph_file_list += [example_file_dst_path]
                                 utils.copy_file(example_file_src_path, example_file_dst_path)
                                 with open(example_file_dst_path, 'r+') as fd:

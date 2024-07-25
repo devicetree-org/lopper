@@ -109,7 +109,17 @@ def get_memranges(tgt_node, sdt, options):
         if mem_phandles:
            # Remove Duplicate phandle referenecs
            mem_phandles = list(dict.fromkeys(mem_phandles))
-           indx_list = [index for index,handle in enumerate(address_map) for val in mem_phandles if handle == val]
+           # Get all indexes of the address-map for this node
+           tmp = na
+           indx_list = []
+           handle = na
+           while handle < len(address_map):
+                phandle = address_map[handle]
+                for val in mem_phandles:
+                    if phandle == val:
+                        indx_list.append(handle)
+                handle = handle + cells + na + 1
+
            for inx in indx_list:
                start = [address_map[inx+i+1] for i in range(na)]
                size_list.append(address_map[inx+2*na])
@@ -316,7 +326,15 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         elif has_ram:
             default_ddr = has_ram[0]
         elif has_bram:
-            default_ddr = has_bram[0]
+            if len(has_bram) > 1:
+                size = 0
+                for key, value in mem_ranges.items():
+                    if "_bram" in key:
+                        if size < value[1]:
+                            size = value[1]
+                            default_ddr = key
+            else:
+                default_ddr = has_bram[0]
 
     cfd.write("set(DDR %s)\n" % default_ddr)
     memip_list = []
@@ -340,7 +358,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         elif has_ram:
             memip_list.insert(0, memip_list.pop(memip_list.index(has_ram[0])))
         elif has_bram:
-            memip_list.insert(0, memip_list.pop(memip_list.index(has_bram[0])))
+            memip_list.insert(0, memip_list.pop(memip_list.index(default_ddr)))
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
     cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
     if stack_size is not None:
