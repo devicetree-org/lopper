@@ -102,5 +102,44 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
                            fd.write(",")
                            fd.write(f"  /* {prop} */") 
                    fd.write("\n};")
+               if name == "microblaze":
+                   outfile = os.path.join(sdt.outdir, "microblaze_exceptions_g.h")
+                   with open(outfile, 'w') as fd:
+                       fd.write('#ifndef MICROBLAZE_EXCEPTIONS_G_H /**< prevent circular inclusions */\n')
+                       fd.write('#define MICROBLAZE_EXCEPTIONS_G_H /**< by using protection macros */\n')
+                       is_exception_en = []
+                       for prop in prop_list[:10]:
+                           if prop == "xlnx,exceptions-in-delay-slots":
+                               if match_cpunode.propval(prop) != ['']:
+                                   val = match_cpunode.propval(prop, list)[0]
+                                   if val != 0:
+                                       fd.write("#define MICROBLAZE_CAN_HANDLE_EXCEPTIONS_IN_DELAY_SLOTS\n")
+                           elif prop == "xlnx,unaligned-exceptions":
+                               if match_cpunode.propval(prop) != ['']:
+                                   val = match_cpunode.propval(prop, list)[0]
+                                   if val == 0:
+                                       fd.write("#define NO_UNALIGNED_EXCEPTIONS 1\n")
+                                   else:
+                                       is_exception_en.append(True)
+                           elif prop == "xlnx,fpu-exception":
+                               if match_cpunode.propval(prop) != ['']:
+                                   val = match_cpunode.propval(prop, list)[0]
+                                   if val != 0:
+                                       fd.write("#define MICROBLAZE_FP_EXCEPTION_ENABLED 1\n")
+                                       is_exception_en.append(True)
+                           elif prop == "xlnx,predecode-fpu-exception":
+                               if match_cpunode.propval(prop) != ['']:
+                                   val = match_cpunode.propval(prop, list)[0]
+                                   if val != 0:
+                                       fd.write("#define MICROBLAZE_FP_EXCEPTION_DECODE 1\n")
+                                       is_exception_en.append(True)
+                           else:
+                               if match_cpunode.propval(prop) != ['']:
+                                   val = match_cpunode.propval(prop, list)[0]
+                                   if val != 0:
+                                       is_exception_en.append(True)
+                       if any(is_exception_en):
+                           fd.write('#define MICROBLAZE_EXCEPTIONS_ENABLED 1\n')
+                       fd.write('#endif /* end of protection macro */\n')
 
     return True
