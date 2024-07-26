@@ -90,12 +90,12 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     testapp_data = {}
     testapp_name = {}
     # Ensure that the interrupt controller example is the first example run in the peripheral tests sequence by updating the yaml_file_list.
-    gic_index = [index for index,yaml_file in enumerate(yaml_file_list) if re.sub(r"_v.*_.*$", "", os.path.basename(yaml_file)) == "scugic.yaml"]
     intc_index = [index for index,yaml_file in enumerate(yaml_file_list) if re.sub(r"_v.*_.*$", "", os.path.basename(yaml_file)) == "intc.yaml"]
-    if gic_index:
-        yaml_file_list.insert(0, yaml_file_list.pop(gic_index[0]))
     if intc_index:
         yaml_file_list.insert(0, yaml_file_list.pop(intc_index[0]))
+    gic_index = [index for index,yaml_file in enumerate(yaml_file_list) if re.sub(r"_v.*_.*$", "", os.path.basename(yaml_file)) == "scugic.yaml"]
+    if gic_index:
+        yaml_file_list.insert(0, yaml_file_list.pop(gic_index[0]))
     for yaml_file in yaml_file_list:
         schema = utils.load_yaml(yaml_file)
         driver_compatlist = compat_list(schema)
