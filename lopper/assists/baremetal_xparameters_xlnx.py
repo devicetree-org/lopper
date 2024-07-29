@@ -476,14 +476,6 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         pss_ref = match_cpunode.propval('xlnx,pss-ref-clk-freq', list)[0]
         plat.buf(f'#define XPAR_PSU_PSS_REF_CLK_FREQ_HZ {pss_ref}\n')
 
-    #Defines for STDOUT and STDIN Baseaddress
-    if chosen_node:
-        stdin_node = bm_config.get_stdin(sdt, chosen_node, total_nodes)
-        if stdin_node:
-            val, size = bm_config.scan_reg_size(stdin_node, stdin_node['reg'].value, 0)
-            plat.buf(f"\n#define STDOUT_BASEADDRESS {hex(val)}")
-            plat.buf(f"\n#define STDIN_BASEADDRESS {hex(val)}\n")
-
     #Define for NUMBER_OF_SLRS
     if sdt.tree[tgt_node].propval('slrcount') != ['']:
         val = sdt.tree[tgt_node].propval('slrcount', list)[0]
