@@ -447,13 +447,15 @@ class lopper_base:
                     "secure-address-map" : [ '#address-cells phandle #address-cells #size-cells', 0 ],
                     "interrupt-parent" : [ 'phandle', 0 ],
                     "iommus" : [ 'phandle field' ],
-                    "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
+                    "interrupt-map" : [ '#address-cells #interrupt-cells phandle:#interrupt-cells' ],
                     "access" : [ 'phandle flags' ],
                     "cpus" : [ 'phandle mask mode' ],
-                    "clocks" : [ 'phandle:#clock-cells:+1' ],
+                    "clocks" : [ 'phandle:#clock-cells' ],
                     "reset-gpios" : [ 'phandle field field' ],
                     "resets" : [ 'phandle field' ],
-                    "assigned-clocks" : [ 'phandle:#clock-cells:+1' ],
+                    "assigned-clocks" : [ 'phandle:#clock-cells' ],
+                    "cpu-idle-states" : [ 'phandle' ],
+                    "power-domains" : [ 'phandle field' ],
                 }
         except:
             return {}
