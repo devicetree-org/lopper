@@ -510,130 +510,190 @@ class LopperProp():
         """
         phandle_map = []
         phandle_sub_list = []
-
         phandle_props = Lopper.phandle_possible_properties()
-        if self.name in phandle_props.keys():
-            # This property can have phandles!
-            property_description = phandle_props[self.name]
-            # index 0 is always the description, other elements are flags, etc.
-            property_fields = property_description[0].split()
 
-            # we need the values in hex. This could be a utility routine in the
-            # future .. convert to hex.
+        field_offset_pattern = r'([+-]?)(\d+):(.*)'
+        field_offset_regex = re.compile(field_offset_pattern)
 
-            # if this is a json type, we can't possibly find anything useful
-            # by iterating, so just return the empty map
-            if self.pclass == "json":
-                return phandle_map
+        if not self.name in phandle_props.keys():
+            return phandle_map
 
-            ## not required, remove
-            prop_val = []
-            for f in self.value:
-                if type(f) == str:
-                    prop_val.append( f )
-                else:
-                    #prop_val.append( hex(f) )
-                    prop_val.append( f )
+        # if this is a json type, we can't possibly find anything useful
+        # by iterating, so just return the empty map
+        if self.pclass == "json":
+            return phandle_map
 
-            phandle_idx = 0
-            property_desc_idx = 0
-            latch_sub_list = False
+        # We are iterating two things:
+        #   - the values of the property
+        #   - the fields of the property description
 
-            # field val is set to a non-zero value when encounter a phandle
-            # description that has #<field-nane>. We reset it to zero each
-            # time a new phandle check is done (when phandle_idx == idx)
-            # This allows us to set a jump ahead (if greater than zero), or
-            # to increment by one if a placeholder (non phandle) field didn't
-            # specify a variable size
-            field_val = 0
-            for idx,val in enumerate(prop_val):
-                phandle_desc = ""
-                if idx == phandle_idx:
-                    field_val = 0
-                    if latch_sub_list:
-                        phandle_map.append( phandle_sub_list )
-                        latch_sub_list = False
-                        phandle_sub_list = []
+        # In the fields of the property, we are looking for values that
+        # might be phandles. We then look them up, and store them in
+        # a return list that has nodes and 0s.
 
-                    phandle_desc = property_fields[property_desc_idx]
-                    property_desc_idx = property_desc_idx + 1
-                    if property_desc_idx >= len( property_fields ):
-                        latch_sub_list = True
-                        property_desc_idx = 0
-                else:
-                    pass
+        # For the property description, we walk it field by field, looking
+        # up values to figure out where the phandles might be, and the
+        # size of each sublist in the return (these are records in the
+        # property)
 
-                if re.search( '^phandle', phandle_desc ):
-                    derefs = phandle_desc.split(':')
-                    if len(derefs) >= 2:
-                        # We've been instructed to look up a property in the phandle.
-                        # that tells us how many elements to jump before we look for
-                        # the next phandle.
-                        #
-                        # step 1) lookup the node
-                        if self.node and self.node.tree:
-                            node_deref = self.node.tree.deref( val )
-                        else:
-                            node_deref = []
+        property_description = phandle_props[self.name]
 
-                        try:
-                            # step 2) look for the property in the deferneced node. If the
-                            #         node wasn't found, we'll trigger an exception, and just
-                            #         set a default value of 1.
-                            cell_count = node_deref[derefs[1]].value[0]
-                        except:
-                            cell_count = 1
+        # index 0 is always the description, other elements are flags, etc.
+        property_fields = property_description[0].split()
 
-                        # step 3)
-                        # if the length is 3, that means there was an expression added
-                        # to the definition to adjust the value we found. We pull it out
-                        # and evaluate it to get the answer.
-                        if len(derefs) == 3:
-                            expression = str(cell_count) + derefs[2]
-                            expression = eval( expression )
-                            cell_count = expression
+        group_size = 0
+        property_global_index = 0
+        phandle_index_list = []
 
-                        # this is the next index to check for a phandle
-                        phandle_idx = phandle_idx + cell_count
+        # We do one pass through the property field description. During
+        # this pass, we dereference nodes (if required) and count fields.
+        #
+        # Note: this means that if a property has variable sized records,
+        #       we could have issues. That hasn't been seen yet, but if
+        #       it does happen, we need to walk ALL the values in the
+        #       property to calculate the lenght of each record individually
+        #       (and then have to change the chunking up of output throughout
+        #       lopper).
+        for phandle_desc in property_fields:
+            if re.search( '^#.*', phandle_desc ):
+                try:
+                    field_val = self.node.__props__[phandle_desc].value[0]
+                except Exception as e:
+                    field_val = 1
+
+                group_size = group_size + field_val
+                property_global_index = property_global_index + field_val
+
+            elif re.search( '^phandle', phandle_desc ):
+                derefs = phandle_desc.split(':')
+                phandle_index_list.append( property_global_index )
+
+                try:
+                    val = self.value[property_global_index]
+                except Exception as e:
+                    # if the property isn't assigned to a node, don't warn/debug
+                    # just continue
+                    if not self.node:
+                        continue
+
+                    lopper.log._debug( f"index out of bounds for {self.name}"
+                                       f"index: {property_global_index}, len: {len(self.value)}" )
+                    continue
+
+                # We've been instructed to look up a property in the phandle.
+                # that tells us how many elements to jump before we look for
+                # the next phandle.
+
+                if len(derefs) >= 2:
+                    # step 1) lookup the node
+                    if self.node and self.node.tree:
+                        node_deref = self.node.tree.deref( val )
                     else:
-                        node_deref = None
-                        if self.node and self.node.tree:
-                            node_deref = self.node.tree.deref( val )
+                        node_deref = []
 
-                        # deref, bump our phandle_idx by one
-                        phandle_idx = phandle_idx + 1
-
-                    if node_deref == None:
-                        if tag_invalid:
-                            node_deref = "#invalid"
-
-                    phandle_sub_list.append( node_deref )
-                elif re.search( '^#.*', phandle_desc ):
                     try:
-                        field_val = self.node.__props__[phandle_desc].value[0]
+                        # step 2) look for the property in the
+                        #         deferneced node. If the node wasn't
+                        #         found, we'll trigger an exception,
+                        #         and just set a default value of 1.
+                        cell_count = node_deref[derefs[1]].value[0]
                     except Exception as e:
-                        field_val = 0
+                        cell_count = 1
 
-                    if not field_val:
-                        field_val = 1
+                    # step 3)
+                    # if the length is 3, that means there was an expression added
+                    # to the definition to adjust the value we found. We pull it out
+                    # and evaluate it to get the answer.
+                    if len(derefs) == 3:
+                        expression = str(cell_count) + derefs[2]
+                        expression = eval( expression )
+                        cell_count = expression
 
-                    phandle_sub_list.append( 0 )
-                    phandle_idx = phandle_idx + field_val
+                    # the +1 is for the phandle itself.
+                    group_size = group_size + 1 + cell_count
+                    property_global_index = property_global_index + 1 + cell_count
                 else:
-                    # no phandle was found in any of the cases above, but
-                    # we did do a phandle check (since the indexes match).
-                    # bump the phandle_idx ahead by one, so we'll check the
-                    # next field.
-                    if idx == phandle_idx:
-                        phandle_idx = phandle_idx + 1
+                    # just add the phandle to the field count
+                    group_size = group_size + 1
+                    property_global_index = property_global_index + 1
 
-                    phandle_sub_list.append( 0 )
+            elif m := re.match( field_offset_regex, phandle_desc ):
+                # This is a "lookback" to a phandle that is at another field
+                # of the property (versus the current one).
+                offset = m.group(1)
+                field_pos = m.group(2)
+                target_prop = m.group(3)
 
-            # append the last collected set of phandle or not indications
-            phandle_map.append( phandle_sub_list )
+                # positive or negative offset into the phandle_sub_list (we currently
+                # only handle lookbacks)
+                if offset != "-":
+                    lopper.log._warning( f"only negative offset lookbacks are currently supported: {phandle_desc}" )
+                    lookback = field_pos
+                else:
+                    lookback = eval(offset+field_pos)
+
+                node_deref = phandle_sub_list[lookback]
+                if node_deref != 0:
+                    # get the property ..
+                    try:
+                        # look for the property in the deferenced node. If the
+                        # node wasn't found, we'll trigger an exception, and just
+                        # set a default value of 1.
+                        cell_count = node_deref[target_prop].value[0]
+                    except:
+                        cell_count = 1
+                else:
+                    cell_count = 1
+
+                # this is the next index to check for a phandle
+                property_global_index = property_global_index + 1 + cell_count
+            else:
+                # non-lookup field, value is one!
+                group_size = group_size + 1
+                property_global_index = property_global_index + 1
+
+        # if we don't have a group size, we have nothing to chunk up and
+        # the property was likely empty. return the empty map.
+        if not group_size:
+            return phandle_map
+
+        # We now know the group size. We chunk up the property into
+        # these groups and pick out the phandles.
+        property_value_chunks  = chunks(self.value,group_size)
+
+        property_chunk_idx = 0
+        property_sub_list = []
+        for property_val_group in property_value_chunks:
+            for p in property_val_group:
+                if property_chunk_idx in phandle_index_list:
+                    if self.node and self.node.tree:
+                        node_deref = self.node.tree.deref( p )
+                    else:
+                        node_deref = 0
+                else:
+                    node_deref = 0
+
+                phandle_sub_list.append( node_deref )
+
+                property_chunk_idx += 1
+
+                if property_chunk_idx >= group_size:
+                    ### print( "    reseting index, pushing sub list: %s" % phandle_sub_list )
+                    phandle_map.append( phandle_sub_list )
+                    property_chunk_idx = 0
+                    phandle_sub_list = []
+
+        # Not currently used, but kept for reference. returning "#invalid"
+        # here breaks callers that are looking for zeros. It is up to the
+        # caller to indicate invalid phandles in any further processing
+        # if tag_invalid:
+        #     # Replace 0s with "#invalid"
+        #     for i in range(len(phandle_map)):
+        #         for j in range(len(phandle_map[i])):
+        #             if phandle_map[i][j] == 0:
+        #                 phandle_map[i][j] = "#invalid"
 
         return phandle_map
-
 
     def phandle_params( self ):
         """Determines the phandle elements/params of a property
