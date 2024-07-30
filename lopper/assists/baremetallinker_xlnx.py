@@ -37,7 +37,7 @@ def get_memranges(tgt_node, sdt, options):
         "axi_bram": 0, "ps7_ddr": 0, "psu_ddr": 0,
         "psv_ddr": 0, "mig": 0, "lmb_bram": 0,
         "axi_noc2": 0, "axi_noc": 0,"psu_ocm": 0,
-        "psv_ocm": 0, "psx_ocm": 0, "ddr4": 0,
+        "psv_ocm": 0, "psx_ocm": 0, "ocm_ram": 0, "ddr4": 0,
         "ddr5": 0, "mig_7series": 0, "ps7_ram": 0,
         "axi_emc": 0, "psu_qspi_linear": 0, "ps7_qspi_linear": 0
     }
@@ -265,9 +265,13 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         mem_sec += '\n\tpsx_r52_1b_atcm_global : ORIGIN = 0xEBAC0000, LENGTH = 0x10000'
         mem_sec += '\n\tpsx_r52_1b_btcm_global : ORIGIN = 0xEBAD0000, LENGTH = 0x8000'
         mem_sec += '\n\tpsx_r52_1b_ctcm_global : ORIGIN = 0xEBAE0000, LENGTH = 0x8000'
-    if "psx_cortexr52" in machine:
-        mem_sec += '\n\tpsx_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
-        mem_sec += '\n\tpsx_r52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
+    if "cortexr52" in machine:
+        if "psx_cortexr52" in machine:
+            mem_sec += '\n\tpsx_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
+            mem_sec += '\n\tpsx_r52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
+        else:
+            mem_sec += '\n\tpmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
+            mem_sec += '\n\tr52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
 
     openamp_elfload_start = False
     openamp_elfload_sz = False
