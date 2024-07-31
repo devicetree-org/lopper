@@ -99,6 +99,7 @@ class LopperSDT:
         self.permissive = False
         self.merge = False
         self.support_files = False
+        self.symbols = False
 
     def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True, config=None):
         """executes setup and initialization tasks for a system device tree
@@ -238,7 +239,8 @@ class LopperSDT:
             # in case there are dtsi files, etc.
             include_paths += " " + str(sdt_file.parent) + " "
             self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
-                                          self.save_temps, self.verbose, self.enhanced, self.permissive )
+                                          self.save_temps, self.verbose, self.enhanced, self.permissive,
+                                          self.symbols )
 
             if self.use_libfdt:
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
@@ -254,6 +256,8 @@ class LopperSDT:
             self.tree = LopperTree()
             self.tree.strict = not self.permissive
             self.tree.load( dct )
+
+            self.tree.__symbols__ = self.symbols
 
             # join any extended trees to the one we just created
             for t in sdt_extended_trees:

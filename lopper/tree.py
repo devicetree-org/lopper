@@ -2772,6 +2772,14 @@ class LopperNode(object):
         for p in self.__props__.values():
             p.resolve()
 
+        if self.tree and self.tree.__symbols__:
+            try:
+                symbol_node = self.tree['/__symbols__']
+                if self.label:
+                    symbol_node[self.label] = self.abs_path
+            except:
+                pass
+
         lopper.log._debug( f"node resolution end: {self}" )
 
     def address(self, child_addr=None, nest_count=1):
@@ -3017,6 +3025,8 @@ class LopperTree:
         self.__start_node__ = "/"
         self.__new_iteration__ = True
         self.__node_iter__ = None
+
+        self.__symbols__ = False
 
         self.dct = None
 
@@ -3491,6 +3501,18 @@ class LopperTree:
         Returns:
            Nothing
         """
+
+        if self.__symbols__:
+            try:
+                symbol_node = self['/__symbols__']
+                # remove all the symbol entries. the nodes will
+                # resolve their labels back into the symbol node
+                # this allows us to track renames, deletes and
+                # adds without doing anything fancy
+                symbol_node.__props__ = OrderedDict()
+            except:
+                pass
+
         # walk each node, and individually resolve
         for n in self:
             n.resolve()
