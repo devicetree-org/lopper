@@ -1602,7 +1602,8 @@ class LopperFDT(lopper.base.lopper_base):
 
     @staticmethod
     def dt_compile( dts_file, i_files, includes, force_overwrite=False, outdir="./",
-                    save_temps=False, verbose=0, enhanced = True, permissive = False ):
+                    save_temps=False, verbose=0, enhanced = True, permissive = False,
+                    symbols=False):
         """Compile a dts file to a dtb
 
         This routine takes a dts input file, other dts include files,
@@ -1628,6 +1629,7 @@ class LopperFDT(lopper.base.lopper_base):
            force_overwrite (bool,optional): should files be overwritten.
                                             Default is False
            save_temps (bool, optional): should temporary files be saved on failure
+           symbols (bool,optional) : should __symbols__ node be created
            verbose (bool,optional): verbosity level
 
         Returns:
@@ -1876,6 +1878,8 @@ class LopperFDT(lopper.base.lopper_base):
             dtcargs += ["-i", i]
 
         dtcargs += ["-o", "{0}/{1}".format(outdir,output_dtb)]
+        if symbols:
+            dtcargs += [ "-@" ]
         dtcargs += ["-I", "dts", "-O", "dtb", preprocessed_name ]
         if verbose:
             print( "[INFO]: compiling dtb: %s" % dtcargs )

@@ -47,6 +47,7 @@ def usage():
     print('    , --enhanced      when writing output files, do enhanced processing (this includes phandle replacement, comments, etc' )
     print('    . --auto          automatically run any eligible assists (via -a) or lops (embedded)' )
     print('    , --permissive    do not enforce fully validated properties (phandles, etc)' )
+    print('    , --symbols       generate (and maintain) the __symbols__ node during processing' )
     print('  -o, --output        output file')
     print('    , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes' )
     print('  -x. --xlate         run automatic translations on nodes for indicated input types (yaml,dts)' )
@@ -86,13 +87,14 @@ def main():
     overlay = False
     config_file = None
     config_vals = {}
+    symbols = False
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "A:t:dfvdhi:o:a:SO:D:x:",
                                    [ "debug=", "assist-paths=", "outdir", "enhanced",
                                      "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
-                                     "assist=","server", "auto", "permissive", "xlate=",
+                                     "assist=","server", "auto", "permissive", 'symbols', "xlate=",
                                      "no-libfdt", "overlay", "cfgfile=", "cfgval="] )
     except getopt.GetoptError as err:
         print('%s' % str(err))
@@ -143,6 +145,8 @@ def main():
             auto_run = True
         elif o in ('--permissive' ):
             permissive = True
+        elif o in ('--symbols' ):
+            symbols = True
         elif o in ('--overlay' ):
             overlay = True
         elif o in ('--cfgfile' ):
@@ -336,6 +340,7 @@ def main():
     device_tree.merge = overlay
     device_tree.autorun = auto_run
     device_tree.config = config
+    device_tree.symbols = symbols
 
     device_tree.setup( sdt, inputfiles, "", force, libfdt, config )
     device_tree.assists_setup( cmdline_assists )
