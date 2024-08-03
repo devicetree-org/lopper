@@ -36,6 +36,12 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     # and create a compatible_list from these nodes.
     symbol_node = ""
     chosen_node = ""
+    stdin = None
+    stdin_node = None
+    try:
+        stdin = options['args'][2]
+    except IndexError:
+        pass
     for node in root_sub_nodes:
         try:
             if node.name == "chosen":
@@ -54,6 +60,11 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         if "cdns,ttc" in node["compatible"].value:
             ttc_node_list += [node]
         compatible_dict.update({node: node["compatible"].value})
+        if stdin:
+            if node.propval('xlnx,name') != ['']:
+                node_name = node.propval('xlnx,name', list)[0]
+                if node_name == stdin:
+                    stdin_node = node
     match_cpunode = get_cpu_node(sdt, options)
     proc_ip_name = match_cpunode['xlnx,ip-name'].value
     if proc_ip_name[0] in ["psu_cortexr5", "psv_cortexr5", "psx_cortexr52"] and ttc_node_list:
@@ -90,12 +101,12 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     testapp_data = {}
     testapp_name = {}
     # Ensure that the interrupt controller example is the first example run in the peripheral tests sequence by updating the yaml_file_list.
-    gic_index = [index for index,yaml_file in enumerate(yaml_file_list) if re.sub(r"_v.*_.*$", "", os.path.basename(yaml_file)) == "scugic.yaml"]
     intc_index = [index for index,yaml_file in enumerate(yaml_file_list) if re.sub(r"_v.*_.*$", "", os.path.basename(yaml_file)) == "intc.yaml"]
-    if gic_index:
-        yaml_file_list.insert(0, yaml_file_list.pop(gic_index[0]))
     if intc_index:
         yaml_file_list.insert(0, yaml_file_list.pop(intc_index[0]))
+    gic_index = [index for index,yaml_file in enumerate(yaml_file_list) if re.sub(r"_v.*_.*$", "", os.path.basename(yaml_file)) == "scugic.yaml"]
+    if gic_index:
+        yaml_file_list.insert(0, yaml_file_list.pop(gic_index[0]))
     for yaml_file in yaml_file_list:
         schema = utils.load_yaml(yaml_file)
         driver_compatlist = compat_list(schema)
@@ -118,7 +129,10 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
             drv_config_name = drv_name
 
         stdin_addr = None
-        if chosen_node:
+        if stdin_node:
+            val, size = scan_reg_size(stdin_node, stdin_node['reg'].value, 0)
+            stdin_addr = val
+        elif chosen_node:
             stdin_node = get_stdin(sdt, chosen_node, node_list)
             if stdin_node:
                 val, size = scan_reg_size(stdin_node, stdin_node['reg'].value, 0)
