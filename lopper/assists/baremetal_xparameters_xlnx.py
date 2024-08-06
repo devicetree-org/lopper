@@ -51,16 +51,26 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
            pass
 
     repo_path_data = options['args'][1]
-    cci_en = None
+    is_fpd_coherent = None
+    is_lpd_coherent = None
+    is_pl_coherent = None
+    fpd_master_list = ["psu_sata","psu_pcie"]
+    lpd_master_list = ["psu_adma","psu_qspi","psu_nand","psu_sd","psu_ethernet","psu_cortexr5","psu_usb"]
     for node in node_list:
         try:
             prop_val = node['dma-coherent'].value
             if '' in prop_val:
-                cci_en = 1
-                break
-        except KeyError:
+                cci_en = True
+        except:
             cci_en = None
-
+        if cci_en:
+            ip_name = node.propval('xlnx,ip-name', list)[0]
+            if ip_name in fpd_master_list:
+                is_fpd_coherent = True
+            if ip_name in lpd_master_list:
+                is_lpd_coherent = True
+            if re.search("amba_pl", node.parent.name):
+                is_pl_coherent = True
     drvlist = xlnx_generate_bm_drvlist(tgt_node, sdt, options)
     xparams = os.path.join(sdt.outdir, f"xparameters.h")
     plat = bm_config.DtbtoCStruct(xparams)
@@ -380,9 +390,6 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         plat.buf(f"\n#define XPAR_{key.upper()}_BASE{suffix} {hex(start)}")
         plat.buf(f"\n#define XPAR_{key.upper()}_HIGH{suffix} {hex(start + size - 1)}")
 
-    if cci_en:
-        plat.buf("\n#define XPAR_CACHE_COHERENT \n")
-
     #CPU parameters related defines
     match_cpunode = bm_config.get_cpu_node(sdt, options)
     if re.search("microblaze-riscv", match_cpunode['compatible'].value[0]):
@@ -497,6 +504,13 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     if sdt.tree[tgt_node].propval('semnpi-scan') != ['']:
         val = sdt.tree[tgt_node].propval('semnpi-scan', list)[0]
         plat.buf(f'\n#define XSEM_NPISCAN_EN {val}\n')
+
+    if is_fpd_coherent:
+        plat.buf("\n#define XPAR_FPD_IS_CACHE_COHERENT \n")
+    if is_lpd_coherent:
+        plat.buf("\n#define XPAR_LPD_IS_CACHE_COHERENT \n")
+    if is_pl_coherent:
+        plat.buf("\n#define XPAR_PL_IS_CACHE_COHERENT \n")
 
     plat.buf('\n#endif  /* end of protection macro */')
     plat.out(''.join(plat.get_buf()))
