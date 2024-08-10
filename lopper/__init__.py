@@ -1025,6 +1025,18 @@ class LopperSDT:
                             prop_val = Lopper.property_convert( prop_val )
 
                             # construct a test prop, so we can use the internal compare
+                            # Note:
+                            #   - This property is not assigned to a node, or a tree
+                            #   - Which means phandles can't be resolved to nodes, since
+                            #     that requires a node and a tree
+                            #   - Comparisons of phandles don't require nodes, since we
+                            #     can look them up by label
+                            #   - We are relying on the property comparision, which uses
+                            #     phandle_map() to tag phandles as "#invalid" strings
+                            #     which we identify as non-zero and do the lookup.
+                            #   - If that condition changes in the future, we could
+                            #     assign the property to the tree and a node, and then
+                            #     remove it after, since that would allow phandle resolution
                             test_prop = LopperProp( prop, -1, None, prop_val )
                             test_prop.ptype = test_prop.property_type_guess( True )
 

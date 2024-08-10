@@ -669,7 +669,10 @@ class LopperProp():
                     if self.node and self.node.tree:
                         node_deref = self.node.tree.deref( p )
                     else:
-                        node_deref = 0
+                        # can we use "None" to represent something that IS
+                        # a phandle, but that we couldn't look up. That matches
+                        # what deref() returns .. hmm.
+                        node_deref = None
                 else:
                     node_deref = 0
 
@@ -686,12 +689,12 @@ class LopperProp():
         # Not currently used, but kept for reference. returning "#invalid"
         # here breaks callers that are looking for zeros. It is up to the
         # caller to indicate invalid phandles in any further processing
-        # if tag_invalid:
-        #     # Replace 0s with "#invalid"
-        #     for i in range(len(phandle_map)):
-        #         for j in range(len(phandle_map[i])):
-        #             if phandle_map[i][j] == 0:
-        #                 phandle_map[i][j] = "#invalid"
+        if tag_invalid:
+            # Replace "None" with "#invalid"
+            for i in range(len(phandle_map)):
+                for j in range(len(phandle_map[i])):
+                    if phandle_map[i][j] == None:
+                        phandle_map[i][j] = "#invalid"
 
         return phandle_map
 
