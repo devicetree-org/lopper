@@ -106,6 +106,8 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                 gic_node = node
             elif platform == "cortexa72-versal" and label_name == "gic_a72":
                 gic_node = node
+            elif platform == "psx_cortexa78_0" and label_name == "gic_a78":
+                gic_node = node
             if re.search("afi0" , node.name) or re.search("afi1" , node.name) or re.search("afi2" , node.name) or re.search("afi3" , node.name) or re.search("clocking" , node.name):
                ignore_list.append(node)
         except:
