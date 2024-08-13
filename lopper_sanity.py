@@ -532,6 +532,21 @@ def setup_code_lops( outdir ):
                               print( 'selected2: %s' % s.abs_path )
                       ";
                 };
+                lop_18_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      // clear any old selections
+                      select_1;
+                      // phandle selection sanity test
+                      select_2 = "/.*:interrupt-parent:&gic_a72";
+                };
+                lop_18_2 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                          print( 'node3: %s' % node )
+                          for s in tree.__selected__:
+                              print( 'selected3: %s' % s.abs_path )
+                      ";
+                };
         };
 };
             """)
@@ -2018,6 +2033,12 @@ def lops_code_test( device_tree, lop_file, verbose ):
         test_passed( "selection test (or)" )
     else:
         test_failed( "selection test (or) (found %s, expected: %s)" %(c,4))
+
+    c = len(re.findall( "[^']selected3:", test_output ))
+    if c == 3:
+        test_passed( "selection test (phandle)" )
+    else:
+        test_failed( "selection test (phandle) (found %s, expected: %s)" %(c,4))
 
     output.reset()
 
