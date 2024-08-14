@@ -11,10 +11,11 @@ import logging
 import os
 import sys
 
-logging.basicConfig( format='[%(levelname)s]: %(message)s' )
 root_logger = logging.getLogger()
 
 def init( verbose ):
+    logging.basicConfig( format='[%(levelname)s]: %(message)s' )
+
     # iterate registered loggers and set their default level to a
     # consistent value.
     # This loop is repeatidly setting the root logger, but that is
