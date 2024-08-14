@@ -1043,7 +1043,7 @@ def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_n
         core_node + LopperProp(name="#address-cells", value = 2)
         core_node + LopperProp(name="#size-cells", value = 2)
         core_node + LopperProp(name="ranges", value=[])
-        core_node + LopperProp(name="power-domain", value=copy.deepcopy(rpu_core_pd_prop.value))
+        core_node + LopperProp(name="power-domains", value=copy.deepcopy(rpu_core_pd_prop.value))
         core_node + LopperProp(name="mbox-names", value = ["tx", "rx"]);
         tree.add(core_node)
 
@@ -1051,8 +1051,8 @@ def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_n
         for carveout in elfload_nodes:
             if carveout.props("status") != []:
                 srams.append(carveout.phandle)
-                # FIXME for each sram, add 'power-domain' prop for kernel driver
-                carveout + LopperProp(name="power-domain",
+                # FIXME for each sram, add 'power-domains' prop for kernel driver
+                carveout + LopperProp(name="power-domains",
                                       value=copy.deepcopy( carveout.props("power-domains")[0].value ))
 
         core_node + LopperProp(name="sram", value=srams)
