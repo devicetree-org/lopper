@@ -166,6 +166,19 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         modify_val = update_mem_node(node, prop_val)
         node['reg'].value = modify_val
 
+    if linux_dt:
+        for node in memnode_list:
+            # Yocto project expects zynq DDR base addresses to start from 0x0 for linux to boot.
+            # This has been a legacy expectation which is logically flawed. Adding the temporary
+            # workaround to unblock them until the QEMU issue and the yocto integration issues
+            # are resolved.
+            if node.propval('xlnx,ip-name', list) == ["ps7_ddr"]:
+                new_high_addr = node['reg'].value[0] + node['reg'].value[1]
+                node['reg'].value = update_mem_node(node, [0, new_high_addr])
+                node.name = "memory@0"
+                # QEMU boot is not working with compatible property in DDR node for Zynq
+                node.delete("compatible")
+
     if invalid_memnode:
         for node in invalid_memnode:
             sdt.tree.delete(node)
