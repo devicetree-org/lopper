@@ -425,6 +425,10 @@ class isospec(object):
 
         self.device_dict = {}
         self.smid_dict = {}
+        self.other_dict = {}
+
+        self.permissive = False
+
         # trackers are indexed by subsystem or domain name, then by
         # device name
         self.trackers = {}
@@ -468,7 +472,7 @@ class isospec(object):
             # a refcount dictionary
             self.default_settings = self.isospec_subsystem( "/default_settings/subsystems/default" )
             # the below are the global list of devices
-            self.device_dict, self.smid_dict = self.device_collect()
+            self.device_dict, self.smid_dict, self.other_dict = self.device_collect()
 
             subsystem_list = self.json_tree["/design/subsystems"].children()
 
@@ -597,6 +601,7 @@ class isospec(object):
     def device_collect( self ):
         device_dict = {}
         smid_dict = {}
+        other_dict = {}
         isospec_json_tree = self.json_tree
 
         _info( f"collecting all possible devices" )
@@ -656,7 +661,11 @@ class isospec(object):
                                 _debug( "                memory detected, but skip is set" )
                         else:
                             # no nodeid, skip
-                            _debug( f"                   ** destination '{dest}' device has no nodeid, skipping" )
+                            other_dict[dest["name"]] = {
+                                    "refcount": 0,
+                                    "dest": dest
+                                }
+                            _debug( f"                   ** destination '{dest}' device has no nodeid, adding to 'other'" )
                             # os._exit(1)
 
                 dests = cell["SMIDs"]
@@ -678,7 +687,7 @@ class isospec(object):
                     continue
 
 
-        return device_dict, smid_dict
+        return device_dict, smid_dict, other_dict
 
     def access_type( self, access_entry ):
         # the default is "device" if the access entry isn't
@@ -775,7 +784,7 @@ class isospec(object):
         return destlist
 
     ## find a device by name
-    def devices( self, device_name_list ):
+    def devices( self, device_name_list, return_other = False ):
         devlist = []
         try:
             if self.device_dict:
@@ -784,6 +793,15 @@ class isospec(object):
                     devlist.append( device['dest'] )
         except:
             pass
+
+        if return_other and self.permissive:
+            try:
+                if self.other_dict:
+                    for d in device_name_list:
+                        device = self.other_dict[d]
+                        devlist.append( device['dest'] )
+            except:
+                pass
 
         return devlist
 
@@ -992,11 +1010,11 @@ class isospec(object):
                     # apart in the main processing loop.
                     access_type = self.access_type( access )
                     if access_type == "device":
-                        _info( f"      base protection device" )
+                        _info( f"      base protection device: {access['name']}" )
                         try:
                             dests = self.dests( access )
                             _info( f"       device dests: {dests}" )
-                            devices = self.devices( dests )
+                            devices = self.devices( dests, True )
                             _info( f"       devices: {devices}" )
 
                             ## if there are devices, they should be added to all
@@ -1006,6 +1024,9 @@ class isospec(object):
 
                         except:
                             pass
+                    else:
+                        _info( f"non-device SMID any detected ... {access}" )
+                        # os._exit(1)
 
             except Exception as e:
                 _info( f"Exception during base protectiong checking: {e}" )
@@ -1048,8 +1069,16 @@ class isospec(object):
                     if access_type == "device":
                         try:
                             dests = self.dests( access )
-                            # _info( f"                     devie dests: {dests}" )
-                            devices = self.devices( dests )
+                            # _info( f"                     device dests: {dests}" )
+
+                            all_devs = False
+                            if access in base_access_list:
+                                # for now, base_protection devices don't have SMIDs, so
+                                # we need to look at the "other" dict to find the device
+                                # target
+                                all_devs = True
+
+                            devices = self.devices( dests, all_devs )
                             # _info( f"                     devices: {devices}" )
 
                             ## The device might be memory. We need to
@@ -1316,6 +1345,7 @@ def isospec_domain( tgt_node, sdt, options ):
 
     lopper.log._init( __name__ )
 
+    # --permissive means that non-SMID devices/memory will be consulted
     opts,args2 = getopt.getopt( args, "mpvh", [ "help", "audit", "verbose", "permissive", "nomemory" ] )
 
     if opts == [] and args2 == []:
@@ -1324,6 +1354,7 @@ def isospec_domain( tgt_node, sdt, options ):
 
     audit = False
     memory = True
+    permissive = False
     for o,a in opts:
         # print( "o: %s a: %s" % (o,a))
         if o in ('-m', "--nomemory" ):
@@ -1375,6 +1406,7 @@ def isospec_domain( tgt_node, sdt, options ):
     json_tree = json_in.to_tree()
 
     spec = isospec( iso_file_abs )
+    spec.permissive = permissive
 
     ## self test block
     # access_node = spec.json_tree["/design/subsystems/default"]["access"]
