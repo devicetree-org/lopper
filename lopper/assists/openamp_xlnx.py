@@ -106,6 +106,56 @@ def get_carveout_nodes(tree, node):
     return carveouts_nodes
 
 
+reserved_mem_nodes = []
+res_mem_bases = []
+res_mem_sizes = []
+def reserved_mem_node_check(tree, node, verbose = 0 ):
+    # check if given node conflicts with reserved memory nodes
+
+    res_mem_node = tree["/reserved-memory"]
+    nodes_of_interest = res_mem_node.subnodes()
+    if reserved_mem_nodes != []:
+        nodes_of_interest = [node]
+        # the reason we set the list this way is to support the case
+        # of first run, where there are no YAML-added nodes. In that case
+        # validate pre-existing resreved-mem nodes
+        #
+        # Otherwise ,validate the newly created node against existing res-mem
+        # nodes to ensure there is no overlap
+
+    for rm_subnode in nodes_of_interest:
+        # in case of init, skip reserved-mem top level node
+        if rm_subnode == res_mem_node:
+            continue
+
+        if rm_subnode not in reserved_mem_nodes:
+            node_reg = rm_subnode.props("reg")
+            if node_reg == []:
+                print("ERROR: malformed reserved-memory node: ", rm_subnode.abs_path)
+                return False
+            node_reg = node_reg[0].value
+            if len(node_reg) != 4:
+                print("ERROR: malformed reserved-memory node: ", rm_subnode.abs_path)
+                return False
+            new_base = node_reg[1]
+            new_sz = node_reg[3]
+
+            overlap = False
+            for base,sz,existing_node in zip(res_mem_bases, res_mem_sizes, reserved_mem_nodes):
+                if new_base < base and (new_base+new_sz) > base:
+                    overlap = True
+                if new_base < (base+sz) and (new_base+new_sz) > (base+sz):
+                    overlap = True
+                if overlap:
+                    print("ERROR: overlap between nodes:", existing_node, rm_subnode)
+                    return False
+            res_mem_bases.append(new_base)
+            res_mem_sizes.append(new_sz)
+            reserved_mem_nodes.append(rm_subnode)
+
+    return True
+
+
 native_shm_node_count = 0
 def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, channel_id,
                                    openamp_channel_info, amba_node = None,
@@ -147,6 +197,8 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
                 new_node =  LopperNode(-1, "/reserved-memory/"+carveout.name)
                 new_node + LopperProp(name="no-map")
                 new_node + LopperProp(name="reg", value=[0, start, 0, size])
+                if not reserved_mem_node_check(tree, new_node)
+                    return False
 
                 if "vdev0buffer" in carveout.name:
                     new_node + LopperProp(name="compatible", value="shared-dma-pool")
@@ -981,6 +1033,9 @@ def xlnx_remoteproc_construct_carveouts(tree, carveouts, new_ddr_nodes, verbose 
             new_node + LopperProp(name="no-map")
             new_node + LopperProp(name="reg", value=[0, start, 0, size])
             tree.add(new_node)
+
+            if not reserved_mem_node_check(tree, new_node)
+                return False
 
             phandle_val = new_node.phandle_or_create()
 
