@@ -12,7 +12,7 @@
                 lop_1_1 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
-                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_2 = "/cpus_.*/cpu*.*:compatible:.*microblaze_riscv";
                       select_3 = ":xlnx,use-muldiv:!0";
                       lop_1_1_1 {
                           compatible = "system-device-tree-v1,lop,code-v1";
@@ -25,7 +25,7 @@
                 lop_2_1 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
-                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_2 = "/cpus_.*/cpu*.*:compatible:.*microblaze_riscv";
                       select_3 = ":xlnx,use-atomic:!0";
                       lop_2_1_1 {
                           compatible = "system-device-tree-v1,lop,code-v1";
@@ -38,7 +38,7 @@
                 lop_3_1 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
-                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_2 = "/cpus_.*/cpu*.*:compatible:.*microblaze_riscv";
                       select_3 = ":xlnx,use-fpu:!0";
                       lop_3_1_1 {
                           compatible = "system-device-tree-v1,lop,code-v1";
@@ -54,7 +54,7 @@
                 lop_4_1 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
-                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_2 = "/cpus_.*/cpu*.*:compatible:.*microblaze_riscv";
                       select_3 = ":xlnx,use-compression:1";
                       lop_4_1_1 {
                           compatible = "system-device-tree-v1,lop,code-v1";
@@ -69,7 +69,7 @@
                lop_5_1 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
-                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_2 = "/cpus_.*/cpu*.*:compatible:.*microblaze_riscv";
                       select_3 = ":xlnx,data-size:!0";
                       lop_5_1_1 {
                           compatible = "system-device-tree-v1,lop,code-v1";
@@ -88,7 +88,7 @@
                 lop_output_tunes {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
-                      select_2 = "/cpus_microblaze.*/cpu*.*:compatible:.*microblaze_riscv";
+                      select_2 = "/cpus_.*/cpu*.*:compatible:.*microblaze_riscv";
                       lop_output_code {
                            compatible = "system-device-tree-v1,lop,code-v1";
                            code = "
