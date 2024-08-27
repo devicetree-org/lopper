@@ -111,7 +111,7 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
                     tmp_dict['slaves'][mem_name] = {"device_type":"memory"}
                     if mem_node:
                         if mem_node[0].propval('memory_type') != ['']:
-                            tmp_dict['slaves'][mem_name] = {"memory_type":mem_node[0].propval('memory_type', list)[0]}
+                            tmp_dict['slaves'][mem_name] = {"device_type":mem_node[0].propval('memory_type', list)[0]}
                     tmp_dict['slaves'][mem_name].update({"ip_name":mem_name[:-2]})
                     tmp_dict['slaves'][mem_name].update({"baseaddr":hex(mem[0])})
                     tmp_dict['slaves'][mem_name].update({"highaddr":hex(mem[0] + mem[1])})
