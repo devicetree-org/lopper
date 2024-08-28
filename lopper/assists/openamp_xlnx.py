@@ -197,7 +197,7 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
                 new_node =  LopperNode(-1, "/reserved-memory/"+carveout.name)
                 new_node + LopperProp(name="no-map")
                 new_node + LopperProp(name="reg", value=[0, start, 0, size])
-                if not reserved_mem_node_check(tree, new_node)
+                if not reserved_mem_node_check(tree, new_node):
                     return False
 
                 if "vdev0buffer" in carveout.name:
@@ -1034,7 +1034,7 @@ def xlnx_remoteproc_construct_carveouts(tree, carveouts, new_ddr_nodes, verbose 
             new_node + LopperProp(name="reg", value=[0, start, 0, size])
             tree.add(new_node)
 
-            if not reserved_mem_node_check(tree, new_node)
+            if not reserved_mem_node_check(tree, new_node):
                 return False
 
             phandle_val = new_node.phandle_or_create()
