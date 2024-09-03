@@ -3291,6 +3291,33 @@ class LopperTree:
         # not currently supported
         pass
 
+    def get(self, key, default = None):
+        """mocks the builtin dictionary get() function for Lopper tree object:
+
+            <Lopper Tree Object>.get(<node path>)
+
+        Returns the same output as that of __getitem__ described above when the passed
+        key matches with some node inside the tree object.
+
+        Returns the default value when the node is not valid for the tree and avoids
+        the standard KeyError exception.
+
+        Args:
+            key: string, int or LopperNode
+            default: any valid data type
+
+        Returns:
+           LopperNode object if the key is found in the object
+           default value when key is absent.
+
+        """
+
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            return default
+
+
     def phandles( self ):
         """Utility function to get the active phandles in the tree
 
