@@ -3969,19 +3969,23 @@ class LopperTree:
         return all_matching_kids
 
 
-    def nodes( self, nodename ):
+    def nodes( self, nodename, strict = False ):
         """Get nodes that match a given name or regex
 
         Looks for a node at a name/path, or nodes that match a regex.
 
         Args:
            nodename (string): node name or regex
+           strict (boolean,optional): indicates that regex matches should be exact/strict
 
         Returns:
            list: a list all nodes that match the name or regex
 
         """
         matches = []
+        if strict:
+            nodename = "^" + nodename + "$"
+
         try:
             matches = [self.__nodes__[nodename]]
         except:

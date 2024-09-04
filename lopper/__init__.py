@@ -1842,6 +1842,11 @@ class LopperSDT:
                 tree = self.tree
 
             try:
+                flags = lop_node['flags'].value[0]
+            except:
+                flags = ""
+
+            try:
                 nodes_selection = lop_node["nodes"].value[0]
             except:
                 nodes_selection = ""
@@ -1926,7 +1931,13 @@ class LopperSDT:
                                 node_property = None
 
                             phandle_node_name = re.sub( '&', '', node )
-                            pfnodes = tree.nodes( phandle_node_name )
+
+                            # check to see if the match should be strict
+                            strict = False
+                            if "strict" in flags:
+                                strict = True
+
+                            pfnodes = tree.nodes( phandle_node_name, strict )
                             if not pfnodes:
                                 pfnodes = tree.lnodes( phandle_node_name )
                                 if not pfnodes:
