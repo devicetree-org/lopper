@@ -2042,6 +2042,41 @@ def lops_code_test( device_tree, lop_file, verbose ):
 
     output.reset()
 
+def openamp_sanity_test( verbose ):
+    demo_area = os.getcwd() + "/demos/openamp/inputs/"
+    sdt = demo_area + "system-dt/system-top.dts"
+    overlay = demo_area + "/openamp-overlay-zynqmp.yaml"
+    lops_area = os.getcwd() + "/lopper/lops/"
+
+    dt = setup_system_device_tree( outdir )
+    device_tree = LopperSDT( sdt )
+    device_tree.dryrun = False
+    device_tree.output_file = outdir + "/openamp_sanity_output.dts"
+    device_tree.cleanup_flag = True
+    device_tree.save_temps = False
+    device_tree.enhanced = True
+
+    local_inputs = [ overlay, lops_area + "lop-load.dts",
+                     lops_area + "lop-xlate-yaml.dts",
+                     lops_area + "lop-openamp-invoke.dts",
+                     lops_area + "lop-a53-imux.dts" ]
+
+    device_tree.setup( sdt, local_inputs, "", True, libfdt=libfdt )
+    device_tree.perform_lops()
+    device_tree.write( enhanced = True )
+
+    pass_test = False
+    for n in device_tree.tree.__nodes__["/"].subnodes():
+        pp = n.propval("compatible")
+        if pp != ['']:
+            if ('r5' in n.name or 'rf5' in n.name) and pp == 'xlnx,zynqmp-r5-remoteproc':
+                pass_test = True
+
+    if pass_test:
+        test_passed( "OpenAMP Sanity Test")
+    else:
+        test_failed( "OpenAMP Sanity Test")
+
 def lops_sanity_test( device_tree, lop_file, verbose ):
     if not libfdt:
         return
@@ -2352,6 +2387,7 @@ def usage():
     print('  -v, --verbose       enable verbose/debug processing (specify more than once for more verbosity)')
     print('  -t, --tree          run lopper tree tests' )
     print('  -l, --lops          run lop tests' )
+    print('  -o, --openamp       run openamp tests')
     print('  -a, --assists       run assist tests' )
     print('  -f, --format        run format tests (dts/yaml)' )
     print('  -d, --fdt           run fdt abstraction tests' )
@@ -2366,6 +2402,7 @@ def main():
     global werror
     global outdir
     global lops
+    global openamp_tests
     global tree
     global assists
     global format
@@ -2379,13 +2416,14 @@ def main():
     outdir="/tmp/"
     tree = False
     lops = False
+    openamp_tests = False
     assists = False
     format = False
     fdttest = False
     continue_on_error = False
     libfdt = True
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlhd", [ "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlhod", [ "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "openamp", "werror","verbose", "help"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2409,6 +2447,8 @@ def main():
             werror=True
         elif o in ( '-l','--lops'):
             lops=True
+        elif o in ( '-o','--openamp'):
+            openamp_tests = True
         elif o in ( '-t','--tree'):
             tree=True
         elif o in ( '-a','--assists'):
@@ -2422,6 +2462,7 @@ def main():
         elif o in ( '--all' ):
             tree = True
             lops = True
+            openamp_tests = True
             assists = True
             fdttest = True
             format = True
@@ -2488,7 +2529,8 @@ if __name__ == "__main__":
         device_tree.use_libfdt = libfdt
 
         lops_code_test( device_tree, lop_file_2, verbose )
-
+    if openamp_tests:
+        openamp_sanity_test( verbose )
     if assists:
         dt = setup_system_device_tree( outdir )
         lop_file = setup_assist_lops( outdir )
