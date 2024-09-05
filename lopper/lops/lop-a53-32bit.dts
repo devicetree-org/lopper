@@ -1,0 +1,38 @@
+/*
+ * Copyright (C) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
+ *
+ * Author:
+ *     Rompicharla Dhriti Sree <DhritiSree.Rompicharla@amd.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+/{
+compatible = "system-device-tree-v1";
+    lops {
+	    lop_1: lop_1 {
+                  compatible = "system-device-tree-v1,lop,select-v1";
+                  select_1;
+                  select_2 = "/cpus-a53.*:address-map:";
+            };
+            lop_1_1:lop_1_1{
+                   compatible = "system-device-tree-v1,lop,code-v1";
+                   code = "
+                          if __selected__:
+                              for s in tree.__selected__:
+                                apu_address_map = s['address-map'].value
+                                valid_address_groups = []
+                                updated_address_map = []
+                                size = 7
+                                for i in range(0, len(apu_address_map), size):
+                                    group = apu_address_map[i:i+size]
+                                    if group and group[0] == 0:
+                                        valid_address_groups.append(group)
+                                for group in valid_address_groups:
+                                   updated_address_map.extend(group)
+                                s['address-map'].value = updated_address_map
+                                ";
+                            };
+         };
+};
