@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 from pathlib import Path
+from pathlib import PurePosixPath
 from io import StringIO
 import contextlib
 from importlib.machinery import SourceFileLoader
@@ -556,6 +557,9 @@ class LopperSDT:
                 sys.exit(1)
 
         elif re.search( ".dts", output_filename ):
+            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+                output_filename = self.outdir + "/" + output_filename
+
             o = Path(output_filename)
             if o.exists() and not overwrite:
                 lopper.log._error( f"output file {output_filename} exists and force overwrite is not enabled" )

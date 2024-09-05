@@ -230,7 +230,7 @@ def main():
     if outdir != "./":
         op = Path( outdir )
         try:
-            op.resolve()
+            op.resolve(True)
         except:
             print( "[ERROR]: output directory \"%s\" does not exist" % outdir )
             sys.exit(1)

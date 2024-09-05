@@ -4780,8 +4780,12 @@ class LopperTreePrinter( LopperTree ):
         self.property_cb   = self.start_property
 
         self.output = output
-        if output != sys.stdout:
-            self.output = open( output, "w")
+        try:
+            if output != sys.stdout:
+                self.output = open( output, "w")
+        except Exception as e:
+            lopper.log._warning( f"cannot open {output} for writing, using stdout: {e}" )
+            self.output = sys.stdout
 
         self.__dbg__ = debug
 
