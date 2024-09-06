@@ -101,6 +101,8 @@ class LopperSDT:
         self.merge = False
         self.support_files = False
         self.symbols = False
+        self.warnings = []
+        self.werror = False
 
     def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True, config=None):
         """executes setup and initialization tasks for a system device tree
@@ -255,8 +257,15 @@ class LopperSDT:
             dct = Lopper.export( self.FDT )
 
             self.tree = LopperTree()
+            self.tree.warnings = self.warnings
+            self.tree.werror = self.werror
             self.tree.strict = not self.permissive
             self.tree.load( dct )
+
+            self.tree.__dbg__ = self.verbose
+
+            # Do a check for common sanity issues here, invalid phandles, etc.
+            self.tree.resolve( check=True )
 
             self.tree.__symbols__ = self.symbols
 

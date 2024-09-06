@@ -21,6 +21,7 @@ import textwrap
 from collections import UserDict
 from collections import OrderedDict
 from collections import Counter
+from io import StringIO
 import copy
 import json
 
@@ -992,7 +993,8 @@ class LopperProp():
            - __pstate__
 
         Args:
-             None
+           strict: (boolean, optional): indicate whether correctness
+                                        should be stictly enforced
 
         Returns:
            Nothing
@@ -1146,6 +1148,10 @@ class LopperProp():
                                         else:
                                             phandle_tgt_name = "&invalid_phandle"
                                     else:
+                                        if self.node.tree:
+                                            self.node.tree.warn( [ "invalid_phandle" ],
+                                                                 f"property: {self.name} ({self.node.abs_path})",
+                                                                 self.node )
                                         # strict and an invalid phandle, jump to the next record
                                         # were we the last record ? That means we could have an incorrectly
                                         # continued list with ","
@@ -1980,7 +1986,7 @@ class LopperNode(object):
 
         return False
 
-    def print( self, output=None, strict=None ):
+    def print( self, output=None, strict=None, as_string=False ):
         """print a node
 
         Print a node to the passed output stream. If it isn't passed, then
@@ -1992,16 +1998,23 @@ class LopperNode(object):
 
         Args:
            output (optional, output stream).
+           strict (optional, default None) : resolve properties when printing
+           as_string (optional, default False) : return output as a string
 
         Returns:
-           Nothing
+           Nothing or string if "as_string" is set
 
         """
-        if not output:
-            try:
-                output = self.tree.output
-            except:
-                output = sys.stdout
+
+        if as_string:
+            sys.stdout = mystdout = StringIO()
+            output = sys.stdout
+        else:
+            if not output:
+                try:
+                    output = self.tree.output
+                except:
+                    output = sys.stdout
 
         if self.indent_char == ' ':
             indent = self.depth * 8
@@ -2076,6 +2089,11 @@ class LopperNode(object):
         # end the node
         outstring = "};"
         print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output)
+
+        if as_string:
+            sys.stdout = sys.__stdout__
+            return mystdout.getvalue()
+
 
     def phandle_or_create( self ):
         """Access (and generate) a phandle for this node
@@ -3037,6 +3055,11 @@ class LopperTree:
         self.depth_first = depth_first
 
         self.strict = True
+        self.warnings = []
+        self.warnings_issued = {}
+        self.werror = []
+        self.__check__ = False
+
         # output/print information
         self.indent_char = ' '
 
@@ -3291,6 +3314,54 @@ class LopperTree:
         # not currently supported
         pass
 
+    def warn( self, warnings, context_str = "", extra_info = None ):
+        """issue a warning against the tree
+
+        This method issues a warning (or error) against the tree as
+        indicated by the caller.
+
+        Before issuing the warning it is checked if the warning is
+        enabled.
+
+        "werror" is also checked to promote a warning to an error
+
+        Args:
+          warnings (list)      : a list of warning types to issue
+          context_str (string) : extra context to add to the warning
+                                 message
+
+        Returns:
+          Nothing
+        """
+        # was checking enabled ?
+        if not self.__check__:
+            return
+
+        if self.warnings:
+            for w in warnings:
+                if w in self.warnings or "all" in self.warnings:
+                    outstring = f"{w}: " + context_str
+                    try:
+                        count = self.warnings_issued[outstring]
+                        self.warnings_issued[outstring] += 1
+                    except:
+                        self.warnings_issued[outstring] = 1
+                        count = 0
+
+                    if not count:
+                        if self.werror:
+                            lopper.log._error( outstring, also_exit=1 )
+                        else:
+                            lopper.log._warning( outstring )
+
+                        if extra_info:
+                            if self.__dbg__ > 1:
+                                node_string=extra_info.print(as_string=True)
+                                node_string="node:" + node_string
+                                lopper.log._warning( node_string )
+
+
+
     def phandles( self ):
         """Utility function to get the active phandles in the tree
 
@@ -3492,14 +3563,14 @@ class LopperTree:
 
         self["/"].print( output )
 
-    def resolve( self ):
+    def resolve( self, check=False ):
         """resolve a tree
 
         Iterates all the nodes in a tree, and then the properties, making
         sure that everyting is fully resolved.
 
         Args:
-           None
+           check (boolean,optional): flag indicating if the tree should be checked
 
         Returns:
            Nothing
@@ -3516,11 +3587,18 @@ class LopperTree:
             except:
                 pass
 
+        # if check is set to true, we'll throw warnings/errors
+        # during the resolution process
+        self.__check__ = check
+
         # walk each node, and individually resolve
         for n in self:
             n.resolve()
             for p in n:
                 p.resolve()
+
+        self.__check__ = False
+
 
     def sync( self, fdt = None, only_if_required = False ):
         """Sync a tree to a backing FDT
