@@ -138,7 +138,7 @@ def _info( message, output_if_true = True, logger = None ):
     if output_if_true:
         logger.info( message )
 
-def _error( message, also_exit = True, logger = None ):
+def _error( message, also_exit = 0, logger = None ):
     """
     output a warning mesage
 
@@ -148,7 +148,7 @@ def _error( message, also_exit = True, logger = None ):
 
     Args:
         message (string): the string to output
-        also_exit (bool,optonal): flag indicating if exit should be called after the message
+        also_exit (int,optonal): if non-zero exit with the passed code
         logger (Logger,optional): the logger to use, otherwise, look it up
 
     Returns:
@@ -160,7 +160,7 @@ def _error( message, also_exit = True, logger = None ):
     logger.error( message )
 
     if also_exit:
-        sys.exit(1)
+        sys.exit(also_exit)
 
 def _debug( message, object_to_print = None, logger = None ):
     """
