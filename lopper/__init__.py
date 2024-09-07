@@ -854,7 +854,7 @@ class LopperSDT:
                 else:
                     lopper.log._warning( f"a configured assist has no module loaded" )
         else:
-            lopper.log._warning( f"no modules loaded, no compat search is possible" )
+            lopper.log._info( f"no modules loaded, no compat search is possible" )
 
         return cb_func
 
@@ -1900,7 +1900,7 @@ class LopperSDT:
                                 try:
                                     n.delete( modify_prop )
                                 except:
-                                    lopper.log._warning( f"property {modify_prop} not found, and not deleted" )
+                                    lopper.log._info( f"property {modify_prop} not found in node {n}, and not deleted" )
                                     # no big deal if it doesn't have the property
                                     pass
 
