@@ -1284,10 +1284,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpp = tempfile.NamedTemporaryFile( delete=False )
 
-    printer = LopperTreePrinter( True, fpp.name )
-    printer.load( Lopper.export( fdt ) )
-    printer.exec()
-
+    walker.print( open( fpp.name, "w") )
     with open(fpp.name) as fp:
         node_count = 0
         for line in fp:
@@ -1305,7 +1302,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     # test3: node manipulations/access
     print( "[TEST]: start: node manipulations" )
     try:
-        n = printer['/amba']
+        n = walker['/amba']
         if verbose:
             print( "    node access via '/amba' found: %s, %s" % (n, [n]) )
         test_passed( "node access by path" )
@@ -1313,7 +1310,7 @@ def tree_sanity_test( fdt, verbose=0 ):
         test_failed( "node access by path failed" )
 
     try:
-        n2 = printer[n.number]
+        n2 = walker[n.number]
         if verbose:
             print( "    node access by number '%s' found: %s" % (n.number,[n2]) )
         test_passed( "node access by number" )
@@ -1322,7 +1319,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     # write it back, as a test only
     try:
-        printer['/amba'] = n
+        walker['/amba'] = n
         test_passed( "node reassignment by name" )
     except:
         test_failed( "node reassignment by name" )
@@ -1337,7 +1334,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     # phandle tests
     try:
-        n = printer.pnode( n.phandle )
+        n = walker.pnode( n.phandle )
         if verbose:
             print( "    node access via phandle %s: %s" % (hex(n.phandle), n) )
         test_passed( "node access via phandle" )
@@ -1351,6 +1348,9 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpp = tempfile.NamedTemporaryFile( delete=False )
 
+    printer = LopperTreePrinter( True, fpp.name )
+    printer.load( Lopper.export( fdt ) )
+    # test an uneeded / sprious reset
     printer.reset( fpp.name )
 
     printer.__new_iteration__ = True
@@ -1710,9 +1710,10 @@ def tree_sanity_test( fdt, verbose=0 ):
     fpp = tempfile.NamedTemporaryFile( delete=False )
 
     printer.__dbg__ = 0
-    printer.__start_node__ = 0
+    printer.__start_node__ = '/'
     printer.reset( fpp.name )
-    printer.exec()
+    printer.resolve()
+    printer.print( open( fpp.name, "w") )
 
     # if we get here, we passed
     test_passed( "tree re-resolve\n" )
@@ -1720,16 +1721,16 @@ def tree_sanity_test( fdt, verbose=0 ):
     print( "[TEST]: end: tree re-resolve test\n" )
 
     print( "[TEST]: start: second tree test" )
-    print2 = LopperTreePrinter()
+    print2 = LopperTree()
     print2.load( printer.export() )
     if verbose:
         for n in print2:
             print( "2node: %s" % n )
         print( "\n" )
 
+    print2.resolve()
     fpp2 = tempfile.NamedTemporaryFile( delete=False )
-    print2.reset( fpp2.name )
-    print2.exec()
+    print2.print( open( fpp2.name, "w") )
 
     if filecmp.cmp( fpp.name, fpp2.name ):
         test_passed( "two tree print" )
@@ -1794,7 +1795,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     print( "[TEST]: start: second tree test, node deep copy" )
 
-    tree2 = LopperTreePrinter( True )
+    tree2 = LopperTree()
     tree2.load( Lopper.export( fdt ) )
     # new_node2 = LopperNode()
     # invokes a deep copy on the node
@@ -1857,8 +1858,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     # required
     # existing_node.sync( printer.fdt )
 
-    printer.reset( fpp.name )
-    printer.exec()
+    printer.print(open( fpp.name, "w"))
 
     c = test_pattern_count( fpp.name, "newproperty_existingnode" )
     if c == 1:
@@ -1870,13 +1870,13 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpp = tempfile.NamedTemporaryFile( delete=False )
 
-    new_tree = LopperTreePrinter( False, fpp.name )
+    new_tree = LopperTree()
     # make a copy of our existing node
     new_tree_new_node = new_node()
 
     new_tree + new_tree_new_node
     new_tree_new_node + prop
-    new_tree.exec()
+    new_tree.print( open( fpp.name, "w") )
 
     c = test_pattern_count( fpp.name, "amba" )
     if c != 1:
