@@ -108,6 +108,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 sdt.tree.delete(node)
             if node.propval('memory_type', list) == ['linear_flash']:
                 sdt.tree.delete(node)
+            if node.label == "amba_xppu" or node.label == "amba_xmpu":
+                sdt.tree.delete(node)
             for entry in node.propval('compatible', list):
                 pl_memory_compatible_list = ["xlnx,ddr4","xlnx,mig-7series","xlnx,lmb-bram","xlnx,axi-bram"]
                 if any(entry.startswith(compatible_prefix) for compatible_prefix in pl_memory_compatible_list):
@@ -205,7 +207,18 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou', 'psu_ipi',
                             'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu', 'psx_fpd_gpv', 'ddr4', 'ps7_ram', 'ps7_afi',
                             'ps7_pmu', 'ps7_ocmc', 'ps7_scuc', 'ps7_iop_bus_config', 'ps7_gpv', 'psu_ocm_ram_0', 'psv_ocm_ram_0',
-                            'psx_ocm_ram', 'ocm_ram', 'psx_ocm_ram_0', 'ocm_ram_0']
+                            'psx_ocm_ram', 'ocm_ram', 'psx_ocm_ram_0', 'ocm_ram_0', 'gt_quad_base', 'psv_coresight_apu_cti',
+                            'psv_coresight_cpm_cti2d', 'psv_coresight_cpm_ela2a', 'psv_coresight_cpm_ela2b',
+                            'psv_coresight_cpm_ela2c', 'psv_coresight_cpm_ela2d', 'psv_coresight_cpm_fun',
+                            'psv_coresight_cpm_rom', 'psv_coresight_fpd_atm', 'psv_coresight_fpd_stm',
+                            'psv_coresight_lpd_atm', 'psv_crf', 'psv_crl',  'psv_crp', 'psv_fpd_afi',
+                            'psv_fpd_cci', 'psv_fpd_gpv', 'psv_fpd_slcr', 'psv_fpd_slcr_secure', 'psv_fpd_smmu',
+                            'psv_lpd_afi', 'psv_lpd_iou_secure_slcr', 'psv_lpd_iou_slcr', 'psv_lpd_slcr',
+                            'psv_lpd_slcr_secure', 'psv_noc_pcie_0', 'psv_noc_pcie_1', 'psv_noc_pcie_2',
+                            'psv_ocm', 'psv_pmc_aes', 'psv_pmc_bbram_ctrl', 'psv_pmc_cfi_cframe', 'psv_pmc_cfu_apb',
+                            'psv_pmc_efuse_cache', 'psv_pmc_efuse_ctrl', 'psv_pmc_global', 'psv_pmc_ppu1_mdm',
+                            'psv_pmc_ram_npi', 'psv_pmc_rsa', 'psv_pmc_sha', 'psv_pmc_slave_boot', 'psv_scntrs',
+                            'psv_pmc_slave_boot_stream', 'psv_pmc_trng', 'psv_psm_global_reg', 'psv_rpu', 'psv_scntr']
 
     if linux_dt:
         binding_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "yaml_bindings")
