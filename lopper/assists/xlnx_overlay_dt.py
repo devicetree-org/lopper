@@ -84,7 +84,6 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     except:
         pass
     outfile = os.path.join(sdt.outdir, 'pl.dtsi')
-    plat = DtbtoCStruct(outfile)
     for node in root_sub_nodes:
         try:
             if node.name == "__symbols__":
@@ -102,9 +101,9 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     for node in root_sub_nodes:
         try:
             label_name = get_label(sdt, symbol_node, node)
-            if platform == "cortexa53-zynqmp" and label_name == "gic_a53":
+            if (platform == "cortexa53-zynqmp" or platform == "psu_cortexa53_0") and label_name == "gic_a53":
                 gic_node = node
-            elif platform == "cortexa72-versal" and label_name == "gic_a72":
+            elif (platform == "cortexa72-versal" or platform == "psv_cortexa72_0") and label_name == "gic_a72":
                 gic_node = node
             elif platform == "psx_cortexa78_0" and label_name == "gic_a78":
                 gic_node = node
@@ -145,6 +144,7 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
 
     for node in root_sub_nodes:
         if node.name == "amba_pl":
+            pl_node = node
             get_sub_node = node.subnodes()
             for node in get_sub_node:
                 if node.propval('reg') != ['']:
@@ -153,9 +153,10 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         if has_valid_pl:
             break
 
+    if pl_node:
+        plat = DtbtoCStruct(outfile)
+
     for node in root_sub_nodes:
-        if node.name == "amba_pl":
-            pl_node = node
         set_ignore = 0
 
         try:
@@ -313,8 +314,8 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         plat.buf('};')
     if has_pl:
         plat.buf('\n};')
-    plat.out(''.join(plat.get_buf()))
     if pl_node:
+        plat.out(''.join(plat.get_buf()))
         sdt.tree.delete(pl_node)
         remove_node_ref(sdt, tgt_node, sdt.tree['/__symbols__'])
         remove_node_ref(sdt, tgt_node, sdt.tree['/aliases'])
