@@ -885,7 +885,7 @@ class LopperProp():
                 outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
         if outstring:
-            print(outstring.rjust(len(outstring)+indent, self.node.indent_char), file=output)
+            print(outstring.rjust(len(outstring)+indent, self.node.indent_char), file=output, flush=True)
 
     def property_type_guess( self, force = False ):
         """'guess' the type of a property
@@ -2056,24 +2056,24 @@ class LopperNode(object):
                 else:
                     outstring = nodename + " {"
 
-            print( "", file=output )
-            print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output )
+            print( "", file=output, flush=True )
+            print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output, flush=True )
         else:
             # root node
             # peek ahead to handle the preamble
             for p in self:
                 if p.pclass == "preamble":
-                    print( "%s" % p, file=output )
+                    print( "%s" % p, file=output, flush=True )
 
             #print( "/dts-v1/;\n\n/ {", file=output )
-            print( "/dts-v1/;\n", file=output )
+            print( "/dts-v1/;\n", file=output, flush=True )
 
             if self.tree and self.tree.__memreserve__:
                 mem_res_addr = hex(self.tree.__memreserve__[0] )
                 mem_res_len = hex(self.tree.__memreserve__[1] )
-                print( "/memreserve/ %s %s;\n" % (mem_res_addr,mem_res_len), file=output )
+                print( "/memreserve/ %s %s;\n" % (mem_res_addr,mem_res_len), file=output, flush=True )
 
-            print( "/ {", file=output )
+            print( "/ {", file=output, flush=True )
 
         # now the properties
         for p in self:
@@ -2088,7 +2088,7 @@ class LopperNode(object):
 
         # end the node
         outstring = "};"
-        print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output)
+        print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output , flush=True)
 
         if as_string:
             sys.stdout = sys.__stdout__
@@ -3560,6 +3560,15 @@ class LopperTree:
                 output = self.output
             except:
                 output = sys.stdout
+        else:
+            # confirm if output is an iostream
+            try:
+                if not output.writable():
+                    lopper.log._warning( f"{output} is not writable" )
+                    return
+            except (UnicodeDecodeError, AttributeError) as e:
+                lopper.log._warning( f"{output} is not a writable" )
+                return
 
         self["/"].print( output )
 
@@ -3594,6 +3603,9 @@ class LopperTree:
         # walk each node, and individually resolve
         for n in self:
             n.resolve()
+            # n.resolve() also resolves properties, so we can
+            # eventually drop this properties iteration after
+            # some extensive testing
             for p in n:
                 p.resolve()
 
@@ -4824,7 +4836,8 @@ class LopperTree:
                     node = next(self.__node_iter__)
                 except StopIteration:
                     # reset for the next call
-                    self.reset()
+                    self.__current_node__ = 0
+                    self.__new_iteration__ = True
                     raise StopIteration
             else:
                 # TODO (may not be required)
@@ -4851,12 +4864,6 @@ class LopperTreePrinter( LopperTree ):
         # init the base walker.
         super().__init__( snapshot )
 
-        self.start_tree_cb = self.start
-        self.start_node_cb = self.start_node
-        self.end_node_cb   = self.end_node
-        self.end_tree_cb   = self.end
-        self.property_cb   = self.start_property
-
         self.output = output
         try:
             if output != sys.stdout:
@@ -4866,6 +4873,41 @@ class LopperTreePrinter( LopperTree ):
             self.output = sys.stdout
 
         self.__dbg__ = debug
+
+    def exec(self):
+        """ Excute the priting of a tree
+
+        This keeps compatbility with the original LopperTreePrinter
+        implementation that used callback to print a tree. They were
+        triggered when exec() was called on the tree.
+
+        We no longer use those callbacks, but we implement exec()
+        so that existing code need not change.
+
+        Args:
+            None
+
+        Returns:
+            Nothing
+        """
+
+        # save the current / start nodes, since they'll be
+        # changed/reset by the reolve
+        start_save = self.__start_node__
+        current_save = self.__current_node__
+
+        super().resolve()
+
+        # restore them
+        self.__start_node__ = start_save
+        self.__current_node__ = current_save
+
+        if self.__start_node__ != "/":
+            self.__nodes__[self.__start_node__].print(self.output)
+        elif self.__current_node__ != "/":
+            self.__nodes__[self.__current_node__].print( self.output )
+        else:
+            self.print( self.output )
 
     def reset(self, output_file=sys.stdout ):
         """reset the output of a printer
@@ -4896,157 +4938,8 @@ class LopperTreePrinter( LopperTree ):
 
         if output_file != sys.stdout and output_name != '<stdout>':
             try:
-                self.output = open( output_file, "w")
+                self.output = open( output_file, "w" )
             except Exception as e:
                 lopper.log._warning( f"could not open {output_file} as output: {e}" )
         else:
             self.output = output_file
-
-    def start(self, n ):
-        """LopperTreePrinter start
-
-        Prints the start / opening of a tree and handles the preamble.
-
-        Args:
-            n (LopperNode): the opening node of the tree
-
-        Returns:
-            Nothing
-        """
-        # peek ahead to handle the preamble
-        for p in n:
-            if p.pclass == "preamble":
-                print( "%s" % p, file=self.output )
-
-        print( "/dts-v1/;\n", file=self.output )
-        # print( "/dts-v1/;\n\n/ {", file=self.output )
-
-        if self.__memreserve__:
-            mem_res_addr = hex(self.__memreserve__[0] )
-            mem_res_len = hex(self.__memreserve__[1] )
-            print( "/memreserve/ %s %s;\n" % (mem_res_addr,mem_res_len), file=self.output )
-        print( "/ {", file=self.output )
-
-    def start_node(self, n ):
-        """LopperTreePrinter node start
-
-        Prints the start / opening of a node
-
-        Args:
-            n (LopperNode): the node being opened
-
-        Returns:
-            Nothing
-        """
-        if n.indent_char == ' ':
-            indent = n.depth * 8
-        else:
-            indent = n.depth
-
-        nodename = n.name
-        if n.number != 0:
-            plabel = ""
-            try:
-                if n['lopper-label.*']:
-                    plabel = n['lopper-label.*'].value[0]
-            except:
-                label_all_nodes = False
-                if not n.label:
-                    if label_all_nodes:
-                        n.label_set( Lopper.phandle_safe_name( nodename ) )
-                plabel = n.label
-
-            if n.phandle != 0:
-                if plabel:
-                    outstring = plabel + ": " + nodename + " {"
-                else:
-                    # nodename is creating duplicates, let's do a label based on the path
-                    # outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
-                    outstring = nodename + " {"
-            else:
-                if plabel:
-                    outstring = plabel + ": " + nodename + " {"
-                else:
-                    outstring = nodename + " {"
-
-            print( "", file=self.output )
-            print(outstring.rjust(len(outstring)+indent, n.indent_char), file=self.output )
-
-    def end_node(self, n):
-        """LopperTreePrinter node end
-
-        Prints the end / closing of a node
-
-        Args:
-            n (LopperNode): the node being closed
-
-        Returns:
-            Nothing
-        """
-        if n.indent_char == ' ':
-            indent = n.depth * 8
-        else:
-            indent = n.depth
-
-        outstring = "};"
-        print(outstring.rjust(len(outstring)+indent,n.indent_char), file=self.output)
-
-    def start_property(self, p):
-        """LopperTreePrinter property print
-
-        Prints a property
-
-        Args:
-            p (LopperProperty): the property to print
-
-        Returns:
-            Nothing
-        """
-        # do we really need this resolve here ? We are already tracking if they
-        # are modified/dirty, and we have a global resync/resolve now. I think it
-        # can go
-        p.resolve( self.strict )
-
-        if p.node.indent_char == ' ':
-            indent = (p.node.depth * 8) + 8
-        else:
-            indent = p.node.depth + 1
-
-        outstring = str( p )
-        only_align_comments = False
-
-        if p.pclass == "preamble":
-            # start tree peeked at this, so we do nothing
-            outstring = ""
-        else:
-            # p.pclass == "comment"
-            # we have to substitute \n for better indentation, since comments
-            # are multiline
-
-            do_indent = True
-            if only_align_comments:
-                if p.pclass != "comment":
-                    do_indent = False
-
-            if do_indent:
-                dstring = ""
-                dstring = dstring.rjust(len(dstring) + indent + 1, p.node.indent_char)
-                outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
-
-        if outstring:
-            print(outstring.rjust(len(outstring)+indent,p.node.indent_char), file=self.output)
-
-    def end(self, n):
-        """LopperTreePrinter tree end
-
-        Ends the walking of a tree
-
-        Args:
-            n (LopperNode): -1
-
-        Returns:
-            Nothing
-        """
-
-        if self.output != sys.stdout:
-            self.output.close()
