@@ -320,6 +320,16 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     has_ocm = None
     has_ram = None
     has_bram = None
+
+    if "microblaze_riscv" in cpu_ip_name:
+        mbv_reset_addr = match_cpunode.propval('xlnx,base-vectors')[0] << 32 | match_cpunode.propval('xlnx,base-vectors')[1]
+        for key, value in mem_ranges.items():
+            end = value[0] + value[1]
+            if mbv_reset_addr == value[0]:
+                default_ddr = key
+                memtest_config = False
+                break
+
     ## For memory tests configuration default memory should be ocm if available
     if memtest_config:
         has_ocm = [x for x in mem_ranges.keys() if "ocm" in x]
