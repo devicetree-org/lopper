@@ -166,11 +166,22 @@ def get_memranges(tgt_node, sdt, options):
 
     return mem_ranges
 
+
+def get_unique_memip_list(mem_ranges):
+    unique_mem_ip_list = []
+    for memip in mem_ranges.keys():
+        ip_name = memip.rsplit("_")[0]
+        if ip_name not in unique_mem_ip_list:
+            unique_mem_ip_list += [ip_name]
+    return unique_mem_ip_list
+
+
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 # options: baremetal application source path
 def xlnx_generate_bm_linker(tgt_node, sdt, options):
     mem_ranges = get_memranges(tgt_node, sdt, options)
+    unique_mem_ip_list = get_unique_memip_list(mem_ranges)
     default_ddr = None
     memtest_config = None
     openamp_config = None
@@ -283,7 +294,10 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
 
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
         if default_ddr is None:
-            default_ddr = key
+            if "axi_emc" in key and len(unique_mem_ip_list) != 1:
+                pass
+            else:
+                default_ddr = key
         start,size = value[0], value[1]
         """
         Initial 80 bytes is being used by the linker vectors section in case of Microblaze.
