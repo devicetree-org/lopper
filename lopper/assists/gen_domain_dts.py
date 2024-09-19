@@ -21,7 +21,15 @@ from common_utils import to_cmakelist
 import common_utils as utils
 from domain_access import update_mem_node
 
-def delete_unused_props( node, driver_proplist ):
+def delete_unused_props( node, driver_proplist , delete_child_nodes):
+    if delete_child_nodes:
+        child_list = list(node.child_nodes.keys())
+        for child in child_list:
+            child_node = node.child_nodes[child]
+            delete_unused_props( child_node, driver_proplist, True)
+            if not child_node.child_nodes.keys() and not child_node.__props__.keys():
+                node.delete(child_node)
+
     prop_list = list(node.__props__.keys())
     for prop in prop_list:
         if prop not in driver_proplist:
@@ -115,6 +123,12 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 if any(entry.startswith(compatible_prefix) for compatible_prefix in pl_memory_compatible_list):
                     sdt.tree.delete(node)
                     break
+            if node.propval('xlnx,name') != ['']:
+                node.delete('xlnx,name')
+            if node.propval('xlnx,interconnect-s-axi-masters') != ['']:
+                node.delete('xlnx,interconnect-s-axi-masters')
+            if node.propval('xlnx,rable') != ['']:
+                node.delete('xlnx,rable')
 
         if node.propval('status') != ['']:
             if linux_dt and node.name == "smmu@fd800000" and machine == "psu_cortexa53_0":
@@ -254,8 +268,11 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     sdt.tree.delete(node)
         elif node.propval('compatible') != [''] and linux_dt:
             is_prune_node = [compat for compat in driver_compatlist if compat in node.propval('compatible', list)]
+            delete_child_nodes = False
+            if 'xlnx,usp-rf-data-converter-2.6' in node.propval('compatible'):
+                delete_child_nodes = True
             if is_prune_node:
-                delete_unused_props( node, driver_proplist)
+                delete_unused_props( node, driver_proplist, delete_child_nodes)
 
     # Remove symbol node referneces
     symbol_node = sdt.tree['/__symbols__']
