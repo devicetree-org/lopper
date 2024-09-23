@@ -719,6 +719,7 @@ def setup_device_tree( outdir ):
                 };
 
                 iommu: smmu@fd800000 {
+                    xlnx,mem-ctrl-base-address =  <0x76000000>;
                     compatible = "arm,mmu-500";
                     status = "okay";
                     reg = <0x0 0xfd800000 0x0 0x40000>;
@@ -1018,6 +1019,7 @@ def setup_system_device_tree( outdir ):
                 };
 
                 nested-node {
+                    xlnx,mem-ctrl-base-address = <0x76000000>;
                     compatible = "delete-me";
                     nested-node-child1 {
                          compatible = "delete-me2";
@@ -2343,7 +2345,23 @@ def fdt_sanity_test( device_tree, verbose ):
     lt3.__dbg__ = 0
     lt3.exec()
 
+    print( "[INFO]: checking string type detection" )
+    nested_node = lt3["/amba_apu/nested-node"]
+    ns = nested_node.print( as_string=True )
+    print( ns )
+    if re.search( "xlnx,mem-ctrl-base-address = <0x76000000>;", ns ):
+        print( "[INFO]: string decode passed" )
+    else:
+        print( "[ERROR]: string decode failed" )
+        os._exit(1)
 
+    n = lt3["/"]
+    ns = n.print( as_string=True )
+    if re.search( "compatible = \"xlnx,versal-vc-p-a2197-00-revA\", \"xlnx,versal-vc-p-a2197-00\", \"xlnx,versal-vc-p-a2197\", \"xlnx,versal\";", ns ):
+        print( "[INFO]: multi-string decode passed" )
+    else:
+        print( "[ERROR]: multi-string decode failed" )
+        os._exit(1)
 
 def yaml_sanity_test( device_tree, yaml_file, outdir, verbose ):
     device_tree.setup( dt, [], "", True, libfdt = libfdt )
