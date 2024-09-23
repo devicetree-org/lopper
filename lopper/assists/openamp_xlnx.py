@@ -211,7 +211,7 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
         elfload_res_mem_reg[3] = native_shm_mem_area_size
         elfload_res_mem_node.props("reg")[0].value = elfload_res_mem_reg
 
-        native_amba_shm_node = LopperNode(-1, amba_node.abs_path + "/" + hex(native_shm_mem_area_start)[2:] + ".shm")
+        native_amba_shm_node = LopperNode(-1, amba_node.abs_path + "/" + "shm@" + hex(native_shm_mem_area_start)[2:])
 
         native_amba_shm_node + LopperProp(name="compatible", value="shm_uio")
         tree.add(native_amba_shm_node)
@@ -432,12 +432,13 @@ def xlnx_rpmsg_native_update_ipis(tree, amba_node, openamp_channel_info, gic_nod
             idx += 1
         amba_ipi_node = amba_ipis[idx]
     else:
-        amba_ipi_node = LopperNode(-1, amba_node.abs_path + "/openamp_ipi" + str(amba_ipi_node_index))
+        reg_val = copy.deepcopy(host_ipi.props("reg")[0].value)
+        reg_val[3] = 0x1000
+
+        amba_ipi_node = LopperNode(-1, amba_node.abs_path + "/openamp_ipi" + str(amba_ipi_node_index) + "@" + hex(reg_val[1])[2:])
         amba_ipi_node + LopperProp(name="compatible",value="ipi_uio")
         amba_ipi_node + LopperProp(name="interrupts",value=copy.deepcopy(host_ipi.props("interrupts")[0].value))
         amba_ipi_node + LopperProp(name="interrupt-parent",value=[gic_node_phandle])
-        reg_val = copy.deepcopy(host_ipi.props("reg")[0].value)
-        reg_val[3] = 0x1000
         amba_ipi_node + LopperProp(name="reg",value=reg_val)
         tree.add(amba_ipi_node)
         tree.resolve()
@@ -734,7 +735,7 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
             SHARED_BUF_OFFSET = hex( e.props("size")[0].value * 2 )
             break
 
-    shm_dev_name = "\"" + RSC_MEM_PA + '.shm\"'
+    shm_dev_name = "\"" + RSC_MEM_PA[2:] + '.shm\"'
 
     template = None
     irq_vect_ids = {
@@ -789,8 +790,8 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
         ipi_dev_name = "\"ipi\""
 
         if rpmsg_native:
-            ipi_dev_name = "\"" + POLL_BASE_ADDR[2:] + "." +  openamp_channel_info["rpmsg_native_ipi_"+channel_id].name + "\""
-            shm_dev_name = '"' + openamp_channel_info["native_shm_node_"+channel_id].name + '"'
+            ipi_dev_name_suffix = openamp_channel_info["rpmsg_native_ipi_"+channel_id].name.split("@")[0]
+            ipi_dev_name = "\"" + POLL_BASE_ADDR[2:] + "." +  ipi_dev_name_suffix + "\""
 
         inputs = {
             "POLL_BASE_ADDR":POLL_BASE_ADDR,
