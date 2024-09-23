@@ -322,6 +322,30 @@ class lopper_base:
                     if not lopper_base.string_test( prop ):
                         # change our mind
                         type_guess = LopperFmt.UINT8
+                    try:
+                        # if this throws an exception, libfdt doesn't agree with
+                        # our analysis that this is a string, so we'll try another
+                        # couple of checks to be sure that it isn't a string and
+                        # we'll switch to bytes for the type
+                        prop.as_str()
+                    except Exception as e:
+                        # this could be a very unluckily encoded number at these
+                        # lengths. i.e. mem-ctrl-base-address =  <0x76000000>; manages
+                        # to pass all the tests for a string as the first bytes look
+                        # like the letter "v" and then we find null characters (the 0's)
+                        # and declare it a partial string
+                        if len(prop) == 4:
+                            try:
+                                prop.as_uint32()
+                                type_guess = LopperFmt.UINT8
+                            except:
+                                pass
+                        if len(prop) == 8:
+                            try:
+                                prop.as_uint64()
+                                type_guess = LopperFmt.UINT8
+                            except:
+                                pass
 
                 except Exception as e:
                     # it didn't decode, fall back to numbers ..
@@ -450,6 +474,12 @@ class lopper_base:
                     "interrupt-map" : [ '#address-cells #interrupt-cells phandle:#interrupt-cells' ],
                     "access" : [ 'phandle flags' ],
                     "cpus" : [ 'phandle mask mode' ],
+
+                    # The field map is going to neeed to be calculated dynamically
+                    # we have a case where clock-cells is not consistent between
+                    # all the clocks, so the iteration of the cells is breaking as
+                    # the field size is not consistent.
+
                     "clocks" : [ 'phandle:#clock-cells' ],
                     "reset-gpios" : [ 'phandle field field' ],
                     "resets" : [ 'phandle field' ],
