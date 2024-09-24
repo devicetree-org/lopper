@@ -48,6 +48,29 @@ def chunks(l, n):
         # Create an index range for l of n items:
         yield l[i:i+n]
 
+def chunks_variable(lst, chunk_sizes):
+    """
+    Splits a Python list into variable sized records of different sizes
+
+    Args:
+        lst: the list to be chunked
+        chunk_sizes: a list of integers representing the sizes of the chunks
+
+    Yields:
+        A list of variable length, where each list is a chunk
+    """
+    if sum(chunk_sizes) != len(lst):
+        raise ValueError( f"The sum of chunk sizes ({chunk_sizes}) must be "
+                          f"equal to the length of the list ({len(lst)})" )
+
+    start = 0
+
+    for size in chunk_sizes:
+        end = start + size
+        chunk = lst[start:end]
+        yield chunk
+        start = end
+
 # used in node_filter
 class LopperAction(Enum):
     """Enum class to define the actions available in Lopper's node_filter function
@@ -524,6 +547,23 @@ class LopperProp():
         if self.pclass == "json":
             return phandle_map
 
+        debug = self.__dbg__
+        dname = self.name
+
+        if self.node:
+            try:
+                compat = self.node["compatible"]
+                is_lop = False
+                for c in compat.value:
+                    if re.search( "system-device-tree-v1,lop", c ):
+                        is_lop = True
+
+                # lops can't resolve, so just return early
+                if is_lop:
+                    return []
+            except:
+                pass
+
         # We are iterating two things:
         #   - the values of the property
         #   - the fields of the property description
@@ -543,6 +583,7 @@ class LopperProp():
         property_fields = property_description[0].split()
 
         group_size = 0
+        group_sizes = []
         property_global_index = 0
         phandle_index_list = []
 
@@ -552,115 +593,169 @@ class LopperProp():
         # Note: this means that if a property has variable sized records,
         #       we could have issues. That hasn't been seen yet, but if
         #       it does happen, we need to walk ALL the values in the
-        #       property to calculate the lenght of each record individually
+        #       property to calculate the length of each record individually
         #       (and then have to change the chunking up of output throughout
         #       lopper).
-        for phandle_desc in property_fields:
-            if re.search( '^#.*', phandle_desc ):
-                try:
-                    field_val = self.node.__props__[phandle_desc].value[0]
-                except Exception as e:
-                    field_val = 1
+        try:
+            pval = self.value[property_global_index]
+            property_iteration_flag = True
+        except:
+            property_iteration_flag = False
 
-                group_size = group_size + field_val
-                property_global_index = property_global_index + field_val
+        while property_iteration_flag:
+            for phandle_desc in property_fields:
+                if re.search( '^#.*', phandle_desc ):
+                    try:
+                        field_val = self.node.__props__[phandle_desc].value[0]
+                    except Exception as e:
+                        if self.node and self.node.tree and self.node.tree.strict:
+                            # lopper.log._warning( f"({self.node.abs_path}) deref exception: {e}" )
+                            return phandle_map
 
-            elif re.search( '^phandle', phandle_desc ):
-                derefs = phandle_desc.split(':')
-                phandle_index_list.append( property_global_index )
+                        field_val = 1
 
-                try:
-                    val = self.value[property_global_index]
-                except Exception as e:
-                    # if the property isn't assigned to a node, don't warn/debug
-                    # just continue
-                    if not self.node:
-                        continue
+                    group_size = group_size + field_val
+                    property_global_index = property_global_index + field_val
 
-                    lopper.log._debug( f"index out of bounds for {self.name}"
-                                       f"index: {property_global_index}, len: {len(self.value)}" )
-                    continue
-
-                # We've been instructed to look up a property in the phandle.
-                # that tells us how many elements to jump before we look for
-                # the next phandle.
-
-                if len(derefs) >= 2:
-                    # step 1) lookup the node
-                    if self.node and self.node.tree:
-                        node_deref = self.node.tree.deref( val )
-                    else:
-                        node_deref = []
+                elif re.search( '^phandle', phandle_desc ):
+                    derefs = phandle_desc.split(':')
+                    phandle_index_list.append( property_global_index )
 
                     try:
-                        # step 2) look for the property in the
-                        #         deferneced node. If the node wasn't
-                        #         found, we'll trigger an exception,
-                        #         and just set a default value of 1.
-                        cell_count = node_deref[derefs[1]].value[0]
+                        val = self.value[property_global_index]
                     except Exception as e:
+                        # if the property isn't assigned to a node, don't warn/debug
+                        # just continue
+                        if not self.node:
+                            continue
+
+                        lopper.log._debug( f"index out of bounds for {self.name}"
+                                           f"index: {property_global_index}, len: {len(self.value)}" )
+                        continue
+
+                    # We've been instructed to look up a property in the phandle.
+                    # that tells us how many elements to jump before we look for
+                    # the next phandle.
+
+                    if len(derefs) >= 2:
+                        # step 1) lookup the node
+                        if self.node and self.node.tree:
+                            node_deref = self.node.tree.deref( val )
+                        else:
+                            # if we aren't in a tree, we really can't continue since
+                            # whatever we do will be wrong, just return an empty
+                            # map
+                            return []
+
+                        try:
+                            # step 2) look for the property in the
+                            #         dereferenced node. If the node
+                            #         wasn't found, we'll trigger an
+                            #         exception, and just set a
+                            #         default value of 1.
+                            cell_count = node_deref[derefs[1]].value[0]
+
+                        except Exception as e:
+                            if self.node and self.node.tree and self.node.tree.strict:
+                                return phandle_map
+                            cell_count = 1
+
+                        # step 3)
+                        # if the length is 3, that means there was an expression added
+                        # to the definition to adjust the value we found. We pull it out
+                        # and evaluate it to get the answer.
+                        if len(derefs) == 3:
+                            expression = str(cell_count) + derefs[2]
+                            expression = eval( expression )
+                            cell_count = expression
+
+                        # the +1 is for the phandle itself.
+                        group_size = group_size + 1 + cell_count
+                        property_global_index = property_global_index + 1 + cell_count
+                    else:
+                        # just add the phandle to the field count
+                        group_size = group_size + 1
+                        property_global_index = property_global_index + 1
+
+                elif m := re.match( field_offset_regex, phandle_desc ):
+                    # This is a "lookback" to a phandle that is at another field
+                    # of the property (versus the current one).
+                    offset = m.group(1)
+                    field_pos = m.group(2)
+                    target_prop = m.group(3)
+
+                    # positive or negative offset into the phandle_sub_list (we currently
+                    # only handle lookbacks)
+                    if offset != "-":
+                        lopper.log._warning( f"only negative offset lookbacks are currently supported: {phandle_desc}" )
+                        lookback = field_pos
+                    else:
+                        lookback = eval(offset+field_pos)
+
+                    node_deref = phandle_sub_list[lookback]
+                    if node_deref != 0:
+                        # get the property ..
+                        try:
+                            # look for the property in the deferenced node. If the
+                            # node wasn't found, we'll trigger an exception, and just
+                            # set a default value of 1.
+                            cell_count = node_deref[target_prop].value[0]
+                        except:
+                            cell_count = 1
+                    else:
                         cell_count = 1
 
-                    # step 3)
-                    # if the length is 3, that means there was an expression added
-                    # to the definition to adjust the value we found. We pull it out
-                    # and evaluate it to get the answer.
-                    if len(derefs) == 3:
-                        expression = str(cell_count) + derefs[2]
-                        expression = eval( expression )
-                        cell_count = expression
-
-                    # the +1 is for the phandle itself.
-                    group_size = group_size + 1 + cell_count
+                    # this is the next index to check for a phandle
                     property_global_index = property_global_index + 1 + cell_count
                 else:
-                    # just add the phandle to the field count
+                    # non-lookup field, value is one!
                     group_size = group_size + 1
                     property_global_index = property_global_index + 1
 
-            elif m := re.match( field_offset_regex, phandle_desc ):
-                # This is a "lookback" to a phandle that is at another field
-                # of the property (versus the current one).
-                offset = m.group(1)
-                field_pos = m.group(2)
-                target_prop = m.group(3)
 
-                # positive or negative offset into the phandle_sub_list (we currently
-                # only handle lookbacks)
-                if offset != "-":
-                    lopper.log._warning( f"only negative offset lookbacks are currently supported: {phandle_desc}" )
-                    lookback = field_pos
-                else:
-                    lookback = eval(offset+field_pos)
-
-                node_deref = phandle_sub_list[lookback]
-                if node_deref != 0:
-                    # get the property ..
-                    try:
-                        # look for the property in the deferenced node. If the
-                        # node wasn't found, we'll trigger an exception, and just
-                        # set a default value of 1.
-                        cell_count = node_deref[target_prop].value[0]
-                    except:
-                        cell_count = 1
-                else:
-                    cell_count = 1
-
-                # this is the next index to check for a phandle
-                property_global_index = property_global_index + 1 + cell_count
-            else:
-                # non-lookup field, value is one!
-                group_size = group_size + 1
-                property_global_index = property_global_index + 1
+            group_sizes.append(group_size)
+            try:
+                # if we roll over the end, catch the exception and exit
+                pval = self.value[property_global_index]
+                group_size = 0
+            except:
+                property_iteration_flag = False
 
         # if we don't have a group size, we have nothing to chunk up and
         # the property was likely empty. return the empty map.
         if not group_size:
             return phandle_map
 
+        if not group_sizes:
+            return phandle_map
+
+        if self.node and debug:
+            lopper.log._debug( f"  {self.name} ({self.node.abs_path}):" )
+            lopper.log._debug( f"    ... property value: {self.value}" )
+            lopper.log._debug( f"    ... {group_sizes}" )
+
         # We now know the group size. We chunk up the property into
         # these groups and pick out the phandles.
-        property_value_chunks  = chunks(self.value,group_size)
+        # property_value_chunks  = chunks(self.value,group_size)
+        try:
+            property_value_chunks = chunks_variable(self.value,group_sizes)
+            # this double call is on purpose. the iterator will throw a
+            # value exception if there's an issue with the chunk sizes and
+            # the length of the list. We can't it and handle it gracefully
+            # here, versus in the bigger processing block below.
+            # We then have to reset our list for the actual iteration and
+            # processing.
+            for property_val_group in property_value_chunks:
+                pass
+            property_value_chunks = chunks_variable(self.value,group_sizes)
+        except Exception as e:
+            if self.node:
+                lopper.log._warning( f"could not fully process the cells of: "
+                                     f"{self.name} ({self.node.abs_path})" )
+                lopper.log._warning( e )
+
+            # just do a fixed record size chunking to continue processing
+            property_value_chunks = chunks(self.value,group_size)
 
         property_chunk_idx = 0
         property_sub_list = []
@@ -681,11 +776,8 @@ class LopperProp():
 
                 property_chunk_idx += 1
 
-                if property_chunk_idx >= group_size:
-                    ### print( "    reseting index, pushing sub list: %s" % phandle_sub_list )
-                    phandle_map.append( phandle_sub_list )
-                    property_chunk_idx = 0
-                    phandle_sub_list = []
+            phandle_map.append( phandle_sub_list )
+            phandle_sub_list = []
 
         # Not currently used, but kept for reference. returning "#invalid"
         # here breaks callers that are looking for zeros. It is up to the

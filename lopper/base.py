@@ -474,18 +474,16 @@ class lopper_base:
                     "interrupt-map" : [ '#address-cells #interrupt-cells phandle:#interrupt-cells' ],
                     "access" : [ 'phandle flags' ],
                     "cpus" : [ 'phandle mask mode' ],
-
-                    # The field map is going to neeed to be calculated dynamically
-                    # we have a case where clock-cells is not consistent between
-                    # all the clocks, so the iteration of the cells is breaking as
-                    # the field size is not consistent.
-
                     "clocks" : [ 'phandle:#clock-cells' ],
                     "reset-gpios" : [ 'phandle field field' ],
                     "resets" : [ 'phandle field' ],
                     "assigned-clocks" : [ 'phandle:#clock-cells' ],
                     "cpu-idle-states" : [ 'phandle' ],
                     "power-domains" : [ 'phandle field' ],
+                    "operating-points-v2" : [ 'phandle' ],
+                    "next-level-cache" : [ 'phandle' ],
+                    "interrupt-affinity" : [ 'phandle' ],
+                    "fpga-mgr" : [ 'phandle' ],
                 }
         except:
             return {}

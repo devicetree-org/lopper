@@ -2547,8 +2547,10 @@ if __name__ == "__main__":
         device_tree.use_libfdt = libfdt
 
         lops_code_test( device_tree, lop_file_2, verbose )
+
     if openamp_tests:
         openamp_sanity_test( verbose )
+
     if assists:
         dt = setup_system_device_tree( outdir )
         lop_file = setup_assist_lops( outdir )
