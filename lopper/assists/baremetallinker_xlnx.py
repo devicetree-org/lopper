@@ -334,6 +334,20 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     has_ocm = None
     has_ram = None
     has_bram = None
+
+    if "microblaze_riscv" in cpu_ip_name:
+        if match_cpunode.propval('xlnx,base-vectors') != ['']:
+            if len(match_cpunode.propval('xlnx,base-vectors')) > 1:
+                mbv_reset_addr = match_cpunode.propval('xlnx,base-vectors')[0] << 32 | match_cpunode.propval('xlnx,base-vectors')[1]
+            else:
+                mbv_reset_addr = match_cpunode.propval('xlnx,base-vectors')[0]
+        for key, value in mem_ranges.items():
+            end = value[0] + value[1]
+            if mbv_reset_addr == value[0]:
+                default_ddr = key
+                memtest_config = False
+                break
+
     ## For memory tests configuration default memory should be ocm if available
     if memtest_config:
         has_ocm = [x for x in mem_ranges.keys() if "ocm" in x]
@@ -377,6 +391,13 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             memip_list.insert(0, memip_list.pop(memip_list.index(has_ram[0])))
         elif has_bram:
             memip_list.insert(0, memip_list.pop(memip_list.index(default_ddr)))
+
+    # For MB-V, always pop default_ddr to 0th index irrespective of memtest_config
+    # there is no harm in listing it to the first in TOTAL_MEM_CONTROLLERS list
+    # FIXME: Cleanup above if memtest_config
+    if "microblaze_riscv" in cpu_ip_name:
+        memip_list.insert(0, memip_list.pop(memip_list.index(default_ddr)))
+
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
     cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
     if stack_size is not None:
