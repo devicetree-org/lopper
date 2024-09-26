@@ -354,7 +354,10 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     for node in node_list:
         try:
             label_name = bm_config.get_label(sdt, symbol_node, node)
-            label_name = label_name.upper()
+            if label_name != None:
+                label_name = label_name.upper()
+            else:
+                continue
             val = bm_config.scan_reg_size(node, node['reg'].value, 0)
             plat.buf(f'\n/* Definitions for peripheral {label_name} */')
             plat.buf(f'\n#define XPAR_{label_name}_BASEADDR {hex(val[0])}\n')
