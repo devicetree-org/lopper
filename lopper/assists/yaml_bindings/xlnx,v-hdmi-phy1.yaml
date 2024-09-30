@@ -194,6 +194,14 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1]
 
+  xlnx,hdmi-connector:
+    description: |
+      Reference to the on board FMC connector driver.
+
+  rxch4-sel-gpios:
+    description: |
+      Reference to the GPIO
+
   "#phy-cells":
     const: 0
 
@@ -223,19 +231,12 @@ required:
   - xlnx,tx-max-gt-line-rate
   - xlnx,rx-clk-primitive
   - xlnx,tx-clk-primitive
+  - xlnx,hdmi-connector
+  - rxch4-sel-gpios
+  - xlnx,gt-direction
   - '#phy-cells'
 
 additionalProperties: false
-
-if:
-  properties:
-    compatible:
-      contains:
-        const: xlnx,v-hdmi-gt-controller-1.0
-
-then:
-  required:
-    - xlnx,gt-direction
 
 examples:
   - |
