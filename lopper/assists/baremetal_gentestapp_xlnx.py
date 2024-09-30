@@ -16,6 +16,7 @@ import glob
 
 sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import get_mapped_nodes, get_cpu_node, get_label, compat_list, scan_reg_size, get_stdin
+from baremetallinker_xlnx import get_memranges
 import common_utils as utils
 import baremetalconfig_xlnx as bm_config
 
@@ -188,8 +189,18 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                             example_file_dst_path = os.path.join(sdt.outdir, app)
                             list_of_hw_props = testapp_schema[app].get('hwproperties',[])
                             list_of_dep_files = testapp_schema[app].get('dependency_files',[])
+                            list_of_mem_list = testapp_schema[app].get('memlist',[])
                             valid_ex = 0
                             match_list = []
+                            if drv_config_name == 'XAxiCdma':
+                                mem_ranges = get_memranges(tgt_node, sdt, options)
+                                for mem in list_of_mem_list:
+                                    if any(mem in mem_name for mem_name in mem_ranges.keys()):
+                                        match_list.append(True)
+                                        break
+                                else:
+                                    match_list.append(False)
+
                             for prop_name in list_of_hw_props:
                                 try:
                                     if "interrupts" in testapp_schema[app]['hwproperties']:
