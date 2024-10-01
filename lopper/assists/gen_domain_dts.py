@@ -116,8 +116,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 sdt.tree.delete(node)
             if node.propval('memory_type', list) == ['linear_flash']:
                 sdt.tree.delete(node)
-            if node.label == "amba_xppu" or node.label == "amba_xmpu":
-                sdt.tree.delete(node)
             for entry in node.propval('compatible', list):
                 pl_memory_compatible_list = ["xlnx,ddr4","xlnx,mig-7series","xlnx,lmb-bram","xlnx,axi-bram"]
                 if any(entry.startswith(compatible_prefix) for compatible_prefix in pl_memory_compatible_list):
