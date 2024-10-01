@@ -145,8 +145,14 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
         update_exdict = {}
         for ex in ex_list:
             if "dependency_files" in example_schema[ex][0]:
-                update_exdict.update({ex:example_schema[ex][0]['dependency_files']})
+                dep_file_list = example_schema[ex][0]['dependency_files']
+                if os.name == "nt":
+                    ex = ex.replace('/','\\')
+                    dep_file_list = [s.replace("/", "\\") for s in dep_file_list]
+                update_exdict.update({ex:dep_file_list})
             else:
+                if os.name == "nt":
+                    ex = ex.replace('/','\\')
                 update_exdict.update({ex:[]})
             new_ex_dict.update({ip:update_exdict})
         example_dict = new_ex_dict

@@ -1,12 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2018 Xilinx, Inc.
+ * Copyright (C) 2018-2022 Xilinx, Inc.
+ * Copyright (C) 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
  */
 
 #ifndef _DT_BINDINGS_ZYNQMP_POWER_H
 #define _DT_BINDINGS_ZYNQMP_POWER_H
 
-#define		PD_RPU		6
+#define		PD_RPU 		6
 #define		PD_RPU_0	7
 #define		PD_RPU_1	8
 #define		PD_OCM_0	11

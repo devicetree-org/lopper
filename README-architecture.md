@@ -247,6 +247,13 @@ NOTE/TODO: bindings will be written for the lopper operations.
     #                     - modify to "nothing", is a remove operation
     #                     - modify with no property is node operation (rename or remove)
     #
+    #         To avoid matching more than one node when performing a property
+    #         modify the lop node should contain: flags = "strict", which will
+    #         trigger exact matching
+    #
+    #         If a tree other than the main SDT is to be modified, that can be
+    #         indicated via the "tree" property (see description below).
+    #
     #         To update complex/compound values, see the phandle#property notation in the
     #         examples below
 

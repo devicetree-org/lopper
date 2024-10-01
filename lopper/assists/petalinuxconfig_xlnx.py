@@ -98,12 +98,20 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
                 ### Memory Handling
                 mem_ranges = get_memranges(tgt_node, sdt, options)
                 index = 0
+                memnode_list = sdt.tree.nodes('/memory@.*')
                 for mem_name,mem in mem_ranges.items():
+                    try:
+                        mem_node = [node for node in memnode_list if re.search(mem_name[:-2], node.propval('xlnx,ip-name', list)[0])]
+                    except:
+                        mem_node = None
                     if index == 0:
                         tmp_dict['slaves'] = {mem_name: "None"}
                     else:
                         tmp_dict['slaves'].update({mem_name: "None"})
                     tmp_dict['slaves'][mem_name] = {"device_type":"memory"}
+                    if mem_node:
+                        if mem_node[0].propval('memory_type') != ['']:
+                            tmp_dict['slaves'][mem_name] = {"device_type":mem_node[0].propval('memory_type', list)[0]}
                     tmp_dict['slaves'][mem_name].update({"ip_name":mem_name[:-2]})
                     tmp_dict['slaves'][mem_name].update({"baseaddr":hex(mem[0])})
                     tmp_dict['slaves'][mem_name].update({"highaddr":hex(mem[0] + mem[1])})

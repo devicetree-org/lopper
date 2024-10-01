@@ -65,26 +65,6 @@ def is_compat( node, compat_string_to_test ):
 def xlnx_rpmsg_native_update_carveouts(tree, elfload_node,
                                        native_shm_mem_area_start, native_shm_mem_area_size,
                                        native_amba_shm_node):
-    # start and size of reserved-mem rproc0
-    start = elfload_node.props("start")[0].value
-    size = elfload_node.props("size")[0].value
-
-    # update size if applicable
-    if start < native_shm_mem_area_start:
-        native_shm_mem_area_start = start
-    native_shm_mem_area_size += size
-
-    # update rproc0 size
-    elfload_res_mem_node = tree["/reserved-memory/" + elfload_node.name]
-    elfload_res_mem_reg = elfload_res_mem_node.props("reg")[0].value
-    elfload_res_mem_reg[3] = native_shm_mem_area_size
-    elfload_res_mem_node.props("reg")[0].value = elfload_res_mem_reg
-
-    # FIXME: update demos so that start of shm is not hard-coded offset
-    native_shm_mem_area_start += 0x20000
-    shm_space = [0, native_shm_mem_area_start, 0, native_shm_mem_area_size]
-    native_amba_shm_node + LopperProp(name="reg", value=shm_space)
-
     return True
 
 
@@ -106,6 +86,56 @@ def get_carveout_nodes(tree, node):
     return carveouts_nodes
 
 
+reserved_mem_nodes = []
+res_mem_bases = []
+res_mem_sizes = []
+def reserved_mem_node_check(tree, node, verbose = 0 ):
+    # check if given node conflicts with reserved memory nodes
+
+    res_mem_node = tree["/reserved-memory"]
+    nodes_of_interest = res_mem_node.subnodes()
+    if reserved_mem_nodes != []:
+        nodes_of_interest = [node]
+        # the reason we set the list this way is to support the case
+        # of first run, where there are no YAML-added nodes. In that case
+        # validate pre-existing resreved-mem nodes
+        #
+        # Otherwise ,validate the newly created node against existing res-mem
+        # nodes to ensure there is no overlap
+
+    for rm_subnode in nodes_of_interest:
+        # in case of init, skip reserved-mem top level node
+        if rm_subnode == res_mem_node:
+            continue
+
+        if rm_subnode not in reserved_mem_nodes:
+            node_reg = rm_subnode.props("reg")
+            if node_reg == []:
+                print("ERROR: malformed reserved-memory node: ", rm_subnode.abs_path)
+                return False
+            node_reg = node_reg[0].value
+            if len(node_reg) != 4:
+                print("ERROR: malformed reserved-memory node: ", rm_subnode.abs_path)
+                return False
+            new_base = node_reg[1]
+            new_sz = node_reg[3]
+
+            overlap = False
+            for base,sz,existing_node in zip(res_mem_bases, res_mem_sizes, reserved_mem_nodes):
+                if new_base < base and (new_base+new_sz) > base:
+                    overlap = True
+                if new_base < (base+sz) and (new_base+new_sz) > (base+sz):
+                    overlap = True
+                if overlap:
+                    print("ERROR: overlap between nodes:", existing_node, rm_subnode)
+                    return False
+            res_mem_bases.append(new_base)
+            res_mem_sizes.append(new_sz)
+            reserved_mem_nodes.append(rm_subnode)
+
+    return True
+
+
 native_shm_node_count = 0
 def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, channel_id,
                                    openamp_channel_info, amba_node = None,
@@ -116,13 +146,6 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
     native_shm_mem_area_size = 0
     native_shm_mem_area_start = 0xFFFFFFFF
     remote_carveouts = get_carveout_nodes(tree, openamp_channel_info["remote_node_"+channel_id])
-
-    if amba_node != None:
-        native_amba_shm_node = LopperNode(-1, amba_node.abs_path + "/shm" + str(native_shm_node_count))
-        native_amba_shm_node + LopperProp(name="compatible", value="shm_uio")
-        tree.add(native_amba_shm_node)
-        tree.resolve()
-        native_shm_node_count += 1
 
     # only applicable for DDR carveouts
     for carveout in carveouts:
@@ -147,6 +170,8 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
                 new_node =  LopperNode(-1, "/reserved-memory/"+carveout.name)
                 new_node + LopperProp(name="no-map")
                 new_node + LopperProp(name="reg", value=[0, start, 0, size])
+                if not reserved_mem_node_check(tree, new_node):
+                    return False
 
                 if "vdev0buffer" in carveout.name:
                     new_node + LopperProp(name="compatible", value="shared-dma-pool")
@@ -171,13 +196,30 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
             print("WARNING: invalid remoteproc elfload carveout", carveout)
             return False
 
-
     if native:
-        ret = xlnx_rpmsg_native_update_carveouts(tree, elfload_node,
-                                                 native_shm_mem_area_start, native_shm_mem_area_size,
-                                                 native_amba_shm_node)
-        if not ret:
-            return ret
+        # start and size of reserved-mem rproc0
+        start = elfload_node.props("start")[0].value
+        size = elfload_node.props("size")[0].value
+
+        # update size if applicable
+        if start < native_shm_mem_area_start:
+            native_shm_mem_area_start = start
+        native_shm_mem_area_size += size
+        # update rproc0 size
+        elfload_res_mem_node = tree["/reserved-memory/" + elfload_node.name]
+        elfload_res_mem_reg = elfload_res_mem_node.props("reg")[0].value
+        elfload_res_mem_reg[3] = native_shm_mem_area_size
+        elfload_res_mem_node.props("reg")[0].value = elfload_res_mem_reg
+
+        native_amba_shm_node = LopperNode(-1, amba_node.abs_path + "/" + "shm@" + hex(native_shm_mem_area_start)[2:])
+
+        native_amba_shm_node + LopperProp(name="compatible", value="shm_uio")
+        tree.add(native_amba_shm_node)
+        tree.resolve()
+        native_shm_node_count += 1
+        openamp_channel_info["native_shm_node_"+channel_id] = native_amba_shm_node
+        shm_space = [0, native_shm_mem_area_start, 0, native_shm_mem_area_size]
+        native_amba_shm_node + LopperProp(name="reg", value=shm_space)
 
     return True
 
@@ -275,7 +317,6 @@ def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_c
 
     openamp_channel_info["host_ipi_"+channel_id] = host_ipi
     openamp_channel_info["remote_ipi_"+channel_id] = remote_ipi
-    openamp_channel_info["rpmsg_native_"+channel_id] = native
     openamp_channel_info["host_to_remote_ipi_channel_" + channel_id] = host_to_remote_ipi_channel
     openamp_channel_info["remote_to_host_ipi_channel_" + channel_id] = remote_to_host_ipi_channel
     return True
@@ -379,18 +420,35 @@ def xlnx_rpmsg_create_host_controller(tree, host_ipi, gic_node_phandle, verbose 
 
 
 def xlnx_rpmsg_native_update_ipis(tree, amba_node, openamp_channel_info, gic_node_phandle,
-                                  amba_ipi_node_index, host_ipi):
+                                  amba_ipi_node_index, host_ipi, channel_id):
     amba_node = openamp_channel_info["amba_node"]
-    amba_ipi_node = LopperNode(-1, amba_node.abs_path + "/openamp_ipi" + str(amba_ipi_node_index))
-    amba_ipi_node + LopperProp(name="compatible",value="ipi_uio")
-    amba_ipi_node + LopperProp(name="interrupts",value=copy.deepcopy(host_ipi.props("interrupts")[0].value))
-    amba_ipi_node + LopperProp(name="interrupt-parent",value=[gic_node_phandle])
-    reg_val = copy.deepcopy(host_ipi.props("reg")[0].value)
-    reg_val[3] = 0x1000
-    amba_ipi_node + LopperProp(name="reg",value=reg_val)
-    tree.add(amba_ipi_node)
-    tree.resolve()
-    amba_ipi_node_index += 1
+
+    # if host ipi already used for other channel do not re-add it.
+    if host_ipi in amba_host_ipis:
+        idx = 0
+        for x in amba_host_ipis:
+            if x == host_ipi:
+                break
+            idx += 1
+        amba_ipi_node = amba_ipis[idx]
+    else:
+        reg_val = copy.deepcopy(host_ipi.props("reg")[0].value)
+        reg_val[3] = 0x1000
+
+        amba_ipi_node = LopperNode(-1, amba_node.abs_path + "/openamp_ipi" + str(amba_ipi_node_index) + "@" + hex(reg_val[1])[2:])
+        amba_ipi_node + LopperProp(name="compatible",value="ipi_uio")
+        amba_ipi_node + LopperProp(name="interrupts",value=copy.deepcopy(host_ipi.props("interrupts")[0].value))
+        amba_ipi_node + LopperProp(name="interrupt-parent",value=[gic_node_phandle])
+        amba_ipi_node + LopperProp(name="reg",value=reg_val)
+        tree.add(amba_ipi_node)
+        tree.resolve()
+
+        amba_host_ipis.append(host_ipi)
+        amba_ipis.append(amba_ipi_node)
+
+        amba_ipi_node_index += 1
+
+    openamp_channel_info["rpmsg_native_ipi_"+channel_id] = amba_ipi_node
 
     # check if there is a kernelspace IPI that has same interrupts
     # if so then error out
@@ -489,6 +547,8 @@ def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
 
 
 amba_ipi_node_index = 0
+amba_host_ipis = []
+amba_ipis = []
 def xlnx_rpmsg_update_ipis(tree, host_ipi, remote_ipi, core_node, channel_id, openamp_channel_info, verbose = 0 ):
     global amba_ipi_node_index
     native = openamp_channel_info["rpmsg_native_"+ channel_id]
@@ -513,7 +573,7 @@ def xlnx_rpmsg_update_ipis(tree, host_ipi, remote_ipi, core_node, channel_id, op
 
     if native:
         return xlnx_rpmsg_native_update_ipis(tree, amba_node, openamp_channel_info, gic_node_phandle,
-                                             amba_ipi_node_index, host_ipi)
+                                             amba_ipi_node_index, host_ipi, channel_id)
     else:
         return xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
                                              core_node, openamp_channel_info, channel_id)
@@ -675,7 +735,7 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
             SHARED_BUF_OFFSET = hex( e.props("size")[0].value * 2 )
             break
 
-    SHM_DEV_NAME = "\"" + RSC_MEM_PA + '.shm\"'
+    shm_dev_name = "\"" + RSC_MEM_PA[2:] + '.shm\"'
 
     template = None
     irq_vect_ids = {
@@ -725,13 +785,21 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
             EXTRAS += "#define IPI_" + str(soc_ipi_map[key]) + "_VECT_ID " + str(soc_ipi_map[key]) + "U\n"
 
         template = platform_info_header_r5_template
+
+        bus_name = "\"generic\"" if role == 'remote' else "\"platform\""
+        ipi_dev_name = "\"ipi\""
+
+        if rpmsg_native:
+            ipi_dev_name_suffix = openamp_channel_info["rpmsg_native_ipi_"+channel_id].name.split("@")[0]
+            ipi_dev_name = "\"" + POLL_BASE_ADDR[2:] + "." +  ipi_dev_name_suffix + "\""
+
         inputs = {
             "POLL_BASE_ADDR":POLL_BASE_ADDR,
-            "SHM_DEV_NAME":SHM_DEV_NAME,
-            "RSC_MEM_SIZE":'0x2000UL',
+            "SHM_DEV_NAME":shm_dev_name,
+            "RSC_MEM_SIZE":'0x100',
             "RSC_MEM_PA":RSC_MEM_PA,
-            "DEV_BUS_NAME":"\"generic\"",
-            "IPI_DEV_NAME":"\"ipi\"",
+            "DEV_BUS_NAME":bus_name,
+            "IPI_DEV_NAME":ipi_dev_name,
             "IPI_IRQ_VECT_ID":IPI_IRQ_VECT_ID,
             "IPI_CHN_BITMASK":IPI_CHN_BITMASK,
             "RING_TX":tx,
@@ -826,17 +894,22 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
         openamp_channel_info["carveouts_"+channel_id] = channel_carveouts_nodes
 
         # rpmsg native?
-        native = node.props("openamp-xlnx-native")
-        if native != [] and native[0].value[0] == 1:
-            native = True
-            if native and platform == SOC_TYPE.ZYNQ:
+        native = node.propval("openamp-xlnx-native")
+        if native == [] or len(native) != len(remote_nodes):
+            print("ERROR: malformed openamp-xlnx-native property.")
+            return False
+
+        native = native[i]
+        openamp_channel_info["rpmsg_native_"+channel_id] = native
+
+        if native:
+            if platform == SOC_TYPE.ZYNQ:
                 print("ERROR: Native RPMsg not supported for Zynq")
+                return False
             # if native is true, then find and store amba bus
             # to store IPI and SHM nodes
             amba_node = xlnx_rpmsg_parse_generate_native_amba_node(tree)
             openamp_channel_info["amba_node"] = amba_node
-        else:
-            native = False
 
         # Zynq has hard-coded IPIs in driver
         if platform in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]:
@@ -844,8 +917,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
                                  remote_node, channel_id, native, i, verbose)
             if ret != True:
                 return False
-        elif platform == SOC_TYPE.ZYNQ: # Zynq does not support rpmsg native
-            openamp_channel_info["rpmsg_native_"+channel_id] = False
+
         ret = xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose )
         if ret != True:
             return False
@@ -982,6 +1054,9 @@ def xlnx_remoteproc_construct_carveouts(tree, carveouts, new_ddr_nodes, verbose 
             new_node + LopperProp(name="reg", value=[0, start, 0, size])
             tree.add(new_node)
 
+            if not reserved_mem_node_check(tree, new_node):
+                return False
+
             phandle_val = new_node.phandle_or_create()
 
             new_node + LopperProp(name="phandle", value = phandle_val)
@@ -1043,7 +1118,7 @@ def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_n
         core_node + LopperProp(name="#address-cells", value = 2)
         core_node + LopperProp(name="#size-cells", value = 2)
         core_node + LopperProp(name="ranges", value=[])
-        core_node + LopperProp(name="power-domain", value=copy.deepcopy(rpu_core_pd_prop.value))
+        core_node + LopperProp(name="power-domains", value=copy.deepcopy(rpu_core_pd_prop.value))
         core_node + LopperProp(name="mbox-names", value = ["tx", "rx"]);
         tree.add(core_node)
 
@@ -1051,8 +1126,8 @@ def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_n
         for carveout in elfload_nodes:
             if carveout.props("status") != []:
                 srams.append(carveout.phandle)
-                # FIXME for each sram, add 'power-domain' prop for kernel driver
-                carveout + LopperProp(name="power-domain",
+                # FIXME for each sram, add 'power-domains' prop for kernel driver
+                carveout + LopperProp(name="power-domains",
                                       value=copy.deepcopy( carveout.props("power-domains")[0].value ))
 
         core_node + LopperProp(name="sram", value=srams)
