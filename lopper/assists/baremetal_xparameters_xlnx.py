@@ -287,6 +287,14 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                     plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()}_BASEADDR_{i} {prop_val}')
                                     cannon_prop = prop + str("_") + str("BASEADDR") + str("_") + str(i)
                                     canondef_dict.update({cannon_prop:prop_val})
+                        # Add special handling for Zynq NAND
+                        elif "arm,pl353-smc-r2p1" in node.propval('compatible'):
+                            val = node[prop].value[2]
+                            size = node[prop].value[3]
+                            plat.buf(f'\n#define XPAR_{label_name}_BASEADDR {hex(val)}')
+                            plat.buf(f'\n#define XPAR_{label_name}_HIGHADDR {hex(val + size -1)}')
+                            canondef_dict.update({"BASEADDR":hex(val)})
+                            canondef_dict.update({"HIGHADDR":hex(val + size - 1)})
                     else:
                         try:
                             prop_val = node[prop].value
