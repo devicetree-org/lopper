@@ -521,6 +521,11 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
                 if j != (len(prop_vallist) - 1):
                     plat.buf(',')
                 drvprop_list.append(prop_val)
+        # Add special handling for Zynq NAND
+        elif "arm,pl353-smc-r2p1" in node.propval('compatible'):
+            plat.buf('\n\t\t%s' % hex(node[prop].value[2]))
+            drvprop_list.append(hex(node[prop].value[2]))
+
     elif prop == "Handler-table":
         # In the driver config structure this property is of type struct
         # to avoid Missing braces around initializer warning add braces
