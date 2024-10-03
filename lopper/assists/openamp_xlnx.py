@@ -655,6 +655,7 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
     tree = sdt.tree
     elfload_prop = None
     remote_idx = -1
+    platform = get_platform(tree, 0)
 
     # 1. look for all remoteproc relations rr
     # 2. for each rr, find its remote property
@@ -675,8 +676,15 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
                 cpus_val = remote_node.propval('cpus')
                 cpus_related_core_node = tree.pnode(cpus_val[0])
 
+                # Note for VNET with Xilinx-AMD platform the cores have special mapping required
+                cpus_related_core_node_idx = int(cpus_related_core_node.name.split('@')[-1])
+                match_cpunode_idx = int(match_cpunode.name.split('@')[-1])
+
+                non_vnet_condition = cpus_related_core_node.name in match_cpunode.abs_path
+                vnet_condition = match_cpunode_idx == cpus_related_core_node_idx
+
                 # look through the related elfload prop
-                if cpus_related_core_node.name in match_cpunode.abs_path:
+                if (platform == SOC_TYPE.VERSAL_NET and vnet_condition) or (platform != SOC_TYPE.VERSAL_NET and non_vnet_condition):
                     elfload_prop = n.propval('elfload')
                     row_len = int(len(elfload_prop) / remote_node_count) # should be same for each remote
                     elfload_idx = remote_idx * row_len
