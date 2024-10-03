@@ -13,7 +13,7 @@ import re
 import lopper_lib
 
 sys.path.append(os.path.dirname(__file__))
-from baremetalconfig_xlnx import scan_reg_size, get_cpu_node
+from baremetalconfig_xlnx import scan_reg_size, get_cpu_node, get_label
 import common_utils as utils
 from common_utils import to_cmakelist
 from openamp_xlnx import xlnx_openamp_get_ddr_elf_load
@@ -41,13 +41,23 @@ def get_memranges(tgt_node, sdt, options):
         "ddr5": 0, "mig_7series": 0, "ps7_ram": 0,
         "axi_emc": 0, "psu_qspi_linear": 0, "ps7_qspi_linear": 0, "pmc_ram": 0
     }
+    symbol_node = ""
     for node in root_sub_nodes:
         try:
+            if node.name == "__symbols__":
+                symbol_node = node
             device_type = node["device_type"].value
             if "memory" in device_type:
                 mem_nodes.append(node)
         except:
            pass
+
+    zynqmp_fsbl = None
+    try:
+        if options['args'][2] == "zynqmp_fsbl":
+            zynqmp_fsbl = 1
+    except:
+        pass
 
     # Ensure that the region addresses are always in descending order of addresses
     # This order is necessary to employ the comparison while mapping the available regions.
@@ -106,6 +116,19 @@ def get_memranges(tgt_node, sdt, options):
         mem_phandles = [handle for handle in all_phandles if handle == node.phandle]
         addr_list = []
         size_list = []
+        fsbl_update_size = False
+        label_name = get_label(sdt, symbol_node, node)
+        if zynqmp_fsbl and "psu_ddr_0_memory" in label_name:
+            val = node['reg'].value
+            nac = node.parent["#address-cells"].value[0]
+            nsc = node.parent["#size-cells"].value[0]
+            total_nodes = int(len(val)/(nac+nsc))
+            size = 0
+            for i in range(total_nodes):
+                reg, sz = scan_reg_size(node, val, i)
+                size += sz
+            fsbl_update_size = size
+
         if mem_phandles:
            # Remove Duplicate phandle referenecs
            mem_phandles = list(dict.fromkeys(mem_phandles))
@@ -160,7 +183,10 @@ def get_memranges(tgt_node, sdt, options):
                     else:
                         linker_secname = key + str("_") + str(xlnx_memipname[key])
                         xlnx_memipname[key] += 1
-                    mem_ranges.update({linker_secname: [valid_range[0], size]})
+                    if fsbl_update_size:
+                        mem_ranges.update({linker_secname: [valid_range[0], fsbl_update_size]})
+                    else:
+                        mem_ranges.update({linker_secname: [valid_range[0], size]})
         except KeyError:
             pass
 

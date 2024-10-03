@@ -71,11 +71,14 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
     linux_dt = None
     zephyr_dt = None
+    zynqmp_fsbl = None
     try:
         if options['args'][1] == "zephyr_dt":
             zephyr_dt = 1
         elif options['args'][1] == "linux_dt":
             linux_dt = 1
+        elif options['args'][1] == "zynqmp_fsbl":
+            zynqmp_fsbl = 1
 
     except IndexError:
         pass
@@ -152,6 +155,9 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         # Check whether the memory node is mapped to cpu cluster or not
         mem_phandles = [handle for handle in all_phandles if handle == node.phandle]
         prop_val = []
+        if zynqmp_fsbl and "psu_ddr_0_memory" in node.label:
+            continue
+
         if mem_phandles:
             mem_phandles = list(dict.fromkeys(mem_phandles))
             # Get all indexes of the address-map for this node
