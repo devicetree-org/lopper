@@ -556,7 +556,10 @@ class LopperSDT:
         if not tree_to_write:
             tree_to_write = self.tree
 
-        if re.search( ".dtb", output_filename ):
+        if re.search( "\.dtb$", output_filename ):
+            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+                output_filename = self.outdir + "/" + output_filename
+
             if self.use_libfdt:
                 fdt = Lopper.fdt()
                 Lopper.sync( fdt, tree_to_write.export() )
@@ -565,7 +568,7 @@ class LopperSDT:
                 lopper.log._error( f"dtb output selected ({output_filename}), but libfdt is not enabled" )
                 sys.exit(1)
 
-        elif re.search( ".dts", output_filename ):
+        elif re.search( "\.dts$", output_filename ):
             if self.outdir and not PurePosixPath( output_filename ).is_absolute():
                 output_filename = self.outdir + "/" + output_filename
 
@@ -586,7 +589,10 @@ class LopperSDT:
             printer.load( tree_to_write.export() )
             printer.exec()
 
-        elif re.search( ".yaml", output_filename ):
+        elif re.search( "\.yaml$", output_filename ):
+            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+                output_filename = self.outdir + "/" + output_filename
+
             o = Path(output_filename)
             if o.exists() and not overwrite:
                 lopper.log._error( f"output file {output_filename} exists and force overwrite is not enabled"  )
@@ -594,7 +600,10 @@ class LopperSDT:
 
             yaml = LopperYAML( None, tree_to_write, config=self.config )
             yaml.to_yaml( output_filename )
-        elif re.search( ".json", output_filename ):
+        elif re.search( "\.json$", output_filename ):
+            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+                output_filename = self.outdir + "/" + output_filename
+
             o = Path(output_filename)
             if o.exists() and not overwrite:
                 lopper.log._error( f"output file {output_filename} exists and force overwrite is not enabled" )
@@ -603,6 +612,9 @@ class LopperSDT:
             json = LopperYAML( None, self.tree, config=self.config )
             json.to_json( output_filename )
         else:
+            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+                output_filename = self.outdir + "/" + output_filename
+
             # we use the outfile extension as a mask
             (out_name, out_ext) = os.path.splitext(output_filename)
             cb_funcs = self.find_compatible_assist( 0, "", out_ext )
