@@ -467,8 +467,12 @@ class lopper_base:
             else:
                 return {
                     "DEFAULT" : [ 'this is the default provided phandle map' ],
+                    # As by the system device tree spec, the below should be the
+                    # description for address-map, but currently system device trees
+                    # are incorrectly using #ranges-address-cells in the node itself
+                    #"address-map" : [ '#ranges-address-cells phandle ^:#address-cells #ranges-size-cells', 0 ],
                     "address-map" : [ '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells', 0 ],
-                    "secure-address-map" : [ '#address-cells phandle #address-cells #size-cells', 0 ],
+                    "secure-address-map" : [ '#ranges-address-cells phandle ^:#address-cells #ranges-size-cells', 0 ],
                     "interrupt-parent" : [ 'phandle', 0 ],
                     "iommus" : [ 'phandle field' ],
                     "interrupt-map" : [ '#address-cells #interrupt-cells phandle:#interrupt-cells' ],
