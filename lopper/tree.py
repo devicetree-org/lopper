@@ -60,7 +60,7 @@ def chunks_variable(lst, chunk_sizes):
         A list of variable length, where each list is a chunk
     """
     if sum(chunk_sizes) != len(lst):
-        raise ValueError( f"The sum of chunk sizes ({chunk_sizes}) must be "
+        raise ValueError( f"The sum of chunk sizes: {sum(chunk_sizes)} ({chunk_sizes}) must be "
                           f"equal to the length of the list ({len(lst)})" )
 
     start = 0
@@ -547,7 +547,9 @@ class LopperProp():
         if self.pclass == "json":
             return phandle_map
 
-        debug = self.__dbg__
+        debug = False
+        # this is too verbose, kept for reference
+        # debug = self.__dbg__
         dname = self.name
 
         if self.node:
@@ -617,6 +619,28 @@ class LopperProp():
                     group_size = group_size + field_val
                     property_global_index = property_global_index + field_val
 
+                elif re.search( '^\^.*', phandle_desc ):
+                    try:
+                        parent_node = None
+                        if self.node:
+                            parent_node = self.node.parent
+
+                        derefs = phandle_desc.split(':')
+                        if len(derefs) == 2:
+                            # if parent_node is none, the exception will fire
+                            field_val = parent_node.__props__[derefs[1]].value[0]
+                        else:
+                            field_val = 1
+                    except Exception as e:
+                        if self.node and self.node.tree and self.node.tree.strict:
+                            # lopper.log._warning( f"({self.node.abs_path}) deref exception: {e}" )
+                            return phandle_map
+
+                        field_val = 1
+
+                    group_size = group_size + field_val
+                    property_global_index = property_global_index + field_val
+
                 elif re.search( '^phandle', phandle_desc ):
                     derefs = phandle_desc.split(':')
                     phandle_index_list.append( property_global_index )
@@ -631,6 +655,12 @@ class LopperProp():
 
                         lopper.log._debug( f"index out of bounds for {self.name}"
                                            f"index: {property_global_index}, len: {len(self.value)}" )
+
+                        if property_global_index >= len(self.value):
+                            print( "we've blown out the index, stopping the iteration" )
+                            property_iteration_flag = False
+                            break
+
                         continue
 
                     # We've been instructed to look up a property in the phandle.
@@ -685,7 +715,7 @@ class LopperProp():
                     target_prop = m.group(3)
 
                     # positive or negative offset into the phandle_sub_list (we currently
-                    # only handle lookbacks)
+                    # onl2y handle lookbacks)
                     if offset != "-":
                         lopper.log._warning( f"only negative offset lookbacks are currently supported: {phandle_desc}" )
                         lookback = field_pos
@@ -729,10 +759,11 @@ class LopperProp():
         if not group_sizes:
             return phandle_map
 
-        if self.node and debug:
-            lopper.log._debug( f"  {self.name} ({self.node.abs_path}):" )
-            lopper.log._debug( f"    ... property value: {self.value}" )
-            lopper.log._debug( f"    ... {group_sizes}" )
+        if debug:
+            lopper.log._warning( f"  {self.name} ({self.node.abs_path}):" )
+            lopper.log._warning( f"    ... property value: {self.value}" )
+            lopper.log._warning( f'    ... as hex: {["0x" + hex(num)[2:].zfill(2) for num in self.value]}' )
+            lopper.log._warning( f"    ... {group_sizes}" )
 
         # We now know the group size. We chunk up the property into
         # these groups and pick out the phandles.
@@ -750,9 +781,14 @@ class LopperProp():
             property_value_chunks = chunks_variable(self.value,group_sizes)
         except Exception as e:
             if self.node:
-                lopper.log._warning( f"could not fully process the cells of: "
-                                     f"{self.name} ({self.node.abs_path})" )
-                lopper.log._warning( e )
+                # note: this can't always be a warning, since sometimes we
+                #       read two inputs and before merging the cells, not
+                #       all lookups are valid, so we'll get an invalid group
+                #       size. We need some sort of "final resolution" flag
+                #       so we can warn.
+                lopper.log._debug( f"Could not fully process the cells of: "
+                                   f"{self.name} ({self.node.abs_path})" )
+                lopper.log._debug( f"  {e}" )
 
             # just do a fixed record size chunking to continue processing
             property_value_chunks = chunks(self.value,group_size)
