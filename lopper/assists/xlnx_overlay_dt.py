@@ -57,7 +57,7 @@ def usage():
     prog = os.path.basename(sys.argv[0])
     print('Usage: %s <system device tree> -- <xlnx_overlay_dt.py> <machine name> <configuration>' % prog)
     print('  machine name:         cortexa53-zynqmp or cortexa72-versal')
-    print('  configuration:        full or dfx' )
+    print('  configuration:        full or dfx or external-fpga-config' )
 
 """
 This API generates the overlay dts file by taking pl.dtsi
@@ -67,7 +67,7 @@ Args:
     sdt:      is the system device-tree
     options:  There are two valid options
               Machine name as cortexa53-zynqmp or cortexa72-versal
-              An optional argument full/dfx. The default will be full.
+              An optional argument full/dfx/external-fpga-config. The default will be full.
 """
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
@@ -133,7 +133,7 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     if config == "None":
         config = "full"
 
-    if config != "full" and config != "dfx":
+    if config != "full" and config != "dfx" and config != "external-fpga-config":
         print('%s is not a valid argument' % str(config))
         usage()
         sys.exit(1)        
@@ -202,6 +202,8 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                             plat.buf('\n\t%s' % node['firmware-name'])
                         elif config == "dfx" and platform != "microblaze" and platform != "cortexa9-zynq" and platform != "cortexa53-zynqmp":
                             plat.buf('\n\texternal-fpga-config;')
+                        elif config == "external-fpga-config":
+                            plat.buf('\n\texternal-fpga-config;')
                         else:
                             print('%s is not a valid Machine' % str(platform))
                             sys.exit(1)
@@ -220,7 +222,7 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                     plat.buf('\n};')
 
                     # Add afi and clocking nodes to fragment@1     
-                    if platform == "cortexa53-zynqmp" or platform == "cortexa9-zynq":
+                    if platform == "cortexa53-zynqmp" and config != "external-fpga-config" or platform == "cortexa9-zynq" and config != "external-fpga-config":
                         plat.buf('\n&amba{')
                         for inode in ignore_list:
                             label_name = get_label(sdt, symbol_node, inode)
