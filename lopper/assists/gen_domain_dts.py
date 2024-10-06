@@ -87,7 +87,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         pass
 
     # Delete other CPU Cluster nodes
-    cpunode_list = sdt.tree.nodes('/cpu.*@.*')
+    cpunode_list = sdt.tree.nodes('/cpu.*@.*', strict=True)
     clustercpu_nodes = []
     for node in cpunode_list:
         if node.parent.phandle != match_cpunode.parent.phandle and node.phandle != match_cpunode.parent.phandle:
