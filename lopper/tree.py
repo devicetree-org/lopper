@@ -657,7 +657,6 @@ class LopperProp():
                                            f"index: {property_global_index}, len: {len(self.value)}" )
 
                         if property_global_index >= len(self.value):
-                            print( "we've blown out the index, stopping the iteration" )
                             property_iteration_flag = False
                             break
 
