@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node
 import common_utils as utils
 from common_utils import to_cmakelist
+from openamp_xlnx import xlnx_openamp_get_ddr_elf_load
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetallinker_xlnx", compat_string_to_test):
@@ -36,7 +37,7 @@ def get_memranges(tgt_node, sdt, options):
         "axi_bram": 0, "ps7_ddr": 0, "psu_ddr": 0,
         "psv_ddr": 0, "mig": 0, "lmb_bram": 0,
         "axi_noc2": 0, "axi_noc": 0,"psu_ocm": 0,
-        "psv_ocm": 0, "psx_ocm": 0, "ddr4": 0,
+        "psv_ocm": 0, "psx_ocm": 0, "ocm_ram": 0, "ddr4": 0,
         "ddr5": 0, "mig_7series": 0, "ps7_ram": 0,
         "axi_emc": 0, "psu_qspi_linear": 0, "ps7_qspi_linear": 0
     }
@@ -108,7 +109,17 @@ def get_memranges(tgt_node, sdt, options):
         if mem_phandles:
            # Remove Duplicate phandle referenecs
            mem_phandles = list(dict.fromkeys(mem_phandles))
-           indx_list = [index for index,handle in enumerate(address_map) for val in mem_phandles if handle == val]
+           # Get all indexes of the address-map for this node
+           tmp = na
+           indx_list = []
+           handle = na
+           while handle < len(address_map):
+                phandle = address_map[handle]
+                for val in mem_phandles:
+                    if phandle == val:
+                        indx_list.append(handle)
+                handle = handle + cells + na + 1
+
            for inx in indx_list:
                start = [address_map[inx+i+1] for i in range(na)]
                size_list.append(address_map[inx+2*na])
@@ -155,17 +166,34 @@ def get_memranges(tgt_node, sdt, options):
 
     return mem_ranges
 
+
+def get_unique_memip_list(mem_ranges):
+    unique_mem_ip_list = []
+    for memip in mem_ranges.keys():
+        ip_name = memip.rsplit("_")[0]
+        if ip_name not in unique_mem_ip_list:
+            unique_mem_ip_list += [ip_name]
+    return unique_mem_ip_list
+
+
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 # options: baremetal application source path
 def xlnx_generate_bm_linker(tgt_node, sdt, options):
     mem_ranges = get_memranges(tgt_node, sdt, options)
+    unique_mem_ip_list = get_unique_memip_list(mem_ranges)
     default_ddr = None
     memtest_config = None
+    openamp_config = None
     machine = options['args'][0]
 
     try:
-        memtest_config = options['args'][2]
+        extra_config = options['args'][2]
+        if extra_config == "memtest":
+            memtest_config = True
+        if extra_config == "openamp":
+            openamp_config = True
+
     except IndexError:
         pass
 
@@ -248,13 +276,28 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         mem_sec += '\n\tpsx_r52_1b_atcm_global : ORIGIN = 0xEBAC0000, LENGTH = 0x10000'
         mem_sec += '\n\tpsx_r52_1b_btcm_global : ORIGIN = 0xEBAD0000, LENGTH = 0x8000'
         mem_sec += '\n\tpsx_r52_1b_ctcm_global : ORIGIN = 0xEBAE0000, LENGTH = 0x8000'
-    if "psx_cortexr52" in machine:
-        mem_sec += '\n\tpsx_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
-        mem_sec += '\n\tpsx_r52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
+    if "cortexr52" in machine:
+        if "psx_cortexr52" in machine:
+            mem_sec += '\n\tpsx_pmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
+            mem_sec += '\n\tpsx_r52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
+        else:
+            mem_sec += '\n\tpmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
+            mem_sec += '\n\tr52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
+
+    openamp_elfload_start = False
+    openamp_elfload_sz = False
+    if openamp_config:
+        elfload_tuple = xlnx_openamp_get_ddr_elf_load(machine, sdt, options)
+        if elfload_tuple != None:
+            openamp_elfload_start = elfload_tuple[0]
+            openamp_elfload_sz = elfload_tuple[1]
 
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
         if default_ddr is None:
-            default_ddr = key
+            if "axi_emc" in key and len(unique_mem_ip_list) != 1:
+                pass
+            else:
+                default_ddr = key
         start,size = value[0], value[1]
         """
         Initial 80 bytes is being used by the linker vectors section in case of Microblaze.
@@ -275,6 +318,12 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         if "axi_noc" in key and machine == "cortexr5-versal" and start == 0:
             start = 1048576
             size -= start
+        # Use OpenAMP DDR carveout in lieu of system DDR space if DDR OpenAMP carveout is present
+        if openamp_elfload_sz and ("psu_ddr" in key or "axi_noc" in key):
+                start = openamp_elfload_start
+                size = openamp_elfload_sz
+                cfd.write("set(RSC_TABLE %s)\n" % hex(openamp_elfload_start))
+
         mem_sec += f'\n\t{key} : ORIGIN = {hex(start)}, LENGTH = {hex(size)}'
 
     ## To inline with existing tools point default ddr for linker to lower DDR
@@ -295,12 +344,21 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         elif has_ram:
             default_ddr = has_ram[0]
         elif has_bram:
-            default_ddr = has_bram[0]
+            if len(has_bram) > 1:
+                size = 0
+                for key, value in mem_ranges.items():
+                    if "_bram" in key:
+                        if size < value[1]:
+                            size = value[1]
+                            default_ddr = key
+            else:
+                default_ddr = has_bram[0]
 
     cfd.write("set(DDR %s)\n" % default_ddr)
     memip_list = []
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
-        if "psu_qspi_linear" in key or "ps7_qspi_linear" in key or "axi_emc" in key:
+        # Here skip adding DDR system mem to config if OpenAMP module is set
+        if "psu_qspi_linear" in key or "ps7_qspi_linear" in key or "axi_emc" in key or openamp_elfload_sz:
             continue
         start,size = value[0], value[1]
         """
@@ -318,7 +376,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         elif has_ram:
             memip_list.insert(0, memip_list.pop(memip_list.index(has_ram[0])))
         elif has_bram:
-            memip_list.insert(0, memip_list.pop(memip_list.index(has_bram[0])))
+            memip_list.insert(0, memip_list.pop(memip_list.index(default_ddr)))
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
     cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
     if stack_size is not None:

@@ -532,6 +532,21 @@ def setup_code_lops( outdir ):
                               print( 'selected2: %s' % s.abs_path )
                       ";
                 };
+                lop_18_1 {
+                      compatible = "system-device-tree-v1,lop,select-v1";
+                      // clear any old selections
+                      select_1;
+                      // phandle selection sanity test
+                      select_2 = "/.*:interrupt-parent:&gic_a72";
+                };
+                lop_18_2 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                          print( 'node3: %s' % node )
+                          for s in tree.__selected__:
+                              print( 'selected3: %s' % s.abs_path )
+                      ";
+                };
         };
 };
             """)
@@ -704,6 +719,7 @@ def setup_device_tree( outdir ):
                 };
 
                 iommu: smmu@fd800000 {
+                    xlnx,mem-ctrl-base-address =  <0x76000000>;
                     compatible = "arm,mmu-500";
                     status = "okay";
                     reg = <0x0 0xfd800000 0x0 0x40000>;
@@ -1003,6 +1019,7 @@ def setup_system_device_tree( outdir ):
                 };
 
                 nested-node {
+                    xlnx,mem-ctrl-base-address = <0x76000000>;
                     compatible = "delete-me";
                     nested-node-child1 {
                          compatible = "delete-me2";
@@ -1269,10 +1286,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpp = tempfile.NamedTemporaryFile( delete=False )
 
-    printer = LopperTreePrinter( True, fpp.name )
-    printer.load( Lopper.export( fdt ) )
-    printer.exec()
-
+    walker.print( open( fpp.name, "w") )
     with open(fpp.name) as fp:
         node_count = 0
         for line in fp:
@@ -1290,7 +1304,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     # test3: node manipulations/access
     print( "[TEST]: start: node manipulations" )
     try:
-        n = printer['/amba']
+        n = walker['/amba']
         if verbose:
             print( "    node access via '/amba' found: %s, %s" % (n, [n]) )
         test_passed( "node access by path" )
@@ -1298,7 +1312,7 @@ def tree_sanity_test( fdt, verbose=0 ):
         test_failed( "node access by path failed" )
 
     try:
-        n2 = printer[n.number]
+        n2 = walker[n.number]
         if verbose:
             print( "    node access by number '%s' found: %s" % (n.number,[n2]) )
         test_passed( "node access by number" )
@@ -1307,7 +1321,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     # write it back, as a test only
     try:
-        printer['/amba'] = n
+        walker['/amba'] = n
         test_passed( "node reassignment by name" )
     except:
         test_failed( "node reassignment by name" )
@@ -1322,7 +1336,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     # phandle tests
     try:
-        n = printer.pnode( n.phandle )
+        n = walker.pnode( n.phandle )
         if verbose:
             print( "    node access via phandle %s: %s" % (hex(n.phandle), n) )
         test_passed( "node access via phandle" )
@@ -1336,6 +1350,9 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpp = tempfile.NamedTemporaryFile( delete=False )
 
+    printer = LopperTreePrinter( True, fpp.name )
+    printer.load( Lopper.export( fdt ) )
+    # test an uneeded / sprious reset
     printer.reset( fpp.name )
 
     printer.__new_iteration__ = True
@@ -1695,9 +1712,10 @@ def tree_sanity_test( fdt, verbose=0 ):
     fpp = tempfile.NamedTemporaryFile( delete=False )
 
     printer.__dbg__ = 0
-    printer.__start_node__ = 0
+    printer.__start_node__ = '/'
     printer.reset( fpp.name )
-    printer.exec()
+    printer.resolve()
+    printer.print( open( fpp.name, "w") )
 
     # if we get here, we passed
     test_passed( "tree re-resolve\n" )
@@ -1705,16 +1723,16 @@ def tree_sanity_test( fdt, verbose=0 ):
     print( "[TEST]: end: tree re-resolve test\n" )
 
     print( "[TEST]: start: second tree test" )
-    print2 = LopperTreePrinter()
+    print2 = LopperTree()
     print2.load( printer.export() )
     if verbose:
         for n in print2:
             print( "2node: %s" % n )
         print( "\n" )
 
+    print2.resolve()
     fpp2 = tempfile.NamedTemporaryFile( delete=False )
-    print2.reset( fpp2.name )
-    print2.exec()
+    print2.print( open( fpp2.name, "w") )
 
     if filecmp.cmp( fpp.name, fpp2.name ):
         test_passed( "two tree print" )
@@ -1779,14 +1797,14 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     print( "[TEST]: start: second tree test, node deep copy" )
 
-    tree2 = LopperTreePrinter( True )
+    tree2 = LopperTree()
     tree2.load( Lopper.export( fdt ) )
     # new_node2 = LopperNode()
     # invokes a deep copy on the node
     new_node2 = new_node()
 
     if verbose:
-        print( "node2: %s" % new_node2.abs_path )
+        print( "node: %s" % new_node.abs_path )
     #new_node2 = new_node2(new_node)
     if verbose:
         print( "node2: %s" % new_node2.abs_path )
@@ -1842,8 +1860,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     # required
     # existing_node.sync( printer.fdt )
 
-    printer.reset( fpp.name )
-    printer.exec()
+    printer.print(open( fpp.name, "w"))
 
     c = test_pattern_count( fpp.name, "newproperty_existingnode" )
     if c == 1:
@@ -1855,13 +1872,13 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpp = tempfile.NamedTemporaryFile( delete=False )
 
-    new_tree = LopperTreePrinter( False, fpp.name )
+    new_tree = LopperTree()
     # make a copy of our existing node
     new_tree_new_node = new_node()
 
     new_tree + new_tree_new_node
     new_tree_new_node + prop
-    new_tree.exec()
+    new_tree.print( open( fpp.name, "w") )
 
     c = test_pattern_count( fpp.name, "amba" )
     if c != 1:
@@ -2019,7 +2036,48 @@ def lops_code_test( device_tree, lop_file, verbose ):
     else:
         test_failed( "selection test (or) (found %s, expected: %s)" %(c,4))
 
+    c = len(re.findall( "[^']selected3:", test_output ))
+    if c == 3:
+        test_passed( "selection test (phandle)" )
+    else:
+        test_failed( "selection test (phandle) (found %s, expected: %s)" %(c,4))
+
     output.reset()
+
+def openamp_sanity_test( verbose ):
+    demo_area = os.getcwd() + "/demos/openamp/inputs/"
+    sdt = demo_area + "system-dt/system-top.dts"
+    overlay = demo_area + "/openamp-overlay-zynqmp.yaml"
+    lops_area = os.getcwd() + "/lopper/lops/"
+
+    dt = setup_system_device_tree( outdir )
+    device_tree = LopperSDT( sdt )
+    device_tree.dryrun = False
+    device_tree.output_file = outdir + "/openamp_sanity_output.dts"
+    device_tree.cleanup_flag = True
+    device_tree.save_temps = False
+    device_tree.enhanced = True
+
+    local_inputs = [ overlay, lops_area + "lop-load.dts",
+                     lops_area + "lop-xlate-yaml.dts",
+                     lops_area + "lop-openamp-invoke.dts",
+                     lops_area + "lop-a53-imux.dts" ]
+
+    device_tree.setup( sdt, local_inputs, "", True, libfdt=libfdt )
+    device_tree.perform_lops()
+    device_tree.write( enhanced = True )
+
+    pass_test = False
+    for n in device_tree.tree.__nodes__["/"].subnodes():
+        pp = n.propval("compatible")
+        if pp != ['']:
+            if ('r5' in n.name or 'rf5' in n.name) and pp == 'xlnx,zynqmp-r5-remoteproc':
+                pass_test = True
+
+    if pass_test:
+        test_passed( "OpenAMP Sanity Test")
+    else:
+        test_failed( "OpenAMP Sanity Test")
 
 def lops_sanity_test( device_tree, lop_file, verbose ):
     if not libfdt:
@@ -2156,8 +2214,17 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
     device_tree.cleanup()
 
 def assists_sanity_test( device_tree, lop_file, verbose ):
-    device_tree.setup( dt, [lop_file], "", True, libfdt = libfdt )
-    device_tree.assists_setup( [ "lopper/assists/domain_access.py" ] )
+    if lop_file:
+        device_tree.setup( dt, [lop_file], "", True, libfdt = libfdt )
+        device_tree.assists_setup( [ "lopper/assists/domain_access.py" ] )
+    else:
+        device_tree.setup( dt, [], "", True, libfdt = libfdt )
+
+        device_tree.load_paths.append( "lopper/selftest/" )
+        # this loads the external assist
+        device_tree.assists_setup( [ "assist-sanity.py" ] )
+        # this makes sure it runs
+        device_tree.assist_autorun_setup( "assist-sanity", "" )
 
     print( "[TEST]: running assist against tree" )
     device_tree.perform_lops()
@@ -2278,7 +2345,23 @@ def fdt_sanity_test( device_tree, verbose ):
     lt3.__dbg__ = 0
     lt3.exec()
 
+    print( "[INFO]: checking string type detection" )
+    nested_node = lt3["/amba_apu/nested-node"]
+    ns = nested_node.print( as_string=True )
+    print( ns )
+    if re.search( "xlnx,mem-ctrl-base-address = <0x76000000>;", ns ):
+        print( "[INFO]: string decode passed" )
+    else:
+        print( "[ERROR]: string decode failed" )
+        os._exit(1)
 
+    n = lt3["/"]
+    ns = n.print( as_string=True )
+    if re.search( "compatible = \"xlnx,versal-vc-p-a2197-00-revA\", \"xlnx,versal-vc-p-a2197-00\", \"xlnx,versal-vc-p-a2197\", \"xlnx,versal\";", ns ):
+        print( "[INFO]: multi-string decode passed" )
+    else:
+        print( "[ERROR]: multi-string decode failed" )
+        os._exit(1)
 
 def yaml_sanity_test( device_tree, yaml_file, outdir, verbose ):
     device_tree.setup( dt, [], "", True, libfdt = libfdt )
@@ -2322,6 +2405,7 @@ def usage():
     print('  -v, --verbose       enable verbose/debug processing (specify more than once for more verbosity)')
     print('  -t, --tree          run lopper tree tests' )
     print('  -l, --lops          run lop tests' )
+    print('  -o, --openamp       run openamp tests')
     print('  -a, --assists       run assist tests' )
     print('  -f, --format        run format tests (dts/yaml)' )
     print('  -d, --fdt           run fdt abstraction tests' )
@@ -2336,6 +2420,7 @@ def main():
     global werror
     global outdir
     global lops
+    global openamp_tests
     global tree
     global assists
     global format
@@ -2349,13 +2434,14 @@ def main():
     outdir="/tmp/"
     tree = False
     lops = False
+    openamp_tests = False
     assists = False
     format = False
     fdttest = False
     continue_on_error = False
     libfdt = True
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlhd", [ "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "werror","verbose", "help"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlhod", [ "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "openamp", "werror","verbose", "help"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2379,6 +2465,8 @@ def main():
             werror=True
         elif o in ( '-l','--lops'):
             lops=True
+        elif o in ( '-o','--openamp'):
+            openamp_tests = True
         elif o in ( '-t','--tree'):
             tree=True
         elif o in ( '-a','--assists'):
@@ -2392,6 +2480,7 @@ def main():
         elif o in ( '--all' ):
             tree = True
             lops = True
+            openamp_tests = True
             assists = True
             fdttest = True
             format = True
@@ -2459,6 +2548,9 @@ if __name__ == "__main__":
 
         lops_code_test( device_tree, lop_file_2, verbose )
 
+    if openamp_tests:
+        openamp_sanity_test( verbose )
+
     if assists:
         dt = setup_system_device_tree( outdir )
         lop_file = setup_assist_lops( outdir )
@@ -2475,7 +2567,11 @@ if __name__ == "__main__":
         device_tree.outdir = outdir
         device_tree.use_libfdt = libfdt
 
+        # built in tests
         assists_sanity_test( device_tree, lop_file, verbose )
+
+        # external assist
+        assists_sanity_test( device_tree, None, verbose )
 
     if format:
         dt = setup_format_tree( outdir )

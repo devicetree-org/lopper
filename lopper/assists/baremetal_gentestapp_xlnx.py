@@ -17,6 +17,7 @@ import glob
 sys.path.append(os.path.dirname(__file__))
 from baremetalconfig_xlnx import get_mapped_nodes, get_cpu_node, get_label, compat_list, scan_reg_size, get_stdin
 import common_utils as utils
+import baremetalconfig_xlnx as bm_config
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetal_gentestapp_xlnx", compat_string_to_test):
@@ -28,6 +29,7 @@ def is_compat( node, compat_string_to_test ):
 # options: baremetal application source path
 def xlnx_generate_testapp(tgt_node, sdt, options):
     ttc_node_list = []
+    dma_node_list = []
     root_node = sdt.tree[tgt_node]
     compatible_dict = {}
     root_sub_nodes = root_node.subnodes()
@@ -36,6 +38,13 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     # and create a compatible_list from these nodes.
     symbol_node = ""
     chosen_node = ""
+    driver_name = ""
+    stdin = None
+    stdin_node = None
+    try:
+        stdin = options['args'][2]
+    except IndexError:
+        pass
     for node in root_sub_nodes:
         try:
             if node.name == "chosen":
@@ -54,6 +63,11 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         if "cdns,ttc" in node["compatible"].value:
             ttc_node_list += [node]
         compatible_dict.update({node: node["compatible"].value})
+        if stdin:
+            if node.propval('xlnx,name') != ['']:
+                node_name = node.propval('xlnx,name', list)[0]
+                if node_name == stdin:
+                    stdin_node = node
     match_cpunode = get_cpu_node(sdt, options)
     proc_ip_name = match_cpunode['xlnx,ip-name'].value
     if proc_ip_name[0] in ["psu_cortexr5", "psv_cortexr5", "psx_cortexr52"] and ttc_node_list:
@@ -90,12 +104,12 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     testapp_data = {}
     testapp_name = {}
     # Ensure that the interrupt controller example is the first example run in the peripheral tests sequence by updating the yaml_file_list.
-    gic_index = [index for index,yaml_file in enumerate(yaml_file_list) if re.sub(r"_v.*_.*$", "", os.path.basename(yaml_file)) == "scugic.yaml"]
     intc_index = [index for index,yaml_file in enumerate(yaml_file_list) if re.sub(r"_v.*_.*$", "", os.path.basename(yaml_file)) == "intc.yaml"]
-    if gic_index:
-        yaml_file_list.insert(0, yaml_file_list.pop(gic_index[0]))
     if intc_index:
         yaml_file_list.insert(0, yaml_file_list.pop(intc_index[0]))
+    gic_index = [index for index,yaml_file in enumerate(yaml_file_list) if re.sub(r"_v.*_.*$", "", os.path.basename(yaml_file)) == "scugic.yaml"]
+    if gic_index:
+        yaml_file_list.insert(0, yaml_file_list.pop(gic_index[0]))
     for yaml_file in yaml_file_list:
         schema = utils.load_yaml(yaml_file)
         driver_compatlist = compat_list(schema)
@@ -117,8 +131,23 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         except KeyError:
             drv_config_name = drv_name
 
+        if drv_config_name == 'XAxiEthernet':
+           driver_name = drv_config_name
+           for node in node_list:
+               if "xlnx,eth-dma" in node["compatible"].value:
+                   dma_node_list.append(node)
+                   dma_label = get_label(sdt, symbol_node, node)
+                   testapp_name.update({dma_label: 'XAxiDma'})
+               if "xlnx,eth-mcdma" in node["compatible"].value:
+                   dma_node_list.append(node)
+                   dma_label = get_label(sdt, symbol_node, node)
+                   testapp_name.update({dma_label: 'XMcdma'})
+
         stdin_addr = None
-        if chosen_node:
+        if stdin_node:
+            val, size = scan_reg_size(stdin_node, stdin_node['reg'].value, 0)
+            stdin_addr = val
+        elif chosen_node:
             stdin_node = get_stdin(sdt, chosen_node, node_list)
             if stdin_node:
                 val, size = scan_reg_size(stdin_node, stdin_node['reg'].value, 0)
@@ -157,10 +186,12 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                             example_dir = os.path.join(drv_path, "examples")
                             example_file_src_path = os.path.join(example_dir, app)
                             example_file_dst_path = os.path.join(sdt.outdir, app)
-                            try:
-                                has_hwdep = testapp_schema[app]['hwproperties'][0]
+                            list_of_hw_props = testapp_schema[app].get('hwproperties',[])
+                            list_of_dep_files = testapp_schema[app].get('dependency_files',[])
+                            valid_ex = 0
+                            match_list = []
+                            for prop_name in list_of_hw_props:
                                 try:
-                                    val = node[has_hwdep].value
                                     if "interrupts" in testapp_schema[app]['hwproperties']:
                                         intr_parent_phandle = node["interrupt-parent"].value
                                         intr_parent_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == intr_parent_phandle[0]]
@@ -168,17 +199,51 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                                         # But, that is a cumbersome process and this condition also works given the way gen-domain-dts
                                         # behaves.
                                         if intr_parent_node and intr_parent_node[0]["compatible"].value[0] != "interrupt-multiplex":
-                                            has_hwdep = 0
+                                            match_list.append(True)
                                         else:
-                                            has_hwdep = 1
+                                            match_list.append(False)
+                                    if isinstance(prop_name, dict):
+                                        for e,prop_val in prop_name.items():
+                                            val=node[e].value
+                                            if prop_val == val:
+                                                match_list.append(True)
+                                            elif isinstance(val, list):
+                                                if prop_val == val[0]:
+                                                    match_list.append(True)
+                                                else:
+                                                    match_list.append(False)
+                                            else:
+                                                match_list.append(False)
                                     else:
-                                        has_hwdep = 0
-                                except KeyError:
-                                    has_hwdep = 1
-                            except KeyError:
-                                has_hwdep = 0
+                                        try:
+                                            valid_ex = node[prop_name].value
+                                            if valid_ex:
+                                                match_list.append(True)
+                                        except KeyError:
+                                            match_list.append(False)
 
-                            if not has_hwdep and utils.is_file(example_file_src_path):
+                                except KeyError:
+                                    match_list.append(False)
+
+                            for p_key, p_value in prop.items():
+                                if p_key == "dependency_files":
+                                    continue
+                                if isinstance(p_value, int):
+                                   val = node[p_key].value
+                                   if p_key == "axistream-connected":
+                                      reg = bm_config.get_phandle_regprop(sdt, p_key, val)
+                                      val = reg & 0xF
+                                   if val == p_value:
+                                      match_list.append(True)
+                                   else:
+                                      match_list.append(False)
+
+                            if False in match_list:
+                                valid_ex = 0
+                            else:
+                                valid_ex = 1
+
+                            if valid_ex and utils.is_file(example_file_src_path):
                                 periph_file_list += [example_file_dst_path]
                                 utils.copy_file(example_file_src_path, example_file_dst_path)
                                 with open(example_file_dst_path, 'r+') as fd:
@@ -186,6 +251,17 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                                     content.insert(0, "#define TESTAPP_GEN\n")
                                     fd.seek(0, 0)
                                     fd.writelines(content)
+                                for dep_file in list_of_dep_files:
+                                    dep_file_src_path = os.path.join(example_dir, dep_file)
+                                    dep_file_dst_path = os.path.join(sdt.outdir, dep_file)
+                                    if utils.is_file(dep_file_src_path):
+                                       periph_file_list += [dep_file_dst_path]
+                                       utils.copy_file(dep_file_src_path, dep_file_dst_path)
+                                       with open(dep_file_dst_path, 'r+') as fd:
+                                           content = fd.readlines()
+                                           content.insert(0, "#define TESTAPP_GEN\n")
+                                           fd.seek(0, 0)
+                                           fd.writelines(content)
                                 dec.append(testapp_schema[app]['declaration'])
                                 if 'selftest' not in app.lower() and 'selftest' not in testapp_schema[app]['declaration'].lower():
                                     drvconfig_name = True
@@ -212,6 +288,12 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         for app in testapp:
             if 'SelfTest' in app or 'selftest' in app:
                 status_assignment = f"status = {app}({xpar_def});"
+            elif driver_name == "XAxiEthernet":
+                 driver_name = ""
+                 if dma_label:
+                    status_assignment = f"status = {app}(&{node}, &{dma_label}, {xpar_def});"
+                 else:
+                    print(f"In Valid DMA label \n")
             else:
                 status_assignment = f"status = {app}(&{node}, {xpar_def});"
 

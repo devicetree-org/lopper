@@ -21,6 +21,7 @@ import textwrap
 from collections import UserDict
 from collections import OrderedDict
 from collections import Counter
+from io import StringIO
 import copy
 import json
 
@@ -46,6 +47,29 @@ def chunks(l, n):
     for i in range(0, len(l), n):
         # Create an index range for l of n items:
         yield l[i:i+n]
+
+def chunks_variable(lst, chunk_sizes):
+    """
+    Splits a Python list into variable sized records of different sizes
+
+    Args:
+        lst: the list to be chunked
+        chunk_sizes: a list of integers representing the sizes of the chunks
+
+    Yields:
+        A list of variable length, where each list is a chunk
+    """
+    if sum(chunk_sizes) != len(lst):
+        raise ValueError( f"The sum of chunk sizes: {sum(chunk_sizes)} ({chunk_sizes}) must be "
+                          f"equal to the length of the list ({len(lst)})" )
+
+    start = 0
+
+    for size in chunk_sizes:
+        end = start + size
+        chunk = lst[start:end]
+        yield chunk
+        start = end
 
 # used in node_filter
 class LopperAction(Enum):
@@ -115,7 +139,7 @@ class LopperProp():
         """
         if self.__dbg__ > 1:
             lopper.log._debug( f"property '{self.name}' deepcopy start: {[self]}" )
-            lopper.log._debug( f"         value type: {type(self.value)} value len: {len(self.value)} value: {self.value}" )
+            lopper.log._debug( f"         value type: {type(self.value)} value: {self.value}" )
 
         new_instance = LopperProp(self.name)
 
@@ -511,73 +535,159 @@ class LopperProp():
         phandle_map = []
         phandle_sub_list = []
         phandle_props = Lopper.phandle_possible_properties()
-        if self.name in phandle_props.keys():
-            # This property can have phandles!
-            property_description = phandle_props[self.name]
-            # index 0 is always the description, other elements are flags, etc.
-            property_fields = property_description[0].split()
 
-            # we need the values in hex. This could be a utility routine in the
-            # future .. convert to hex.
+        field_offset_pattern = r'([+-]?)(\d+):(.*)'
+        field_offset_regex = re.compile(field_offset_pattern)
 
-            # if this is a json type, we can't possibly find anything useful
-            # by iterating, so just return the empty map
-            if self.pclass == "json":
-                return phandle_map
+        if not self.name in phandle_props.keys():
+            return phandle_map
 
-            ## not required, remove
-            prop_val = []
-            for f in self.value:
-                if type(f) == str:
-                    prop_val.append( f )
-                else:
-                    #prop_val.append( hex(f) )
-                    prop_val.append( f )
+        # if this is a json type, we can't possibly find anything useful
+        # by iterating, so just return the empty map
+        if self.pclass == "json":
+            return phandle_map
 
-            phandle_idx = 0
-            property_desc_idx = 0
-            latch_sub_list = False
+        debug = False
+        # this is too verbose, kept for reference
+        # debug = self.__dbg__
+        dname = self.name
 
-            # field val is set to a non-zero value when encounter a phandle
-            # description that has #<field-nane>. We reset it to zero each
-            # time a new phandle check is done (when phandle_idx == idx)
-            # This allows us to set a jump ahead (if greater than zero), or
-            # to increment by one if a placeholder (non phandle) field didn't
-            # specify a variable size
-            field_val = 0
-            for idx,val in enumerate(prop_val):
-                phandle_desc = ""
-                if idx == phandle_idx:
-                    field_val = 0
-                    if latch_sub_list:
-                        phandle_map.append( phandle_sub_list )
-                        latch_sub_list = False
-                        phandle_sub_list = []
+        if self.node:
+            try:
+                compat = self.node["compatible"]
+                is_lop = False
+                for c in compat.value:
+                    if re.search( "system-device-tree-v1,lop", c ):
+                        is_lop = True
 
-                    phandle_desc = property_fields[property_desc_idx]
-                    property_desc_idx = property_desc_idx + 1
-                    if property_desc_idx >= len( property_fields ):
-                        latch_sub_list = True
-                        property_desc_idx = 0
-                else:
-                    pass
+                # lops can't resolve, so just return early
+                if is_lop:
+                    return []
+            except:
+                pass
 
-                if re.search( '^phandle', phandle_desc ):
+        # We are iterating two things:
+        #   - the values of the property
+        #   - the fields of the property description
+
+        # In the fields of the property, we are looking for values that
+        # might be phandles. We then look them up, and store them in
+        # a return list that has nodes and 0s.
+
+        # For the property description, we walk it field by field, looking
+        # up values to figure out where the phandles might be, and the
+        # size of each sublist in the return (these are records in the
+        # property)
+
+        property_description = phandle_props[self.name]
+
+        # index 0 is always the description, other elements are flags, etc.
+        property_fields = property_description[0].split()
+
+        group_size = 0
+        group_sizes = []
+        property_global_index = 0
+        phandle_index_list = []
+
+        # We do one pass through the property field description. During
+        # this pass, we dereference nodes (if required) and count fields.
+        #
+        # Note: this means that if a property has variable sized records,
+        #       we could have issues. That hasn't been seen yet, but if
+        #       it does happen, we need to walk ALL the values in the
+        #       property to calculate the length of each record individually
+        #       (and then have to change the chunking up of output throughout
+        #       lopper).
+        try:
+            pval = self.value[property_global_index]
+            property_iteration_flag = True
+        except:
+            property_iteration_flag = False
+
+        while property_iteration_flag:
+            for phandle_desc in property_fields:
+                if re.search( '^#.*', phandle_desc ):
+                    try:
+                        field_val = self.node.__props__[phandle_desc].value[0]
+                    except Exception as e:
+                        if self.node and self.node.tree and self.node.tree.strict:
+                            # lopper.log._warning( f"({self.node.abs_path}) deref exception: {e}" )
+                            return phandle_map
+
+                        field_val = 1
+
+                    group_size = group_size + field_val
+                    property_global_index = property_global_index + field_val
+
+                elif re.search( '^\^.*', phandle_desc ):
+                    try:
+                        parent_node = None
+                        if self.node:
+                            parent_node = self.node.parent
+
+                        derefs = phandle_desc.split(':')
+                        if len(derefs) == 2:
+                            # if parent_node is none, the exception will fire
+                            field_val = parent_node.__props__[derefs[1]].value[0]
+                        else:
+                            field_val = 1
+                    except Exception as e:
+                        if self.node and self.node.tree and self.node.tree.strict:
+                            # lopper.log._warning( f"({self.node.abs_path}) deref exception: {e}" )
+                            return phandle_map
+
+                        field_val = 1
+
+                    group_size = group_size + field_val
+                    property_global_index = property_global_index + field_val
+
+                elif re.search( '^phandle', phandle_desc ):
                     derefs = phandle_desc.split(':')
+                    phandle_index_list.append( property_global_index )
+
+                    try:
+                        val = self.value[property_global_index]
+                    except Exception as e:
+                        # if the property isn't assigned to a node, don't warn/debug
+                        # just continue
+                        if not self.node:
+                            continue
+
+                        lopper.log._debug( f"index out of bounds for {self.name}"
+                                           f"index: {property_global_index}, len: {len(self.value)}" )
+
+                        if property_global_index >= len(self.value):
+                            print( "we've blown out the index, stopping the iteration" )
+                            property_iteration_flag = False
+                            break
+
+                        continue
+
+                    # We've been instructed to look up a property in the phandle.
+                    # that tells us how many elements to jump before we look for
+                    # the next phandle.
+
                     if len(derefs) >= 2:
-                        # We've been instructed to look up a property in the phandle.
-                        # that tells us how many elements to jump before we look for
-                        # the next phandle.
-                        #
                         # step 1) lookup the node
-                        node_deref = self.node.tree.deref( val )
+                        if self.node and self.node.tree:
+                            node_deref = self.node.tree.deref( val )
+                        else:
+                            # if we aren't in a tree, we really can't continue since
+                            # whatever we do will be wrong, just return an empty
+                            # map
+                            return []
 
                         try:
-                            # step 2) look for the property in the deferneced node. If the
-                            #         node wasn't found, we'll trigger an exception, and just
-                            #         set a default value of 1.
+                            # step 2) look for the property in the
+                            #         dereferenced node. If the node
+                            #         wasn't found, we'll trigger an
+                            #         exception, and just set a
+                            #         default value of 1.
                             cell_count = node_deref[derefs[1]].value[0]
-                        except:
+
+                        except Exception as e:
+                            if self.node and self.node.tree and self.node.tree.strict:
+                                return phandle_map
                             cell_count = 1
 
                         # step 3)
@@ -589,47 +699,133 @@ class LopperProp():
                             expression = eval( expression )
                             cell_count = expression
 
-                        # this is the next index to check for a phandle
-                        phandle_idx = phandle_idx + cell_count
+                        # the +1 is for the phandle itself.
+                        group_size = group_size + 1 + cell_count
+                        property_global_index = property_global_index + 1 + cell_count
                     else:
-                        node_deref = None
-                        if self.node:
-                            node_deref = self.node.tree.deref( val )
+                        # just add the phandle to the field count
+                        group_size = group_size + 1
+                        property_global_index = property_global_index + 1
 
-                        # deref, bump our phandle_idx by one
-                        phandle_idx = phandle_idx + 1
+                elif m := re.match( field_offset_regex, phandle_desc ):
+                    # This is a "lookback" to a phandle that is at another field
+                    # of the property (versus the current one).
+                    offset = m.group(1)
+                    field_pos = m.group(2)
+                    target_prop = m.group(3)
 
-                    if node_deref == None:
-                        if tag_invalid:
-                            node_deref = "#invalid"
+                    # positive or negative offset into the phandle_sub_list (we currently
+                    # onl2y handle lookbacks)
+                    if offset != "-":
+                        lopper.log._warning( f"only negative offset lookbacks are currently supported: {phandle_desc}" )
+                        lookback = field_pos
+                    else:
+                        lookback = eval(offset+field_pos)
 
-                    phandle_sub_list.append( node_deref )
-                elif re.search( '^#.*', phandle_desc ):
-                    try:
-                        field_val = self.node.__props__[phandle_desc].value[0]
-                    except Exception as e:
-                        field_val = 0
+                    node_deref = phandle_sub_list[lookback]
+                    if node_deref != 0:
+                        # get the property ..
+                        try:
+                            # look for the property in the deferenced node. If the
+                            # node wasn't found, we'll trigger an exception, and just
+                            # set a default value of 1.
+                            cell_count = node_deref[target_prop].value[0]
+                        except:
+                            cell_count = 1
+                    else:
+                        cell_count = 1
 
-                    if not field_val:
-                        field_val = 1
-
-                    phandle_sub_list.append( 0 )
-                    phandle_idx = phandle_idx + field_val
+                    # this is the next index to check for a phandle
+                    property_global_index = property_global_index + 1 + cell_count
                 else:
-                    # no phandle was found in any of the cases above, but
-                    # we did do a phandle check (since the indexes match).
-                    # bump the phandle_idx ahead by one, so we'll check the
-                    # next field.
-                    if idx == phandle_idx:
-                        phandle_idx = phandle_idx + 1
+                    # non-lookup field, value is one!
+                    group_size = group_size + 1
+                    property_global_index = property_global_index + 1
 
-                    phandle_sub_list.append( 0 )
 
-            # append the last collected set of phandle or not indications
+            group_sizes.append(group_size)
+            try:
+                # if we roll over the end, catch the exception and exit
+                pval = self.value[property_global_index]
+                group_size = 0
+            except:
+                property_iteration_flag = False
+
+        # if we don't have a group size, we have nothing to chunk up and
+        # the property was likely empty. return the empty map.
+        if not group_size:
+            return phandle_map
+
+        if not group_sizes:
+            return phandle_map
+
+        if debug:
+            lopper.log._warning( f"  {self.name} ({self.node.abs_path}):" )
+            lopper.log._warning( f"    ... property value: {self.value}" )
+            lopper.log._warning( f'    ... as hex: {["0x" + hex(num)[2:].zfill(2) for num in self.value]}' )
+            lopper.log._warning( f"    ... {group_sizes}" )
+
+        # We now know the group size. We chunk up the property into
+        # these groups and pick out the phandles.
+        # property_value_chunks  = chunks(self.value,group_size)
+        try:
+            property_value_chunks = chunks_variable(self.value,group_sizes)
+            # this double call is on purpose. the iterator will throw a
+            # value exception if there's an issue with the chunk sizes and
+            # the length of the list. We can't it and handle it gracefully
+            # here, versus in the bigger processing block below.
+            # We then have to reset our list for the actual iteration and
+            # processing.
+            for property_val_group in property_value_chunks:
+                pass
+            property_value_chunks = chunks_variable(self.value,group_sizes)
+        except Exception as e:
+            if self.node:
+                # note: this can't always be a warning, since sometimes we
+                #       read two inputs and before merging the cells, not
+                #       all lookups are valid, so we'll get an invalid group
+                #       size. We need some sort of "final resolution" flag
+                #       so we can warn.
+                lopper.log._debug( f"Could not fully process the cells of: "
+                                   f"{self.name} ({self.node.abs_path})" )
+                lopper.log._debug( f"  {e}" )
+
+            # just do a fixed record size chunking to continue processing
+            property_value_chunks = chunks(self.value,group_size)
+
+        property_chunk_idx = 0
+        property_sub_list = []
+        for property_val_group in property_value_chunks:
+            for p in property_val_group:
+                if property_chunk_idx in phandle_index_list:
+                    if self.node and self.node.tree:
+                        node_deref = self.node.tree.deref( p )
+                    else:
+                        # can we use "None" to represent something that IS
+                        # a phandle, but that we couldn't look up. That matches
+                        # what deref() returns .. hmm.
+                        node_deref = None
+                else:
+                    node_deref = 0
+
+                phandle_sub_list.append( node_deref )
+
+                property_chunk_idx += 1
+
             phandle_map.append( phandle_sub_list )
+            phandle_sub_list = []
+
+        # Not currently used, but kept for reference. returning "#invalid"
+        # here breaks callers that are looking for zeros. It is up to the
+        # caller to indicate invalid phandles in any further processing
+        if tag_invalid:
+            # Replace "None" with "#invalid"
+            for i in range(len(phandle_map)):
+                for j in range(len(phandle_map[i])):
+                    if phandle_map[i][j] == None:
+                        phandle_map[i][j] = "#invalid"
 
         return phandle_map
-
 
     def phandle_params( self ):
         """Determines the phandle elements/params of a property
@@ -787,6 +983,9 @@ class LopperProp():
            Nothing
 
         """
+        if not self.node:
+            return
+
         if self.node.indent_char == ' ':
             indent = (self.node.depth * 8) + 8
         else:
@@ -814,7 +1013,7 @@ class LopperProp():
                 outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
         if outstring:
-            print(outstring.rjust(len(outstring)+indent, self.node.indent_char), file=output)
+            print(outstring.rjust(len(outstring)+indent, self.node.indent_char), file=output, flush=True)
 
     def property_type_guess( self, force = False ):
         """'guess' the type of a property
@@ -922,7 +1121,8 @@ class LopperProp():
            - __pstate__
 
         Args:
-             None
+           strict: (boolean, optional): indicate whether correctness
+                                        should be stictly enforced
 
         Returns:
            Nothing
@@ -954,7 +1154,7 @@ class LopperProp():
             else:
                 prop_type = type(prop_val)
 
-        lopper.log._debug( f"strict: {strict}s property [{prop_type}] resolve: {self.name} val: {self.value}" )
+        lopper.log._debug( f"strict: {strict} property [{prop_type}] resolve: {self.name} val: {self.value}" )
 
         self.pclass = prop_type
 
@@ -1076,6 +1276,10 @@ class LopperProp():
                                         else:
                                             phandle_tgt_name = "&invalid_phandle"
                                     else:
+                                        if self.node.tree:
+                                            self.node.tree.warn( [ "invalid_phandle" ],
+                                                                 f"property: {self.name} ({self.node.abs_path})",
+                                                                 self.node )
                                         # strict and an invalid phandle, jump to the next record
                                         # were we the last record ? That means we could have an incorrectly
                                         # continued list with ","
@@ -1298,14 +1502,26 @@ class LopperNode(object):
         #      new_instance.__props__ = copy.deepcopy( self.__props__, memodict )
         new_instance.__props__ = OrderedDict()
         for p in reversed(self.__props__):
+            lopper.log._debug( f"    property deepcopy start: {p} {self.__props__[p].value}" )
             new_instance[p] = copy.deepcopy( self.__props__[p], memodict )
             new_instance[p].node = new_instance
+            lopper.log._debug( f"    property deepcopy has returned: {new_instance.__props__[p]} {new_instance.__props__[p].value}" )
 
-        new_instance.name = copy.deepcopy( self.name, memodict )
         new_instance.number = -1 # copy.deepcopy( self.number, memodict )
         new_instance.depth = copy.deepcopy( self.depth, memodict )
         new_instance.label = copy.deepcopy( self.label, memodict )
         new_instance.type = copy.deepcopy( self.type, memodict )
+
+        # consider appending a ".copied" to the name if the path
+        # manipulations to /copied/ below are not enough (when
+        # added via a flag)
+        new_instance.name = copy.deepcopy( self.name, memodict )
+
+        # It is up to the caller to adjust the copied node's path
+        # to avoid duplicates if added to a tree that contained
+        # the original node. We could consider a flag to the node
+        # copy that would do this automatically (i.e. prepend a
+        # /copied to the path, but for now, we leave it to the caller.
         new_instance.abs_path = copy.deepcopy( self.abs_path, memodict )
         new_instance.indent_char = self.indent_char
 
@@ -1317,6 +1533,11 @@ class LopperNode(object):
         new_instance.phandle = self.phandle
 
         new_instance.tree = None
+
+        # Note: the parent is not copied, this can cause issues
+        #       with deleting nodes, since you can't go up the tree
+        #       to remove it from subnodes(). but it is updated in
+        #       the copied children, to point at the new parent node
 
         new_instance.child_nodes = OrderedDict()
         for c in reversed(self.child_nodes.values()):
@@ -1697,6 +1918,49 @@ class LopperNode(object):
         else:
             self._ref = 0
 
+    def path(self,relative_to=None,sanity_check=False):
+        """dynamically calculate the path of a node
+
+        Args:
+           relative_to (String): return the path relative to the
+                                 passed path (not currently implemented)
+           sanity_check (Boolean): default Faklse. Perform path sanity
+                                   checking on the node.
+
+        Returns:
+           String: The absolute path of the node
+        """
+        npath = "/" + self.name
+
+        node = self
+        while node.parent:
+            node = node.parent
+            if node.name:
+                npath = "/" + node.name + npath
+
+        if sanity_check:
+            if self.tree:
+                try:
+                    scheck_node = self.tree[npath]
+                except Exception as e:
+                    raise e
+
+        return npath
+
+    def phandle_set(self,value):
+        old_phandle = self.phandle
+
+        self.phandle = value
+
+        # is there a phandle property ? That is only used
+        # in printing, but it should be updated to match
+        try:
+            phandle_prop = self.__props__["phandle"]
+            self.__props__["phandle"].value = self.phandle
+        except:
+            True
+
+        # TOOD: consider if we should update the tree, if we are assigned to one ?
 
     def label_set(self,value):
         # someone is labelling a node, the tree's lnodes need to be
@@ -1717,6 +1981,10 @@ class LopperNode(object):
 
                 self.tree.__lnodes__[value] = self
                 self.label = value
+        else:
+            # there's no associated tree, so the __lnodes__ update
+            # will have too come when the node is added.
+            self.label = value
 
 
     def resolve_all_refs( self, property_mask=[], parents=True ):
@@ -1846,7 +2114,7 @@ class LopperNode(object):
 
         return False
 
-    def print( self, output=None, strict=None ):
+    def print( self, output=None, strict=None, as_string=False ):
         """print a node
 
         Print a node to the passed output stream. If it isn't passed, then
@@ -1858,16 +2126,23 @@ class LopperNode(object):
 
         Args:
            output (optional, output stream).
+           strict (optional, default None) : resolve properties when printing
+           as_string (optional, default False) : return output as a string
 
         Returns:
-           Nothing
+           Nothing or string if "as_string" is set
 
         """
-        if not output:
-            try:
-                output = self.tree.output
-            except:
-                output = sys.stdout
+
+        if as_string:
+            sys.stdout = mystdout = StringIO()
+            output = sys.stdout
+        else:
+            if not output:
+                try:
+                    output = self.tree.output
+                except:
+                    output = sys.stdout
 
         if self.indent_char == ' ':
             indent = self.depth * 8
@@ -1880,7 +2155,7 @@ class LopperNode(object):
         # explicitly passed "False" to not take us into the check.
         resolve_props = False
         if strict != None:
-            if self.tree.strict != strict:
+            if self.tree and self.tree.strict != strict:
                 resolve_props = True
 
         if self.abs_path != "/":
@@ -1909,24 +2184,24 @@ class LopperNode(object):
                 else:
                     outstring = nodename + " {"
 
-            print( "", file=output )
-            print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output )
+            print( "", file=output, flush=True )
+            print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output, flush=True )
         else:
             # root node
             # peek ahead to handle the preamble
             for p in self:
                 if p.pclass == "preamble":
-                    print( "%s" % p, file=output )
+                    print( "%s" % p, file=output, flush=True )
 
             #print( "/dts-v1/;\n\n/ {", file=output )
-            print( "/dts-v1/;\n", file=output )
+            print( "/dts-v1/;\n", file=output, flush=True )
 
-            if self.tree.__memreserve__:
+            if self.tree and self.tree.__memreserve__:
                 mem_res_addr = hex(self.tree.__memreserve__[0] )
                 mem_res_len = hex(self.tree.__memreserve__[1] )
-                print( "/memreserve/ %s %s;\n" % (mem_res_addr,mem_res_len), file=output )
+                print( "/memreserve/ %s %s;\n" % (mem_res_addr,mem_res_len), file=output, flush=True )
 
-            print( "/ {", file=output )
+            print( "/ {", file=output, flush=True )
 
         # now the properties
         for p in self:
@@ -1941,7 +2216,12 @@ class LopperNode(object):
 
         # end the node
         outstring = "};"
-        print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output)
+        print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output , flush=True)
+
+        if as_string:
+            sys.stdout = sys.__stdout__
+            return mystdout.getvalue()
+
 
     def phandle_or_create( self ):
         """Access (and generate) a phandle for this node
@@ -2560,12 +2840,16 @@ class LopperNode(object):
             if not self.type:
                 self.type = [ "" ]
 
+            # this ensures any phandle properties are in sync
+            # with the phande assigned to the node
+            self.phandle_set( self.phandle )
+
             self.__nstate__ = "resolved"
             self.__modified__ = False
 
-        lopper.log._debug( f"node resolution end: {self}" )
+        lopper.log._debug( f"node load end: {self}" )
 
-    def resolve( self, fdt = None ):
+    def resolve( self, fdt = None, resolve_children=True ):
         """resolve (calculate) node details against a FDT
 
         Some attributes of a node are not known at initialization time, or may
@@ -2592,6 +2876,8 @@ class LopperNode(object):
         Args:
            fdt (FDT): flattened device tree to sync to or None if no
                       tree is available
+           resolve_children (Boolean): default True. When resolving the
+                                       node, also resolve any child nodes.
 
         Returns:
            Nothing
@@ -2608,6 +2894,14 @@ class LopperNode(object):
         ## We also may use this as recursive subnode resolve() call, so we
         ## can apply changes to a nodes properties and all subnode properties
 
+        ## Note:  if the node is not in a tree, the path will change to
+        ##        /<name>, and will likely need to be adjusted later
+        ## Note2: While keeping the interface simpler for adding nodes,
+        ##        this can break node move detection, and causes more
+        ##        issues. So until we resolve them, we comment out this
+        ##        helper.
+        # self.abs_path = self.path()
+
         if self.abs_path == "/":
             self.depth = 0
         else:
@@ -2617,6 +2911,23 @@ class LopperNode(object):
 
         self.__nstate__ = "resolved"
         self.__modified__ = False
+
+        if resolve_children:
+            lopper.log._debug( f"node resolve: resolving child nodes: {self.child_nodes}" )
+
+            for cn in self.child_nodes.values():
+                cn.resolve( fdt, resolve_children )
+
+        for p in self.__props__.values():
+            p.resolve()
+
+        if self.tree and self.tree.__symbols__:
+            try:
+                symbol_node = self.tree['/__symbols__']
+                if self.label:
+                    symbol_node[self.label] = self.abs_path
+            except:
+                pass
 
         lopper.log._debug( f"node resolution end: {self}" )
 
@@ -2730,6 +3041,54 @@ class LopperNode(object):
 
         return unit_address
 
+    def children_by_path( self ):
+        """
+        Get the children of the node sorted by path
+
+        Args:
+           None
+        Returns:
+           OrderedDict: A dictionary of child nodes sorted by path
+        """
+        return dict(sorted(self.child_nodes.items(), key=lambda item: item[0].split('/')[1]))
+
+    def reorder_child(self, path_to_move, path_to_move_next_to, after=True):
+        """
+        (re)order a specified child node next to another specified child
+
+        Args:
+           path_to_move(String): the path of the child to move / order
+           path_to_move_next_to (String): the path next to which the specified child path will be moved
+           after (boolean):  if True (default), move after path_to_move_next_to; if False, move before path_to_move_next_to
+
+        Returns:
+           OrderedDict - the modified ordered dictionary
+        """
+
+        od = self.child_nodes
+
+        if path_to_move not in od or path_to_move_next_to not in od:
+            raise KeyError("Both keys must be present in the OrderedDict")
+
+        items = list(od.items())
+        item_to_move = (path_to_move, od[path_to_move])
+
+        # Remove the item to move
+        items = [item for item in items if item[0] != path_to_move]
+
+        # Find the position to insert
+        pos = next(i for i, item in enumerate(items) if item[0] == path_to_move_next_to)
+        if after:
+            pos += 1
+
+        # Insert the item at the new position
+        items.insert(pos, item_to_move)
+
+        self.child_nodes = OrderedDict(items)
+
+        # Create a new OrderedDict from the reordered items
+        return OrderedDict(items)
+
 class LopperTree:
     """Class for walking a device tree, and providing callbacks at defined points
 
@@ -2816,12 +3175,19 @@ class LopperTree:
         self.__new_iteration__ = True
         self.__node_iter__ = None
 
+        self.__symbols__ = False
+
         self.dct = None
 
         # type
         self.depth_first = depth_first
 
         self.strict = True
+        self.warnings = []
+        self.warnings_issued = {}
+        self.werror = []
+        self.__check__ = False
+
         # output/print information
         self.indent_char = ' '
 
@@ -3076,6 +3442,54 @@ class LopperTree:
         # not currently supported
         pass
 
+    def warn( self, warnings, context_str = "", extra_info = None ):
+        """issue a warning against the tree
+
+        This method issues a warning (or error) against the tree as
+        indicated by the caller.
+
+        Before issuing the warning it is checked if the warning is
+        enabled.
+
+        "werror" is also checked to promote a warning to an error
+
+        Args:
+          warnings (list)      : a list of warning types to issue
+          context_str (string) : extra context to add to the warning
+                                 message
+
+        Returns:
+          Nothing
+        """
+        # was checking enabled ?
+        if not self.__check__:
+            return
+
+        if self.warnings:
+            for w in warnings:
+                if w in self.warnings or "all" in self.warnings:
+                    outstring = f"{w}: " + context_str
+                    try:
+                        count = self.warnings_issued[outstring]
+                        self.warnings_issued[outstring] += 1
+                    except:
+                        self.warnings_issued[outstring] = 1
+                        count = 0
+
+                    if not count:
+                        if self.werror:
+                            lopper.log._error( outstring, also_exit=1 )
+                        else:
+                            lopper.log._warning( outstring )
+
+                        if extra_info:
+                            if self.__dbg__ > 1:
+                                node_string=extra_info.print(as_string=True)
+                                node_string="node:" + node_string
+                                lopper.log._warning( node_string )
+
+
+
     def phandles( self ):
         """Utility function to get the active phandles in the tree
 
@@ -3240,7 +3654,8 @@ class LopperTree:
             if nd:
                 dct[n.abs_path] = nd
             else:
-                lopper.log._warning( f"node with no annotations: {self.abs_path}" )
+                # keep me. This was causing an exception
+                lopper.log._warning( f"node with no properties (tree corruption?): {n.abs_path}" )
 
         if start_path == "/":
             if self.__memreserve__:
@@ -3273,26 +3688,57 @@ class LopperTree:
                 output = self.output
             except:
                 output = sys.stdout
+        else:
+            # confirm if output is an iostream
+            try:
+                if not output.writable():
+                    lopper.log._warning( f"{output} is not writable" )
+                    return
+            except (UnicodeDecodeError, AttributeError) as e:
+                lopper.log._warning( f"{output} is not a writable" )
+                return
 
         self["/"].print( output )
 
-    def resolve( self ):
+    def resolve( self, check=False ):
         """resolve a tree
 
         Iterates all the nodes in a tree, and then the properties, making
         sure that everyting is fully resolved.
 
         Args:
-           None
+           check (boolean,optional): flag indicating if the tree should be checked
 
         Returns:
            Nothing
         """
+
+        if self.__symbols__:
+            try:
+                symbol_node = self['/__symbols__']
+                # remove all the symbol entries. the nodes will
+                # resolve their labels back into the symbol node
+                # this allows us to track renames, deletes and
+                # adds without doing anything fancy
+                symbol_node.__props__ = OrderedDict()
+            except:
+                pass
+
+        # if check is set to true, we'll throw warnings/errors
+        # during the resolution process
+        self.__check__ = check
+
         # walk each node, and individually resolve
         for n in self:
             n.resolve()
+            # n.resolve() also resolves properties, so we can
+            # eventually drop this properties iteration after
+            # some extensive testing
             for p in n:
                 p.resolve()
+
+        self.__check__ = False
+
 
     def sync( self, fdt = None, only_if_required = False ):
         """Sync a tree to a backing FDT
@@ -3331,6 +3777,7 @@ class LopperTree:
         #       Lopper.sync() call.
         #
         new_dct = self.export()
+
         self.load( new_dct )
 
         lopper.log._debug( f"[{fdt}]: tree sync end: {self}" )
@@ -3361,7 +3808,7 @@ class LopperTree:
 
         return self
 
-    def delete( self, node, delete_from_parent = True ):
+    def delete( self, node, delete_from_parent = True, force=False ):
         """delete a node from a tree
 
         If a node is resolved and syncd to the FDT, this routine deletes it
@@ -3383,12 +3830,16 @@ class LopperTree:
             # let any exceptions bubble back up
             n = self.__nnodes__[node]
 
+        if force:
+            n.__nstate__ = "resolved"
+
+        lopper.log._debug( f"{self} attempting to delete [{[n]}] node {n.abs_path}, state: {n.__nstate__}" )
         if n.__nstate__ == "resolved" and self.__must_sync__ == False:
             lopper.log._debug( f"{self} deleting [{[n]}] node {n.abs_path}" )
 
             if n.child_nodes:
                 for cn_path,cn in list(n.child_nodes.items()):
-                    self.delete( cn, False )
+                    self.delete( cn, False, force=force )
 
             try:
                 del self.__nodes__[n.abs_path]
@@ -3421,9 +3872,13 @@ class LopperTree:
             # state "deleted" below
             if n.parent and delete_from_parent:
                 try:
+                    ### we could try and iterate and check for object identity vs using the path here.
                     del n.parent.child_nodes[n.abs_path]
                 except Exception as e:
-                    lopper.log._warning( f"tree inconsistency. could not delete {n.abs_path} from {n.parent.abs_pathn.parent.abs_path}" )
+                    lopper.log._warning( f"tree inconsistency. could not delete {n.abs_path} from {n.parent.abs_path}" )
+                    lopper.log._warning( f"   parent child nodes: {n.parent.child_nodes}" )
+                    for pp,cn in n.parent.child_nodes.items():
+                        lopper.log._warning( f"       checking ids: {id(cn)} vs {id(n)}" )
 
             n.__nstate__ = "deleted"
             n.__modified__ = True
@@ -3451,6 +3906,38 @@ class LopperTree:
 
         return self
 
+    def move( self, node, old_path, new_path, dont_sync = False ):
+        """magic method for adding a node to a tree
+
+        Supports adding a node to a tree through "+"
+
+            tree + <LopperNode object>
+
+        Args:
+           other (LopperNode): node to add
+
+        Returns:
+           LopperTree: returns self, Exception on invalid input
+
+        """
+        self.delete( node )
+
+        existing_path = node.abs_path
+        node.abs_path = new_path
+        try:
+            self.add( node, dont_sync, merge=True )
+        except Exception as e:
+            lopper.log._warning( f"could not move node {node}, re-adding to tree" )
+
+            noode.abs_path = existing_path
+            self.add( node )
+
+            return False
+
+        return True
+
+
+
     def add( self, node, dont_sync = False, merge = False ):
         """Add a node to a tree
 
@@ -3471,10 +3958,36 @@ class LopperTree:
 
         """
 
-        lopper.log._debug( f" tree: node add: [{node.name}] {[ node ]} ({node.abs_path})({node.number})" 
-                           f"          phandle: {node.phandle}" )
+        lopper.log._debug( f"tree: node add: [{node.name}] {[ node ]} ({node.abs_path})({node.number})"
+                           f" phandle: {node.phandle}" )
 
         node_full_path = node.abs_path
+
+        # if a node is being added, we should check to see if the object
+        # is in the nodes list under a different path. because if it is
+        # there, we can have issues with an inconsistent tree. In this
+        # situation, it is really a move.
+        move = None
+        for pp,vv in self.__nodes__.items():
+            # Note: We could also do a path compare here
+            if id(vv) == id(node):
+                lopper.log._debug( f"   reference detected for node: {node}, will copy, and trigger a move ({vv} == {node})" )
+                lopper.log._debug( f"   ids are: {id(vv)} and {id(node)}" )
+                # make a copy, since we are going to be updating the path ensure
+                # it is fully deleted.
+                move = vv()
+                move.__nstate__ = "resolved"
+                move.abs_path = pp
+                move.resolve()
+                # we need the parent, so that it can be removed
+                # from the parents subnodes(). We could consider
+                # making this part of the deepcopy ... but a copied
+                # node really isn't part of the parent.
+                move.parent = vv.parent
+
+        if move:
+            lopper.log._debug( f"move detected, will delete node: {move} state: {move.__nstate__}" )
+            self.delete( move )
 
         # check all the path components, up until the last one (since
         # that's why this routine was called). If the nodes don't exist, we
@@ -3528,6 +4041,15 @@ class LopperTree:
         #       count on the current behaviour to not drop the properties.
         if node.phandle == -1:
             node.phandle = 0
+        elif node.phandle > 0:
+            # we need to generate a new phandle on a collision
+            try:
+                if self.__pnodes__[node.phandle]:
+                    lopper.log._debug( f"node add: would duplicate phandle: {hex(node.phandle)} ({node.phandle})" )
+                    new_phandle = self.phandle_gen()
+                    node.phandle_set( new_phandle )
+            except:
+                pass
 
         node.load( { '__path__' : node.abs_path,
                      '__fdt_name__' : node.name,
@@ -3535,7 +4057,7 @@ class LopperTree:
                    parent_path )
 
         lopper.log._debug( f"node add: {node.abs_path}, after load. depth is : {node.depth}"
-                           f"         phandle: {node.phandle}" )
+                           f"         phandle: {node.phandle} tree: {node.tree}" )
 
         self.__nodes__[node.abs_path] = node
 
@@ -3544,8 +4066,23 @@ class LopperTree:
         if node.number >= 0:
             self.__nnodes__[node.number] = node
         if node.phandle > 0:
+            # note: this should also have been done by node.load()
+            #       and the phandle_set() that was called in case of
+            #       a detected collision, but we assign it here to
+            #       be sure and to mark that we consider it part of the
+            #       tree at this point.
             self.__pnodes__[node.phandle] = node
         if node.label:
+            # we should check if there's already a node at the label
+            # value, and either warn, adjust or take some other appropriate
+            # action
+            try:
+                if self.__lnodes__[node.label]:
+                    node.label_set( node.label )
+                    lopper.log._debug( f"node add: duplicate label, generated a new one: {node.label}" )
+            except:
+                pass
+
             self.__lnodes__[node.label] = node
 
         # Check to see if the node has any children. If it does, are they already in
@@ -3650,19 +4187,23 @@ class LopperTree:
         return all_matching_kids
 
 
-    def nodes( self, nodename ):
+    def nodes( self, nodename, strict = False ):
         """Get nodes that match a given name or regex
 
         Looks for a node at a name/path, or nodes that match a regex.
 
         Args:
            nodename (string): node name or regex
+           strict (boolean,optional): indicates that regex matches should be exact/strict
 
         Returns:
            list: a list all nodes that match the name or regex
 
         """
         matches = []
+        if strict:
+            nodename = "^" + nodename + "$"
+
         try:
             matches = [self.__nodes__[nodename]]
         except:
@@ -4305,10 +4846,6 @@ class LopperTree:
                     node_check = self.__nodes__[node.abs_path]
                     if node_check:
                         lopper.log._error( f"tree inconsistency found, two nodes with the same path ({node_check.abs_path})" )
-                        node_check.print()
-                        # we need to exit the thread/backgound call AND the entire application, so
-                        # hit is with a hammer.
-                        os._exit(1)
                 except:
                     pass
 
@@ -4427,7 +4964,8 @@ class LopperTree:
                     node = next(self.__node_iter__)
                 except StopIteration:
                     # reset for the next call
-                    self.reset()
+                    self.__current_node__ = 0
+                    self.__new_iteration__ = True
                     raise StopIteration
             else:
                 # TODO (may not be required)
@@ -4454,17 +4992,50 @@ class LopperTreePrinter( LopperTree ):
         # init the base walker.
         super().__init__( snapshot )
 
-        self.start_tree_cb = self.start
-        self.start_node_cb = self.start_node
-        self.end_node_cb   = self.end_node
-        self.end_tree_cb   = self.end
-        self.property_cb   = self.start_property
-
         self.output = output
-        if output != sys.stdout:
-            self.output = open( output, "w")
+        try:
+            if output != sys.stdout:
+                self.output = open( output, "w")
+        except Exception as e:
+            lopper.log._warning( f"cannot open {output} for writing, using stdout: {e}" )
+            self.output = sys.stdout
 
         self.__dbg__ = debug
+
+    def exec(self):
+        """ Excute the priting of a tree
+
+        This keeps compatbility with the original LopperTreePrinter
+        implementation that used callback to print a tree. They were
+        triggered when exec() was called on the tree.
+
+        We no longer use those callbacks, but we implement exec()
+        so that existing code need not change.
+
+        Args:
+            None
+
+        Returns:
+            Nothing
+        """
+
+        # save the current / start nodes, since they'll be
+        # changed/reset by the reolve
+        start_save = self.__start_node__
+        current_save = self.__current_node__
+
+        super().resolve()
+
+        # restore them
+        self.__start_node__ = start_save
+        self.__current_node__ = current_save
+
+        if self.__start_node__ != "/":
+            self.__nodes__[self.__start_node__].print(self.output)
+        elif self.__current_node__ != "/":
+            self.__nodes__[self.__current_node__].print( self.output )
+        else:
+            self.print( self.output )
 
     def reset(self, output_file=sys.stdout ):
         """reset the output of a printer
@@ -4495,157 +5066,8 @@ class LopperTreePrinter( LopperTree ):
 
         if output_file != sys.stdout and output_name != '<stdout>':
             try:
-                self.output = open( output_file, "w")
+                self.output = open( output_file, "w" )
             except Exception as e:
                 lopper.log._warning( f"could not open {output_file} as output: {e}" )
         else:
             self.output = output_file
-
-    def start(self, n ):
-        """LopperTreePrinter start
-
-        Prints the start / opening of a tree and handles the preamble.
-
-        Args:
-            n (LopperNode): the opening node of the tree
-
-        Returns:
-            Nothing
-        """
-        # peek ahead to handle the preamble
-        for p in n:
-            if p.pclass == "preamble":
-                print( "%s" % p, file=self.output )
-
-        print( "/dts-v1/;\n", file=self.output )
-        # print( "/dts-v1/;\n\n/ {", file=self.output )
-
-        if self.__memreserve__:
-            mem_res_addr = hex(self.__memreserve__[0] )
-            mem_res_len = hex(self.__memreserve__[1] )
-            print( "/memreserve/ %s %s;\n" % (mem_res_addr,mem_res_len), file=self.output )
-        print( "/ {", file=self.output )
-
-    def start_node(self, n ):
-        """LopperTreePrinter node start
-
-        Prints the start / opening of a node
-
-        Args:
-            n (LopperNode): the node being opened
-
-        Returns:
-            Nothing
-        """
-        if n.indent_char == ' ':
-            indent = n.depth * 8
-        else:
-            indent = n.depth
-
-        nodename = n.name
-        if n.number != 0:
-            plabel = ""
-            try:
-                if n['lopper-label.*']:
-                    plabel = n['lopper-label.*'].value[0]
-            except:
-                label_all_nodes = False
-                if not n.label:
-                    if label_all_nodes:
-                        n.label_set( Lopper.phandle_safe_name( nodename ) )
-                plabel = n.label
-
-            if n.phandle != 0:
-                if plabel:
-                    outstring = plabel + ": " + nodename + " {"
-                else:
-                    # nodename is creating duplicates, let's do a label based on the path
-                    # outstring = Lopper.phandle_safe_name( nodename ) + ": " + nodename + " {"
-                    outstring = nodename + " {"
-            else:
-                if plabel:
-                    outstring = plabel + ": " + nodename + " {"
-                else:
-                    outstring = nodename + " {"
-
-            print( "", file=self.output )
-            print(outstring.rjust(len(outstring)+indent, n.indent_char), file=self.output )
-
-    def end_node(self, n):
-        """LopperTreePrinter node end
-
-        Prints the end / closing of a node
-
-        Args:
-            n (LopperNode): the node being closed
-
-        Returns:
-            Nothing
-        """
-        if n.indent_char == ' ':
-            indent = n.depth * 8
-        else:
-            indent = n.depth
-
-        outstring = "};"
-        print(outstring.rjust(len(outstring)+indent,n.indent_char), file=self.output)
-
-    def start_property(self, p):
-        """LopperTreePrinter property print
-
-        Prints a property
-
-        Args:
-            p (LopperProperty): the property to print
-
-        Returns:
-            Nothing
-        """
-        # do we really need this resolve here ? We are already tracking if they
-        # are modified/dirty, and we have a global resync/resolve now. I think it
-        # can go
-        p.resolve( self.strict )
-
-        if p.node.indent_char == ' ':
-            indent = (p.node.depth * 8) + 8
-        else:
-            indent = p.node.depth + 1
-
-        outstring = str( p )
-        only_align_comments = False
-
-        if p.pclass == "preamble":
-            # start tree peeked at this, so we do nothing
-            outstring = ""
-        else:
-            # p.pclass == "comment"
-            # we have to substitute \n for better indentation, since comments
-            # are multiline
-
-            do_indent = True
-            if only_align_comments:
-                if p.pclass != "comment":
-                    do_indent = False
-
-            if do_indent:
-                dstring = ""
-                dstring = dstring.rjust(len(dstring) + indent + 1, p.node.indent_char)
-                outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
-
-        if outstring:
-            print(outstring.rjust(len(outstring)+indent,p.node.indent_char), file=self.output)
-
-    def end(self, n):
-        """LopperTreePrinter tree end
-
-        Ends the walking of a tree
-
-        Args:
-            n (LopperNode): -1
-
-        Returns:
-            Nothing
-        """
-
-        if self.output != sys.stdout:
-            self.output.close()

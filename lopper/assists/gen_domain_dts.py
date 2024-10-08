@@ -11,6 +11,8 @@ import yaml
 import sys
 import os
 import glob
+import lopper
+import re
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -19,7 +21,15 @@ from common_utils import to_cmakelist
 import common_utils as utils
 from domain_access import update_mem_node
 
-def delete_unused_props( node, driver_proplist ):
+def delete_unused_props( node, driver_proplist , delete_child_nodes):
+    if delete_child_nodes:
+        child_list = list(node.child_nodes.keys())
+        for child in child_list:
+            child_node = node.child_nodes[child]
+            delete_unused_props( child_node, driver_proplist, True)
+            if not child_node.child_nodes.keys() and not child_node.__props__.keys():
+                node.delete(child_node)
+
     prop_list = list(node.__props__.keys())
     for prop in prop_list:
         if prop not in driver_proplist:
@@ -60,8 +70,13 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     ns = match_cpunode.parent["#ranges-size-cells"].value[0]
 
     linux_dt = None
+    zephyr_dt = None
     try:
-        linux_dt = options['args'][1]
+        if options['args'][1] == "zephyr_dt":
+            zephyr_dt = 1
+        elif options['args'][1] == "linux_dt":
+            linux_dt = 1
+
     except IndexError:
         pass
 
@@ -101,11 +116,19 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 sdt.tree.delete(node)
             if node.propval('memory_type', list) == ['linear_flash']:
                 sdt.tree.delete(node)
+            if node.label == "amba_xppu" or node.label == "amba_xmpu":
+                sdt.tree.delete(node)
             for entry in node.propval('compatible', list):
                 pl_memory_compatible_list = ["xlnx,ddr4","xlnx,mig-7series","xlnx,lmb-bram","xlnx,axi-bram"]
                 if any(entry.startswith(compatible_prefix) for compatible_prefix in pl_memory_compatible_list):
                     sdt.tree.delete(node)
                     break
+            if node.propval('xlnx,name') != ['']:
+                node.delete('xlnx,name')
+            if node.propval('xlnx,interconnect-s-axi-masters') != ['']:
+                node.delete('xlnx,interconnect-s-axi-masters')
+            if node.propval('xlnx,rable') != ['']:
+                node.delete('xlnx,rable')
 
         if node.propval('status') != ['']:
             if linux_dt and node.name == "smmu@fd800000" and machine == "psu_cortexa53_0":
@@ -166,6 +189,19 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         modify_val = update_mem_node(node, prop_val)
         node['reg'].value = modify_val
 
+    if linux_dt:
+        for node in memnode_list:
+            # Yocto project expects zynq DDR base addresses to start from 0x0 for linux to boot.
+            # This has been a legacy expectation which is logically flawed. Adding the temporary
+            # workaround to unblock them until the QEMU issue and the yocto integration issues
+            # are resolved.
+            if node.propval('xlnx,ip-name', list) == ["ps7_ddr"]:
+                new_high_addr = node['reg'].value[0] + node['reg'].value[1]
+                node['reg'].value = update_mem_node(node, [0, new_high_addr])
+                node.name = "memory@0"
+                # QEMU boot is not working with compatible property in DDR node for Zynq
+                node.delete("compatible")
+
     if invalid_memnode:
         for node in invalid_memnode:
             sdt.tree.delete(node)
@@ -183,11 +219,24 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psu_lpd_slcr_secure', 'psu_lpd_xppu_sink', 'psu_mbistjtag', 'psu_message_buffers', 'psu_ocm_xmpu_cfg',
                             'psu_pcie_attrib_0', 'psu_pcie_dma', 'psu_pcie_high1', 'psu_pcie_high2', 'psu_pcie_low',
                             'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou', 'psu_ipi',
-                            'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu',
-                            'psx_fpd_gpv', 'ddr4']
+                            'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu', 'psx_fpd_gpv', 'ddr4', 'ps7_ram', 'ps7_afi',
+                            'ps7_pmu', 'ps7_ocmc', 'ps7_scuc', 'ps7_iop_bus_config', 'ps7_gpv', 'psu_ocm_ram_0', 'psv_ocm_ram_0',
+                            'psx_ocm_ram', 'ocm_ram', 'psx_ocm_ram_0', 'ocm_ram_0', 'gt_quad_base', 'psv_coresight_apu_cti',
+                            'psv_coresight_cpm_cti2d', 'psv_coresight_cpm_ela2a', 'psv_coresight_cpm_ela2b',
+                            'psv_coresight_cpm_ela2c', 'psv_coresight_cpm_ela2d', 'psv_coresight_cpm_fun',
+                            'psv_coresight_cpm_rom', 'psv_coresight_fpd_atm', 'psv_coresight_fpd_stm',
+                            'psv_coresight_lpd_atm', 'psv_crf', 'psv_crl',  'psv_crp', 'psv_fpd_afi',
+                            'psv_fpd_cci', 'psv_fpd_gpv', 'psv_fpd_slcr', 'psv_fpd_slcr_secure', 'psv_fpd_smmu',
+                            'psv_lpd_afi', 'psv_lpd_iou_secure_slcr', 'psv_lpd_iou_slcr', 'psv_lpd_slcr',
+                            'psv_lpd_slcr_secure', 'psv_noc_pcie_0', 'psv_noc_pcie_1', 'psv_noc_pcie_2',
+                            'psv_ocm', 'psv_pmc_aes', 'psv_pmc_bbram_ctrl', 'psv_pmc_cfi_cframe', 'psv_pmc_cfu_apb',
+                            'psv_pmc_efuse_cache', 'psv_pmc_efuse_ctrl', 'psv_pmc_global', 'psv_pmc_ppu1_mdm',
+                            'psv_pmc_ram_npi', 'psv_pmc_rsa', 'psv_pmc_sha', 'psv_pmc_slave_boot', 'psv_scntrs',
+                            'psv_pmc_slave_boot_stream', 'psv_pmc_trng', 'psv_psm_global_reg', 'psv_rpu', 'psv_scntr']
 
     if linux_dt:
-        yaml_prune_list = ["xlnx,xdma-host.yaml", "xlnx,rfdc.yaml", "xlnx,sd-fec.yaml", "xlnx,clocking-wizard.yaml"]
+        binding_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "yaml_bindings")
+        yaml_prune_list = utils.find_files("*.yaml", binding_dir)
         driver_compatlist = []
         # Shouldn't delete properties
         driver_proplist = ["#interrupt-cells", "#address-cells", "#size-cells", "device_type"]
@@ -219,8 +268,11 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     sdt.tree.delete(node)
         elif node.propval('compatible') != [''] and linux_dt:
             is_prune_node = [compat for compat in driver_compatlist if compat in node.propval('compatible', list)]
+            delete_child_nodes = False
+            if 'xlnx,usp-rf-data-converter-2.6' in node.propval('compatible'):
+                delete_child_nodes = True
             if is_prune_node:
-                delete_unused_props( node, driver_proplist)
+                delete_unused_props( node, driver_proplist, delete_child_nodes)
 
     # Remove symbol node referneces
     symbol_node = sdt.tree['/__symbols__']
@@ -247,4 +299,153 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         if sdt.tree['/cpus'].propval('address-map') != ['']:
             sdt.tree['/cpus'].delete('address-map')
 
+    if zephyr_dt:
+        xlnx_generate_zephyr_domain_dts(tgt_node, sdt)
     return True
+
+def xlnx_generate_zephyr_domain_dts(tgt_node, sdt):
+    root_node = sdt.tree[tgt_node]
+    root_sub_nodes = root_node.subnodes()
+
+    max_mem_size = 0
+
+    for node in root_sub_nodes:
+
+        soc_kconfig_file = os.path.join(sdt.outdir, "Kconfig.soc")
+        soc_kconfig = open(soc_kconfig_file, 'a')
+
+        soc_defconfig_file = os.path.join(sdt.outdir, "Kconfig.defconfig")
+        defconfig_kconfig = open(soc_defconfig_file, 'a')
+
+        if node.name == "chosen":
+                var = sdt.tree[node].propval('stdout-path', list)[0]
+                dev_node = var.split(':')[0]
+                
+                sdt.tree[node]['zephyr,console'] = dev_node
+ 
+        if node.name == "amba_pl":
+                sdt.tree.delete(node)
+                new_dst_node = node()
+                new_dst_node.abs_path = "/soc"
+                new_dst_node.name = "soc"
+                sdt.tree + new_dst_node
+                sdt.tree.sync()
+
+                symbol_node = sdt.tree['/__symbols__']
+                prop_list = list(symbol_node.__props__.keys())
+                for prop in prop_list:
+                    val = sdt.tree['/__symbols__'].propval(prop, list)[0]
+                    val = val.replace("amba_pl", "soc")
+                    sdt.tree['/__symbols__'].propval(prop, list)[0] = val
+
+                symbol_node = sdt.tree['/aliases']
+                prop_list = list(symbol_node.__props__.keys())
+                for prop in prop_list:
+                    val = sdt.tree['/aliases'].propval(prop, list)[0]
+                    val = val.replace("amba_pl", "soc")
+                    sdt.tree['/aliases'].propval(prop, list)[0] = val
+
+        if node.propval('device_type') != ['']:
+            val = node.propval('device_type', list)[0]
+            if val == "memory":
+                mem_size = node.propval('reg', list)[1]
+                if mem_size > max_mem_size:
+                    sram_node = node.abs_path
+
+        if node.propval('xlnx,ip-name') != ['']:
+            val = node.propval('xlnx,ip-name', list)[0]
+            if val == "microblaze_riscv":
+                cflags_file = os.path.join(sdt.outdir, "cflags.yaml")
+                try:
+                    stream = open(cflags_file, 'r')
+                except FileNotFoundError:
+                    print("ERROR:cflags.yaml not found. Lops file lop-microblaze-riscv.dts need to be run for generating cflags.yaml.")
+                else:
+                    data = yaml.load(stream,  Loader=yaml.Loader)
+                    var = data.get('cflags')
+                    match = re.search(r"(?<=\=).+?(?=\ )",var)
+                    sdt.tree[node]['riscv,isa'] = match.group()
+                    isa = match.group()
+
+                    ''' Parse isa string and generate Kconfig.soc
+                        and Kconfig.defconfig based on that 
+                    ''' 
+
+                    soc_kconfig.write("config SOC_MBV32\n")
+                    soc_kconfig.write("  bool \"MBV32 system implementation\" \n")
+
+                    soc_kconfig.write("  select RISCV\n")
+                    soc_kconfig.write("  select ATOMIC_OPERATIONS_C\n")
+                    soc_kconfig.write("  select INCLUDE_RESET_VECTOR\n")
+
+                    if isa.find('_zicsr') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZICSR\n")
+
+                    if isa.find('_zifencei') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZIFENCEI\n")
+                    
+                    if isa.find('_zba') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBA\n")
+
+                    if isa.find('_zbb') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBB\n")
+
+                    if isa.find('_zbc') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBC\n")
+
+                    if isa.find('_zbs') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBS\n")
+
+                    isa = isa.split('_')[0]
+
+                    if isa.find('rv32i') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_RV32I\n")
+
+                    if isa.find('m') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_M\n")
+
+                    if isa.find('a') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_A\n")
+
+                    if isa.find('c') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_C\n")
+
+                    if isa.find('f') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_F\n")
+
+                    if isa.find('d') != -1:
+                        soc_kconfig.write("  select RISCV_ISA_EXT_D\n")
+
+                    soc_kconfig.close()
+
+                    soc_defconfig_file = os.path.join(sdt.outdir, "Kconfig.defconfig")
+                    defconfig_kconfig = open(soc_defconfig_file, 'a')
+                    
+                    defconfig_kconfig.write("if SOC_MBV32\n")
+                    defconfig_kconfig.write("config SOC\n")
+                    defconfig_kconfig.write("  default \"mbv32\"\n")
+
+                    val = node.propval('clock-frequency', list)[0]
+                    defconfig_kconfig.write("config SYS_CLOCK_HW_CYCLES_PER_SEC\n")
+                    defconfig_kconfig.write("  default %s\n" % str(val))
+
+                    defconfig_kconfig.write("config RISCV_RESERVED_IRQ_ISR_TABLES_OFFSET\n")
+                    defconfig_kconfig.write("  default 12\n")
+
+                    defconfig_kconfig.close()
+
+        if node.propval('xlnx,ip-name') != ['']:
+            val = node.propval('xlnx,ip-name', list)[0]
+            if val == "axi_intc":
+                num_intr = node.propval('xlnx,num-intr-inputs', list)[0]
+                num_intr += 12
+
+    defconfig_kconfig = open(soc_defconfig_file, 'a')
+    defconfig_kconfig.write("config NUM_IRQS\n")
+    defconfig_kconfig.write("  default %s\n" % str(num_intr))
+    defconfig_kconfig.write("endif\n")
+    defconfig_kconfig.close()
+
+    sdt.tree['/chosen']['zephyr,sram'] = sram_node
+    return True
+

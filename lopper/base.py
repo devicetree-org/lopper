@@ -112,7 +112,7 @@ class lopper_base:
 
         # try pcpp first
         ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("pcpp") or "").split()
-        if ppargs:
+        if ppargs and os.path.basename(ppargs[0]) == "pcpp":
             ppargs += "--passthru-comments".split()
         else:
             ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp") or "").split()
@@ -322,6 +322,30 @@ class lopper_base:
                     if not lopper_base.string_test( prop ):
                         # change our mind
                         type_guess = LopperFmt.UINT8
+                    try:
+                        # if this throws an exception, libfdt doesn't agree with
+                        # our analysis that this is a string, so we'll try another
+                        # couple of checks to be sure that it isn't a string and
+                        # we'll switch to bytes for the type
+                        prop.as_str()
+                    except Exception as e:
+                        # this could be a very unluckily encoded number at these
+                        # lengths. i.e. mem-ctrl-base-address =  <0x76000000>; manages
+                        # to pass all the tests for a string as the first bytes look
+                        # like the letter "v" and then we find null characters (the 0's)
+                        # and declare it a partial string
+                        if len(prop) == 4:
+                            try:
+                                prop.as_uint32()
+                                type_guess = LopperFmt.UINT8
+                            except:
+                                pass
+                        if len(prop) == 8:
+                            try:
+                                prop.as_uint64()
+                                type_guess = LopperFmt.UINT8
+                            except:
+                                pass
 
                 except Exception as e:
                     # it didn't decode, fall back to numbers ..
@@ -443,17 +467,27 @@ class lopper_base:
             else:
                 return {
                     "DEFAULT" : [ 'this is the default provided phandle map' ],
+                    # As by the system device tree spec, the below should be the
+                    # description for address-map, but currently system device trees
+                    # are incorrectly using #ranges-address-cells in the node itself
+                    #"address-map" : [ '#ranges-address-cells phandle ^:#address-cells #ranges-size-cells', 0 ],
                     "address-map" : [ '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells', 0 ],
-                    "secure-address-map" : [ '#address-cells phandle #address-cells #size-cells', 0 ],
+                    "secure-address-map" : [ '#ranges-address-cells phandle ^:#address-cells #ranges-size-cells', 0 ],
                     "interrupt-parent" : [ 'phandle', 0 ],
                     "iommus" : [ 'phandle field' ],
-                    "interrupt-map" : [ '#interrupt-cells phandle #interrupt-cells' ],
+                    "interrupt-map" : [ '#address-cells #interrupt-cells phandle:#interrupt-cells' ],
                     "access" : [ 'phandle flags' ],
                     "cpus" : [ 'phandle mask mode' ],
-                    "clocks" : [ 'phandle:#clock-cells:+1' ],
+                    "clocks" : [ 'phandle:#clock-cells' ],
                     "reset-gpios" : [ 'phandle field field' ],
                     "resets" : [ 'phandle field' ],
-                    "assigned-clocks" : [ 'phandle:#clock-cells:+1' ],
+                    "assigned-clocks" : [ 'phandle:#clock-cells' ],
+                    "cpu-idle-states" : [ 'phandle' ],
+                    "power-domains" : [ 'phandle field' ],
+                    "operating-points-v2" : [ 'phandle' ],
+                    "next-level-cache" : [ 'phandle' ],
+                    "interrupt-affinity" : [ 'phandle' ],
+                    "fpga-mgr" : [ 'phandle' ],
                 }
         except:
             return {}

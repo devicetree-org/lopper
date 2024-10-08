@@ -229,13 +229,11 @@ def scan_ranges_size(range_value, ns):
     return addr, size
 
 def get_clock_prop(sdt, value):
-    clk_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == value[0]]
     """
     Baremetal clock format:
         bits[0] clock parent(controller) type(0: ZynqMP clock controller)
         bits[31:1] clock value
     """
-    compat = clk_node[0]['compatible'].value
     return value[1]
 
 def get_pci_ranges(node, value, pad):

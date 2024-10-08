@@ -1,0 +1,126 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# %YAML 1.2
+---
+$id: http://devicetree.org/schemas/sound/xlnx,i2s.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx I2S Playback/Capture audio system
+
+maintainers:
+  - Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+
+description:
+  IP I2S Transmitter  and receiver cores are soft IP cores in AMD Vivado
+  design suite which make it easy to implement Inter-IC-Sound (I2S)
+  interface used to connect audio devices for transmitting and
+  receiving PCM audio.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,i2s-transmitter-1.0
+          - xlnx,i2s-receiver-1.0
+
+  reg:
+    minItems: 2
+
+  interrupts:
+    minItems: 1
+    maxItems: 4
+
+  interrupt-names:
+    items:
+      - const: irq
+
+  clocks:
+    description: List of phandles to AXI ctrl, audio mclock and audio Clock.
+    items:
+      - description: AXI ctrl clock
+      - description: Audio mClock
+      - description: Audio clock
+
+  clock-names:
+    items:
+      - const: aud_mclk
+      - const: s_axi_ctrl_aclk
+      - const: s_axis_aud_aclk
+
+
+  xlnx,dwidth:
+    description: sample data width can be of 16 or 24.
+
+  xlnx,depth:
+    description:  FIFO depth
+
+  xlnx,num-channels:
+    description: Number of I2S streams. Can be any of 1, 2, 3, 4. supported channels = 2 * xlnx,num-channels.
+
+  xlnx,is-master:
+    description: The device acts as master or not.
+
+  xlnx,snd-pcm:
+    description: Refrence to audio formatter block.
+
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - interrupt-names
+  - interrupt-parent
+  - clock-names
+  - clocks
+  - aud_mclk
+  - xlnx,dwidth
+  - xlnx,depth
+  - xlnx,snd-pcm
+  - xlnx,num-channels
+  - xlnx,rable
+  - xlnx,is-master
+  - xlnx,32bit-lr
+
+additionalProperties: false
+
+examples:
+  - |
+   bus {
+       audio_ss_0_i2s_transmitter_0: i2s_transmitter@a00d0000 {
+           aud_mclk = <18432008>;
+           interrupts = < 0 108 4 >;
+           compatible = "xlnx,i2s-transmitter-1.0" , "xlnx,i2s-transmitter-1.0";
+           xlnx,dwidth = <0x18>;
+           xlnx,depth = <0x80>;
+           interrupt-parent = <&gic>;
+           xlnx,rable = <0>;
+           xlnx,ip-name = "i2s_transmitter";
+           reg = <0x0 0xa00d0000 0x0 0x10000>;
+           clocks = <&audio_ss_0_clk_wiz_0 0>, <&zynqmp_clk 71>, <&audio_ss_0_clk_wiz_0 0>;
+           xlnx,num-channels = <0x1>;
+           xlnx,snd-pcm = <&audio_ss_0_audio_formatter_2>;
+           xlnx,i2stx-board-interface = "Custom";
+           xlnx,is-master = <1>;
+           clock-names = "aud_mclk" , "s_axi_ctrl_aclk" , "s_axis_aud_aclk";
+           xlnx,32bit-lr = <0>;
+           interrupt-names = "irq";
+      };
+      audio_ss_0_i2s_receiver_0: i2s_receiver@a00c0000 {
+          aud_mclk = <18432008>;
+          interrupts = < 0 108 4 >;
+          compatible = "xlnx,i2s-receiver-1.0" , "xlnx,i2s-receiver-1.0";
+          xlnx,dwidth = <0x18>;
+          xlnx,depth = <0x80>;
+          interrupt-parent = <&gic>;
+          xlnx,rable = <0>;
+          reg = <0x0 0xa00d0000 0x0 0x10000>;
+          clocks = <&audio_ss_0_clk_wiz_0 0>, <&zynqmp_clk 71>, <&audio_ss_0_clk_wiz_0 0>;
+          xlnx,num-channels = <0x1>;
+          xlnx,snd-pcm = <&audio_ss_0_audio_formatter_2>;
+          xlnx,i2stx-board-interface = "Custom";
+          xlnx,is-master = <1>;
+          clock-names = "aud_mclk" , "m_axis_aud_aclk" , "s_axi_ctrl_aclk";
+          xlnx,32bit-lr = <0>;
+          interrupt-names = "irq";
+      };
+   };
+...

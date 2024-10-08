@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 from pathlib import Path
+from pathlib import PurePosixPath
 from io import StringIO
 import contextlib
 from importlib.machinery import SourceFileLoader
@@ -99,6 +100,9 @@ class LopperSDT:
         self.permissive = False
         self.merge = False
         self.support_files = False
+        self.symbols = False
+        self.warnings = []
+        self.werror = False
 
     def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True, config=None):
         """executes setup and initialization tasks for a system device tree
@@ -122,9 +126,9 @@ class LopperSDT:
 
         # check for required support applications
         if libfdt:
-            support_bins = [ "dtc", "cpp" ]
+            support_bins = [ os.environ.get("LOPPER_DTC", "dtc"), os.environ.get("LOPPER_CPP", "cpp") ]
         else:
-            support_bins = [ "cpp" ]
+            support_bins = [ os.environ.get("LOPPER_CPP", "cpp") ]
 
         for s in support_bins:
             lopper.log._info( f"checking for support binary: {s}" )
@@ -238,7 +242,8 @@ class LopperSDT:
             # in case there are dtsi files, etc.
             include_paths += " " + str(sdt_file.parent) + " "
             self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
-                                          self.save_temps, self.verbose, self.enhanced, self.permissive )
+                                          self.save_temps, self.verbose, self.enhanced, self.permissive,
+                                          self.symbols )
 
             if self.use_libfdt:
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
@@ -252,8 +257,17 @@ class LopperSDT:
             dct = Lopper.export( self.FDT )
 
             self.tree = LopperTree()
+            self.tree.warnings = self.warnings
+            self.tree.werror = self.werror
             self.tree.strict = not self.permissive
             self.tree.load( dct )
+
+            self.tree.__dbg__ = self.verbose
+
+            # Do a check for common sanity issues here, invalid phandles, etc.
+            self.tree.resolve( check=True )
+
+            self.tree.__symbols__ = self.symbols
 
             # join any extended trees to the one we just created
             for t in sdt_extended_trees:
@@ -434,6 +448,8 @@ class LopperSDT:
             a_file = self.assist_find( a )
             if a_file:
                 self.assists.append( LopperAssist( str(a_file.resolve()) ) )
+            else:
+                lopper.log_warning( f"assist {a_file} not found" )
 
         self.assists_wrap()
 
@@ -540,7 +556,10 @@ class LopperSDT:
         if not tree_to_write:
             tree_to_write = self.tree
 
-        if re.search( ".dtb", output_filename ):
+        if re.search( "\.dtb$", output_filename ):
+            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+                output_filename = self.outdir + "/" + output_filename
+
             if self.use_libfdt:
                 fdt = Lopper.fdt()
                 Lopper.sync( fdt, tree_to_write.export() )
@@ -549,7 +568,10 @@ class LopperSDT:
                 lopper.log._error( f"dtb output selected ({output_filename}), but libfdt is not enabled" )
                 sys.exit(1)
 
-        elif re.search( ".dts", output_filename ):
+        elif re.search( "\.dts$", output_filename ):
+            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+                output_filename = self.outdir + "/" + output_filename
+
             o = Path(output_filename)
             if o.exists() and not overwrite:
                 lopper.log._error( f"output file {output_filename} exists and force overwrite is not enabled" )
@@ -567,7 +589,10 @@ class LopperSDT:
             printer.load( tree_to_write.export() )
             printer.exec()
 
-        elif re.search( ".yaml", output_filename ):
+        elif re.search( "\.yaml$", output_filename ):
+            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+                output_filename = self.outdir + "/" + output_filename
+
             o = Path(output_filename)
             if o.exists() and not overwrite:
                 lopper.log._error( f"output file {output_filename} exists and force overwrite is not enabled"  )
@@ -575,7 +600,10 @@ class LopperSDT:
 
             yaml = LopperYAML( None, tree_to_write, config=self.config )
             yaml.to_yaml( output_filename )
-        elif re.search( ".json", output_filename ):
+        elif re.search( "\.json$", output_filename ):
+            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+                output_filename = self.outdir + "/" + output_filename
+
             o = Path(output_filename)
             if o.exists() and not overwrite:
                 lopper.log._error( f"output file {output_filename} exists and force overwrite is not enabled" )
@@ -584,6 +612,9 @@ class LopperSDT:
             json = LopperYAML( None, self.tree, config=self.config )
             json.to_json( output_filename )
         else:
+            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+                output_filename = self.outdir + "/" + output_filename
+
             # we use the outfile extension as a mask
             (out_name, out_ext) = os.path.splitext(output_filename)
             cb_funcs = self.find_compatible_assist( 0, "", out_ext )
@@ -643,7 +674,7 @@ class LopperSDT:
         except FileNotFoundError:
             # check the path from which lopper is running, that directory + assists, and paths
             # specified on the command line
-            search_paths =  [ lopper_directory ] + [ lopper_directory + "/assists/" ] + local_load_paths
+            search_paths =  [ lopper_directory ] + [ lopper_directory + "/assists/" ] + local_load_paths + self.load_paths
             for s in search_paths:
                 mod_file = Path( s + "/" + mod_file.name )
                 try:
@@ -844,7 +875,7 @@ class LopperSDT:
                 else:
                     lopper.log._warning( f"a configured assist has no module loaded" )
         else:
-            lopper.log._warning( f"no modules loaded, no compat search is possible" )
+            lopper.log._info( f"no modules loaded, no compat search is possible" )
 
         return cb_func
 
@@ -1019,6 +1050,18 @@ class LopperSDT:
                             prop_val = Lopper.property_convert( prop_val )
 
                             # construct a test prop, so we can use the internal compare
+                            # Note:
+                            #   - This property is not assigned to a node, or a tree
+                            #   - Which means phandles can't be resolved to nodes, since
+                            #     that requires a node and a tree
+                            #   - Comparisons of phandles don't require nodes, since we
+                            #     can look them up by label
+                            #   - We are relying on the property comparision, which uses
+                            #     phandle_map() to tag phandles as "#invalid" strings
+                            #     which we identify as non-zero and do the lookup.
+                            #   - If that condition changes in the future, we could
+                            #     assign the property to the tree and a node, and then
+                            #     remove it after, since that would allow phandle resolution
                             test_prop = LopperProp( prop, -1, None, prop_val )
                             test_prop.ptype = test_prop.property_type_guess( True )
 
@@ -1480,6 +1523,12 @@ class LopperSDT:
                 # append the directory of the located module onto the search
                 # path. This is needed if that module imports something from
                 # its own directory
+
+                if lopper_directory not in sys.path:
+                    # TODO: might want to make this a utility function
+                    sys.path.append( lopper_directory )
+                    sys.path.append( lopper_directory + "/assists" )
+
                 sys.path.append( str(mod_file_abs.parent) )
                 try:
                     imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
@@ -1818,6 +1867,11 @@ class LopperSDT:
                 tree = self.tree
 
             try:
+                flags = lop_node['flags'].value[0]
+            except:
+                flags = ""
+
+            try:
                 nodes_selection = lop_node["nodes"].value[0]
             except:
                 nodes_selection = ""
@@ -1867,7 +1921,7 @@ class LopperSDT:
                                 try:
                                     n.delete( modify_prop )
                                 except:
-                                    lopper.log._warning( f"property {modify_prop} not found, and not deleted" )
+                                    lopper.log._info( f"property {modify_prop} not found in node {n}, and not deleted" )
                                     # no big deal if it doesn't have the property
                                     pass
 
@@ -1902,7 +1956,13 @@ class LopperSDT:
                                 node_property = None
 
                             phandle_node_name = re.sub( '&', '', node )
-                            pfnodes = tree.nodes( phandle_node_name )
+
+                            # check to see if the match should be strict
+                            strict = False
+                            if "strict" in flags:
+                                strict = True
+
+                            pfnodes = tree.nodes( phandle_node_name, strict )
                             if not pfnodes:
                                 pfnodes = tree.lnodes( phandle_node_name )
                                 if not pfnodes:
@@ -1970,14 +2030,15 @@ class LopperSDT:
 
                         if modify_source_path.parent != modify_dest_path.parent:
                             lopper.log._debug( f"[{tree}] node move: {modify_source_path} -> {modify_dest_path}" )
+
+                            # delete the old node
+                            tree.delete( node )
+
                             # deep copy the node
                             new_dst_node = node()
                             new_dst_node.abs_path = modify_val
 
                             tree + new_dst_node
-
-                            # delete the old node
-                            tree.delete( node )
 
                             tree.sync()
 
