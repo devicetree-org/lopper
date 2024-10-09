@@ -232,8 +232,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psv_ocm', 'psv_pmc_aes', 'psv_pmc_bbram_ctrl', 'psv_pmc_cfi_cframe', 'psv_pmc_cfu_apb',
                             'psv_pmc_efuse_cache', 'psv_pmc_efuse_ctrl', 'psv_pmc_global', 'psv_pmc_ppu1_mdm',
                             'psv_pmc_ram_npi', 'psv_pmc_rsa', 'psv_pmc_sha', 'psv_pmc_slave_boot', 'psv_scntrs',
-                            'psv_pmc_slave_boot_stream', 'psv_pmc_trng', 'psv_psm_global_reg', 'psv_rpu', 'psv_scntr', 'v_tc',
-                            'mipi_dphy', 'mipi_csi2_rx_ctrl', 'mipi_dsi_tx_ctrl', 'v_hscaler', 'v_vscaler', 'v_csc', 'v_hdmi_tx']
+                            'psv_pmc_slave_boot_stream', 'psv_pmc_trng', 'psv_psm_global_reg', 'psv_rpu', 'psv_scntr']
 
     if linux_dt:
         binding_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "yaml_bindings")
@@ -253,6 +252,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 if val in linux_ignore_ip_list:
                     sdt.tree.delete(node)
                 elif 'xlnx,zynqmp-ipi-mailbox' in node.propval('compatible'):
+                    sdt.tree.delete(node)
+                if 'xlnx,is-hierarchy' in node.__props__:
                     sdt.tree.delete(node)
             elif node.name == "rpu-bus":
                 sdt.tree.delete(node)
