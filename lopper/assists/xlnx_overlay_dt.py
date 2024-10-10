@@ -286,11 +286,11 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                             plat.buf('%s' % phandle_prop)
                         elif re.search("clocks =", str(p)):
                             plat.buf('%s' % node['clocks'])
+                        elif p.name == "interrupt-parent":
+                            if gic_node and imux_node:
+                                if p.value[0] == imux_node.phandle:
+                                    plat.buf('%s' % str(p).replace('imux', 'gic'))
                         else:
-                            if p.name == "interrupt-parent":
-                                if gic_node and imux_node:
-                                    if p.value[0] == imux_node.phandle:
-                                        p.value =  gic_node.phandle
                             plat.buf('%s' % p)
 
                     plat.buf('\n')
