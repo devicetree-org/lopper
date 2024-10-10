@@ -39,7 +39,6 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     # and create a compatible_list from these nodes.
     symbol_node = ""
     chosen_node = ""
-    driver_name = ""
     stdin = None
     stdin_node = None
     try:
@@ -133,7 +132,6 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
             drv_config_name = drv_name
 
         if drv_config_name == 'XAxiEthernet':
-           driver_name = drv_config_name
            for node in node_list:
                if "xlnx,eth-dma" in node["compatible"].value:
                    dma_node_list.append(node)
@@ -299,8 +297,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         for app in testapp:
             if 'SelfTest' in app or 'selftest' in app:
                 status_assignment = f"status = {app}({xpar_def});"
-            elif driver_name == "XAxiEthernet":
-                 driver_name = ""
+            elif 'AxiEthernetSgDmaIntrExample' in app:
                  if dma_label:
                     status_assignment = f"status = {app}(&{node}, &{dma_label}, {xpar_def});"
                  else:
