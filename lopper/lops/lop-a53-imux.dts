@@ -1,8 +1,10 @@
 /*
- * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+ * Copyright (c) 2020 - 2022 Xilinx Inc. All rights reserved.
+ * Copyright (c) 2022 - 2024 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Author:
  *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+ *       Onkar Harsh <onkar.harsh@amd.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -19,31 +21,63 @@
                         id = "imux,imux-v1";
                         noexec;
                 };
+
                 lop_1 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        // Rename the interrupt controller node
+                        modify = "/apu-bus/interrupt-controller@f9010000::/axi/interrupt-controller@f9010000";
+                };
+
+                lop_2 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        // Rename the interrupt controller node
+                        modify = "/apu-bus/::";
+                };
+
+                lop_3 {
+                        compatible = "system-device-tree-v1,lop,select-v1";
+                        // clear any old selections
+                        select_1;
+                        select_2 = "/axi/interrupt-controller@.*";
+                };
+
+                lop_4 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                                if tree.nodes('/__symbols__', strict=True):
+                                        tree['/__symbols__']['gic'] = str(tree.deref('gic_a53'))
+                                        tree['/__symbols__'].delete('gic_a53')
+                            ";
+                };
+
+                lop_5 {
+                      compatible = "system-device-tree-v1,lop,code-v1";
+                      code = "
+                                for s in __selected__:
+                                    if s.label == 'gic_a53':
+                                        s.label = 'gic'
+                                        break
+                            ";
+                };
+
+                lop_6 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       // clear any old selections
                       select_1;
                       select_2 = "/.*:interrupt-parent:&imux";
                 };
-                lop_2 {
+
+                lop_7 {
                       compatible = "system-device-tree-v1,lop,modify";
                       // this will use the selected nodes above, to add a property
-                      modify = ":interrupt-parent:&gic_a53";
+                      flags = "strict";
+                      modify = ":interrupt-parent:&gic";
                 };
-                lop_3 {
+
+                lop_8 {
                         compatible = "system-device-tree-v1,lop,modify";
                         // delete the interrupt-multiplex
                         modify = "/axi/interrupt-multiplex::";
-                };
-                lop_4 {
-                        compatible = "system-device-tree-v1,lop,modify";
-                        // Rename the interrupt controller node
-                        modify = "/apu-bus/interrupt-controller@f9010000::/axi/interrupt-controller@f9010000";
-                };
-                lop_5 {
-                        compatible = "system-device-tree-v1,lop,modify";
-                        // Rename the interrupt controller node
-                        modify = "/apu-bus/::";
                 };
         };
 };
