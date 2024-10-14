@@ -122,7 +122,9 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     sdt.tree.delete(node)
                     break
             if node.propval('xlnx,name') != ['']:
-                node.delete('xlnx,name')
+                if node.parent.propval('compatible') != ['']:
+                    if not "xlnx,versal-sysmon" in node.parent.propval('compatible'):
+                        node.delete('xlnx,name')
             if node.propval('xlnx,interconnect-s-axi-masters') != ['']:
                 node.delete('xlnx,interconnect-s-axi-masters')
             if node.propval('xlnx,rable') != ['']:
