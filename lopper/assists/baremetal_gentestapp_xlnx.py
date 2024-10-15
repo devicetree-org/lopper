@@ -41,6 +41,8 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     chosen_node = ""
     stdin = None
     stdin_node = None
+    dma_header = None
+    mcdma_header = None
     try:
         stdin = options['args'][2]
     except IndexError:
@@ -137,10 +139,12 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                    dma_node_list.append(node)
                    dma_label = get_label(sdt, symbol_node, node)
                    testapp_name.update({dma_label: 'XAxiDma'})
+                   dma_header = True
                if "xlnx,eth-mcdma" in node["compatible"].value:
                    dma_node_list.append(node)
                    dma_label = get_label(sdt, symbol_node, node)
                    testapp_name.update({dma_label: 'XMcdma'})
+                   mcdma_header = True
 
         stdin_addr = None
         if stdin_node:
@@ -153,7 +157,16 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                 stdin_addr = val
         try:
             testapp_schema = schema['tapp']
-            tapp_drv_header_file_name = f"{drv_name}_header.h"
+            if dma_header is None and mcdma_header is None:
+              tapp_drv_header_file_name = f"{drv_name}_header.h"
+            else:
+              if dma_header:
+                tapp_drv_header_file_name = f"{drv_name}_intr_header.h"
+                dma_header = None
+              if mcdma_header:
+                tapp_drv_header_file_name = f"{drv_name}_mcdma_intr_header.h"
+                mcdma_header = None
+
             tapp_drv_header_src_file = os.path.join(drv_data_path, tapp_drv_header_file_name)
             tapp_drv_header_dst_file = os.path.join(sdt.outdir, tapp_drv_header_file_name)
             periph_file_list += [tapp_drv_header_dst_file]
