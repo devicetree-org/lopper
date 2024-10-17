@@ -117,7 +117,7 @@ required:
   - xlnx,s2mm-async-clock
   - xlnx,s2mm-dataformat
   - xlnx,rx
-  - xlxn,tx
+  - xlnx,tx
 
 additionalProperties: false
 
