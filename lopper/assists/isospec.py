@@ -1387,7 +1387,7 @@ def isospec_domain( tgt_node, sdt, options ):
                 _error( "isospec: no isolation specification passed" )
             isospecf = args2.pop(0)
         except Exception as e:
-            _error( f"isospec: no isolation specification passed: {e}" )
+            _error( f"isospec: no isolation specification passed: {e}", True  )
 
     domain_yaml_file = "domains.yaml"
     try:
@@ -1399,7 +1399,7 @@ def isospec_domain( tgt_node, sdt, options ):
         iso_file = Path( isospecf )
         iso_file_abs = iso_file.resolve( True )
     except FileNotFoundError as e:
-        _error( f"ispec file {isospec} not found" )
+        _error( f"ispec file {isospecf} not found", True )
 
     # convert the spec to a LopperTree for consistent manipulation
     json_in = LopperJSON( json=iso_file_abs )
