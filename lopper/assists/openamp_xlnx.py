@@ -1084,6 +1084,15 @@ def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_n
     rpu_core = openamp_channel_info["rpu_core"+channel_id]
     cluster_node_path = "/rf5ss@ff9a0000" # SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP
     cluster_reg = 0xff9a0000
+    driver_compat_str  = {
+      SOC_TYPE.ZYNQMP : "xlnx,zynqmp-r5-remoteproc",
+      SOC_TYPE.VERSAL : "xlnx,versal-r5-remoteproc",
+      SOC_TYPE.VERSAL_NET : "xlnx,versal-net-r52-remoteproc",
+    }
+
+    if platform not in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]:
+        print("ERROR: unsupported platform: ", platform)
+        return False
 
     if platform == SOC_TYPE.VERSAL_NET:
         cluster_node_path = "/rf52ss_"
@@ -1103,7 +1112,7 @@ def xlnx_remoteproc_construct_cluster(tree, cpu_config, elfload_nodes, new_ddr_n
         except KeyError:
             cluster_node = LopperNode(-1,cluster_node_path)
             cluster_node = LopperNode(-1, cluster_node_path)
-            cluster_node + LopperProp(name="compatible", value = "xlnx,zynqmp-r5-remoteproc")
+            cluster_node + LopperProp(name="compatible", value = driver_compat_str[platform])
             cluster_node + LopperProp(name="#address-cells", value = 0x2)
             cluster_node + LopperProp(name="#size-cells", value = 0x2)
             cluster_node + LopperProp(name="ranges", value= [])
