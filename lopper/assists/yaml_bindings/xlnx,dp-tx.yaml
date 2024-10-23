@@ -182,21 +182,10 @@ required:
   - xlnx,hdcp-enable
   - xlnx,hdcp22-enable
   - xlnx,hdcp1x-keymgmt
+  - xlnx,vtc-offset
   - phy-names
   - phys
   - ports
-
-additionalProperties: false
-
-if:
-  properties:
-    compatible:
-      contains:
-        const: xlnx,v-dp-txss-3.1
-
-then:
-  required:
-    - xlnx,vtc-offset
 
 examples:
   - |

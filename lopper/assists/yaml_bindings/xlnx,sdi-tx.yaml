@@ -95,12 +95,18 @@ required:
   - compatible
   - reg
   - interrupts
+  - interrupt-names
+  - interrupt-parent
   - clocks
   - clock-names
   - phy-reset-gpio
   - xlnx,tx-insert-c-str-st352
   - xlnx,vpss
+  - xlnx,bpp
+  - xlnx,line-rate
+  - xlnx,pixels-per-clock
   - xlnx,qpll1enabled
+  - xlnx,qpll1_enabled
   - xlnx,picxo_enabled
   - ports
 
