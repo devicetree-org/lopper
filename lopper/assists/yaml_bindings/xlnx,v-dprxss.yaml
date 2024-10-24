@@ -177,6 +177,7 @@ required:
   - phy-names
   - xlnx,vidphy
   - xlnx,dp-retimer
+  - xlnx,mode
   - phys
   - ports
 
@@ -201,6 +202,7 @@ examples:
        xlnx,hdcp-enable = <1>;
        xlnx,hdcp1x-keymgmt = <&hdcp_keymngmt_blk_0>;
        xlnx,lane-count = <4>;
+       xlnx,mode = <0>;
        phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
        phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>,
               <&vphy_lane2 0 1 1 0>, <&vphy_lane3 0 1 1 0>;
