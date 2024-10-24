@@ -89,6 +89,9 @@ required:
   - xlnx,video-width
   - xlnx,pixels-per-clock
   - xlnx,video-intf
+  - xlnx,picxo_enabled
+  - reset-gt-gpios
+  - picxo-reset-gpios
   - xlnx,bpp
   - ports
 
