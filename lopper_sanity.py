@@ -2044,40 +2044,92 @@ def lops_code_test( device_tree, lop_file, verbose ):
 
     output.reset()
 
-def openamp_sanity_test( verbose ):
+def inplace_change(filename, old_string, new_string):
+    # Safely read the input filename using 'with'
+    with open(filename) as f:
+        s = f.read()
+        if old_string not in s:
+            print('"{old_string}" not found in {filename}.'.format(**locals()))
+            return
+
+    # Safely write the changed content, if found in the file
+    with open(filename, 'w') as f:
+        print('Changing "{old_string}" to "{new_string}" in {filename}'.format(**locals()))
+        s = s.replace(old_string, new_string)
+        f.write(s)
+
+def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str, remoteproc_str, nodes_to_check, verbose ):
     demo_area = os.getcwd() + "/demos/openamp/inputs/"
-    sdt = demo_area + "system-dt/system-top.dts"
-    overlay = demo_area + "/openamp-overlay-zynqmp.yaml"
     lops_area = os.getcwd() + "/lopper/lops/"
 
     dt = setup_system_device_tree( outdir )
     device_tree = LopperSDT( sdt )
     device_tree.dryrun = False
-    device_tree.output_file = outdir + "/openamp_sanity_output.dts"
+    device_tree.output_file = outdir + output_sdt
     device_tree.cleanup_flag = True
     device_tree.save_temps = False
     device_tree.enhanced = True
 
-    local_inputs = [ overlay, lops_area + "lop-load.dts",
+    inplace_change(lops_area + "lop-openamp-invoke.dts", 'a53', target_soc)
+    inplace_change(lops_area + "lop-gen_domain_dts-invoke.dts", 'a72', target_soc)
+
+    local_inputs = [ overlay,
+                     lops_area + "lop-load.dts",
                      lops_area + "lop-xlate-yaml.dts",
                      lops_area + "lop-openamp-invoke.dts",
-                     lops_area + "lop-a53-imux.dts" ]
+                     lops_area + "lop-gen_domain_dts-invoke.dts",
+                     lops_area + "lop-" + target_soc + "-imux.dts" ]
 
     device_tree.setup( sdt, local_inputs, "", True, libfdt=libfdt )
     device_tree.perform_lops()
     device_tree.write( enhanced = True )
 
+    nodes_found = []
+    for i, v in enumerate(nodes_to_check):
+        nodes_found.append(False)
+
     pass_test = False
     for n in device_tree.tree.__nodes__["/"].subnodes():
+
+        for i, v in enumerate(nodes_to_check):
+            if n.name == v or n.label == v:
+                nodes_found[i] = True
+
         pp = n.propval("compatible")
         if pp != ['']:
-            if ('r5' in n.name or 'rf5' in n.name) and pp == 'xlnx,zynqmp-r5-remoteproc':
+            if ('r5' in n.name or 'rf5' in n.name) and pp == remoteproc_str:
                 pass_test = True
 
+    for i,v in enumerate(nodes_to_check):
+        if nodes_found[i] == False:
+            print('did not find node: ', nodes_to_check[i])
+            pass_test = False
+
     if pass_test:
-        test_passed( "OpenAMP Sanity Test")
+        test_passed(test_str)
     else:
-        test_failed( "OpenAMP Sanity Test")
+        test_failed(test_str)
+
+def openamp_sanity_test( verbose ):
+    demo_area = os.getcwd() + "/demos/openamp/inputs/"
+
+    sdt = demo_area + "system-dt/system-top.dts"
+    overlay = demo_area + "/openamp-overlay-zynqmp.yaml"
+    target_soc = "a53"
+    test_str = "OpenAMP ZynqMP Sanity Test"
+    rproc_str = 'xlnx,zynqmp-r5-remoteproc'
+    output_sdt = "openamp_sanity_output_zynqmp.dts"
+    nodes_to_check = [ "psu_r5_0_atcm_global", "psu_r5_0_btcm_global", "psu_r5_1_atcm_global", "psu_r5_1_btcm_global" ]
+    openamp_sanity_test_generic(sdt, overlay, output_sdt, target_soc, test_str, rproc_str, nodes_to_check, verbose)
+
+    output_sdt = "/openamp_sanity_output_versal.dts"
+    sdt = demo_area + "vck190-system-dt/system-top.dts"
+    overlay = demo_area + "/openamp-overlay-versal.yaml"
+    target_soc = "a72"
+    test_str = "OpenAMP Versal Sanity Test"
+    rproc_str = 'xlnx,versal-r5-remoteproc'
+    nodes_to_check = [ "psv_r5_1_btcm_global", "psv_r5_1_atcm_global", "psv_r5_0_btcm_global", "psv_r5_0_atcm_global" ]
+    openamp_sanity_test_generic(sdt, overlay, output_sdt, target_soc, test_str, rproc_str, nodes_to_check, verbose)
 
 def lops_sanity_test( device_tree, lop_file, verbose ):
     if not libfdt:
