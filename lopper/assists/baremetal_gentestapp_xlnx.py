@@ -133,7 +133,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         except KeyError:
             drv_config_name = drv_name
 
-        if drv_config_name == 'XAxiEthernet':
+        if drv_config_name == 'XAxiEthernet' and 'tapp' in schema:
            for node in node_list:
                if "xlnx,eth-dma" in node["compatible"].value:
                    dma_node_list.append(node)
