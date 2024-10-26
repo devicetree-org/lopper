@@ -157,6 +157,7 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1]
 
+ - xlnx,hdmi-connector
   xlnx,tx-buffer-bypass:
     description: Flag to indicate buffer bypass logic availability.
     allOf:
@@ -191,6 +192,10 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1]
 
+  xlnx,xilinx-vfmc:
+    description: |
+      Reference to the on board fmc connector driver.    
+
   "#phy-cells":
     const: 0
 
@@ -220,6 +225,7 @@ required:
   - xlnx,tx-buffer-bypass
   - xlnx,rx-frl-refclk-sel
   - xlnx,tx-frl-refclk-sel
+  - xlnx,xilinx-vfmc    
   - '#phy-cells'
   - phandle
 
