@@ -206,6 +206,20 @@ def get_unique_memip_list(mem_ranges):
 # sdt: is the system device-tree
 # options: baremetal application source path
 def xlnx_generate_bm_linker(tgt_node, sdt, options):
+    root_node = sdt.tree[tgt_node]
+    root_sub_nodes = root_node.subnodes()
+    mem_nodes = []
+    symbol_node = ""
+    for node in root_sub_nodes:
+        try:
+            if node.name == "__symbols__":
+                symbol_node = node
+            device_type = node["device_type"].value
+            if "memory" in device_type:
+                mem_nodes.append(node)
+        except:
+           pass
+
     mem_ranges = get_memranges(tgt_node, sdt, options)
     unique_mem_ip_list = get_unique_memip_list(mem_ranges)
     default_ddr = None
@@ -318,12 +332,26 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             openamp_elfload_start = elfload_tuple[0]
             openamp_elfload_sz = elfload_tuple[1]
 
+    valid_mem_ips = []
+    if (cpu_ip_name == "microblaze" or cpu_ip_name == "microblaze_riscv") and match_cpunode.propval('xlnx,memory-ip-list') != ['']:
+        # Get the memory node list
+        for node in mem_nodes:
+            label_name = get_label(sdt, symbol_node, node)
+            if label_name in match_cpunode.propval('xlnx,memory-ip-list'):
+                if node.propval('xlnx,ip-name') != ['']:
+                    valid_mem_ips.append(node.propval('xlnx,ip-name')[0])
+
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
         if default_ddr is None:
             if "axi_emc" in key and len(unique_mem_ip_list) != 1:
                 pass
             else:
-                default_ddr = key
+                if (cpu_ip_name == "microblaze" or cpu_ip_name == "microblaze_riscv") and valid_mem_ips:
+                    valid_mem = [mem_ip for mem_ip in valid_mem_ips if key.rsplit('_', 1)[0] in mem_ip]
+                    if valid_mem:
+                        default_ddr = key
+                else:
+                    default_ddr = key
         start,size = value[0], value[1]
         """
         Initial 80 bytes is being used by the linker vectors section in case of Microblaze.
