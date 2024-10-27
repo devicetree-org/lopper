@@ -157,7 +157,6 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1]
 
- - xlnx,hdmi-connector
   xlnx,tx-buffer-bypass:
     description: Flag to indicate buffer bypass logic availability.
     allOf:
