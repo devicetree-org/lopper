@@ -101,7 +101,7 @@ properties:
     description: |
       Present when HDCP2x is enabled.
 
-  xlnx,hdcp1x-keymgmt:
+  xlnx,hdcp1x_keymgmt:
     description: |
       A phandle to a syscon device, used to access
       HDCP1x keymgmt registers.
@@ -180,6 +180,7 @@ required:
   - xlnx,frl-clk-freq-khz
   - xlnx,vid-clk-freq-khz
   - xlnx,input-pixels-per-clock
+  - xlnx,hdcp1x_keymgmt
   - phys
   - phy-names
   - ports

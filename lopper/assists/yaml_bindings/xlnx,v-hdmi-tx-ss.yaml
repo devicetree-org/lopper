@@ -134,6 +134,12 @@ properties:
       present, indicates optional audio core needed for audio usecase is
       included.
 
+  xlnx,hdcp1x-keymgmt:
+    description:
+      A phandle to a syscon device, used to access
+      hdcp1x keymgmt registers.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
   xlnx,snd-pcm:
     description: |
       Reference to audio formatter block. Add this if, audio formatter
@@ -196,6 +202,7 @@ required:
   - xlnx,max-bits-per-component
   - xlnx,vid-interface
   - xlnx,xlnx-hdmi-acr-ctrl
+  - xlnx,hdcp1x-keymgmt
   - ports
 
 additionalProperties: false

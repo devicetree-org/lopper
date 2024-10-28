@@ -151,6 +151,7 @@ required:
   - phy-names
   - xlnx,input-pixels-per-clock
   - xlnx,max-bits-per-component
+  - xlnx,hdcp1x-keymgmt
   - xlnx,vid-interface
   - xlnx,max-frl-rate
   - ports
