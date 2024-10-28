@@ -117,6 +117,12 @@ properties:
       This denotes phandles for phy lanes registered for HDMI protocol.
       HDMI 1.4/2.0 always require 3 lanes
 
+  xlnx,hdcp1x_keymgmt:
+    description: |
+      A phandle to a syscon device, used to access
+      HDCP1x keymgmt registers.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
   phy-names:
     items:
       - const: hdmi-phy0
@@ -166,6 +172,7 @@ required:
   - xlnx,snd-pcm
   - xlnx,include-hdcp-1-4
   - xlnx,include-hdcp-2-2
+  - xlnx,hdcp1x_keymgmt
   - phys
   - phy-names
   - ports
