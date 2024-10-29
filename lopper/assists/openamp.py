@@ -75,6 +75,7 @@ def openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
 openamp_d_to_d_compat_strings = {
     "openamp,rpmsg-v1" : openamp_rpmsg_expand,
     "openamp,remoteproc-v1" : openamp_remoteproc_expand,
+    "openamp,remoteproc-v2" : openamp_remoteproc_expand,
 }
 
 def is_openamp_d_to_d(tree, subnode, verbose = 0 ):

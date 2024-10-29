@@ -116,7 +116,7 @@
                                             # flip the name and label
                                             ng.label = name
                                             ng.name = 'resourcegroup@{}'.format(i)
-                                            ng['compatible'] = ['openamp,remoteproc-v1', 'openamp,group-v1' ]
+                                            ng['compatible'] = ['openamp,remoteproc-v1', 'openamp,remoteproc-v2', 'openamp,group-v1' ]
                                             tree + ng
 
                                         # we've re-homed the resource groups. delete the outer one
