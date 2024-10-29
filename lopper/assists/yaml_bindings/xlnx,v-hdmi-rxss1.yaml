@@ -181,6 +181,7 @@ required:
   - xlnx,vid-clk-freq-khz
   - xlnx,input-pixels-per-clock
   - xlnx,hdcp1x_keymgmt
+  - xlnx,snd-pcm
   - phys
   - phy-names
   - ports

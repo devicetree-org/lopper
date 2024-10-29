@@ -153,6 +153,7 @@ required:
   - xlnx,max-bits-per-component
   - xlnx,hdcp1x-keymgmt
   - xlnx,vid-interface
+  - xlnx,snd-pcm
   - xlnx,max-frl-rate
   - ports
 

@@ -203,6 +203,7 @@ required:
   - xlnx,vid-interface
   - xlnx,xlnx-hdmi-acr-ctrl
   - xlnx,hdcp1x-keymgmt
+  - xlnx,snd-pcm
   - ports
 
 additionalProperties: false
