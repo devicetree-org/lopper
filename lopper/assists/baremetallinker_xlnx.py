@@ -231,6 +231,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     default_ddr = None
     memtest_config = None
     openamp_config = None
+    valid_memfix = None
     machine = options['args'][0]
 
     try:
@@ -356,6 +357,8 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
                     valid_mem = [mem_ip for mem_ip in valid_mem_ips if key.rsplit('_', 1)[0] in mem_ip]
                     if valid_mem:
                         default_ddr = key
+                        memtest_config = False
+                        valid_memfix = True
                 else:
                     default_ddr = key
         start,size = value[0], value[1]
@@ -389,7 +392,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     ## To inline with existing tools point default ddr for linker to lower DDR
     lower_ddrs = ["axi_noc", "psu_ddr_0", "ps7_ddr_0"]
     has_ddr = [x for x in mem_ranges.keys() for ddr in lower_ddrs if re.search(ddr, x)]
-    if has_ddr and not memtest_config:
+    if has_ddr and not memtest_config and not valid_memfix:
         default_ddr = has_ddr[0]
     has_ocm = None
     has_ram = None
@@ -455,7 +458,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     # For MB-V, always pop default_ddr to 0th index irrespective of memtest_config
     # there is no harm in listing it to the first in TOTAL_MEM_CONTROLLERS list
     # FIXME: Cleanup above if memtest_config
-    if "microblaze_riscv" in cpu_ip_name:
+    if "microblaze_riscv" in cpu_ip_name or valid_memfix:
         memip_list.insert(0, memip_list.pop(memip_list.index(default_ddr)))
 
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
