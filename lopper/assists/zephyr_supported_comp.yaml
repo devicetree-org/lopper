@@ -1,0 +1,38 @@
+amd,mbv32:
+  required:
+    - compatible
+    - reg
+    - device_type
+    - riscv,isa
+    - i-cache-size
+    - d-cache-size
+    - clock-frequency
+
+xlnx,xps-intc-1.00.a:
+  required:
+    - compatible
+    - reg
+    - interrupt-controller
+    - interrupt-parent
+    - '#interrupt-cells'
+    - interrupts-extended
+    - xlnx,kind-of-intr
+    - xlnx,num-intr-inputs
+
+xlnx,xps-timer-1.00.a:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+    - xlnx,one-timer-only 
+    - clocks
+
+xlnx,xps-uartlite-1.00.a:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+    - current-speed
+    - clocks
