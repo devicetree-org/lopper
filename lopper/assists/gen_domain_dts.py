@@ -308,15 +308,77 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             sdt.tree['/cpus'].delete('address-map')
 
     if zephyr_dt:
-        xlnx_generate_zephyr_domain_dts(tgt_node, sdt)
+        xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options)
     return True
 
-def xlnx_generate_zephyr_domain_dts(tgt_node, sdt):
+def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
+    symbol_node = sdt.tree['/__symbols__']
+    valid_alias_proplist = []
 
     max_mem_size = 0
+    num_intr = None
+    zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
+    if utils.is_file(zephyr_supported_schema_file):
+        schema = utils.load_yaml(zephyr_supported_schema_file)
+        for node in root_sub_nodes:
+            if node.parent:
+                if "amba_pl" in node.parent.name:
+                    if node.propval("compatible") != ['']:
+                        if node.propval('xlnx,ip-name') != ['']:
+                            val = node.propval('xlnx,ip-name', list)[0]
+                            if val == "axi_intc":
+                                num_intr = node.propval('xlnx,num-intr-inputs', list)[0]
+                                num_intr += 12
+                        is_supported_periph = [value for key,value in schema.items() if key in node["compatible"].value]
+                        if "xlnx,xps-timer-1.00.a" in node["compatible"].value:
+                            node["compatible"].value = ["amd,xps-timer-1.00.a"]
+                        if is_supported_periph:
+                            required_prop = is_supported_periph[0]["required"]
+                            prop_list = list(node.__props__.keys())
+                            valid_alias_proplist.append(node.name)
+                            for prop in prop_list:
+                                if prop not in required_prop:
+                                    node.delete(prop)
+                        else:
+                            sdt.tree.delete(node)
 
+    alias_node = sdt.tree['/aliases']
+    alias_prop_list = list(alias_node.__props__.keys())
+    for prop in alias_prop_list:
+        val = sdt.tree['/aliases'].propval(prop, list)[0]
+        val = val.rsplit('/', 1)[-1]
+        if val not in valid_alias_proplist:
+            sdt.tree['/aliases'].delete(prop)
+
+    # Delete reg property from clocks node
+    clock_node = sdt.tree['/clocks']
+    clock_subnodes = clock_node.subnodes()
+    for node in clock_subnodes:
+        if node.propval('reg') != ['']:
+            sdt.tree[node].delete('reg')
+        if node.propval('clock-output-names') != ['']:
+            sdt.tree[node].delete('clock-output-names')
+        node.name = node.name.split('@')[0]
+
+    # Update memory nodes
+    # For DDR keep only device_type and remove compatible
+    # For LMB ram change the compatible to mmio-sram
+    memnode_list = sdt.tree.nodes('/memory@.*')
+    for mem_node in memnode_list:
+        if mem_node.propval('xlnx,ip-name') != ['']:
+            if 'ddr' in mem_node['xlnx,ip-name'].value[0]:
+                sdt.tree[mem_node].delete('compatible')
+            if 'lmb_bram' in mem_node['xlnx,ip-name'].value[0]:
+                sdt.tree[mem_node]['compatible'].value = ['mmio-sram']
+                mem_node.delete('device_type')
+            mem_node.delete('memory_type')
+            mem_node.delete('xlnx,ip-name')
+
+    match_cpunode = get_cpu_node(sdt, options)
+    match_cpunode.parent.delete("address-map")
+    match_cpunode.parent.name = match_cpunode.parent.name.split('@')[0]
     for node in root_sub_nodes:
 
         soc_kconfig_file = os.path.join(sdt.outdir, "Kconfig.soc")
@@ -442,15 +504,11 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt):
 
                     defconfig_kconfig.close()
 
-        if node.propval('xlnx,ip-name') != ['']:
-            val = node.propval('xlnx,ip-name', list)[0]
-            if val == "axi_intc":
-                num_intr = node.propval('xlnx,num-intr-inputs', list)[0]
-                num_intr += 12
 
     defconfig_kconfig = open(soc_defconfig_file, 'a')
     defconfig_kconfig.write("config NUM_IRQS\n")
-    defconfig_kconfig.write("  default %s\n" % str(num_intr))
+    if num_intr:
+        defconfig_kconfig.write("  default %s\n" % str(num_intr))
     defconfig_kconfig.write("endif\n")
     defconfig_kconfig.close()
 
