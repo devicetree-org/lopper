@@ -5,10 +5,11 @@
 The hash is only required as our input system device tree has not been updated to the latest bus naming used in the openamp assists.
 
 ```
-    % git clone https://github.com/devicetree-org/lopper.git -b systemdt-linaro-demo
+    % git clone https://github.com/devicetree-org/lopper.git -b master
     % cd lopper
+    % git checkout c0facd087263a24a83f7fad917884348db03175d -b system_ref_demo
 ```
-    
+
 Ensure that the support requirements are installed.
 
 ```
@@ -38,16 +39,16 @@ Ensure that the support requirements are installed.
 
 ```
     % export LOPPER_DIR="<path to your lopper clone>"
-    % $LOPPER_DIR/lopper.py -f -O scratch --enhanced --permissive \
-                            -a openamp.py -a openamp_xlnx.py -a openamp-xlnx-zynq.py \
-                            -i ./inputs/openamp-overlay-zynqmp.yaml \
-                            -i $LOPPER_DIR/lopper/lops/lop-xlate-yaml.dts \
-                            -i $LOPPER_DIR/lopper/lops/lop-a53-imux.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53.dts \
-                            -i $LOPPER_DIR/lopper/lops/lop-openamp-versal.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53-prune.dts \
-                            inputs/system-dt/system-top.dts linux-boot.dts
+
+    % $LOPPER_DIR/lopper.py -f --enhanced --werror  --permissive \
+        -i ./inputs/openamp-overlay-zynqmp.yaml \
+        -i $LOPPER_DIR/lopper/lops/lop-load.dts \
+        -i $LOPPER_DIR/lopper/lops//lop-xlate-yaml.dts \
+        -i $LOPPER_DIR/lopper/lops/lop-openamp-invoke.dts \
+        -i $LOPPER_DIR/lopper/lops/lop-a53-imux.dts \
+        inputs/system-dt/system-top.dts linux-boot.dts
 ```
-    
-The outputs from this run are: linux-boot.dts and openamp-channel-info.txt
+The outputs from this run are: linux-boot.dts and amd_platform_info.h 
 
 ### 3a) linux-boot.dts
 
@@ -59,36 +60,35 @@ We can see that nodes such as reserved-memory have been created from the vring d
 yaml:
 
 ```
-     definitions:
-         OpenAMP:
-              openamp_channel0_access_srams: &openamp_channel0_access_srams # used for access in each domain
-                  - dev: psu_r5_0_atcm_global
-                    flags: 0
-                  - dev: psu_r5_0_btcm_global
-                    flags: 0
+    definitions:
+        OpenAMP:
+             openamp_channel_0_access_srams: &openamp_channel_0_access_srams # used for access in each domain
+                 - dev: psu_r5_0_atcm_global
+                   flags: 0
+                 - dev: psu_r5_0_btcm_global
+                   flags: 0
 
-              rpu0vdev0vring0: &rpu0vdev0vring0
-                  - start: 0x3ed40000
-                    size: 0x2000
-                    no-map: 1
+             rpu0vdev0vring0: &rpu0vdev0vring0
+                 - start: 0x3ed60000
+                   size: 0x2000
+                   no-map: 1
 
-              rproc0: &rproc0
-                  - start: 0x3ed00000
-                    size: 0x40000
-                    no-map: 1
+             rproc0: &rproc0
+                 - start: 0x3ed00000
+                   size: 0x60000
+                   no-map: 1
 
+             rpu0vdev0vring1: &rpu0vdev0vring1
+                 - start: 0x3ed64000
+                   size: 0x4000
+                   no-map: 1
 
-              rpu0vdev0vring1: &rpu0vdev0vring1
-                  - start: 0x3ed44000
-                    size: 0x4000
-                    no-map: 1
-
-              rpu0vdev0buffer: &rpu0vdev0buffer
-                  - start: 0x3ed48000
-                    size: 0x100000
-                    no-map: 1
+             rpu0vdev0buffer: &rpu0vdev0buffer
+                 - start: 0x3ed68000
+                   size: 0x40000
+                   no-map: 1
 ```
-    
+
 dts:
 
 ```
@@ -99,53 +99,55 @@ dts:
 
                 rproc0 {
                         no-map;
-                        reg = <0x0 0x3ed00000 0x0 0x40000>;
-                        phandle = <0xd0>;
+                        reg = <0x0 0x3ed00000 0x0 0x60000>;
+                        phandle = <0xd8>;
                 };
 
                 rpu0vdev0vring0 {
                         no-map;
-                        reg = <0x0 0x3ed40000 0x0 0x2000>;
-                        phandle = <0xd1>;
+                        reg = <0x0 0x3ed60000 0x0 0x2000>;
+                        phandle = <0xda>;
                 };
 
                 rpu0vdev0vring1 {
                         no-map;
-                        reg = <0x0 0x3ed44000 0x0 0x4000>;
-                        phandle = <0xd2>;
+                        reg = <0x0 0x3ed64000 0x0 0x4000>;
+                        phandle = <0xdb>;
                 };
 
                 rpu0vdev0buffer {
                         no-map;
-                        reg = <0x0 0x3ed48000 0x0 0x100000>;
+                        reg = <0x0 0x3ed68000 0x0 0x40000>;
                         compatible = "shared-dma-pool";
-                        phandle = <0xd3>;
+                        phandle = <0xdc>;
                 };
         };
 ```
-    
-### 3b) openamp-channel-info.txt
+
+### 3b) amd_platform_info.h
 
 This file is an export of significant values in the yaml, which were used to created nodes and properties in the dts file. They are consumed by
 things such as baremetal builds, or other build systems. This ensures that the dts and applications are kept in sync and agree on critical values.
 
 ```
-    CHANNEL0VRING0BASE="0x3ed40000"
-    CHANNEL0VRING0SIZE="0x2000"
-    CHANNEL0VRING1BASE="0x3ed44000"
-    CHANNEL0VRING1SIZE="0x4000"
-    CHANNEL0VDEV0BUFFERBASE="0x3ed48000"
-    CHANNEL0VDEV0BUFFERSIZE="0x100000"
-    CHANNEL0VDEV0BUFFERRX="FW_RSC_U32_ADDR_ANY"
-    CHANNEL0VDEV0BUFFERTX="FW_RSC_U32_ADDR_ANY"
-    CHANNEL0ELFBASE="0x3ed00000"
-    CHANNEL0ELFSIZE="0x40000"
-    CHANNEL0TO_HOST="0xff340000"
-    CHANNEL0TO_HOST-BITMASK="0x1000000"
-    CHANNEL0TO_HOST-IPIIRQVECTID="0x3f"
-    CHANNEL0TO_REMOTE="0xff310000"
-    CHANNEL0TO_REMOTE-BITMASK="0x100"
-    CHANNEL0TO_REMOTE-IPIIRQVECTID="0x41"
+    ...
+
+    #define RING_TX                 FW_RSC_U32_ADDR_ANY
+    #define RING_RX                 FW_RSC_U32_ADDR_ANY
+
+    #define SHARED_MEM_PA           0x3ed60000
+    #define SHARED_MEM_SIZE         0x100000UL
+    #define SHARED_BUF_OFFSET       0xc0000
+
+    #define SHM_DEV_NAME            "3ed00000.shm"
+    #define DEV_BUS_NAME            "platform"
+    #define IPI_DEV_NAME            "ipi"
+    #define RSC_MEM_SIZE            0x100
+    #define RSC_MEM_PA              0x3ed00000
+    #define SHARED_BUF_PA           0x3ed68000
+    #define SHARED_BUF_SIZE         0x40000
+
+    ...
 ```
 
 ### 3c) Modify values in the yaml
@@ -157,139 +159,147 @@ We change:
 
 ```
 % diff -u openamp-overlay-zynqmp.yaml openamp-overlay-zynqmp-dev-mem.yaml
---- openamp-overlay-zynqmp.yaml 2022-11-25 03:55:42.912355236 +0000
-+++ openamp-overlay-zynqmp-dev-mem.yaml 2022-11-25 03:57:16.404274348 +0000
-@@ -7,8 +7,8 @@
-                flags: 0
-
-          rpu0vdev0vring0: &rpu0vdev0vring0
--             - start: 0x3ed40000
--               size: 0x2000
-+             - start: 0x00c0ffee
-+               size: 0xFEEE
+--- inputs/openamp-overlay-dev-mem-zynqmp.yaml	2024-11-06 13:24:04.785447241 -0800
++++ inputs/openamp-overlay-zynqmp.yaml	2024-11-06 13:23:58.613391272 -0800
+@@ -12,8 +12,8 @@
                 no-map: 1
 
           rproc0: &rproc0
-@@ -43,6 +43,10 @@
-             # if we want to have a list merge, it should be in a list
-             - dev: ipi@ff340000  # used for Open AMP RPMsg IPC
-               flags: 0
-+            - dev: ethernet@ff0e0000
-+              flags: 0
-+            - dev: ethernet@ff0d0000
-+              flags: 0
-             - <<+: *openamp_channel0_access_srams
+-             - start: 0x7c000000
+-               size: 0x80000
++             - start: 0x3ed00000
++               size: 0x60000
+                no-map: 1
 
-         reserved-memory:
-@@ -50,6 +54,12 @@
-             # if we want an object / node merge, it should be like this (a map)
-             <<+: [ *rpu0vdev0vring1, *rpu0vdev0vring0, *rpu0vdev0buffer, *rproc0 ]
+          rpu0vdev0vring1: &rpu0vdev0vring1
+@@ -76,12 +76,7 @@
+             ranges: true
+             <<+: [ *rpu0vdev0vring1, *rpu0vdev0vring0, *rpu0vdev0buffer, *rproc0, *rpu1vdev0vring1, *rpu1vdev0vring0, *rpu1vdev0buffer, *rproc1 ]
 
-+        memory:
-+            os,type: linux
-+            memory:
-+              - start: 0x4000beef
-+                size:  0x7c00beef
-+
+-        memory:
+-            os,type: linux
+-            memory:
+-              - start: 0x4000beef
+-                size:  0x7c00beef
+-
++         domain-to-domain:
          domain-to-domain:
              compatible: openamp,domain-to-domain-v1
              remoteproc-relation:
 ```
 
-### 3d) run the lopper with the new inputs
+### 3d) preserve header file
 
 ```
-    % $LOPPER_DIR/lopper.py -f -O scratch --enhanced --permissive \
-                            -a openamp.py -a openamp_xlnx.py -a openamp-xlnx-zynq.py \
-                            -i ./inputs/openamp-overlay-zynqmp-dev-mem.yaml \
-                            -i $LOPPER_DIR/lopper/lops/lop-xlate-yaml.dts \
-                            -i $LOPPER_DIR/lopper/lops/lop-a53-imux.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53.dts \
-                            -i $LOPPER_DIR/lopper/lops/lop-openamp-versal.dts -i $LOPPER_DIR/lopper/lops/lop-domain-linux-a53-prune.dts \
-           	                 inputs/system-dt/system-top.dts linux-boot2.dts
+    mv amd_platform_info.h amd_platform_info_prev.h
 ```
-    
+
+### 3e) run the lopper with the new inputs
+
+```
+	$LOPPER_DIR/lopper.py -f --enhanced --werror  --permissive \
+	-i ./inputs/openamp-overlay-zynqmp-dev-mem.yaml \
+	-i $LOPPER_DIR/lopper/lops/lop-load.dts \
+	-i $LOPPER_DIR/lopper/lops//lop-xlate-yaml.dts \
+	-i $LOPPER_DIR/lopper/lops/lop-openamp-invoke.dts \
+	-i $LOPPER_DIR/lopper/lops/lop-a53-imux.dts \
+	inputs/system-dt/system-top.dts linux-boot2.dts
+
+```
+
 We can see that:
 
 ```
 % diff -u linux-boot.dts linux-boot2.dts
 ```
-
-#### a) A new ethernet device has been made available
-
-```
---- linux-boot.dts	2022-11-25 03:29:00.661642062 +0000
-+++ linux-boot2.dts	2022-11-25 03:59:59.544134215 +0000
-@@ -1209,6 +1209,25 @@
-                         phandle = <0x33>;
-                 };
- 
-+                gem2: ethernet@ff0d0000 {
-+                        compatible = "cdns,zynqmp-gem", "cdns,gem";
-+                        status = "disabled";
-+                        interrupt-parent = <&gic_a53>;
-+                        interrupts = <0x0 0x3d 0x4 0x0 0x3d 0x4>;
-+                        reg = <0x0 0xff0d0000 0x0 0x1000>;
-+                        clock-names = "pclk", "hclk", "tx_clk", "rx_clk";
-+                        #address-cells = <0x1>;
-+                        #size-cells = <0x0>;
-+                        #stream-id-cells = <0x1>;
-+                        iommus = <&smmu 0x876>;
-+                        power-domains = <0x78 0x1f>;
-+                        resets = <0x4 0x1f>;
-+                        clocks = <&zynqmp_clk 0x1f>,
-+                         <&zynqmp_clk 0x6a>,
-+                         <&zynqmp_clk 0x2f>,
-+                         <&zynqmp_clk 0x33>;
-+                };
-+
-                 gem3: ethernet@ff0e0000 {
-```
-
-#### b) the vring base and size addresses have been adjusted
+#### a) The remote firmware load memory region is changed
 
 ```
---- linux-boot.dts	2022-11-25 03:29:00.661642062 +0000
-+++ linux-boot2.dts	2022-11-25 03:59:59.544134215 +0000
+--- linux-boot.dts	2024-11-06 09:19:47.365759313 -0800
++++ linux-boot2.dts	2024-11-06 13:36:30.324316600 -0800
+@@ -5457,8 +5457,8 @@
+                                 };
 
-                 rpu0vdev0vring0 {
-                         no-map;
--                        reg = <0x0 0x3ed40000 0x0 0x2000>;
--                        phandle = <0xd1>;
-+                        reg = <0x0 0xc0ffee 0x0 0xfeee>;
-+                        phandle = <0xd2>;
-                 };
-```
+                                 rproc0: rproc0 {
+-                                        start = <0x3ed00000>;
+-                                        size = <0x60000>;
++                                        start = <0x7c000000>;
++                                        size = <0x80000>;
+                                         no-map = <0x1>;
+                                         phandle = <0xc9>;
+                                 };
 
-#### c) the memory node has been modified
+@@ -5614,8 +5619,8 @@
+                                 };
 
-```
---- linux-boot.dts	2022-11-25 03:29:00.661642062 +0000
-+++ linux-boot2.dts	2022-11-25 03:59:59.544134215 +0000
-
-@@ -3146,7 +3165,7 @@
-         psu_ddr_0_memory: memory@0 {
-                 compatible = "xlnx,psu-ddr-1.0";
-                 device_type = "memory";
--                reg = <0x0 0x0 0x0 0x7ff00000 0x0 0x7ff00000 0x0 0x100000>;
-+                reg = <0x0 0x4000beef 0x0 0x7c00beef>;
-                 phandle = <0x9>;
-         };
-
-d) that phandles have been adjusted to allow for new devices
+                                 rproc0 {
+-                                        start = <0x3ed00000>;
+-                                        size = <0x60000>;
++                                        start = <0x7c000000>;
++                                        size = <0x80000>;
+                                         no-map = <0x1>;
+                                 };
+                         };
+@@ -5647,7 +5652,7 @@
 
                  rproc0 {
                          no-map;
-                         reg = <0x0 0x3ed00000 0x0 0x40000>;
--                        phandle = <0xd0>;
-+                        phandle = <0xd1>;
+-                        reg = <0x0 0x3ed00000 0x0 0x60000>;
++                        reg = <0x0 0x7c000000 0x0 0x80000>;
+                         phandle = <0xd8>;
                  };
+
+```
+
+#### b) the memory node has been added
+
+```
+--- linux-boot.dts	2024-11-06 09:19:47.365759313 -0800
++++ linux-boot2.dts	2024-11-06 13:36:30.324316600 -0800
+
+@@ -5492,6 +5492,11 @@
+                                 };
+                         };
+
++                        memory {
++                                os,type = "linux";
++                                memory = <0x4000beef 0x7c00beef>;
++                        };
++
+                         domain-to-domain {
+                                 compatible = "openamp,domain-to-domain-v1";
+
+#### c) The header file generated for baremetal fw to use is also changed
+--- amd_platform_info_prev.h	2024-11-06 13:20:42.443630568 -0800
++++ amd_platform_info.h	2024-11-06 13:36:28.336298261 -0800
+@@ -21,15 +21,15 @@
+ #define RING_TX                 FW_RSC_U32_ADDR_ANY
+ #define RING_RX                 FW_RSC_U32_ADDR_ANY
+ 
+-#define SHARED_MEM_PA           0x3ed60000
++#define SHARED_MEM_PA           0x7c080000
+ #define SHARED_MEM_SIZE         0x100000UL
+-#define SHARED_BUF_OFFSET       0xc0000
++#define SHARED_BUF_OFFSET       0x100000
+ 
+-#define SHM_DEV_NAME            "3ed00000.shm"
++#define SHM_DEV_NAME            "7c000000.shm"
+ #define DEV_BUS_NAME            "platform"
+ #define IPI_DEV_NAME            "ipi"
+ #define RSC_MEM_SIZE            0x100
+-#define RSC_MEM_PA              0x3ed00000
++#define RSC_MEM_PA              0x7c000000
+ #define SHARED_BUF_PA           0x3ed68000
+ #define SHARED_BUF_SIZE         0x40000
+ 
+
 ```
 
 ## 4) Xen extraction demo
 
 ```
 % $LOPPER_DIR/lopper.py --permissive -f inputs/dt/host-device-tree.dts system-device-tree-out.dts  -- \
-      extract -t /bus@f1000000/serial@ff010000 -i zynqmp-firmware -x pinctrl-0 -x pinctrl-names -x power-domains -x current-speed -x resets -x 'interrupt-controller.*' -- \
+      extract -t /axi/serial@ff010000 -i zynqmp-firmware -x pinctrl-0 -x pinctrl-names -x power-domains -x current-speed -x resets -x 'interrupt-controller.*' -- \
       extract-xen -t serial@ff010000 -o serial@ff010000.dts
 [INFO]: cb: extract( /, <lopper.LopperSDT object at 0x7f15355d7310>, 0, ['-t', '/bus@f1000000/serial@ff010000', '-i', 'zynqmp-firmware', '-x', 'pinctrl-0', '-x', 'pinctrl-names', '-x', 'power-domains', '-x', 'current-speed', '-x', 'resets', '-x', 'interrupt-controller.*'] )
 [INFO]: dropping masked property pinctrl-0
