@@ -5,10 +5,14 @@ definitions:
                flags: 0
              - dev: psu_r5_0_btcm_global
                flags: 0
+             - dev: psu_r5_0_atcm
+               flags: 0
+             - dev: psu_r5_0_btcm
+               flags: 0
 
          rpu0vdev0vring0: &rpu0vdev0vring0
              - start: 0x3ed60000
-               size: 0x2000
+               size: 0x4000
                no-map: 1
 
          rproc0: &rproc0
@@ -30,6 +34,10 @@ definitions:
              - dev: psu_r5_1_atcm_global
                flags: 0
              - dev: psu_r5_1_btcm_global
+               flags: 0
+             - dev: psu_r5_1_atcm
+               flags: 0
+             - dev: psu_r5_0_btcm
                flags: 0
 
          rproc1: &rproc1
@@ -84,10 +92,14 @@ domains:
                     - openamp_r5_0_cluster
                     - openamp_r5_1_cluster
                 elfload:
+                    - psu_r5_0_atcm
                     - psu_r5_0_atcm_global
+                    - psu_r5_0_btcm
                     - psu_r5_0_btcm_global
                     - rproc0
+                    - psu_r5_1_atcm
                     - psu_r5_1_atcm_global
+                    - psu_r5_1_btcm
                     - psu_r5_1_btcm_global
                     - rproc1
 
