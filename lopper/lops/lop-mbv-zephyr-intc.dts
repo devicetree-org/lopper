@@ -1,0 +1,53 @@
+/*
+ * Copyright (c) 2024 Advanced Micro Devices, Inc. All rights reserved.
+ *
+ * Author:
+ *       Mubin Sayyed <mubin.sayyed@amd.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1,lop";
+        lops {
+                compatible = "system-device-tree-v1,lop";
+                
+		lop_0 {
+                        compatible = "system-device-tree-v1,lop,select-v1";
+                        select_1;
+                        select_2 = "/soc/interrupt-controller*::";
+
+                };
+
+                lop_1 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = ":interrupt-parent:&cpu_intc";
+
+                };
+
+
+		lop_2 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = ":interrupts-extended:&cpu_intc";
+			lop_2_1 {
+				compatible = "system-device-tree-v1,lop,code-v1";
+				code = "
+					for n in __selected__:
+						val = n['interrupts-extended'].value
+						val.append('11')
+						n.resolve()
+					tree.resolve()
+				";
+
+                	};
+                };
+
+		lop_3 {
+			select_1;
+			compatible = "system-device-tree-v1,lop,modify";
+			modify = "/__symbols__::";
+		};
+        };
+};
