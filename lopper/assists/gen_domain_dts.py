@@ -317,8 +317,36 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     symbol_node = sdt.tree['/__symbols__']
     valid_alias_proplist = []
 
+    license_content = '''#
+# Copyright (c) 2024 Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+'''
+    fix_part= '''
+  imply ARCH_CPU_IDLE_CUSTOM
+  select CLOCK_CONTROL
+  select CLOCK_CONTROL_FIXED_RATE_CLOCK
+  select CONSOLE
+  select SERIAL
+  select UART_CONSOLE if (UART_NS16550 || UART_XLNX_UARTLITE)
+  select UART_INTERRUPT_DRIVEN if (UART_NS16550 || UART_XLNX_UARTLITE)
+  imply UART_NS16550 if DT_HAS_NS16550_ENABLED
+  imply UART_XLNX_UARTLITE if DT_HAS_UARTLITE_ENABLED
+  imply GPIO if DT_HAS_XLNX_XPS_GPIO_1_00_A_ENABLED
+  imply GPIO_XLNX_AXI if DT_HAS_XLNX_XPS_GPIO_1_00_A_ENABLED
+  imply AMD_TMRCTR if DT_HAS_AMD_XPS_TIMER_1_00_A_ENABLED
+  imply XLNX_INTC if DT_HAS_XLNX_XPS_INTC_1_00_A_ENABLED
+  select XLNX_INTC_USE_IPR if XLNX_INTC
+  select XLNX_INTC_USE_SIE if XLNX_INTC
+  select XLNX_INTC_USE_CIE if XLNX_INTC
+  select XLNX_INTC_USE_IVR if XLNX_INTC
+    '''
+
     max_mem_size = 0
     num_intr = None
+      
     zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
     if utils.is_file(zephyr_supported_schema_file):
         schema = utils.load_yaml(zephyr_supported_schema_file)
@@ -381,7 +409,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     match_cpunode.parent.name = match_cpunode.parent.name.split('@')[0]
     for node in root_sub_nodes:
 
-        soc_kconfig_file = os.path.join(sdt.outdir, "Kconfig.soc")
+        soc_kconfig_file = os.path.join(sdt.outdir, "Kconfig")
         soc_kconfig = open(soc_kconfig_file, 'a')
 
         soc_defconfig_file = os.path.join(sdt.outdir, "Kconfig.defconfig")
@@ -441,8 +469,8 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                         and Kconfig.defconfig based on that 
                     ''' 
 
+                    soc_kconfig.write(str(license_content))
                     soc_kconfig.write("config SOC_MBV32\n")
-                    soc_kconfig.write("  bool \"MBV32 system implementation\" \n")
 
                     soc_kconfig.write("  select RISCV\n")
                     soc_kconfig.write("  select ATOMIC_OPERATIONS_C\n")
@@ -486,30 +514,31 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                     if isa.find('d') != -1:
                         soc_kconfig.write("  select RISCV_ISA_EXT_D\n")
 
+                    soc_kconfig.write(str(fix_part))
+
                     soc_kconfig.close()
 
                     soc_defconfig_file = os.path.join(sdt.outdir, "Kconfig.defconfig")
                     defconfig_kconfig = open(soc_defconfig_file, 'a')
                     
-                    defconfig_kconfig.write("if SOC_MBV32\n")
-                    defconfig_kconfig.write("config SOC\n")
-                    defconfig_kconfig.write("  default \"mbv32\"\n")
+                    defconfig_kconfig.write(str(license_content))
+                    defconfig_kconfig.write("\nif SOC_MBV32\n")
+                    defconfig_kconfig.write("\nconfig MBV_CSR_DATA_WIDTH\n")
+                    defconfig_kconfig.write("  int \"Select Control/Status register width\"\n")
+                    defconfig_kconfig.write("  default 32\n")
 
                     val = node.propval('clock-frequency', list)[0]
-                    defconfig_kconfig.write("config SYS_CLOCK_HW_CYCLES_PER_SEC\n")
+                    defconfig_kconfig.write("\nconfig SYS_CLOCK_HW_CYCLES_PER_SEC\n")
                     defconfig_kconfig.write("  default %s\n" % str(val))
-
-                    defconfig_kconfig.write("config RISCV_RESERVED_IRQ_ISR_TABLES_OFFSET\n")
-                    defconfig_kconfig.write("  default 12\n")
 
                     defconfig_kconfig.close()
 
 
     defconfig_kconfig = open(soc_defconfig_file, 'a')
-    defconfig_kconfig.write("config NUM_IRQS\n")
+    defconfig_kconfig.write("\nconfig NUM_IRQS\n")
     if num_intr:
         defconfig_kconfig.write("  default %s\n" % str(num_intr))
-    defconfig_kconfig.write("endif\n")
+    defconfig_kconfig.write("\nendif\n")
     defconfig_kconfig.close()
 
     sdt.tree['/chosen']['zephyr,sram'] = sram_node
