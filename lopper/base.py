@@ -474,6 +474,7 @@ class lopper_base:
                     "address-map" : [ '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells', 0 ],
                     "secure-address-map" : [ '#ranges-address-cells phandle ^:#address-cells #ranges-size-cells', 0 ],
                     "interrupt-parent" : [ 'phandle', 0 ],
+                    "interrupts-extended" : [ 'phandle field' ],
                     "iommus" : [ 'phandle field' ],
                     "interrupt-map" : [ '#address-cells #interrupt-cells phandle:#interrupt-cells' ],
                     "access" : [ 'phandle flags' ],

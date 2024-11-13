@@ -13,6 +13,8 @@ import os
 import glob
 import lopper
 import re
+from lopper.tree import LopperProp
+from lopper.tree import LopperNode
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -346,7 +348,24 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
 
     max_mem_size = 0
     num_intr = None
-      
+    for node in root_sub_nodes:
+        if node.propval('xlnx,ip-name') != ['']:
+            val = node.propval('xlnx,ip-name', list)[0]
+            if val == "microblaze_riscv":
+                compatlist = ['amd,mbv32', 'riscv']
+                node['compatible'] = compatlist
+                new_node = LopperNode()
+                new_node.name = "interrupt-controller"
+                new_node['compatible'] = "riscv,cpu-intc"
+                new_prop = LopperProp( "interrupt-controller" )
+                new_prop.value = ""
+                new_node + new_prop
+                new_node['#interrupt-cells'] = 1
+                new_node.label_set("cpu_intc")
+                node.add(new_node)
+                phandle_val = new_node.phandle_or_create()
+                new_node + LopperProp(name="phandle", value=phandle_val)
+
     zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
     if utils.is_file(zephyr_supported_schema_file):
         schema = utils.load_yaml(zephyr_supported_schema_file)
