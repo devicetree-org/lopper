@@ -45,6 +45,17 @@
                 };
 
 		lop_3 {
+                        compatible = "system-device-tree-v1,lop,select-v1";
+                        select_1;
+                        select_2 = "/cpus_.*:compatible:cpus,cluster";
+			lop_3_1 {
+                        	compatible = "system-device-tree-v1,lop,modify";
+                        	modify = ":compatible:";
+                	};
+
+                };
+
+		lop_4 {
 			select_1;
 			compatible = "system-device-tree-v1,lop,modify";
 			modify = "/__symbols__::";
