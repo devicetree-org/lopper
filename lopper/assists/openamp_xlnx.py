@@ -78,7 +78,7 @@ def get_carveout_nodes(tree, node):
         node = carveouts_node
     carveout_prop = node.props("carveouts")
     if carveout_prop == []:
-        print("WARNING: ", node, " is missing carveouts property")
+        print("ERROR: ", node, " is missing carveouts property")
         return []
     carveouts_nodes = []
     for phandle in carveout_prop[0].value:
@@ -202,7 +202,7 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
                     print("ERROR: carveout is not found in remote cluster: ", carveout.name)
                     return False
         else:
-            print("WARNING: invalid remoteproc elfload carveout", carveout)
+            print("ERROR: invalid remoteproc elfload carveout", carveout)
             return False
 
     if native:
@@ -244,7 +244,7 @@ def xlnxl_rpmsg_ipi_get_ipi_id(tree, ipi, role):
 
     ipi_id = ipi_node.props(ipi_id_prop_name)
     if ipi_id == []:
-        print("WARNING: Unable to find IPI ID for ", ipi)
+        print("ERROR: Unable to find IPI ID for ", ipi)
         return False
 
     return ipi_id[0]
@@ -311,10 +311,10 @@ def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_c
 
     if platform in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET]:
         if host_ipi_base not in irq_vect_id_map.keys():
-            print("WARNING: host IPI", hex(host_ipi_base), "not in IRQ VECTOR ID Mapping for ", soc_str)
+            print("ERROR: host IPI", hex(host_ipi_base), "not in IRQ VECTOR ID Mapping for ", soc_str)
             return False
         if remote_ipi_base not in irq_vect_id_map.keys():
-            print("WARNING: remote IPI", hex(remote_ipi_base), "not in IRQ VECTOR ID Mapping for ", soc_str)
+            print("ERROR: remote IPI", hex(remote_ipi_base), "not in IRQ VECTOR ID Mapping for ", soc_str)
             return False
 
         openamp_channel_info["host_ipi_base"+channel_id] = host_ipi_base
@@ -342,7 +342,7 @@ def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
     # collect host ipi
     host_ipi_prop = node.props("mbox")
     if host_ipi_prop == []:
-        print("WARNING: ", node, " is missing mbox property")
+        print("ERROR: ", node, " is missing mbox property")
         return False
 
     host_ipi_prop = host_ipi_prop[0].value
@@ -350,13 +350,13 @@ def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
     try:
         remote_rpmsg_relation = tree[remote_node.abs_path + "/domain-to-domain/rpmsg-relation"]
     except:
-        print("WARNING: ", remote_node, " is missing rpmsg relation")
+        print("ERROR: ", remote_node, " is missing rpmsg relation")
         return False
 
     # collect remote ipi
     remote_ipi_prop = remote_rpmsg_relation.props("mbox")
     if remote_ipi_prop == []:
-        print("WARNING: ", remote_node, " is missing mbox property")
+        print("ERROR: ", remote_node, " is missing mbox property")
         return False
 
     remote_ipi_prop = remote_ipi_prop[0].value
@@ -379,7 +379,7 @@ def xlnx_rpmsg_setup_host_controller(tree, controller_parent, gic_node_phandle,
 
     host_interrupts_prop = host_ipi.props("interrupts")
     if host_interrupts_prop == []:
-        print("WARNING: host ipi ", host_ipi, " missing interrupts property")
+        print("ERROR: host ipi ", host_ipi, " missing interrupts property")
         return False
 
     host_interrupts_pval = host_interrupts_prop[0].value
@@ -470,7 +470,7 @@ def xlnx_rpmsg_native_update_ipis(tree, amba_node, openamp_channel_info, gic_nod
             # catches
             for sub_n in n.subnodes():
                 if sub_n.props("reg-names") != []:
-                    print("WARNING:  conflicting userspace and kernelspace for host ipi: ", host_ipi)
+                    print("ERROR:  conflicting userspace and kernelspace for host ipi: ", host_ipi)
                     return False
 
     return True
@@ -495,19 +495,19 @@ def xlnx_rpmsg_kernel_update_mboxes(tree, host_ipi, remote_ipi, gic_node_phandle
 
     host_remote_response = host_to_remote_ipi_channel.props(response_buf_str)
     if host_remote_response == []:
-        print("WARNING: host_remote_response ", host_to_remote_ipi_channel, "is missing property name: ", response_buf_str)
+        print("ERROR: host_remote_response ", host_to_remote_ipi_channel, "is missing property name: ", response_buf_str)
         return False
     host_remote_request = host_to_remote_ipi_channel.props(request_buf_str)
     if host_remote_request == []:
-        print("WARNING: host_remote_request ", host_to_remote_ipi_channel, " is missing property name: ", request_buf_str)
+        print("ERROR: host_remote_request ", host_to_remote_ipi_channel, " is missing property name: ", request_buf_str)
         return False
     remote_host_response = remote_to_host_ipi_channel.props(response_buf_str)
     if remote_host_response == []:
-        print("WARNING: remote_host_response ", remote_to_host_ipi_channel, " is missing property name: ", response_buf_str)
+        print("ERROR: remote_host_response ", remote_to_host_ipi_channel, " is missing property name: ", response_buf_str)
         return False
     remote_host_request = remote_to_host_ipi_channel.props(request_buf_str)
     if remote_host_request == []:
-        print("WARNING: remote_host_request ", remote_to_host_ipi_channel, " is missing property name: ", request_buf_str)
+        print("ERROR: remote_host_request ", remote_to_host_ipi_channel, " is missing property name: ", request_buf_str)
         return False
 
     host_remote_response = host_remote_response[0].value[0]
@@ -534,7 +534,7 @@ def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
         compat_str = n.props("compatible")
         if compat_str != [] and compat_str[0].value == "ipi_uio" and \
             n.props("interrupts")[0].value[1] ==  host_ipi.props("interrupts")[0].value[1]:
-            print("WARNING:  conflicting userspace and kernelspace for host ipi: ", host_ipi)
+            print("ERROR:  conflicting userspace and kernelspace for host ipi: ", host_ipi)
             return False
 
     if controller_parent == False:
@@ -885,13 +885,13 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
 
     # check for remote property
     if node.props("remote") == []:
-        print("WARNING: ", node, "is missing remote property")
+        print("ERROR: ", node, "is missing remote property")
         return False
     remote_nodes = populate_remote_nodes(tree, node.props("remote")[0])
 
     carveout_prop = node.props("carveouts")[0]
     if carveout_prop == []:
-        print("WARNING: ", node, " is missing carveouts property")
+        print("ERROR: ", node, " is missing carveouts property")
         return False
 
     channel_ids = []
@@ -941,7 +941,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
     # Here try for key value pair arguments
     opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_role=", "openamp_host=", "openamp_remote=" ] )
     if opts == [] and args2 == []:
-        print('WARNING: No arguments passed for OpenAMP Module. Erroring out now.')
+        print('ERROR: No arguments passed for OpenAMP Module. Erroring out now.')
         return False
 
     role = None
@@ -958,7 +958,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
             print("Argument: ",o, " is not recognized. Erroring out.")
 
     if role not in ['host', 'remote']:
-        print('WARNING: Role value is not proper. Expect either "host" or "remote". Got: ', role)
+        print('ERROR: Role value is not proper. Expect either "host" or "remote". Got: ', role)
         return False
     valid_core_inputs = []
     pattern = re.compile('_openamp_([0-9a-z]+_[0-9])_')
@@ -968,7 +968,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
     valid_core_inputs = set(valid_core_inputs)
 
     if arg_host not in valid_core_inputs or arg_remote not in arg_remote:
-        print('WARNING: OpenAMP Host or Remote value is not proper. Valid inputs are:', valid_core_inputs)
+        print('ERROR: OpenAMP Host or Remote value is not proper. Valid inputs are:', valid_core_inputs)
         return False
 
     chan_id = None
@@ -1015,7 +1015,7 @@ def determine_cpus_config(remote_domain):
             return CPU_CONFIG.RPU_SPLIT
 
     # if here then no match
-    print("WARNING: determine_cpus_config: invalid cpu config")
+    print("ERROR: determine_cpus_config: invalid cpu config")
     return -1
 
 
@@ -1030,10 +1030,10 @@ def determinte_rpu_core(tree, cpu_config, remote_node):
             rpu_core_from_int = RPU_CORE(core_index)
             return rpu_core_from_int
         except:
-            print("WARNING: determinte_rpu_core: invalid cpus for ", remote_node, cpu_config)
+            print("ERROR: determinte_rpu_core: invalid cpus for ", remote_node, cpu_config)
             return False
     else:
-        print("WARNING: invalid cpu config: ", cpu_config)
+        print("ERROR: invalid cpu config: ", cpu_config)
         return False
 
 
@@ -1073,7 +1073,7 @@ def xlnx_remoteproc_construct_carveouts(tree, channel_id, openamp_channel_info, 
             new_node.phandle = phandle_val
             new_ddr_nodes.append(new_node.phandle)
         else:
-            print("WARNING: invalid remoteproc elfload carveout", carveout)
+            print("ERROR: invalid remoteproc elfload carveout", carveout)
             return False
 
     openamp_channel_info["new_ddr_nodes"+channel_id] = new_ddr_nodes
@@ -1367,10 +1367,10 @@ def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, elf
     if cpu_config in [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT]:
         rpu_core = determinte_rpu_core(tree, cpu_config, remote_node )
         if rpu_core not in RPU_CORE:
-            print("WARNING: Invalid rpu core: ", rpu_core, platform)
+            print("ERROR: Invalid rpu core: ", rpu_core, platform)
             return False
     else:
-        print("WARNING: cpu_config: ", cpu_config, " is not in ", [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT])
+        print("ERROR: cpu_config: ", cpu_config, " is not in ", [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT])
         return False
     rpu_cluster_node = tree.pnode(remote_node.props("cpus")[0].value[0])
     # For Versal NET all cores are under first core
@@ -1392,11 +1392,11 @@ def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, elf
         if rpu_core != RPU_CORE.RPU_0 or (platform == SOC_TYPE.VERSAL_NET and rpu_core == RPU_CORE.RPU_2):
             rpu_core_node = tree[rpu_core_node+rpu_core]
     else:
-        print("WARNING invalid RPU and CPU config for relation. cpu: ", cpu_config, " rpu: ", rpu_core)
+        print("ERROR: invalid RPU and CPU config for relation. cpu: ", cpu_config, " rpu: ", rpu_core)
         return False
 
     if rpu_core_node.props("power-domains") == []:
-        print("WARNING: RPU core does not have power-domains property.")
+        print("ERROR: RPU core does not have power-domains property.")
         return False
 
     rpu_core_pd_prop = rpu_core_node.props("power-domains")[0]
@@ -1476,13 +1476,13 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
 
     # check for remote property
     if node.props("remote") == []:
-        print("WARNING: ", node, "is missing remote property")
+        print("ERROR: ", node, "is missing remote property")
         return False
     remote_nodes = populate_remote_nodes(tree, node.props("remote")[0])
 
     # check for elfload prop
     if node.props("elfload") == []:
-        print("WARNING: ", node, " is missing elfload property")
+        print("ERROR: ", node, " is missing elfload property")
         return False
     elfload_prop = node.props("elfload")[0]
 
@@ -1510,7 +1510,7 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
 
         ret = xlnx_remoteproc_update_tree(tree, channel_id, openamp_channel_info, verbose = 0 )
         if not ret:
-            print("WARNING: Failed to update tree for Remoteproc.")
+            print("ERROR: Failed to update tree for Remoteproc.")
             return False
 
     return True
