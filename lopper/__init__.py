@@ -449,7 +449,8 @@ class LopperSDT:
             if a_file:
                 self.assists.append( LopperAssist( str(a_file.resolve()) ) )
             else:
-                lopper.log_warning( f"assist {a_file} not found" )
+                lopper.log._error( f"assist {a} not found" )
+                os._exit(1)
 
         self.assists_wrap()
 
