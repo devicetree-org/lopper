@@ -1099,11 +1099,11 @@ def xlnx_remoteproc_v2_construct_cluster(tree, channel_id, openamp_channel_info,
     core_index = openamp_channel_info["core_index"]
     rpu_core = determinte_rpu_core(tree, cpu_config, remote_node )
     rpu_core_pd_prop = openamp_channel_info["rpu_core_pd_prop"+channel_id]
-    core_compat_substr = "tcm-1.0"
-    absolute_addr_tcm_substr = "tcm-global-1.0"
+    core_compat_substr = [ "tcm-1.0", "tcm-global-11.0" ]
+    absolute_addr_tcm_substr = [ "tcm-global-1.0", "tcm-lockstep-1.0", "tcm-global-11.0" ]
     core_reg_val = []
     core_reg_names = []
-    core_reg_names_base_str = "tcm0"
+    core_reg_names_base_str = "tcm"
     core_reg_names_index = 0
     power_domains = []
     cluster_ranges_val = []
@@ -1117,7 +1117,9 @@ def xlnx_remoteproc_v2_construct_cluster(tree, channel_id, openamp_channel_info,
     compatible_strs = { SOC_TYPE.VERSAL_NET:  "xlnx,versal-net-r52f", SOC_TYPE.VERSAL: "xlnx,versal-r5f", SOC_TYPE.ZYNQMP: "xlnx,zynqmp-r5f" }
     cluster_node_path_name_suffix = {
         str(SOC_TYPE.VERSAL_NET) + RPU_CORE.RPU_0.name: hex(0xeba00000).replace("0x",""),
-        str(SOC_TYPE.VERSAL_NET) + RPU_CORE.RPU_1.name: hex(0xebac0000).replace("0x",""),
+        str(SOC_TYPE.VERSAL_NET) + RPU_CORE.RPU_1.name: hex(0xeba00000).replace("0x",""),
+        str(SOC_TYPE.VERSAL_NET) + RPU_CORE.RPU_2.name: hex(0xeba40000).replace("0x",""),
+        str(SOC_TYPE.VERSAL_NET) + RPU_CORE.RPU_3.name: hex(0xeba40000).replace("0x",""),
         str(SOC_TYPE.ZYNQMP) + RPU_CORE.RPU_0.name: "ffe00000",
         str(SOC_TYPE.ZYNQMP) + RPU_CORE.RPU_1.name: "ffe00000",
         str(SOC_TYPE.VERSAL) + RPU_CORE.RPU_0.name: "ffe00000",
@@ -1126,7 +1128,7 @@ def xlnx_remoteproc_v2_construct_cluster(tree, channel_id, openamp_channel_info,
 
     cluster_modes = {
         CPU_CONFIG.RPU_SPLIT: 0,
-        CLUSTER_CONFIG.RPU_LOCKSTEP: 1,
+        CPU_CONFIG.RPU_LOCKSTEP: 1,
     }
 
     if not platform_validate(platform):
@@ -1140,14 +1142,43 @@ def xlnx_remoteproc_v2_construct_cluster(tree, channel_id, openamp_channel_info,
     for i in rpu_core_pd_prop.value:
        power_domains.append(i)
 
+    absolute_banks = []
+    lockstep_substrs = [ "lockstep" ]
+    lockstep_banks = []
+    num_banks_per_soc = { SOC_TYPE.ZYNQMP: 2, SOC_TYPE.VERSAL: 2, SOC_TYPE.VERSAL_NET: 3 }
+    tcm_bank_suffix = 0
+
     for carveout in elfload_nodes:
         if carveout.props("status") != []:
             carveout_compat_strs = carveout.propval("compatible")
+            absolute_addr_tcm_match = False
+            lockstep_tcm_match = False
+            core_compat_substr_match = False
+
             for ccs in carveout_compat_strs:
-                if core_compat_substr in ccs:
-                    core_reg_names.append(alc[core_reg_names_index] + core_reg_names_base_str)
+                # check absoluate tcm addr substring list first
+                for aats in absolute_addr_tcm_substr:
+                    if aats in ccs:
+                        absolute_addr_tcm_match = True
+                for ls in lockstep_substrs:
+                    if ls in ccs:
+                        lockstep_tcm_match = True
+                for core_compat_substr_elem in core_compat_substr:
+                    if core_compat_substr_elem in ccs:
+                        core_compat_substr_match = True
+
+                if core_compat_substr_match:
+                    tcm_prefix = alc[core_reg_names_index]
                     core_reg_names_index += 1
+
+                    core_reg_names.append(tcm_prefix + core_reg_names_base_str + str(tcm_bank_suffix))
+                    if core_reg_names_index == num_banks_per_soc[platform]:
+                        tcm_bank_suffix += 1
+
+                    core_reg_names_index %= num_banks_per_soc[platform]
+
                     core_reg_val.append(core_index)
+
                     for i in carveout.propval("reg")[1:]:
                         core_reg_val.append(i)
                     for i in carveout.propval("power-domains"):
@@ -1157,10 +1188,14 @@ def xlnx_remoteproc_v2_construct_cluster(tree, channel_id, openamp_channel_info,
                     cluster_ranges_val.append(carveout.propval("reg")[1])
                     cluster_ranges_val.append(0)
 
-                elif absolute_addr_tcm_substr in ccs:
+                elif absolute_addr_tcm_match and carveout not in absolute_banks: # use absolute addr tcm substr list check here
                     cluster_ranges_val.append(carveout.propval("reg")[1])
                     cluster_ranges_val.append(0)
                     cluster_ranges_val.append(carveout.propval("reg")[3])
+                    absolute_banks.append(carveout)
+
+                if lockstep_tcm_match and carveout not in lockstep_banks:
+                    lockstep_banks.append(carveout)
 
     cluster_node_props = {
       "compatible" : driver_compat_str[platform],
@@ -1207,6 +1242,23 @@ def xlnx_remoteproc_v2_construct_cluster(tree, channel_id, openamp_channel_info,
             core_node + LopperProp(name=key, value = core_node_props[key])
 
         tree.add(core_node)
+
+        core_node_props.pop("mbox-names")
+        core_node_props.pop("power-domains")
+        core_node_props.pop("reg")
+        core_node_props.pop("reg-names")
+        core_node_props.pop("#address-cells")
+        core_node_props.pop("#size-cells")
+
+        if cpu_config == CPU_CONFIG.RPU_LOCKSTEP:
+            core_1_idx = core_index+1
+            core_1_name = core_names[platform] + "@" + str(core_1_idx)
+            core_1_node = LopperNode(-1, cluster_node_path + "/" + core_1_name)
+
+
+            for key in core_node_props.keys():
+                core_1_node + LopperProp(name=key, value = core_node_props[key])
+            tree.add(core_1_node)
     else:
         return False
 
@@ -1264,7 +1316,6 @@ def xlnx_remoteproc_construct_cluster(tree, channel_id, openamp_channel_info, ve
     }
 
     if cpu_config in [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT ]:
-
         try:
             cluster_node = tree[cluster_node_path]
         except KeyError:
@@ -1304,7 +1355,7 @@ def xlnx_remoteproc_construct_cluster(tree, channel_id, openamp_channel_info, ve
 
         srams = []
         for carveout in elfload_nodes:
-            if carveout.props("status") != []:
+            if carveout.props("status") != [] or "tcm" in carveout.name:
                 srams.append(carveout.phandle)
                 # FIXME for each sram, add 'power-domains' prop for kernel driver
                 carveout + LopperProp(name="power-domains",
@@ -1383,13 +1434,14 @@ def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, elf
 
     rpu_core_node = rpu_cluster_node.abs_path + "/cpu@"
     # all cores are in cluster topologically in DTS
+    rpu_core_int_val = int(rpu_core)
     rpu_core = str(int(rpu_core)) 
 
     # split rpu
     if  CPU_CONFIG.RPU_SPLIT == cpu_config:
         rpu_core_node = tree[rpu_core_node+rpu_core]
-    elif CPU_CONFIG.RPU_LOCKSTEP:
-        if rpu_core != RPU_CORE.RPU_0 or (platform == SOC_TYPE.VERSAL_NET and rpu_core == RPU_CORE.RPU_2):
+    elif CPU_CONFIG.RPU_LOCKSTEP == cpu_config:
+        if rpu_core_int_val == RPU_CORE.RPU_0.value or (platform == SOC_TYPE.VERSAL_NET and rpu_core_int_val == RPU_CORE.RPU_2.value):
             rpu_core_node = tree[rpu_core_node+rpu_core]
     else:
         print("ERROR: invalid RPU and CPU config for relation. cpu: ", cpu_config, " rpu: ", rpu_core)
@@ -1497,9 +1549,13 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
             channel_elfload_nodes.append ( elfloadnode )
 
         if platform in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET]:
+            cpu_config = determine_cpus_config(remote_node)
+            if cpu_config ==  CPU_CONFIG.RPU_SPLIT and len(remote_nodes) == 1:
+                print("ERROR: CPU config is split but only 1 remote node", remote_node, "has been provided.")
+                return False
+
             ret = xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, channel_elfload_nodes, verbose)
             if not ret:
-                print("ret xlnx_remoteproc_rpu_parse false")
                 return ret
 
         channel_id = "_"+node.parent.parent.name+"_"+remote_node.name
