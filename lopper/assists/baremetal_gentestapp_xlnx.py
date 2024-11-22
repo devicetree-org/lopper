@@ -184,6 +184,8 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
 
             for compat in driver_compatlist:
                 for node in node_list:
+                    if "xlnx,tmr-sem-1.0" in node["compatible"].value:
+                        continue
                     if sdt.tree[node].propval('reg') != ['']:
                         val, size = scan_reg_size(node, node['reg'].value, 0)
                         if stdin_addr == val:
