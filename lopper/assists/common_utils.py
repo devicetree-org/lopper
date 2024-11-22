@@ -121,6 +121,7 @@ def copy_file(src: str, dest: str, follow_symlinks: bool = False, silent_discard
     """
     is_file(src, silent_discard)
     shutil.copy2(src, dest, follow_symlinks=follow_symlinks)
+    os.chmod(dest, 0o644)
 
 def find_files(search_pattern, search_path):
     """
