@@ -42,6 +42,8 @@ def usage():
     print('    , --dryrun        run all processing, but don\'t write any output files' )
     print('  -d, --dump          dump a dtb as dts source' )
     print('  -i, --input         process supplied input device tree description')
+    print('  -I, --input-dirs    colon separated list of directories to search for input files (any type)')
+    print('                      input directories can also be set by environment variable LOPPER_INPUT_DIRS')
     print('  -a, --assist        load specified python assist (for node or output processing)' )
     print('  -A, --assist-paths  colon separated lists of paths to search for assist loading' )
     print('    , --enhanced      when writing output files, do enhanced processing (this includes phandle replacement, comments, etc' )
@@ -82,6 +84,7 @@ def main():
     enhanced_print = False
     outdir="./"
     load_paths = []
+    input_dirs = []
     server = False
     auto_run = False
     permissive = False
@@ -94,12 +97,12 @@ def main():
     warnings = []
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "W:A:t:dfvdhi:o:a:SO:D:x:",
+        opts, args = getopt.getopt(sys.argv[1:], "I:W:A:t:dfvdhi:o:a:SO:D:x:",
                                    [ "debug=", "assist-paths=", "outdir", "enhanced",
                                      "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
                                      "assist=","server", "auto", "permissive", 'symbols', "xlate=",
-                                     "no-libfdt", "overlay", "cfgfile=", "cfgval="] )
+                                     "no-libfdt", "overlay", "cfgfile=", "cfgval=", "input-dirs"] )
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -125,6 +128,8 @@ def main():
             cmdline_assists.append(a)
         elif o in ('-A', '--assist-path'):
             load_paths += a.split(":")
+        elif o in ('-I', '--input-dirs'):
+            input_dirs += a.split(":")
         elif o in ('-O', '--outdir'):
             outdir = a
         elif o in ('-D', '--debug'):
@@ -242,13 +247,23 @@ def main():
             print( "[ERROR]: output directory \"%s\" does not exist" % outdir )
             sys.exit(1)
 
+    # Not indicated in the help message, but we combine all the search
+    # directories + environment variables. Assists, lops and dts files
+    # can be found in any input directory type, but for the purpose of
+    # documentation, they are considered separate for now.
+    env_paths = (os.environ.get('LOPPER_INPUT_DIRS') or "").split(":")
+    all_search_paths_as_passed = load_paths + input_dirs + env_paths
+    all_search_paths = []
+    for p in all_search_paths_as_passed:
+        p_path = Path(p)
+        abs_p_path = p_path.resolve()
+        if not abs_p_path.exists():
+            lopper.log._debug( f"input search directory {p_path} not found" )
+        else:
+            all_search_paths.append( abs_p_path.as_posix() )
+
     # check that the input files (passed via -i) exist
     for i in inputfiles:
-        inf = Path(i)
-        if not inf.exists():
-            print( "Error: input file %s does not exist" % i )
-            sys.exit(1)
-
         valid_ifile_types = [ ".json", ".dtsi", ".dtb", ".dts", ".yaml" ]
         itype = lopper.Lopper.input_file_type(i)
         if not itype in valid_ifile_types:
@@ -342,7 +357,7 @@ def main():
     device_tree.enhanced = enhanced_print
     device_tree.outdir = outdir
     device_tree.target_domain = target_domain
-    device_tree.load_paths = load_paths
+    device_tree.load_paths = all_search_paths
     device_tree.permissive = permissive
     device_tree.merge = overlay
     device_tree.autorun = auto_run

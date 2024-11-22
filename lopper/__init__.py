@@ -144,6 +144,13 @@ class LopperSDT:
         sdt_files = []
         support_files = []
         for ifile in input_files:
+            ifile_searched = self.input_find( ifile )
+            if not ifile_searched:
+                lopper.log._warning( f"input file {ifile} not found")
+                continue
+            else:
+                ifile = ifile_searched
+
             if re.search( ".dts$", ifile ) or re.search( ".dtsi$", ifile ):
                 # an input file is either a lopper operation file, or part of the
                 # system device tree. We can check for compatibility to decide which
@@ -382,10 +389,12 @@ class LopperSDT:
         self.support_files = support_files
 
         if self.verbose:
+            search_paths = [ lopper_directory ] + [ lopper_directory + "/assists/" ] + self.load_paths
             print( "" )
             print( "Lopper summary:")
             print( "   system device tree: %s" % sdt_files )
             print( "   lops: %s" % lop_files )
+            print( "   search paths: %s" % search_paths )
             print( "   output: %s" % self.output_file )
             print( "" )
 
@@ -640,6 +649,87 @@ class LopperSDT:
                     lopper.log._error( f"werror is enabled, and no compatible output assist found, exiting" )
                     sys.exit(2)
 
+    def input_find(self, input_file_name, auto_extensions = [], local_search_paths = []):
+        """Locates a python module that matches assist_name
+
+        This routine searches both system (lopper_directory, lopper_directory +
+        "assists", and passed paths (local_load_paths) to locate a matching
+        python implementation.
+
+        Args:
+           input_file_name (string): name of the input file to locate
+           auto_extensions (list of strings, optional): list of extensions to attempt
+                                                        when searching for an input
+                                                        (currently unused)
+           local_search_paths (list of strings, optional): list of directories to search
+                                                           in addition to system dirs
+
+        Returns:
+           String: absolute path to the located input file or None if not found
+        """
+
+        # NOTE: this routine will be combined with assist_find() in the future
+        lopper.log._info( f"input_find: {input_file_name}\n"
+                          f"        system search: {self.load_paths}\n"
+                          f"        local search: {local_search_paths}" )
+
+        input_file = Path( input_file_name )
+        try:
+            if sys.version_info.minor < 6:
+                input_file_abs = input_file.resolve()
+            else:
+                input_file_abs = input_file.resolve( True )
+            if not input_file_abs:
+                raise FileNotFoundError( "Unable to find file: %s" % input_file )
+        except FileNotFoundError:
+            # check the path from which lopper is running, that
+            # directory + lops, and paths specified on the command line
+            input_file_abs = ""
+            search_paths =  [ lopper_directory ] + [ lopper_directory + "/assists/" ] + \
+                            [ lopper_directory + "/lops/" ] + local_search_paths + self.load_paths
+            for s in search_paths:
+                # the first found file is the one we return
+                if input_file_abs:
+                    continue
+
+                lopper.log._debug( f"input_find: checking directory: {s} for: {input_file}")
+                input_file_test = Path( s + "/" + input_file.as_posix() )
+                try:
+                    if sys.version_info.minor < 6:
+                        input_file_abs = input_file_test.resolve()
+                    else:
+                        input_file_abs = input_file_test.resolve( True )
+
+                    if not input_file_abs:
+                        raise FileNotFoundError( "Unable to find file: %s" % input_file )
+                    else:
+                        lopper.log._debug( f"input_find: found {input_file_abs}" )
+                except FileNotFoundError:
+                    input_file_abs = ""
+
+                if not input_file_abs:
+                    # try our extensions
+                    for extension in auto_extensions:
+                        # try it with a the extension
+                        input_file_with_ext = Path( s + "/" + input_file.as_posix() + extension )
+                        try:
+                            if sys.version_info.minor < 6:
+                                input_file_abs = input_file_with_ext.resolve()
+                            else:
+                                input_file_abs = input_file_with_ext.resolve( True )
+                                if not input_file_abs:
+                                    raise FileNotFoundError( "Unable to find input file: %s" % mod_file )
+                        except FileNotFoundError:
+                            input_file_abs = ""
+
+            if not input_file_abs:
+                lopper.log._error( f"input file {input_file_name} not found" )
+                if self.werror:
+                    sys.exit(1)
+                return None
+
+        return input_file_abs.as_posix()
+
     def assist_find(self, assist_name, local_load_paths = []):
         """Locates a python module that matches assist_name
 
@@ -656,59 +746,11 @@ class LopperSDT:
            Path: Path object to the located python module, None on failure
 
         """
-        mod_file = Path( assist_name )
-        mod_file_wo_ext = mod_file.with_suffix('')
+        found_file = self.input_find( assist_name, [ ".py" ], local_load_paths )
+        if found_file:
+            return Path( found_file )
 
-        lopper.log._info( f"assist_find: {assist_name} local search: {local_load_paths}" )
-
-
-        # anything less than python 3.6.x doesn't take "true" as a parameter to
-        # resolve. So we make it conditional on the version.
-
-        try:
-            if sys.version_info.minor < 6:
-                mod_file_abs = mod_file.resolve()
-            else:
-                mod_file_abs = mod_file.resolve( True )
-            if not mod_file_abs:
-                raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
-        except FileNotFoundError:
-            # check the path from which lopper is running, that directory + assists, and paths
-            # specified on the command line
-            search_paths =  [ lopper_directory ] + [ lopper_directory + "/assists/" ] + local_load_paths + self.load_paths
-            for s in search_paths:
-                mod_file = Path( s + "/" + mod_file.name )
-                try:
-                    if sys.version_info.minor < 6:
-                        mod_file_abs = mod_file.resolve()
-                    else:
-                        mod_file_abs = mod_file.resolve( True )
-                    if not mod_file_abs:
-                        raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
-                except FileNotFoundError:
-                    mod_file_abs = ""
-
-                if not mod_file_abs and not mod_file.name.endswith( ".py"):
-                    # try it with a .py
-                    mod_file = Path( s + "/" + mod_file.name + ".py" )
-                    try:
-                        if sys.version_info.minor < 6:
-                            mod_file_abs = mod_file.resolve()
-                        else:
-                            mod_file_abs = mod_file.resolve( True )
-                        if not mod_file_abs:
-                            raise FileNotFoundError( "Unable to find assist: %s" % mod_file )
-                    except FileNotFoundError:
-                        mod_file_abs = ""
-
-
-            if not mod_file_abs:
-                lopper.log._error( f"module file {assist_name} not found" )
-                if self.werror:
-                    sys.exit(1)
-                return None
-
-        return mod_file
+        return None
 
     def assists_wrap(self):
         """wrap assists that have been added to the device tree
@@ -1521,15 +1563,12 @@ class LopperSDT:
                     sys.exit(1)
 
                 mod_file_abs = mod_file.resolve()
+
                 # append the directory of the located module onto the search
                 # path. This is needed if that module imports something from
                 # its own directory
-
-                if lopper_directory not in sys.path:
-                    # TODO: might want to make this a utility function
-                    sys.path.append( lopper_directory )
-                    sys.path.append( lopper_directory + "/assists" )
-
+                sys.path.append( lopper_directory )
+                sys.path.append( lopper_directory + "/assists" )
                 sys.path.append( str(mod_file_abs.parent) )
                 try:
                     imported_module = SourceFileLoader( mod_file.name, str(mod_file_abs) ).load_module()
