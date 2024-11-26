@@ -14,6 +14,7 @@ import glob
 import yaml
 from typing import Any, List, Optional, Dict, Union
 import shutil
+import logging
 
 def to_cmakelist(pylist):
     cmake_list = ';'.join(pylist)
@@ -137,3 +138,24 @@ def find_files(search_pattern, search_path):
     """
 
     return glob.glob(f"{search_path}{os.path.sep}{search_pattern}")
+
+def log_setup(options,logger):
+    """To setup the log level based on the verbose given by the user
+    Args:
+        options(obj): Get the verbose from the options
+    Returns:
+        logger object
+    """
+    verbose = [i for i in options["args"] if i.startswith('-v')]
+    verbose = verbose[0]  if verbose else ''
+
+    if verbose == "-vvv":
+        logger.setLevel(logging.INFO)
+    elif verbose == "-v":
+        logger.setLevel(logging.ERROR)
+    elif verbose == "-vv":
+        logger.setLevel(logging.WARNING)
+    else:
+        logger.setLevel(logging.CRITICAL)
+
+    return logger

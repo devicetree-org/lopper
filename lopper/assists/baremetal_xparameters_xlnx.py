@@ -12,6 +12,8 @@ import sys
 import os
 import re
 import glob
+import logging
+
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -20,12 +22,36 @@ import baremetalconfig_xlnx as bm_config
 from baremetaldrvlist_xlnx import xlnx_generate_bm_drvlist
 from baremetallinker_xlnx import get_memranges
 
+
+logger = logging.getLogger(__name__)
+
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetal_xparameters_xlnx", compat_string_to_test):
         return xlnx_generate_xparams
     return ""
 
+def add_multi_buf(plat,match_cpunode,data_dict,else_ignore_data=[]):
+    """To add multi buf data to the plat
+    Args:
+        plat(obj) : object of a plat
+        match_cpunode(obj) : object of a cpu node
+        data_dict(dict) : data to be added to buf
+        else_ignore_data(list) : ignore the else part
+    Returns:
+        None
+    """
+    for key,value in data_dict.items():
+        if match_cpunode.propval(key) != ['']:
+            data = match_cpunode.propval(key, list)[0]
+            plat.buf(f'#define {value} {data}\n')
+        else:
+            if key not in else_ignore_data:
+                plat.buf(f'#define {value} 0')
+
 def xlnx_generate_xparams(tgt_node, sdt, options):
+    global logger
+    logger=utils.log_setup(options,logger)
+
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     if options.get('outdir', {}):
@@ -181,6 +207,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {intr[0]}')
                             canondef_dict.update({prop:intr[0]})
                         except KeyError:
+                            logger.warning(f"Get interrupt prop is failed {node.name}, adding default value as {hex(0xFFFF)}")
                             intr = [0xFFFF]
 
                         """
@@ -192,6 +219,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             inc = intr_parent[0]["#interrupt-cells"].value[0]
                             num_of_intrs = int(len(node[prop].value)/inc)
                         except KeyError:
+                            logger.warning(f"Get interrupt parent is failed {node.name}, adding default value as {0}")
                             num_of_intrs = 0
                         if num_of_intrs > 1:
                             for j in range(1, num_of_intrs):
@@ -216,6 +244,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                             plat.buf(f'\n#define XPAR_{label_name}_INTR {hex(intr_id[0]+32)}')
                                             canondef_dict.update({"INTR":hex(intr_id[0]+32)})
                         except KeyError:
+                            logger.warning(f"Get interrupt id is failed {node.name}, adding default value as {[0xFFFF]}")
                             intr_id = [0xFFFF]
 
                     elif prop == "interrupt-parent":
@@ -242,6 +271,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 try:
                                     val = hex(child[1][p].value[0])
                                 except KeyError:
+                                    logger.warning(f"Get ipi child value is failed {node.name}, adding default value as {0xFFFF}")
                                     val = 0xFFFF
                                 p = p.replace("-", "_")
                                 p = p.replace("xlnx,", "")
@@ -273,6 +303,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             if device_type == "pci":
                                 device_ispci = 1
                         except KeyError:
+                            logger.warning(f"Get device type is failed {node.name}, adding default value as {0}")
                             device_ispci = 0
                         if device_ispci:
                             prop_vallist = bm_config.get_pci_ranges(node, node[prop].value, pad)
@@ -303,6 +334,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             if '' in prop_val:
                                 prop_val = [1]
                         except KeyError:
+                            logger.warning(f"Get property value is failed for {prop} and node is {node.name}, adding default value as {0}")
                             prop_val = [0]
 
                         if pad:
@@ -364,8 +396,6 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             label_name = bm_config.get_label(sdt, symbol_node, node)
             if label_name != None:
                 label_name = label_name.upper()
-            else:
-                continue
             val = bm_config.scan_reg_size(node, node['reg'].value, 0)
             plat.buf(f'\n/* Definitions for peripheral {label_name} */')
             plat.buf(f'\n#define XPAR_{label_name}_BASEADDR {hex(val[0])}\n')
@@ -404,95 +434,39 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     #CPU parameters related defines
     match_cpunode = bm_config.get_cpu_node(sdt, options)
     if re.search("microblaze-riscv", match_cpunode['compatible'].value[0]):
-        plat.buf(f"\n\n/*  CPU parameters definition */\n")
-        if match_cpunode.propval('xlnx,freq') != ['']:
-            cpu_freq = match_cpunode.propval('xlnx,freq', list)[0]
-            plat.buf(f'#define XPAR_CPU_CORE_CLOCK_FREQ_HZ {cpu_freq}\n')
-
-        if match_cpunode.propval('xlnx,use-dcache') != ['']:
-            use_dcache = match_cpunode.propval('xlnx,use-dcache', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_DCACHE {use_dcache}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_DCACHE 0')
-        if match_cpunode.propval('xlnx,dcache-line-len') != ['']:
-            dcache_line_len = match_cpunode.propval('xlnx,dcache-line-len', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_DCACHE_LINE_LEN {dcache_line_len}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_DCACHE_LINE_LEN 0\n')
-        if match_cpunode.propval('xlnx,dcache-byte-size') != ['']:
-            dcache_byte_size = match_cpunode.propval('xlnx,dcache-byte-size', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_DCACHE_BYTE_SIZE {dcache_byte_size}\n')
-        if match_cpunode.propval('xlnx,use-icache') != ['']:
-            use_icache = match_cpunode.propval('xlnx,use-icache', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_ICACHE {use_icache}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_ICACHE 0')
-        if match_cpunode.propval('xlnx,icache-line-len') != ['']:
-            icache_line_len = match_cpunode.propval('xlnx,icache-line-len', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_ICACHE_LINE_LEN {icache_line_len}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_ICACHE_LINE_LEN 0\n')
-        if match_cpunode.propval('xlnx,icache-byte-size') != ['']:
-            icache_byte_size = match_cpunode.propval('xlnx,icache-byte-size', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_ICACHE_BYTE_SIZE {icache_byte_size}\n')
-        if match_cpunode.propval('xlnx,use-fpu') != ['']:
-            use_fpu = match_cpunode.propval('xlnx,use-fpu', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_FPU {use_fpu}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_FPU 0\n')
-        if match_cpunode.propval('xlnx,use-mmu') != ['']:
-            use_mmu = match_cpunode.propval('xlnx,use-mmu', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_MMU {use_mmu}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_MMU 0\n')
-        if match_cpunode.propval('xlnx,use-sleep') != ['']:
-            use_sleep = match_cpunode.propval('xlnx,use-sleep', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_SLEEP {use_sleep}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_SLEEP 0\n')
-        if match_cpunode.propval('xlnx,fault-tolerant') != ['']:
-            is_fault_tolerant = match_cpunode.propval('xlnx,fault-tolerant', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_FAULT_TOLERANT {is_fault_tolerant}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_FAULT_TOLERANT 0\n')
-        if match_cpunode.propval('xlnx,d-lmb') != ['']:
-            d_lmb = match_cpunode.propval('xlnx,d-lmb', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_D_LMB {d_lmb}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_D_LMB 0\n')
-        if match_cpunode.propval('xlnx,use-branch-target-cache') != ['']:
-            use_branch_target_cache = match_cpunode.propval('xlnx,use-branch-target-cache', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_BRANCH_TARGET_CACHE {use_branch_target_cache}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_USE_BRANCH_TARGET_CACHE 0\n')
-        if match_cpunode.propval('xlnx,branch-target-cache-size') != ['']:
-            branch_target_cache_size = match_cpunode.propval('xlnx,branch-target-cache-size', list)[0]
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_BRANCH_TARGET_CACHE_SIZE {branch_target_cache_size}\n')
-        else:
-            plat.buf(f'#define XPAR_MICROBLAZE_RISCV_BRANCH_TARGET_CACHE_SIZE 0\n')
+        cpu_parameters={
+        'xlnx,freq':"XPAR_CPU_CORE_CLOCK_FREQ_HZ",
+        'xlnx,use-dcache':'XPAR_MICROBLAZE_RISCV_USE_DCACHE',
+        'xlnx,dcache-line-len':'XPAR_MICROBLAZE_RISCV_DCACHE_LINE_LEN',
+        'xlnx,dcache-byte-size':'XPAR_MICROBLAZE_RISCV_DCACHE_BYTE_SIZE',
+        'xlnx,use-icache':'XPAR_MICROBLAZE_RISCV_USE_ICACHE',
+        'xlnx,icache-line-len':'XPAR_MICROBLAZE_RISCV_ICACHE_LINE_LEN',
+        'xlnx,icache-byte-size':'XPAR_MICROBLAZE_RISCV_ICACHE_BYTE_SIZE',
+        'xlnx,use-fpu':'XPAR_MICROBLAZE_RISCV_USE_FPU',
+        'xlnx,use-mmu':'XPAR_MICROBLAZE_RISCV_USE_MMU',
+        'xlnx,use-sleep':'XPAR_MICROBLAZE_RISCV_USE_SLEEP',
+        'xlnx,fault-tolerant':'XPAR_MICROBLAZE_RISCV_FAULT_TOLERANT',
+        'xlnx,d-lmb':'XPAR_MICROBLAZE_RISCV_D_LMB',
+        'xlnx,use-branch-target-cache':'XPAR_MICROBLAZE_RISCV_USE_BRANCH_TARGET_CACHE',
+        'xlnx,branch-target-cache-size':'XPAR_MICROBLAZE_RISCV_BRANCH_TARGET_CACHE_SIZE',
+        }
+        ignore_else_part_lis = ['xlnx,freq','xlnx,dcache-byte-size','xlnx,icache-line-len',
+                                'xlnx,icache-byte-size','xlnx,use-fpu',]
+        add_multi_buf(plat,match_cpunode,cpu_parameters,ignore_else_part_lis)
 
     elif re.search("microblaze", match_cpunode['compatible'].value[0]):
-        if match_cpunode.propval('xlnx,freq') != ['']:
-            cpu_freq = match_cpunode.propval('xlnx,freq', list)[0]
-            plat.buf(f'\n#define XPAR_CPU_CORE_CLOCK_FREQ_HZ {cpu_freq}\n')
-        if match_cpunode.propval('xlnx,ddr-reserve-sa') != ['']:
-            ddr_sa = match_cpunode.propval('xlnx,ddr-reserve-sa', list)[0]
-            plat.buf(f'\n#define XPAR_MICROBLAZE_DDR_RESERVE_SA {hex(ddr_sa)}\n')
-        if match_cpunode.propval('xlnx,addr-size') != ['']:
-            addr_size = match_cpunode.propval('xlnx,addr-size', list)[0]
-            plat.buf(f'\n#define XPAR_MICROBLAZE_ADDR_SIZE {addr_size}\n')
-    else:
-        if match_cpunode.propval('xlnx,cpu-clk-freq-hz') != ['']:
-            cpu_freq = match_cpunode.propval('xlnx,cpu-clk-freq-hz', list)[0]
-            plat.buf(f'\n\n#define XPAR_CPU_CORE_CLOCK_FREQ_HZ {cpu_freq}\n')
-        if match_cpunode.propval('xlnx,timestamp-clk-freq') != ['']:
-            timestamp_clk = match_cpunode.propval('xlnx,timestamp-clk-freq', list)[0]
-            plat.buf(f'#define XPAR_CPU_TIMESTAMP_CLK_FREQ {timestamp_clk}\n')
+        mic_cpu = {'xlnx,freq':'XPAR_CPU_CORE_CLOCK_FREQ_HZ',
+                   'xlnx,ddr-reserve-sa':'XPAR_MICROBLAZE_DDR_RESERVE_SA',
+                   'xlnx,addr-size':'XPAR_MICROBLAZE_ADDR_SIZE'}
+        add_multi_buf(plat,match_cpunode,mic_cpu)
 
-    #PSS REF clocks define
-    if match_cpunode.propval('xlnx,pss-ref-clk-freq') != ['']:
-        pss_ref = match_cpunode.propval('xlnx,pss-ref-clk-freq', list)[0]
-        plat.buf(f'#define XPAR_PSU_PSS_REF_CLK_FREQ_HZ {pss_ref}\n')
+    else:
+        extra_cpu_param = {"xlnx,cpu-clk-freq-hz":"XPAR_CPU_CORE_CLOCK_FREQ_HZ",
+                           "xlnx,timestamp-clk-freq":"XPAR_CPU_TIMESTAMP_CLK_FREQ",
+                           #PSS REF clocks define
+                           "xlnx,pss-ref-clk-freq":"XPAR_PSU_PSS_REF_CLK_FREQ_HZ"}
+        add_multi_buf(plat,match_cpunode,extra_cpu_param)
+
 
     #Define for NUMBER_OF_SLRS
     if sdt.tree[tgt_node].propval('slrcount') != ['']:
