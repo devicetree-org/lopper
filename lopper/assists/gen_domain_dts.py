@@ -495,43 +495,29 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                     soc_kconfig.write("  select ATOMIC_OPERATIONS_C\n")
                     soc_kconfig.write("  select INCLUDE_RESET_VECTOR\n")
 
-                    if isa.find('_zicsr') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_ZICSR\n")
-
-                    if isa.find('_zifencei') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_ZIFENCEI\n")
-                    
-                    if isa.find('_zba') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBA\n")
-
-                    if isa.find('_zbb') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBB\n")
-
-                    if isa.find('_zbc') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBC\n")
-
-                    if isa.find('_zbs') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_ZBS\n")
+                    data_dict={'_zicsr':"  select RISCV_ISA_EXT_ZICSR\n",
+                               '_zifencei':"  select RISCV_ISA_EXT_ZIFENCEI\n",
+                               '_zba':"  select RISCV_ISA_EXT_ZBA\n",
+                               '_zbb':"  select RISCV_ISA_EXT_ZBB\n",
+                               '_zbc':"  select RISCV_ISA_EXT_ZBC\n",
+                               '_zbs':"  select RISCV_ISA_EXT_ZBS\n",
+                    }
+                    for key, value in data_dict.items():
+                        if isa.find(key) != -1:
+                            soc_kconfig.write(value)
 
                     isa = isa.split('_')[0]
 
-                    if isa.find('rv32i') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_RV32I\n")
-
-                    if isa.find('m') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_M\n")
-
-                    if isa.find('a') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_A\n")
-
-                    if isa.find('c') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_C\n")
-
-                    if isa.find('f') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_F\n")
-
-                    if isa.find('d') != -1:
-                        soc_kconfig.write("  select RISCV_ISA_EXT_D\n")
+                    data_dict={'rv32i':"  select RISCV_ISA_RV32I\n",
+                        'm':"  select RISCV_ISA_EXT_M\n",
+                        'a':"  select RISCV_ISA_EXT_A\n",
+                        'c':"  select RISCV_ISA_EXT_C\n",
+                        'f':"  select RISCV_ISA_EXT_F\n",
+                        'd':"  select RISCV_ISA_EXT_D\n",
+                    }
+                    for key, value in data_dict.items():
+                        if isa.find(key) != -1:
+                            soc_kconfig.write(value)
 
                     soc_kconfig.write(str(fix_part))
 
