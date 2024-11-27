@@ -139,23 +139,20 @@ def find_files(search_pattern, search_path):
 
     return glob.glob(f"{search_path}{os.path.sep}{search_pattern}")
 
-def log_setup(options,logger):
+def log_setup(options):
     """To setup the log level based on the verbose given by the user
     Args:
         options(obj): Get the verbose from the options
     Returns:
-        logger object
+        logger level
     """
     verbose = [i for i in options["args"] if i.startswith('-v')]
     verbose = verbose[0]  if verbose else ''
-
+    level = logging.CRITICAL
     if verbose == "-vvv":
-        logger.setLevel(logging.INFO)
+        level = logging.INFO
     elif verbose == "-v":
-        logger.setLevel(logging.ERROR)
+        level = logging.ERROR
     elif verbose == "-vv":
-        logger.setLevel(logging.WARNING)
-    else:
-        logger.setLevel(logging.CRITICAL)
-
-    return logger
+        level = logging.WARNING
+    return level
