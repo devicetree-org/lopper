@@ -460,12 +460,13 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
 
     else:
         extra_cpu_param = {"xlnx,cpu-clk-freq-hz":"XPAR_CPU_CORE_CLOCK_FREQ_HZ",
-                           "xlnx,timestamp-clk-freq":"XPAR_CPU_TIMESTAMP_CLK_FREQ",
-                           #PSS REF clocks define
-                           "xlnx,pss-ref-clk-freq":"XPAR_PSU_PSS_REF_CLK_FREQ_HZ"}
+                           "xlnx,timestamp-clk-freq":"XPAR_CPU_TIMESTAMP_CLK_FREQ",}
         add_multi_buf(plat,match_cpunode,extra_cpu_param)
 
-
+    #PSS REF clocks define
+    if match_cpunode.propval('xlnx,pss-ref-clk-freq') != ['']:
+        pss_ref = match_cpunode.propval('xlnx,pss-ref-clk-freq', list)[0]
+        plat.buf(f'#define XPAR_PSU_PSS_REF_CLK_FREQ_HZ {pss_ref}\n')
     #Define for NUMBER_OF_SLRS
     if sdt.tree[tgt_node].propval('slrcount') != ['']:
         val = sdt.tree[tgt_node].propval('slrcount', list)[0]
