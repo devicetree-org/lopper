@@ -148,11 +148,10 @@ def log_setup(options):
     """
     verbose = [i for i in options["args"] if i.startswith('-v')]
     verbose = verbose[0]  if verbose else ''
-    level = logging.CRITICAL
-    if verbose == "-vvv":
+    level = logging.ERROR
+    if verbose == "-vv":
         level = logging.INFO
     elif verbose == "-v":
-        level = logging.ERROR
-    elif verbose == "-vv":
         level = logging.WARNING
     return level
+

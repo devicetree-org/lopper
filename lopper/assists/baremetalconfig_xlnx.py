@@ -43,6 +43,7 @@ def get_cpu_node(sdt, options):
                 cpu_labels.append(matched_label)
 
     print(f"ERROR: In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
+    _error(f"ERROR: In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
     sys.exit(1)
 
 def item_generator(json_input, lookup_key):
