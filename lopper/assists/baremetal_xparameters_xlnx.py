@@ -43,10 +43,10 @@ def add_multi_buf(plat,match_cpunode,data_dict,else_ignore_data=[]):
     for key,value in data_dict.items():
         if match_cpunode.propval(key) != ['']:
             data = match_cpunode.propval(key, list)[0]
-            plat.buf(f'#define {value} {data}\n')
+            plat.buf(f'\n#define {value} {data}\n')
         else:
             if key not in else_ignore_data:
-                plat.buf(f'#define {value} 0')
+                plat.buf(f'\n#define {value} 0\n')
 
 def xlnx_generate_xparams(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
@@ -432,6 +432,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     #CPU parameters related defines
     match_cpunode = bm_config.get_cpu_node(sdt, options)
     if re.search("microblaze-riscv", match_cpunode['compatible'].value[0]):
+        plat.buf(f"\n\n/*  CPU parameters definition */\n")
         cpu_parameters={
         'xlnx,freq':"XPAR_CPU_CORE_CLOCK_FREQ_HZ",
         'xlnx,use-dcache':'XPAR_MICROBLAZE_RISCV_USE_DCACHE',

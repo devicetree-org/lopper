@@ -17,7 +17,10 @@ sys.path.append(os.path.dirname(__file__))
 
 from baremetalconfig_xlnx import compat_list, get_cpu_node
 from baremetallinker_xlnx import get_memranges
-from common_utils import to_cmakelist
+from common_utils import to_cmakelist,log_setup
+from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+
+_init(__name__)
 
 def is_compat( node, compat_string_to_test ):
     if "module,baremetal_bspconfig_xlnx" in compat_string_to_test:
@@ -28,6 +31,7 @@ def is_compat( node, compat_string_to_test ):
 # sdt: is the system device-tree
 # options: baremetal application source path
 def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
+    _level(log_setup(options), __name__)
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     if options.get('outdir', {}):
@@ -94,6 +98,7 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
                                if i != (len(match_cpunode[prop].value) - 1):
                                    fd.write(",")
                        except:
+                           _warning(f"Property value not douf for {prop}, writing value 0")
                            fd.write("\n\t\t 0")
                        if prop == prop_list[-1]:
                            fd.write(f"  /* {prop} */")

@@ -16,6 +16,9 @@ import yaml
 sys.path.append(os.path.dirname(__file__))
 import common_utils as utils
 import baremetalconfig_xlnx as bm_config
+from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+
+_init(__name__)
 
 class YamlDumper(yaml.Dumper):
     def increase_indent(self, flow=False, indentless=False):
@@ -92,6 +95,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                                 depreg_list.append(hex(bm_config.get_phandle_regprop(sdt, e, val)))
                                 valid_phandle = 1
                         except KeyError:
+                            _warning(f"get phadle reg property failed for {p}, adding default value as 0")
                             val = 0
                         if prop_val == val:
                             match_list.append(True)
@@ -110,6 +114,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
                         if valid_ex:
                             match_list.append(True)
                     except KeyError:
+                        _warning(f"validate_ex if filed for {p}, appending Fasle to the macth list")
                         match_list.append(False)
 
             #If all the example required conditions met it is valid example
@@ -269,11 +274,13 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
                        try:
                             val = hex(bm_config.get_phandle_regprop(sdt, prop, node[prop].value))
                        except KeyError:
+                            _warning(f"Get phandle reg property failed for {prop}, addding default value as {hex(0)}")
                             val = hex(0)
                     elif prop == "phy-handle":
                        try:
                            val = getxlnx_phytype(sdt, node[prop].value)
                        except KeyError:
+                           _warning(f"Get xlnx phytype failed for {prop}, addding default value as {hex(0)}")
                            val = hex(0)
                     else:
                         val = hex(node[prop].value[0])
@@ -318,6 +325,7 @@ def is_compat( node, compat_string_to_test ):
 
 
 def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
+    _level(utils.log_setup(options), __name__)
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     if options.get('outdir', {}):
@@ -337,6 +345,7 @@ def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
             if "okay" in status:
                 node_list.append(node)
         except:
+           _warning(f"Collecting node list is corrupted for {node.name}")
            pass
 
     src_path = options['args'][1]
@@ -345,6 +354,7 @@ def xlnx_generate_cmake_metadata(tgt_node, sdt, options):
     try:
         repo_path = options['args'][3]
     except IndexError:
+        _warning(f"Repo path is not provided")
         pass
 
     if command == "drvcmake_metadata":

@@ -16,6 +16,9 @@ sys.path.append(os.path.dirname(__file__))
 
 import common_utils as utils
 from baremetalconfig_xlnx import get_cpu_node
+from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+
+_init(__name__)
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetal_getsupported_comp_xlnx", compat_string_to_test):
@@ -37,6 +40,7 @@ def get_yaml_data(comp_name, comp_dir):
     return supported_proc_list, supported_os_list, description, dep_lib_list
 
 def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
+    _level(utils.log_setup(options), __name__)
     proc_name = options['args'][0]
     repo_path_data = utils.get_abs_path(options['args'][1])
 

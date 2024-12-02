@@ -32,6 +32,9 @@ import common_utils as utils
 from baremetalconfig_xlnx import get_cpu_node, item_generator, get_mapped_nodes, get_label
 from bmcmake_metadata_xlnx import getmatch_nodes 
 from baremetallinker_xlnx import get_memranges
+from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+
+_init(__name__)
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetal_validate_comp_xlnx", compat_string_to_test):
@@ -74,6 +77,7 @@ def check_required_prop(sdt, node, required_props):
     return prop_dict
 
 def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
+    _level(utils.log_setup(options), __name__)
     proc_name = options['args'][0]
     src_path = utils.get_abs_path(options['args'][1])
     repo_path_data = options['args'][2]
@@ -122,6 +126,7 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
                 err_msg = f'ERROR: {name} application requires atleast {hex(has_valid_mem[2])} bytes of {has_valid_mem[1]} memory at {hex(has_valid_mem[-1])} to run'
             else:
                 err_msg = f'ERROR: {name} application requires atleast {hex(has_valid_mem[2])} bytes of {has_valid_mem[1]} memory'
+            _error(err_msg)
             print(err_msg)
             sys.exit(1)
 
@@ -195,10 +200,12 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
                     if 'False' in prop:
                         err_msg = f'ERROR: {name} requires {ip} with {prop[0]} enabled'
                         print(err_msg)
+                        _error(err_msg)
                         sys.exit(1)
         else:
             err_msg = f'ERROR: {name} requires at least one {dev_type} hardware instance to be present'
             print(err_msg)
+            _error(err_msg)
             sys.exit(1)
 
     return True
