@@ -714,6 +714,7 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
     SHARED_BUF_PA = 0
     SHARED_BUF_SIZE = 0
     inputs = None
+    global output_file
 
     for c in carveouts:
         base = hex(c.props("start")[0].value)
@@ -873,6 +874,8 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
     # Xilinx OpenAMP subroutine to collect RPMsg information from RPMsg
     # relation
     amba_node = None
+    global output_file
+
     # skip rpmsg remote node which will link to its host via 'host' property
     if node.props("host") != []:
         return True
@@ -940,7 +943,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
         return False
 
     # Here try for key value pair arguments
-    opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_role=", "openamp_host=", "openamp_remote=" ] )
+    opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_role=", "openamp_host=", "openamp_remote=", "openamp_output_filename=" ] )
     if opts == [] and args2 == []:
         print('ERROR: No arguments passed for OpenAMP Module. Erroring out now.')
         return False
@@ -955,6 +958,8 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
             arg_host = a
         elif o in ('-n', "--openamp_remote"):
             arg_remote = a
+        elif o in ("--openamp_output_filename"):
+            output_file = a
         else:
             print("Argument: ",o, " is not recognized. Erroring out.")
 
