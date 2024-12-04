@@ -186,7 +186,8 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
 
                 tree.add(new_node)
                 tree.resolve()
-                xlnx_rpmsg_format_res_mem_node(new_node, hex(start)[2:])
+                if openamp_channel_info[REMOTEPROC_D_TO_D_v2]:
+                    xlnx_rpmsg_format_res_mem_node(new_node, hex(start)[2:])
 
                 if new_node.phandle == 0:
                     new_node.phandle = new_node.phandle_or_create()
