@@ -468,6 +468,16 @@ class isospec(object):
 
     def setup( self ):
         if self.json_tree:
+
+            # process the info section of the .iss file
+            try:
+                if self.json_tree["/info"]:
+                    format = self.json_tree["/info"]["format"].value
+                    if format == "shallow":
+                        _error( "shallow format iss files are not currently supported", True )
+            except Exception as e:
+                _warning( "depth of .iss file could not be determined, output may be incorrect" )
+
             # this is the default settings for devices, it also creates
             # a refcount dictionary
             self.default_settings = self.isospec_subsystem( "/default_settings/subsystems/default" )
