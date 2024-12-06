@@ -823,10 +823,8 @@ def subsystem_expand( tgt_node, sdt, verbose = 0 ):
             ## cpu processing
             cpu_expand( tree, subnode, verbose )
 
-            print( "DDDDDDDDDDDDDDDDDDDDDDDDDDDD" )
             ## memory processing
             memory_expand( tree, subnode, verbose )
-            print ( "AAAAAAAAAAAAAAAAAAAAAAAAAAAAA" )
 
             ## access processing
             access_expand( tree, subnode, verbose )
