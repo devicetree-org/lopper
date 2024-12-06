@@ -2068,6 +2068,7 @@ def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str,
     device_tree.cleanup_flag = True
     device_tree.save_temps = False
     device_tree.enhanced = True
+    device_tree.symbols = True
 
     shutil.copyfile(lops_area + "lop-openamp-invoke.dts", lops_area + "lop-openamp-invoke.dts" + ".original")
     shutil.copyfile(lops_area + "lop-gen_domain_dts-invoke.dts",lops_area + "lop-gen_domain_dts-invoke.dts" + ".original")
