@@ -1,13 +1,9 @@
 definitions:
     OpenAMP:
          openamp_channel_0_access_srams: &openamp_channel_0_access_srams # used for access in each domain
-             - dev: psu_r5_0_atcm_global
+             - dev: psv_r5_0_atcm_global
                flags: 0
-             - dev: psu_r5_0_btcm_global
-               flags: 0
-             - dev: psu_r5_0_atcm
-               flags: 0
-             - dev: psu_r5_0_btcm
+             - dev: psv_r5_0_btcm_global
                flags: 0
 
          rpu0vdev0vring0: &rpu0vdev0vring0
@@ -31,13 +27,13 @@ definitions:
                no-map: 1
 
          openamp_channel_1_access_srams: &openamp_channel_1_access_srams # used for access in each domain
-             - dev: psu_r5_1_atcm_global
+             - dev: psv_r5_1_atcm_global
                flags: 0
-             - dev: psu_r5_1_btcm_global
+             - dev: psv_r5_1_btcm_global
                flags: 0
-             - dev: psu_r5_1_atcm
+             - dev: psv_r5_1_atcm
                flags: 0
-             - dev: psu_r5_0_btcm
+             - dev: psv_r5_0_btcm
                flags: 0
 
          rproc1: &rproc1
@@ -61,19 +57,19 @@ definitions:
                no-map: 1
 
 domains:
-    openamp_a53_0_cluster: # host in channel from a53-0 to r5-0 and r5-1
+    openamp_a72_0_cluster: # host in channel from a72-0 to r5-0 and r5-1
         compatible:
             - "openamp,domain-v1"
         cpus:
-            - cluster: cpus_a53
+            - cluster: cpus_a72
               cpumask: 0x1
               mode:
                  secure: true
                  el: 0x3
         access:
             - dev:
-                - ipi7
-                - ipi7
+                - ipi3
+                - ipi3
               flags:
                 - 0
                 - 0
@@ -92,15 +88,15 @@ domains:
                     - openamp_r5_0_cluster
                     - openamp_r5_1_cluster
                 elfload:
-                    - psu_r5_0_atcm
-                    - psu_r5_0_atcm_global
-                    - psu_r5_0_btcm
-                    - psu_r5_0_btcm_global
+                    - CIPS_0_pspmc_0_psv_r5_0_atcm 
+                    - psv_r5_0_atcm_global
+                    - CIPS_0_pspmc_0_psv_r5_0_btcm 
+                    - psv_r5_0_btcm_global
                     - rproc0
-                    - psu_r5_1_atcm
-                    - psu_r5_1_atcm_global
-                    - psu_r5_1_btcm
-                    - psu_r5_1_btcm_global
+                    - CIPS_0_pspmc_0_psv_r5_1_atcm
+                    - psv_r5_1_atcm_global
+                    - CIPS_0_pspmc_0_psv_r5_1_btcm
+                    - psv_r5_1_btcm_global
                     - rproc1
 
             rpmsg-relation:
@@ -117,8 +113,8 @@ domains:
                      - rpu1vdev0vring1
                      - rpu1vdev0buffer
                 mbox:
-                    - ipi7
-                    - ipi7
+                    - ipi3
+                    - ipi3
 
     openamp_r5_1_cluster:
         compatible:
@@ -143,7 +139,7 @@ domains:
              rpmsg-relation:
                  compatible: openamp,rpmsg-v1
                  host:
-                     - openamp_a53_0_cluster
+                     - openamp_a72_0_cluster
                  mbox:
                      - ipi2
                  carveouts:
@@ -173,7 +169,7 @@ domains:
              rpmsg-relation:
                  compatible: openamp,rpmsg-v1
                  host:
-                     - openamp_a53_0_cluster
+                     - openamp_a72_0_cluster
                  mbox:
                      - ipi1
                  carveouts:

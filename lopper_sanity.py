@@ -2054,7 +2054,6 @@ def inplace_change(filename, old_string, new_string):
 
     # Safely write the changed content, if found in the file
     with open(filename, 'w') as f:
-        print('Changing "{old_string}" to "{new_string}" in {filename}'.format(**locals()))
         s = s.replace(old_string, new_string)
         f.write(s)
 
@@ -2070,8 +2069,13 @@ def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str,
     device_tree.save_temps = False
     device_tree.enhanced = True
 
+    shutil.copyfile(lops_area + "lop-openamp-invoke.dts", lops_area + "lop-openamp-invoke.dts" + ".original")
+    shutil.copyfile(lops_area + "lop-gen_domain_dts-invoke.dts",lops_area + "lop-gen_domain_dts-invoke.dts" + ".original")
+
+    gen_domain_mapping = { 'a72': 'psv_cortexa72_0', 'a53' : 'psu_cortexa53_0' }
+
     inplace_change(lops_area + "lop-openamp-invoke.dts", 'a53', target_soc)
-    inplace_change(lops_area + "lop-gen_domain_dts-invoke.dts", 'a72', target_soc)
+    inplace_change(lops_area + "lop-gen_domain_dts-invoke.dts", 'psv_cortexa72_0' , gen_domain_mapping[target_soc])
 
     local_inputs = [ overlay,
                      lops_area + "lop-load.dts",
@@ -2087,6 +2091,11 @@ def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str,
     nodes_found = []
     for i, v in enumerate(nodes_to_check):
         nodes_found.append(False)
+
+    shutil.copyfile(lops_area + "lop-openamp-invoke.dts"  + ".original", lops_area + "lop-openamp-invoke.dts")
+    shutil.copyfile(lops_area + "lop-gen_domain_dts-invoke.dts" + ".original",lops_area + "lop-gen_domain_dts-invoke.dts")
+    os.remove(lops_area + "lop-openamp-invoke.dts"  + ".original")
+    os.remove(lops_area + "lop-gen_domain_dts-invoke.dts" + ".original")
 
     pass_test = False
     for n in device_tree.tree.__nodes__["/"].subnodes():
