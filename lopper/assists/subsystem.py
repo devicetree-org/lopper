@@ -405,7 +405,8 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
                 flags_names = LopperProp(prop_name+'-flags-names',value = str(flags))
                 subnode + flags_names
 
-            print( "memory expand: start/size as read: %s/%s" % (start,size))
+            if verbose:
+                print( "memory expand: start/size as read: %s/%s" % (start,size))
             try:
                 start = humanfriendly.parse_size( start, True )
             except:
@@ -421,8 +422,8 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
                 except:
                     size = int(size)
 
-            print( "memory expand: start/size as converted: %s/%s" % (start,size))
-            #os._exit(1)
+            if verbose:
+                print( "memory expand: start/size as converted: %s/%s" % (start,size))
 
             mem_list.append(int(start))
             mem_list.append(int(size))
