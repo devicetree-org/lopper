@@ -284,7 +284,7 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                                 phandle_prop = str(p).replace('"', '')
                         if phandle_prop:
                             plat.buf('%s' % phandle_prop)
-                        elif re.search("clocks =", str(p)):
+                        elif re.match("clocks =", str(p)):
                             plat.buf('%s' % node['clocks'])
                         elif p.name == "interrupt-parent":
                             if gic_node and imux_node:
