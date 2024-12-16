@@ -12,7 +12,6 @@ import os
 import re
 import shutil
 from pathlib import Path
-from pathlib import PurePosixPath
 from io import StringIO
 import contextlib
 from importlib.machinery import SourceFileLoader
@@ -567,7 +566,7 @@ class LopperSDT:
             tree_to_write = self.tree
 
         if re.search( "\.dtb$", output_filename ):
-            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+            if self.outdir and not os.path.isabs( output_filename ):
                 output_filename = self.outdir + "/" + output_filename
 
             if self.use_libfdt:
@@ -579,7 +578,7 @@ class LopperSDT:
                 sys.exit(1)
 
         elif re.search( "\.dts$", output_filename ):
-            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+            if self.outdir and not os.path.isabs( output_filename ):
                 output_filename = self.outdir + "/" + output_filename
 
             o = Path(output_filename)
@@ -600,7 +599,7 @@ class LopperSDT:
             printer.exec()
 
         elif re.search( "\.yaml$", output_filename ):
-            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+            if self.outdir and not os.path.isabs( output_filename ):
                 output_filename = self.outdir + "/" + output_filename
 
             o = Path(output_filename)
@@ -611,7 +610,7 @@ class LopperSDT:
             yaml = LopperYAML( None, tree_to_write, config=self.config )
             yaml.to_yaml( output_filename )
         elif re.search( "\.json$", output_filename ):
-            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+            if self.outdir and not os.path.isabs( output_filename ):
                 output_filename = self.outdir + "/" + output_filename
 
             o = Path(output_filename)
@@ -622,7 +621,7 @@ class LopperSDT:
             json = LopperYAML( None, self.tree, config=self.config )
             json.to_json( output_filename )
         else:
-            if self.outdir and not PurePosixPath( output_filename ).is_absolute():
+            if self.outdir and not os.path.isabs( output_filename ):
                 output_filename = self.outdir + "/" + output_filename
 
             # we use the outfile extension as a mask
