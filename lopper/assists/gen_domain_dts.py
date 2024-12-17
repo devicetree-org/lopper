@@ -421,20 +421,6 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
             sdt.tree[node].delete('clock-output-names')
         node.name = node.name.split('@')[0]
 
-    # Update memory nodes
-    # For DDR keep only device_type and remove compatible
-    # For LMB ram change the compatible to mmio-sram
-    memnode_list = sdt.tree.nodes('/memory@.*')
-    for mem_node in memnode_list:
-        if mem_node.propval('xlnx,ip-name') != ['']:
-            if 'ddr' in mem_node['xlnx,ip-name'].value[0]:
-                sdt.tree[mem_node].delete('compatible')
-            if 'lmb_bram' in mem_node['xlnx,ip-name'].value[0]:
-                sdt.tree[mem_node]['compatible'].value = ['mmio-sram']
-                mem_node.delete('device_type')
-            mem_node.delete('memory_type')
-            mem_node.delete('xlnx,ip-name')
-
     match_cpunode = get_cpu_node(sdt, options)
     match_cpunode.parent.delete("address-map")
     match_cpunode.parent.name = match_cpunode.parent.name.split('@')[0]
@@ -480,6 +466,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                 mem_size = node.propval('reg', list)[1]
                 if mem_size > max_mem_size:
                     sram_node = node.abs_path
+                    max_mem_size = mem_size
 
         if node.propval('xlnx,ip-name') != ['']:
             val = node.propval('xlnx,ip-name', list)[0]
@@ -559,5 +546,20 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     defconfig_kconfig.close()
 
     sdt.tree['/chosen']['zephyr,sram'] = sram_node
+
+    # Update memory nodes
+    # For DDR keep only device_type and remove compatible
+    # For LMB ram change the compatible to mmio-sram
+    memnode_list = sdt.tree.nodes('/memory@.*')
+    for mem_node in memnode_list:
+        if mem_node.propval('xlnx,ip-name') != ['']:
+            if 'ddr' in mem_node['xlnx,ip-name'].value[0]:
+                sdt.tree[mem_node].delete('compatible')
+            if 'lmb_bram' in mem_node['xlnx,ip-name'].value[0]:
+                sdt.tree[mem_node]['compatible'].value = ['mmio-sram']
+                #mem_node.delete('device_type')
+            mem_node.delete('memory_type')
+            mem_node.delete('xlnx,ip-name')
+
     return True
 
