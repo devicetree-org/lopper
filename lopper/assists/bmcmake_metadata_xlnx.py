@@ -242,24 +242,14 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
             nodes = getmatch_nodes(sdt, node_list, drv_yamlpath, options)
             nodes = [node for node in nodes if node.props('xlnx,is-hierarchy') == []]
             name_list = []
-            nodes_list = []
             for node in nodes:
                 if node.propval('xlnx,name') != ['']:
-                    name = node.propval('xlnx,name', list)[0]
-                    ip_name = node.propval('xlnx,ip-name', list)[0]
+                    name_list.append(node.propval('xlnx,name', list)[0])
                 else:
-                    name = bm_config.get_label(sdt, symbol_node, node)
-
-                if 'ttc' in ip_name:
-                    if name.endswith(('ttc_0', 'ttc_3', 'ttc_6', 'ttc_9')):
-                        name_list.append(name)
-                        nodes_list.append(node)
-                else:
-                    name_list.append(name)
-                    nodes_list.append(node)
+                    name_list.append(bm_config.get_label(sdt, symbol_node, node))
 
             fd.write(f"set({drv.upper()}_NUM_DRIVER_INSTANCES {utils.to_cmakelist(name_list)})\n")
-            for index,node in enumerate(nodes_list):
+            for index,node in enumerate(nodes):
                 val_list = []
                 for prop in prop_list:
                     if prop == "reg":
