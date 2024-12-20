@@ -22,6 +22,8 @@ from baremetalconfig_xlnx import compat_list, get_cpu_node, get_mapped_nodes, ge
 from common_utils import to_cmakelist
 import common_utils as utils
 from domain_access import update_mem_node
+from openamp_xlnx import xlnx_openamp_find_channels, xlnx_openamp_parse
+from openamp_xlnx_common import openamp_linux_hosts, openamp_roles
 
 def delete_unused_props( node, driver_proplist , delete_child_nodes):
     if delete_child_nodes:
@@ -91,6 +93,15 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     except IndexError:
         pass
 
+    openamp_present = xlnx_openamp_find_channels(sdt)
+
+    if openamp_present and linux_dt == 1 and machine in openamp_linux_hosts:
+        # Currently this plugin is only invoked for Linux. So for now just consider linux case
+        xlnx_options = { "openamp_host":   openamp_roles[machine],
+                         "openamp_remote": openamp_roles[machine],
+                         "openamp_role":   "host" }
+        xlnx_openamp_parse(sdt, options, xlnx_options, verbose = 0 )
+
     # Delete other CPU Cluster nodes
     cpunode_list = sdt.tree.nodes('/cpu.*@.*', strict=True)
     clustercpu_nodes = []
@@ -117,7 +128,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         if linux_dt:
             if node.name == "memory@fffc0000" or node.name == "memory@bbf00000":
                 sdt.tree.delete(node)
-            if keep_tcms == None and 'tcm' in node.name:
+            if (keep_tcms == None and not openamp_present) and 'tcm' in node.name:
                 sdt.tree.delete(node)
             if node.propval('memory_type', list) == ['linear_flash']:
                 sdt.tree.delete(node)
