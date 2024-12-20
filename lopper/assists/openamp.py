@@ -187,7 +187,7 @@ def openamp_parse(root_node, tree, options ):
 
     for i in root_node["compatible"].value:
         if "xlnx" in i:
-            return xlnx_openamp_parse(tree, options, verbose)
+            return xlnx_openamp_parse(tree, options, None, verbose)
 
     return False
 
