@@ -30,6 +30,19 @@ versal_ipi_to_irq_vect_id = {
     0xFF380000 : 67,
 }
 
+openamp_linux_hosts = [ "psv_cortexa72_0", "psx_cortexa78_0", "psu_cortexa53_0" ]
+openamp_roles = { openamp_linux_hosts[0] : "a72_0",
+                  openamp_linux_hosts[1] : "a78_0",
+                  openamp_linux_hosts[2] : "a53_0",
+                  "psx_cortexr52_0" : "r52_0",
+                  "psx_cortexr52_1" : "r52_1",
+                  "psx_cortexr52_2" : "r52_2",
+                  "psx_cortexr52_3" : "r52_3",
+                  "psu_cortexr5_0" : "r5_0",
+                  "psu_cortexr5_1" : "r5_1",
+                  "psv_cortexr5_1" : "r5_1",
+                  "psv_cortexr5_0" : "r5_0" }
+
 class SOC_TYPE:
     UNINITIALIZED = -1
     VERSAL = 0

@@ -870,7 +870,7 @@ def xlnx_rpmsg_parse_generate_native_amba_node(tree):
 
     return amba_node
 
-def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
+def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = None, verbose = 0 ):
     # Xilinx OpenAMP subroutine to collect RPMsg information from RPMsg
     # relation
     amba_node = None
@@ -951,17 +951,22 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
     role = None
     arg_host = None
     arg_remote = None
-    for o,a in opts:
-        if o in ('-l', "--openamp_role"):
-            role = a
-        elif o in ('-m', "--openamp_host"):
-            arg_host = a
-        elif o in ('-n', "--openamp_remote"):
-            arg_remote = a
-        elif o in ("--openamp_output_filename"):
-            output_file = a
-        else:
-            print("Argument: ",o, " is not recognized. Erroring out.")
+    if xlnx_options != None:
+        role = xlnx_options["openamp_role"]
+        arg_host = xlnx_options["openamp_host"]
+        arg_remote = xlnx_options["openamp_remote"]
+    else:
+        for o,a in opts:
+            if o in ('-l', "--openamp_role"):
+                role = a
+            elif o in ('-m', "--openamp_host"):
+                arg_host = a
+            elif o in ('-n', "--openamp_remote"):
+                arg_remote = a
+            elif o in ("--openamp_output_filename"):
+                output_file = a
+            else:
+                print("Argument: ",o, " is not recognized. Erroring out.")
 
     if role not in ['host', 'remote']:
         print('ERROR: Role value is not proper. Expect either "host" or "remote". Got: ', role)
@@ -986,9 +991,13 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, verbose = 0 ):
         return False
 
     # Generate Text file to configure OpenAMP Application
-    ret = xlnx_openamp_gen_outputs(openamp_channel_info, chan_id, role, verbose)
-    if not ret:
-        return ret
+    # Only do this for remote firmware configuration
+    if role == 'remote':
+        ret = xlnx_openamp_gen_outputs(openamp_channel_info, chan_id, role, verbose)
+        if not ret:
+            return ret
+
+    xlnx_openamp_remove_channels(tree)
 
     # remove definitions
     defn_node =  tree["/definitions"]
@@ -1577,8 +1586,34 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
 
     return True
 
+def xlnx_openamp_remove_channels(tree, verbose = 0):
+    for n in tree["/domains"].subnodes():
+            node_compat = n.props("compatible")
+            if node_compat != []:
+                node_compat = node_compat[0].value
+                if node_compat in [REMOTEPROC_D_TO_D_v2, REMOTEPROC_D_TO_D]:
+                    tree - n
+                if node_compat == RPMSG_D_TO_D:
+                    tree - n
 
-def xlnx_openamp_parse(sdt, options, verbose = 0 ):
+def xlnx_openamp_find_channels(sdt, verbose = 0):
+    # Xilinx OpenAMP subroutine to parse OpenAMP Channel
+    # information and generate Device Tree information.
+    tree = sdt.tree
+
+    for n in tree["/domains"].subnodes():
+            node_compat = n.props("compatible")
+            if node_compat != []:
+                node_compat = node_compat[0].value
+
+                if node_compat in [REMOTEPROC_D_TO_D_v2, REMOTEPROC_D_TO_D]:
+                    return True
+                if node_compat == RPMSG_D_TO_D:
+                    return True
+
+    return False
+
+def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
     tree = sdt.tree
@@ -1594,7 +1629,7 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
                     openamp_channel_info[REMOTEPROC_D_TO_D_v2] = (node_compat == REMOTEPROC_D_TO_D_v2)
                     ret = xlnx_remoteproc_parse(tree, n, openamp_channel_info, verbose)
                 elif node_compat == RPMSG_D_TO_D:
-                    ret = xlnx_rpmsg_parse(tree, n, openamp_channel_info, options, verbose)
+                    ret = xlnx_rpmsg_parse(tree, n, openamp_channel_info, options, xlnx_options, verbose)
 
                 if ret == False:
                     return ret
