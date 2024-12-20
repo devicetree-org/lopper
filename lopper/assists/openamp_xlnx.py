@@ -784,6 +784,11 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
                 soc_ipi_map[nobuf_ipi_key] = nobuf_ipi
 
         IPI_IRQ_VECT_ID = remote_ipi_irq_vect_id if role == 'remote' else host_ipi_irq_vect_id
+        IPI_IRQ_VECT_ID_FREERTOS = IPI_IRQ_VECT_ID
+
+        if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]:
+            IPI_IRQ_VECT_ID_FREERTOS = hex(int(IPI_IRQ_VECT_ID,16) - 32)
+
         POLL_BASE_ADDR = remote_ipi_base if role == 'remote' else host_ipi_base
         # flip this as we are kicking other side with the bitmask value
         IPI_CHN_BITMASK = host_ipi_bitmask if role == 'remote' else remote_ipi_bitmask
@@ -811,6 +816,7 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
             "DEV_BUS_NAME":bus_name,
             "IPI_DEV_NAME":ipi_dev_name,
             "IPI_IRQ_VECT_ID":IPI_IRQ_VECT_ID,
+            "IPI_IRQ_VECT_ID_FREERTOS":IPI_IRQ_VECT_ID_FREERTOS,
             "IPI_CHN_BITMASK":IPI_CHN_BITMASK,
             "RING_TX":tx,
             "RING_RX":rx,
