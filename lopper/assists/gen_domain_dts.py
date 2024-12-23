@@ -393,6 +393,37 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                         is_supported_periph = [value for key,value in schema.items() if key in node["compatible"].value]
                         if "xlnx,xps-timer-1.00.a" in node["compatible"].value:
                             node["compatible"].value = ["amd,xps-timer-1.00.a"]
+                        # UARTNS550
+                        if "xlnx,axi-uart16550-2.0" in node["compatible"].value:
+                            node["compatible"].value = ["ns16550"]
+                            if node.propval('clock-frequency') == [''] and node.propval('xlnx,clock-freq') != ['']:
+                                node["clock-frequency"] = LopperProp("clock-frequency")
+                                node["clock-frequency"].value = node["xlnx,clock-freq"].value
+                            if node.propval('reg-shift') != ['2']:
+                               node["reg-shift"] = LopperProp("reg-shift")
+                               node["reg-shift"].value = 2
+                        # UARTPS
+                        if any(version in node["compatible"].value for version in ("xlnx,zynqmp-uart", "xlnx,xuartps")):
+                            node["compatible"].value = ["xlnx,xuartps"]
+                            if node.propval('clock-frequency') == [''] and node.propval('xlnx,clock-freq') != ['']:
+                                node["clock-frequency"] = LopperProp("clock-frequency")
+                                node["clock-frequency"].value = node["xlnx,clock-freq"].value
+                            if node.propval('current-speed') == [''] and node.propval('xlnx,baudrate') != ['']:
+                                node["current-speed"] = LopperProp("current-speed")
+                                node["current-speed"].value = node["xlnx,baudrate"].value
+                        # UARTPSV
+                        if any(version in node["compatible"].value for version in ("arm,pl011", "arm,sbsa-uart")):
+                            node["compatible"].value = ["arm,sbsa-uart"]
+                        # AXI-IIC
+                        if "xlnx,axi-iic-2.1" in node["compatible"].value:
+                            node["compatible"].value = ["xlnx,xps-iic-2.1"]
+                        if any(version in node["compatible"].value for version in ("xlnx,xps-iic-2.00.a", "xlnx,xps-iic-2.1")):
+                            if node.propval('#address-cells') != ['1']:
+                                node["#address-cells"] = LopperProp("#address-cells")
+                                node["#address-cells"].value = 1
+                            if node.propval('#size-cells') != ['0']:
+                                node["#size-cells"] = LopperProp("#size-cells")
+                                node["#size-cells"].value = 0
                         if is_supported_periph:
                             required_prop = is_supported_periph[0]["required"]
                             prop_list = list(node.__props__.keys())

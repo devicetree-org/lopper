@@ -36,3 +36,65 @@ xlnx,xps-uartlite-1.00.a:
     - interrupt-parent
     - current-speed
     - clocks
+
+xlnx,axi-uart16550-2.0:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+    - clock-frequency
+    - reg-shift
+
+xlnx,zynqmp-uart:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+    - current-speed
+    - clock-frequency
+    - pinctrl-0
+    - pinctrl-names
+
+xlnx,xuartps:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+    - current-speed
+    - clock-frequency
+    - pinctrl-0
+    - pinctrl-names
+
+arm,pl011:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+
+arm,sbsa-uart:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+
+xlnx,xps-iic-2.00.a:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+    - '#address-cells'
+    - '#size-cells'
+
+xlnx,axi-iic-2.1:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+    - '#address-cells'
+    - '#size-cells'
