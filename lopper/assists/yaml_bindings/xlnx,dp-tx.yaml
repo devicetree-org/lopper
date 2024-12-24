@@ -182,6 +182,7 @@ required:
   - xlnx,hdcp-enable
   - xlnx,hdcp22-enable
   - xlnx,hdcp1x-keymgmt
+  - xlnx,xilinx-vfmc
   - xlnx,vtc-offset
   - phy-names
   - phys
