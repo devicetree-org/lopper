@@ -1606,6 +1606,13 @@ def xlnx_openamp_find_channels(sdt, verbose = 0):
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
     tree = sdt.tree
+    domains_present = False
+    for n in tree["/"].subnodes():
+        if n.name == "domains":
+            domains_present = True
+
+    if not domains_present:
+        return False
 
     for n in tree["/domains"].subnodes():
             node_compat = n.props("compatible")
