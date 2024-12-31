@@ -2120,6 +2120,44 @@ def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str,
     else:
         test_failed(test_str)
 
+def xlnx_gen_domain_sanity_test( verbose ):
+    ws_area = os.getcwd()
+    sdt =       os.path.join(ws_area, "device-trees", "system-device-tree-versal-vck190.dts")
+    lops_area = os.path.join(ws_area, "lopper", "lops")
+
+    dt = setup_system_device_tree( outdir )
+    device_tree = LopperSDT( sdt )
+    device_tree.dryrun = False
+    device_tree.output_file = os.path.join(outdir, "xlnx_gen_domain_sanity_test.dts")
+    device_tree.cleanup_flag = True
+    device_tree.save_temps = False
+    device_tree.enhanced = True
+    device_tree.symbols = True
+
+    shutil.copyfile(os.path.join(lops_area, "lop-gen_domain_dts-invoke.dts"), os.path.join(lops_area,"lop-gen_domain_dts-invoke.dts.original"))
+    inplace_change(os.path.join(lops_area, "lop-gen_domain_dts-invoke.dts"), 'psv_cortexa72_0 linux_dt keep_tcm' , 'psv_pmc_0')
+
+    local_inputs = [ os.path.join(lops_area, "lop-load.dts"),
+                     os.path.join(lops_area, "lop-gen_domain_dts-invoke.dts") ]
+
+    device_tree.setup( sdt, local_inputs, "", True, libfdt=libfdt )
+    device_tree.perform_lops()
+    device_tree.write( enhanced = True )
+
+    shutil.copyfile(os.path.join(lops_area, "lop-gen_domain_dts-invoke.dts.original"), os.path.join(lops_area,"lop-gen_domain_dts-invoke.dts"))
+    os.remove(os.path.join(lops_area, "lop-gen_domain_dts-invoke.dts.original"))
+
+    pass_test = True
+    for n in device_tree.tree.__nodes__["/"].subnodes():
+        if "cpus" in n.name and 'microblaze' not in n.name:
+            pass_test = False
+
+    test_str = "xlnx_gen_domain_sanity_test"
+    if pass_test:
+        test_passed(test_str)
+    else:
+        test_failed(test_str)
+
 def openamp_sanity_test( verbose ):
     demo_area = os.getcwd() + "/demos/openamp/inputs/"
 
@@ -2468,6 +2506,7 @@ def usage():
     print('  -t, --tree          run lopper tree tests' )
     print('  -l, --lops          run lop tests' )
     print('  -o, --openamp       run openamp tests')
+    print('  -x, --xlnx          run xilinx-amd sanity tests')
     print('  -a, --assists       run assist tests' )
     print('  -f, --format        run format tests (dts/yaml)' )
     print('  -d, --fdt           run fdt abstraction tests' )
@@ -2483,6 +2522,7 @@ def main():
     global outdir
     global lops
     global openamp_tests
+    global xlnx_tests
     global tree
     global assists
     global format
@@ -2497,13 +2537,14 @@ def main():
     tree = False
     lops = False
     openamp_tests = False
+    xlnx_tests = False
     assists = False
     format = False
     fdttest = False
     continue_on_error = False
     libfdt = True
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlhod", [ "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "openamp", "werror","verbose", "help"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlhoxd", [ "xlnx", "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "openamp", "werror","verbose", "help"])
     except getopt.GetoptError as err:
         print('%s' % str(err))
         usage()
@@ -2529,6 +2570,8 @@ def main():
             lops=True
         elif o in ( '-o','--openamp'):
             openamp_tests = True
+        elif o in ( '-x', '--xlnx'):
+            xlnx_tests = True
         elif o in ( '-t','--tree'):
             tree=True
         elif o in ( '-a','--assists'):
@@ -2612,6 +2655,9 @@ if __name__ == "__main__":
 
     if openamp_tests:
         openamp_sanity_test( verbose )
+
+    if xlnx_tests:
+        xlnx_gen_domain_sanity_test( verbose )
 
     if assists:
         dt = setup_system_device_tree( outdir )
