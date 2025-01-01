@@ -654,54 +654,40 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
 def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
     match_cpunode = get_cpu_node(sdt, options)
     tree = sdt.tree
-    elfload_prop = None
-    remote_idx = -1
-    platform = get_platform(tree, 0)
+    machine_to_dt_mappings = {
+        "psu_cortexr5_0" : "/rf5ss@ff9a0000/r5f_0", "psu_cortexr5_1" : "/rf5ss@ff9a0000/r5f_1",
+        "psv_cortexr5_0" : "/rf5ss@ff9a0000/r5f_0", "psv_cortexr5_1" : "/rf5ss@ff9a0000/r5f_1",
+        "psx_cortexr52_0" : "/rf52ss_0@ff9a0100/r52f_0", "psx_cortexr52_1" : "/rf52ss_0@ff9a0100/r52f_1",
+        "psx_cortexr52_2" : "/rf52ss_1@ff9a0200/r52f_2", "psx_cortexr52_3" : "/rf52ss_1@ff9a0200/r52f_3",
+    }
 
-    # 1. look for all remoteproc relations rr
-    # 2. for each rr, find its remote property
-    # 3. Get remote property's corresponding core cluster node
-    # 4. Map the host ELFLOAD node to the core cluster node to get index into
-    #    ELFLOAD node array
-    # 5. Get DDR node from ELFLOAD node array
-    # 6. Return above DDR node's start and size so this can propagate to linker
+    # validate machine
+    if machine not in machine_to_dt_mappings.keys():
+        print("OPENAMP: XLNX: ERROR: unsuspported machine to remoteproc node mapping.")
+        return None
+
+    # validate remoteproc node exists
+    target_node = None
     for n in tree["/"].subnodes():
-        if 'remoteproc-relation' in n.abs_path:
-            # keep count of remote nodes
-            remote_node_count = len(n.propval('remote'))
-            # find remote cluster
-            for phandle in n.propval('remote'):
-                remote_idx += 1
-                remote_node = tree.pnode(phandle)
-                # find core corresponding to remote cluster
-                cpus_val = remote_node.propval('cpus')
-                cpus_related_core_node = tree.pnode(cpus_val[0])
+        if n.abs_path == machine_to_dt_mappings[machine]:
+            target_node = n
 
-                # Note for VNET with Xilinx-AMD platform the cores have special mapping required
-                cpus_related_core_node_idx = int(cpus_related_core_node.name.split('@')[-1])
-                match_cpunode_idx = int(match_cpunode.name.split('@')[-1])
+    if target_node == None:
+        print("OPENAMP: XLNX: ERROR: could not find remoteproc node for given machine: ", machine)
+        return None
 
-                non_vnet_condition = cpus_related_core_node.name in match_cpunode.abs_path
-                vnet_condition = match_cpunode_idx == cpus_related_core_node_idx
+    target_node = tree[machine_to_dt_mappings[machine]]
+    mem_reg_val = target_node.propval('memory-region')
 
-                # look through the related elfload prop
-                if (platform == SOC_TYPE.VERSAL_NET and vnet_condition) or (platform != SOC_TYPE.VERSAL_NET and non_vnet_condition):
-                    elfload_prop = n.propval('elfload')
-                    row_len = int(len(elfload_prop) / remote_node_count) # should be same for each remote
-                    elfload_idx = remote_idx * row_len
+    if mem_reg_val == []:
+        print("OPENAMP: XLNX: ERROR: could not find remoteproc node does not have DDR ELF Load property 'memory-region'")
+        return None
 
-                    # only look for phandles related to the remote cluster
-                    for i in elfload_prop[elfload_idx:elfload_idx+row_len]:
-                        elfload_node = tree.pnode(i)
+    # ELFLOAD carveout for the DT node is first phandle
+    elf_load_carveout = tree.pnode(mem_reg_val[0])
+    elf_load_carveout_reg = elf_load_carveout.propval('reg')
 
-                        # DDR only - no SRAM for now
-                        if elfload_node.propval('power-domains') == ['']:
-                            elfload_start = elfload_node.propval('start')[0]
-                            elfload_sz = elfload_node.propval('size')[0]
-
-                            return [elfload_start, elfload_sz]
-    return None
-
+    return [elf_load_carveout_reg[1], elf_load_carveout_reg[3]]
 
 def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0 ):
     text_file_contents = ""
@@ -1445,14 +1431,6 @@ def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, elf
         print("ERROR: cpu_config: ", cpu_config, " is not in ", [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT])
         return False
     rpu_cluster_node = tree.pnode(remote_node.props("cpus")[0].value[0])
-    # For Versal NET all cores are under first core
-    if platform == SOC_TYPE.VERSAL_NET:
-        rpu_cluster_node_path = rpu_cluster_node.abs_path
-        rpu_cluster_node_path = rpu_cluster_node_path.replace("@1", "@0")
-        rpu_cluster_node_path = rpu_cluster_node_path.replace("@2", "@0")
-        rpu_cluster_node_path = rpu_cluster_node_path.replace("@3", "@0")
-        rpu_cluster_node = tree[rpu_cluster_node_path]
-
     rpu_core_node = rpu_cluster_node.abs_path + "/cpu@"
     # all cores are in cluster topologically in DTS
     rpu_core_int_val = int(rpu_core)
