@@ -55,6 +55,7 @@
                                         modify_val = update_mem_node(s, modify_prop)
                                         new_ttc_node['reg'].value =  modify_val
                                         new_ttc_node['interrupts'].value =  s['interrupts'].value[x*inc:]
+                                        new_ttc_node['lop-dynamic-ttc-node'] =  1
                                         try:
                                             name_val = s['xlnx,name'].value[0]
                                             new_ttc_node['xlnx,name'].value[0] =  f'{name_val[:-1]}{int(val)+x}'

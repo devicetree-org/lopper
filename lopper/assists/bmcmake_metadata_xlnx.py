@@ -241,6 +241,9 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
 
             nodes = getmatch_nodes(sdt, node_list, drv_yamlpath, options)
             nodes = [node for node in nodes if node.props('xlnx,is-hierarchy') == []]
+            # Dynamically added TTC nodes should be excluded from the CMake metadata.
+            if drv == "ttcps":
+                nodes = [node for node in nodes if node.props('lop-dynamic-ttc-node') == []]
             name_list = []
             for node in nodes:
                 if node.propval('xlnx,name') != ['']:
