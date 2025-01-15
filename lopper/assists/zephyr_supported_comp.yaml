@@ -98,3 +98,23 @@ xlnx,axi-iic-2.1:
     - interrupt-parent
     - '#address-cells'
     - '#size-cells'
+
+xlnx,xps-gpio-1.00.a:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+    - gpio-controller
+    - '#gpio-cells'
+    - xlnx,all-inputs
+    - xlnx,all-inputs-2
+    - xlnx,all-outputs
+    - xlnx,all-outputs-2
+    - xlnx,dout-default
+    - xlnx,dout-default-2
+    - xlnx,gpio-width
+    - xlnx,gpio2-width
+    - xlnx,is-dual
+    - xlnx,tri-default
+    - xlnx,tri-default-2

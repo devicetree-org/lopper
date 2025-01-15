@@ -435,6 +435,21 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                             if node.propval('#size-cells') != ['0']:
                                 node["#size-cells"] = LopperProp("#size-cells")
                                 node["#size-cells"].value = 0
+                        #AXI-GPIO
+                        if "xlnx,xps-gpio-1.00.a" in node["compatible"].value:
+                            node["compatible"].value = ["xlnx,xps-gpio-1.00.a"]
+                            if node.propval('xlnx,is-dual') != ['']:
+                                val = node.propval('xlnx,is-dual')[0]
+                                if val == 1:
+                                    new_node = LopperNode()
+                                    new_node['compatible'] = "xlnx,xps-gpio-1.00.a-gpio2"
+                                    new_node.name = "gpio2"
+                                    new_prop = LopperProp( "gpio-controller" )
+                                    new_prop.value = ""
+                                    new_node + new_prop
+                                    new_node['#gpio-cells'] = 2
+                                    new_node.label_set(node.label)
+                                    node.add(new_node)
                         if is_supported_periph:
                             required_prop = is_supported_periph[0]["required"]
                             prop_list = list(node.__props__.keys())
