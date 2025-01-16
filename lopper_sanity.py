@@ -1954,89 +1954,89 @@ def lops_code_test( device_tree, lop_file, verbose ):
     else:
         test_failed( "code block exec" )
 
-    if re.search( "\[FOUND\] enable-method", test_output ):
+    if re.search( r'\[FOUND\] enable-method', test_output ):
         test_passed( "enable-method, true block" )
     else:
         test_failed( "compatible node, true block" )
 
-    if re.search( "\[FOUND 2\] enable-method", test_output ):
+    if re.search( r'\[FOUND 2\] enable-method', test_output ):
         test_passed( "enable-method, chained true block" )
     else:
         test_failed( "enable-method, chained true block" )
 
-    c = len(re.findall( "[^']\[FOUND\] cpu that does not match invalid a72", test_output ))
+    c = len(re.findall( r"[^']\[FOUND\] cpu that does not match invalid a72", test_output ))
     if c == 3:
         test_passed( "compatible node, false block" )
     else:
         test_failed( "compatible node, false block" )
 
-    c = len(re.findall( "[^']\[INFO\] double condition a72 found", test_output ))
+    c = len(re.findall( r"[^']\[INFO\] double condition a72 found", test_output ))
     if c == 2:
         test_passed( "double condition" )
     else:
         test_failed( "double condition" )
 
-    c = len(re.findall( "[^']\[INFO\] double condition a72 not found", test_output ))
+    c = len(re.findall( r"[^']\[INFO\] double condition a72 not found", test_output ))
     if c == 2:
         test_passed( "double condition, false" )
     else:
         test_failed( "double condition, false" )
 
-    c = len(re.findall( "[^']\[INFO\] double condition inverted a72 found", test_output ))
+    c = len(re.findall( r"[^']\[INFO\] double condition inverted a72 found", test_output ))
     if c == 2:
         test_passed( "double condition, inverted" )
     else:
         test_failed( "double condition, inverted" )
 
-    c = len(re.findall( "[^']\[INFO\] double condition list a72 found", test_output ))
+    c = len(re.findall( r"[^']\[INFO\] double condition list a72 found", test_output ))
     if c == 1:
         test_passed( "double condition, list" )
     else:
         test_failed( "double condition, list" )
 
-    c = len(re.findall( "[^']\[INFO\] node tag:", test_output ))
+    c = len(re.findall( r"[^']\[INFO\] node tag:", test_output ))
     if c == 3:
         test_passed( "data persistence" )
     else:
         test_failed( "data persistence" )
 
-    c = len(re.findall( "[^']\[INFO\] clock magic", test_output ))
+    c = len(re.findall( r"[^']\[INFO\] clock magic", test_output ))
     if c == 1:
         test_passed( "data persistence 2" )
     else:
         test_failed( "data persistence 2" )
 
-    c = len(re.findall( "[^']track: lopper library routine", test_output ))
+    c = len(re.findall( r"[^']track: lopper library routine", test_output ))
     if c == 1:
         test_passed( "exec/library routine" )
     else:
         test_failed( "exec/library routine" )
 
-    c = len(re.findall( "[^']print_test", test_output ))
+    c = len(re.findall( r"[^']print_test", test_output ))
     if c == 2:
         test_passed( "print_test" )
     else:
         test_failed( "print_test" )
 
-    if re.search( "arm,idle-state", test_output ):
+    if re.search( r"arm,idle-state", test_output ):
         test_passed( "node print test" )
     else:
         test_failed( "node print test" )
 
-    if re.search( "[^']selected: /cpus/cpu@2" , test_output ):
-        c = len(re.findall( "testprop: testvalue", test_output ))
+    if re.search( r"[^']selected: /cpus/cpu@2" , test_output ):
+        c = len(re.findall( r"testprop: testvalue", test_output ))
         if c == 1:
             test_passed( "selection test (and)" )
         else:
             test_failed( "selection test (and)" )
 
-    c = len(re.findall( "[^']selected2:", test_output ))
+    c = len(re.findall( r"[^']selected2:", test_output ))
     if c == 4:
         test_passed( "selection test (or)" )
     else:
         test_failed( "selection test (or) (found %s, expected: %s)" %(c,4))
 
-    c = len(re.findall( "[^']selected3:", test_output ))
+    c = len(re.findall( r"[^']selected3:", test_output ))
     if c == 3:
         test_passed( "selection test (phandle)" )
     else:
