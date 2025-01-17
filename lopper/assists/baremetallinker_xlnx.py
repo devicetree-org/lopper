@@ -432,6 +432,8 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
                 default_ddr = has_bram[0]
 
     cfd.write("set(DDR %s)\n" % default_ddr)
+    cfd.write("set(CODE %s)\n" % default_ddr)
+    cfd.write("set(DATA %s)\n" % default_ddr)
     memip_list = []
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
         # Here skip adding DDR system mem to config if OpenAMP module is set
