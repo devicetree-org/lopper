@@ -415,6 +415,9 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                             if node.propval('reg-shift') != ['2']:
                                node["reg-shift"] = LopperProp("reg-shift")
                                node["reg-shift"].value = 2
+                        # MDM RISCV DEBUG UARTLITE
+                        if "xlnx,mdm-riscv-1.0" in node["compatible"].value:
+                            node["compatible"].value = ["xlnx,xps-uartlite-1.00a"]
                         # UARTPS
                         if any(version in node["compatible"].value for version in ("xlnx,zynqmp-uart", "xlnx,xuartps")):
                             node["compatible"].value = ["xlnx,xuartps"]
