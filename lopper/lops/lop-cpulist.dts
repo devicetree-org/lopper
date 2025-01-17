@@ -36,7 +36,6 @@
                                              except:
                                                  cpu_node = None
                                              if cpu_node:
-                                             	 print( '%s' % cpu_node )
                                              	 cpu_output[cpu_node] = ip_name[0]
                                      with open('cpulist.yaml', 'w') as fd:
                                          fd.write(yaml.dump(cpu_output, indent = 4))
