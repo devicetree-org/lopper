@@ -37,6 +37,13 @@ xlnx,xps-uartlite-1.00.a:
     - current-speed
     - clocks
 
+xlnx,mdm-riscv-1.0:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - interrupt-parent
+
 xlnx,axi-uart16550-2.0:
   required:
     - compatible
