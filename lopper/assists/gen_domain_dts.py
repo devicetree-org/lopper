@@ -163,6 +163,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
     # Update memory nodes as per address-map cluster mapping
     memnode_list = sdt.tree.nodes('/memory@.*')
+    # Iterate through memories where the device_type is set as "memory."
+    memnode_list = [node for node in memnode_list if node.propval('device_type') == ["memory"]]
     invalid_memnode = []
     for node in memnode_list:
         # Check whether the memory node is mapped to cpu cluster or not
