@@ -39,7 +39,7 @@ from openamp import openamp_d_to_d_expand
 
 
 def is_compat( node, compat_string_to_test ):
-    if re.search( "module,subsystem", compat_string_to_test):
+    if re.search( r"module,subsystem", compat_string_to_test):
         return subsystem
     return ""
 
@@ -154,10 +154,10 @@ def firewall_expand( tree, subnode, verbose = 0 ):
                 firewall_block_priority = int(firewall_block)
             except:
                 # it is a string
-                if re.search( "always", firewall_block ):
+                if re.search( r"always", firewall_block ):
                     # aka "block"
                     firewall_block_type = 0
-                elif re.search( "never", firewall_block ):
+                elif re.search( r"never", firewall_block ):
                     # aka "allow"
                     firewall_block_type = 1
 
@@ -196,9 +196,9 @@ def firewall_expand( tree, subnode, verbose = 0 ):
                     # block
                     firewall_block = 0
                 else:
-                    if re.search( "always", firewall_block ):
+                    if re.search( r"always", firewall_block ):
                         firewall_block = 0
-                    elif re.search( "never", firewall_block ):
+                    elif re.search( r"never", firewall_block ):
                         firewall_block = 1
 
             firewall_conf_generated_list.append( tgt_node_phandle )

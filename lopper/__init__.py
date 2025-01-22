@@ -150,7 +150,7 @@ class LopperSDT:
             else:
                 ifile = ifile_searched
 
-            if re.search( ".dts$", ifile ) or re.search( ".dtsi$", ifile ):
+            if re.search( r".dts$", ifile ) or re.search( r".dtsi$", ifile ):
                 # an input file is either a lopper operation file, or part of the
                 # system device tree. We can check for compatibility to decide which
                 # it is.
@@ -159,15 +159,15 @@ class LopperSDT:
                     found = False
                     for line in datafile:
                         if not found:
-                            if re.search( "system-device-tree-v1,lop", line ):
+                            if re.search( r"system-device-tree-v1,lop", line ):
                                 lop_files.append( ifile )
                                 found = True
 
                 if not found:
                     sdt_files.append( ifile )
-            elif re.search( ".dtb$", ifile ):
+            elif re.search( r".dtb$", ifile ):
                 lop_files.append( ifile )
-            elif re.search( ".yaml$", ifile ) or re.search( ".json$", ifile):
+            elif re.search( r".yaml$", ifile ) or re.search( f".json$", ifile):
                 if yaml_support:
                     with open(ifile) as f:
                         datafile = f.readlines()
@@ -175,14 +175,14 @@ class LopperSDT:
                         dts_found = False
                         for line in datafile:
                             if not found:
-                                if re.search( "system-device-tree-v1,lop", line ):
+                                if re.search( r"system-device-tree-v1,lop", line ):
                                     lop_files.append( ifile )
                                     found = True
-                                if re.search( "/dts-v1/", line ):
+                                if re.search( r"/dts-v1/", line ):
                                     found = True
                                     sdt_files.append( ifile )
-                                if re.search( "compatible: .*subsystem", line ) or \
-                                   re.search( ",domain-v1", line ):
+                                if re.search( r"compatible: .*subsystem", line ) or \
+                                   re.search( r",domain-v1", line ):
                                     sdt_files.append( ifile )
 
                     # it didn't have a dts identifier in the input json or yaml file
@@ -198,7 +198,7 @@ class LopperSDT:
 
         # is the sdt a dts ?
         sdt_extended_trees = []
-        if re.search( ".dts$", self.dts ):
+        if re.search( r".dts$", self.dts ):
             # do we have any extra sdt files to concatenate first ?
             fp = ""
             fpp = tempfile.NamedTemporaryFile( delete=False )
@@ -210,11 +210,11 @@ class LopperSDT:
                 # compile
                 with open( fpp.name, 'wb') as wfd:
                     for f in sdt_files:
-                        if re.search( ".dts$", f ):
+                        if re.search( r".dts$", f ):
                             with open(f,'rb') as fd:
                                 shutil.copyfileobj(fd, wfd)
 
-                        elif re.search( ".yaml$", f ):
+                        elif re.search( r".yaml$", f ):
                             # look for a special front end, for this or any file for that matter
                             yaml = LopperYAML( f, config=config )
                             yaml_tree = yaml.to_tree()
@@ -223,7 +223,7 @@ class LopperSDT:
                             # system device tree). No code after this needs to be concerned that
                             # this came from yaml.
                             sdt_extended_trees.append( yaml_tree )
-                        elif re.search( ".json$", f ):
+                        elif re.search( r".json$", f ):
                             # look for a special front end, for this or any file for that matter
                             json = LopperJSON( json=f, config=config )
                             json_tree = json.to_tree()
@@ -285,7 +285,7 @@ class LopperSDT:
                         self.tree = self.tree.add( node, merge=self.merge )
 
             fpp.close()
-        elif re.search( ".yaml$", self.dts ):
+        elif re.search( r".yaml$", self.dts ):
             if not yaml_support:
                 lopper.log._error( f"no yaml support detected, but system device tree is yaml" )
                 sys.exit(1)
@@ -315,7 +315,7 @@ class LopperSDT:
             else:
                 self.FDT = None
             self.tree = lt
-        elif re.search( ".json$", self.dts ):
+        elif re.search( r".json$", self.dts ):
             if not yaml_support:
                 lopper.log._error( f"no json detected, but system device tree is json" )
                 sys.exit(1)
@@ -401,7 +401,7 @@ class LopperSDT:
         # concatenated with the main SDT if dtc is doing some of the work, but for
         # now, libfdt is doing the transforms so we compile them separately
         for ifile in lop_files:
-            if re.search( ".dts$", ifile ):
+            if re.search( r".dts$", ifile ):
                 lop = LopperFile( ifile )
                 # TODO: this may need an output directory option, right now it drops
                 #       it where lopper is called from (which may not be writeable.
@@ -422,7 +422,7 @@ class LopperSDT:
                     lop.tree.load( dct )
 
                 self.lops.append( lop )
-            elif re.search( ".yaml$", ifile ):
+            elif re.search( r".yaml$", ifile ):
                 yaml = LopperYAML( ifile, config=config )
                 yaml_tree = yaml.to_tree()
 
@@ -432,7 +432,7 @@ class LopperSDT:
                 lop.fdt = None
                 lop.tree = yaml_tree
                 self.lops.append( lop )
-            elif re.search( ".json$", ifile ):
+            elif re.search( r".json$", ifile ):
                 json = LopperJSON( json=ifile, config=config )
                 json_tree = json.to_tree()
 
@@ -442,7 +442,7 @@ class LopperSDT:
                 lop.fdt = None
                 lop.tree = json_tree
                 self.lops.append( lop )
-            elif re.search( ".dtb$", ifile ):
+            elif re.search( r".dtb$", ifile ):
                 lop = LopperFile( ifile )
                 lop.dts = ""
                 lop.dtb = ifile
@@ -565,7 +565,7 @@ class LopperSDT:
         if not tree_to_write:
             tree_to_write = self.tree
 
-        if re.search( "\.dtb$", output_filename ):
+        if re.search( r"\.dtb$", output_filename ):
             if self.outdir and not Path( output_filename ).is_absolute():
                 output_filename = self.outdir + "/" + output_filename
 
@@ -577,7 +577,7 @@ class LopperSDT:
                 lopper.log._error( f"dtb output selected ({output_filename}), but libfdt is not enabled" )
                 sys.exit(1)
 
-        elif re.search( "\.dts$", output_filename ):
+        elif re.search( r"\.dts$", output_filename ):
             if self.outdir and not Path( output_filename ).is_absolute():
                 output_filename = self.outdir + "/" + output_filename
 
@@ -598,7 +598,7 @@ class LopperSDT:
             printer.load( tree_to_write.export() )
             printer.exec()
 
-        elif re.search( "\.yaml$", output_filename ):
+        elif re.search( r"\.yaml$", output_filename ):
             if self.outdir and not Path( output_filename ).is_absolute():
                 output_filename = self.outdir + "/" + output_filename
 
@@ -609,7 +609,7 @@ class LopperSDT:
 
             yaml = LopperYAML( None, tree_to_write, config=self.config )
             yaml.to_yaml( output_filename )
-        elif re.search( "\.json$", output_filename ):
+        elif re.search( r"\.json$", output_filename ):
             if self.outdir and not Path( output_filename ).is_absolute():
                 output_filename = self.outdir + "/" + output_filename
 
@@ -950,7 +950,7 @@ class LopperSDT:
 
         lopper.log._debug( f"executing lop: {lop_type}" )
 
-        if re.search( ".*,exec.*$", lop_type ):
+        if re.search( r".*,exec.*$", lop_type ):
             lopper.log._debug( f"code exec jump" )
             try:
                 try:
@@ -998,7 +998,7 @@ class LopperSDT:
                 lopper.log._warning( f"exec lop exception: {e}" )
                 return False
 
-        if re.search( ".*,print.*$", lop_type ):
+        if re.search( r".*,print.*$", lop_type ):
             print_props = lop_node.props('print.*')
             for print_prop in print_props:
                 for line in print_prop.value:
@@ -1015,7 +1015,7 @@ class LopperSDT:
 
             return True
 
-        if re.search( ".*,select.*$", lop_type ):
+        if re.search( r".*,select.*$", lop_type ):
             select_props = lop_node.props( 'select.*' )
 
             try:
@@ -1083,9 +1083,9 @@ class LopperSDT:
 
                         if prop and prop_val:
                             invert_result = False
-                            if re.search( "\!", prop_val ):
+                            if re.search( r"\!", prop_val ):
                                 invert_result = True
-                                prop_val = re.sub( '^\!', '', prop_val )
+                                prop_val = re.sub( r'^\!', '', prop_val )
                                 lopper.log._debug( f"select: inverting result" )
 
                             # in case this is a formatted list, ask lopper to convert
@@ -1147,11 +1147,11 @@ class LopperSDT:
                             # are testing if it doesn't exist.
 
                             prop_exists_test = True
-                            if re.search( "\!", prop ):
+                            if re.search( r"\!", prop ):
                                 prop_exists_test = False
 
                             # remove any leading '!' from the name.
-                            prop = re.sub( '^\!', '', prop )
+                            prop = re.sub( r'^\!', '', prop )
 
                             for sl in list(selected_nodes_possible):
                                 try:
@@ -1196,8 +1196,8 @@ class LopperSDT:
 
             return False
 
-        if re.search( ".*,meta.*$", lop_type ):
-            if re.search( "phandle-desc", lop_args ):
+        if re.search( r".*,meta.*$", lop_type ):
+            if re.search( r"phandle-desc", lop_args ):
                 lopper.log._debug( f"processing phandle meta data {type(Lopper)}")
 
                 # grab all the defaults
@@ -1230,7 +1230,7 @@ class LopperSDT:
 
             return True
 
-        if re.search( ".*,output$", lop_type ):
+        if re.search( r".*,output$", lop_type ):
             try:
                 output_file_name = lop_node['outfile'].value[0]
             except:
@@ -1294,7 +1294,7 @@ class LopperSDT:
                             # if there's no / anywhere in the regex, then it is just
                             # a node name, and we need to wrap it in a regex. This is
                             # for compatibility with when just node names were allowed
-                            c = re.findall( '/', o_node_regex )
+                            c = re.findall( r'/', o_node_regex )
                             if not c:
                                 o_node_regex = ".*" + o_node_regex
 
@@ -1361,7 +1361,7 @@ class LopperSDT:
                 lopper.log._info( f"dryrun detected, not writing output file {output_file_name}" )
 
             return True
-        if re.search( ".*,tree$", lop_type ):
+        if re.search( r".*,tree$", lop_type ):
             # TODO: consolidate this with the output lop
             try:
                 tree_name = lop_node['tree'].value[0]
@@ -1417,7 +1417,7 @@ class LopperSDT:
                             # if there's no / anywhere in the regex, then it is just
                             # a node name, and we need to wrap it in a regex. This is
                             # for compatibility with when just node names were allowed
-                            c = re.findall( '/', o_node_regex )
+                            c = re.findall( r'/', o_node_regex )
                             if not c:
                                 o_node_regex = ".*" + o_node_regex
 
@@ -1467,7 +1467,7 @@ class LopperSDT:
 
             return True
 
-        if re.search( ".*,assist-v1$", lop_type ):
+        if re.search( r".*,assist-v1$", lop_type ):
             # also note: this assist may change from being called as
             # part of the lop loop, to something that is instead
             # called by walking the entire device tree, looking for
@@ -1539,7 +1539,7 @@ class LopperSDT:
 
             return True
 
-        if re.search( ".*,lop,load$", lop_type ):
+        if re.search( r".*,lop,load$", lop_type ):
             prop_id = ""
             prop_extension = ""
 
@@ -1627,7 +1627,7 @@ class LopperSDT:
 
             return True
 
-        if re.search( ".*,lop,add$", lop_type ):
+        if re.search( r".*,lop,add$", lop_type ):
             lopper.log._info( f"node add lop" )
 
             try:
@@ -1673,7 +1673,7 @@ class LopperSDT:
 
             return True
 
-        if re.search( ".*,lop,conditional.*$", lop_type ):
+        if re.search( r".*,lop,conditional.*$", lop_type ):
             lopper.log._info( f"conditional lop found" )
 
             try:
@@ -1734,7 +1734,7 @@ class LopperSDT:
                 # remove __not__ from the end of a property name, that is an
                 # indication for us only, and won't be in the SDT node
                 if cond_prop.name.endswith( "__not__" ):
-                    cond_prop_name = re.sub( "__not__$", "", cond_prop.name )
+                    cond_prop_name = re.sub( r"__not__$", "", cond_prop.name )
                     invert_check = "not"
 
                 lopper.log._debug( f"conditional property: {cond_prop_name} tgt_nodes: {sdt_tgt_nodes}" )
@@ -1825,7 +1825,7 @@ class LopperSDT:
 
             return ret
 
-        if re.search( ".*,lop,code.*$", lop_type ) or re.search( ".*,lop,xlate.*$", lop_type ):
+        if re.search( r".*,lop,code.*$", lop_type ) or re.search( r".*,lop,xlate.*$", lop_type ):
             # execute a block of python code against a specified start_node
             code = lop_node['code'].value[0]
 
@@ -1869,7 +1869,7 @@ class LopperSDT:
 
             lopper.log._debug( f"code lop found, node context: {start_node}" )
 
-            if re.search( ".*,lop,xlate.*$", lop_type ):
+            if re.search( r".*,lop,xlate.*$", lop_type ):
                 inherit_list.append( "lopper_lib" )
 
                 if tree.__selected__:
@@ -1888,7 +1888,7 @@ class LopperSDT:
 
             return ret
 
-        if re.search( ".*,lop,modify$", lop_type ):
+        if re.search( r".*,lop,modify$", lop_type ):
             node_name = lop_node.name
             lopper.log._info( f"node {node_name} is a compatible modify lop" )
             try:
@@ -1987,14 +1987,14 @@ class LopperSDT:
 
                         # if the value has a "&", it is a phandle, and we need
                         # to try and look it up.
-                        if re.search( '&', modify_val ):
+                        if re.search( r'&', modify_val ):
                             node = modify_val.split( '#' )[0]
                             try:
                                 node_property =  modify_val.split( '#' )[1]
                             except:
                                 node_property = None
 
-                            phandle_node_name = re.sub( '&', '', node )
+                            phandle_node_name = re.sub( r'&', '', node )
 
                             # check to see if the match should be strict
                             strict = False
@@ -2225,8 +2225,8 @@ class LopperSDT:
         for pri in range(1,10):
             for x in lops_runqueue[pri]:
                 fdt_tree = x.tree
-                lop_test = re.compile('system-device-tree-v1,lop.*')
-                lop_cond_test = re.compile('.*,lop,conditional.*$' )
+                lop_test = re.compile( r'system-device-tree-v1,lop.*')
+                lop_cond_test = re.compile( r'.*,lop,conditional.*$' )
                 skip_list = []
                 for f in fdt_tree:
                     if not any(lop_test.match(i) for i in f.type):

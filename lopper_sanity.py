@@ -1239,7 +1239,7 @@ def tree_sanity_test( fdt, verbose=0 ):
         node_count = 0
         for line in fp:
             print( "%s" % line )
-            if re.search( "node:", line ):
+            if re.search( r"node:", line ):
                 node_count += 1
 
     if node_count != 21:
@@ -1290,7 +1290,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     with open(fpp.name) as fp:
         node_count = 0
         for line in fp:
-            if re.search( "{", line ):
+            if re.search( r"{", line ):
                 node_count += 1
 
     if node_count != 21:
@@ -1524,7 +1524,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     if verbose:
         print( "amba node raw: %s" % printer.__nodes__['/amba'] )
-    if re.search( "<lopper.tree.LopperNode.*", str(printer.__nodes__['/amba']) ):
+    if re.search( r"<lopper.tree.LopperNode.*", str(printer.__nodes__['/amba']) ):
         test_passed( "__str__ raw" )
     else:
         test_failed( "__str__ raw" )
@@ -1949,7 +1949,7 @@ def lops_code_test( device_tree, lop_file, verbose ):
 
     test_output = output._stringio.getvalue()
 
-    if re.search( "a72 found, tagging", test_output ):
+    if re.search( r"a72 found, tagging", test_output ):
         test_passed( "code block exec" )
     else:
         test_failed( "code block exec" )
@@ -2449,7 +2449,7 @@ def fdt_sanity_test( device_tree, verbose ):
     nested_node = lt3["/amba_apu/nested-node"]
     ns = nested_node.print( as_string=True )
     print( ns )
-    if re.search( "xlnx,mem-ctrl-base-address = <0x76000000>;", ns ):
+    if re.search( r"xlnx,mem-ctrl-base-address = <0x76000000>;", ns ):
         print( "[INFO]: string decode passed" )
     else:
         print( "[ERROR]: string decode failed" )
@@ -2457,7 +2457,7 @@ def fdt_sanity_test( device_tree, verbose ):
 
     n = lt3["/"]
     ns = n.print( as_string=True )
-    if re.search( "compatible = \"xlnx,versal-vc-p-a2197-00-revA\", \"xlnx,versal-vc-p-a2197-00\", \"xlnx,versal-vc-p-a2197\", \"xlnx,versal\";", ns ):
+    if re.search( r"compatible = \"xlnx,versal-vc-p-a2197-00-revA\", \"xlnx,versal-vc-p-a2197-00\", \"xlnx,versal-vc-p-a2197\", \"xlnx,versal\";", ns ):
         print( "[INFO]: multi-string decode passed" )
     else:
         print( "[ERROR]: multi-string decode failed" )

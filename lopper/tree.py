@@ -405,8 +405,8 @@ class LopperProp():
                         # check for "&" to designate that it is a phandle, if it isn't
                         # there, throw an error. If it is there, remove it, since we
                         # don't use it for the lookup.
-                        if re.search( '&', lop_compare_value ):
-                            lop_compare_value = re.sub( '&', '', lop_compare_value )
+                        if re.search( r'&', lop_compare_value ):
+                            lop_compare_value = re.sub( r'&', '', lop_compare_value )
 
                             # this is a phandle, but is currently a string, we need to
                             # resolve the value.
@@ -434,7 +434,7 @@ class LopperProp():
 
                 if other_prop.ptype == LopperFmt.STRING or \
                              self.ptype == LopperFmt.STRING: # type(lop_compare_value) == str:
-                    constructed_condition = "{0} re.search(\"{1}\",'{2}')".format(invert_check,lop_compare_value,tgt_node_compare_value)
+                    constructed_condition = "{0} re.search(r\"{1}\",'{2}')".format(invert_check,lop_compare_value,tgt_node_compare_value)
                 elif other_prop.ptype == LopperFmt.UINT32: # type(lop_compare_value) == int:
                     constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
 
@@ -458,7 +458,7 @@ class LopperProp():
 
                     # otherwise, run the compare
                     if self.ptype == LopperFmt.STRING: # type(lop_compare_value) == str:
-                        constructed_condition = "{0} re.search(\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
+                        constructed_condition = "{0} re.search(r\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
 
                     elif self.ptype == LopperFmt.UINT32: # type(lop_compare_value) == int:
                         constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
@@ -485,7 +485,7 @@ class LopperProp():
 
                     # otherwise, run the compare
                     if self.ptype == LopperFmt.STRING: # type(lop_compare_value) == str:
-                        constructed_condition = "{0} re.search(\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
+                        constructed_condition = "{0} re.search(r\"{1}\",\"{2}\")".format(invert_check,lop_compare_value,tgt_node_compare_value)
 
                     elif self.ptype == LopperFmt.UINT32: # type(lop_compare_value) == int:
                         constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
@@ -557,7 +557,7 @@ class LopperProp():
                 compat = self.node["compatible"]
                 is_lop = False
                 for c in compat.value:
-                    if re.search( "system-device-tree-v1,lop", c ):
+                    if re.search( r"system-device-tree-v1,lop", c ):
                         is_lop = True
 
                 # lops can't resolve, so just return early
@@ -606,7 +606,7 @@ class LopperProp():
 
         while property_iteration_flag:
             for phandle_desc in property_fields:
-                if re.search( '^#.*', phandle_desc ):
+                if re.search( r'^#.*', phandle_desc ):
                     try:
                         field_val = self.node.__props__[phandle_desc].value[0]
                     except Exception as e:
@@ -619,7 +619,7 @@ class LopperProp():
                     group_size = group_size + field_val
                     property_global_index = property_global_index + field_val
 
-                elif re.search( '^\^.*', phandle_desc ):
+                elif re.search( r'^\^.*', phandle_desc ):
                     try:
                         parent_node = None
                         if self.node:
@@ -641,7 +641,7 @@ class LopperProp():
                     group_size = group_size + field_val
                     property_global_index = property_global_index + field_val
 
-                elif re.search( '^phandle', phandle_desc ):
+                elif re.search( r'^phandle', phandle_desc ):
                     derefs = phandle_desc.split(':')
                     phandle_index_list.append( property_global_index )
 
@@ -934,7 +934,7 @@ class LopperProp():
         record_list = []
         for i in prop_val:
             base = 10
-            if re.search( "0x", i ):
+            if re.search( r"0x", i ):
                 base = 16
             try:
                 i_as_int = int(i,base)
@@ -1009,7 +1009,7 @@ class LopperProp():
             if do_indent:
                 dstring = ""
                 dstring = dstring.rjust(len(dstring) + indent + 1, self.node.indent_char)
-                outstring = re.sub( '\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
+                outstring = re.sub( r'\n\s*', '\n' + dstring, outstring, 0, re.MULTILINE | re.DOTALL)
 
         if outstring:
             print(outstring.rjust(len(outstring)+indent, self.node.indent_char), file=output, flush=True)
@@ -1067,7 +1067,7 @@ class LopperProp():
                         # search of 0x in the string, since it is likely
                         # a number hiding as a string.
                         base = 10
-                        if re.search( "0x", p ):
+                        if re.search( r"0x", p ):
                             base = 16
                         try:
                             i = int(p, base)
@@ -1094,7 +1094,7 @@ class LopperProp():
                 # search of 0x in the string, since it is likely
                 # a number hiding as a string.
                 base = 10
-                if re.search( "0x", self.value ):
+                if re.search( r"0x", self.value ):
                     base = 16
                 try:
                     i = int(self.value, base)
@@ -1135,11 +1135,11 @@ class LopperProp():
         else:
             self.abs_path = self.name
 
-        if re.search( "lopper-comment.*", self.name ):
+        if re.search( r"lopper-comment.*", self.name ):
             prop_type = "comment"
-        elif re.search( "lopper-preamble", self.name ):
+        elif re.search( r"lopper-preamble", self.name ):
             prop_type = "preamble"
-        elif re.search( "lopper-label.*", self.name ):
+        elif re.search( r"lopper-label.*", self.name ):
             prop_type = "label"
         else:
             # we could make this smarter, and use the Lopper Guessed type
@@ -1214,7 +1214,7 @@ class LopperProp():
                 if type(prop_val[0]) == str:
                     # is it really a number, hiding as a string ?
                     base = 10
-                    if re.search( "0x", prop_val[0] ):
+                    if re.search( r"0x", prop_val[0] ):
                         base = 16
                     try:
                         i = int(prop_val[0],base)
@@ -2734,7 +2734,7 @@ class LopperNode(object):
 
                         self.parent.child_nodes[self.abs_path] = self
 
-                depth = len(re.findall( '/', self.abs_path ))
+                depth = len(re.findall( r'/', self.abs_path ))
             else:
                 depth = 0
 
@@ -2748,7 +2748,7 @@ class LopperNode(object):
             label_props = []
 
             for prop, prop_val in dct.items():
-                if re.search( "^__", prop ) or prop.startswith( '/' ):
+                if re.search( r"^__", prop ) or prop.startswith( r'/' ):
                     # internal property, skip
                     continue
 
@@ -2781,7 +2781,7 @@ class LopperNode(object):
                 if prop == "compatible":
                     self.type += prop_val
                     for p in prop_val:
-                        if re.search( "phandle-desc.*", p ):
+                        if re.search( r"phandle-desc.*", p ):
                             strict = False
 
                 # create property objects, and resolve them
@@ -2904,7 +2904,7 @@ class LopperNode(object):
         if self.abs_path == "/":
             self.depth = 0
         else:
-            self.depth = len(re.findall( '/', self.abs_path ))
+            self.depth = len(re.findall( r'/', self.abs_path ))
 
         lopper.log._debug( f"node resolve: calculating depth {self.abs_path} for: {self.depth}" )
 

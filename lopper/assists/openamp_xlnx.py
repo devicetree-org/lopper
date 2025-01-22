@@ -964,7 +964,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
         print('ERROR: Role value is not proper. Expect either "host" or "remote". Got: ', role)
         return False
     valid_core_inputs = []
-    pattern = re.compile('_openamp_([0-9a-z]+_[0-9])_')
+    pattern = re.compile( r'_openamp_([0-9a-z]+_[0-9])_')
     for i in channel_ids:
         for j in pattern.findall(i):
             valid_core_inputs.append(j)

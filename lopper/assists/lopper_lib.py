@@ -118,7 +118,7 @@ def node_ancestors_of_type( node, ctype ):
     p = node.parent
     while p:
         nt = p.type
-        if re.search( "reserved-memory", p.name ):
+        if re.search( r"reserved-memory", p.name ):
             nt =  [ "reserved-memory" ]
 
         if ctype in nt:
@@ -137,7 +137,7 @@ def node_ancestor_types( node ):
     p = node.parent
     while p:
         nt = p.type
-        if re.search( "reserved-memory", p.name ):
+        if re.search( r"reserved-memory", p.name ):
             nt =  [ "reserved-memory" ]
 
         if nt:

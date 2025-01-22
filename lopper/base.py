@@ -393,12 +393,12 @@ class lopper_base:
         """
         retval = []
         # if it starts with <, it is a list of numbers
-        if re.search( "^<", property_string ):
-            property_string = re.sub( "<", "", property_string )
-            property_string = re.sub( ">", "", property_string )
+        if re.search( r"^<", property_string ):
+            property_string = re.sub( r"<", "", property_string )
+            property_string = re.sub( r">", "", property_string )
             for n in property_string.split():
                 base = 10
-                if re.search( "0x", n ):
+                if re.search( r"0x", n ):
                     base = 16
                 try:
                     n_as_int = int(n,base)
@@ -424,7 +424,7 @@ class lopper_base:
                 # single number or string
                 p = property_string
                 base = 10
-                if re.search( "0x", p ):
+                if re.search( r"0x", p ):
                     base = 16
                 try:
                     p_as_int = int(p,base)
@@ -730,7 +730,7 @@ class lopper_base:
         if s.startswith('/'):
             global count
             count = count + 1
-            r1 = re.sub( '\"', '\\"', s )
+            r1 = re.sub( r'\"', '\\"', s )
             #r2 = "lopper-comment-container-{0} {{ lopper-comment-{1} = \"{2}\";}};".format(count,count, r1)
             r2 = "lopper-comment-{0} = \"{1}\";".format(count, r1)
             return r2
@@ -762,7 +762,7 @@ class lopper_base:
             global lcount
             lcount = lcount + 1
             r1 = s1.lstrip()
-            r1 = re.sub( ':', '', r1 )
+            r1 = re.sub( r':', '', r1 )
             r2 = "{0}\nlopper-label-{1} = \"{2}\";".format(s, lcount, r1)
             return r2
         else:

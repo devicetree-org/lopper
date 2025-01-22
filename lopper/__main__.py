@@ -318,7 +318,7 @@ def main():
             else:
                 # generate the lop name
                 extension = Path(x_type).suffix
-                extension = re.sub( "\.", "", extension )
+                extension = re.sub( r"\.", "", extension )
                 x_lop_gen = "lop-xlate-{}.dts".format(extension)
                 x_files.append( x_lop_gen )
 

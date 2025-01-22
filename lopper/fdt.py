@@ -684,7 +684,7 @@ class LopperFDT(lopper.base.lopper_base):
         if verbose:
             print( "              node sync: props to delete: %s" % props_to_delete )
         for prop, prop_val in reversed(node_in.items()):
-            if re.search( "^__", prop ) or prop.startswith( '/' ):
+            if re.search( r"^__", prop ) or prop.startswith( '/' ):
                 if verbose:
                     print( "          lopper.fdt: node sync: skipping internal property: %s" % prop)
                 continue
@@ -1277,7 +1277,7 @@ class LopperFDT(lopper.base.lopper_base):
         if not output_filename:
             return
 
-        if re.search( ".dtb", output_filename ):
+        if re.search( r"\.dtb$", output_filename ):
             if verbose:
                 print( "[INFO]: dtb output format detected, writing %s" % output_filename )
 
@@ -1294,7 +1294,7 @@ class LopperFDT(lopper.base.lopper_base):
             with open(output_filename, 'wb') as w:
                 w.write(byte_array)
 
-        elif re.search( ".dts", output_filename ):
+        elif re.search( r"\.dts$", output_filename ):
             if verbose:
                 print( "[INFO]: dts format detected, writing %s" % output_filename )
 
@@ -1708,14 +1708,14 @@ class LopperFDT(lopper.base.lopper_base):
                 if comment:
                     comment = comment.group(2)
                     if comment:
-                        comment = re.sub( "^\n", '', comment )
-                        comment = re.sub( "\n$", '', comment )
+                        comment = re.sub( r"^\n", '', comment )
+                        comment = re.sub( r"\n$", '', comment )
                         comment = "    lopper-preamble = \"{0}\";".format( comment )
 
                     data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data, count = 1 )
 
             # put the dts start info back in
-            data = re.sub( '^', '/dts-v1/;\n\n%s\n' % memres_string, data )
+            data = re.sub( r'^', '/dts-v1/;\n\n%s\n' % memres_string, data )
 
             # Comment and label substitution
             fp_comments_as_attributes = LopperFDT._comment_translate(data)
@@ -1740,7 +1740,7 @@ class LopperFDT(lopper.base.lopper_base):
             for i,f in enumerate(file_as_array):
                 # take note when we pass an included file boundary, we'll use it to scan back
                 # and look for structures.
-                ml = re.search( "^\#line.*\"(.*?)\"", f )
+                ml = re.search( r"^\#line.*\"(.*?)\"", f )
                 if ml:
                     if verbose > 2:
                         print( "[DBG++]: comment scan: include file boundary passed: %s" % ml.group(1) )
@@ -1749,7 +1749,7 @@ class LopperFDT(lopper.base.lopper_base):
                     subnode_at_depth = { 0: False }
                     node_depth = 0
 
-                mn = re.search( "^\s*(.*){", f )
+                mn = re.search( r"^\s*(.*){", f )
                 if mn:
                     node_depth += 1
                     if verbose > 2:
@@ -1757,7 +1757,7 @@ class LopperFDT(lopper.base.lopper_base):
                     subnode_at_depth[node_depth-1] = True
                     subnode_at_depth[node_depth] = False
 
-                mn = re.search( "^\s*};", f )
+                mn = re.search( r"^\s*};", f )
                 if mn:
                     if verbose > 2:
                         print( "[DBG++] comment scan: -> node depth dec: %s" % node_depth )
@@ -1779,9 +1779,9 @@ class LopperFDT(lopper.base.lopper_base):
                             print( "[DBG+]: comment scan: comment before any nodes, tagging to delete" )
                         comments_to_delete.append( comment_number )
 
-                    m2 = re.search( "^\s*lopper-comment", file_as_array[i] )
+                    m2 = re.search( r"^\s*lopper-comment", file_as_array[i] )
                     if not m2:
-                        m3 = re.search( "[{;]\s*lopper-comment", file_as_array[i] )
+                        m3 = re.search( r"[{;]\s*lopper-comment", file_as_array[i] )
                         if not m3:
                             if verbose > 1:
                                 print( "[DBG+]: comment scan: comment embedded in property, tagging to delete" )
