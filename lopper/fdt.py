@@ -1675,7 +1675,7 @@ class LopperFDT(lopper.base.lopper_base):
             # for now, we need it out of te way to look for any preamble to the main
             # device tree nodes
 
-            dts_regex = re.compile( '\/dts-v1/;' )
+            dts_regex = re.compile( r'\/dts-v1/;' )
             if re.search( dts_regex, data ):
                 # delete the dts opening, since we are going to capture everything
                 # from the start of the file, to the opening of the device tree
@@ -1698,12 +1698,12 @@ class LopperFDT(lopper.base.lopper_base):
             # When printing the tree layer, we'll pop it out and put it back as an
             # opening comment.
             #
-            preamble_regex = re.compile( '(^.*?)(/ {)', re.MULTILINE | re.DOTALL )
+            preamble_regex = re.compile( r'(^.*?)(/ {)', re.MULTILINE | re.DOTALL )
             preamble = re.search( preamble_regex, data )
             if preamble:
                 # is it a comment block ? if so, we want to mark it specially so
                 # it can be put back at the header later.
-                comment_regex = re.compile( '(/\*)(.*?)(\*/)', re.MULTILINE | re.DOTALL )
+                comment_regex = re.compile( r'(/\*)(.*?)(\*/)', re.MULTILINE | re.DOTALL )
                 comment = re.search( comment_regex, preamble.group(1) )
                 if comment:
                     comment = comment.group(2)
