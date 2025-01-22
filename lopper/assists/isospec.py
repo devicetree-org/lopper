@@ -625,10 +625,8 @@ class isospec(object):
             return device_dict
 
         cell_list = [ design ]
-        cell_list.extend( design_cells.children() )
-        #cell_list = [ design_cells.children() ]
+        cell_list.extend( design_cells.subnodes() )
         for cell in cell_list:
-        #for cell in design_cells.children():
             try:
                 dests = cell["destinations"]
                 _debug( f"processing cell: {cell.name}" )
@@ -676,7 +674,6 @@ class isospec(object):
                                     "dest": dest
                                 }
                             _debug( f"                   ** destination '{dest}' device has no nodeid, adding to 'other'" )
-                            # os._exit(1)
 
                 dests = cell["SMIDs"]
                 _debug( f"           SMIDs {dests.abs_path} [{len(dests)}]" )
@@ -695,7 +692,6 @@ class isospec(object):
 
             except:
                     continue
-
 
         return device_dict, smid_dict, other_dict
 
@@ -1036,11 +1032,9 @@ class isospec(object):
                             pass
                     else:
                         _info( f"non-device SMID any detected ... {access}" )
-                        # os._exit(1)
 
             except Exception as e:
-                _info( f"Exception during base protectiong checking: {e}" )
-                os._exit(1)
+                _info( f"Exception during base protection checking: {e}" )
 
         # The node indexed dictionary will be device names and a
         # True/False if it is referenced.
@@ -1144,13 +1138,12 @@ class isospec(object):
                         except:
                             pass
                     elif access_type == "cpu_list":
-                        _info( f"processing cpu list" )
                         try:
                             dests = self.dests( access )
-                            # _info( f"                     cpus dests: {dests}" )
+                            _info( f"                     cpus dests: {dests}" )
                             cpus = self.cpus( dests )
                             # _info( f"                     cpus: {cpus}" )
-
+                            _info( f"processing cpu list: {cpus}" )
                             for c in cpus:
                                 # add the cpus to the node
                                 domains_tree.cpu_add( yaml_node, c )
