@@ -88,20 +88,8 @@ domains:
                     - openamp_r52_0_cluster
                     - openamp_r52_1_cluster
                 elfload:
-                    - psx_r52_0a_atcm_lockstep_rpu_view
-                    - psx_wizard_0_psxl_0_psx_r52_0a_atcm_global
-                    - psx_r52_0a_btcm_lockstep_rpu_view
-                    - psx_wizard_0_psxl_0_psx_r52_0a_btcm_global
-                    - psx_r52_0a_ctcm_lockstep_rpu_view
-                    - psx_wizard_0_psxl_0_psx_r52_0a_ctcm_global
-                    - rproc0
-                    - psx_r52_0b_atcm_lockstep_rpu_view
-                    - psx_wizard_0_psxl_0_psx_r52_1a_atcm_global
-                    - psx_r52_0b_btcm_lockstep_rpu_view
-                    - psx_wizard_0_psxl_0_psx_r52_1a_btcm_global
-                    - psx_r52_0b_ctcm_lockstep_rpu_view
-                    - psx_wizard_0_psxl_0_psx_r52_1a_ctcm_global
-                    - rproc1
+                    - [ psx_wizard_0_psxl_0_psx_r52_0a_atcm_global, psx_wizard_0_psxl_0_psx_r52_0a_btcm_global, psx_wizard_0_psxl_0_psx_r52_0a_ctcm_global, rproc0 ]
+                    - [ psx_wizard_0_psxl_0_psx_r52_1a_atcm_global, psx_wizard_0_psxl_0_psx_r52_1a_btcm_global, psx_wizard_0_psxl_0_psx_r52_1a_ctcm_global, rproc1 ]
 
             rpmsg-relation:
                 compatible: openamp,rpmsg-v1

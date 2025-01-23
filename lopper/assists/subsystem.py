@@ -503,6 +503,13 @@ def cpu_expand( tree, subnode, verbose = 0):
                     pass
 
                 try:
+                    lockstep = mode['lockstep']
+                    if lockstep:
+                        mode_mask = set_bit( mode_mask, 30 )
+                except:
+                    pass
+
+                try:
                     el = mode['el']
                     if el:
                         mode_mask = set_bit( mode_mask, 0 )
