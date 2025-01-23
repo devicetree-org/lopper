@@ -470,9 +470,82 @@ def xlnx_rpmsg_native_update_ipis(tree, amba_node, openamp_channel_info, gic_nod
     return True
 
 
+def xlnx_rpmsg_kernel_create_mboxes_versal(tree, host_ipi, remote_ipi, gic_node_phandle,
+                                           openamp_channel_info, channel_id,
+                                           core_node, rpu_core):
+
+    platform = openamp_channel_info["platform"]
+
+    nobuf_ipis = {
+        SOC_TYPE.VERSAL_NET: [ 0xeb3b0000, 0xeb3b1000, 0xeb3b2000, 0xeb3b3000, 0xeb3b4000, 0xeb3b5000 ],
+        SOC_TYPE.VERSAL: [ 0xFF390000 ],
+    }
+
+    host_reg = host_ipi.propval("reg")[1]
+    host_ipi_name = "/openamp_" + host_ipi.name
+    host_reg_val = copy.deepcopy(host_ipi.propval("reg"))
+    if host_reg not in nobuf_ipis[platform]:
+        host_buf_base = host_ipi.props("xlnx,buffer-base")[0].value[0]
+        host_reg_val.extend([0, host_buf_base, 0, 0x1ff])
+
+    host_props = {
+        "#address-cells": 2, "#size-cells": 2, "compatible": "xlnx,versal-ipi-mailbox",
+        "reg": host_reg_val,
+        "xlnx,ipi-id": host_ipi.props("xlnx,ipi-id")[0].value,
+        "interrupts": copy.deepcopy(remote_ipi.propval("interrupts")),
+        "reg-names": ["ctrl"] if host_reg in nobuf_ipis[platform] else [ "ctrl", "msg"]
+    }
+
+    remote_ipi_name = host_ipi_name + "/" + remote_ipi.name
+    remote_reg = remote_ipi.propval("reg")[1]
+    remote_reg_val = copy.deepcopy(remote_ipi.propval("reg"))
+    if remote_reg not in nobuf_ipis[platform]:
+        remote_buf_base = remote_ipi.props("xlnx,buffer-base")[0].value[0]
+        remote_reg_val.extend([0, remote_buf_base, 0, 0x1ff])
+
+    remote_props = {
+        "compatible": "xlnx,versal-ipi-dest-mailbox", "#mbox-cells": 1,
+        "reg-names": ["ctrl"] if remote_reg in nobuf_ipis[platform] else [ "ctrl", "msg"],
+        "reg": remote_reg_val,
+        "xlnx,ipi-id": remote_ipi.props("xlnx,ipi-id")[0].value
+    }
+    try:
+        host_mbox_node = tree[host_ipi_name]
+    except:
+        host_mbox_node = LopperNode(-1, host_ipi_name)
+        for key in host_props.keys():
+            host_mbox_node + LopperProp(name=key, value=host_props[key])
+        host_mbox_node + LopperProp(name="ranges")
+        host_mbox_node + LopperProp(name="interrupt-parent",value=[gic_node_phandle])
+
+        tree.add(host_mbox_node)
+        host_mbox_node.phandle = host_mbox_node.phandle_or_create()
+
+    remote_mbox_node = LopperNode(-1, remote_ipi_name)
+    tree.add(remote_mbox_node)
+    remote_mbox_node.phandle = remote_mbox_node.phandle_or_create()
+    for key in remote_props.keys():
+        remote_mbox_node + LopperProp(name=key, value=remote_props[key])
+    remote_mbox_node.phandle = remote_mbox_node.phandle_or_create()
+
+    core_node + LopperProp(name="mboxes", value=[remote_mbox_node.phandle, 0, remote_mbox_node.phandle, 1])
+    core_node + LopperProp(name="mbox-names", value=["tx", "rx"])
+
+    return True
+
+
 def xlnx_rpmsg_kernel_update_mboxes(tree, host_ipi, remote_ipi, gic_node_phandle,
                                   openamp_channel_info, channel_id,
-                                  core_node, remote_controller_node, rpu_core):
+                                  core_node, controller_parent, rpu_core):
+    platform = openamp_channel_info["platform"]
+    remote_controller_node = LopperNode(-1, controller_parent.abs_path + "/ipi_mailbox_rpu" + rpu_core)
+    tree.add(remote_controller_node)
+    tree.resolve()
+
+    if remote_controller_node.phandle == 0:
+        remote_controller_node.phandle = remote_controller_node.phandle_or_create()
+
+
     remote_controller_node + LopperProp(name="phandle", value = remote_controller_node.phandle)
     remote_controller_node + LopperProp(name="#mbox-cells", value = 1)
     remote_controller_node + LopperProp(name="compatible", value = "xlnx,zynqmp-ipi-dest-mailbox")
@@ -522,6 +595,16 @@ def xlnx_rpmsg_kernel_update_mboxes(tree, host_ipi, remote_ipi, gic_node_phandle
 
 def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
                                   core_node, openamp_channel_info, channel_id):
+
+    rpu_core = openamp_channel_info["rpu_core" + channel_id]
+    if not isinstance(rpu_core, str):
+        rpu_core = str(rpu_core.value)
+
+    if openamp_channel_info["platform"] != SOC_TYPE.ZYNQMP:
+        return xlnx_rpmsg_kernel_create_mboxes_versal(tree, host_ipi, remote_ipi, gic_node_phandle,
+                                                      openamp_channel_info, channel_id,
+                                                      core_node, rpu_core)
+
     controller_parent = xlnx_rpmsg_create_host_controller(tree, host_ipi, gic_node_phandle)
 
     # check if there is a userspace IPI that has same interrupts
@@ -539,17 +622,9 @@ def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
     if not isinstance(rpu_core, str):
         rpu_core = str(rpu_core.value)
 
-    remote_controller_node = LopperNode(-1, controller_parent.abs_path + "/ipi_mailbox_rpu" + rpu_core)
-    tree.add(remote_controller_node)
-    tree.resolve()
-
-    if remote_controller_node.phandle == 0:
-        remote_controller_node.phandle = remote_controller_node.phandle_or_create()
-
-
     return xlnx_rpmsg_kernel_update_mboxes(tree, host_ipi, remote_ipi, gic_node_phandle,
                                            openamp_channel_info, channel_id,
-                                           core_node, remote_controller_node, rpu_core)
+                                           core_node, controller_parent, rpu_core)
 
 
 amba_ipi_node_index = 0
