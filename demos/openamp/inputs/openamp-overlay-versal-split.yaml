@@ -31,10 +31,6 @@ definitions:
                flags: 0
              - dev: psv_r5_1_btcm_global
                flags: 0
-             - dev: psv_r5_1_atcm
-               flags: 0
-             - dev: psv_r5_0_btcm
-               flags: 0
 
          rproc1: &rproc1
              - start: 0x3ef00000
@@ -88,16 +84,8 @@ domains:
                     - openamp_r5_0_cluster
                     - openamp_r5_1_cluster
                 elfload:
-                    - CIPS_0_pspmc_0_psv_r5_0_atcm 
-                    - psv_r5_0_atcm_global
-                    - CIPS_0_pspmc_0_psv_r5_0_btcm 
-                    - psv_r5_0_btcm_global
-                    - rproc0
-                    - CIPS_0_pspmc_0_psv_r5_1_atcm
-                    - psv_r5_1_atcm_global
-                    - CIPS_0_pspmc_0_psv_r5_1_btcm
-                    - psv_r5_1_btcm_global
-                    - rproc1
+                    - [ psv_r5_0_atcm_global, psv_r5_0_btcm_global, rproc0 ]
+                    - [ psv_r5_1_atcm_global, psv_r5_1_btcm_global, rproc1 ]
 
             rpmsg-relation:
                 compatible: openamp,rpmsg-v1

@@ -1,10 +1,6 @@
 definitions:
     OpenAMP:
          openamp_channel_0_access_srams: &openamp_channel_0_access_srams # used for access in each domain
-             - dev: psu_r5_0_atcm_global
-               flags: 0
-             - dev: psu_r5_0_btcm_global
-               flags: 0
              - dev: psu_r5_0_atcm
                flags: 0
              - dev: psu_r5_0_btcm
@@ -30,31 +26,7 @@ definitions:
                size: 0x40000
                no-map: 1
 
-         rproc1: &rproc1
-             - start: 0x3ef00000
-               size: 0x60000
-               no-map: 1
-
-         rpu1vdev0vring0: &rpu1vdev0vring0
-             - start: 0x3ef60000
-               size: 0x4000
-               no-map: 1
-
-         rpu1vdev0vring1: &rpu1vdev0vring1
-             - start: 0x3ef64000
-               size: 0x4000
-               no-map: 1
-
-         rpu1vdev0buffer: &rpu1vdev0buffer
-             - start: 0x3ef68000
-               size: 0x40000
-               no-map: 1
-
          openamp_channel_1_access_srams: &openamp_channel_1_access_srams # used for access in each domain
-             - dev: psu_r5_1_atcm_global
-               flags: 0
-             - dev: psu_r5_1_btcm_global
-               flags: 0
              - dev: psu_r5_1_atcm
                flags: 0
              - dev: psu_r5_0_btcm
@@ -73,9 +45,7 @@ domains:
         access:
             - dev:
                 - ipi7
-                - ipi7
               flags:
-                - 0
                 - 0
             - <<+: *openamp_channel_0_access_srams
             - <<+: *openamp_channel_1_access_srams
@@ -89,17 +59,11 @@ domains:
             remoteproc-relation:
                 compatible: openamp,remoteproc-v2
                 remote:
-                    - openamp_r5_0_cluster
+                     - openamp_r5_0_cluster
+                     - openamp_r5_1_cluster
                 elfload:
-                    - psu_r5_0_atcm
-                    - psu_r5_0_atcm_global
-                    - psu_r5_0_btcm
-                    - psu_r5_0_btcm_global
-                    - psu_r5_1_atcm_lockstep_rpu_view
-                    - psu_r5_0_atcm_lockstep
-                    - psu_r5_1_btcm_lockstep_rpu_view
-                    - psu_r5_0_btcm_lockstep
-                    - rproc0
+                     - [ psu_r5_0_atcm, psu_r5_0_btcm, psu_r5_1_atcm, psu_r5_1_btcm, rproc0 ]
+                     - [ psu_r5_1_atcm, psu_r5_1_btcm ]
 
             rpmsg-relation:
                 compatible: openamp,rpmsg-v1
@@ -118,14 +82,15 @@ domains:
             - "openamp,domain-v1"
         cpus:
             - cluster: cpus_r5_0
-              cpumask: 0x0
+              cpumask: 0x1
               mode:
-              secure: true
+                 lockstep: true
         access:
             - dev:
                 - ipi1
               flags: 0
             - <<+: *openamp_channel_0_access_srams # TCM banks used for firmware memory
+            - <<+: *openamp_channel_1_access_srams
         reserved-memory:
             ranges: true
             <<+: [ *rpu0vdev0vring1, *rpu0vdev0vring0, *rpu0vdev0buffer, *rproc0 ]
@@ -142,33 +107,15 @@ domains:
                      - rpu0vdev0vring0
                      - rpu0vdev0vring1
                      - rpu0vdev0buffer
+
     openamp_r5_1_cluster:
         compatible:
             - "openamp,domain-v1"
         cpus:
             - cluster: cpus_r5_1
               cpumask: 0x2
-              mode: 0x1
-              secure: true
+              mode:
         access:
-            - dev:
-                - ipi2 # used for Open AMP RPMsg IPC
-              flags:
-                  - 0
-            - <<+: *openamp_channel_1_access_srams # TCM banks used for firmware memory
-        reserved-memory:
-            ranges: true
-            <<+: [ *rpu1vdev0vring1, *rpu1vdev0vring0, *rpu1vdev0buffer, *rproc1 ]
-
+            - <<+: *openamp_channel_1_access_srams
         domain-to-domain:
              compatible: openamp,domain-to-domain-v1
-             rpmsg-relation:
-                 compatible: openamp,rpmsg-v1
-                 host:
-                     - openamp_a53_0_cluster
-                 mbox:
-                     - ipi2
-                 carveouts:
-                     - rpu1vdev0vring0
-                     - rpu1vdev0vring1
-                     - rpu1vdev0buffer

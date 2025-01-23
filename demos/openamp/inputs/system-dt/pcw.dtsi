@@ -96,6 +96,10 @@
 			power-domains = <&zynqmp_firmware 18>;
 			xlnx,interconnect-s-axi-masters = "psu_cortexr5_0.M_AXI_DP , & , psu_cortexr5_1.M_AXI_DP";
 			xlnx,ip-name = "psu_r5_1_btcm";
+                        xlnx,tcm,rpu-view,lockstep-base = <0x30000>;
+                        xlnx,tcm,rpu-view,split-base = <0x20000>;
+                        xlnx,tcm,absolute-view,base = <0xffeb0000>;
+                        xlnx,tcm,bank-size = <0x10000>;
 			reg = <0x0 0x20000 0x0 0x10000>;
 			xlnx,name = "psu_r5_1_btcm";
 		};
@@ -118,6 +122,11 @@
 			xlnx,ip-name = "psu_r5_1_atcm";
 			reg = <0x0 0x0 0x0 0x10000>;
 			xlnx,name = "psu_r5_1_atcm";
+                        xlnx,tcm,rpu-view,lockstep-base = <0x10000>;
+                        xlnx,tcm,rpu-view,split-base = <0>;
+                        xlnx,tcm,absolute-view,base = <0xffe90000>;
+                        xlnx,tcm,bank-size = <0x10000>;
+
 		};
 		psu_r5_1_atcm_global: psu_r5_1_atcm_global@ffe90000 {
 			xlnx,rable = <0>;
@@ -149,6 +158,10 @@
 			xlnx,ip-name = "psu_r5_0_btcm";
 			reg = <0x0 0x20000 0x0 0x10000>;
 			xlnx,name = "psu_r5_0_btcm";
+                        xlnx,tcm,rpu-view,lockstep-base = <0x20000>;
+                        xlnx,tcm,rpu-view,split-base = <0x20000>;
+                        xlnx,tcm,absolute-view,base = <0xffe20000>;
+                        xlnx,tcm,bank-size = <0x10000>;
 		};
 		psu_r5_0_btcm_global: psu_r5_0_btcm_global@ffe20000 {
 			xlnx,rable = <0>;
@@ -180,6 +193,10 @@
 			xlnx,ip-name = "psu_r5_0_atcm";
 			reg = <0x0 0x0 0x0 0x10000>;
 			xlnx,name = "psu_r5_0_atcm";
+			xlnx,tcm,rpu-view,lockstep-base = <0>;
+                        xlnx,tcm,rpu-view,split-base = <0>;
+                        xlnx,tcm,absolute-view,base = <0xffe00000>;
+                        xlnx,tcm,bank-size = <0x10000>;
 		};
 		psu_r5_0_atcm_global: psu_r5_0_atcm_global@ffe00000 {
 			xlnx,rable = <0>;
@@ -190,6 +207,10 @@
 			xlnx,ip-name = "psu_r5_0_atcm_global";
 			reg = <0x0 0xffe00000 0x0 0x10000>;
 			xlnx,name = "psu_r5_0_atcm_global";
+			xlnx,tcm,rpu-view,lockstep-base = <0>;
+			xlnx,tcm,rpu-view,split-base = <0>;
+			xlnx,tcm,absolute-view,base = <0>;
+			xlnx,tcm,bank-size = <0x10000>;
 		};
 		psu_bbram_0: psu_bbram_0@ffcd0000 {
 			xlnx,rable = <0>;
