@@ -6,10 +6,12 @@ name = "pypi"
 [packages]
 flask = "*"
 flask-restful = "*"
-pandas = "*"
 "ruamel.yaml" = "*"
 anytree = "*"
 humanfriendly = "*"
+pandas = "*"
+packaging = "*"
+setuptools = "*"
 
 [dev-packages]
 
