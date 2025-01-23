@@ -24,6 +24,8 @@
                                      yaml_dict = {}
                                      for node in __selected__:
                                         cpu_ip_name =  node.propval('xlnx,ip-name')[0]
+                                        if not cpu_ip_name:
+                                            continue
                                         yaml_dict[node.label] = {'ip_name' : '','supported_os' : []}
                                         yaml_dict[node.label]['ip_name'] = cpu_ip_name
                                         if 'cortex' in cpu_ip_name or cpu_ip_name == 'microblaze':
