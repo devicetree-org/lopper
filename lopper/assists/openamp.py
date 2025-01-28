@@ -58,8 +58,9 @@ def openamp_remoteproc_expand(tree, subnode, verbose = 0 ):
     # Generic OpenAMP expansion subroutine which selects the applicable
     # vendor method to use for Remoteproc YAML expansion
     for i in tree["/"]["compatible"].value:
-        if "xlnx" in i:
-            return xlnx_openamp_remoteproc_expand(tree, subnode, verbose)
+        for j in ['amd', 'xlnx']:
+            if j in i:
+                return xlnx_openamp_remoteproc_expand(tree, subnode, verbose)
     return True
 
 
@@ -67,8 +68,9 @@ def openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
     # Generic OpenAMP expansion subroutine which selects the applicable
     # vendor method to use for RPMsg YAML expansion
     for i in tree["/"]["compatible"].value:
-        if "xlnx" in i:
-            return xlnx_openamp_rpmsg_expand(tree, subnode, verbose)
+        for j in ['amd','xlnx']:
+            if j in i:
+                return xlnx_openamp_rpmsg_expand(tree, subnode, verbose)
 
     return True
 
@@ -186,8 +188,9 @@ def openamp_parse(root_node, tree, options ):
         verbose = 0
 
     for i in root_node["compatible"].value:
-        if "xlnx" in i:
-            return xlnx_openamp_parse(tree, options, None, verbose)
+        for j in ['amd','xlnx']:
+            if j in i:
+                return xlnx_openamp_parse(tree, options, None, verbose)
 
     return False
 
