@@ -334,6 +334,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     openamp_elfload_start = False
     openamp_elfload_sz = False
     if openamp_config:
+        heap_size = 0x4000
         elfload_tuple = xlnx_openamp_get_ddr_elf_load(machine, sdt, options)
         if elfload_tuple != None:
             openamp_elfload_start = elfload_tuple[0]
