@@ -30,14 +30,27 @@ versal_ipi_to_irq_vect_id = {
     0xFF380000 : 67,
 }
 
-openamp_linux_hosts = [ "psv_cortexa72_0", "psx_cortexa78_0", "psu_cortexa53_0" ]
+openamp_linux_hosts = [ "psv_cortexa72_0", "psx_cortexa78_0", "psu_cortexa53_0", "cortexa78_0" ]
 openamp_roles = { openamp_linux_hosts[0] : "a72_0",
                   openamp_linux_hosts[1] : "a78_0",
+                  openamp_linux_hosts[3] : "a78_0",
                   openamp_linux_hosts[2] : "a53_0",
                   "psx_cortexr52_0" : "r52_0",
                   "psx_cortexr52_1" : "r52_1",
                   "psx_cortexr52_2" : "r52_2",
                   "psx_cortexr52_3" : "r52_3",
+
+                  "cortexr52_0" : "r52_0",
+                  "cortexr52_1" : "r52_1",
+                  "cortexr52_2" : "r52_2",
+                  "cortexr52_3" : "r52_3",
+                  "cortexr52_4" : "r52_4",
+                  "cortexr52_5" : "r52_5",
+                  "cortexr52_6" : "r52_6",
+                  "cortexr52_7" : "r52_7",
+                  "cortexr52_8" : "r52_8",
+                  "cortexr52_9" : "r52_9",
+
                   "psu_cortexr5_0" : "r5_0",
                   "psu_cortexr5_1" : "r5_1",
                   "psv_cortexr5_1" : "r5_1",
@@ -49,6 +62,7 @@ class SOC_TYPE:
     ZYNQMP = 1
     ZYNQ = 2
     VERSAL_NET = 3
+    VERSAL2 = 4
 
 
 def resolve_remoteproc_carveouts( tree, subnode, verbose = 0 ):
@@ -162,8 +176,6 @@ def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
 
     for i, mbox_node in enumerate(mbox_nodes):
         prop = props[i]
-        if mbox_node == None:
-            print("resolve_rpmsg_mbox: ", tree.lnodes(n.name, exact = False) )
         if mbox_node == None or mbox_node == []:
             print("WARNING:", "rpmsg relation can't find mbox name: ", prop.value)
             return False
@@ -182,12 +194,12 @@ def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
 
 def resolve_host_remote( tree, subnode, verbose = 0 ):
     prop_names = [ "host", "remote" ]
-            
+
     if subnode.props(prop_names[0]) != [] and subnode.props(prop_names[1]) != []:
         print("WARNING:", "relation has both host and remote")
         return False
     for pn in prop_names:
-        if subnode.props(pn) != [] and subnode.props(pn) != []:
+        if subnode.props(pn) != []:
             prop_val = subnode.props(pn)[0].value
             new_prop_val = []
             for p in prop_val:

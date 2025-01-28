@@ -41,6 +41,7 @@ REMOTEPROC_D_TO_D = "openamp,remoteproc-v1"
 REMOTEPROC_D_TO_D_v2 = "openamp,remoteproc-v2"
 RPMSG_D_TO_D = "openamp,rpmsg-v1"
 output_file = "amd_platform_info.h"
+info_rproc_driver_version = False
 
 class CPU_CONFIG(IntEnum):
     RPU_SPLIT = 0
@@ -51,6 +52,13 @@ class RPU_CORE(IntEnum):
     RPU_1 = 1
     RPU_2 = 2
     RPU_3 = 3
+    RPU_4 = 4
+    RPU_5 = 5
+    RPU_6 = 6
+    RPU_7 = 7
+    RPU_8 = 8
+    RPU_9 = 9
+
 
 # This is used for YAML representation
 # after this is parsed, the above enums are used for internal record keeping.
@@ -291,19 +299,21 @@ def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_c
       SOC_TYPE.ZYNQMP: "ZU+",
       SOC_TYPE.VERSAL: "Versal",
       SOC_TYPE.VERSAL_NET: "Versal NET",
+      SOC_TYPE.VERSAL2: "Versal2",
     }
 
     irq_vect_ids = {
       SOC_TYPE.ZYNQMP: zynqmp_ipi_to_irq_vect_id,
       SOC_TYPE.VERSAL: versal_ipi_to_irq_vect_id,
       SOC_TYPE.VERSAL_NET: versal_net_ipi_to_irq_vect_id,
+      SOC_TYPE.VERSAL2: versal_net_ipi_to_irq_vect_id,
     }
 
     irq_vect_id_map = irq_vect_ids[platform]
     soc_str = soc_strs[platform]
 
 
-    if platform in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET]:
+    if platform in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2]:
         if host_ipi_base not in irq_vect_id_map.keys():
             print("ERROR: host IPI", hex(host_ipi_base), "not in IRQ VECTOR ID Mapping for ", soc_str)
             return False
@@ -481,6 +491,9 @@ def xlnx_rpmsg_kernel_create_mboxes_versal(tree, host_ipi, remote_ipi, gic_node_
         SOC_TYPE.VERSAL: [ 0xFF390000 ],
     }
 
+    # versal2 same as vnet for IPI
+    nobuf_ipis[SOC_TYPE.VERSAL2] = nobuf_ipis[SOC_TYPE.VERSAL_NET]
+
     host_reg = host_ipi.propval("reg")[1]
     host_ipi_name = "/openamp_" + host_ipi.name
     host_reg_val = copy.deepcopy(host_ipi.propval("reg"))
@@ -645,6 +658,8 @@ def xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose = 0 )
         gic_node_phandle = tree["/apu-bus/interrupt-controller@f9000000"].phandle
     elif platform == SOC_TYPE.VERSAL_NET:
         gic_node_phandle = tree["/apu-bus/interrupt-controller@e2000000"].phandle
+    elif platform == SOC_TYPE.VERSAL2:
+        gic_node_phandle = tree["/apu-bus/interrupt-controller@e2000000"].phandle
     elif platform == SOC_TYPE.ZYNQMP:
         gic_node_phandle = tree["/apu-bus/interrupt-controller@f9010000"].phandle
     elif platform == SOC_TYPE.ZYNQ:
@@ -675,7 +690,7 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
     rpmsg_carveouts = []
     core_node = None
 
-    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL_NET ]:
+    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
         native = openamp_channel_info["rpmsg_native_"+ channel_id]
         cpu_config =  openamp_channel_info["cpu_config"+channel_id]
         rpu_core = openamp_channel_info["rpu_core" + channel_id]
@@ -697,7 +712,7 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
     if ret == False:
         return ret
 
-    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL_NET]:
+    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2]:
         core_node = openamp_channel_info["core_node"+channel_id]
     else:
         core_node = tree["/remoteproc@0"]
@@ -734,30 +749,37 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
     machine_to_dt_mappings_v2 = {
         "psu_cortexr5_0" : "/remoteproc@ffe00000/r5f@0", "psu_cortexr5_1" : "/remoteproc@ffe00000/r5f@1",
         "psv_cortexr5_0" : "/remoteproc@ffe00000/r5f@0", "psv_cortexr5_1" : "/remoteproc@ffe00000/r5f@1",
+
+        "psx_cortexr52_0" : "/remoteproc@eba00000/r52f@0", "psx_cortexr52_1" : "/remoteproc@eba00000/r52f@1",
+        "psx_cortexr52_2" : "/remoteproc@eba40000/r52f@2", "psx_cortexr52_3" : "/remoteproc@eba40000/r52f@3",
+
+        "cortexr52_0" : "/remoteproc@eba00000/r52f@0", "cortexr52_1" : "/remoteproc@0xeba00000/r52f@1",
+        "cortexr52_2" : "/remoteproc@ebb00000/r52f@2", "cortexr52_3" : "/remoteproc@0xebb00000/r52f@3",
+        "cortexr52_4" : "/remoteproc@ebc00000/r52f@4", "cortexr52_5" : "/remoteproc@0xebc00000/r52f@5",
+        "cortexr52_6" : "/remoteproc@ebac0000/r52f@6", "cortexr52_7" : "/remoteproc@0xebac0000/r52f@7",
+        "cortexr52_8" : "/remoteproc@ebbc0000/r52f@8", "cortexr52_9" : "/remoteproc@0xebbc0000/r52f@9",
     }
 
     # validate machine
-    if machine not in machine_to_dt_mappings.keys() and machine not in machine_to_dt_mappings_v2.keys():
-        print("OPENAMP: XLNX: ERROR: unsuspported machine to remoteproc node mapping.")
-        return None
-
-    # validate remoteproc node exists
     mach_to_dt_map = machine_to_dt_mappings
-    target_node = None
-    for n in tree["/"].subnodes():
-        if "remoteproc" in n.abs_path or "r5" in n.abs_path:
-            print(n.abs_path)
-        if n.abs_path == machine_to_dt_mappings[machine]:
-            target_node = n
-        elif n.abs_path == machine_to_dt_mappings_v2[machine]:
+    for v in machine_to_dt_mappings_v2.values():
+        try:
+            lookup = tree[v]
             mach_to_dt_map = machine_to_dt_mappings_v2
-            target_node = n
+            break
+        except KeyError:
+            continue
 
-    if target_node == None:
-        print("OPENAMP: XLNX: ERROR: could not find remoteproc node for given machine: ", machine)
+    if machine not in mach_to_dt_map.keys():
+        print("OPENAMP: XLNX: ERROR: unsupported machine to remoteproc node mapping: ", machine)
         return None
 
-    target_node = tree[mach_to_dt_map[machine]]
+    try:
+        target_node = tree[mach_to_dt_map[machine]]
+    except KeyError:
+        print("OPENAMP: XLNX: ERROR: could not find mapping:", machine, mach_to_dt_map[machine])
+        return None
+
     mem_reg_val = target_node.propval('memory-region')
 
     if mem_reg_val == []:
@@ -821,9 +843,10 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
       SOC_TYPE.ZYNQMP: zynqmp_ipi_to_irq_vect_id,
       SOC_TYPE.VERSAL: versal_ipi_to_irq_vect_id,
       SOC_TYPE.VERSAL_NET: versal_net_ipi_to_irq_vect_id,
+      SOC_TYPE.VERSAL2: versal_net_ipi_to_irq_vect_id,
     }
 
-    if platform in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]:
+    if platform in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
         host_ipi = openamp_channel_info["host_ipi_" + channel_id]
         host_ipi_bitmask = hex(host_ipi.props("xlnx,ipi-bitmask")[0].value[0])
         host_ipi_irq_vect_id = hex(openamp_channel_info["host_ipi_irq_vect_id" + channel_id])
@@ -836,7 +859,7 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
 
         # update IPIs for remote role on Versal NET
         soc_ipi_map = irq_vect_ids[platform]
-        if platform == SOC_TYPE.VERSAL_NET and role == 'remote':
+        if platform in [SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2] and role == 'remote':
             for key in soc_ipi_map.keys():
                 value = soc_ipi_map[key]
                 soc_ipi_map[key] = value + 32
@@ -855,7 +878,7 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
         IPI_IRQ_VECT_ID = remote_ipi_irq_vect_id if role == 'remote' else host_ipi_irq_vect_id
         IPI_IRQ_VECT_ID_FREERTOS = IPI_IRQ_VECT_ID
 
-        if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]:
+        if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
             IPI_IRQ_VECT_ID_FREERTOS = hex(int(IPI_IRQ_VECT_ID,16) - 32)
 
         POLL_BASE_ADDR = remote_ipi_base if role == 'remote' else host_ipi_base
@@ -956,8 +979,8 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
     if node.props("remote") == []:
         print("ERROR: ", node, "is missing remote property")
         return False
-    remote_nodes = populate_remote_nodes(tree, node.props("remote")[0])
 
+    remote_nodes = populate_remote_nodes(tree, node.props("remote")[0])
     carveout_prop = node.props("carveouts")[0]
     if carveout_prop == []:
         print("ERROR: ", node, " is missing carveouts property")
@@ -990,7 +1013,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
             openamp_channel_info["amba_node"] = amba_node
 
         # Zynq has hard-coded IPIs in driver
-        if platform in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]:
+        if platform in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
             ret = xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
                                  remote_node, channel_id, native, i, verbose)
             if ret != True:
@@ -1066,8 +1089,11 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
     xlnx_openamp_remove_channels(tree)
 
     # remove definitions
-    defn_node =  tree["/definitions"]
-    tree - defn_node
+    try:
+        defn_node =  tree["/definitions"]
+        tree - defn_node
+    except:
+        return True
 
     return True
 
@@ -1147,7 +1173,7 @@ def xlnx_remoteproc_construct_carveouts(tree, channel_id, openamp_channel_info, 
     return True
 
 def platform_validate(platform):
-    if platform not in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]:
+    if platform not in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
         print("ERROR: unsupported platform: ", platform)
         return False
     return True
@@ -1211,6 +1237,7 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
       SOC_TYPE.ZYNQMP : "xlnx,zynqmp-r5fss",
       SOC_TYPE.VERSAL : "xlnx,versal-r5fss",
       SOC_TYPE.VERSAL_NET : "xlnx,versal-net-r52fss",
+      SOC_TYPE.VERSAL2 : "xlnx,versal2-r52fss",
     }
 
     cluster_modes = {
@@ -1250,8 +1277,9 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
 
 
 def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, channel_id, power_domains, core_reg_val, core_reg_names, cluster_node_path, platform):
-    compatible_strs = { SOC_TYPE.VERSAL_NET:  "xlnx,versal-net-r52f", SOC_TYPE.VERSAL: "xlnx,versal-r5f", SOC_TYPE.ZYNQMP: "xlnx,zynqmp-r5f" }
+    compatible_strs = { SOC_TYPE.VERSAL2:  "xlnx,versal2-r52f", SOC_TYPE.VERSAL_NET:  "xlnx,versal-net-r52f", SOC_TYPE.VERSAL: "xlnx,versal-r5f", SOC_TYPE.ZYNQMP: "xlnx,zynqmp-r5f" }
     core_names = { SOC_TYPE.VERSAL_NET: "r52f", SOC_TYPE.VERSAL: "r5f", SOC_TYPE.ZYNQMP: "r5f" }
+    core_names[SOC_TYPE.VERSAL2] = core_names[SOC_TYPE.VERSAL_NET]
 
     core_node = LopperNode(-1, "{}/{}@{}".format( cluster_node_path, core_names[platform], openamp_channel_info["rpu_core"+channel_id]))
 
@@ -1279,6 +1307,18 @@ def xlnx_remoteproc_v2_cluster_base_str(platform, rpu_core):
         str(SOC_TYPE.VERSAL_NET) + RPU_CORE.RPU_1.name: hex(0xeba00000).replace("0x",""),
         str(SOC_TYPE.VERSAL_NET) + RPU_CORE.RPU_2.name: hex(0xeba40000).replace("0x",""),
         str(SOC_TYPE.VERSAL_NET) + RPU_CORE.RPU_3.name: hex(0xeba40000).replace("0x",""),
+
+        str(SOC_TYPE.VERSAL2) + RPU_CORE.RPU_0.name: hex(0xeba00000).replace("0x",""),
+        str(SOC_TYPE.VERSAL2) + RPU_CORE.RPU_1.name: hex(0xeba00000).replace("0x",""),
+        str(SOC_TYPE.VERSAL2) + RPU_CORE.RPU_2.name: hex(0xebb00000).replace("0x",""),
+        str(SOC_TYPE.VERSAL2) + RPU_CORE.RPU_3.name: hex(0xebb00000).replace("0x",""),
+        str(SOC_TYPE.VERSAL2) + RPU_CORE.RPU_4.name: hex(0xebc00000).replace("0x",""),
+        str(SOC_TYPE.VERSAL2) + RPU_CORE.RPU_5.name: hex(0xebc00000).replace("0x",""),
+        str(SOC_TYPE.VERSAL2) + RPU_CORE.RPU_6.name: hex(0xebac0000).replace("0x",""),
+        str(SOC_TYPE.VERSAL2) + RPU_CORE.RPU_7.name: hex(0xebac0000).replace("0x",""),
+        str(SOC_TYPE.VERSAL2) + RPU_CORE.RPU_8.name: hex(0xebbc0000).replace("0x",""),
+        str(SOC_TYPE.VERSAL2) + RPU_CORE.RPU_9.name: hex(0xebbc0000).replace("0x",""),
+
         str(SOC_TYPE.ZYNQMP) + RPU_CORE.RPU_0.name: "ffe00000",
         str(SOC_TYPE.ZYNQMP) + RPU_CORE.RPU_1.name: "ffe00000",
         str(SOC_TYPE.VERSAL) + RPU_CORE.RPU_0.name: "ffe00000",
@@ -1430,6 +1470,7 @@ def xlnx_remoteproc_construct_cluster(tree, channel_id, openamp_channel_info, ve
       SOC_TYPE.ZYNQMP : "xlnx,zynqmp-r5-remoteproc",
       SOC_TYPE.VERSAL : "xlnx,versal-r5-remoteproc",
       SOC_TYPE.VERSAL_NET : "xlnx,versal-net-r52-remoteproc",
+      SOC_TYPE.VERSAL2: "xlnx,versal2-r52-remoteproc",
     }
 
     if not platform_validate(platform):
@@ -1443,6 +1484,13 @@ def xlnx_remoteproc_construct_cluster(tree, channel_id, openamp_channel_info, ve
             cluster = "1"
             rpu_cfg_reg = 0xFF9A0200
 
+        cluster_node_path += cluster + "@" + hex(rpu_cfg_reg).replace("0x","")
+        cluster_reg = rpu_cfg_reg
+    elif platform == SOC_TYPE.VERSAL2:
+        cluster_node_path = "/rf52ss_"
+        cluster = str( int(RPU_CORE.RPU_1) / 2 - 1)
+
+        rpu_cfg_reg = { "0" : 0xeba00000, "1" : 0xebb00000, "2" : 0xebc00000, "3" : 0xebac0000, "4" : 0xebbc0000 }[cluster]
         cluster_node_path += cluster + "@" + hex(rpu_cfg_reg).replace("0x","")
         cluster_reg = rpu_cfg_reg
 
@@ -1472,7 +1520,7 @@ def xlnx_remoteproc_construct_cluster(tree, channel_id, openamp_channel_info, ve
 
         core_name = "r5f_" + rpu_core
         compatible_str = "xilinx,r5f"
-        if platform == SOC_TYPE.VERSAL_NET:
+        if platform in [SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2]:
             core_name = "r52f_" + str(rpu_core)
             compatible_str = "xilinx,r52f"
 
@@ -1520,7 +1568,6 @@ def xlnx_remoteproc_construct_cluster(tree, channel_id, openamp_channel_info, ve
 
     return True
 
-info_rproc_driver_version = False
 def xlnx_remoteproc_update_tree(tree, channel_id, openamp_channel_info, verbose = 0 ):
     global info_rproc_driver_version
     node = openamp_channel_info["node"+channel_id]
@@ -1528,7 +1575,7 @@ def xlnx_remoteproc_update_tree(tree, channel_id, openamp_channel_info, verbose 
 
     platform = openamp_channel_info["platform"]
 
-    if platform not in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET]:
+    if platform not in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2]:
         openamp_channel_info["cpu_config"+channel_id] = 0
 
     ret = xlnx_remoteproc_construct_carveouts(tree, channel_id, openamp_channel_info, verbose)
@@ -1591,36 +1638,23 @@ def get_platform(tree, verbose = 0):
     root_model = str(root_node.props("model")[0].value)
     root_compat = root_node.props("compatible")[0].value
 
-    zynqmp = [ 'zynqmp', 'zcu', 'Xilinx ZynqMP', 'Ultra96' ]
-    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'vhk158', 'xlnx,versal', 'vek280', 'versal', 'vc-p' ]
+    zynqmp = [ 'zynqmp', 'zcu', 'Xilinx ZynqMP', 'Ultra96', "xlnx,zynqmp" ]
+    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'vhk158', 'xlnx,versal', 'vek280', 'vc-p' ]
     versalnet = [ 'versal-net', 'vn-p', 'Versal NET' ]
-    zynq = [ 'xlnx,zynq-7000', 'zc7', 'zynq' ]
+    versal2 = [ 'xlnx,versal2', 'amd,versal2', 'amd versal vek385 reva' ]
+
+    rpu_socs = [ versal2, zynqmp, versal, versalnet ]
+    rpu_socs_enums = [ SOC_TYPE.VERSAL2, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]
 
     if verbose > 0 and not banner_printed:
         print("[INFO]: ------> OPENAMP: XLNX: \troot_model: ", root_model, "\troot_compat: ", root_compat)
         banner_printed = True
 
-    for i in zynqmp:
-        if root_model.lower() in i or i in root_model.lower():
-            return SOC_TYPE.ZYNQMP
-        for j in root_compat:
-            if i in j:
-                return SOC_TYPE.ZYNQMP
-    for i in versalnet:
-        if root_model.lower() in i or i in root_model.lower():
-            return SOC_TYPE.VERSAL_NET
-        for j in root_compat:
-            if i in j:
-                return SOC_TYPE.VERSAL_NET
-    for i in versal:
-        if root_model.lower() in i or i in root_model.lower():
-            return SOC_TYPE.VERSAL
-        for j in root_compat:
-            if i in j:
-                return SOC_TYPE.VERSAL
-    for i in zynq:
-        if root_model.lower() in i or i in root_model.lower():
-            return SOC_TYPE.ZYNQ
+    for index, soc in enumerate(rpu_socs):
+        for soc_str in soc:
+            for test_str in [ root_model, root_compat ]:
+                if soc_str in test_str:
+                        return rpu_socs_enums[index]
 
     if platform == None:
         print("Unable to find data for platform: ", root_model)
@@ -1661,7 +1695,6 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
         return False
 
     openamp_channel_info["core_index"] = 0
-
     for i, remote_node in enumerate(remote_nodes):
         channel_elfload_nodes = []
         prop_name = "elfload" + str(i)
@@ -1671,7 +1704,7 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
             elfloadnode = tree.pnode( current_elfload )
             channel_elfload_nodes.append ( elfloadnode )
 
-        if platform in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET]:
+        if platform in [SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2]:
             cpu_config = determine_cpus_config(remote_node)
             if cpu_config ==  CPU_CONFIG.RPU_SPLIT and len(remote_nodes) == 1:
                 print("ERROR: CPU config is split but only 1 remote node", remote_node, "has been provided.")
