@@ -163,6 +163,13 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
     native_shm_mem_area_start = 0xFFFFFFFF
     remote_carveouts = get_rpmsg_carveout_nodes(tree, openamp_channel_info["remote_node_"+channel_id])
 
+    vring_total_sz = 0
+    for c in remote_carveouts:
+        if "vring" in c.name:
+            vring_total_sz += c.props("size")[0].value
+
+    openamp_channel_info["shared_buf_offset_"+channel_id] = vring_total_sz
+
     # only applicable for DDR carveouts
     for carveout in remote_carveouts:
         # SRAM banks have status prop
@@ -505,7 +512,7 @@ def xlnx_rpmsg_kernel_create_mboxes_versal(tree, host_ipi, remote_ipi, gic_node_
         "#address-cells": 2, "#size-cells": 2, "compatible": "xlnx,versal-ipi-mailbox",
         "reg": host_reg_val,
         "xlnx,ipi-id": host_ipi.props("xlnx,ipi-id")[0].value,
-        "interrupts": copy.deepcopy(remote_ipi.propval("interrupts")),
+        "interrupts": copy.deepcopy(host_ipi.propval("interrupts")),
         "reg-names": ["ctrl"] if host_reg in nobuf_ipis[platform] else [ "ctrl", "msg"]
     }
 
@@ -720,6 +727,16 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
     mem_region_prop = core_node.props("memory-region")[0]
 
     # add rpmsg carveouts to cluster core node if using rpmsg kernel driver
+
+    vdev0buf = None
+    for index, rc in enumerate(rpmsg_carveouts):
+        if "vdev0buffer" in rc.name:
+            vdev0buf = index
+            break
+    # vdev0buf should be first after the ELF load prop already in memory-region
+    vdev0buf = rpmsg_carveouts.pop(vdev0buf)
+    rpmsg_carveouts.insert(0, vdev0buf)
+
     new_mem_region_prop_val = mem_region_prop.value
     if not native:
         for rc in rpmsg_carveouts:
@@ -827,13 +844,11 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
         rx = "FW_RSC_U32_ADDR_ANY"
 
     SHARED_MEM_PA = 0
-    SHARED_BUF_OFFSET = 0
     RSC_MEM_PA = 0
     for e in elfload:
         if e.props("start") != []: # filter to only parse ELF LOAD node
             RSC_MEM_PA = hex(e.props("start")[0].value)
             SHARED_MEM_PA = hex(e.props("start")[0].value + e.props("size")[0].value)
-            SHARED_BUF_OFFSET = hex( e.props("size")[0].value * 2 )
             break
 
     shm_dev_name = "\"" + RSC_MEM_PA[2:] + '.shm\"'
@@ -876,10 +891,7 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
                 soc_ipi_map[nobuf_ipi_key] = nobuf_ipi
 
         IPI_IRQ_VECT_ID = remote_ipi_irq_vect_id if role == 'remote' else host_ipi_irq_vect_id
-        IPI_IRQ_VECT_ID_FREERTOS = IPI_IRQ_VECT_ID
-
-        if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
-            IPI_IRQ_VECT_ID_FREERTOS = hex(int(IPI_IRQ_VECT_ID,16) - 32)
+        IPI_IRQ_VECT_ID_FREERTOS = hex(int(IPI_IRQ_VECT_ID,16) - 32)
 
         POLL_BASE_ADDR = remote_ipi_base if role == 'remote' else host_ipi_base
         # flip this as we are kicking other side with the bitmask value
@@ -903,8 +915,6 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
         inputs = {
             "POLL_BASE_ADDR":POLL_BASE_ADDR,
             "SHM_DEV_NAME":shm_dev_name,
-            "RSC_MEM_SIZE":'0x100',
-            "RSC_MEM_PA":RSC_MEM_PA,
             "DEV_BUS_NAME":bus_name,
             "IPI_DEV_NAME":ipi_dev_name,
             "IPI_IRQ_VECT_ID":IPI_IRQ_VECT_ID,
@@ -914,7 +924,7 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
             "RING_RX":rx,
             "SHARED_MEM_PA": SHARED_MEM_PA,
             "SHARED_MEM_SIZE":"0x100000UL",
-            "SHARED_BUF_OFFSET":SHARED_BUF_OFFSET,
+            "SHARED_BUF_OFFSET":hex(openamp_channel_info["shared_buf_offset_"+channel_id]),
             "SHARED_BUF_PA":SHARED_BUF_PA,
             "SHARED_BUF_SIZE":SHARED_BUF_SIZE,
             "EXTRAS":EXTRAS,
