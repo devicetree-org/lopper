@@ -296,8 +296,6 @@ platform_info_header_r5_template = """
 #define SHM_DEV_NAME            $SHM_DEV_NAME
 #define DEV_BUS_NAME            $DEV_BUS_NAME
 #define IPI_DEV_NAME            $IPI_DEV_NAME
-#define RSC_MEM_SIZE            $RSC_MEM_SIZE
-#define RSC_MEM_PA              $RSC_MEM_PA
 #define SHARED_BUF_PA           $SHARED_BUF_PA
 #define SHARED_BUF_SIZE         $SHARED_BUF_SIZE
 
