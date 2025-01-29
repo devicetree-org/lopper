@@ -1743,10 +1743,9 @@ def xlnx_openamp_remove_channels(tree, verbose = 0):
             node_compat = n.props("compatible")
             if node_compat != []:
                 node_compat = node_compat[0].value
-                if node_compat in [REMOTEPROC_D_TO_D_v2, REMOTEPROC_D_TO_D]:
-                    tree - n
+                if node_compat in [REMOTEPROC_D_TO_D_v2]:
                     v2 = True
-                if node_compat == RPMSG_D_TO_D:
+                if node_compat == [RPMSG_D_TO_D, REMOTEPROC_D_TO_D_v2, REMOTEPROC_D_TO_D]:
                     tree - n
 
     # FIXME this will go away once default is upstream driver.
