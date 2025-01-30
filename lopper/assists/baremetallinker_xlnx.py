@@ -412,6 +412,14 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
                 memtest_config = False
                 break
 
+    mb_reset_addr = None
+    if "microblaze" in cpu_ip_name:
+        if match_cpunode.propval('xlnx,base-vectors') != ['']:
+            if len(match_cpunode.propval('xlnx,base-vectors')) > 1:
+                mb_reset_addr = match_cpunode.propval('xlnx,base-vectors')[0] << 32 | match_cpunode.propval('xlnx,base-vectors')[1]
+            else:
+                mb_reset_addr = match_cpunode.propval('xlnx,base-vectors')[0]
+
     ## For memory tests configuration default memory should be ocm if available
     if memtest_config:
         has_ocm = [x for x in mem_ranges.keys() if "ocm" in x]
@@ -435,6 +443,8 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     cfd.write("set(DDR %s)\n" % default_ddr)
     cfd.write("set(CODE %s)\n" % default_ddr)
     cfd.write("set(DATA %s)\n" % default_ddr)
+    if mb_reset_addr:
+        cfd.write("set(BASE_VECTOR %s)\n" % mb_reset_addr)
     memip_list = []
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
         # Here skip adding DDR system mem to config if OpenAMP module is set
