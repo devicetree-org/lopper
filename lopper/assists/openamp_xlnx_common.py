@@ -3,6 +3,27 @@ from lopper.tree import *
 KERNEL_FLAG = 'openamp-xlnx-kernel'
 HOST_FLAG = 'openamp-host'
 
+machine_to_dt_mappings = {
+    "psu_cortexr5_0" : "/rf5ss@ff9a0000/r5f_0", "psu_cortexr5_1" : "/rf5ss@ff9a0000/r5f_1",
+    "psv_cortexr5_0" : "/rf5ss@ff9a0000/r5f_0", "psv_cortexr5_1" : "/rf5ss@ff9a0000/r5f_1",
+    "psx_cortexr52_0" : "/rf52ss_0@ff9a0100/r52f_0", "psx_cortexr52_1" : "/rf52ss_0@ff9a0100/r52f_1",
+    "psx_cortexr52_2" : "/rf52ss_1@ff9a0200/r52f_2", "psx_cortexr52_3" : "/rf52ss_1@ff9a0200/r52f_3",
+}
+
+machine_to_dt_mappings_v2 = {
+    "psu_cortexr5_0" : "/remoteproc@ffe00000/r5f@0", "psu_cortexr5_1" : "/remoteproc@ffe00000/r5f@1",
+    "psv_cortexr5_0" : "/remoteproc@ffe00000/r5f@0", "psv_cortexr5_1" : "/remoteproc@ffe00000/r5f@1",
+
+    "psx_cortexr52_0" : "/remoteproc@eba00000/r52f@0", "psx_cortexr52_1" : "/remoteproc@eba00000/r52f@1",
+    "psx_cortexr52_2" : "/remoteproc@eba40000/r52f@2", "psx_cortexr52_3" : "/remoteproc@eba40000/r52f@3",
+
+    "cortexr52_0" : "/remoteproc@eba00000/r52f@0", "cortexr52_1" : "/remoteproc@0xeba00000/r52f@1",
+    "cortexr52_2" : "/remoteproc@ebb00000/r52f@2", "cortexr52_3" : "/remoteproc@0xebb00000/r52f@3",
+    "cortexr52_4" : "/remoteproc@ebc00000/r52f@4", "cortexr52_5" : "/remoteproc@0xebc00000/r52f@5",
+    "cortexr52_6" : "/remoteproc@ebac0000/r52f@6", "cortexr52_7" : "/remoteproc@0xebac0000/r52f@7",
+    "cortexr52_8" : "/remoteproc@ebbc0000/r52f@8", "cortexr52_9" : "/remoteproc@0xebbc0000/r52f@9",
+}
+
 zynqmp_ipi_to_irq_vect_id = {
   0xff330000 : 62,
   0xFF340000 : 63,

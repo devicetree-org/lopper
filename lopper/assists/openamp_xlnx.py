@@ -756,26 +756,8 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
 def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
     match_cpunode = get_cpu_node(sdt, options)
     tree = sdt.tree
-    machine_to_dt_mappings = {
-        "psu_cortexr5_0" : "/rf5ss@ff9a0000/r5f_0", "psu_cortexr5_1" : "/rf5ss@ff9a0000/r5f_1",
-        "psv_cortexr5_0" : "/rf5ss@ff9a0000/r5f_0", "psv_cortexr5_1" : "/rf5ss@ff9a0000/r5f_1",
-        "psx_cortexr52_0" : "/rf52ss_0@ff9a0100/r52f_0", "psx_cortexr52_1" : "/rf52ss_0@ff9a0100/r52f_1",
-        "psx_cortexr52_2" : "/rf52ss_1@ff9a0200/r52f_2", "psx_cortexr52_3" : "/rf52ss_1@ff9a0200/r52f_3",
-    }
-
-    machine_to_dt_mappings_v2 = {
-        "psu_cortexr5_0" : "/remoteproc@ffe00000/r5f@0", "psu_cortexr5_1" : "/remoteproc@ffe00000/r5f@1",
-        "psv_cortexr5_0" : "/remoteproc@ffe00000/r5f@0", "psv_cortexr5_1" : "/remoteproc@ffe00000/r5f@1",
-
-        "psx_cortexr52_0" : "/remoteproc@eba00000/r52f@0", "psx_cortexr52_1" : "/remoteproc@eba00000/r52f@1",
-        "psx_cortexr52_2" : "/remoteproc@eba40000/r52f@2", "psx_cortexr52_3" : "/remoteproc@eba40000/r52f@3",
-
-        "cortexr52_0" : "/remoteproc@eba00000/r52f@0", "cortexr52_1" : "/remoteproc@0xeba00000/r52f@1",
-        "cortexr52_2" : "/remoteproc@ebb00000/r52f@2", "cortexr52_3" : "/remoteproc@0xebb00000/r52f@3",
-        "cortexr52_4" : "/remoteproc@ebc00000/r52f@4", "cortexr52_5" : "/remoteproc@0xebc00000/r52f@5",
-        "cortexr52_6" : "/remoteproc@ebac0000/r52f@6", "cortexr52_7" : "/remoteproc@0xebac0000/r52f@7",
-        "cortexr52_8" : "/remoteproc@ebbc0000/r52f@8", "cortexr52_9" : "/remoteproc@0xebbc0000/r52f@9",
-    }
+    global machine_to_dt_mappings
+    global machine_to_dt_mappings_v2
 
     # validate machine
     mach_to_dt_map = machine_to_dt_mappings
@@ -808,6 +790,74 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
     elf_load_carveout_reg = elf_load_carveout.propval('reg')
 
     return [elf_load_carveout_reg[1], elf_load_carveout_reg[3]]
+
+def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
+    global machine_to_dt_mappings_v2
+    tree = sdt.tree
+    platform = get_platform(tree, verbose)
+
+    if machine not in machine_to_dt_mappings_v2.keys():
+        print("OPENAMP: XLNX: ERROR: unsupported machine to remoteproc node mapping: ", machine)
+        return False
+
+    try:
+        target_node = tree[machine_to_dt_mappings_v2[machine]]
+    except KeyError:
+        print("OPENAMP: XLNX: ERROR: could not find mapping:", machine, machine_to_dt_mappings_v2[machine])
+        return False
+
+    mem_reg_val = target_node.propval("memory-region")
+    if len(mem_reg_val) != 4:
+        print("OPENAMP: XLNX: ERROR: malformed memory region property for node: ", target_node)
+        return False
+
+    try:
+        elfload_base = tree.pnode(mem_reg_val[0]).propval("reg")[1]
+
+        mbox_node_pval = target_node.propval('mboxes')
+        if mbox_node_pval == []:
+            print("OPENAMP: XLNX: ERROR: xlnx_openamp_gen_outputs_only: mbox_node == []")
+            return False
+
+        mbox_node = tree.pnode(mbox_node_pval[0])
+
+        for n in tree['/axi'].subnodes():
+            if n.propval("compatible") == [ "xlnx,zynqmp-ipi-mailbox" ] and n.propval('xlnx,ipi-id') == mbox_node.propval('xlnx,ipi-id'):
+                remote_interrupt = n.propval('interrupts')[1]
+                poll_base_addr = hex(n.propval("reg")[1])
+                for mbox_subnode in n.subnodes():
+                    if mbox_subnode.propval('xlnx,ipi-id') != [] and mbox_subnode.propval('xlnx,ipi-id')[0] == mbox_node.parent.propval('xlnx,ipi-id')[0]:
+                        ipi_chn_bitmask = mbox_subnode.propval('xlnx,ipi-bitmask')[0]
+                        break
+                break
+
+        inputs = {
+        "POLL_BASE_ADDR": poll_base_addr,
+        "SHM_DEV_NAME": "\"" + hex(elfload_base)[2:] + '.shm\"',
+        "DEV_BUS_NAME": "\"generic\"",
+        "IPI_DEV_NAME":  "\"" + poll_base_addr[2:] + '.ipi\"',
+        "IPI_IRQ_VECT_ID": hex(remote_interrupt),
+        "IPI_IRQ_VECT_ID_FREERTOS": hex(remote_interrupt - 32),
+        "IPI_CHN_BITMASK": hex(ipi_chn_bitmask),
+        "RING_TX": hex(tree.pnode(mem_reg_val[2]).propval("reg")[1]),
+        "RING_RX": hex(tree.pnode(mem_reg_val[3]).propval("reg")[1]),
+        "SHARED_MEM_PA": hex(tree.pnode(mem_reg_val[2]).propval("reg")[1]),
+        "SHARED_MEM_SIZE":"0x100000UL",
+        "SHARED_BUF_OFFSET": hex(tree.pnode(mem_reg_val[2]).propval("reg")[3] + tree.pnode(mem_reg_val[3]).propval("reg")[3]),
+        "SHARED_BUF_PA": hex(tree.pnode(mem_reg_val[1]).propval("reg")[1]),
+        "SHARED_BUF_SIZE": hex(tree.pnode(mem_reg_val[1]).propval("reg")[3]),
+        "EXTRAS":"",
+        }
+    except:
+        print("OPENAMP: XLNX: ERROR: xlnx_openamp_gen_outputs_only: Error in generating template for RPU header.")
+        return False
+
+    f = open(output_file, "w")
+    output = Template(platform_info_header_r5_template)
+    f.write(output.substitute(inputs))
+    f.close()
+
+    return True
 
 def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0 ):
     text_file_contents = ""
@@ -1785,6 +1835,27 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
     tree = sdt.tree
     ret = -1
     openamp_channel_info = {}
+
+    try:
+        gen_outputs_only = False
+        output_file = None
+        arg_remote = None
+        args = options['args']
+        opts,args2 = getopt.getopt( args, "d:v:n:", [ "verbose", "openamp_header_only", "openamp_output_filename=", "openamp_remote=" ])
+        if opts != []:
+            for o,a in opts:
+                print("arg:", o,a)
+                if o in ('-d',"--openamp_header_only"):
+                    gen_outputs_only = True
+                elif o in ("--openamp_output_filename"):
+                    output_file = a
+                elif o in ('-n', "--openamp_remote"):
+                    arg_remote = a
+
+        if gen_outputs_only and output_file != None and arg_remote != None:
+            return xlnx_openamp_gen_outputs_only(sdt, arg_remote, output_file, verbose)
+    except:
+        pass
 
     for n in tree["/domains"].subnodes():
             node_compat = n.props("compatible")
