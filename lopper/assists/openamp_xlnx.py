@@ -1092,7 +1092,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
         return False
 
     # Here try for key value pair arguments
-    opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_role=", "openamp_host=", "openamp_remote=", "openamp_output_filename=" ] )
+    opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_no_header", "openamp_role=", "openamp_host=", "openamp_remote=", "openamp_output_filename=" ] )
     if opts == [] and args2 == []:
         print('ERROR: No arguments passed for OpenAMP Module. Erroring out now.')
         return False
@@ -1100,6 +1100,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
     role = None
     arg_host = None
     arg_remote = None
+    no_header = False
     if xlnx_options != None:
         role = xlnx_options["openamp_role"]
         arg_host = xlnx_options["openamp_host"]
@@ -1114,6 +1115,8 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
                 arg_remote = a
             elif o in ("--openamp_output_filename"):
                 output_file = a
+            elif o in ("--openamp_no_header"):
+                no_header = True
             else:
                 print("Argument: ",o, " is not recognized. Erroring out.")
 
@@ -1141,7 +1144,8 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
 
     # Generate Text file to configure OpenAMP Application
     # Only do this for remote firmware configuration
-    if role == 'remote':
+
+    if role == 'remote' and no_header == False:
         ret = xlnx_openamp_gen_outputs(openamp_channel_info, chan_id, role, verbose)
         if not ret:
             return ret
