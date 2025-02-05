@@ -1699,12 +1699,15 @@ def get_platform(tree, verbose = 0):
     global banner_printed
     platform = None
     root_node = tree["/"]
-    root_model = str(root_node.props("model")[0].value)
-    root_compat = root_node.props("compatible")[0].value
+    root_model = root_node.propval("model")[0]
+    root_compat = root_node.propval("compatible")
 
-    zynqmp = [ 'zynqmp', 'zcu', 'Xilinx ZynqMP', 'Ultra96', "xlnx,zynqmp" ]
-    versal = [ 'vck190', 'vmk180', 'vpk120', 'vpk180', 'vck5000', 'vhk158', 'xlnx,versal', 'vek280', 'vc-p' ]
-    versalnet = [ 'versal-net', 'vn-p', 'Versal NET' ]
+    inputs = root_node.propval("compatible")
+    inputs.append(root_model)
+
+    zynqmp = [ 'Xilinx ZynqMP',  "xlnx,zynqmp" ]
+    versal = [ 'xlnx,versal', 'Xilinx Versal']
+    versalnet = [ 'versal-net', 'Versal NET', "xlnx,versal-net", "Xilinx Versal NET" ]
     versal2 = [ 'xlnx,versal2', 'amd,versal2', 'amd versal vek385 reva' ]
 
     rpu_socs = [ versal2, zynqmp, versal, versalnet ]
@@ -1716,12 +1719,12 @@ def get_platform(tree, verbose = 0):
 
     for index, soc in enumerate(rpu_socs):
         for soc_str in soc:
-            for test_str in [ root_model, root_compat ]:
-                if soc_str in test_str:
-                        return rpu_socs_enums[index]
+            for i in inputs:
+                if i == soc_str:
+                    return rpu_socs_enums[index]
 
     if platform == None:
-        print("Unable to find data for platform: ", root_model)
+        print("Unable to find data for platform: ", root_model, root_compat)
 
     return platform
 
