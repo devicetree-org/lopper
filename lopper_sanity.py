@@ -1227,10 +1227,10 @@ def tree_sanity_test( fdt, verbose=0 ):
                                                                              hex(n.phandle), n.parent,
                                                                              n.child_nodes, n.depth), file=fpw )
             for prop in n:
-                print( "    property: %s %s" % (prop.name, prop.value), file=fpw)
-                print( "    raw: %s" % (n[prop.name]), file=fpw )
+                print( f"    property: {prop.name} {prop.value}", file=fpw)
+                print( f"    raw: {n[prop.name]}", file=fpw )
         except Exception as e:
-            print( "ERROR. exception while walking nodes: %s" % e )
+            print( f"ERROR. exception while walking nodes: {e}" )
             sys.exit(1)
 
     fpw.seek(0)
@@ -1238,12 +1238,12 @@ def tree_sanity_test( fdt, verbose=0 ):
     with open(fpp.name) as fp:
         node_count = 0
         for line in fp:
-            print( "%s" % line )
+            print( f"{line}" )
             if re.search( r"node:", line ):
                 node_count += 1
 
     if node_count != 21:
-        test_failed( "node count (1) is incorrect. Got %s, expected %s" % (node_count,21) )
+        test_failed( f"node count (1) is incorrect. Got {node_count}, expected {21}" )
     else:
         test_passed( "end: node walk passed\n" )
 
@@ -1294,7 +1294,7 @@ def tree_sanity_test( fdt, verbose=0 ):
                 node_count += 1
 
     if node_count != 21:
-        test_failed( "node count (2) is incorrect (%s expected %s)" % (node_count, 21) )
+        test_failed( f"node count (2) is incorrect ({node_count} expected {21})" )
     else:
         test_passed( "end: tree print passed\n")
     fpw.close()
@@ -1306,7 +1306,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     try:
         n = walker['/amba']
         if verbose:
-            print( "    node access via '/amba' found: %s, %s" % (n, [n]) )
+            print( f"    node access via '/amba' found: {n}, {[n]}" )
         test_passed( "node access by path" )
     except:
         test_failed( "node access by path failed" )
@@ -1314,7 +1314,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     try:
         n2 = walker[n.number]
         if verbose:
-            print( "    node access by number '%s' found: %s" % (n.number,[n2]) )
+            print( f"    node access by number '{n.number}' found: {[n2]}" )
         test_passed( "node access by number" )
     except:
         test_failed( "node access by path failed" )
@@ -1329,7 +1329,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     try:
         pp = n['compatible']
         if verbose:
-            print( "    property access (compatible): name: %s value: %s string: %s" % (pp.name, pp.value, pp) )
+            print( f"    property access (compatible): name: {pp.name} value: {pp.value} string: {pp}" )
         test_passed( "property access by name" )
     except:
         test_failed( "property access by name" )
@@ -1338,7 +1338,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     try:
         n = walker.pnode( n.phandle )
         if verbose:
-            print( "    node access via phandle %s: %s" % (hex(n.phandle), n) )
+            print( f"    node access via phandle {hex(n.phandle)}: {n}" )
         test_passed( "node access via phandle" )
     except:
         test_failed( "node access via phandle" )
@@ -1363,7 +1363,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     if c == 6:
         test_passed( "custom node print" )
     else:
-        test_failed( "custom node print (%s vs %s)" % (c,6) )
+        test_failed( f"custom node print ({c} vs {6})" )
 
     # shouldn't break anything: random re-resolves
     printer.resolve()
@@ -1374,7 +1374,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     print( "\n[SUB TEST]: full node walk after custom node list" )
     for p in printer:
-        print( "        node: %s" % p, file=fpw )
+        print( f"        node: {p}", file=fpw )
 
     fpw.close()
     c = test_pattern_count( fpp.name, ".*node:" )
@@ -1395,13 +1395,13 @@ def tree_sanity_test( fdt, verbose=0 ):
     count = 0
     for p in printer:
         if verbose:
-            print( "    /amba restricted test: node: %s" % p )
+            print( f"    /amba restricted test: node: {p}" )
         count += 1
 
     if count == 3:
         test_passed( "subtree walk" )
     else:
-        test_failed( "subtree walk (%s vs %s)" % (count,3))
+        test_failed( f"subtree walk ({count} vs {3})")
     print( "[SUB TEST]: end subtree walk\n" )
 
     print( "[SUB TEST]: start node -> end of tree walk" )
@@ -1413,13 +1413,13 @@ def tree_sanity_test( fdt, verbose=0 ):
     count = 0
     for p in printer:
         if verbose:
-            print( "       starting node test: node: %s" % p )
+            print( f"       starting node test: node: {p}" )
         count += 1
 
     if count == 15:
         test_passed( "start -> end walk" )
     else:
-        test_failed( "start -> end walk (%s vs %s)" % (count,15))
+        test_failed( f"start -> end walk ({count} vs {15})")
 
     print( "[SUB TEST]: start node -> end of tree walk\n" )
 
@@ -1431,53 +1431,53 @@ def tree_sanity_test( fdt, verbose=0 ):
     kiddies = printer.subnodes( printer.__nodes__['/amba'] )
     subnode_count = 0
     if verbose:
-        print( "amba subnodes: %s" % kiddies )
+        print( f"amba subnodes: {kiddies}" )
     for k in kiddies:
         if verbose:
-            print( "    node: %s" % k.abs_path )
+            print( f"    node: {k.abs_path}" )
         subnode_count += 1
 
     subnode_count2 = 0
     kiddies2 = printer['/amba'].subnodes()
     if verbose:
-        print( "abma subnodes type 2: %s" % kiddies2 )
+        print( f"abma subnodes type 2: {kiddies2}" )
     for k in kiddies2:
         if verbose:
-            print( "    node2: %s" % k.abs_path )
+            print( f"    node2: {k.abs_path}" )
         subnode_count2 += 1
 
     if subnode_count == subnode_count2:
         test_passed( "subnode count" )
     else:
-        test_failed( "subnode count (%s vs %s)" % (subnode_count,subnode_count2))
+        test_failed( f"subnode count ({subnode_count} vs {subnode_count2})")
 
     subnodecount = 0
     kiddies = printer.subnodes( printer['/'] )
     if verbose:
-        print( "/ subnodes: %s" % kiddies )
+        print( f"/ subnodes: {kiddies}" )
     for k in kiddies:
         if verbose:
-            print( "    node: %s" % k.abs_path )
+            print( f"    node: {k.abs_path}" )
         subnodecount += 1
 
     if subnodecount == 21:
         test_passed( "full tree subnode" )
     else:
-        test_failed( "full tree subnode (%s vs %s)" % (subnodecount,21))
+        test_failed( f"full tree subnode ({subnodecount} vs {21})")
 
     subnodecount = 0
     kiddies = printer.subnodes( printer['/'], ".*amba.*" )
     if verbose:
-        print( "/ subnodes matching regex '.*amba.*': %s" % kiddies )
+        print( f"/ subnodes matching regex '.*amba.*': {kiddies}" )
     for k in kiddies:
         if verbose:
-            print( "    node: %s" % k.abs_path )
+            print( f"    node: {k.abs_path}" )
         subnodecount += 1
 
     if subnodecount == 9:
         test_passed( "regex subnode" )
     else:
-        test_failed( "regex subnode (%s vs %s)" % (subnodecount,9))
+        test_failed( f"regex subnode ({subnodecount} vs {9})")
 
     print( "[TEST]: end: subnode calls\n" )
 
@@ -1494,27 +1494,27 @@ def tree_sanity_test( fdt, verbose=0 ):
             amba_found = True
 
         if verbose:
-            print( "/amba/interrupt-multiplex ref: %s" % a.abs_path )
+            print( f"/amba/interrupt-multiplex ref: {a.abs_path}" )
 
         refcount += 1
 
     if refcount == 6:
         test_passed( "resolve" )
     else:
-        test_failed( "resolve (%s vs %s)" % (refcount,6))
+        test_failed( f"resolve ({refcount} vs {6})")
 
     if root_found and amba_found:
         test_passed( "parent nodes found" )
     else:
-        test_failed( "parent nodes found (%s,%s)" % (root_found,amba_found) )
+        test_failed( f"parent nodes found ({root_found},{amba_found})" )
 
     print( "[TEST]: end: resolve test" )
 
     print( "[TEST]: start: node access tests and __str__ routine" )
     printer.__dbg__ = 0
     if verbose:
-        print( "amba node: %s" % printer.__nodes__['/amba'] )
-        print( "amba node number: %s " % int(printer.__nodes__['/amba']))
+        print( f"amba node: {printer.__nodes__['/amba']}" )
+        print( f"amba node number: {int(printer.__nodes__['/amba'])} ")
     if "/amba" == str(printer.__nodes__['/amba']):
         test_passed( "__str__" )
     else:
@@ -1523,7 +1523,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     printer.__dbg__ = 3
 
     if verbose:
-        print( "amba node raw: %s" % printer.__nodes__['/amba'] )
+        print( f"amba node raw: {printer.__nodes__['/amba']}" )
     if re.search( r"<lopper.tree.LopperNode.*", str(printer.__nodes__['/amba']) ):
         test_passed( "__str__ raw" )
     else:
@@ -1532,7 +1532,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     printer.__dbg__ = 0
 
     if verbose:
-        print( "type: %s" % type(printer.__nodes__['/amba']) )
+        print( f"type: {type(printer.__nodes__['/amba'])}" )
     if isinstance( printer.__nodes__['/amba'], LopperNode ):
         test_passed( "instance type" )
     else:
@@ -1562,7 +1562,7 @@ def tree_sanity_test( fdt, verbose=0 ):
         if m.name == "interrupt-multiplex":
             multiplex = True
         if verbose:
-            print( " match: %s [%s]" % (m.abs_path, m) )
+            print( f" match: {m.abs_path} [{m}]" )
 
     if count == 2 and multiplex:
         test_passed( "regex node match" )
@@ -1578,7 +1578,7 @@ def tree_sanity_test( fdt, verbose=0 ):
         if m.name == "interrupt-multiplex":
             multiplex = True
         if verbose:
-            print( "    match: %s [%s]" % (m.abs_path, m) )
+            print( f"    match: {m.abs_path} [{m}]" )
 
     if count == 9 and multiplex:
         test_passed( "regex node match 2" )
@@ -1590,7 +1590,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     matches = printer.nodes( "/amba" )
     for m in matches:
         if verbose:
-            print( "    match: %s" % m.abs_path )
+            print( f"    match: {m.abs_path}" )
         pass
 
     amba = matches[0]
@@ -1604,9 +1604,9 @@ def tree_sanity_test( fdt, verbose=0 ):
     p = amba.props( 'compat.*' )
     p = p[0]
     if verbose:
-        print( "prop type is: %s" % type(p) )
-        print( "amba p0: %s" % p.value[0] )
-        print( "amba p1: %s" % p )
+        print( f"prop type is: {type(p)}" )
+        print( f"amba p0: {p.value[0]}" )
+        print( f"amba p1: {p}" )
     if isinstance( p, LopperProp ):
         test_passed( "prop match type" )
     else:
@@ -1614,7 +1614,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     if p.value[0] == "simple-bus":
         test_passed( "prop value" )
     else:
-        test_failed( "prop value (%s vs %s)" % ( p.value[0], "simple-bus" ) )
+        test_failed( f"prop value ({p.value[0]} vs simple-bus)" )
     if str(p) == "compatible = \"simple-bus\";":
         test_passed( "prop str" )
     else:
@@ -1624,13 +1624,13 @@ def tree_sanity_test( fdt, verbose=0 ):
     print( "[TEST]: start: property assign test" )
     p.value = "testing 1.2.3"
     if verbose:
-        print( "amba p2: %s" % p.value[0] )
-        print( "amba p3: %s" % str(p) )
+        print( f"amba p2: {p.value[0]}" )
+        print( f"amba p3: {str(p)}" )
 
     if p.value[0] == "testing 1.2.3":
         test_passed( "prop value re-assign" )
     else:
-        test_failed( "prop value re-assign (%s vs %s)" % (p.value[0],"testing 1.2.3"))
+        test_failed( f"prop value re-assign ({p.value[0]} vs testing 1.2.3)")
 
     if str(p) == "compatible = \"testing 1.2.3\";":
         test_passed( "prop re-assign, resolve" )
@@ -1641,17 +1641,17 @@ def tree_sanity_test( fdt, verbose=0 ):
     print( "[TEST]: start: tree manipulation tests" )
     new_node = LopperNode( -1, "/amba/bruce" )
     if verbose:
-        print( "    new node name: %s" % new_node.name )
-        print( "    new node refcount: %s" % new_node.ref )
+        print( f"    new node name: {new_node.name}" )
+        print( f"    new node refcount: {new_node.ref}" )
     new_node.ref = 2
     new_node.ref = 1
     if verbose:
-        print( "    new node refcount is: %s" % new_node.ref )
+        print( f"    new node refcount is: {new_node.ref}" )
 
     if new_node.ref == 3:
         test_passed( "node ref" )
     else:
-        test_failed( "node ref (%s vs %s)" % (new_node.ref,3))
+        test_failed( f"node ref ({new_node.ref} vs {3})")
 
     if verbose:
         print( "\n" )
@@ -1660,7 +1660,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     new_property = LopperProp( "foobar", -1, new_node, [ "testingfoo" ] )
 
     if verbose:
-        print( "Property (%s) add to node: %s" % (new_property.name,new_node ))
+        print( f"Property ({new_property.name}) add to node: {new_node}")
 
     # new_node.add( new_property )
     new_node + new_property
@@ -1669,8 +1669,8 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     # confirm the node details are the same:
     if verbose:
-        print( "new_node path: %s" % new_node.abs_path )
-        print( "ref count: %s" % printer[new_node].ref )
+        print( f"new_node path: {new_node.abs_path}" )
+        print( f"ref count: {printer[new_node].ref}" )
     if new_node.abs_path == "/amba/bruce" and new_node.ref == 3:
         test_passed( "node + prop + tree" )
     else:
@@ -1681,7 +1681,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     print( "[TEST]: start: tree ref count test" )
     refd = printer.refd()
     if verbose:
-        print( "referenced nodes: %s" % refd[0].abs_path )
+        print( f"referenced nodes: {refd[0].abs_path}" )
 
     if len(refd) == 1 and refd[0].abs_path == "/amba/bruce":
         test_passed( "node ref persistence" )
@@ -1691,7 +1691,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     printer.ref( 0 )
     refd = printer.refd()
     if verbose:
-        print( "After clear, referenced nodes: %s" % refd )
+        print( f"After clear, referenced nodes: {refd}" )
     if len(refd) == 0:
         test_passed( "node ref reset" )
     else:
@@ -1707,7 +1707,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     if verbose:
         for n in printer:
-            print( "node: %s" % n.abs_path )
+            print( f"node: {n.abs_path}" )
 
     fpp = tempfile.NamedTemporaryFile( delete=False )
 
@@ -1727,7 +1727,7 @@ def tree_sanity_test( fdt, verbose=0 ):
     print2.load( printer.export() )
     if verbose:
         for n in print2:
-            print( "2node: %s" % n )
+            print( f"2node: {n}" )
         print( "\n" )
 
     print2.resolve()
@@ -1737,14 +1737,14 @@ def tree_sanity_test( fdt, verbose=0 ):
     if filecmp.cmp( fpp.name, fpp2.name ):
         test_passed( "two tree print" )
     else:
-        test_failed( "two tree print (%s does not equal %s)" % (fpp.name,fpp2.name))
+        test_failed( f"two tree print ({fpp.name} does not equal {fpp2.name})")
 
     print( "[TEST]: end: second tree test\n" )
 
     print( "[TEST]: start: node persistence test" )
     latched_state = new_node.__nstate__
     if verbose:
-        print( "new node's state is now: %s" % new_node.__nstate__ )
+        print( f"new node's state is now: {new_node.__nstate__}" )
 
     if new_node.__nstate__ == "resolved":
         test_passed( "node persistence test" )
@@ -1804,15 +1804,15 @@ def tree_sanity_test( fdt, verbose=0 ):
     new_node2 = new_node()
 
     if verbose:
-        print( "node: %s" % new_node.abs_path )
+        print( f"node: {new_node.abs_path}" )
     #new_node2 = new_node2(new_node)
     if verbose:
-        print( "node2: %s" % new_node2.abs_path )
+        print( f"node2: {new_node2.abs_path}" )
 
     # the property objects, should be different, since these are copies
     if verbose:
-        print( "node1 props: %s" % new_node.__props__ )
-        print( "node2 props: %s" % new_node2.__props__ )
+        print( f"node1 props: {new_node.__props__}" )
+        print( f"node2 props: {new_node2.__props__}" )
 
     if new_node.abs_path != new_node2.abs_path:
         test_failed( "copied nodes should be equal" )
@@ -1864,9 +1864,9 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     c = test_pattern_count( fpp.name, "newproperty_existingnode" )
     if c == 1:
-        test_passed( "property add, existing node (%s)" % fpp.name )
+        test_passed( f"property add, existing node ({fpp.name})" )
     else:
-        test_failed( "property add, existing node (%s)" % fpp.name )
+        test_failed( f"property add, existing node ({fpp.name})" )
 
     print( "[TEST]: start, new tree test" )
 
@@ -2034,13 +2034,13 @@ def lops_code_test( device_tree, lop_file, verbose ):
     if c == 4:
         test_passed( "selection test (or)" )
     else:
-        test_failed( "selection test (or) (found %s, expected: %s)" %(c,4))
+        test_failed( f"selection test (or) (found {c}, expected: {4})")
 
     c = len(re.findall( r"[^']selected3:", test_output ))
     if c == 3:
         test_passed( "selection test (phandle)" )
     else:
-        test_failed( "selection test (phandle) (found %s, expected: %s)" %(c,4))
+        test_failed( f"selection test (phandle) (found {c}, expected: {4})")
 
     output.reset()
 
@@ -2176,12 +2176,12 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
 
     device_tree.perform_lops()
 
-    print( "[TEST]: writing to %s" % (device_tree.output_file))
+    print( f"[TEST]: writing to {device_tree.output_file}")
 
     Lopper.sync( device_tree.FDT, device_tree.tree.export() )
     device_tree.write( enhanced = True )
 
-    print( "\n[TEST]: check lopper operations on: %s" % (device_tree.output_file))
+    print( f"\n[TEST]: check lopper operations on: {device_tree.output_file}")
     c = test_pattern_count( device_tree.output_file, "anode_to_delete" )
     if c != 0:
         test_failed( "node deletion failed" )
@@ -2316,7 +2316,7 @@ def assists_sanity_test( device_tree, lop_file, verbose ):
     print( "[TEST]: running assist against tree" )
     device_tree.perform_lops()
 
-    print( "[TEST]: writing resulting FDT to %s" % device_tree.output_file )
+    print( f"[TEST]: writing resulting FDT to {device_tree.output_file}" )
     device_tree.write( enhanced = True )
 
     device_tree.cleanup()
@@ -2324,7 +2324,7 @@ def assists_sanity_test( device_tree, lop_file, verbose ):
 def format_sanity_test( device_tree, verbose ):
     device_tree.setup( dt, [], "", True, libfdt = libfdt )
 
-    print( "[TEST]: writing to %s" % (device_tree.output_file))
+    print( f"[TEST]: writing to {device_tree.output_file}")
     device_tree.write( enhanced = True )
 
 
@@ -2347,10 +2347,10 @@ def fdt_sanity_test( device_tree, verbose ):
 
     print( "[INFO]: exported dictionary, node walk: " )
     for n in node_ordered_list:
-        print( "    node: %s (parent: %s)" % (n[0]['__path__'],n[1]['__path__']) )
+        print( f"    node: {n[0]['__path__']} (parent: {n[1]['__path__']})" )
         for i,v in n[0].items():
             if type(v) != OrderedDict and i != "__path__":
-                print("         %s -> %s" % (i,v))
+                print(f"         {i} -> {v}")
 
     lt = lopper.tree.LopperTreePrinter()
     lt.load( dct )
@@ -2410,11 +2410,11 @@ def fdt_sanity_test( device_tree, verbose ):
     print( "[INFO]: node dump" )
     sub = lt3.subnodes( lt3.__nodes__["/"] )
     for s in sub:
-        print( "nd1: %s" % s.abs_path )
+        print( f"nd1: {s.abs_path}" )
 
         print( "[INFO]: node dump2, new iterator" )
     for n in lt3:
-        print("nd2: %s" % n.abs_path )
+        print(f"nd2: {n.abs_path}" )
 
     print( "[INFO]: nodes should be gone, one new one added (in memory copy only)" )
     # reprint
@@ -2455,12 +2455,12 @@ def yaml_sanity_test( device_tree, yaml_file, outdir, verbose ):
 
     yaml = LopperYAML( yaml_file )
 
-    print( "[TEST]: writing yaml to: %s" % outdir + "output_yaml.yaml" )
+    print( f"[TEST]: writing yaml to: {outdir}" + "output_yaml.yaml" )
     yaml.to_yaml( outdir + "output_yaml.yaml" )
 
     lt = yaml.to_tree()
 
-    print( "[TEST]: writing dts from yaml to: %s" % outdir + "output_yaml_to_dts.dts" )
+    print( f"[TEST]: writing dts from yaml to: {outdir}" + "output_yaml_to_dts.dts" )
     LopperSDT(None).write( lt, outdir + "output_yaml_to_dts.dts", True, True )
 
     print( "[TEST]: converting SDT to yaml" )
@@ -2488,7 +2488,7 @@ def yaml_sanity_test( device_tree, yaml_file, outdir, verbose ):
 
 def usage():
     prog = os.path.basename(sys.argv[0])
-    print('Usage: %s [OPTION] ...' % prog)
+    print(f'Usage: {prog} [OPTION] ...')
     print('  -v, --verbose       enable verbose/debug processing (specify more than once for more verbosity)')
     print('  -t, --tree          run lopper tree tests' )
     print('  -l, --lops          run lop tests' )
@@ -2533,7 +2533,7 @@ def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "avtlhoxd", [ "generate_domain", "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "openamp", "werror","verbose", "help"])
     except getopt.GetoptError as err:
-        print('%s' % str(err))
+        print(f'{str(err)}')
         usage()
         sys.exit(2)
 
@@ -2580,7 +2580,7 @@ def main():
         elif o in ( '--continue' ):
             continue_on_error = True
         elif o in ('--version'):
-            print( "%s" % LOPPER_VERSION )
+            print( f"{LOPPER_VERSION}" )
             sys.exit(0)
         else:
             assert False, "unhandled option"
