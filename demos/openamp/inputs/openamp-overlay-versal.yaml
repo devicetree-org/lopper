@@ -1,63 +1,59 @@
 definitions:
     OpenAMP:
-         openamp_channel_0_access_srams: &openamp_channel_0_access_srams # used for access in each domain
+         openamp_channel0_access_srams: &openamp_channel0_access_srams # used for access in each domain
              - dev: psv_r5_0_atcm_global
                flags: 0
              - dev: psv_r5_0_btcm_global
                flags: 0
 
-         rpu0vdev0vring0: &rpu0vdev0vring0
-             - start: 0x3ed60000
-               size: 0x4000
-               no-map: 1
-
-         rproc0: &rproc0
-             - start: 0x3ed00000
-               size: 0x60000
-               no-map: 1
-
-         rpu0vdev0vring1: &rpu0vdev0vring1
-             - start: 0x3ed64000
-               size: 0x4000
-               no-map: 1
-
-         rpu0vdev0buffer: &rpu0vdev0buffer
-             - start: 0x3ed68000
-               size: 0x40000
-               no-map: 1
-
-         openamp_channel_1_access_srams: &openamp_channel_1_access_srams # used for access in each domain
+         openamp_channel1_access_srams: &openamp_channel1_access_srams # used for access in each domain
              - dev: psv_r5_1_atcm_global
                flags: 0
              - dev: psv_r5_1_btcm_global
                flags: 0
-             - dev: psv_r5_1_atcm
-               flags: 0
-             - dev: psv_r5_0_btcm
-               flags: 0
+
+         rproc0: &rproc0
+             - start: 0x9800000
+               size: 0x60000
+               no-map: 1
+
+         rpu0vdev0vring0: &rpu0vdev0vring0
+             - start: 0x9860000
+               size: 0x4000
+               no-map: 1
+
+         rpu0vdev0vring1: &rpu0vdev0vring1
+             - start: 0x9864000
+               size: 0x4000
+               no-map: 1
+
+         rpu0vdev0buffer: &rpu0vdev0buffer
+             - start: 0x9868000
+               size: 0x40000 
+               no-map: 1
 
          rproc1: &rproc1
-             - start: 0x3ef00000
+             - start: 0x9e00000
                size: 0x60000
                no-map: 1
 
          rpu1vdev0vring0: &rpu1vdev0vring0
-             - start: 0x3ef60000
+             - start: 0x9e60000
                size: 0x4000
                no-map: 1
 
          rpu1vdev0vring1: &rpu1vdev0vring1
-             - start: 0x3ef64000
+             - start: 0x9e64000
                size: 0x4000
                no-map: 1
 
          rpu1vdev0buffer: &rpu1vdev0buffer
-             - start: 0x3ef68000
-               size: 0x40000
+             - start: 0x9e68000
+               size: 0x40000 
                no-map: 1
 
 domains:
-    openamp_a72_0_cluster: # host in channel from a72-0 to r5-0 and r5-1
+    openamp_a72_0_cluster: # host in channel from a72-0
         compatible:
             - "openamp,domain-v1"
         cpus:
@@ -73,8 +69,8 @@ domains:
               flags:
                 - 0
                 - 0
-            - <<+: *openamp_channel_0_access_srams
-            - <<+: *openamp_channel_1_access_srams
+            - <<+: *openamp_channel0_access_srams
+            - <<+: *openamp_channel1_access_srams
 
         reserved-memory:
             ranges: true
@@ -83,28 +79,23 @@ domains:
         domain-to-domain:
             compatible: openamp,domain-to-domain-v1
             remoteproc-relation:
-                compatible: openamp,remoteproc-v1
+                compatible: openamp,remoteproc-v2
                 remote:
-                    - openamp_r5_0_cluster
-                    - openamp_r5_1_cluster
+                     - openamp_r5_0_cluster
+                     - openamp_r5_1_cluster
                 elfload:
-                    - CIPS_0_pspmc_0_psv_r5_0_atcm 
-                    - psv_r5_0_atcm_global
-                    - CIPS_0_pspmc_0_psv_r5_0_btcm 
-                    - psv_r5_0_btcm_global
-                    - rproc0
-                    - CIPS_0_pspmc_0_psv_r5_1_atcm
-                    - psv_r5_1_atcm_global
-                    - CIPS_0_pspmc_0_psv_r5_1_btcm
-                    - psv_r5_1_btcm_global
-                    - rproc1
+                    - [ psv_r5_0_atcm_global, psv_r5_0_btcm_global, rproc0 ]
+                    - [ psv_r5_1_atcm_global, psv_r5_1_btcm_global, rproc1 ]
 
             rpmsg-relation:
                 compatible: openamp,rpmsg-v1
-                openamp-xlnx-native: [ false, false ]
+                openamp-xlnx-native: [ false, false ] # use native OpenAMP implementation
                 remote:
-                    - openamp_r5_0_cluster
-                    - openamp_r5_1_cluster
+                     - openamp_r5_0_cluster
+                     - openamp_r5_1_cluster
+                mbox:
+                     - ipi3
+                     - ipi3
                 carveouts:
                      - rpu0vdev0vring0
                      - rpu0vdev0vring1
@@ -112,24 +103,49 @@ domains:
                      - rpu1vdev0vring0
                      - rpu1vdev0vring1
                      - rpu1vdev0buffer
-                mbox:
-                    - ipi3
-                    - ipi3
 
+    openamp_r5_0_cluster:
+        compatible:
+            - "openamp,domain-v1"
+        cpus:
+            - cluster: cpus_r5_0
+              cpumask: 0x1
+              mode:
+              secure: true
+        access:
+            - dev:
+                - ipi1 # used for Open AMP RPMsg IPC
+              flags: 0
+            - <<+: *openamp_channel0_access_srams # TCM banks used for firmware memory
+        reserved-memory:
+            ranges: true
+            <<+: [ *rpu0vdev0vring1, *rpu0vdev0vring0, *rpu0vdev0buffer, *rproc0 ]
+
+        domain-to-domain:
+             compatible: openamp,domain-to-domain-v1
+             rpmsg-relation:
+                 compatible: openamp,rpmsg-v1
+                 host:
+                     - openamp_a72_0_cluster
+                 mbox:
+                     - ipi1
+                 carveouts:
+                     - rpu0vdev0vring0
+                     - rpu0vdev0vring1
+                     - rpu0vdev0buffer
     openamp_r5_1_cluster:
         compatible:
             - "openamp,domain-v1"
         cpus:
             - cluster: cpus_r5_1
-              cpumask: 0x2
-              mode: 0x1
+              cpumask: 0x1
+              mode:
               secure: true
         access:
             - dev:
                 - ipi2 # used for Open AMP RPMsg IPC
-              flags:
-                  - 0
-            - <<+: *openamp_channel_1_access_srams # TCM banks used for firmware memory
+              flags: 0
+            - <<+: *openamp_channel1_access_srams # TCM banks used for firmware memory
         reserved-memory:
             ranges: true
             <<+: [ *rpu1vdev0vring1, *rpu1vdev0vring0, *rpu1vdev0buffer, *rproc1 ]
@@ -147,32 +163,3 @@ domains:
                      - rpu1vdev0vring1
                      - rpu1vdev0buffer
 
-    openamp_r5_0_cluster:
-        compatible:
-            - "openamp,domain-v1"
-        cpus:
-            - cluster: cpus_r5_0
-              cpumask: 0x1
-              mode:
-              secure: true
-        access:
-            - dev:
-                - ipi1
-              flags: 0
-            - <<+: *openamp_channel_0_access_srams # TCM banks used for firmware memory
-        reserved-memory:
-            ranges: true
-            <<+: [ *rpu0vdev0vring1, *rpu0vdev0vring0, *rpu0vdev0buffer, *rproc0 ]
-
-        domain-to-domain:
-             compatible: openamp,domain-to-domain-v1
-             rpmsg-relation:
-                 compatible: openamp,rpmsg-v1
-                 host:
-                     - openamp_a72_0_cluster
-                 mbox:
-                     - ipi1
-                 carveouts:
-                     - rpu0vdev0vring0
-                     - rpu0vdev0vring1
-                     - rpu0vdev0buffer

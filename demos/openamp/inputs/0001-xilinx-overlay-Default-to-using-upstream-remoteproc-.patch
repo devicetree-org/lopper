@@ -1,0 +1,54 @@
+From 8c02541d335dc391a711cfc7705a5669fb7342f8 Mon Sep 17 00:00:00 2001
+From: Ben Levinsky <ben.levinsky@amd.com>
+Date: Thu, 30 Jan 2025 09:48:04 -0800
+Subject: [meta-openamp][2025.1][PATCH] xilinx: overlay: Default to using upstream remoteproc driver
+
+Signed-off-by: Ben Levinsky <ben.levinsky@amd.com>
+---
+ .../open-amp/overlays/openamp-overlay-versal-net.yaml           | 2 +-
+ .../open-amp/overlays/openamp-overlay-versal.yaml               | 2 +-
+ .../open-amp/overlays/openamp-overlay-zynqmp.yaml               | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-versal-net.yaml b/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-versal-net.yaml
+index 695a8e8..327b0b7 100644
+--- a/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-versal-net.yaml
++++ b/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-versal-net.yaml
+@@ -83,7 +83,7 @@ domains:
+         domain-to-domain:
+             compatible: openamp,domain-to-domain-v1
+             remoteproc-relation:
+-                compatible: openamp,remoteproc-v1
++                compatible: openamp,remoteproc-v2
+                 remote:
+                     - openamp_r52_0_cluster
+                     - openamp_r52_1_cluster
+diff --git a/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-versal.yaml b/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-versal.yaml
+index 3eeb153..0400188 100644
+--- a/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-versal.yaml
++++ b/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-versal.yaml
+@@ -79,7 +79,7 @@ domains:
+         domain-to-domain:
+             compatible: openamp,domain-to-domain-v1
+             remoteproc-relation:
+-                compatible: openamp,remoteproc-v1
++                compatible: openamp,remoteproc-v2
+                 remote:
+                      - openamp_r5_0_cluster
+                      - openamp_r5_1_cluster
+diff --git a/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-zynqmp.yaml b/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-zynqmp.yaml
+index 0da2310..1cfa5d8 100644
+--- a/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-zynqmp.yaml
++++ b/vendor/xilinx/meta-xilinx-standalone-sdt/recipes-openamp/open-amp/overlays/openamp-overlay-zynqmp.yaml
+@@ -79,7 +79,7 @@ domains:
+         domain-to-domain:
+             compatible: openamp,domain-to-domain-v1
+             remoteproc-relation:
+-                compatible: openamp,remoteproc-v1
++                compatible: openamp,remoteproc-v2
+                 remote:
+                     - openamp_r5_0_cluster
+                     - openamp_r5_1_cluster
+-- 
+2.25.1
+
