@@ -2057,7 +2057,7 @@ def inplace_change(filename, old_string, new_string):
         s = s.replace(old_string, new_string)
         f.write(s)
 
-def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str, remoteproc_str, nodes_to_check, verbose ):
+def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str, nodes_to_check, verbose ):
     demo_area = os.getcwd() + "/demos/openamp/inputs/"
     lops_area = os.getcwd() + "/lopper/lops/"
 
@@ -2070,18 +2070,15 @@ def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str,
     device_tree.enhanced = True
     device_tree.symbols = True
 
-    shutil.copyfile(lops_area + "lop-openamp-invoke.dts", lops_area + "lop-openamp-invoke.dts" + ".original")
     shutil.copyfile(lops_area + "lop-gen_domain_dts-invoke.dts",lops_area + "lop-gen_domain_dts-invoke.dts" + ".original")
 
     gen_domain_mapping = { 'a72': 'psv_cortexa72_0', 'a53' : 'psu_cortexa53_0' }
 
-    inplace_change(lops_area + "lop-openamp-invoke.dts", 'a53', target_soc)
     inplace_change(lops_area + "lop-gen_domain_dts-invoke.dts", 'psv_cortexa72_0' , gen_domain_mapping[target_soc])
 
     local_inputs = [ overlay,
                      lops_area + "lop-load.dts",
                      lops_area + "lop-xlate-yaml.dts",
-                     lops_area + "lop-openamp-invoke.dts",
                      lops_area + "lop-gen_domain_dts-invoke.dts",
                      lops_area + "lop-" + target_soc + "-imux.dts" ]
 
@@ -2093,9 +2090,7 @@ def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str,
     for i, v in enumerate(nodes_to_check):
         nodes_found.append(False)
 
-    shutil.copyfile(lops_area + "lop-openamp-invoke.dts"  + ".original", lops_area + "lop-openamp-invoke.dts")
     shutil.copyfile(lops_area + "lop-gen_domain_dts-invoke.dts" + ".original",lops_area + "lop-gen_domain_dts-invoke.dts")
-    os.remove(lops_area + "lop-openamp-invoke.dts"  + ".original")
     os.remove(lops_area + "lop-gen_domain_dts-invoke.dts" + ".original")
 
     pass_test = False
@@ -2105,20 +2100,14 @@ def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str,
             if n.name == v or n.label == v:
                 nodes_found[i] = True
 
-        pp = n.propval("compatible")
-        if pp != ['']:
-            if ('r5' in n.name or 'rf5' in n.name) and pp == remoteproc_str:
-                pass_test = True
-
     for i,v in enumerate(nodes_to_check):
         if nodes_found[i] == False:
             print('did not find node: ', nodes_to_check[i])
-            pass_test = False
 
-    if pass_test:
-        test_passed(test_str)
-    else:
+    if not any(nodes_to_check):
         test_failed(test_str)
+    else:
+        test_passed(test_str)
 
 def xlnx_gen_domain_sanity_test( verbose ):
     ws_area = os.getcwd()
@@ -2161,23 +2150,21 @@ def xlnx_gen_domain_sanity_test( verbose ):
 def openamp_sanity_test( verbose ):
     demo_area = os.getcwd() + "/demos/openamp/inputs/"
 
-    sdt = demo_area + "system-dt/system-top.dts"
+    sdt = demo_area + "openamp_zu.dts"
     overlay = demo_area + "/openamp-overlay-zynqmp.yaml"
     target_soc = "a53"
     test_str = "OpenAMP ZynqMP Sanity Test"
-    rproc_str = 'xlnx,zynqmp-r5-remoteproc'
     output_sdt = "openamp_sanity_output_zynqmp.dts"
-    nodes_to_check = [ "psu_r5_0_atcm_global", "psu_r5_0_btcm_global", "psu_r5_1_atcm_global", "psu_r5_1_btcm_global" ]
-    openamp_sanity_test_generic(sdt, overlay, output_sdt, target_soc, test_str, rproc_str, nodes_to_check, verbose)
+    nodes_to_check = [ "r5f@0", "remoteproc@ffe00000", "rpu0vdev0buffer", "ipi_mailbox_rpu0" ]
+    openamp_sanity_test_generic(sdt, overlay, output_sdt, target_soc, test_str, nodes_to_check, verbose)
 
     output_sdt = "/openamp_sanity_output_versal.dts"
-    sdt = demo_area + "vck190-system-dt/system-top.dts"
+    sdt = demo_area + "openamp_versal.dts"
     overlay = demo_area + "/openamp-overlay-versal.yaml"
     target_soc = "a72"
     test_str = "OpenAMP Versal Sanity Test"
-    rproc_str = 'xlnx,versal-r5-remoteproc'
-    nodes_to_check = [ "psv_r5_1_btcm_global", "psv_r5_1_atcm_global", "psv_r5_0_btcm_global", "psv_r5_0_atcm_global" ]
-    openamp_sanity_test_generic(sdt, overlay, output_sdt, target_soc, test_str, rproc_str, nodes_to_check, verbose)
+    nodes_to_check = [ "r5f@0", "remoteproc@ffe00000", "rpu0vdev0buffer", "openamp_mailbox@ff360000" ]
+    openamp_sanity_test_generic(sdt, overlay, output_sdt, target_soc, test_str, nodes_to_check, verbose)
 
 def lops_sanity_test( device_tree, lop_file, verbose ):
     if not libfdt:

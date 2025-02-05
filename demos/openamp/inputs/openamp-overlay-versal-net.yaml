@@ -1,15 +1,19 @@
 definitions:
     OpenAMP:
          openamp_channel0_access_srams: &openamp_channel0_access_srams # used for access in each domain
-             - dev: psu_r5_0_atcm_global
+             - dev: psx_wizard_0_psxl_0_psx_r52_0a_atcm_global
                flags: 0
-             - dev: psu_r5_0_btcm_global
+             - dev: psx_wizard_0_psxl_0_psx_r52_0a_btcm_global
+               flags: 0
+             - dev: psx_wizard_0_psxl_0_psx_r52_0a_ctcm_global
                flags: 0
 
          openamp_channel1_access_srams: &openamp_channel1_access_srams # used for access in each domain
-             - dev: psu_r5_1_atcm_global
+             - dev: psx_wizard_0_psxl_0_psx_r52_1a_atcm_global
                flags: 0
-             - dev: psu_r5_1_btcm_global
+             - dev: psx_wizard_0_psxl_0_psx_r52_1a_btcm_global
+               flags: 0
+             - dev: psx_wizard_0_psxl_0_psx_r52_1a_ctcm_global
                flags: 0
 
          rproc0: &rproc0
@@ -19,7 +23,7 @@ definitions:
 
          rpu0vdev0vring0: &rpu0vdev0vring0
              - start: 0x9860000
-               size: 0x4000
+               size: 0x2000
                no-map: 1
 
          rpu0vdev0vring1: &rpu0vdev0vring1
@@ -39,7 +43,7 @@ definitions:
 
          rpu1vdev0vring0: &rpu1vdev0vring0
              - start: 0x9e60000
-               size: 0x4000
+               size: 0x2000
                no-map: 1
 
          rpu1vdev0vring1: &rpu1vdev0vring1
@@ -53,19 +57,19 @@ definitions:
                no-map: 1
 
 domains:
-    openamp_a53_0_cluster: # host in channel from a53-0
+    openamp_a78_0_cluster: # host in channel from a78-0
         compatible:
             - "openamp,domain-v1"
         cpus:
-            - cluster: cpus_a53
+            - cluster: cpus_a78
               cpumask: 0x1
               mode:
                  secure: true
                  el: 0x3
         access:
             - dev:
-                - ipi7
-                - ipi7  # used for Open AMP RPMsg IPC
+                - ipi3
+                - ipi3  # used for Open AMP RPMsg IPC
               flags:
                 - 0
                 - 0
@@ -81,18 +85,18 @@ domains:
             remoteproc-relation:
                 compatible: openamp,remoteproc-v2
                 remote:
-                    - openamp_r5_0_cluster
-                    - openamp_r5_1_cluster
+                    - openamp_r52_0_cluster
+                    - openamp_r52_1_cluster
                 elfload:
-                    - [ psu_r5_0_atcm_global, psu_r5_0_btcm_global, rproc0 ]
-                    - [ psu_r5_1_atcm_global, psu_r5_1_btcm_global, rproc1 ]
+                    - [ psx_wizard_0_psxl_0_psx_r52_0a_atcm_global, psx_wizard_0_psxl_0_psx_r52_0a_btcm_global, psx_wizard_0_psxl_0_psx_r52_0a_ctcm_global, rproc0 ]
+                    - [ psx_wizard_0_psxl_0_psx_r52_1a_atcm_global, psx_wizard_0_psxl_0_psx_r52_1a_btcm_global, psx_wizard_0_psxl_0_psx_r52_1a_ctcm_global, rproc1 ]
 
             rpmsg-relation:
                 compatible: openamp,rpmsg-v1
                 openamp-xlnx-native: [ false, false ] # use native OpenAMP implementation
                 remote:
-                    - openamp_r5_0_cluster
-                    - openamp_r5_1_cluster
+                    - openamp_r52_0_cluster
+                    - openamp_r52_1_cluster
                 carveouts:
                      - rpu0vdev0vring0
                      - rpu0vdev0vring1
@@ -101,14 +105,14 @@ domains:
                      - rpu1vdev0vring1
                      - rpu1vdev0buffer
                 mbox:
-                    - ipi7
-                    - ipi7
+                    - ipi3
+                    - ipi3
 
-    openamp_r5_1_cluster:
+    openamp_r52_1_cluster:
         compatible:
             - "openamp,domain-v1"
         cpus:
-            - cluster: cpus_r5_1
+            - cluster: cpus_r52_1
               cpumask: 0x2
               mode: 0x1
               secure: true
@@ -127,7 +131,7 @@ domains:
              rpmsg-relation:
                  compatible: openamp,rpmsg-v1
                  host:
-                     - openamp_a53_0_cluster
+                     - openamp_a78_0_cluster
                  mbox:
                      - ipi2
                  carveouts:
@@ -135,11 +139,11 @@ domains:
                      - rpu1vdev0vring1
                      - rpu1vdev0buffer
 
-    openamp_r5_0_cluster:
+    openamp_r52_0_cluster:
         compatible:
             - "openamp,domain-v1"
         cpus:
-            - cluster: cpus_r5_0
+            - cluster: cpus_r52_0
               cpumask: 0x1
               mode:
               secure: true
@@ -157,7 +161,7 @@ domains:
              rpmsg-relation:
                  compatible: openamp,rpmsg-v1
                  host:
-                     - openamp_a53_0_cluster
+                     - openamp_a78_0_cluster
                  mbox:
                      - ipi1
                  carveouts:
