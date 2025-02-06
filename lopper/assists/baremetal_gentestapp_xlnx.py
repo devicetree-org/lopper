@@ -206,7 +206,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                             valid_ex = 0
                             match_list = []
                             if drv_config_name == 'XAxiCdma':
-                                mem_ranges, lable_names = get_memranges(tgt_node, sdt, options)
+                                mem_ranges, _ = get_memranges(tgt_node, sdt, options)
                                 for mem in list_of_mem_list:
                                     if any(mem in mem_name for mem_name in mem_ranges.keys()):
                                         match_list.append(True)

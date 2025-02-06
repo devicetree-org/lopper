@@ -96,7 +96,7 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
                     device_type_dict['processor'][label_name].update({"slaves_strings": " ".join(nodename_list)})
             elif re.search("memory", dev_type):
                 ### Memory Handling
-                mem_ranges = get_memranges(tgt_node, sdt, options)
+                mem_ranges, _ = get_memranges(tgt_node, sdt, options)
                 index = 0
                 memnode_list = sdt.tree.nodes('/memory@.*')
                 for mem_name,mem in mem_ranges.items():
