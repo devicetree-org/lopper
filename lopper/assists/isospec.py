@@ -496,7 +496,7 @@ class isospec(object):
                 self.__base_protection = self.isospec_subsystem( "/default_settings/base_protection" )
 
             except Exception as e:
-                _info( "exception processing base protection: %s" % e )
+                _info( f"exception processing base protection: {e}" )
                 pass
 
             s = self.json_tree["/design/subsystems"]
@@ -1102,7 +1102,7 @@ class isospec(object):
                                     try:
                                         # if dev["name"] in self.tracker_get( spec_node.name, "dev" ).keys():
                                         if self.tracker_check( spec_node.name, dev, "dev" ):
-                                            _info( "   duplicated device detected: %s, skipping it ... " % dev["name"] )
+                                            _info( f"   duplicated device detected: {dev['name']}, skipping it ... " )
                                             continue
                                     except Exception as e:
                                         pass
