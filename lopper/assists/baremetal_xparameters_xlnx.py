@@ -429,7 +429,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         plat.buf(f"\n#define XPS_BOARD_{board.upper()}\n")
     
     # Memory Node related defines
-    mem_ranges = get_memranges(tgt_node, sdt, options)
+    mem_ranges, lable_names = get_memranges(tgt_node, sdt, options)
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=True):
         start,size = value[0], value[1]
         suffix = "ADDRESS"
