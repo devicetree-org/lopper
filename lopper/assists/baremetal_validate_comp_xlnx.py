@@ -49,7 +49,7 @@ def check_for_mem(sdt, options, mem_type, required_mem):
     if required_mem.get("size", {}):
         required_mem_size = required_mem["size"]
 
-    mem_ranges = get_memranges(sdt.tree['/'], sdt, options)
+    mem_ranges, lable_names = get_memranges(sdt.tree['/'], sdt, options)
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=True):
         start,size = value[0], value[1]
         if mem_type == "any" or re.search(mem_type, key):

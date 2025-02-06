@@ -99,21 +99,22 @@ def get_memranges(tgt_node, sdt, options):
     if not match_cpunode:
         return
     address_map = match_cpunode.parent["address-map"].value
-    all_phandles = []
+    all_phandles = {}
     ns = match_cpunode.parent["#ranges-size-cells"].value[0]
     na = match_cpunode.parent["#ranges-address-cells"].value[0]
     cells = na + ns
     tmp = na
     while tmp < len(address_map):
-        all_phandles.append(address_map[tmp])
+        all_phandles[address_map[tmp]] = tmp
         tmp = tmp + cells + na + 1
 
     mem_ranges = {}
+    lable_names = {}
     # Remove Duplicate memory node referenecs
     mem_nodes = list(dict.fromkeys(mem_nodes))
     for node in mem_nodes:
         # Check whether the memory node is mapped to cpu cluster or not
-        mem_phandles = [handle for handle in all_phandles if handle == node.phandle]
+        indx_list = [index for handle,index in all_phandles.items() if handle == node.phandle]
         addr_list = []
         size_list = []
         fsbl_update_size = False
@@ -129,30 +130,16 @@ def get_memranges(tgt_node, sdt, options):
                 size += sz
             fsbl_update_size = size
 
-        if mem_phandles:
-           # Remove Duplicate phandle referenecs
-           mem_phandles = list(dict.fromkeys(mem_phandles))
-           # Get all indexes of the address-map for this node
-           tmp = na
-           indx_list = []
-           handle = na
-           while handle < len(address_map):
-                phandle = address_map[handle]
-                for val in mem_phandles:
-                    if phandle == val:
-                        indx_list.append(handle)
-                handle = handle + cells + na + 1
-
-           for inx in indx_list:
-               start = [address_map[inx+i+1] for i in range(na)]
-               size_list.append(address_map[inx+2*na])
-               if na == 2 and start[0] != 0:
-                   reg = int(f"{hex(start[0])}{start[1]:08x}", base=16)
-                   addr_list.append(reg)
-               elif na == 2:
-                   addr_list.append(start[1])
-               else:
-                   addr_list.append(start[0])
+        for inx in indx_list:
+            start = [address_map[inx+i+1] for i in range(na)]
+            size_list.append(address_map[inx+2*na])
+            if na == 2 and start[0] != 0:
+                reg = int(f"{hex(start[0])}{start[1]:08x}", base=16)
+                addr_list.append(reg)
+            elif na == 2:
+                addr_list.append(start[1])
+            else:
+                addr_list.append(start[0])
 
         nac = node.parent["#address-cells"].value[0]
         nsc = node.parent["#size-cells"].value[0]
@@ -183,6 +170,7 @@ def get_memranges(tgt_node, sdt, options):
                     else:
                         linker_secname = key + str("_") + str(xlnx_memipname[key])
                         xlnx_memipname[key] += 1
+                    lable_names[linker_secname] = label_name
                     # Update the mem_ranges to account for multiple NoC memory segments within a given region.
                     if is_valid_noc_ch and (linker_secname in mem_ranges):
                         start_addr, old_size = mem_ranges[linker_secname]
@@ -195,8 +183,7 @@ def get_memranges(tgt_node, sdt, options):
                         mem_ranges.update({linker_secname: [valid_range[0], size]})
         except KeyError:
             pass
-
-    return mem_ranges
+    return mem_ranges, lable_names
 
 
 def get_unique_memip_list(mem_ranges):
@@ -212,28 +199,17 @@ def get_unique_memip_list(mem_ranges):
 # sdt: is the system device-tree
 # options: baremetal application source path
 def xlnx_generate_bm_linker(tgt_node, sdt, options):
-    root_node = sdt.tree[tgt_node]
-    root_sub_nodes = root_node.subnodes()
-    mem_nodes = []
-    symbol_node = ""
-    for node in root_sub_nodes:
-        try:
-            if node.name == "__symbols__":
-                symbol_node = node
-            device_type = node["device_type"].value
-            if "memory" in device_type:
-                mem_nodes.append(node)
-        except:
-           pass
 
-    mem_ranges = get_memranges(tgt_node, sdt, options)
-    unique_mem_ip_list = get_unique_memip_list(mem_ranges)
-    default_ddr = None
-    memtest_config = None
+    mem_ranges,lable_names = get_memranges(tgt_node, sdt, options)
     openamp_config = None
-    valid_memfix = None
+    memtest_config = None
     machine = options['args'][0]
-
+    cpu_ip_name = None
+    default_ddr = None
+    memip_list = []
+    match_cpunode = get_cpu_node(sdt, options)
+    if match_cpunode.propval('xlnx,ip-name') != ['']:
+        cpu_ip_name = match_cpunode.propval('xlnx,ip-name', list)[0]
     try:
         extra_config = options['args'][2]
         if extra_config == "memtest":
@@ -248,13 +224,72 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     app_path = utils.get_dir_path(src_dir.rstrip(os.sep))
     appname = utils.get_base_name(app_path)
     yaml_file = os.path.join(app_path, "data", f"{appname}.yaml")
-    match_cpunode = get_cpu_node(sdt, options)
-    cpu_ip_name = None
+    if not utils.is_file(yaml_file):
+        print(f"{appname} doesn't have yaml file")
+
+    cmake_file = os.path.join(sdt.outdir, f"{appname.capitalize()}Example.cmake")
+    cfd = open(cmake_file, 'a')
+
+    traverse  = False if memtest_config else True
+    default_ddr,memtest_config, mb_reset_addr = get_ddr_address(sdt,tgt_node,mem_ranges,match_cpunode,cpu_ip_name,memtest_config,traverse)
+
+    openamp_elfload_start = False
+    openamp_elfload_sz = False
+    if openamp_config:
+        elfload_tuple = xlnx_openamp_get_ddr_elf_load(machine, sdt, options)
+        if elfload_tuple != None:
+            openamp_elfload_start = elfload_tuple[0]
+            openamp_elfload_sz = elfload_tuple[1]
+
+    memip_list = []
+    for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
+        # Here skip adding DDR system mem to config if OpenAMP module is set
+        if "psu_qspi_linear" in key or "ps7_qspi_linear" in key or "axi_emc" in key or openamp_elfload_sz:
+            continue
+        start,size = value[0], value[1]
+        """
+        LMB BRAM initial 80 bytes being used by the linker vectors section in case of Microblaze
+        Adjust the size and start address accordingly.
+        """
+        if "lmb_bram" in key and not "microblaze_riscv" in machine and not "cortex" in machine:
+            start += 80
+            size -= start
+        memip_list.append(key)
+        cfd.write("set(%s %s)\n" % (lable_names[key], to_cmakelist([hex(start), hex(size)])))
+
+    if memtest_config:
+        default_ddr, memip_list = generate_mem_config(mem_ranges,memtest_config,memip_list,default_ddr,cpu_ip_name)
+    if mb_reset_addr:
+        cfd.write("set(BASE_VECTOR %s)\n" % mb_reset_addr)
+    cfd.write("set(DDR %s)\n" % lable_names[default_ddr])
+    cfd.write("set(CODE %s)\n" % lable_names[default_ddr])
+    cfd.write("set(DATA %s)\n" % lable_names[default_ddr])
+    memip_list = [lable_names[i] for i in memip_list]
+    cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
+
+    generate_linker_script(mem_ranges,yaml_file,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names)
+
+    return True
+
+def generate_linker_script(mem_ranges,yaml_file,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names):
+    """
+    To get generate the linker script
+    Parameters:
+        mem_ranges(list)           : List of mem ranges
+        yaml_file(path)            : Yaml file path
+        cfd(file obj)              : Cmake file object
+        cpu_ip_name(str)           : Cpu ip name
+        machine(str)               : Machine name
+        openamp_config(bool)       : True or False
+        openamp_elfload_sz(int)    : Openamp elf load size
+        openamp_elfload_start(int) : Openamp elf start
+        traverse(bool)             : True or False
+        lable_names(list)          : Lable names
+    Return:
+        None
+    """
     stack_size = None
     heap_size = None
-    if match_cpunode.propval('xlnx,ip-name') != ['']:
-        cpu_ip_name = match_cpunode.propval('xlnx,ip-name', list)[0]
-
     if cpu_ip_name is not None:
         if "microblaze" in cpu_ip_name:
             stack_size = 0x400
@@ -262,9 +297,6 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         else:
             stack_size = 0x2000
             heap_size = 0x2000
-
-    if not utils.is_file(yaml_file):
-        print(f"{appname} doesn't have yaml file")
     else:
         schema = utils.load_yaml(yaml_file)
         if schema.get("linker_constraints"):
@@ -274,12 +306,6 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             if "heap" in linker_constraint_opts:
                 heap_size = schema["linker_constraints"]["heap"]
 
-    cmake_file = os.path.join(sdt.outdir, f"{appname.capitalize()}Example.cmake")
-    cfd = open(cmake_file, 'a')
-    if memtest_config:
-        traverse = False
-    else:
-        traverse = True
 
     mem_sec = ""
     """
@@ -330,38 +356,9 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         else:
             mem_sec += '\n\tpmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
             mem_sec += '\n\tr52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
-
-    openamp_elfload_start = False
-    openamp_elfload_sz = False
     if openamp_config:
         heap_size = 0x4000
-        elfload_tuple = xlnx_openamp_get_ddr_elf_load(machine, sdt, options)
-        if elfload_tuple != None:
-            openamp_elfload_start = elfload_tuple[0]
-            openamp_elfload_sz = elfload_tuple[1]
-
-    valid_mem_ips = []
-    if (cpu_ip_name == "microblaze" or cpu_ip_name == "microblaze_riscv") and match_cpunode.propval('xlnx,memory-ip-list') != ['']:
-        # Get the memory node list
-        for node in mem_nodes:
-            label_name = get_label(sdt, symbol_node, node)
-            if label_name in match_cpunode.propval('xlnx,memory-ip-list'):
-                if node.propval('xlnx,ip-name') != ['']:
-                    valid_mem_ips.append(node.propval('xlnx,ip-name')[0])
-
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
-        if default_ddr is None:
-            if "axi_emc" in key and len(unique_mem_ip_list) != 1:
-                pass
-            else:
-                if (cpu_ip_name == "microblaze" or cpu_ip_name == "microblaze_riscv") and valid_mem_ips:
-                    valid_mem = [mem_ip for mem_ip in valid_mem_ips if key.rsplit('_', 1)[0] in mem_ip]
-                    if valid_mem:
-                        default_ddr = key
-                        memtest_config = False
-                        valid_memfix = True
-                else:
-                    default_ddr = key
         start,size = value[0], value[1]
         """
         Initial 80 bytes is being used by the linker vectors section in case of Microblaze.
@@ -388,16 +385,74 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
                 size = openamp_elfload_sz
                 cfd.write("set(RSC_TABLE %s)\n" % hex(openamp_elfload_start))
 
-        mem_sec += f'\n\t{key} : ORIGIN = {hex(start)}, LENGTH = {hex(size)}'
+        mem_sec += f'\n\t{lable_names[key]} : ORIGIN = {hex(start)}, LENGTH = {hex(size)}'
 
+    cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
+    if stack_size is not None:
+        cfd.write(f'set(STACK_SIZE {hex(stack_size)})\n')
+    if heap_size is not None:
+        cfd.write(f'set(HEAP_SIZE {hex(heap_size)})\n')
+
+
+
+def get_ddr_address(sdt,tgt_node,mem_ranges,match_cpunode,cpu_ip_name,memtest_config,traverse):
+    """
+    To get the ddr address
+    Parameters:
+        sdt(obj)                : SDT
+        tgt_node(obj)           : Target node obj
+        mem_ranges(list)        : List of mem ranges
+        match_cpunode(obj)      : Matching Cpu nodes
+        cpu_ip_name(str)        : Cpu ip name
+        memtest_config(bool)    : True or False
+        traverse(bool)          : True or False
+    Return:
+        default_ddr(str)
+        memtest_config(bool)
+        mb_reset_addr(str)
+    """
+
+    root_node = sdt.tree[tgt_node]
+    root_sub_nodes = root_node.subnodes()
+    mem_nodes = []
+    symbol_node = ""
+    default_ddr = None
+
+    for node in root_sub_nodes:
+        try:
+            if node.name == "__symbols__":
+                symbol_node = node
+            device_type = node["device_type"].value
+            if "memory" in device_type:
+                mem_nodes.append(node)
+        except:
+           pass
+
+    unique_mem_ip_list = get_unique_memip_list(mem_ranges)
+    valid_mem_ips = []
+    if (cpu_ip_name == "microblaze" or cpu_ip_name == "microblaze_riscv") and match_cpunode.propval('xlnx,memory-ip-list') != ['']:
+        # Get the memory node list
+        for node in mem_nodes:
+            label_name = get_label(sdt, symbol_node, node)
+            if label_name in match_cpunode.propval('xlnx,memory-ip-list'):
+                if node.propval('xlnx,ip-name') != ['']:
+                    valid_mem_ips.append(node.propval('xlnx,ip-name')[0])
+    for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
+        if default_ddr is None:
+            if "axi_emc" in key and len(unique_mem_ip_list) != 1:
+                pass
+            else:
+                if (cpu_ip_name == "microblaze" or cpu_ip_name == "microblaze_riscv") and valid_mem_ips:
+                    valid_mem = [mem_ip for mem_ip in valid_mem_ips if key.rsplit('_', 1)[0] in mem_ip]
+                    if valid_mem:
+                        default_ddr = key
+                else:
+                    default_ddr = key
     ## To inline with existing tools point default ddr for linker to lower DDR
     lower_ddrs = ["axi_noc", "psu_ddr_0", "ps7_ddr_0"]
     has_ddr = [x for x in mem_ranges.keys() for ddr in lower_ddrs if re.search(ddr, x)]
-    if has_ddr and not memtest_config and not valid_memfix:
+    if has_ddr and not memtest_config and not "microblaze" in cpu_ip_name:
         default_ddr = has_ddr[0]
-    has_ocm = None
-    has_ram = None
-    has_bram = None
 
     if "microblaze_riscv" in cpu_ip_name:
         if match_cpunode.propval('xlnx,base-vectors') != ['']:
@@ -409,9 +464,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             end = value[0] + value[1]
             if mbv_reset_addr == value[0]:
                 default_ddr = key
-                memtest_config = False
                 break
-
     mb_reset_addr = None
     if "microblaze" in cpu_ip_name:
         if match_cpunode.propval('xlnx,base-vectors') != ['']:
@@ -419,66 +472,44 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
                 mb_reset_addr = match_cpunode.propval('xlnx,base-vectors')[0] << 32 | match_cpunode.propval('xlnx,base-vectors')[1]
             else:
                 mb_reset_addr = match_cpunode.propval('xlnx,base-vectors')[0]
+    return default_ddr,memtest_config,mb_reset_addr
 
+def generate_mem_config(mem_ranges,memtest_config,memip_list,default_ddr,cpu_ip_name):
+    """
+    To generate the memory config
+    Parameters:
+        mem_ranges(list)        : List of mem ranges
+        memtest_config(bool)    : True or False
+        memip_list(list)        : Memory list
+        default_ddr(int)        : DDR value
+        cpu_ip_name(str)        : Cpu IP name
+    Return:
+        default_ddr(int)
+        memip_list(list)
+
+    """
     ## For memory tests configuration default memory should be ocm if available
     if memtest_config:
         has_ocm = [x for x in mem_ranges.keys() if "ocm" in x]
         has_ram = [x for x in mem_ranges.keys() if "_ram" in x]
         has_bram = [x for x in mem_ranges.keys() if "_bram" in x]
-        if has_ocm:
+        if has_ocm and ("microblaze" not in cpu_ip_name):
             default_ddr = has_ocm[0]
         elif has_ram:
             default_ddr = has_ram[0]
         elif has_bram:
             if len(has_bram) > 1:
-                size = 0
-                for key, value in mem_ranges.items():
+                for index, (key, value) in enumerate(mem_ranges.items()):
+                    if index == 0:
+                        size = value[1]
                     if "_bram" in key:
-                        if size < value[1]:
+                        if size >= value[1]:
                             size = value[1]
                             default_ddr = key
             else:
                 default_ddr = has_bram[0]
 
-    cfd.write("set(DDR %s)\n" % default_ddr)
-    cfd.write("set(CODE %s)\n" % default_ddr)
-    cfd.write("set(DATA %s)\n" % default_ddr)
-    if mb_reset_addr:
-        cfd.write("set(BASE_VECTOR %s)\n" % mb_reset_addr)
-    memip_list = []
-    for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
-        # Here skip adding DDR system mem to config if OpenAMP module is set
-        if "psu_qspi_linear" in key or "ps7_qspi_linear" in key or "axi_emc" in key or openamp_elfload_sz:
-            continue
-        start,size = value[0], value[1]
-        """
-        LMB BRAM initial 80 bytes being used by the linker vectors section in case of Microblaze
-        Adjust the size and start address accordingly.
-        """
-        if "lmb_bram" in key and not "microblaze_riscv" in machine and not "cortex" in machine:
-            start += 80
-            size -= start
-        memip_list.append(key)
-        cfd.write("set(%s %s)\n" % (key, to_cmakelist([hex(start), hex(size)])))
-    if memtest_config:
-        if has_ocm:
-            memip_list.insert(0, memip_list.pop(memip_list.index(has_ocm[0])))
-        elif has_ram:
-            memip_list.insert(0, memip_list.pop(memip_list.index(has_ram[0])))
-        elif has_bram:
-            memip_list.insert(0, memip_list.pop(memip_list.index(default_ddr)))
-
-    # For MB-V, always pop default_ddr to 0th index irrespective of memtest_config
-    # there is no harm in listing it to the first in TOTAL_MEM_CONTROLLERS list
-    # FIXME: Cleanup above if memtest_config
-    if "microblaze_riscv" in cpu_ip_name or valid_memfix:
         memip_list.insert(0, memip_list.pop(memip_list.index(default_ddr)))
 
-    cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
-    cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
-    if stack_size is not None:
-        cfd.write(f'set(STACK_SIZE {hex(stack_size)})\n')
-    if heap_size is not None:
-        cfd.write(f'set(HEAP_SIZE {hex(heap_size)})\n')
+    return default_ddr,memip_list
 
-    return True
