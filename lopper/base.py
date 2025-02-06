@@ -104,7 +104,7 @@ class lopper_base:
             dts_file_dir = os.path.dirname( dts_file )
             if dts_file_dir:
                 dts_dirname = dts_file_dir
-        preprocessed_name = "{0}/{1}.pp".format(dts_dirname,dts_filename)
+        preprocessed_name = f"{dts_dirname}/{dts_filename}.pp"
 
         includes += dts_dirname
         includes += " "
@@ -121,15 +121,15 @@ class lopper_base:
 
         ppargs += (os.environ.get('LOPPER_PPFLAGS') or "").split()
         for i in includes.split():
-            ppargs.append("-I{0}".format(i))
+            ppargs.append(f"-I{i}")
         ppargs += ["-o", preprocessed_name, dts_file]
         if verbose:
-            print( "[INFO]: preprocessing dts_file: %s" % ppargs )
+            print( f"[INFO]: preprocessing dts_file: {ppargs}" )
 
         result = subprocess.run( ppargs, check = True )
         if result.returncode != 0:
-            print( "[ERROR]: unable to preprocess dts file: %s" % ppargs )
-            print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
+            print( f"[ERROR]: unable to preprocess dts file: {ppargs}" )
+            print( f"\n{textwrap.indent(result.stderr.decode(), '         ')}" )
             sys.exit(result.returncode)
 
         return preprocessed_name
@@ -176,7 +176,7 @@ class lopper_base:
 
         """
         if verbose > 3:
-            print( "[DBG+]: decode start: %s %s" % (prop,ftype))
+            print( f"[DBG+]: decode start: {prop} {ftype}")
 
         # Note: these could also be nested.
         if ftype == LopperFmt.SIMPLE:
@@ -188,7 +188,7 @@ class lopper_base:
                 if not val:
                     try:
                         val = prop.as_str()
-                        decode_msg = "(string): {0}".format(val)
+                        decode_msg = f"(string): {val}"
                     except:
                         pass
 
@@ -198,7 +198,7 @@ class lopper_base:
                         # a better test
                         val = prop[:-1].decode('utf-8').split('\x00')
                         #val = ""
-                        decode_msg = "(multi-string): {0}".format(val)
+                        decode_msg = f"(multi-string): {val}"
                     except:
                         pass
             else:
@@ -206,13 +206,13 @@ class lopper_base:
                 decode_msg = ""
                 try:
                     val = prop.as_uint32()
-                    decode_msg = "(uint32): {0}".format(val)
+                    decode_msg = f"(uint32): {val}"
                 except:
                     pass
                 if not val and val != 0:
                     try:
                         val = prop.as_uint64()
-                        decode_msg = "(uint64): {0}".format(val)
+                        decode_msg = f"(uint64): {val}"
                     except:
                         pass
 
@@ -235,7 +235,7 @@ class lopper_base:
             if repr(encode_calculated) == repr(LopperFmt.STRING):
                 try:
                     val = prop[:-1].decode('utf-8').split('\x00')
-                    decode_msg = "(multi-string): {0}".format(val)
+                    decode_msg = f"(multi-string): {val}"
                 except:
                     encode_calculated = encode
 
@@ -275,7 +275,7 @@ class lopper_base:
 
 
         if verbose > 3:
-            print( "[DBG+]: decoding prop: \"%s\" (%s) [%s] --> %s" % (prop, poffset, prop, decode_msg ) )
+            print( f"[DBG+]: decoding prop: \"{prop}\" ({poffset}) [{prop}] --> {decode_msg}" )
 
         return val
 
@@ -404,7 +404,7 @@ class lopper_base:
                     n_as_int = int(n,base)
                     n = n_as_int
                 except Exception as e:
-                    print( "[ERROR]: cannot convert element %s to number (%s)" % (n,e) )
+                    print( f"[ERROR]: cannot convert element {n} to number ({e})" )
                     sys.exit(1)
 
                 retval.append( n )
@@ -732,7 +732,7 @@ class lopper_base:
             count = count + 1
             r1 = re.sub( r'\"', '\\"', s )
             #r2 = "lopper-comment-container-{0} {{ lopper-comment-{1} = \"{2}\";}};".format(count,count, r1)
-            r2 = "lopper-comment-{0} = \"{1}\";".format(count, r1)
+            r2 = f"lopper-comment-{count} = \"{r1}\";"
             return r2
         else:
             return s
@@ -763,7 +763,7 @@ class lopper_base:
             lcount = lcount + 1
             r1 = s1.lstrip()
             r1 = re.sub( r':', '', r1 )
-            r2 = "{0}\nlopper-label-{1} = \"{2}\";".format(s, lcount, r1)
+            r2 = f"{s}\nlopper-label-{lcount} = \"{r1}\";"
             return r2
         else:
             return s
