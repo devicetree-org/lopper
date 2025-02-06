@@ -125,7 +125,7 @@ def extract_xen( tgt_node, sdt, options ):
             ip = n["interrupt-parent"]
             n["interrupt-parent"].value = "0xfde8"
             if verbose:
-                print( "[INFO][extract-xen]: %s interrupt parent found, updating" % n.name  )
+                print( f"[INFO][extract-xen]: {n.name} interrupt parent found, updating"  )
 
             # this is a known non-existent phandle, we need to inhibit
             # phandle resolution and just have the number used
@@ -176,7 +176,7 @@ def extract_xen( tgt_node, sdt, options ):
                 try:
                     reg = n["reg"]
                     if verbose:
-                        print( "[INFO][extract-xen]: reg found: %s copying and extending to xen,reg" % reg )
+                        print( f"[INFO][extract-xen]: reg found: {reg} copying and extending to xen,reg" )
                     # make a xen,reg from it
                     xen_reg = LopperProp( "xen,reg" )
 
@@ -202,12 +202,12 @@ def extract_xen( tgt_node, sdt, options ):
                     n = n + xen_reg
                 except Exception as e:
                     if verbose > 3:
-                        print( "[ERROR]]extract-xen]: %s" % e )
+                        print( f"[ERROR]]extract-xen]: {e}" )
 
         if nodes_to_delete:
             for n in nodes_to_delete:
                 if verbose:
-                    print( "[INFO][extract-xen]: deleting node (referencing node was removed): %s" % n.abs_path )
+                    print( f"[INFO][extract-xen]: deleting node (referencing node was removed): {n.abs_path}" )
                 xen_tree - n
 
     # resolve() isn't strictly required, but better to be safe
