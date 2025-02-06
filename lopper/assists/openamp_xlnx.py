@@ -1095,7 +1095,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
     try:
         args = options['args']
     except:
-        print("No arguments passed for OpenAMP Module. Need role property")
+        print("No arguments passed for OpenAMP Module.")
         return False
 
     # Here try for key value pair arguments
@@ -1112,6 +1112,8 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
         role = xlnx_options["openamp_role"]
         arg_host = xlnx_options["openamp_host"]
         arg_remote = xlnx_options["openamp_remote"]
+        if "openamp_no_header" in xlnx_options.keys():
+            no_header = True
     else:
         for o,a in opts:
             if o in ('-l', "--openamp_role"):
