@@ -329,7 +329,7 @@ class LopperDictImporter(object):
                     new_node = { 'name': k,
                                  'fdt_name' : k }
                     for i, kk in enumerate(attrs[k]):
-                        sub_node_name = "{}@{}".format( k, i )
+                        sub_node_name = f"{k}@{i}"
 
                         d_to_process = kk
                         # if there is only one element in the dictionary, then pop it out, this
@@ -641,14 +641,14 @@ class LopperJSON():
                                 m_val = p[x][expand_string]
                                 dict_check = x
                             if verbose:
-                                print( "[DBG]                      mval %s (%s)" % (m_val,dict_check))
+                                print( f"[DBG]                      mval {m_val} ({dict_check})")
                             # Whether we allow chunks greater than 1 to go through this loop changes
                             # the output nodes (versus json strings). Keeping the old condition around
                             # as a reference, since this may become a tunable in the future
                             # if type(m_val) == list and len(m_val) == 1 and type(m_val[dict_check]) == dict:
                             if type(m_val) == list and len(m_val) > 0 and type(m_val[dict_check]) == dict:
                                 if verbose:
-                                    print( "[DBG]: -------> promote json to a node: %s (%s)" % (p.name,p.abs_path) )
+                                    print( f"[DBG]: -------> promote json to a node: {p.name} ({p.abs_path})" )
 
                                 # the new node name will be: <parent node>@<number> by default
                                 new_name = p.name
@@ -657,7 +657,7 @@ class LopperJSON():
                                         # this can be overriden by an anchor name, if discovered below
                                         new_name = p.node.name + "@" + str(x)
                                     except Exception as e:
-                                        print( "[DBG]: Exception during new node name creation: %s" % e )
+                                        print( f"[DBG]: Exception during new node name creation: {e}" )
 
                                 # A secondary name (and better) for the new node, is the name of
                                 # the alias (if one was used). To do that, we pull out the dictionary
@@ -670,7 +670,7 @@ class LopperJSON():
                                     # if there is a dictionary there, then this could have been an
                                     # expanded alias.
                                     if verbose:
-                                        print( "[DBG]: [%s] found %s" % (p.abs_path[1:],possible_alias ))
+                                        print( f"[DBG]: [{p.abs_path[1:]}] found {possible_alias}")
 
                                     # Searching that same flattened yaml dictionary for the *same*
                                     # dictionary in another location indicates that this is an expanded
@@ -679,7 +679,7 @@ class LopperJSON():
                                     for flat_thing_name,flat_thing in self.dct_flat.items():
                                         if possible_alias is flat_thing:
                                             if verbose:
-                                                print( "[DBG]: alias/anchor identity match: %s" % flat_thing_name )
+                                                print( f"[DBG]: alias/anchor identity match: {flat_thing_name}" )
                                             # we take the first hit, that's the anchor, other hits will just
                                             # be more aliases .. which point to the same anchor and of course
                                             # will also pass
@@ -695,10 +695,10 @@ class LopperJSON():
                                     pass
 
                                 if verbose:
-                                    print( "[DBG]: new node name: %s" % new_name )
+                                    print( f"[DBG]: new node name: {new_name}" )
                                 try:
                                     if verbose:
-                                        print( "[DBG]: checking for existing node at: %s" % n.abs_path + "/" + new_name )
+                                        print( f"[DBG]: checking for existing node at: {n.abs_path}" + "/" + new_name )
                                     node_check = lt[n.abs_path + "/" + new_name]
                                     if verbose:
                                         print( "[DBG] node exists" )
@@ -710,7 +710,7 @@ class LopperJSON():
                                 new_node = LopperNode( -1, name=new_name )
                                 for i,v in m_val[dict_check].items():
                                     if verbose:
-                                        print( "[DBG]:                adding prop: %s -> %s" % (i,v))
+                                        print( f"[DBG]:                adding prop: {i} -> {v}")
                                     new_prop = LopperProp(i, -1, new_node, v )
                                     new_node + new_prop
                                     new_prop.resolve()
@@ -738,10 +738,10 @@ class LopperJSON():
                                 else:
                                     if type(m_val) == dict:
                                         if verbose:
-                                            print( "[DBG]: extending properties to node: %s" % n.abs_path )
+                                            print( f"[DBG]: extending properties to node: {n.abs_path}" )
                                         for i,v in m_val.items():
                                             if verbose:
-                                                print( "[DBG]:                     adding prop: %s -> %s" % (i,v))
+                                                print( f"[DBG]:                     adding prop: {i} -> {v}")
                                             new_prop = LopperProp(i, -1, n, v )
                                             n + new_prop
                                             new_prop.resolve()
@@ -962,22 +962,22 @@ class LopperJSON():
             None
         """
         for node in PreOrderIter(self.anytree):
-            print( "node: %s depth: %s" % (node.name,node.depth) )
-            print( "   raw: %s" % node )
+            print( f"node: {node.name} depth: {node.depth}" )
+            print( f"   raw: {node}" )
             print( "   attributes:" )
             for a in node.__dict__:
                 if not a.startswith( "_NodeMixin" ):
-                    print( "        %s: %s" % (a,node.__dict__[a] ))
-            print( "   path: %s" % type(node.path) )
+                    print( f"        {a}: {node.__dict__[a]}")
+            print( f"   path: {type(node.path)}" )
             path_gen=""
             for p in node.path:
-                print( "      path node: %s" % p )
+                print( f"      path node: {p}" )
                 if p.name == "root":
                     if len(node.path) == 1:
                         path_gen += "/"
                 else:
                     path_gen += "/" + p.name
-            print( "   full path: %s" % path_gen )
+            print( f"   full path: {path_gen}" )
 
     def flatten(self,d):
         out = {}
