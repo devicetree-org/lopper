@@ -52,7 +52,7 @@ def extract( tgt_node, sdt, options ):
         args = []
 
     if verbose:
-        print( "[INFO]: cb: extract( %s, %s, %s, %s )" % (tgt_node, sdt, verbose, args))
+        print( f"[INFO]: cb: extract( {tgt_node}, {sdt}, {verbose}, {args} )")
 
     opts,args2 = getopt.getopt( args, "i:pvt:o:x:", [ "verbose", "permissive" ] )
 
@@ -93,7 +93,7 @@ def extract( tgt_node, sdt, options ):
             tgt_nodes = sdt.tree.nodes( target_node_name )
 
     if not tgt_nodes:
-        print( "[ERROR]: node %s not found in tree" % target_node_name )
+        print( f"[ERROR]: node {target_node_name} not found in tree" )
         if verbose:
             sdt.tree.print()
         sys.exit(1)
@@ -124,20 +124,20 @@ def extract( tgt_node, sdt, options ):
         refd_paths = [y.abs_path for y in node_refs]
 
         if verbose:
-            print( "[INFO]: Extracted node %s refs: %s" % (n.abs_path, refd_paths ))
+            print( f"[INFO]: Extracted node {n.abs_path} refs: {refd_paths}")
 
         for r in node_refs:
             # Don't add the parent, just ourself + phandle refs
             if r == n.parent:
                 if verbose:
-                    print( "[INFO]: skipping parent of target node: %s" % r )
+                    print( f"[INFO]: skipping parent of target node: {r}" )
                 pass
             else:
                 copy_node = True
                 for exclude in exclude_list:
                     if re.search( exclude, r.name ):
                         if verbose:
-                            print( "[INFO]: skipping node (matched exclude): %s" % r.abs_path )
+                            print( f"[INFO]: skipping node (matched exclude): {r.abs_path}" )
                         copy_node = False
 
                 if copy_node:
@@ -161,7 +161,7 @@ def extract( tgt_node, sdt, options ):
                             extracted_node_copy = r()
                     else:
                         if verbose:
-                            print( "[INFO] adding %s: to /extracted" % r )
+                            print( f"[INFO] adding {r}: to /extracted" )
                         extracted_node_copy = r()
                     extracted_container_node + extracted_node_copy
                     extracted_node_copy["extracted,path"] = r.abs_path
@@ -174,7 +174,7 @@ def extract( tgt_node, sdt, options ):
                 for p in extracted_node_copy:
                     for exclude in exclude_list:
                         if re.search( exclude, p.name ):
-                            print( "[INFO]: dropping masked property %s" % p.name )
+                            print( f"[INFO]: dropping masked property {p.name}" )
                             extracted_node_copy - p
 
 
