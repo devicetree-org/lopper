@@ -437,6 +437,8 @@ class LopperProp():
                     constructed_condition = "{0} re.search(r\"{1}\",'{2}')".format(invert_check,lop_compare_value,tgt_node_compare_value)
                 elif other_prop.ptype == LopperFmt.UINT32: # type(lop_compare_value) == int:
                     constructed_condition = "{0} {1} == {2}".format(invert_check,lop_compare_value,tgt_node_compare_value)
+                else:
+                    constructed_condition = "False"
 
                 if self.__dbg__ > 2:
                     lopper.log._debug( f"    single:single. Condition: {constructed_condition}" )
