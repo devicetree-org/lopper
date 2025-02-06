@@ -37,7 +37,7 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
     if options.get('outdir', {}):
         sdt.outdir = options['outdir']
    
-    mem_ranges, lable_names = get_memranges(tgt_node, sdt, options)
+    mem_ranges, _ = get_memranges(tgt_node, sdt, options)
     if not mem_ranges:
         return
     # Generate Memconfig cmake meta-data file.
