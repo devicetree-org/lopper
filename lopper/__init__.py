@@ -31,7 +31,7 @@ try:
     from lopper.yaml import *
     yaml_support = True
 except Exception as e:
-    print( "[WARNING]: cant load yaml, disabling support: %s" % e )
+    print( f"[WARNING]: cant load yaml, disabling support: {e}" )
     yaml_support = False
 
 @contextlib.contextmanager
@@ -391,10 +391,10 @@ class LopperSDT:
             search_paths = [ lopper_directory ] + [ lopper_directory + "/assists/" ] + self.load_paths
             print( "" )
             print( "Lopper summary:")
-            print( "   system device tree: %s" % sdt_files )
-            print( "   lops: %s" % lop_files )
-            print( "   search paths: %s" % search_paths )
-            print( "   output: %s" % self.output_file )
+            print( f"   system device tree: {sdt_files}" )
+            print( f"   lops: {lop_files}" )
+            print( f"   search paths: {search_paths}" )
+            print( f"   output: {self.output_file}" )
             print( "" )
 
         # Individually compile the input files. At some point these may be
@@ -474,7 +474,7 @@ class LopperSDT:
         ln.name = "lops"
 
         mod_count = 0
-        lop_name = "lop_{}".format( mod_count )
+        lop_name = f"lop_{mod_count}"
 
         lop_node = LopperNode()
         lop_node.name = lop_name
@@ -679,7 +679,7 @@ class LopperSDT:
             else:
                 input_file_abs = input_file.resolve( True )
             if not input_file_abs:
-                raise FileNotFoundError( "Unable to find file: %s" % input_file )
+                raise FileNotFoundError( f"Unable to find file: {input_file}" )
         except FileNotFoundError:
             # check the path from which lopper is running, that
             # directory + lops, and paths specified on the command line
@@ -700,7 +700,7 @@ class LopperSDT:
                         input_file_abs = input_file_test.resolve( True )
 
                     if not input_file_abs:
-                        raise FileNotFoundError( "Unable to find file: %s" % input_file )
+                        raise FileNotFoundError( f"Unable to find file: {input_file}" )
                     else:
                         lopper.log._debug( f"input_find: found {input_file_abs}" )
                 except FileNotFoundError:
@@ -717,7 +717,7 @@ class LopperSDT:
                             else:
                                 input_file_abs = input_file_with_ext.resolve( True )
                                 if not input_file_abs:
-                                    raise FileNotFoundError( "Unable to find input file: %s" % mod_file )
+                                    raise FileNotFoundError( f"Unable to find input file: {mod_file}" )
                         except FileNotFoundError:
                             input_file_abs = ""
 
@@ -779,7 +779,7 @@ class LopperSDT:
 
             assist_count = 0
             for a in set(self.assists):
-                lop_name = "lop_{}".format( assist_count )
+                lop_name = f"lop_{assist_count}"
 
                 lop_node = LopperNode()
                 lop_node.name = lop_name
@@ -837,7 +837,7 @@ class LopperSDT:
         ln.name = "lops"
 
         mod_count = 0
-        lop_name = "lop_{}".format( mod_count )
+        lop_name = f"lop_{mod_count}"
 
         lop_node = LopperNode()
         lop_node.name = lop_name
@@ -1010,7 +1010,7 @@ class LopperSDT:
                         if node:
                             print( "%s {" % node )
                             for p in node:
-                                print( "    %s" % p )
+                                print( f"    {p}" )
                             print( "}" )
 
             return True
@@ -1079,7 +1079,7 @@ class LopperSDT:
                             if self.verbose > 1:
                                 lopper.log._debug( f"selected potential nodes:" )
                                 for n in selected_nodes_possible:
-                                    print( "       %s" % n )
+                                    print( f"       {n}" )
 
                         if prop and prop_val:
                             invert_result = False
@@ -1182,7 +1182,7 @@ class LopperSDT:
                     if self.verbose > 1:
                         lopper.log._debug( f"select pass done: selected nodes:" )
                         for n in selected_nodes:
-                            print( "    %s" % n )
+                            print( f"    {n}" )
 
                     # these are now our possible selected nodes for any follow
                     # up "or" conditions
@@ -1329,7 +1329,7 @@ class LopperSDT:
                     if self.verbose > 2:
                         lopper.log._debug( f"output lop, final nodes:" )
                         for oo in output_nodes:
-                            print( "       %s" % oo.abs_path )
+                            print( f"       {oo.abs_path}" )
 
                 if not output_tree and output_nodes:
                     output_tree = LopperTreePrinter()
@@ -1514,8 +1514,8 @@ class LopperSDT:
             if self.verbose:
                 lopper.log._info( f"assist lop detected" )
                 if cb:
-                    print( "        cb: %s" % cb )
-                print( "        id: %s opts: %s" % (cb_id,cb_opts) )
+                    print( f"        cb: {cb}" )
+                print( f"        id: {cb_id} opts: {cb_opts}" )
 
             cb_funcs = self.find_compatible_assist( cb_node, cb_id )
             if cb_funcs:
@@ -1751,7 +1751,7 @@ class LopperSDT:
                         check_val = cond_prop.compare( tgt_node_prop )
 
                         # if there was an inversion in the name, flip the result
-                        check_val_final = eval( "{0} {1}".format(invert_check, check_val ))
+                        check_val_final = eval( f"{invert_check} {check_val}")
                         lopper.log._debug( f"   ({tgt_node.abs_path}:{tgt_node_prop.value[0]}) condition check final value: {invert_check} {check_val} was {check_val_final}")
                         if check_val_final:
                             # if not already in the list, we need to add the target node
@@ -2251,7 +2251,7 @@ class LopperSDT:
                         tgt_lop = fdt_tree.pnode(cond_exec)
                         cond_exec_value = lop_results[tgt_lop.name]
                         if self.verbose > 1:
-                            print( "[INFO]: conditional %s has result %s" % (tgt_lop.name,cond_exec_value))
+                            print( f"[INFO]: conditional {tgt_lop.name} has result {cond_exec_value}")
                         if cond_exec_value:
                             noexec = False
                         else:
@@ -2268,7 +2268,7 @@ class LopperSDT:
                     result = self.exec_lop( f, fdt_tree )
                     lop_results[f.name] = result
                     if self.verbose:
-                        print( "[INFO]: ------> logged result %s for lop %s" % (result,f.name))
+                        print( f"[INFO]: ------> logged result {result} for lop {f.name}")
 
 
 class LopperFile:

@@ -36,7 +36,7 @@ with open(Path(__file__).parent / 'VERSION', 'r') as f:
 
 def usage():
     prog = "lopper"
-    print('Usage: %s [OPTION] <system device tree> [<output file>]...' % prog)
+    print(f'Usage: {prog} [OPTION] <system device tree> [<output file>]...')
     print('  -v, --verbose       enable verbose/debug processing (specify more than once for more verbosity)')
     print('  -t, --target        indicate the starting domain for processing (i.e. chosen node or domain label)' )
     print('    , --dryrun        run all processing, but don\'t write any output files' )
@@ -104,7 +104,7 @@ def main():
                                      "assist=","server", "auto", "permissive", 'symbols', "xlate=",
                                      "no-libfdt", "overlay", "cfgfile=", "cfgval=", "input-dirs"] )
     except getopt.GetoptError as err:
-        print('%s' % str(err))
+        print(f'{str(err)}')
         usage()
         sys.exit(2)
 
@@ -168,7 +168,7 @@ def main():
             # warning processing
             warnings.append(a)
         elif o in ('--version'):
-            print( "%s" % LOPPER_VERSION )
+            print( f"{LOPPER_VERSION}" )
             sys.exit(0)
         else:
             assert False, "unhandled option"
@@ -186,7 +186,7 @@ def main():
                 my_abs_path = sdt_file.resolve()
             except FileNotFoundError:
                 # doesn't exist
-                print( "Error: system device tree %s does not exist" % sdt )
+                print( f"Error: system device tree {sdt} does not exist" )
                 sys.exit(1)
 
         else:
@@ -206,7 +206,7 @@ def main():
                         output_file = Path(output)
                         if output_file.exists():
                             if not force:
-                                print( "Error: output file %s exists, and -f was not passed" % output )
+                                print( f"Error: output file {output} exists, and -f was not passed" )
                                 sys.exit(1)
             else:
                 # module arguments
@@ -224,8 +224,8 @@ def main():
                         module_name = ""
 
     if module_name and verbose:
-        print( "[DBG]: modules found: %s" % list(module_args.keys()) )
-        print( "         args: %s" % module_args )
+        print( f"[DBG]: modules found: {list(module_args.keys())}" )
+        print( f"         args: {module_args}" )
 
     if not sdt:
         print( "[ERROR]: no system device tree was supplied\n" )
@@ -244,7 +244,7 @@ def main():
         try:
             op.resolve(True)
         except:
-            print( "[ERROR]: output directory \"%s\" does not exist" % outdir )
+            print( f"[ERROR]: output directory \"{outdir}\" does not exist" )
             sys.exit(1)
 
     # Not indicated in the help message, but we combine all the search
@@ -273,11 +273,11 @@ def main():
     # config file handling
     config = configparser.ConfigParser()
     if not config_file:
-        config_file = "{}/lopper.ini".format( lopper_directory )
+        config_file = f"{lopper_directory}/lopper.ini"
 
     inf = Path(config_file)
     if not inf.exists():
-        print( "Error: config file %s does not exist" % config_file )
+        print( f"Error: config file {config_file} does not exist" )
         sys.exit(1)
 
     config.read( inf.absolute() )
@@ -319,17 +319,17 @@ def main():
                 # generate the lop name
                 extension = Path(x_type).suffix
                 extension = re.sub( r"\.", "", extension )
-                x_lop_gen = "lop-xlate-{}.dts".format(extension)
+                x_lop_gen = f"lop-xlate-{extension}.dts"
                 x_files.append( x_lop_gen )
 
         # check that the xlate files exist
         for x in x_files:
             inf = Path(x)
             if not inf.exists():
-                x = "{}/lops/".format( lopper_directory ) + x
+                x = f"{lopper_directory}/lops/" + x
                 inf = Path( x )
                 if not inf.exists():
-                    print( "[ERROR]: input file %s does not exist" % x )
+                    print( f"[ERROR]: input file {x} does not exist" )
                     sys.exit(1)
 
             inputfiles.append( x )
@@ -403,14 +403,14 @@ def main():
                 func_to_call = getattr( imported_test, func_name_to_call )
                 func_to_call( device_tree )
             except Exception as e:
-                print( "ERROR: %s" % e )
+                print( f"ERROR: {e}" )
         else:
             try:
                 # is it a python string ? try compiling and runnig it
                 block = compile( debug, '<string>', 'exec' )
                 eval( block )
             except Exception as e:
-                print( "ERROR: %s" % e )
+                print( f"ERROR: {e}" )
 
         sys.exit(1)
     else:
@@ -421,7 +421,7 @@ def main():
         lopper.Lopper.sync( device_tree.FDT, device_tree.tree.export() )
         device_tree.write( enhanced = device_tree.enhanced )
     else:
-        print( "[INFO]: --dryrun was passed, output file %s not written" % output )
+        print( f"[INFO]: --dryrun was passed, output file {output} not written" )
 
     if server:
         if verbose:
@@ -431,7 +431,7 @@ def main():
             import lopper.rest
             rest_support = True
         except Exception as e:
-            print( "[ERROR]: rest support is not loaded, check dependencies: %s" % e )
+            print( f"[ERROR]: rest support is not loaded, check dependencies: {e}" )
             rest_support = False
 
         if rest_support:
