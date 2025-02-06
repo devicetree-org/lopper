@@ -1056,6 +1056,13 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
 
         # rpmsg native?
         native = node.propval("openamp-xlnx-native")
+
+        # no rpmsg userspace support in v2
+        if openamp_channel_info[REMOTEPROC_D_TO_D_v2]:
+            native = []
+            for j in remote_nodes:
+                native.append(False)
+
         if native == [] or len(native) != len(remote_nodes):
             print("ERROR: malformed openamp-xlnx-native property.")
             return False
