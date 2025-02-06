@@ -76,7 +76,7 @@ def val_as_bool( val ):
 
 def firewall_expand( tree, subnode, verbose = 0 ):
     if verbose:
-        print( "[DBG]: firewall_expand: %s" % subnode.abs_path )
+        print( f"[DBG]: firewall_expand: {subnode.abs_path}" )
 
     firewall_conf_list = []
     if subnode.name == "firewallconf":
@@ -114,10 +114,10 @@ def firewall_expand( tree, subnode, verbose = 0 ):
 
                 firewall_target_node = subnode
             else:
-                print( "[WARNING]: unrecognized node passed for firewallconf expansion: %s" % subnode.abs_path )
+                print( f"[WARNING]: unrecognized node passed for firewallconf expansion: {subnode.abs_path}" )
                 return
         except:
-            print( "[WARNING]: unrecognized node passed for firewallconf expansion: %s" % subnode.abs_path )
+            print( f"[WARNING]: unrecognized node passed for firewallconf expansion: {subnode.abs_path}" )
             return
     #
     # The first cell is a link to a node of a bus mastering device (or a domain).
@@ -142,7 +142,7 @@ def firewall_expand( tree, subnode, verbose = 0 ):
             firewall_domain = None
 
         if verbose:
-            print( "[DBG]: firewall expand: %s cfg: domain: %s block: %s" % (subnode.abs_path,firewall_domain,firewall_block))
+            print( f"[DBG]: firewall expand: {subnode.abs_path} cfg: domain: {firewall_domain} block: {firewall_block}")
 
         if firewall_block and not firewall_domain:
             if verbose:
@@ -175,7 +175,7 @@ def firewall_expand( tree, subnode, verbose = 0 ):
                 tgt_node = tree.lnodes( firewall_domain )[0]
             except:
                 if verbose:
-                    print( "[DBG]: WARNING: could not find node %s" % firewall_domain )
+                    print( f"[DBG]: WARNING: could not find node {firewall_domain}" )
                 tgt_node = None
 
             firewall_priority = 0
@@ -185,7 +185,7 @@ def firewall_expand( tree, subnode, verbose = 0 ):
                 if tgt_node.phandle == 0:
                     tgt_node_phandle = tgt_node.phandle_or_create()
                     if verbose:
-                        print( "[DBG]: generated phandle %s for node: %s" % (tgt_node.phandle,tgt_node.abs_path ))
+                        print( f"[DBG]: generated phandle {tgt_node.phandle} for node: {tgt_node.abs_path}")
                 else:
                     tgt_node_phandle = tgt_node.phandle
 
@@ -280,17 +280,17 @@ def access_expand( tree, subnode, verbose = 0 ):
             try:
                 dev_node = tree.deref( dev )
                 if verbose:
-                    print( "[DBG]: found dev node %s" % dev_node )
+                    print( f"[DBG]: found dev node {dev_node}" )
             except:
                 if verbose:
-                    print( "[DBG]: WARNING: could not find node %s" % dev )
+                    print( f"[DBG]: WARNING: could not find node {dev}" )
                 dev_node = None
 
             if dev_node:
                 if dev_node.phandle == 0:
                     dev_node.phandle_or_create()
                     if verbose:
-                        print( "[DBG]: generated phandle %s for node: %s" % (dev_node.phandle,dev_node.abs_path ))
+                        print( f"[DBG]: generated phandle {dev_node.phandle} for node: {dev_node.abs_path}")
 
                 dev_handle = dev_node.phandle
             else:
@@ -365,7 +365,7 @@ def access_expand( tree, subnode, verbose = 0 ):
 
     if verbose:
         # dump the memory as hex
-        print( '[DBG] setting access: [{}]'.format(', '.join(hex(x) for x in access_list)) )
+        print( f"[DBG] setting access: [{', '.join(hex(x) for x in access_list)}]" )
 
     ap.value = access_list
 
@@ -406,7 +406,7 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
                 subnode + flags_names
 
             if verbose:
-                print( "memory expand: start/size as read: %s/%s" % (start,size))
+                print( f"memory expand: start/size as read: {start}/{size}")
             try:
                 start = humanfriendly.parse_size( start, True )
             except:
@@ -423,7 +423,7 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
                     size = int(size)
 
             if verbose:
-                print( "memory expand: start/size as converted: %s/%s" % (start,size))
+                print( f"memory expand: start/size as converted: {start}/{size}")
 
             mem_list.append(int(start))
             mem_list.append(int(size))
@@ -434,7 +434,7 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
 
     if verbose:
         # dump the memory as hex
-        print( '[DBG] memory: [{}]'.format(', '.join(hex(x) for x in mem_list)) )
+        print( f"[DBG] memory: [{', '.join(hex(x) for x in mem_list)}]" )
 
     property_set( prop_name, mem_list, subnode )
 
@@ -452,11 +452,11 @@ def cpu_expand( tree, subnode, verbose = 0):
         if not c:
             continue
         if verbose:
-            print( "[DBG]: cpu: %s" % c )
+            print( f"[DBG]: cpu: {c}" )
             if type(c) == dict:
-                print( "         cluster: %s" % c['cluster'] )
-                print( "         cpumask: %s" % c['cpumask'] )
-                print( "         mode: %s" % c['mode'] )
+                print( f"         cluster: {c['cluster']}" )
+                print( f"         cpumask: {c['cpumask']}" )
+                print( f"         mode: {c['mode']}" )
 
         if type(c) == dict:
             cluster = c['cluster']
@@ -475,7 +475,7 @@ def cpu_expand( tree, subnode, verbose = 0):
             if cluster_node.phandle == 0:
                 ph = cluster_node.phandle_or_create()
                 if verbose:
-                    print( "[DBG]: subsystem assist: generated phandle %s for node: %s" % (cluster_node.phandle,cluster_node.abs_path ))
+                    print( f"[DBG]: subsystem assist: generated phandle {cluster_node.phandle} for node: {cluster_node.abs_path}")
 
             cluster_handle = cluster_node.phandle
         else:
@@ -528,9 +528,9 @@ def cpu_expand( tree, subnode, verbose = 0):
 
         # cpus is <phandle> <mask> <mode>
         if verbose:
-            print( "[DBG]:  cluster handle: %s" % hex(cluster_handle) )
-            print( "        cpu mask: %s" % hex(mask) )
-            print( "        mode mask: %s" % hex(mode_mask) )
+            print( f"[DBG]:  cluster handle: {hex(cluster_handle)}" )
+            print( f"        cpu mask: {hex(mask)}" )
+            print( f"        mode mask: {hex(mode_mask)}" )
 
         cpus_list.extend( [cluster_handle, int(mask), mode_mask ] )
 
@@ -551,7 +551,7 @@ def subsystem( tgt_node, sdt, options ):
         args = []
 
     if verbose:
-        print( "[INFO]: cb: subsystem( %s, %s, %s, %s )" % (tgt_node, sdt, verbose, args))
+        print( f"[INFO]: cb: subsystem( {tgt_node}, {sdt}, {verbose}, {args} )")
 
     if "generate" in args or "--generate" in args:
         subsystem_generate( tgt_node, sdt, verbose )
@@ -564,7 +564,7 @@ def subsystem( tgt_node, sdt, options ):
 # sdt: is the system device tree
 def subsystem_generate( tgt_node, sdt, verbose = 0):
     if verbose:
-        print( "[INFO]: cb: subsystem_generate( %s, %s )" % (tgt_node, sdt))
+        print( f"[INFO]: cb: subsystem_generate( {tgt_node}, {sdt} )")
 
     tree = sdt.tree
     domain_tree = LopperTree()
@@ -794,7 +794,7 @@ def domain_to_domain_expand(tree, tgt_node, verbose = 0 ):
 
 def subsystem_expand( tgt_node, sdt, verbose = 0 ):
     if verbose:
-        print( "[INFO]: cb: subsystem_expand( %s, %s )" % (tgt_node, sdt))
+        print( f"[INFO]: cb: subsystem_expand( {tgt_node}, {sdt} )")
 
     tree = sdt.tree
 
@@ -813,12 +813,12 @@ def subsystem_expand( tgt_node, sdt, verbose = 0 ):
     for subnode in domain_node.child_nodes.values():
         if subnode._source == "yaml":
             if verbose:
-                print( "[DBG] yaml input dectected, expanding %s to full device tree domain" % subnode.abs_path )
+                print( f"[DBG] yaml input dectected, expanding {subnode.abs_path} to full device tree domain" )
 
             # we flip the name and the label, since the yaml name does not
             # follow device tree conventions.
             name = subnode.name
-            subnode.name = "domain@{}".format( domain_count )
+            subnode.name = f"domain@{domain_count}"
             subnode.label = name
             property_set( "lopper-label-gen1", subnode.label, subnode )
 
