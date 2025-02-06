@@ -94,12 +94,16 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         pass
 
     openamp_present = xlnx_openamp_find_channels(sdt)
+    openamp_host = machine in openamp_linux_hosts and linux_dt == 1
+    openamp_remote = machine in openamp_roles.keys() and linux_dt != 1 and machine not in openamp_linux_hosts
+    openamp_role = "host" if openamp_host else "remote"
 
-    if openamp_present and linux_dt == 1 and machine in openamp_linux_hosts:
-        # Currently this plugin is only invoked for Linux. So for now just consider linux case
+    if openamp_present and (openamp_host or openamp_remote):
         xlnx_options = { "openamp_host":   openamp_roles[machine],
                          "openamp_remote": openamp_roles[machine],
-                         "openamp_role":   "host" }
+                         "openamp_role":   openamp_role }
+        if "--openamp_no_header" in options['args']:
+            xlnx_options["openamp_no_header"] = True
         xlnx_openamp_parse(sdt, options, xlnx_options, verbose = 0 )
 
     # Delete other CPU Cluster nodes
