@@ -40,8 +40,8 @@ try:
     from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
 except:
     import site
-    python_version_dir = "python{}.{}".format( sys.version_info[0], sys.version_info[1] )
-    site.addsitedir((Path(__file__).parent / 'vendor/lib/{}/site-packages'.format( python_version_dir )).resolve())
+    python_version_dir = f"python{sys.version_info[0]}.{sys.version_info[1]}"
+    site.addsitedir((Path(__file__).parent / f'vendor/lib/{python_version_dir}/site-packages').resolve())
 
     import libfdt
     from libfdt import Fdt, FdtException, QUIET_NOTFOUND, QUIET_ALL
@@ -407,7 +407,7 @@ class LopperFDT(lopper.base.lopper_base):
         target_node_name = fdt.get_name( target_node_offset )
 
         if verbose > 1:
-            print( "[NOTE]: deleting node: %s" % target_node_name )
+            print( f"[NOTE]: deleting node: {target_node_name}" )
 
         try:
             fdt.del_node( target_node_offset, True )
@@ -437,7 +437,7 @@ class LopperFDT(lopper.base.lopper_base):
         """
 
         if verbose:
-            print( "[DBG]: lopper fdt: node add: %s" % node_full_path )
+            print( f"[DBG]: lopper fdt: node add: {node_full_path}" )
 
         paths_to_check = [ node_full_path ]
         n_path = node_full_path
@@ -459,14 +459,14 @@ class LopperFDT(lopper.base.lopper_base):
                 if p != paths_to_check[-1]:
                     if not create_parents:
                         if verbose:
-                            print( "[DBG]: LopperFDT: parent node %s doesn't exist, but create parents is not set, returning -1" % p )
+                            print( f"[DBG]: LopperFDT: parent node {p} doesn't exist, but create parents is not set, returning -1" )
                         return -1
 
                 # add it
                 for _ in range(MAX_RETRIES):
                     try:
                         if verbose:
-                            print( "[DBG]:       LopperFDT: node_add: adding node: '%s' parent: %s" % (node_name,node_parent ))
+                            print( f"[DBG]:       LopperFDT: node_add: adding node: '{node_name}' parent: {node_parent}")
                         node_parent = fdt_dest.add_subnode( node_parent, node_name )
                     except FdtException as e:
                         if e.err == -2:
@@ -486,7 +486,7 @@ class LopperFDT(lopper.base.lopper_base):
                             # we get the proper node and don't have to do the
                             # delete -> add -> delete dance. If this breaks, we
                             # may have to revisit and do the extra manipulations.
-                            node_name = "lopper%s" % str(_) + node_name
+                            node_name = f"lopper{str(_)}" + node_name
                         else:
                             fdt_dest.resize( fdt_dest.totalsize() + 1024 )
 
@@ -643,13 +643,13 @@ class LopperFDT(lopper.base.lopper_base):
             Nothing
         """
         if verbose:
-            print( "[DBG]: lopper.fdt: node_sync: start: %s (%s)" % (node_in['__fdt_name__'],node_in['__path__'] ))
+            print( f"[DBG]: lopper.fdt: node_sync: start: {node_in['__fdt_name__']} ({node_in['__path__']})")
 
         nn = LopperFDT.node_find( fdt, node_in['__path__'] )
         if nn == -1:
             # -1 means the node wasn't found
             if verbose:
-                print( "[DBG]:    lopper.fdt: adding node: %s" % node_in['__path__'] )
+                print( f"[DBG]:    lopper.fdt: adding node: {node_in['__path__']}" )
 
             nn = LopperFDT.node_add( fdt, node_in['__path__'], True )
             if nn == -1:
@@ -659,7 +659,7 @@ class LopperFDT(lopper.base.lopper_base):
         nname = node_in['__fdt_name__']
         nflag = LopperFDT.node_setname( fdt, nn, nname )
         if not nflag:
-            print( "[ERROR]: unable to set node %s name to: %s" % (nn,nname) )
+            print( f"[ERROR]: unable to set node {nn} name to: {nname}" )
             sys.exit(1)
 
         try:
@@ -673,7 +673,7 @@ class LopperFDT(lopper.base.lopper_base):
         props_to_delete = []
         for p in props:
             if verbose:
-                print( "              node sync, considering property: %s %s" % (p.name,p) )
+                print( f"              node sync, considering property: {p.name} {p}" )
             if node_in['__fdt_phandle__'] and p.name == "phandle":
                 # we just added this, it won't be in the node_in items under
                 # the name name
@@ -682,18 +682,18 @@ class LopperFDT(lopper.base.lopper_base):
                 props_to_delete.append( p.name )
 
         if verbose:
-            print( "              node sync: props to delete: %s" % props_to_delete )
+            print( f"              node sync: props to delete: {props_to_delete}" )
         for prop, prop_val in reversed(node_in.items()):
             if re.search( r"^__", prop ) or prop.startswith( '/' ):
                 if verbose:
-                    print( "          lopper.fdt: node sync: skipping internal property: %s" % prop)
+                    print( f"          lopper.fdt: node sync: skipping internal property: {prop}")
                 continue
             else:
                 if verbose:
-                    print( "          lopper.fdt: node sync: prop: %s val: %s" % (prop,prop_val) )
+                    print( f"          lopper.fdt: node sync: prop: {prop} val: {prop_val}" )
 
                 try:
-                    qtype = node_in["__{}_type__".format( prop ) ]
+                    qtype = node_in[f"__{prop}_type__" ]
                 except:
                     qtype = None
 
@@ -711,7 +711,7 @@ class LopperFDT(lopper.base.lopper_base):
 
         for p in props_to_delete:
             if verbose:
-                print( "[DBG]:    lopper.fdt: node sync, deleting property: %s" % p )
+                print( f"[DBG]:    lopper.fdt: node sync, deleting property: {p}" )
             LopperFDT.property_remove( fdt, nname, p )
 
     @staticmethod
@@ -796,22 +796,22 @@ class LopperFDT(lopper.base.lopper_base):
             nn = LopperFDT.node_find( fdt, node )
             if nn != -1:
                 if verbose:
-                    print( "[DBG]:    lopper.fdt: sync: removing: node %s" % node )
+                    print( f"[DBG]:    lopper.fdt: sync: removing: node {node}" )
                 LopperFDT.node_remove( fdt, nn )
             else:
                 if verbose:
-                    print( "[DBG]:    lopper.fdt: sync: node %s was not found, and could not be removed" % node )
+                    print( f"[DBG]:    lopper.fdt: sync: node {node} was not found, and could not be removed" )
                 # child nodes are removed with their parent, and follow in the
                 # list, so this isn't an error.
                 pass
 
         for n in node_special_list:
             if verbose:
-                print( "[DBG]:    lopper.fdt: sync: special node: %s" % n )
+                print( f"[DBG]:    lopper.fdt: sync: special node: {n}" )
             if n['__path__'] == "/memreserve":
                 memreserve_vals = n['__memreserve__']
                 if verbose:
-                    print( "[DBG]:    lopper.fdt: sync: memreserve: %s" % memreserve_vals )
+                    print( f"[DBG]:    lopper.fdt: sync: memreserve: {memreserve_vals}" )
                 # no swig wrapper, so we do this the hard way
                 libfdt.fdt_add_mem_rsv( fdt._fdt, memreserve_vals[0], memreserve_vals[1] )
 
@@ -821,11 +821,11 @@ class LopperFDT(lopper.base.lopper_base):
             if nn == -1:
                 new_number = LopperFDT.node_add( fdt, n[0]['__path__'], True, verbose )
                 if new_number == -1:
-                    print( "[ERROR]:    lopper_fdt: node %s could not be added, exiting" % n[0]['__path__'] )
+                    print( f"[ERROR]:    lopper_fdt: node {n[0]['__path__']} could not be added, exiting" )
                     sys.exit(1)
                 else:
                     if verbose:
-                        print( "[DBG]:    lopper.fdt: sync: node %s added, number is: %s" % (n[0]['__path__'],new_number) )
+                        print( f"[DBG]:    lopper.fdt: sync: node {n[0]['__path__']} added, number is: {new_number}" )
 
 
         # were there any __lopper<>__ nodes created ? These were
@@ -885,7 +885,7 @@ class LopperFDT(lopper.base.lopper_base):
 
         if strict:
             if len(nodes) != len(set(nodes)):
-                raise Exception( "lopper.fdt: duplicate node detected (%s)" % nodes )
+                raise Exception( f"lopper.fdt: duplicate node detected ({nodes})" )
 
         dct["__path__"] = start_node
 
@@ -900,8 +900,8 @@ class LopperFDT(lopper.base.lopper_base):
 
         if verbose:
             print( "[DBG]: lopper.fdt export: " )
-            print( "[DBG]:     [startnode: %s]: subnodes: %s" % (start_node,nodes ))
-            print( "[DBG]:          props: %s" % np )
+            print( f"[DBG]:     [startnode: {start_node}]: subnodes: {nodes}")
+            print( f"[DBG]:          props: {np}" )
 
         for i,n in enumerate(nodes):
             # Children are indexed by their path (/foo/bar), since properties
@@ -921,11 +921,11 @@ class LopperFDT(lopper.base.lopper_base):
                 mdct["__path__"] = "/memreserve"
 
                 if verbose:
-                    print( "[DBG]:     lopper.fdt export: memreserve: %s" % memreserve )
+                    print( f"[DBG]:     lopper.fdt export: memreserve: {memreserve}" )
                 for idx in range(0,memreserve):
                     mr = fdt.get_mem_rsv(idx)
                     if verbose:
-                        print( "[DBG]:     lopper.fdt export: memreserve: %s" % (mr))
+                        print( f"[DBG]:     lopper.fdt export: memreserve: {mr}")
 
                     if type(mr) == int:
                         # we got a single number, which means our start address
@@ -971,7 +971,7 @@ class LopperFDT(lopper.base.lopper_base):
             node_path = node
 
         if node_number == -1:
-            print( "[WARNING]: could not find node %s" % node_path )
+            print( f"[WARNING]: could not find node {node_path}" )
             return prop_dict
 
         prop_list = LopperFDT.node_properties( fdt, node_path )
@@ -979,7 +979,7 @@ class LopperFDT(lopper.base.lopper_base):
             property_val = LopperFDT.property_get( fdt, node_number, p.name, LopperFmt.COMPOUND )
             prop_dict[p.name] = property_val
             if type_hints:
-                prop_dict['__{}_type__'.format(p.name)] = LopperFDT.property_type_guess( p )
+                prop_dict[f'__{p.name}_type__'] = LopperFDT.property_type_guess( p )
 
         return prop_dict
 
@@ -1007,7 +1007,7 @@ class LopperFDT(lopper.base.lopper_base):
         """
 
         if verbose > 1:
-            print( "[DBG ]: node_copy_from_path: %s -> %s" % (node_source_path, node_full_dest) )
+            print( f"[DBG ]: node_copy_from_path: {node_source_path} -> {node_full_dest}" )
 
         node_to_copy = LopperFDT.node_find( fdt_source, node_source_path )
         node_dest_path = os.path.dirname( node_full_dest )
@@ -1078,7 +1078,7 @@ class LopperFDT(lopper.base.lopper_base):
 
             if verbose > 2:
                 print( "" )
-                print( "[DBG+]: properties for: %s" % fdt_source.get_name(nn) )
+                print( f"[DBG+]: properties for: {fdt_source.get_name(nn)}" )
 
             # TODO: Investigate whether or not we can just copy the properties
             #       byte array directly. Versus decode -> encode, which could
@@ -1093,15 +1093,15 @@ class LopperFDT(lopper.base.lopper_base):
                 prop_list.insert( 0, [ poffset, prop ] )
 
                 if verbose > 2:
-                    print( "            prop name: %s" % prop.name )
-                    print( "            prop raw: %s" % prop )
+                    print( f"            prop name: {prop.name}" )
+                    print( f"            prop raw: {prop}" )
 
                 if verbose > 2:
                     prop_val = LopperFDT.property_value_decode( prop, 0 )
                     if not prop_val:
                         prop_val = LopperFDT.property_value_decode( prop, 0, LopperFmt.COMPOUND )
-                    print( "            prop decoded: %s" % prop_val )
-                    print( "            prop type: %s" % type(prop_val))
+                    print( f"            prop decoded: {prop_val}" )
+                    print( f"            prop type: {type(prop_val)}")
                     print( "" )
 
                 poffset = fdt_source.next_property_offset(poffset, QUIET_NOTFOUND)
@@ -1188,7 +1188,7 @@ class LopperFDT(lopper.base.lopper_base):
                     node_number, matching_nodes = LopperFDT.node_find_by_name( fdt, os.path.basename(node) + "$" )
 
         if node_number == -1:
-            print( "[WARNING]: could not find node %s" % node )
+            print( f"[WARNING]: could not find node {node}" )
 
         return node_number
 
@@ -1227,7 +1227,7 @@ class LopperFDT(lopper.base.lopper_base):
             node = 0
 
         if node < 0:
-            print( "[WARNING]: could not find starting node: %s" % start_path )
+            print( f"[WARNING]: could not find starting node: {start_path}" )
             sys.exit(1)
 
         while depth >= 0:
@@ -1279,16 +1279,16 @@ class LopperFDT(lopper.base.lopper_base):
 
         if re.search( r"\.dtb$", output_filename ):
             if verbose:
-                print( "[INFO]: dtb output format detected, writing %s" % output_filename )
+                print( f"[INFO]: dtb output format detected, writing {output_filename}" )
 
             byte_array = fdt_to_write.as_bytearray()
 
             if verbose:
-                print( "[INFO]: writing output dtb: %s" % output_filename )
+                print( f"[INFO]: writing output dtb: {output_filename}" )
 
             o = Path(output_filename)
             if o.exists() and not overwrite:
-                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                print( f"[ERROR]: output file {output_filename} exists and force overwrite is not enabled" )
                 sys.exit(1)
 
             with open(output_filename, 'wb') as w:
@@ -1296,11 +1296,11 @@ class LopperFDT(lopper.base.lopper_base):
 
         elif re.search( r"\.dts$", output_filename ):
             if verbose:
-                print( "[INFO]: dts format detected, writing %s" % output_filename )
+                print( f"[INFO]: dts format detected, writing {output_filename}" )
 
             o = Path(output_filename)
             if o.exists() and not overwrite:
-                print( "[ERROR]: output file %s exists and force overwrite is not enabled" % output_filename )
+                print( f"[ERROR]: output file {output_filename} exists and force overwrite is not enabled" )
                 sys.exit(1)
 
             if enhanced:
@@ -1319,7 +1319,7 @@ class LopperFDT(lopper.base.lopper_base):
                 # close the temp file so it is removed
                 fp.close()
         else:
-            print( "[INFO]: unknown file type (%s) passed for writing, skipping" % output_filename )
+            print( f"[INFO]: unknown file type ({output_filename}) passed for writing, skipping" )
 
     @staticmethod
     def dtb_dts_export( dtb, outfilename="", verbose=0 ):
@@ -1337,16 +1337,16 @@ class LopperFDT(lopper.base.lopper_base):
         dtcargs += (os.environ.get("LOPPER_DTC_FLAGS") or "").split()
         dtcargs += (os.environ.get("LOPPER_DTC_BFLAGS") or "").split()
         if outfilename:
-            dtcargs += ["-o", "{0}".format(outfilename)]
+            dtcargs += ["-o", f"{outfilename}"]
         dtcargs += ["-I", "dtb", "-O", "dts", dtb]
 
         if verbose:
-            print( "[INFO]: dumping dtb: %s" % dtcargs )
+            print( f"[INFO]: dumping dtb: {dtcargs}" )
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
         if result.returncode != 0:
             print( "[ERROR]: unable to export a dts" )
-            print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
+            print( f"\n{textwrap.indent(result.stderr.decode(), '         ')}" )
 
         return result
 
@@ -1497,7 +1497,7 @@ class LopperFDT(lopper.base.lopper_base):
                     break
                 except Exception as e:
                     if verbose:
-                        print( "[WARNING]: property set exception: %s" % e)
+                        print( f"[WARNING]: property set exception: {e}")
                     fdt.resize( fdt.totalsize() + 1024 )
                     continue
                 else:
@@ -1547,9 +1547,9 @@ class LopperFDT(lopper.base.lopper_base):
                         break
                 else:
                     # fail!
-                    print( "[WARNING]: lopper_fdt: unable to write property '%s' to fdt" % prop_name )
+                    print( f"[WARNING]: lopper_fdt: unable to write property '{prop_name}' to fdt" )
         else:
-            print( "[WARNING]: %s: unknown type was used: %s" % (prop_name,type(prop_val)) )
+            print( f"[WARNING]: {prop_name}: unknown type was used: {type(prop_val)}" )
 
     @staticmethod
     def property_remove( fdt, node_name, prop_name, verbose=0 ):
@@ -1592,7 +1592,7 @@ class LopperFDT(lopper.base.lopper_base):
         if prop_name in prop_list:
             # node is an integer offset, prop_name is a string
             if verbose:
-                print( "[INFO]: removing property %s from %s" % (prop_name, fdt.get_name(node)) )
+                print( f"[INFO]: removing property {prop_name} from {fdt.get_name(node)}" )
 
             fdt.delprop(node, prop_name)
         else:
@@ -1687,8 +1687,8 @@ class LopperFDT(lopper.base.lopper_base):
             memres = re.search( memres_regex, data )
             if memres:
                 if verbose:
-                    print ( "[DBG]: memreserve detected: %s" % memres.group(1) )
-                memres_string = "/memreserve/ %s;" % memres.group(1)
+                    print ( f"[DBG]: memreserve detected: {memres.group(1)}" )
+                memres_string = f"/memreserve/ {memres.group(1)};"
 
             # This captures everything at the start of the file (i.e. a comment block)
             # and puts it into a special pre-mble property in the root node. If we don't
@@ -1710,12 +1710,12 @@ class LopperFDT(lopper.base.lopper_base):
                     if comment:
                         comment = re.sub( r"^\n", '', comment )
                         comment = re.sub( r"\n$", '', comment )
-                        comment = "    lopper-preamble = \"{0}\";".format( comment )
+                        comment = f"    lopper-preamble = \"{comment}\";"
 
-                    data = re.sub( preamble_regex, '/ {' + '\n\n{0}'.format(comment), data, count = 1 )
+                    data = re.sub( preamble_regex, '/ {' + f'\n\n{comment}', data, count = 1 )
 
             # put the dts start info back in
-            data = re.sub( r'^', '/dts-v1/;\n\n%s\n' % memres_string, data )
+            data = re.sub( r'^', f'/dts-v1/;\n\n{memres_string}\n', data )
 
             # Comment and label substitution
             fp_comments_as_attributes = LopperFDT._comment_translate(data)
@@ -1743,7 +1743,7 @@ class LopperFDT(lopper.base.lopper_base):
                 ml = re.search( r"^\#line.*\"(.*?)\"", f )
                 if ml:
                     if verbose > 2:
-                        print( "[DBG++]: comment scan: include file boundary passed: %s" % ml.group(1) )
+                        print( f"[DBG++]: comment scan: include file boundary passed: {ml.group(1)}" )
                     file_boundary_index = i
                     # clear the node tracking counts, we are into a new file
                     subnode_at_depth = { 0: False }
@@ -1753,21 +1753,21 @@ class LopperFDT(lopper.base.lopper_base):
                 if mn:
                     node_depth += 1
                     if verbose > 2:
-                        print( "[DBG++] comment scan: -> node depth inc: %s (%s)" % (node_depth,mn.group(1)) )
+                        print( f"[DBG++] comment scan: -> node depth inc: {node_depth} ({mn.group(1)})" )
                     subnode_at_depth[node_depth-1] = True
                     subnode_at_depth[node_depth] = False
 
                 mn = re.search( r"^\s*};", f )
                 if mn:
                     if verbose > 2:
-                        print( "[DBG++] comment scan: -> node depth dec: %s" % node_depth )
+                        print( f"[DBG++] comment scan: -> node depth dec: {node_depth}" )
                     node_depth -= 1
 
                 m = re.search( lopper_comment_open_pattern, f )
                 if m:
                     comment_number = m.group(1)
                     if verbose > 2:
-                        print( "[DBG++]: comment scan: line %s has comment #%s [%s]" % (i,comment_number,m.group(2)) )
+                        print( f"[DBG++]: comment scan: line {i} has comment #{comment_number} [{m.group(2)}]" )
 
                     if subnode_at_depth[node_depth]:
                         if verbose > 1:
@@ -1793,7 +1793,7 @@ class LopperFDT(lopper.base.lopper_base):
             if extra_drops:
                 comments_to_delete.extend( extra_drops.split() )
                 if verbose > 1:
-                    print( "[DBG+]: comment scan: droplist: %s" % comments_to_delete )
+                    print( f"[DBG+]: comment scan: droplist: {comments_to_delete}" )
             for cnum in comments_to_delete:
                 lopper_comment_regex = re.compile( r'lopper-comment-{0} = ".*?";'.format(cnum), re.MULTILINE | re.DOTALL )
                 fp_comments_and_labels_as_attributes = re.sub( lopper_comment_regex, "", fp_comments_and_labels_as_attributes )
@@ -1819,11 +1819,11 @@ class LopperFDT(lopper.base.lopper_base):
                     try:
                         existing_label = labeldict[label]
                         if not permissive:
-                            print( "[ERROR]: duplicate label '%s' detected, processing cannot continue" % label )
+                            print( f"[ERROR]: duplicate label '{label}' detected, processing cannot continue" )
                             if verbose:
                                 print( "[DBG+]: Dumping label dictionary (as processed to error)" )
                                 for l in labeldict:
-                                    print( "    %s" % l )
+                                    print( f"    {l}" )
 
                                 print( "\n[DBG+]: Offending label lines with context:" )
                                 file_as_array = data.splitlines()
@@ -1833,13 +1833,13 @@ class LopperFDT(lopper.base.lopper_base):
                                     m = re.search( pattern, f )
                                     if m:
                                         try:
-                                            print( "    %s %s" % (i-2,file_as_array[i-2]) )
-                                            print( "    %s %s" % (i-1,file_as_array[i-1]) )
-                                            print( "    %s %s" % (i,file_as_array[i]) )
-                                            print( "    %s %s" % (i+1,file_as_array[i+1]) )
-                                            print( "    %s %s" % (i+2,file_as_array[i+2]) )
+                                            print( f"    {i - 2} {file_as_array[i - 2]}" )
+                                            print( f"    {i - 1} {file_as_array[i - 1]}" )
+                                            print( f"    {i} {file_as_array[i]}" )
+                                            print( f"    {i + 1} {file_as_array[i + 1]}" )
+                                            print( f"    {i + 2} {file_as_array[i + 2]}" )
                                         except:
-                                            print( "    %s %s" % (i,file_as_array[i]) )
+                                            print( f"    {i} {file_as_array[i]}" )
 
                                         print( "\n" )
                             os._exit(1)
@@ -1858,13 +1858,13 @@ class LopperFDT(lopper.base.lopper_base):
         # step 2: compile the dtb
         #         dtc -O dtb -o test_tree1.dtb test_tree1.dts
         isoverlay = False
-        output_dtb = "{0}.{1}".format(dts_filename, "dtbo" if isoverlay else "dtb")
+        output_dtb = f"{dts_filename}.{'dtbo' if isoverlay else 'dtb'}"
 
         # make sure the dtb is not on disk, since it won't be overwritten by
         # default.
         if os.path.exists( output_dtb ):
             if not force_overwrite:
-                print( "[ERROR]: output dtb (%s) exists and -f was not passed" % output_dtb )
+                print( f"[ERROR]: output dtb ({output_dtb}) exists and -f was not passed" )
                 sys.exit(1)
             os.remove( output_dtb )
 
@@ -1877,24 +1877,24 @@ class LopperFDT(lopper.base.lopper_base):
         for i in includes.split():
             dtcargs += ["-i", i]
 
-        dtcargs += ["-o", "{0}/{1}".format(outdir,output_dtb)]
+        dtcargs += ["-o", f"{outdir}/{output_dtb}"]
         if symbols:
             dtcargs += [ "-@" ]
         dtcargs += ["-I", "dts", "-O", "dtb", preprocessed_name ]
         if verbose:
-            print( "[INFO]: compiling dtb: %s" % dtcargs )
+            print( f"[INFO]: compiling dtb: {dtcargs}" )
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
         if result.returncode != 0:
             # force the dtb, we need to do processing
             dtcargs += [ "-f" ]
             if verbose:
-                print( "[INFO]: forcing dtb generation: %s" % dtcargs )
+                print( f"[INFO]: forcing dtb generation: {dtcargs}" )
 
             result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
             if result.returncode != 0:
-                print( "[ERROR]: unable to (force) compile %s" % dtcargs )
-                print( "\n%s" % textwrap.indent(result.stderr.decode(), '         ') )
+                print( f"[ERROR]: unable to (force) compile {dtcargs}" )
+                print( f"\n{textwrap.indent(result.stderr.decode(), '         ')}" )
                 sys.exit(1)
 
         # cleanup: remove the .pp file

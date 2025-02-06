@@ -60,7 +60,7 @@ class LopperDT(lopper.base.lopper_base):
             for node in dt.node_iter():
                 print( node.name )
                 for p in  node.props:
-                    print( "   %s" % p )
+                    print( f"   {p}" )
 
         return dt
 
@@ -239,8 +239,8 @@ class LopperDT(lopper.base.lopper_base):
 
         if verbose:
             print( "[DBG]: lopper.dt export: " )
-            print( "[DBG]:     nodes: %s" % (nodes) )
-            print( "[DBG]:          props: %s" % np )
+            print( f"[DBG]:     nodes: {nodes}" )
+            print( f"[DBG]:          props: {np}" )
 
         for i,n in nodes.items():
             # Children are indexed by their path (/foo/bar), since properties
@@ -274,7 +274,7 @@ class LopperDT(lopper.base.lopper_base):
             property_val = LopperDT.property_value_decode( v.value, 0, LopperFmt.COMPOUND, LopperFmt.DEC )
             prop_dict[v.name] = property_val
             if type_hints:
-                prop_dict['__{}_type__'.format(v.name)] = LopperDT.property_type_guess( v.value )
+                prop_dict[f'__{v.name}_type__'] = LopperDT.property_type_guess( v.value )
 
         return prop_dict
 
