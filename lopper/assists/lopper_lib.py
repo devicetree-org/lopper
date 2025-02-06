@@ -61,7 +61,7 @@ def chunks(l, n):
 def json_expand( node ):
     debug = False
     if debug:
-        print( "[DBG]: ========> json expanding node: %s" % node.name )
+        print( f"[DBG]: ========> json expanding node: {node.name}" )
     for p in node:
         if p.pclass == 'json':
             # save the original json, we may need it again
@@ -74,8 +74,8 @@ def json_expand( node ):
 
             phandle_index,field_count = p.phandle_params()
             if debug:
-                print( '   -- json property: [%s] %s [%s]' % ([p],p.name,p.value) )
-                print( '        phandle info: %s %s' % (phandle_index,field_count) )
+                print( f'   -- json property: [{[p]}] {p.name} [{p.value}]' )
+                print( f'        phandle info: {phandle_index} {field_count}' )
 
             loaded_j = json.loads( p.value_json )
             p.struct_value = loaded_j
@@ -93,18 +93,18 @@ def json_expand( node ):
 
             # dump the json elements
             if debug:
-                print( "        [%s] %s" % (type(loaded_j),loaded_j) )
+                print( f"        [{type(loaded_j)}] {loaded_j}" )
                 for j in loaded_j:
                     if type(j) == list:
                         for jj in j:
-                            print("        json list element: %s" % jj )
+                            print(f"        json list element: {jj}" )
                     elif type(j) == dict:
                         for jj,kk in j.items():
-                            print("        json dict element: key: %s: value: %s" % (jj,kk) )
+                            print(f"        json dict element: key: {jj}: value: {kk}" )
                             if type(kk) == dict:
                                 print( "              nested dict" )
                     else:
-                        print( "       non-list: %s"  % j )
+                        print( f"       non-list: {j}" )
 
 def property_set( property_name, property_val, node, fdt=None ):
     newprop = LopperProp( property_name, -1, None, property_val )
@@ -251,7 +251,7 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
         return refd_cpus, refd_cpus
 
     if verbose:
-        print( "[DBG]: lopper_lib: cpu_refs: processing %s" % cpu_prop )
+        print( f"[DBG]: lopper_lib: cpu_refs: processing {cpu_prop}" )
 
     cpu_prop_list = list( chunks(cpu_prop.value,3) )
     sub_cpus_all = []
@@ -261,7 +261,7 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
     for cpu_phandle, mask, mode in cpu_prop_list:
         cpu_mask = mask
         if verbose:
-            print( "[INFO]: cb cpu mask: %s" % hex(cpu_mask))
+            print( f"[INFO]: cb cpu mask: {hex(cpu_mask)}")
 
         try:
             cpu_node = tree.pnode(cpu_phandle)
@@ -273,9 +273,9 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
         sub_cpus_all = sub_cpus + sub_cpus_all
 
         if verbose:
-            print( "[INFO]: lopper_lib: cpu prop phandle: %s" % cpu_phandle )
-            print( "[INFO]: lopper_lib: cpu node: %s" % cpu_node )
-            print( "[INFO]: lopper_lib: sub cpus: %s" % sub_cpus )
+            print( f"[INFO]: lopper_lib: cpu prop phandle: {cpu_phandle}" )
+            print( f"[INFO]: lopper_lib: cpu node: {cpu_node}" )
+            print( f"[INFO]: lopper_lib: sub cpus: {sub_cpus}" )
 
         # we'll now walk from 0 -> 31. Checking the mask to see if access is
         # allowed. If it is allowed, we'll check to see if there's a sub-cpu at
@@ -298,7 +298,7 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
             try:
                 unrefd_cpus.append( s )
             except Exception as e:
-                print( "[WARNING]: %s" % e )
+                print( f"[WARNING]: {e}" )
 
     # you can globally check for ref'd cpus after calling this routine
     # via:
