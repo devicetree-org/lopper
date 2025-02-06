@@ -1349,8 +1349,6 @@ def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, channel_id, power_do
 
     core_node_props = {
       "compatible" : compatible_strs[platform],
-      "#address-cells": 0x2,
-      "#size-cells": 0x2,
       "power-domains": power_domains,
       "reg": core_reg_val,
       "reg-names": core_reg_names,
@@ -1443,8 +1441,6 @@ def xlnx_remoteproc_v2_interim(tree, channel_id, cpu_config, openamp_channel_inf
         "reg-names": [ "atcm0", "btcm0" ],
         "reg": [0, 0, 0, 0x10000, 0, 0x20000, 0, 0x10000],
         "memory-region": [ val for val in openamp_channel_info["new_ddr_nodes"+channel_id] ],
-        "#address-cells": 0x2,
-        "#size-cells": 0x2,
         "power-domains": pd_pval_rpu0[platform],
     }
 
