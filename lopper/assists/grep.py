@@ -52,7 +52,7 @@ def grep( tgt_node, sdt, options ):
         args = []
 
     if verbose:
-        print( "[INFO]: cb: grep( %s, %s, %s, %s )" % (tgt_node, sdt, verbose, args))
+        print( f"[INFO]: cb: grep( {tgt_node}, {sdt}, {verbose}, {args} )")
 
     node_regex = ""
     tgt_regex = args[0]
@@ -68,7 +68,7 @@ def grep( tgt_node, sdt, options ):
         lnodes = sdt.tree.lnodes(node_regex)
         nodes = nodes + lnodes
     except:
-        print( "[ERROR]: grep: nodes %s not found" % node_regex )
+        print( f"[ERROR]: grep: nodes {node_regex} not found" )
         sys.exit(1)
 
 
@@ -84,8 +84,8 @@ def grep( tgt_node, sdt, options ):
 
     if matches:
         for m in matches.keys():
-            print( "%s: %s" % (m,matches[m]))
+            print( f"{m}: {matches[m]}")
     else:
-        print( "%s: not found" % tgt_regex )
+        print( f"{tgt_regex}: not found" )
 
     return True
