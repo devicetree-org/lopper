@@ -13,33 +13,33 @@
         compatible = "system-device-tree-v1,lop";
         lops {
                 compatible = "system-device-tree-v1,lop";
-                lop_0 {
+                lop_a72_0 {
                         compatible = "system-device-tree-v1,lop,assist-v1";
                         node = "/axi/imux";
                         id = "imux,imux-v1";
                         noexec;
                 };
 
-                lop_1 {
+                lop_a72_1 {
                         compatible = "system-device-tree-v1,lop,modify";
                         // Rename the interrupt controller node
                         modify = "/apu-bus/interrupt-controller@f9000000::/axi/interrupt-controller@f9000000";
                 };
 
-                lop_2 {
+                lop_a72_2 {
                         compatible = "system-device-tree-v1,lop,modify";
                         // Rename the interrupt controller node
                         modify = "/apu-bus/::";
                 };
 
-                lop_3 {
+                lop_a72_3 {
                         compatible = "system-device-tree-v1,lop,select-v1";
                         // clear any old selections
                         select_1;
                         select_2 = "/axi/interrupt-controller.*";
                 };
 
-                lop_4 {
+                lop_a72_4 {
                       compatible = "system-device-tree-v1,lop,code-v1";
                       code = "
                                 if tree.nodes('/__symbols__', strict=True):
@@ -48,7 +48,7 @@
                             ";
                 };
 
-                lop_5 {
+                lop_a72_5 {
                       compatible = "system-device-tree-v1,lop,code-v1";
                       code = "
                                 for s in __selected__:
@@ -58,21 +58,21 @@
                             ";
                 };
 
-                lop_6 {
+                lop_a72_6 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       // clear any old selections
                       select_1;
                       select_2 = "/.*:interrupt-parent:&imux";
                 };
 
-                lop_7 {
+                lop_a72_7 {
                       compatible = "system-device-tree-v1,lop,modify";
                       // this will use the selected nodes above, to add a property
                       flags = "strict";
                       modify = ":interrupt-parent:&gic";
                 };
 
-                lop_8 {
+                lop_a72_8 {
                         compatible = "system-device-tree-v1,lop,modify";
                         // delete the interrupt-multiplex
                         modify = "/axi/interrupt-multiplex::";

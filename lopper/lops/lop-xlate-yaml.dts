@@ -14,7 +14,7 @@
         priority = <2>;
         lops {
                 compatible = "system-device-tree-v1,lop";
-                lop_0_0 {
+                lop_yaml_0_0 {
                         compatible = "system-device-tree-v1,lop,meta-v1","phandle-desc-v1";
                         address-map = "#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells";
                         interrupt-parent = "phandle";
@@ -26,7 +26,7 @@
                         firewallconf = "phandle type priority";
                 };
 
-                lop_0_0_1 {
+                lop_yaml_0_0_1 {
                         compatible = "system-device-tree-v1,lop,code-v1";
                         inherit = "lopper_lib";
                         code = "
@@ -35,11 +35,11 @@
                                         lopper_lib.json_expand( n )
                               ";
                 };
-                lop_0_1 {
+                lop_yaml_0_1 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/domains/subsystem\\w*$:cpus:.*";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
@@ -52,13 +52,13 @@
                         ";
                       };
                 };
-                lop_0_3 {
+                lop_yaml_0_3 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       // select_2 = "/domains/subsystem./domains$::";
                       // select_3 = "/domains/subsystem./domains/xen/domains$::";
                       select_2 = "/.*/domains/.*:id:";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
@@ -72,13 +72,13 @@
                         ";
                       };
                 };
-                lop_0_3_2 {
+                lop_yaml_0_3_2 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       // select_2 = "/domains/subsystem./domains$::";
                       // select_3 = "/domains/subsystem./domains/xen/domains$::";
                       select_2 = "/.*/domains/sub*/.*:id:";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
@@ -93,11 +93,11 @@
                       };
                 };
 
-                lop_0_4 {
+                lop_yaml_0_4 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/resource_groups::";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
@@ -126,11 +126,11 @@
                         ";
                       };
                 };
-                lop_0_5 {
+                lop_yaml_0_5 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:include:";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
@@ -149,11 +149,11 @@
                         ";
                       };
                 };
-                lop_0_6 {
+                lop_yaml_0_6 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*?/.*domains$:!compatible:";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
@@ -169,11 +169,11 @@
                         ";
                       };
                 };
-                lop_0_7 {
+                lop_yaml_0_7 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:cpus:";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
@@ -182,14 +182,14 @@
                         ";
                       };
                 };
-                lop_0_8 {
+                lop_yaml_0_8 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       // select firewallconf properties
                       select_2 = "/.*:firewallconf:";
                       // select firewallconf nodes
                       select_3 = "/.*/firewallconf::";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
@@ -198,11 +198,11 @@
                         ";
                       };
                 };
-                lop_0_10 {
+                lop_yaml_0_10 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/domains";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
@@ -229,11 +229,11 @@
                         ";
                       };
                 };
-                lop_0_11 {
+                lop_yaml_0_11 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*/reg$";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               // disabled by default
@@ -267,11 +267,11 @@
                               ";
                       };
                };
-               lop_0_12 {
+               lop_yaml_0_12 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:interrupt-parent:";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               // disabled by default
@@ -305,11 +305,11 @@
                               ";
                       };
                };
-               lop_0_13 {
+               lop_yaml_0_13 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:ranges:";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               // disabled by default
@@ -330,11 +330,11 @@
                       };
                };
 
-               lop_0_14 {
+               lop_yaml_0_14 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/cpus";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               // disabled by default
@@ -359,11 +359,11 @@
                               ";
                       };
                };
-               lop_0_15 {
+               lop_yaml_0_15 {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:clocks:";
-                      lop_0_2 {
+                      lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               // disabled by default
