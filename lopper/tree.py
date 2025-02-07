@@ -128,6 +128,10 @@ class LopperProp():
         else:
             # we want to avoid the overriden __setattr__ below
             self.__dict__["value"] = value
+            # set a default ptype, since before the property is
+            # resolved, it may be used in some sort of test that
+            # needs a type
+            self.ptype = self.property_type_guess()
 
 
     def __deepcopy__(self, memodict={}):
@@ -437,6 +441,10 @@ class LopperProp():
                     constructed_condition = f"{invert_check} re.search(r\"{lop_compare_value}\",'{tgt_node_compare_value}')"
                 elif other_prop.ptype == LopperFmt.UINT32: # type(lop_compare_value) == int:
                     constructed_condition = f"{invert_check} {lop_compare_value} == {tgt_node_compare_value}"
+                else:
+                    lopper.log._warning( f"comparison property [{other_prop.name}] {other_prop.node.abs_path}"
+                                         f" has an invalid type: {other_prop.ptype}, skipping test" )
+                    return False
 
                 if self.__dbg__ > 2:
                     lopper.log._debug( f"    single:single. Condition: {constructed_condition}" )
