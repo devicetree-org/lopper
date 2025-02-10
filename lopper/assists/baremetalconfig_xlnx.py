@@ -671,8 +671,8 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     if driver_proplist == []:
         return True
     driver_nodes = []
-    for compat in driver_compatlist:
-        for node in node_list:
+    for node in node_list:
+        for compat in driver_compatlist:
            compat_string = node['compatible'].value
            for compa in compat_string:
                if compat in compa:
