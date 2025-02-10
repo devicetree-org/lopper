@@ -369,6 +369,10 @@ def generate_linker_script(mem_ranges,yaml_file,cfd,cpu_ip_name,machine,openamp_
             size -= start
             if size <= 0x2000:
                 heap_size = 0x400
+        elif cpu_ip_name == "microblaze" and "lmb_bram" in key :
+            start += 80
+            size -= 80
+
         """
         For R5 PSU DDR initial 1MB is reserved for tcm
         Adjust the size and start address accordingly.
