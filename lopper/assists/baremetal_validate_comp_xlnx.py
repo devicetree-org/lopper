@@ -98,7 +98,7 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
     src_path = src_path.rstrip(os.path.sep)
     name = utils.get_base_name(utils.get_dir_path(src_path))
     # Incase of versioned component strip the version info
-    name = re.split("_v(\d+)_(\d+)", name)[0]
+    name = re.split(r"_v(\d+)_(\d+)", name)[0]
     yaml_file = os.path.join(utils.get_dir_path(src_path), "data", f"{name}.yaml")
     if not utils.is_file(yaml_file):
         print(f"{name} Comp doesn't have yaml file")
