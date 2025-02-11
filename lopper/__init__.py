@@ -388,7 +388,7 @@ class LopperSDT:
         self.support_files = support_files
 
         if self.verbose:
-            search_paths = [ lopper_directory ] + [ lopper_directory + "/assists/" ] + self.load_paths
+            search_paths = self.load_paths + [ lopper_directory ] + [ lopper_directory + "/assists/" ]
             print( "" )
             print( "Lopper summary:")
             print( f"   system device tree: {sdt_files}" )
@@ -684,8 +684,8 @@ class LopperSDT:
             # check the path from which lopper is running, that
             # directory + lops, and paths specified on the command line
             input_file_abs = ""
-            search_paths =  [ lopper_directory ] + [ lopper_directory + "/assists/" ] + \
-                            [ lopper_directory + "/lops/" ] + local_search_paths + self.load_paths
+            search_paths =  self.load_paths + [ lopper_directory ] + [ lopper_directory + "/assists/" ] + \
+                            [ lopper_directory + "/lops/" ] + local_search_paths
             for s in search_paths:
                 # the first found file is the one we return
                 if input_file_abs:
