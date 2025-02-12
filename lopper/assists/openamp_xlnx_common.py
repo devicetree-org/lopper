@@ -24,6 +24,38 @@ machine_to_dt_mappings_v2 = {
     "cortexr52_8" : "/remoteproc@ebbc0000/r52f@8", "cortexr52_9" : "/remoteproc@0xebbc0000/r52f@9",
 }
 
+zynqmp_ipi_id_to_baseaddr = {
+  1 : 0xFF310000,
+  2 : 0xFF320000,
+  7 : 0xFF340000,
+  8 : 0xFF350000,
+}
+
+versal_ipi_id_to_baseaddr = {
+  2 : 0xFF330000,
+  3 : 0xFF340000,
+  4 : 0xFF350000,
+  5 : 0xFF360000,
+  6 : 0xFF370000,
+  7 : 0xFF380000,
+  9 : 0xFF3A0000,
+}
+
+vnet_ipi_id_to_baseaddr = {
+  2 : 0xEB330000,
+  3 : 0xEB340000,
+  4 : 0xEB350000,
+  5 : 0xEB360000,
+  6 : 0xEB370000,
+  7 : 0xEB380000,
+  9 : 0xEB3A0000,
+  10 : 0xEB3B0000,
+  11 : 0xEB3B1000,
+  12 : 0xEB3B2000,
+  13 : 0xEB3B3000,
+  14 : 0xEB3B4000,
+}
+
 zynqmp_ipi_to_irq_vect_id = {
   0xff330000 : 62,
   0xFF340000 : 63,
