@@ -796,6 +796,15 @@ def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
     tree = sdt.tree
     platform = get_platform(tree, verbose)
 
+    irq_maps = {
+      SOC_TYPE.ZYNQMP: ( zynqmp_ipi_id_to_baseaddr, zynqmp_ipi_to_irq_vect_id ),
+      SOC_TYPE.VERSAL: ( versal_ipi_id_to_baseaddr, versal_ipi_to_irq_vect_id ),
+      SOC_TYPE.VERSAL_NET: ( vnet_ipi_id_to_baseaddr, versal_net_ipi_to_irq_vect_id ),
+      SOC_TYPE.VERSAL2:    ( vnet_ipi_id_to_baseaddr, versal_net_ipi_to_irq_vect_id ),
+    }
+
+    ( irq_id_map , vect_id_map ) = irq_maps[platform]
+
     if machine not in machine_to_dt_mappings_v2.keys():
         print("OPENAMP: XLNX: ERROR: unsupported machine to remoteproc node mapping: ", machine)
         return False
@@ -821,24 +830,25 @@ def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
 
         mbox_node = tree.pnode(mbox_node_pval[0])
 
-        for n in tree['/axi'].subnodes():
-            if n.propval("compatible") == [ "xlnx,zynqmp-ipi-mailbox" ] and n.propval('xlnx,ipi-id') == mbox_node.propval('xlnx,ipi-id'):
-                remote_interrupt = n.propval('interrupts')[1]
-                poll_base_addr = hex(n.propval("reg")[1])
-                for mbox_subnode in n.subnodes():
-                    if mbox_subnode.propval('xlnx,ipi-id') != [] and mbox_subnode.propval('xlnx,ipi-id')[0] == mbox_node.parent.propval('xlnx,ipi-id')[0]:
-                        ipi_chn_bitmask = mbox_subnode.propval('xlnx,ipi-bitmask')[0]
-                        break
-                break
+        host_ipi_id = mbox_node.parent.propval('xlnx,ipi-id')[0]
+        remote_ipi_id = mbox_node.propval('xlnx,ipi-id')[0]
+
+        host_ipi_addr = irq_id_map[host_ipi_id]
+        remote_ipi_addr = irq_id_map[remote_ipi_id]
+
+        remote_ipi_str = hex(remote_ipi_addr)
+        remote_vect_id = vect_id_map[remote_ipi_addr]
+
+        host_bitmask = hex(1 << host_ipi_id)
 
         inputs = {
-        "POLL_BASE_ADDR": poll_base_addr,
+        "POLL_BASE_ADDR": remote_ipi_str,
         "SHM_DEV_NAME": "\"" + hex(elfload_base)[2:] + '.shm\"',
         "DEV_BUS_NAME": "\"generic\"",
-        "IPI_DEV_NAME":  "\"" + poll_base_addr[2:] + '.ipi\"',
-        "IPI_IRQ_VECT_ID": hex(remote_interrupt),
-        "IPI_IRQ_VECT_ID_FREERTOS": hex(remote_interrupt - 32),
-        "IPI_CHN_BITMASK": hex(ipi_chn_bitmask),
+        "IPI_DEV_NAME":  "\"" + remote_ipi_str[2:] + '.ipi\"',
+        "IPI_IRQ_VECT_ID": hex(remote_vect_id),
+        "IPI_IRQ_VECT_ID_FREERTOS": hex(remote_vect_id - 32),
+        "IPI_CHN_BITMASK": host_bitmask,
         "RING_TX": hex(tree.pnode(mem_reg_val[2]).propval("reg")[1]),
         "RING_RX": hex(tree.pnode(mem_reg_val[3]).propval("reg")[1]),
         "SHARED_MEM_PA": hex(tree.pnode(mem_reg_val[2]).propval("reg")[1]),
