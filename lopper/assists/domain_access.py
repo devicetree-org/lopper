@@ -145,7 +145,8 @@ def core_domain_access( tgt_node, sdt, options ):
     if tgt_node.abs_path == "/":
         if sdt.target_domain:
             try:
-                tgt_node = sdt.tree[sdt.target_domain]
+                target_domain_path = [node.abs_path for node in sdt.tree['/'].subnodes() if node.label == sdt.target_domain or node.name == sdt.target_domain]
+                tgt_node = sdt.tree[target_domain_path[0]]
             except Exception as e:
                 print( f"[ERROR]: target domain {sdt.target_domain} cannot be found" )
                 sys.exit(1)
