@@ -54,6 +54,7 @@ vnet_ipi_id_to_baseaddr = {
   12 : 0xEB3B2000,
   13 : 0xEB3B3000,
   14 : 0xEB3B4000,
+  15 : 0xEB3B5000,
 }
 
 zynqmp_ipi_to_irq_vect_id = {
