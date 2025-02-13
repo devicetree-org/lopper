@@ -50,6 +50,7 @@ xlnx,axi-uart16550-2.0:
     - reg
     - interrupts
     - interrupt-parent
+    - current-speed
     - clock-frequency
     - reg-shift
 
