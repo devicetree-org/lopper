@@ -263,6 +263,8 @@ def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_c
                                      remote_node, channel_id, native, channel_index, 
                                      verbose = 0):
     ipi_id_prop_name = "xlnx,ipi-id"
+    platform =  openamp_channel_info["platform"]
+    buffered_ipi_chan = True
 
     host_ipi_id = xlnxl_rpmsg_ipi_get_ipi_id(tree, host_ipi[channel_index], "host")
 
@@ -275,14 +277,17 @@ def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_c
 
     host_ipi = tree.pnode( host_ipi[channel_index])
 
+    if platform in [ SOC_TYPE.VERSAL_NET , SOC_TYPE.VERSAL2 ] and (host_ipi_id.value[0] >= 9 or remote_ipi_id.value[0] >= 9):
+        buffered_ipi_chan = False
 
     # find host to remote buffers
     host_to_remote_ipi_channel = None
     for subnode in host_ipi.subnodes():
         subnode_ipi_id = subnode.props(ipi_id_prop_name)
         if subnode_ipi_id != [] and remote_ipi_id.value[0] == subnode_ipi_id[0].value[0]:
+            openamp_channel_info["host_to_remote_ipi_channel_" + channel_id] = subnode
             host_to_remote_ipi_channel = subnode
-    if host_to_remote_ipi_channel == None:
+    if host_to_remote_ipi_channel == None and buffered_ipi_chan:
         print("WARNING no host to remote IPI channel has been found.")
         return False
 
@@ -293,13 +298,13 @@ def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_c
     for subnode in remote_ipi.subnodes():
         subnode_ipi_id = subnode.props(ipi_id_prop_name)
         if subnode_ipi_id != [] and host_ipi_id.value[0] == subnode_ipi_id[0].value[0]:
+            openamp_channel_info["remote_to_host_ipi_channel_" + channel_id] = subnode
             remote_to_host_ipi_channel = subnode
-    if remote_to_host_ipi_channel == None:
+    if remote_to_host_ipi_channel == None and buffered_ipi_chan:
         print("WARNING no remote to host IPI channel has been found.")
         return False
 
     # store IPI IRQ Vector IDs
-    platform =  openamp_channel_info["platform"]
     host_ipi_base = host_ipi.props("reg")[0][1]
     remote_ipi_base = remote_ipi.props("reg")[0][1]
     soc_strs = {
@@ -337,8 +342,6 @@ def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_c
 
     openamp_channel_info["host_ipi_"+channel_id] = host_ipi
     openamp_channel_info["remote_ipi_"+channel_id] = remote_ipi
-    openamp_channel_info["host_to_remote_ipi_channel_" + channel_id] = host_to_remote_ipi_channel
-    openamp_channel_info["remote_to_host_ipi_channel_" + channel_id] = remote_to_host_ipi_channel
     return True
 
 
