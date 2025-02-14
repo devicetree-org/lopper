@@ -382,9 +382,6 @@ class LopperSDT:
         except Exception as e:
             pass
 
-        # exceptions are carrying us on and causing us trouble!
-        #os._exit(1)
-
         self.support_files = support_files
 
         if self.verbose:
@@ -843,6 +840,7 @@ class LopperSDT:
         lop_node.name = lop_name
         lop_node['compatible'] = [ 'system-device-tree-v1,lop,assist-v1' ]
         lop_node['id'] = [ tgt_domain_id ]
+        lop_node['node'] = target_domain
 
         ln = ln + lop_node
         lt = lt + ln
@@ -1479,8 +1477,8 @@ class LopperSDT:
             #
             try:
                 cb_tgt_node_name = lop_node['node'].value[0]
-            except:
-                lopper.log._error( f"cannot find target node for assist" )
+            except Exception as e:
+                lopper.log._error( f"cannot find target node for assist {e}" )
                 sys.exit(1)
 
             cb_outdir = self.outdir
@@ -2284,4 +2282,5 @@ class LopperFile:
         self.dts = lop_file
         self.dtb = ""
         self.fdt = ""
+        self.tree = None
 

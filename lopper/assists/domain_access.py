@@ -142,9 +142,23 @@ def core_domain_access( tgt_node, sdt, options ):
     except:
         verbose = 0
 
+    # "/" indicates we were run from the command line as an autorun, not
+    # triggered from a lop file associated to a node
     if tgt_node.abs_path == "/":
         if sdt.target_domain:
             try:
+                # Note: this works to find a node by name only when yaml
+                #       expansion has been done. This is because the default
+                #       yaml expansion takes nodes of type domain-v1 and makes
+                #       their yaml name the node label, and then assigns them
+                #       a unique domain@<> node name.
+                #
+                #       When a node is looked up by tree subscript [], one of
+                #       the elements searched is the node label, hence why we
+                #       can find non-absolute domains in some scenarios.
+                #
+                #       if you really want to be sure to find your domain for
+                #       processing, pass it by absolute path.
                 tgt_node = sdt.tree[sdt.target_domain]
             except Exception as e:
                 print( f"[ERROR]: target domain {sdt.target_domain} cannot be found" )
