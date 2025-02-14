@@ -4607,9 +4607,9 @@ class LopperTree:
             lopper.log._error( f"no nodes found that match prefix {node_prefix}" )
 
         if verbose > 1:
-            lopper.log._debug( f"filter: node list: ", end=" " )
+            lopper.log._debug( f"filter: node list: " )
             for nn in node_list:
-                lopper.log._debug( f"    {nn.abs_path}", end="  " )
+                lopper.log._debug( f"    {nn.abs_path}" )
             lopper.log._debug( f"" )
 
         for n in node_list:
