@@ -134,6 +134,16 @@ def update_mem_node(node, mem_val):
                 new_mem_val.append(0)
     return new_mem_val
 
+def usage():
+    print( """
+   Usage: domain_access [OPTION]
+
+      -p       permissive matching on target node (regex)
+      -v       enable verbose debug/processing
+
+    """)
+
+
 # tgt_node: is the domain node number
 # sdt: is the system device tree
 def core_domain_access( tgt_node, sdt, options ):
@@ -141,6 +151,27 @@ def core_domain_access( tgt_node, sdt, options ):
         verbose = options['verbose']
     except:
         verbose = 0
+
+    try:
+        args = options['args']
+    except:
+        args = []
+
+    # --permissive means that non-SMID devices/memory will be consulted
+    opts,args2 = getopt.getopt( args, "vt:p", [ "verbose", "target=", "permissive" ] )
+
+    permissive = False
+    command_line_target=""
+    for o,a in opts:
+        if o in ('-v', "--verbose"):
+            verbose = verbose + 1
+        elif o in ('-p', "--permissive"):
+            permissive = True
+        elif o in ("-t", "--target"):
+            command_line_target = a
+        elif o in ('-h', "--help"):
+            # usage()
+            sys.exit(1)
 
     # "/" indicates we were run from the command line as an autorun, not
     # triggered from a lop file associated to a node
@@ -165,9 +196,16 @@ def core_domain_access( tgt_node, sdt, options ):
                 sys.exit(1)
         else:
             try:
-                tgt_node = sdt.tree["/domains/default"]
+                if command_line_target:
+                    tgt_node = sdt.tree[command_line_target]
             except:
-                pass
+                tgt_node = ""
+
+            if not tgt_node:
+                try:
+                    tgt_node = sdt.tree["/domains/default"]
+                except:
+                    pass
 
     # reset the treewide ref counting
     sdt.tree.ref = 0
@@ -260,7 +298,6 @@ def core_domain_access( tgt_node, sdt, options ):
             # the action will be taken if the code block returns 'true'
             # Lopper.node_filter( sdt, xform_path, LopperAction.DELETE, code, verbose )
             sdt.tree.filter( xform_path, LopperAction.DELETE, code, None, verbose )
-
             for s in unrefd_cpus:
                 try:
                     if verbose:
