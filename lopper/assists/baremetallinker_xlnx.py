@@ -224,12 +224,9 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     app_path = utils.get_dir_path(src_dir.rstrip(os.sep))
     appname = utils.get_base_name(app_path)
     yaml_file = os.path.join(app_path, "data", f"{appname}.yaml")
-    if not utils.is_file(yaml_file):
-        print(f"{appname} doesn't have yaml file")
 
     cmake_file = os.path.join(sdt.outdir, f"{appname.capitalize()}Example.cmake")
     cfd = open(cmake_file, 'a')
-
     traverse  = False if memtest_config else True
     default_ddr,memtest_config, mb_reset_addr = get_ddr_address(sdt,tgt_node,mem_ranges,match_cpunode,cpu_ip_name,memtest_config,traverse)
 
@@ -267,16 +264,17 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     memip_list = [lable_names[i] for i in memip_list]
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
 
-    generate_linker_script(mem_ranges,yaml_file,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names)
+    generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names)
 
     return True
 
-def generate_linker_script(mem_ranges,yaml_file,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names):
+def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names):
     """
     To get generate the linker script
     Parameters:
         mem_ranges(list)           : List of mem ranges
         yaml_file(path)            : Yaml file path
+        appname(str)               : Name of the App
         cfd(file obj)              : Cmake file object
         cpu_ip_name(str)           : Cpu ip name
         machine(str)               : Machine name
@@ -290,6 +288,7 @@ def generate_linker_script(mem_ranges,yaml_file,cfd,cpu_ip_name,machine,openamp_
     """
     stack_size = None
     heap_size = None
+    user_heap_size = None
     if cpu_ip_name is not None:
         if "microblaze" in cpu_ip_name:
             stack_size = 0x400
@@ -297,6 +296,8 @@ def generate_linker_script(mem_ranges,yaml_file,cfd,cpu_ip_name,machine,openamp_
         else:
             stack_size = 0x2000
             heap_size = 0x2000
+    if not utils.is_file(yaml_file):
+        print(f"{appname} doesn't have yaml file")
     else:
         schema = utils.load_yaml(yaml_file)
         if schema.get("linker_constraints"):
@@ -305,6 +306,7 @@ def generate_linker_script(mem_ranges,yaml_file,cfd,cpu_ip_name,machine,openamp_
                 stack_size = schema["linker_constraints"]["stack"]
             if "heap" in linker_constraint_opts:
                 heap_size = schema["linker_constraints"]["heap"]
+                user_heap_size = True
 
 
     mem_sec = ""
@@ -367,7 +369,7 @@ def generate_linker_script(mem_ranges,yaml_file,cfd,cpu_ip_name,machine,openamp_
         if cpu_ip_name == "microblaze" and start < 80:
             start = 80
             size -= start
-            if size <= 0x2000:
+            if size <= 0x2000 and not user_heap_size:
                 heap_size = 0x400
         elif cpu_ip_name == "microblaze" and "lmb_bram" in key :
             start += 80
@@ -504,6 +506,9 @@ def generate_mem_config(mem_ranges,memtest_config,memip_list,default_ddr,cpu_ip_
         elif has_bram:
             if len(has_bram) > 1:
                 for index, (key, value) in enumerate(mem_ranges.items()):
+                    if "lmb_bram" in key:
+                        default_ddr = key
+                        break
                     if index == 0:
                         size = value[1]
                     if "_bram" in key:
