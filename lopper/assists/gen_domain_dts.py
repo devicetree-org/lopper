@@ -160,6 +160,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         if node.propval('device_type') != ['']:
             if "memory" in node.propval('device_type', list)[0]:
                 node_list.append(node)
+        if node.propval('xlnx,ip-name') != [''] and node.propval('xlnx,ip-name')[0] == "psv_ttc" and node.label == "ttc0":
+            sdt.tree.delete(node)
 
     mapped_nodelist = get_mapped_nodes(sdt, node_list, options)
     mapped_nodelist.append(symbol_node)
