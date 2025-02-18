@@ -843,6 +843,17 @@ def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
         remote_vect_id = vect_id_map[remote_ipi_addr]
 
         host_bitmask = hex(1 << host_ipi_id)
+        if platform == SOC_TYPE.ZYNQMP:
+            host_bitmask = None
+            for n in tree["/"].subnodes():
+                xlnx_ipi_id_pval = n.propval("xlnx,ipi-id")
+                if n.propval("xlnx,ipi-id") != [''] and remote_ipi_id == n.propval("xlnx,ipi-id")[0]:
+                    for remote_to_host_subnode in n.subnodes():
+                        if remote_to_host_subnode.propval("xlnx,ipi-id") != [''] and host_ipi_id == remote_to_host_subnode.propval("xlnx,ipi-id")[0]:
+                            host_bitmask = hex(remote_to_host_subnode.propval("xlnx,ipi-bitmask")[0])
+            if host_bitmask == None:
+                print("OPENAMP: XLNX: ERROR: ZynqMP: No Remote to Host Channel found.")
+                return False
 
         inputs = {
         "POLL_BASE_ADDR": remote_ipi_str,
