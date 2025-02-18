@@ -132,8 +132,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                 else:
                     driver_proplist = schema.get('additionalProperties',{})
             match_nodes = []
-            for comp in driver_compatlist:
-                for node,compatible_list in node_dict.items():
+            for node,compatible_list in node_dict.items():
+                for comp in driver_compatlist:
                    match = [x for x in compatible_list if comp == x]
                    if match:
                        node1 = [x for x in node_list if (x.abs_path == node)]
