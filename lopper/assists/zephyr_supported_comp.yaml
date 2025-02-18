@@ -126,3 +126,11 @@ xlnx,xps-gpio-1.00.a:
     - xlnx,is-dual
     - xlnx,tri-default
     - xlnx,tri-default-2
+
+xlnx,xps-timebase-wdt-1.00.a:
+  required:
+    - compatible
+    - reg
+    - clocks
+    - xlnx,wdt-interval
+    - xlnx,wdt-enable-once
