@@ -43,7 +43,8 @@
                                   reg, size = scan_reg_size(s, s['reg'].value, 0)
                                   inp = s['interrupt-parent'].value[0]
                                   intr_parent = [s for s in tree['/'].subnodes() if s.phandle == inp]
-                                  inc = intr_parent[0]['#interrupt-cells'].value[0]
+                                  if intr_parent:
+                                      inc = intr_parent[0]['#interrupt-cells'].value[0]
                                   parent_node = s
                                   for x in range(1, 3):
                                         new_ttc_node = s()
@@ -54,7 +55,8 @@
                                         modify_prop = [int(modify_reg, 16), size-(x*4)]
                                         modify_val = update_mem_node(s, modify_prop)
                                         new_ttc_node['reg'].value =  modify_val
-                                        new_ttc_node['interrupts'].value =  s['interrupts'].value[x*inc:]
+                                        if intr_parent:
+                                            new_ttc_node['interrupts'].value =  s['interrupts'].value[x*inc:]
                                         new_ttc_node['lop-dynamic-ttc-node'] =  1
                                         try:
                                             name_val = s['xlnx,name'].value[0]
