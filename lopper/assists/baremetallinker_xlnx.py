@@ -105,7 +105,7 @@ def get_memranges(tgt_node, sdt, options):
     cells = na + ns
     tmp = na
     while tmp < len(address_map):
-        all_phandles[address_map[tmp]] = tmp
+        all_phandles[tmp] = address_map[tmp]
         tmp = tmp + cells + na + 1
 
     mem_ranges = {}
@@ -114,7 +114,7 @@ def get_memranges(tgt_node, sdt, options):
     mem_nodes = list(dict.fromkeys(mem_nodes))
     for node in mem_nodes:
         # Check whether the memory node is mapped to cpu cluster or not
-        indx_list = [index for handle,index in all_phandles.items() if handle == node.phandle]
+        indx_list = [index for index,handle in all_phandles.items() if handle == node.phandle]
         addr_list = []
         size_list = []
         fsbl_update_size = False
