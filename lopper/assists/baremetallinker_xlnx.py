@@ -167,10 +167,12 @@ def get_memranges(tgt_node, sdt, options):
 
                     if is_valid_noc_ch:
                         linker_secname = key + str("_") + is_valid_noc_ch
+                        label_name_new = label_name + str("_") + is_valid_noc_ch
                     else:
                         linker_secname = key + str("_") + str(xlnx_memipname[key])
+                        label_name_new = label_name + str("_") + str(xlnx_memipname[key])
                         xlnx_memipname[key] += 1
-                    lable_names[linker_secname] = label_name
+                    lable_names[linker_secname] = label_name_new
                     # Update the mem_ranges to account for multiple NoC memory segments within a given region.
                     if is_valid_noc_ch and (linker_secname in mem_ranges):
                         start_addr, old_size = mem_ranges[linker_secname]
