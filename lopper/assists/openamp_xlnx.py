@@ -1301,27 +1301,32 @@ def xlnx_remoteproc_v2_get_tcm_nodes(elfload_nodes):
 def xlnx_remoteproc_v2_parse_tcm_node(tcm_bank, core_reg_names, cluster_ranges_val, core_reg_val, power_domains, cpu_config, platform, rpu_core):
     # only R5 cores have separate lockstep address schema
     use_lockstep = (cpu_config == CPU_CONFIG.RPU_LOCKSTEP) and (platform in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL ] )
+    tcm_absolute_view_base = None
+    rpu_bank_sz = None
+    rpu_view_base_pval = None
 
-    # validate and use TCM nodes
-    tcm_props = [ "xlnx,tcm,absolute-view,base", "xlnx,tcm,bank-size", "power-domains",
-                  "xlnx,tcm,rpu-view,lockstep-base" if use_lockstep else "xlnx,tcm,rpu-view,split-base" ]
+    if platform in [ SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
+        name_substr_to_rpu_view = { "atcm" : 0x0000, "btcm" : 0x10000, "ctcm" : 0x18000, }
 
-    # genereate dictionary to look up each property for tcm noted above
-    tcm_prop_vals = { p:tcm_bank.propval(p) for p in tcm_props }
-
-    # validate tcm bank properties
-    for pval in tcm_prop_vals.keys():
-        if tcm_prop_vals[pval] == ['']:
-            print("ERROR: ", tcm_bank, " is missing property ", pval, ". This means malformed SDT for OpenAMP. Erroring out.")
+        pd_pval = tcm_bank.propval("power-domains")
+        if pd_pval == ['']:
+            print("ERROR: ", tcm_bank, " is missing property: power-domains. This means malformed SDT for OpenAMP. Erroring out.")
             return False
 
-    # read simple props
-    tcm_absolute_view_base = tcm_prop_vals[tcm_props[0]][0]
-    rpu_bank_sz = tcm_prop_vals[tcm_props[1]][0]
-    rpu_view_base_pval = tcm_prop_vals[tcm_props[3]][0]
+        tcm_absolute_view_base = tcm_bank.propval("reg")[1]
+        rpu_bank_sz = tcm_bank.propval("reg")[3]
+
+        for sub_str in name_substr_to_rpu_view.keys():
+            if sub_str in tcm_bank.name:
+                rpu_view_base_pval = name_substr_to_rpu_view[sub_str]
+                break
+        for i in [ tcm_absolute_view_base, rpu_bank_sz, rpu_view_base_pval ]:
+            if i == None:
+                print("ERROR: ", tcm_bank, " is for OpenAMP. Erroring out.")
+                return False
 
     # power domain is list
-    for i in tcm_prop_vals[tcm_props[2]]:
+    for i in pd_pval:
         power_domains.append(i)
 
     core_reg_names.append(tcm_bank.name)
