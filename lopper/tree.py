@@ -1634,6 +1634,18 @@ class LopperNode(object):
             # we do it this way, otherwise the property "ref" breaks
             super().__setattr__(name, value)
 
+            # if a label has been assigned, we need to clear any extra
+            # properties on the node that may have been picked up from
+            # another source (dtb, etc) that will cause the label to be
+            # re-created on print/write
+            if name == "label":
+                pattern = re.compile(r"lopper-label.*")
+                try:
+                    for l,v in self.__props__.items():
+                        if pattern.match(l):
+                            self.__props__[l].value = [ value ]
+                except:
+                    pass
             if name == "phandle":
                 # someone is assigning a phandle, the tree's pnodes need to
                 # be updated
@@ -2175,6 +2187,9 @@ class LopperNode(object):
                 if not self.label:
                     if label_all_nodes:
                         self.label_set( Lopper.phandle_safe_name( nodename ) )
+                else:
+                    pass
+
                 plabel = self.label
 
             if self.phandle != 0:
@@ -2320,7 +2335,7 @@ class LopperNode(object):
 
                 dct[f'__{p.name}_pclass__'] = p.pclass
 
-                lopper.log._debug( f"       node export: [{p.ptype}] property: {p.name} (state:{p.__pstate__})(type:{dct[f'__{p.name}_type__']})" )
+                lopper.log._debug( f"       node export: [{p.ptype}] property: {p.name} value: {p.value} (state:{p.__pstate__})(type:{dct[f'__{p.name}_type__']})" )
 
             if self.label:
                 # there can only be one label per-node. The node may already have
@@ -3966,7 +3981,7 @@ class LopperTree:
         """
 
         lopper.log._debug( f"tree: node add: [{node.name}] {[ node ]} ({node.abs_path})({node.number})"
-                           f" phandle: {node.phandle}" )
+                           f" phandle: {node.phandle} label: {node.label}" )
 
         node_full_path = node.abs_path
 
@@ -4135,7 +4150,7 @@ class LopperTree:
             p.__pstate__ = "init"
             p.__modified__ = True
 
-        lopper.log._debug( f"node added: [{[node]}] {node.abs_path}" )
+        lopper.log._debug( f"node added: [{[node]}] {node.abs_path} ({node.label})" )
         if self.__dbg__ > 2:
             for p in node:
                 lopper.log._debug( f"      property: {p.name} {p.value} (state:{p.__pstate__})" )
@@ -4149,7 +4164,9 @@ class LopperTree:
         else:
             lopper.log._debug( f"\n\n {self}: {sys._getframe(0).f_lineno}/{sys._getframe(0).f_code.co_name}: treewide sync started" )
 
-            # Note: doesn't actually do anything except fixup states.
+            # Note: doesn't actually do anything except fixup states,
+            #       but also does an export -> load, which means that
+            #       node object values (addresses/ids) can change.
             self.sync()
 
         return self
