@@ -458,9 +458,9 @@ def get_ddr_address(sdt,tgt_node,mem_ranges,match_cpunode,cpu_ip_name,memtest_co
                     default_ddr = key
     ## To inline with existing tools point default ddr for linker to lower DDR
     lower_ddrs = ["axi_noc", "psu_ddr_0", "ps7_ddr_0"]
-    has_ddr = [x for x in mem_ranges.keys() for ddr in lower_ddrs if re.search(ddr, x)]
+    has_ddr = {key:value for key,value in mem_ranges.items() for ddr in lower_ddrs if re.search(ddr, key) and value}
     if has_ddr and not memtest_config and not "microblaze" in cpu_ip_name:
-        default_ddr = has_ddr[0]
+        default_ddr = min(has_ddr, key=lambda k: has_ddr[k])
 
     if "microblaze_riscv" in cpu_ip_name:
         if match_cpunode.propval('xlnx,base-vectors') != ['']:
