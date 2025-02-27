@@ -592,6 +592,8 @@ class LopperSDT:
                     printer.indent_char = ' '
             except:
                 pass
+
+            printer._type = tree_to_write._type
             printer.load( tree_to_write.export() )
             printer.exec()
 

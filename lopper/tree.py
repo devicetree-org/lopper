@@ -993,10 +993,23 @@ class LopperProp():
         if not self.node:
             return
 
+        try:
+            if self.node.tree._type == "dts":
+                depth = self.node.depth
+            elif self.node.tree._type == "dts_overlay":
+                depth = self.node.depth - 1
+            else:
+                depth = self.node.depth
+        except:
+            depth = self.node.depth
+
+        if depth < 0:
+            depth = 0
+
         if self.node.indent_char == ' ':
-            indent = (self.node.depth * 8) + 8
+            indent = (depth * 8) + 8
         else:
-            indent = (self.node.depth) + 1
+            indent = (depth) + 1
 
         outstring = self.string_val
         only_align_comments = False
@@ -1462,7 +1475,10 @@ class LopperNode(object):
         # the node if it exists.
         self.type = []
 
-        self.abs_path = abspath
+        if abspath:
+            self.abs_path = abspath
+        else:
+            self.abs_path = f"/{name}"
 
         self._ref = 0
 
@@ -2163,10 +2179,23 @@ class LopperNode(object):
                 except:
                     output = sys.stdout
 
+        try:
+            if self.tree._type == "dts":
+                depth = self.depth
+            elif self.tree._type == "dts_overlay":
+                depth = self.depth - 1
+            else:
+                depth = self.depth
+        except:
+            depth = self.depth
+
+        if depth < 0:
+            depth = 0
+
         if self.indent_char == ' ':
-            indent = self.depth * 8
+            indent = depth * 8
         else:
-            indent = self.depth
+            indent = depth
 
         nodename = self.name
 
@@ -2215,15 +2244,17 @@ class LopperNode(object):
                 if p.pclass == "preamble":
                     print( f"{p}", file=output, flush=True )
 
-            #print( "/dts-v1/;\n\n/ {", file=output )
-            print( "/dts-v1/;\n", file=output, flush=True )
+            print( "/dts-v1/;", file=output, flush=True )
 
-            if self.tree and self.tree.__memreserve__:
-                mem_res_addr = hex(self.tree.__memreserve__[0] )
-                mem_res_len = hex(self.tree.__memreserve__[1] )
-                print( f"/memreserve/ {mem_res_addr} {mem_res_len};\n", file=output, flush=True )
+            if self.tree._type == "dts":
+                if self.tree and self.tree.__memreserve__:
+                    mem_res_addr = hex(self.tree.__memreserve__[0] )
+                    mem_res_len = hex(self.tree.__memreserve__[1] )
+                    print( f"/memreserve/ {mem_res_addr} {mem_res_len};\n", file=output, flush=True )
 
-            print( "/ {", file=output, flush=True )
+                print( "/ {", file=output, flush=True )
+            elif self.tree._type == "dts_overlay":
+                print( "/plugin/;", file=output, flush=True )
 
         # now the properties
         for p in self:
@@ -2237,7 +2268,15 @@ class LopperNode(object):
             cn.print( output )
 
         # end the node
-        outstring = "};"
+        outstring = ""
+        if self.abs_path == "/":
+            # root nodes, on non-dts output (i.e. overlays do not have
+            # a node opening bracket, so we don't need to close it here)
+            if self.tree._type == "dts":
+                outstring = "};"
+        else:
+            outstring = "};"
+
         print(outstring.rjust(len(outstring)+indent, self.indent_char), file=output , flush=True)
 
         if as_string:
@@ -3201,7 +3240,10 @@ class LopperTree:
 
         self.dct = None
 
-        # type
+        # type:
+        #   - dts
+        #   - dts_overlay
+        self._type = "dts"
         self.depth_first = depth_first
 
         self.strict = True
