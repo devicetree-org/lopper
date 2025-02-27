@@ -1478,7 +1478,10 @@ class LopperNode(object):
         if abspath:
             self.abs_path = abspath
         else:
-            self.abs_path = f"/{name}"
+            if name:
+                self.abs_path = f"/{name}"
+            else:
+                self.abs_path = ""
 
         self._ref = 0
 
@@ -2246,14 +2249,19 @@ class LopperNode(object):
 
             print( "/dts-v1/;", file=output, flush=True )
 
-            if self.tree._type == "dts":
+            tree_type = "dts"
+            try:
+                tree_type = self.tree._type
+            except:
+                pass
+            if tree_type == "dts":
                 if self.tree and self.tree.__memreserve__:
                     mem_res_addr = hex(self.tree.__memreserve__[0] )
                     mem_res_len = hex(self.tree.__memreserve__[1] )
                     print( f"/memreserve/ {mem_res_addr} {mem_res_len};\n", file=output, flush=True )
 
                 print( "/ {", file=output, flush=True )
-            elif self.tree._type == "dts_overlay":
+            elif tree_type == "dts_overlay":
                 print( "/plugin/;", file=output, flush=True )
 
         # now the properties
@@ -2272,7 +2280,13 @@ class LopperNode(object):
         if self.abs_path == "/":
             # root nodes, on non-dts output (i.e. overlays do not have
             # a node opening bracket, so we don't need to close it here)
-            if self.tree._type == "dts":
+            tree_type = "dts"
+            try:
+                tree_type = self.tree._type
+            except:
+                pass
+
+            if tree_type == "dts":
                 outstring = "};"
         else:
             outstring = "};"

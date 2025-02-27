@@ -574,7 +574,7 @@ class LopperSDT:
                 lopper.log._error( f"dtb output selected ({output_filename}), but libfdt is not enabled" )
                 sys.exit(1)
 
-        elif re.search( r"\.dts$", output_filename ):
+        elif re.search( r"\.dts$", output_filename ) or re.search( r"\.dtsi$", output_filename ) :
             if self.outdir and not Path( output_filename ).is_absolute():
                 output_filename = self.outdir + "/" + output_filename
 
