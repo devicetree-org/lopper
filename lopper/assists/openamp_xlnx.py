@@ -1185,7 +1185,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
 
     if role == 'host':
         for node in tree["/"].subnodes():
-            if node.propval('xlnx,ttc-board-interface') != [''] and 'ttc' in node.label:
+            if "cdns,ttc" in node.propval('compatible'):
                 tree.delete(node)
 
     xlnx_openamp_remove_channels(tree)
