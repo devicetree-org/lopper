@@ -392,7 +392,7 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
                 phandle_value = node[subnode_prop].value[0]
             except KeyError:
 	        # Need to create dummy entries
-                _warning(f"Find sub node is failed for {node.name} and {sub_node}, creating dummy structure")
+                _warning(f"Find sub node is failed for {node.name}, creating dummy structure")
                 dummy_struct = True
 
             if dummy_struct:
