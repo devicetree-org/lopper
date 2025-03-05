@@ -335,11 +335,12 @@ platform_info_header_r5_template = """
 #define _AMD_GENERATED_H_
 
 /* Interrupt vectors */
-#ifdef USE_FREERTOS
+#ifdef FREERTOS_BSP
+#if defined (FREERTOS_BSP) || defined (USE_FREERTOS)
 #define IPI_IRQ_VECT_ID         $IPI_IRQ_VECT_ID_FREERTOS
 #else
 #define IPI_IRQ_VECT_ID         $IPI_IRQ_VECT_ID
-#endif /* USE_FREERTOS */
+#endif /* FREERTOS_BSP */
 #define POLL_BASE_ADDR          $POLL_BASE_ADDR
 #define IPI_CHN_BITMASK         $IPI_CHN_BITMASK
 
