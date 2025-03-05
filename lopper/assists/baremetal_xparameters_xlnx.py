@@ -1,6 +1,6 @@
 #/*
 # * Copyright (c) 2020 Xilinx Inc. All rights reserved.
-# * Copyright (c) 2024 Advanced Micro Devices, Inc.  All rights reserved.
+# * Copyright (c) 2024 - 2025 Advanced Micro Devices, Inc.  All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
@@ -244,6 +244,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         except KeyError:
                             _warning(f"Get interrupt id is failed {node.name}, adding default value as {[0xFFFF]}")
                             intr_id = [0xFFFF]
+                            continue
 
                     elif prop == "interrupt-parent":
                         try:
@@ -334,6 +335,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         except KeyError:
                             _warning(f"Get property value is failed for {prop} and node is {node.name}, adding default value as {0}")
                             prop_val = [0]
+                            continue
 
                         if pad:
                             address_prop = ""
