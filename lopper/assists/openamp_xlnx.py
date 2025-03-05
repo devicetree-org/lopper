@@ -1183,13 +1183,6 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
         if not ret:
             return ret
 
-    if role == 'host':
-        for node in tree["/"].subnodes():
-            if "cdns,ttc" in node.propval('compatible'):
-                tree.delete(node)
-
-    xlnx_openamp_remove_channels(tree)
-
     # remove definitions
     try:
         defn_node =  tree["/definitions"]
@@ -1916,6 +1909,29 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
 
                 if ret == False:
                     return ret
+
+    opts,args2 = getopt.getopt( args, "", [ "openamp_role=" ] )
+    if opts == [] and args2 == []:
+        print('ERROR: No arguments passed for OpenAMP Module. Erroring out now.')
+        return False
+
+    role = None
+    if xlnx_options != None:
+        role = xlnx_options["openamp_role"]
+    else:
+        for o,a in opts:
+            if o in ('-l', "--openamp_role"):
+                role = a
+            else:
+                print("Argument: ",o, " is not recognized. Erroring out.")
+                return False
+
+    if role == 'host':
+        for node in tree["/"].subnodes():
+            if "cdns,ttc" in node.propval('compatible'):
+                tree.delete(node)
+
+    xlnx_openamp_remove_channels(tree)
 
     return True
 
