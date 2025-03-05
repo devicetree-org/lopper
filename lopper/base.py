@@ -352,6 +352,19 @@ class lopper_base:
                     type_guess = LopperFmt.UINT8
             else:
                 type_guess = LopperFmt.UINT8
+        else:
+            # this catches an empty string of a property:
+            #   i.e.:    property = "";
+            # otherwise it is picked up as UINT8 and is output
+            # as a list of numbers, which isn't what we want
+            if first_byte == 0 and len(prop) == 1:
+                try:
+                    prop.as_str()
+                    type_guess = LopperFmt.STRING
+                except:
+                    pass
+            else:
+                type_guess = LopperFmt.UINT8
 
         if type_guess == LopperFmt.UINT8:
             num_bits = len(prop)

@@ -1209,12 +1209,25 @@ class LopperProp():
         elif prop_type == list:
             # if the length is one, and the only element is empty '', then
             # we just put out the name
+
+            process_list = True
             if len(prop_val) == 0:
                 # outstring = ""
                 outstring = f"{self.name};"
+                process_list = False
             elif len(prop_val) == 1 and prop_val[0] == '':
+                # this is an empty string, property = ""; in the input
+                # if we detect that, allow it to be processed as a
+                # string below, for non-string types, just assign it
+                # to the property name
+                if not self.ptype == LopperFmt.STRING:
+                    outstring = f"{self.name};"
+                    process_list = False
+            elif len(prop_val) == 1 and prop_val[0] == ' ':
                 outstring = f"{self.name};"
-            else:
+                process_list = False
+
+            if process_list:
                 # otherwise, we need to iterate and output the elements
                 # as a comma separated list, except for the last item which
                 # ends with a ;
