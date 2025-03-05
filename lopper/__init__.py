@@ -282,7 +282,14 @@ class LopperSDT:
                         # old: deep copy the node
                         # new_node = node()
                         # assign it to the main system device tree
-                        self.tree = self.tree.add( node, merge=self.merge )
+                        merge = self.merge
+                        try:
+                            if self.config['dts']['merge']:
+                                merge = True
+                        except:
+                            pass
+
+                        self.tree = self.tree.add( node, merge=merge )
 
             fpp.close()
         elif re.search( r".yaml$", self.dts ):
