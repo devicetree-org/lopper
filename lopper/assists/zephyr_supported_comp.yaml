@@ -4,8 +4,6 @@ amd,mbv32:
     - reg
     - device_type
     - riscv,isa
-    - i-cache-size
-    - d-cache-size
     - clock-frequency
 
 xlnx,xps-intc-1.00.a:

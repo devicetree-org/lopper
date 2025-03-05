@@ -340,6 +340,13 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
     if zephyr_dt:
         xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options)
+        zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
+        if utils.is_file(zephyr_supported_schema_file):
+            match_cpunode = get_cpu_node(sdt, options)
+            schema = utils.load_yaml(zephyr_supported_schema_file)
+            proplist = schema["amd,mbv32"]["required"]
+            delete_unused_props( match_cpunode, proplist, False)
+            match_cpunode.parent.name = "cpus"
     return True
 
 def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
@@ -489,7 +496,6 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
 
     match_cpunode = get_cpu_node(sdt, options)
     match_cpunode.parent.delete("address-map")
-    match_cpunode.parent.name = match_cpunode.parent.name.split('@')[0]
     for node in root_sub_nodes:
 
         soc_kconfig_file = os.path.join(sdt.outdir, "Kconfig")
@@ -503,6 +509,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                 dev_node = var.split(':')[0]
                 
                 sdt.tree[node]['zephyr,console'] = dev_node
+                sdt.tree[node]['zephyr,shell-uart'] = dev_node
  
         if node.name == "amba_pl":
                 sdt.tree.delete(node)
@@ -599,7 +606,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
 
                     val = node.propval('clock-frequency', list)[0]
                     defconfig_kconfig.write("\nconfig SYS_CLOCK_HW_CYCLES_PER_SEC\n")
-                    defconfig_kconfig.write("  default %s\n" % str(val))
+                    defconfig_kconfig.write("  default $(dt_node_int_prop_int,/cpus/cpu@0,clock-frequency)")
 
                     defconfig_kconfig.close()
 

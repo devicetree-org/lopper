@@ -47,7 +47,7 @@
 		lop_3 {
                         compatible = "system-device-tree-v1,lop,select-v1";
                         select_1;
-                        select_2 = "/cpus_.*:compatible:cpus,cluster";
+                        select_2 = "/cpus*:compatible:cpus,cluster";
 			lop_3_1 {
                         	compatible = "system-device-tree-v1,lop,modify";
                         	modify = ":compatible:";
