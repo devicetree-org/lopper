@@ -394,7 +394,6 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                 new_node.name = "interrupt-controller"
                 new_node['compatible'] = "riscv,cpu-intc"
                 new_prop = LopperProp( "interrupt-controller" )
-                new_prop.value = ""
                 new_node + new_prop
                 new_node['#interrupt-cells'] = 1
                 new_node.label_set("cpu_intc")
