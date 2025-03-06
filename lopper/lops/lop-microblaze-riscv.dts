@@ -108,9 +108,8 @@
                                        'rv32ima' : 'rv32im',
                                        'rv32imaf' : 'rv32imf_zicsr',
                                        'rv32iac' : 'rv32ic',
-                                       'rv32imafc' : 'rv32imfc_zicsr',
+                                       'rv32imafc' : 'rv32imafc_zicsr',
                                        'rv32imfdc' : 'rv32imfdc_zicsr',
-                                       'rv32imafd' : 'rv32imf_zicsr',
                                        'rv64imf' : 'rv64imf_zicsr',
                                        'rv64imfc' : 'rv64imfc_zicsr',
                                        'rv64ia' : 'rv64i',
@@ -118,8 +117,7 @@
                                        'rv64imaf' : 'rv64imf_zicsr',
                                        'rv64iac' : 'rv64ic',
                                        'rv64imfdc' : 'rv64imfdc_zicsr',
-                                       'rv64imafc' : 'rv64imfc_zicsr',
-                                       'rv64imafd' : 'rv64imf_zicsr'
+                                       'rv64imafc' : 'rv64imafc_zicsr'
 
                                    }
 
@@ -177,7 +175,7 @@
                                        libpath.append('f')
                                        archflags.append('f') 
                                    elif n['xlnx,use-fpu'].value[0] == 2:
-                                       libpath.append('f')
+                                       libpath.append('d')
                                        archflags.append('d') 
                                    
                                    libpath.append('/')
