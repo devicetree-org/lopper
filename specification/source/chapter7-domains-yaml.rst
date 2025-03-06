@@ -18,6 +18,25 @@ Domains are under /domains.
 All domains, even nested domains, are specified under a "domain" key.
 
 
+Parent
+------
+
+Optionally, the name of the parent node can be explicitly specified
+using the 'parent' key. This is particularly useful when domain
+information is scattered across multiple YAML files. The specified name
+must match the actual parent node name in the domains hierarchy.
+
+Example:
+
+.. code-block:: YAML
+
+    domain1:
+        [...]
+        domains:
+            domain2:
+                parent: domain1
+
+
 Access
 ------
 
@@ -35,6 +54,20 @@ Example:
    access:
        - dev: serial0
          flags: {read-only: true}
+
+The device references specified using the 'dev' key has to be a subset
+of the parent domain's access list of devices.
+
+Instead of a device reference, it is also possible to pass a GLOB
+pattern matching string. It will be matched against the parent domain's
+access list. Please refer to [GLOB]_ for more details.
+
+Example:
+
+.. code-block:: YAML
+
+    access:
+        - dev: "*"
 
 
 Memory and Sram
