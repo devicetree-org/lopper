@@ -127,6 +127,7 @@ class SOC_TYPE:
 
 
 def resolve_remoteproc_carveouts( tree, subnode, verbose = 0 ):
+    print("resolve_remoteproc_carveouts")
     prop = None
     domain_node = None
     new_prop_val = []
@@ -138,8 +139,11 @@ def resolve_remoteproc_carveouts( tree, subnode, verbose = 0 ):
     if subnode.props("elfload") == []:
         print("WARNING:", "remoteproc relation does not have elfload carveouts", subnode.abs_path)
         return False
+    print("resolve_remoteproc_carveouts: ", subnode, subnode.propval("elfload") )
 
-    elfload_lists = json.loads(subnode.props("elfload")[0].value)
+    #elfload_lists = json.loads(subnode.props("elfload")[0].value)
+    elfload_lists = json.loads(subnode.propval("elfload"))
+    print("elfload_lists:", elfload_lists)
 
     for row_idx, row in enumerate(elfload_lists):
         new_row = []
@@ -254,6 +258,7 @@ def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
     return True
 
 def resolve_host_remote( tree, subnode, verbose = 0 ):
+    print("resolve_host_remote")
     prop_names = [ "host", "remote" ]
 
     if subnode.props(prop_names[0]) != [] and subnode.props(prop_names[1]) != []:
@@ -274,7 +279,7 @@ def resolve_host_remote( tree, subnode, verbose = 0 ):
                             n + LopperProp(name="phandle", value=n.phandle)
                         new_prop_val.append( n.phandle )
             subnode.props(pn)[0].value = new_prop_val
-    
+    print("oyut of resolve_host_remote") 
     return True
 
 platform_info_header_a9_template = """
@@ -335,12 +340,11 @@ platform_info_header_r5_template = """
 #define _AMD_GENERATED_H_
 
 /* Interrupt vectors */
-#ifdef FREERTOS_BSP
 #if defined (FREERTOS_BSP) || defined (USE_FREERTOS)
 #define IPI_IRQ_VECT_ID         $IPI_IRQ_VECT_ID_FREERTOS
 #else
 #define IPI_IRQ_VECT_ID         $IPI_IRQ_VECT_ID
-#endif /* FREERTOS_BSP */
+#endif
 #define POLL_BASE_ADDR          $POLL_BASE_ADDR
 #define IPI_CHN_BITMASK         $IPI_CHN_BITMASK
 
