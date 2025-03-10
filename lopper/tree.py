@@ -1666,18 +1666,6 @@ class LopperNode(object):
             # we do it this way, otherwise the property "ref" breaks
             super().__setattr__(name, value)
 
-            # if a label has been assigned, we need to clear any extra
-            # properties on the node that may have been picked up from
-            # another source (dtb, etc) that will cause the label to be
-            # re-created on print/write
-            if name == "label":
-                pattern = re.compile(r"lopper-label.*")
-                try:
-                    for l,v in self.__props__.items():
-                        if pattern.match(l):
-                            self.__props__[l].value = [ value ]
-                except:
-                    pass
             if name == "phandle":
                 # someone is assigning a phandle, the tree's pnodes need to
                 # be updated
@@ -2917,6 +2905,15 @@ class LopperNode(object):
                 for p in self.__props__:
                     self.__props__[p].resolve( strict )
                     self.__props__[p].__modified__ = False
+
+                # now delete the lopper-prop-* property, we'll just run with
+                # the node.label property during our tree processing routines.
+                for p in label_props:
+                    # print( f"looking at label prop {p.value} {type(p)} {self.__props__}")
+                    try:
+                        del self.__props__[p.name]
+                    except Exception as e:
+                        lopper.log._debug( f"{e}")
 
             # 3rd pass: did we have any added, but not sync'd properites. They need
             #           to be brought back into the main property dictionary.
