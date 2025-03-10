@@ -3273,6 +3273,8 @@ class LopperTree:
         self._type = "dts"
         self.depth_first = depth_first
 
+        self._external_trees = []
+
         self.strict = True
         self.warnings = []
         self.warnings_issued = {}
@@ -3580,6 +3582,24 @@ class LopperTree:
                                 lopper.log._warning( node_string )
 
 
+
+    def overlay_of( self, parent_tree ):
+        # we are becoming an overlay_of the passed tree
+        self._type = "dts_overlay"
+
+        # remove all phandle properties that might be printed
+        phandles_to_delete = []
+        for n in self:
+            for p in n:
+                if p.name == "phandle":
+                    phandles_to_delete.append( n )
+
+        for n in phandles_to_delete:
+            del n.__props__['phandle']
+
+        # store the parent tree, this is used for resolving
+        # lables and phandles before printing
+        self._external_trees.append(parent_tree)
 
     def phandles( self ):
         """Utility function to get the active phandles in the tree
