@@ -493,6 +493,16 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
             else:
                 drvprop_list.append(hex(0))
                 plat.buf('\n\t\t%s' % hex(0))
+    elif prop == "gmiitorgmii-addr":
+      gmii2rgmii_addr = 0  # Default value
+      # Check if any subnode has the compatible property 'xlnx,gmii-to-rgmii-1.0'
+      for subnode in node.subnodes():
+          if  subnode.propval('compatible') and "xlnx,gmii-to-rgmii-1.0" in subnode.propval('compatible'):
+              reg, size = scan_reg_size(subnode, subnode['reg'].value, 0)
+              gmii2rgmii_addr = reg
+
+      drvprop_list.append(hex(gmii2rgmii_addr))
+      plat.buf('\n\t\t%s' % hex(gmii2rgmii_addr))
     elif prop == "child,required":
         plat.buf('\n\t\t{')
         numsplits = 0
