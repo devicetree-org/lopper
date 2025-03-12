@@ -1032,7 +1032,7 @@ def setup_system_device_tree( outdir ):
                 #size-cells = <0x2>;
                 ranges;
 
-                /* For compatibility with default the cpus cluster */
+                /* For compatibility with the default cpus cluster */
                 memory_r5@0 {
                         compatible = "openamp,domain-memory-v1";
                         reg = <0x0 0x0 0x0 0x8000000>;
@@ -2259,13 +2259,13 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
     if not sub_tree_file:
         test_failed( "subtree write" )
     else:
-        test_passed( "subtree_wrte" )
+        test_passed( "subtree_write" )
 
     c = test_pattern_count( str(sub_tree_file), "#size-cells = <0x3>;" )
     if c == 1:
         test_passed( "subtree property modify" )
     else:
-        test_failed( "subtree property modify" )
+        test_failed( f"subtree property modify ({sub_tree_file})" )
 
     # if the indentation matches this, it was moved
     c = test_pattern_count( str(sub_tree_file), "                reserved-memory {" )
@@ -2301,24 +2301,25 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
 
     device_tree.cleanup()
 
-def assists_sanity_test( device_tree, lop_file, verbose ):
-    if lop_file:
-        device_tree.setup( dt, [lop_file], "", True, libfdt = libfdt )
+def assists_sanity_test( device_tree, lop_file, verbose, options = "" ):
+    if "lop_test" in options:
+        device_tree.setup( device_tree.dts, [lop_file], "", True, libfdt = libfdt )
         device_tree.assists_setup( [ "lopper/assists/domain_access.py" ] )
     else:
-        device_tree.setup( dt, [], "", True, libfdt = libfdt )
+        device_tree.setup( device_tree.dts, [], "", True, libfdt = libfdt )
 
         device_tree.load_paths.append( "lopper/selftest/" )
-        # this loads the external assist
+        # this loads the external aassist
         device_tree.assists_setup( [ "assist-sanity.py" ] )
         # this makes sure it runs
-        device_tree.assist_autorun_setup( "assist-sanity", "" )
+        device_tree.assist_autorun_setup( "assist-sanity", [ options ] )
 
-    print( "[TEST]: running assist against tree" )
+    print( "[TEST]: running assists against tree" )
     device_tree.perform_lops()
 
-    print( f"[TEST]: writing resulting FDT to {device_tree.output_file}" )
-    device_tree.write( enhanced = True )
+    if device_tree.output_file:
+        print( f"[TEST]: writing resulting FDT to {device_tree.output_file}" )
+        device_tree.write( enhanced = True )
 
     device_tree.cleanup()
 
@@ -2649,6 +2650,7 @@ if __name__ == "__main__":
         xlnx_gen_domain_sanity_test( verbose )
 
     if assists:
+        # export our built-in device tree and get the path to access it
         dt = setup_system_device_tree( outdir )
         lop_file = setup_assist_lops( outdir )
 
@@ -2665,10 +2667,17 @@ if __name__ == "__main__":
         device_tree.use_libfdt = libfdt
 
         # built in tests
-        assists_sanity_test( device_tree, lop_file, verbose )
+        assists_sanity_test( device_tree, lop_file, verbose, "lop_test" )
 
         # external assist
-        assists_sanity_test( device_tree, None, verbose )
+        assists_sanity_test( device_tree, None, verbose, "domain_access_test" )
+
+        # external assist
+        #   - use the device tree file in the directory
+        # device_tree = LopperSDT( "./lopper/selftest/system-top.dts" )
+        ## todo: can probably just overwrite the sdt.dts file name, and re-init ?
+        device_tree.dts = "./lopper/selftest/system-top.dts"
+        assists_sanity_test( device_tree, None, verbose, "overlay_test" )
 
     if format:
         dt = setup_format_tree( outdir )
