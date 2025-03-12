@@ -2909,7 +2909,6 @@ class LopperNode(object):
                 # now delete the lopper-prop-* property, we'll just run with
                 # the node.label property during our tree processing routines.
                 for p in label_props:
-                    # print( f"looking at label prop {p.value} {type(p)} {self.__props__}")
                     try:
                         del self.__props__[p.name]
                     except Exception as e:
@@ -3799,11 +3798,17 @@ class LopperTree:
         else:
             # confirm if output is an iostream
             try:
-                if not output.writable():
+                if type( output ) == str:
+                    output = open( output, "w")
+                else:
+                    output = open( output.name, "w")
+
+                if not output:
                     lopper.log._warning( f"{output} is not writable" )
                     return
+
             except (UnicodeDecodeError, AttributeError) as e:
-                lopper.log._warning( f"{output} is not a writable" )
+                lopper.log._warning( f"{output} is not a writable {e}" )
                 return
 
         self["/"].print( output )
@@ -4341,17 +4346,25 @@ class LopperTree:
 
         """
         try:
-            tgn = self.pnode( phandle_or_label )
-            if tgn == None:
-                # if we couldn't find the target, maybe it is in
-                # as a string. So let's check that way.
-                tgn2 = self.nodes( phandle_or_label )
-                if not tgn2:
-                    tgn2 = self.lnodes( re.escape(phandle_or_label) )
+            tgn = None
+            trees_to_check = [ self ] + self._external_trees
+            for t in [ self ] + self._external_trees:
+                try:
+                    if tgn:
+                        break
+                    tgn = t.pnode( phandle_or_label )
+                    if tgn == None:
+                        # if we couldn't find the target, maybe it is in
+                        # as a string. So let's check that way.
+                        tgn2 = t.nodes( phandle_or_label )
+                        if not tgn2:
+                            tgn2 = t.lnodes( re.escape(phandle_or_label) )
 
-                if tgn2:
-                    tgn = tgn2[0]
-        except:
+                        if tgn2:
+                            tgn = tgn2[0]
+                except:
+                    pass
+        except Exception as e:
             tgn = None
 
         return tgn
