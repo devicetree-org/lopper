@@ -259,7 +259,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psv_pmc_ram_npi', 'psv_pmc_rsa', 'psv_pmc_sha', 'psv_pmc_slave_boot', 'psv_scntrs',
                             'psv_pmc_slave_boot_stream', 'psv_pmc_trng', 'psv_psm_global_reg', 'psv_rpu', 'psv_scntr']
 
-    versal_gen2_linux_ignore_ip_list = ['mmi_10gbe', 'mmi_udh_pll', 'mmi_common', 'mmi_gpu', 'mmi_gtyp_cfg', 'mmi_pipe_gem_slcr',
+    versal_gen2_linux_ignore_ip_list = ['mmi_udh_pll', 'mmi_common', 'mmi_gpu', 'mmi_pipe_gem_slcr',
                             'mmi_udh_pll', 'mmi_udh_slcr', 'mmi_usb2phy', 'mmi_usb3phy_crpara', 'mmi_usb3phy_tca', 'mmi_usb_cfg',
                             'pmc_rsa', 'pmc_aes', 'pmc_sha2', 'pmc_sha3', "rpu", "apu", "pmc_ppu1_mdm", "pmc_xppu_npi", "pmc_xppu",
                             "pmc_xmpu", "pmc_slave_boot_stream", "pmc_slave_boot", "pmc_ram_npi", "pmc_global", "ocm", "ocm_xmpu",
