@@ -129,7 +129,6 @@
                                                arch_option = '-march='
                                                arch_linkflags = ''.join(archflags)
                                                bsp_linkflags = arch_option + arch_linkflags
-                                               archflags.append('_zicsr_zifencei')
                    
                                        except:
                                            if property == 'xlnx,use-compression':
@@ -137,7 +136,6 @@
                                                arch_option = '-march='
                                                arch_linkflags = ''.join(archflags)
                                                bsp_linkflags = arch_option + arch_linkflags
-                                               archflags.append('_zicsr_zifencei')
                                            continue
 
 
@@ -149,17 +147,24 @@
                                    libpath.append(archflags_libpath)
                                    libpath.append('/')
 
-                                   if n['xlnx,use-bitman-a'].value[0] == 1:
-                                       archflags.append('_zba')
+                                   if n['xlnx,use-bitman-a'].value[0] == 1 and n['xlnx,use-bitman-b'].value[0] == 1 and n['xlnx,use-bitman-s'].value[0] == 1:
+                                       archflags.append('b')
+                                       archflags.append('_zicsr_zifencei')
+                                   else:
+                                       archflags.append('_zicsr_zifencei')
+
+                                       if n['xlnx,use-bitman-a'].value[0] == 1:
+                                          archflags.append('_zba')
 					
-                                   if n['xlnx,use-bitman-b'].value[0] == 1:
-                                       archflags.append('_zbb')
+                                       if n['xlnx,use-bitman-b'].value[0] == 1:
+                                          archflags.append('_zbb')
+
+                                       if n['xlnx,use-bitman-s'].value[0] == 1:
+                                          archflags.append('_zbs')
+
 
                                    if n['xlnx,use-bitman-c'].value[0] == 1:
                                        archflags.append('_zbc')
-
-                                   if n['xlnx,use-bitman-s'].value[0] == 1:
-                                       archflags.append('_zbs')
 
                                    if n['xlnx,use-dcache'].value[0] == 1 or n['xlnx,use-icache'].value[0] == 1:
                                        archflags.append('_zicbom')
