@@ -180,6 +180,9 @@ required:
   - xlnx,frl-clk-freq-khz
   - xlnx,vid-clk-freq-khz
   - xlnx,input-pixels-per-clock
+  - xlnx,include-hdcp
+  - xlnx,include-hdcp-1-4
+  - xlnx,include-hdcp-2-2
   - xlnx,hdcp1x_keymgmt
   - xlnx,snd-pcm
   - phys
