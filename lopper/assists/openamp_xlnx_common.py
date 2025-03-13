@@ -139,7 +139,8 @@ def resolve_remoteproc_carveouts( tree, subnode, verbose = 0 ):
         print("WARNING:", "remoteproc relation does not have elfload carveouts", subnode.abs_path)
         return False
 
-    elfload_lists = json.loads(subnode.props("elfload")[0].value)
+    #elfload_lists = json.loads(subnode.props("elfload")[0].value)
+    elfload_lists = json.loads(subnode.propval("elfload"))
 
     for row_idx, row in enumerate(elfload_lists):
         new_row = []
@@ -274,7 +275,6 @@ def resolve_host_remote( tree, subnode, verbose = 0 ):
                             n + LopperProp(name="phandle", value=n.phandle)
                         new_prop_val.append( n.phandle )
             subnode.props(pn)[0].value = new_prop_val
-    
     return True
 
 platform_info_header_a9_template = """
@@ -335,12 +335,11 @@ platform_info_header_r5_template = """
 #define _AMD_GENERATED_H_
 
 /* Interrupt vectors */
-#ifdef FREERTOS_BSP
 #if defined (FREERTOS_BSP) || defined (USE_FREERTOS)
 #define IPI_IRQ_VECT_ID         $IPI_IRQ_VECT_ID_FREERTOS
 #else
 #define IPI_IRQ_VECT_ID         $IPI_IRQ_VECT_ID
-#endif /* FREERTOS_BSP */
+#endif
 #define POLL_BASE_ADDR          $POLL_BASE_ADDR
 #define IPI_CHN_BITMASK         $IPI_CHN_BITMASK
 

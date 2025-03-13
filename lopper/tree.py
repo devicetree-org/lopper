@@ -1666,18 +1666,6 @@ class LopperNode(object):
             # we do it this way, otherwise the property "ref" breaks
             super().__setattr__(name, value)
 
-            # if a label has been assigned, we need to clear any extra
-            # properties on the node that may have been picked up from
-            # another source (dtb, etc) that will cause the label to be
-            # re-created on print/write
-            if name == "label":
-                pattern = re.compile(r"lopper-label.*")
-                try:
-                    for l,v in self.__props__.items():
-                        if pattern.match(l):
-                            self.__props__[l].value = [ value ]
-                except:
-                    pass
             if name == "phandle":
                 # someone is assigning a phandle, the tree's pnodes need to
                 # be updated
@@ -2918,6 +2906,14 @@ class LopperNode(object):
                     self.__props__[p].resolve( strict )
                     self.__props__[p].__modified__ = False
 
+                # now delete the lopper-prop-* property, we'll just run with
+                # the node.label property during our tree processing routines.
+                for p in label_props:
+                    try:
+                        del self.__props__[p.name]
+                    except Exception as e:
+                        lopper.log._debug( f"{e}")
+
             # 3rd pass: did we have any added, but not sync'd properites. They need
             #           to be brought back into the main property dictionary.
             for p in saved_props:
@@ -3273,6 +3269,8 @@ class LopperTree:
         self._type = "dts"
         self.depth_first = depth_first
 
+        self._external_trees = []
+
         self.strict = True
         self.warnings = []
         self.warnings_issued = {}
@@ -3581,6 +3579,24 @@ class LopperTree:
 
 
 
+    def overlay_of( self, parent_tree ):
+        # we are becoming an overlay_of the passed tree
+        self._type = "dts_overlay"
+
+        # remove all phandle properties that might be printed
+        phandles_to_delete = []
+        for n in self:
+            for p in n:
+                if p.name == "phandle":
+                    phandles_to_delete.append( n )
+
+        for n in phandles_to_delete:
+            del n.__props__['phandle']
+
+        # store the parent tree, this is used for resolving
+        # lables and phandles before printing
+        self._external_trees.append(parent_tree)
+
     def phandles( self ):
         """Utility function to get the active phandles in the tree
 
@@ -3782,11 +3798,17 @@ class LopperTree:
         else:
             # confirm if output is an iostream
             try:
-                if not output.writable():
+                if type( output ) == str:
+                    output = open( output, "w")
+                else:
+                    output = open( output.name, "w")
+
+                if not output:
                     lopper.log._warning( f"{output} is not writable" )
                     return
+
             except (UnicodeDecodeError, AttributeError) as e:
-                lopper.log._warning( f"{output} is not a writable" )
+                lopper.log._warning( f"{output} is not a writable {e}" )
                 return
 
         self["/"].print( output )
@@ -4324,17 +4346,25 @@ class LopperTree:
 
         """
         try:
-            tgn = self.pnode( phandle_or_label )
-            if tgn == None:
-                # if we couldn't find the target, maybe it is in
-                # as a string. So let's check that way.
-                tgn2 = self.nodes( phandle_or_label )
-                if not tgn2:
-                    tgn2 = self.lnodes( re.escape(phandle_or_label) )
+            tgn = None
+            trees_to_check = [ self ] + self._external_trees
+            for t in [ self ] + self._external_trees:
+                try:
+                    if tgn:
+                        break
+                    tgn = t.pnode( phandle_or_label )
+                    if tgn == None:
+                        # if we couldn't find the target, maybe it is in
+                        # as a string. So let's check that way.
+                        tgn2 = t.nodes( phandle_or_label )
+                        if not tgn2:
+                            tgn2 = t.lnodes( re.escape(phandle_or_label) )
 
-                if tgn2:
-                    tgn = tgn2[0]
-        except:
+                        if tgn2:
+                            tgn = tgn2[0]
+                except:
+                    pass
+        except Exception as e:
             tgn = None
 
         return tgn

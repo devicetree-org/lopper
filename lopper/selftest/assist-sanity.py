@@ -38,18 +38,91 @@ def is_compat( node, compat_string_to_test ):
         return assist_reference
     return ""
 
-def assist_reference( tgt_node, sdt, options ):
-    try:
-        verbose = options['verbose']
-    except:
-        verbose = 0
+def overlay_test( sdt ):
+    overlay_tree = LopperTree()
 
-    try:
-        sdt.tree.print()
-    except Exception as e:
-        print( "Error: %s" % e )
-        return 0
+    # move the amba_pl node to the overlay
+    amba_node = sdt.tree["/amba_pl"]
+    new_amba_node = amba_node()
+    sdt.tree = sdt.tree - amba_node
 
+    # rename the new node in the overlay
+    new_amba_node.name = "&amba"
+    new_amba_node.label = ""
+
+    new_amba_node.delete( "ranges" )
+    new_amba_node.delete( "compatible" )
+    new_amba_node.delete( "#address-cells" )
+    new_amba_node.delete( "#size-cells" )
+
+    # move the firmware_name property to the fpga mode, maybe
+    # this could be a .move() operation to avoid issues with
+    # node identity
+    firmware_name = new_amba_node["firmware-name"]
+    new_amba_node = new_amba_node - firmware_name
+    overlay_tree = overlay_tree + new_amba_node
+
+    fpga_node = LopperNode( name="&fpga" )
+    fpga_node = fpga_node + firmware_name
+
+    # move the fpga nodes to the overlay fpga node
+    fpga_PR0 = overlay_tree["/&amba/fpga-PR0"]
+    fpga_PR1 = overlay_tree["/&amba/fpga-PR1"]
+    overlay_tree = overlay_tree - fpga_PR0
+    overlay_tree = overlay_tree - fpga_PR1
+    fpga_node = fpga_node + fpga_PR0
+    fpga_node = fpga_node + fpga_PR1
+
+    ## Note: once you've assigned a node to the tree, it is copied
+    ## into a NEW node you can't keep manipulating the old one and
+    ## expect it to change in the tree when you print it
+    fpga_node.resolve()
+
+    overlay_tree + fpga_node
+
+    overlay_tree.overlay_of( sdt.tree )
+    overlay_tree.resolve()
+
+    pl_file = f"{sdt.outdir}/pl-gen.dtsi"
+    sdt_file = f"{sdt.outdir}/sdt.dts"
+
+    LopperSDT(None).write( overlay_tree, pl_file, True, True )
+    sdt.write( sdt.tree, sdt_file )
+
+    fpga_count = 0
+    ranges_count = 0
+    with open( pl_file ) as fp:
+        for line in fp:
+            if re.search( r"&fpga", line ):
+                fpga_count += 1
+            elif re.search( r"ranges;", line ):
+                ranges_count += 1
+    if fpga_count == 0:
+        print( "ERROR: fpga node is not in the overlay" )
+        os._exit(1)
+    else:
+        print( "PASSED: fpga node is in the overlay")
+    if ranges_count == 2:
+        print( "PASSED: ranges was removed from the overlay" )
+    else:
+        print( "FAILED: ranges was not removed from the overlay" )
+        os._exit(1)
+
+    amba_count = 0
+    with open( sdt_file ) as fp:
+        for line in fp:
+            if re.search( r"amba_pl", line ):
+                amba_count += 1
+    if amba_count == 0:
+        print( "PASSED: amba_pl was removed from the SDT" )
+    else:
+        print( "FAILED: amba_pl was removed from the SDT" )
+        os._exit(1)
+
+
+    return True
+
+def domains_access_test( sdt ):
     # test 1: rename a node
     domains = sdt.tree['/domains']
     domains.name = "domains.renamed"
@@ -210,4 +283,27 @@ def assist_reference( tgt_node, sdt, options ):
         print( "ERROR: amba node was not remmoved from the SDT" )
         os._exit(1)
 
-    return 1
+    return True
+
+def assist_reference( tgt_node, sdt, options ):
+    try:
+        verbose = options['verbose']
+    except:
+        verbose = 0
+
+    # try:
+    #     sdt.tree.print()
+    # except Exception as e:
+    #     print( "Error: %s" % e )
+    #     return 0
+
+    print ( f"[INFO]: starting assist_reference run {options}" )
+    try:
+        args = options['args']
+        if "overlay_test" in args:
+            overlay_test( sdt )
+            return True
+        else:
+            domains_access_test( sdt )
+    except:
+        pass

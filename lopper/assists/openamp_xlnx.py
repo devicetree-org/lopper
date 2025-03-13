@@ -1274,7 +1274,7 @@ def platform_validate(platform):
     return True
 
 def xlnx_remoteproc_v2_get_tcm_nodes(elfload_nodes):
-    core_compat_substr = [ "tcm-1.0", "tcm-global-11.0" ]
+    core_compat_substr = [ "tcm-1.0", "tcm-global-11.0", "xlnx,tcm" ]
     absolute_addr_tcm_substr = [ "tcm-global-1.0", "tcm-lockstep-1.0", "tcm-global-11.0" ]
 
     # find TCM nodes

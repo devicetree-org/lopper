@@ -74,7 +74,7 @@ class LopperSDT:
       - lops (list): list of loaded lopper operations
       - verbose (int): the verbosity level of operations
       - tree (LopperTree): node/property representation of the system device tree
-      - dry_run (bool): whether or not changes should be written to disk
+      - dryrun (bool): whether or not changes should be written to disk
       - output_file (string): default output file for writing
 
     """
@@ -84,7 +84,7 @@ class LopperSDT:
         self.lops = []
         self.lops_optional = []
         self.verbose = 0
-        self.dry_run = False
+        self.dryrun = False
         self.assists = []
         self.output_file = ""
         self.cleanup_flag = True
@@ -138,6 +138,10 @@ class LopperSDT:
         self.use_libfdt = libfdt
 
         current_dir = os.getcwd()
+
+        self.lops = []
+        self.input_files = []
+        self.assists = []
 
         lop_files = []
         sdt_files = []
@@ -590,19 +594,19 @@ class LopperSDT:
                 lopper.log._error( f"output file {output_filename} exists and force overwrite is not enabled" )
                 sys.exit(1)
 
-            printer = LopperTreePrinter( True, output_filename, self.verbose )
-            printer.strict = not self.permissive
             try:
                 if self.config['dts']['tabs']:
-                    printer.indent_char = '\t'
+                    # printer.indent_char = '\t'
+                    tree_to_write.indent_char = '\t'
                 else:
-                    printer.indent_char = ' '
+                    # printer.indent_char = ' '
+                    tree_to_write.indent_char = ' '
             except:
                 pass
 
-            printer._type = tree_to_write._type
-            printer.load( tree_to_write.export() )
-            printer.exec()
+            tree_to_write.strict = not self.permissive
+            tree_to_write.resolve()
+            tree_to_write.print( output_filename )
 
         elif re.search( r"\.yaml$", output_filename ):
             if self.outdir and not Path( output_filename ).is_absolute():
