@@ -26,6 +26,8 @@ import lopper_lib
 from itertools import chain
 from lopper_lib import chunks
 import copy
+from lopper.log import _init, _warning, _info, _error, _debug
+import logging
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "access-domain,domain-v1", compat_string_to_test):
@@ -157,6 +159,9 @@ def core_domain_access( tgt_node, sdt, options ):
     except:
         args = []
 
+    lopper.log._init( __name__ )
+    lopper.log._init( "domain_access.py" )
+
     # --permissive means that non-SMID devices/memory will be consulted
     opts,args2 = getopt.getopt( args, "vt:p", [ "verbose", "target=", "permissive" ] )
 
@@ -172,6 +177,11 @@ def core_domain_access( tgt_node, sdt, options ):
         elif o in ('-h', "--help"):
             # usage()
             sys.exit(1)
+
+    if verbose:
+        lopper.log._level( logging.INFO, __name__ )
+    if verbose > 1:
+        lopper.log._level( logging.DEBUG, __name__ )
 
     # "/" indicates we were run from the command line as an autorun, not
     # triggered from a lop file associated to a node
@@ -192,8 +202,7 @@ def core_domain_access( tgt_node, sdt, options ):
                 #       processing, pass it by absolute path.
                 tgt_node = sdt.tree[sdt.target_domain]
             except Exception as e:
-                print( f"[ERROR]: target domain {sdt.target_domain} cannot be found" )
-                sys.exit(1)
+                _error( f"domain_access: target domain {sdt.target_domain} cannot be found", True )
         else:
             try:
                 if command_line_target:
@@ -211,8 +220,7 @@ def core_domain_access( tgt_node, sdt, options ):
     sdt.tree.ref = 0
     domain_node = sdt.tree[tgt_node]
 
-    if verbose:
-        print( f"[INFO]: cb: core_domain_access( {domain_node}, {sdt}, {verbose} )")
+    _info( f"cb: core_domain_access( {domain_node}, {sdt}, {verbose} )")
 
     direct_node_refs = []
 
@@ -221,8 +229,7 @@ def core_domain_access( tgt_node, sdt, options ):
     for anode in a_nodes:
         # add a refcount to the node and it's parents
         sdt.tree.ref_all( anode, True )
-        if verbose:
-            print( f"[INFO]: adding reference to: {anode}" )
+        _info( f"domain_access: adding reference to: {anode}" )
         direct_node_refs.append( anode )
 
     # 1a) indirect references. Any phandles referenced the direct
@@ -239,8 +246,7 @@ def core_domain_access( tgt_node, sdt, options ):
                 indirect_refs.append( r )
 
     for d in indirect_refs:
-        if verbose:
-            print( f"[INFO]: adding indirect reference to: {d}" )
+        _info( f"domain_access: adding indirect reference to: {d}" )
         # ref_all will also reference count subnodes, we
         # don't want that, so we go directly are the refcount
         # field
@@ -266,8 +272,7 @@ def core_domain_access( tgt_node, sdt, options ):
     try:
         cpu_prop = domain_node['cpus']
     except:
-        if verbose:
-            print( "[WARNING]: core_domain: domain node does not have a cpu link" )
+        _warning( "domain_access: core_domain: domain node does not have a cpu link" )
         cpu_prop = None
 
     if cpu_prop:
@@ -292,19 +297,17 @@ def core_domain_access( tgt_node, sdt, options ):
                      return False
                    """
 
-            if verbose:
-                print( f"[INFO]: core_domain_access: filtering on:\n------{code}\n-------\n" )
+            _info( f"domain_access: core_domain_access: filtering on:\n------{code}\n-------\n" )
 
             # the action will be taken if the code block returns 'true'
             # Lopper.node_filter( sdt, xform_path, LopperAction.DELETE, code, verbose )
             sdt.tree.filter( xform_path, LopperAction.DELETE, code, None, verbose )
             for s in unrefd_cpus:
                 try:
-                    if verbose:
-                        print( f"[INFO]: core_domain_access: deleting unreferenced subcpu: {s.abs_path}" )
+                    _info( f"domain_access: core_domain_access: deleting unreferenced subcpu: {s.abs_path}" )
                     sdt.tree.delete( s )
                 except Exception as e:
-                    print( f"[WARNING]: {e}" )
+                    _warning( f"{e}" )
 
     # 4) directly accessed nodes. Check their type. If they are busses,
     #    we have some seecondary processing to do.
@@ -315,15 +318,13 @@ def core_domain_access( tgt_node, sdt, options ):
         if simple_bus:
             for i,s in enumerate(simple_bus):
                 if not s in nodes_to_filter:
-                    if verbose > 1:
-                        print( f"[INFO]: core_domain_access: simple bus processing for: {anode.name}" )
+                    _info( f"core_domain_access: simple bus processing for: {anode.name}" )
 
                     nodes_to_filter.append( s )
 
         reserved_memory = "reserved-memory" in chain(*node_types)
         if reserved_memory:
-            if verbose > 1:
-                print( f"[INFO]: core_domain_access: reserved memory processing for: {anode.name}" )
+            _info( f"core_domain_access: reserved memory processing for: {anode.name}" )
             nodes_to_filter.append( anode.parent )
 
     # 5) filter nodes that don't have refcounts
@@ -344,8 +345,7 @@ def core_domain_access( tgt_node, sdt, options ):
                return False
            """
 
-    if verbose:
-        print( f"[INFO]: core_domain_access: filtering on:\n------{code}\n-------\n" )
+    _info( f"core_domain_access: filtering on:\n------{code}\n-------\n" )
 
     sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
 
@@ -365,8 +365,7 @@ def core_domain_access( tgt_node, sdt, options ):
                else:
                    return False
                """
-        if verbose:
-            print( f"[INFO]: core_domain_access ({n}): filtering on:\n------{code}\n-------\n" )
+        _info( f"core_domain_access ({n}): filtering on:\n------{code}\n-------\n" )
 
         sdt.tree.filter( n + "/", LopperAction.DELETE, code, None, verbose )
 
@@ -382,8 +381,7 @@ def core_domain_access( tgt_node, sdt, options ):
     # This may be moved to the top of the domain process and then when
     # we are processing cpus and bus nodes, we can apply the memory to
     # ranges <>, etc, and modify them accordingly.
-    if verbose:
-        print( f"[INFO]: core_domain_access: domain memory values: {memory_hex}" )
+    _info( f"core_domain_access: domain memory values: {memory_hex}" )
 
     # Get all top level memory nodes, we'll be checking them for any
     # required size adjustments
@@ -410,15 +408,15 @@ def core_domain_access( tgt_node, sdt, options ):
                                                          "sc" : mem_node.parent['#size-cells'][0],
                                                         }
     except Exception as e:
-        print( f"[ERROR]: cannot collect memory nodes: {e}" )
+        _error( f"domain_access: cannot collect memory nodes: {e}" )
 
     modified_memory_nodes = []
     for domain_memory_entry in domain_memory_chunks:
         domain_memory_start_addr = domain_memory_entry[0]
         domain_memory_size = domain_memory_entry[1]
-        if verbose:
-            print("[INFO]: processing domain memory entry: start: %s, size: %s" %
-                                    (hex(domain_memory_start_addr),hex(domain_memory_size) ) )
+
+        _info("domain_access: processing domain memory entry: start: %s, size: %s" %
+              (hex(domain_memory_start_addr),hex(domain_memory_size) ) )
 
         for item in memory_node_collector.values():
 
@@ -443,21 +441,19 @@ def core_domain_access( tgt_node, sdt, options ):
                 # mem_reg_val_new.extend( cells )
 
                 size_value, size_cells  = lopper_lib.cell_value_get( sdt_memory_entry, sc, ac )
-                if verbose:
-                    print( "[INFO]:   node: %s memory entry: address: %s size: %s" %
-                           (mem_node,hex(start_address_value),hex(size_value) ))
+                _info( "domain_access:   node: %s memory entry: address: %s size: %s" %
+                       (mem_node,hex(start_address_value),hex(size_value) ))
 
                 if domain_memory_start_addr >= start_address_value and \
                       domain_memory_start_addr + domain_memory_size <= start_address_value + size_value:
 
                     mem_matched_val_flag = True
-                    if verbose:
-                        print( "[INFO]:     %s/%s falls inside memory range %s/%s" %
-                               (hex(domain_memory_start_addr),hex(domain_memory_size), hex(start_address_value), hex(size_value)) )
+                    _info( "domain_access:     %s/%s falls inside memory range %s/%s" %
+                           (hex(domain_memory_start_addr),hex(domain_memory_size),
+                            hex(start_address_value), hex(size_value)) )
 
                     if domain_memory_start_addr != start_address_value:
-                        if verbose:
-                            print(f"[INFO]:      start value differs: {hex(domain_memory_start_addr)} vs {hex(start_address_value)}")
+                        _info( f"domain_access:      start value differs: {hex(domain_memory_start_addr)} vs {hex(start_address_value)}")
 
                         mem_reg_val_new.extend( lopper_lib.cell_value_split( domain_memory_start_addr, ac ) )
                         mem_changed_flag = True
@@ -466,8 +462,7 @@ def core_domain_access( tgt_node, sdt, options ):
 
                     # Now to check the size ...
                     if domain_memory_size != size_value:
-                        if verbose:
-                            print(f"[INFO]:      size value differs: {hex(domain_memory_size)} vs {hex(size_value)}")
+                        _info(f"domain_access:      size value differs: {hex(domain_memory_size)} vs {hex(size_value)}")
 
                         mem_reg_val_new.extend( lopper_lib.cell_value_split( domain_memory_size, sc ) )
                         mem_changed_flag = True
@@ -486,15 +481,13 @@ def core_domain_access( tgt_node, sdt, options ):
                     # mem_reg_val_new.extend( size_cells )
 
             if mem_changed_flag:
-                if verbose:
-                    print( "[INFO]:      *** changed value(s) detected, extending memory node with: %s" % [hex(i) for i in mem_reg_val_new])
+                _info( "domain_access:      *** changed value(s) detected, extending memory node with: %s" % [hex(i) for i in mem_reg_val_new])
                 item["reg_val"].extend( mem_reg_val_new )
                 # refcount it
                 sdt.tree.ref_all( item["node"], True )
 
             if mem_matched_val_flag and not mem_changed_flag:
-                if verbose:
-                    print( "[INFO]:      *** matched memory value(S) detected, extending memory node with: %s" % [hex(i) for i in mem_reg_val_new])
+                _info( "domain_access:      *** matched memory value(S) detected, extending memory node with: %s" % [hex(i) for i in mem_reg_val_new])
                 item["reg_val"].extend( mem_reg_val_new )
                 # refcount it
                 sdt.tree.ref_all( item["node"], True )
@@ -512,8 +505,8 @@ def core_domain_access( tgt_node, sdt, options ):
         mn_entry["node"]["reg"].value = mn_entry["reg_val"]
 
         mn = mn_entry["node"]
-        if verbose:
-            print( f"[INFO]: processing modified memory node: {mn} (phandle: {mn.phandle})")
+
+        _info( f"domain_access: processing modified memory node: {mn} (phandle: {mn.phandle})")
 
         # get all references to the modified memory node, we'll see
         # if they need to be removed and re-added based on what we
@@ -541,15 +534,12 @@ def core_domain_access( tgt_node, sdt, options ):
                 # clobber the looked up value for testing purposes, since the SDT seems to
                 # not be using this correctly
                 root_node_acells = acells
-                if verbose:
-                    print( "[INFO]:    cpu: %s addr cells: %s size cells: %s root address cells: %s" %
-                           (cpu_node,acells,scells,root_node_acells))
+                _info( "domain_access:    cpu: %s addr cells: %s size cells: %s root address cells: %s" %
+                       (cpu_node,acells,scells,root_node_acells))
             except Exception as e:
-                print( f"[ERROR]: could not determine cell sizes for address-map fixup: {e}" )
-                sys.exit(1)
+                _error( f"domain_access: could not determine cell sizes for address-map fixup: {e}", True )
 
-            if verbose:
-                print( f"[INFO]:      updating address-map for node: {cpu_node}" )
+            _info( f"domain_access:      updating address-map for node: {cpu_node}" )
 
             phandle_idx = acells
             # The address map entry is "adddress cells" + phandle + "root node address size" + "size cells"
@@ -565,12 +555,10 @@ def core_domain_access( tgt_node, sdt, options ):
             for achunk in address_map_chunks:
                 if achunk[phandle_idx] == mn.phandle:
                     if mn.phandle in skip_handles:
-                        if verbose:
-                            print( f"[INFO]: address-map for phandle {mn.phandle} has been updated, skipping existing entry" )
+                        _info( f"domain_access: address-map for phandle {mn.phandle} has been updated, skipping existing entry" )
                         continue
 
-                    if verbose:
-                        print( f"[INFO]:      matching phandle ({mn.phandle}) found in the address-map" )
+                    _info( f"domain_access:      matching phandle ({mn.phandle}) found in the address-map" )
 
                     # Add the new values, we'll delete all existing ones after (by skipping them)
 
@@ -615,8 +603,7 @@ def core_domain_access( tgt_node, sdt, options ):
                return False
            """
 
-    if verbose:
-        print( f"[INFO]: core_domain_access: deleting unreferenced memory:\n------{code}\n-------\n" )
+    _info( f"domain_access: core_domain_access: deleting unreferenced memory:\n------{code}\n-------\n" )
 
     sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
 
