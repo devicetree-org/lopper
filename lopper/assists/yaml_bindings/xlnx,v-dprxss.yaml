@@ -183,6 +183,9 @@ required:
   - xlnx,vidphy
   - xlnx,dp-retimer
   - xlnx,hdcp1x_keymgmt
+  - xlnx,audio-enable
+  - xlnx,hdcp-enable
+  - xlnx,hdcp22-enable
   - xlnx,xilinx-vfmc
   - xlnx,mode
   - phys
