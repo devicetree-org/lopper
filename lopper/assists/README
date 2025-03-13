@@ -1,1 +1,40 @@
-reference lopper assist modules
+# xlnx_overlay_dt.py - Device Tree Overlay Assist
+
+xlnx_overlay_dt.py is a Lopper assist script that generates an overlay device tree source
+file from a system device tree. It enables dynamic reconfiguration of FPGAs using overlays.
+
+## Usage
+lopper.py <system_device_tree> -- xlnx_overlay_dt <machine_name> <configuration>
+
+## Arguments
+|-----------------------------------------------------------------------------|
+| Argument               | Description                                        |
+| ----------------------------------------------------------------------------|
+| <system_device_tree>   | Path to the system device tree (DTS) file.         |
+|-----------------------------------------------------------------------------|
+| <machine_name>         | Target machine type.                               |
+|                        | Supported values:                                  |
+|                        | - cortexa9-zynq (Zynq-7000 SoC)                    |
+|                        | - cortexa53-zynqmp (Zynq UltraScale+ MPSoC)        |
+|                        | - cortexa72-versal` (Versal Adaptive SoC)          |
+|                        | - cortexa78_0 (Next-gen Versal architecture)       |
+|-----------------------------------------------------------------------------|
+| <configuration>        | FPGA configuration mode.                           |
+|                        | Supported values:                                  |
+|                        | - full: Complete or segmented system configuration.|
+|                        | - dfx: Dynamic Function eXchange (DFX) mode for    |
+|                        |        partial reconfiguration.                    |
+|                        | - external-fpga-config: Configuration using an     |
+|                        |                         external FPGA manager.     |
+|-----------------------------------------------------------------------------|
+
+## Example Commands
+
+### 1. Generate an overlay for a Zynq UltraScale+ system using full configuration:
+lopper.py system-top.dts -- xlnx_overlay_dt cortexa53-zynqmp full
+
+### 2. Enable DFX mode for a Versal system:
+lopper.py system.dts -- xlnx_overlay_dt cortexa72-versal dfx
+
+### 3. Use external FPGA configuration on Zynq-7000:
+lopper.py system.dts -- xlnx_overlay_dt cortexa9-zynq external-fpga-config
