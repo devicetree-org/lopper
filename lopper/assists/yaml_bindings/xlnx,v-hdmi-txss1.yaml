@@ -151,6 +151,9 @@ required:
   - phy-names
   - xlnx,input-pixels-per-clock
   - xlnx,max-bits-per-component
+  - xlnx,include-hdcp
+  - xlnx,include-hdcp-1-4
+  - xlnx,include-hdcp-2-2
   - xlnx,hdcp1x-keymgmt
   - xlnx,vid-interface
   - xlnx,snd-pcm
