@@ -19,8 +19,7 @@ from lopper import LopperSDT
 
 from lopper.log import _warning, _info, _error, _debug
 import logging
-
-lopper_directory = os.path.dirname(os.path.realpath(__file__))
+from lopper import lopper_directory
 
 global device_tree
 device_tree = None
