@@ -463,17 +463,6 @@ def get_ddr_address(sdt,tgt_node,mem_ranges,match_cpunode,cpu_ip_name,memtest_co
     if has_ddr and not memtest_config and not "microblaze" in cpu_ip_name:
         default_ddr = min(has_ddr, key=lambda k: has_ddr[k])
 
-    if "microblaze_riscv" in cpu_ip_name:
-        if match_cpunode.propval('xlnx,base-vectors') != ['']:
-            if len(match_cpunode.propval('xlnx,base-vectors')) > 1:
-                mbv_reset_addr = match_cpunode.propval('xlnx,base-vectors')[0] << 32 | match_cpunode.propval('xlnx,base-vectors')[1]
-            else:
-                mbv_reset_addr = match_cpunode.propval('xlnx,base-vectors')[0]
-        for key, value in mem_ranges.items():
-            end = value[0] + value[1]
-            if mbv_reset_addr == value[0]:
-                default_ddr = key
-                break
     mb_reset_addr = None
     if "microblaze" in cpu_ip_name:
         if match_cpunode.propval('xlnx,base-vectors') != ['']:
