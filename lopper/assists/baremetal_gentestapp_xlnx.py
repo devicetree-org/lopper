@@ -1,6 +1,6 @@
 #/*
 # * Copyright (c) 2021 Xilinx Inc. All rights reserved.
-# * Copyright (C) 2024 Advanced Micro Devices, Inc.  All rights reserved.
+# * Copyright (C) 2024 - 2025 Advanced Micro Devices, Inc.  All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
@@ -72,7 +72,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                     stdin_node = node
     match_cpunode = get_cpu_node(sdt, options)
     proc_ip_name = match_cpunode['xlnx,ip-name'].value
-    if proc_ip_name[0] in ["psu_cortexr5", "psv_cortexr5", "psx_cortexr52"] and ttc_node_list:
+    if proc_ip_name[0] in ["psu_cortexr5", "psv_cortexr5", "psx_cortexr52", "cortexr52"] and ttc_node_list:
         node_list.remove(ttc_node_list[-1])
         compatible_dict.pop(ttc_node_list[-1])
 
