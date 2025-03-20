@@ -1,0 +1,44 @@
+/*
+ * Copyright (C) 2025 Advanced Micro Devices, Inc. All Rights Reserved.
+ *
+ * Author:
+ *     Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+    compatible = "system-device-tree-v1";
+    lops {
+	    lop_1: lop_1 {
+                  compatible = "system-device-tree-v1,lop,select-v1";
+                  // clear any old selections
+                  select_1;
+                  select_2 = "/.*:compatible:.*arm,gic-v3*";
+                  select_3 = "/.*:compatible:.*arm,gic-400*";
+            };
+            lop_1_1: lop_1_1 {
+                  compatible = "system-device-tree-v1,lop,code-v1";
+                  // In the EL1 Non-Secure use case running on top of Xen,
+                  // a two-level translation table is used, and the GIC
+                  // address is expected to be hardcoded according to Xen
+                  // mappings. Update the reg property accordingly.
+                  code = "
+                          import os
+                          assist_dir = os.path.dirname(os.path.realpath(__file__)) + '/assists/'
+                          sys.path.append(assist_dir)
+                          from domain_access import update_mem_node
+                          if __selected__:
+                              for s in tree.__selected__:
+                                  modify_prop = [0x03001000, 0x1000, 0x03002000, 0x1000]
+                                  modify_val = update_mem_node(s, modify_prop)
+                                  s['reg'].value =  modify_val
+
+                          tree.sync()
+                          return True
+                      ";
+            };
+    };
+};
