@@ -607,6 +607,20 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                     defconfig_kconfig.write("\nconfig SYS_CLOCK_HW_CYCLES_PER_SEC\n")
                     defconfig_kconfig.write("  default $(dt_node_int_prop_int,/cpus/cpu@0,clock-frequency)")
 
+                    val = node.propval('xlnx,pmp-entries', list)[0]
+                    if val % 8 == 0:
+                        soc_kconfig = open(soc_kconfig_file, 'a')
+                        soc_kconfig.write("  select RISCV_PMP\n")
+                        soc_kconfig.close()
+
+                        defconfig_kconfig.write("\nconfig PMP_SLOTS\n")
+                        defconfig_kconfig.write("  default %s\n" % str(val))
+
+                        val = node.propval('xlnx,pmp-granularity', list)[0]
+                        defconfig_kconfig.write("\nconfig PMP_GRANULARITY\n")
+                        val = pow(val + 2, 2)
+                        defconfig_kconfig.write("  default %s\n" % str(val))
+
                     defconfig_kconfig.close()
 
 
