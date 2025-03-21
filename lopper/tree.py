@@ -1579,7 +1579,7 @@ class LopperNode(object):
         #       the copied children, to point at the new parent node
 
         new_instance.child_nodes = OrderedDict()
-        for c in reversed(self.child_nodes.values()):
+        for c in self.child_nodes.values():
             new_instance.child_nodes[c.abs_path] = copy.deepcopy( c, memodict )
             new_instance.child_nodes[c.abs_path].number = -1
             new_instance.child_nodes[c.abs_path].parent = new_instance

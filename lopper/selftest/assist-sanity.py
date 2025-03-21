@@ -43,6 +43,12 @@ def overlay_test( sdt ):
 
     # move the amba_pl node to the overlay
     amba_node = sdt.tree["/amba_pl"]
+
+    # take the defaults, we'll be extending this to a new property in this
+    # assist
+    Lopper.phandle_possible_prop_dict = Lopper.phandle_possible_properties()
+    Lopper.phandle_possible_prop_dict["remote_endpoint"] = [ "phandle" ]
+
     new_amba_node = amba_node()
     sdt.tree = sdt.tree - amba_node
 
@@ -317,5 +323,6 @@ def assist_reference( tgt_node, sdt, options ):
             return True
         else:
             domains_access_test( sdt )
+            return True
     except:
         pass

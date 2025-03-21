@@ -2039,6 +2039,7 @@
 			compatible = "xlnx,afi-fpga";
 			resets = <&zynqmp_reset 116>, <&zynqmp_reset 117>, <&zynqmp_reset 118>, <&zynqmp_reset 119>;
 			config-afi = < 0 0>, <1 0>, <2 0>, <3 0>, <4 0>, <5 0>, <6 0>, <7 0>, <8 0>, <9 0>, <10 0>, <11 0>, <12 0>, <13 0>, <14 0xa00>, <15 0x000>;
+                        remote_endpoint = <&zynqmp_reset>;
 		};
 		static_region_dfx_axi_shutdown_man_0: dfx_axi_shutdown_manager@80000000 {
 			compatible = "xlnx,dfx-axi-shutdown-manager-1.0" , "xlnx,dfx-axi-shutdown-manager";
