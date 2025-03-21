@@ -237,13 +237,24 @@ def scan_ranges_size(range_value, ns):
 
     return addr, size
 
-def get_clock_prop(sdt, value):
+def get_clock_offset(node):
+    tclk_offset = 1
+    if node.propval("clock-names") != ['']:
+        clock_names = node["clock-names"].value
+        try:
+            tclk_offset = clock_names.index("tx_clk") + 1
+        except ValueError:
+                tclk_offset = 1
+
+    return tclk_offset
+
+def get_clock_prop(sdt, value, offset):
     """
     Baremetal clock format:
         bits[0] clock parent(controller) type(0: ZynqMP clock controller)
         bits[31:1] clock value
     """
-    return value[1]
+    return value[offset]
 
 def get_pci_ranges(node, value, pad):
     """
@@ -470,7 +481,10 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
         plat.buf('\n\t\t%s' % hex(intr_parent))
         drvprop_list.append(hex(intr_parent))
     elif prop == "clocks":
-        clkprop_val = get_clock_prop(sdt, node[prop].value)
+
+        tclk_offset = get_clock_offset(node)
+
+        clkprop_val = get_clock_prop(sdt, node[prop].value, tclk_offset)
         plat.buf('\n\t\t%s' % hex(clkprop_val))
         drvprop_list.append(hex(clkprop_val))
     elif prop == "mdioproducer-baseaddr":

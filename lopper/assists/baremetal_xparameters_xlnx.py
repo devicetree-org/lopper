@@ -255,7 +255,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         except KeyError:
                             pass
                     elif prop == "clocks":
-                        clkprop_val = bm_config.get_clock_prop(sdt, node[prop].value)
+                        tclk_offset = bm_config.get_clock_offset(node)
+                        clkprop_val = bm_config.get_clock_prop(sdt, node[prop].value, tclk_offset)
                         plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {hex(clkprop_val)}')
                         canondef_dict.update({prop:hex(clkprop_val)})
                     elif prop == "child,required":
