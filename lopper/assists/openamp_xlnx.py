@@ -843,7 +843,12 @@ def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
         remote_vect_id = vect_id_map[remote_ipi_addr]
 
         host_bitmask = hex(1 << host_ipi_id)
+
+        ipi_irq_vect_id = hex(remote_vect_id)
+        ipi_irq_vect_id_rtos = hex(remote_vect_id-32)
+
         if platform == SOC_TYPE.ZYNQMP:
+            ipi_irq_vect_id_rtos = ipi_irq_vect_id
             host_bitmask = None
             for n in tree["/"].subnodes():
                 xlnx_ipi_id_pval = n.propval("xlnx,ipi-id")
@@ -860,8 +865,8 @@ def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
         "SHM_DEV_NAME": "\"" + hex(elfload_base)[2:] + '.shm\"',
         "DEV_BUS_NAME": "\"generic\"",
         "IPI_DEV_NAME":  "\"" + remote_ipi_str[2:] + '.ipi\"',
-        "IPI_IRQ_VECT_ID": hex(remote_vect_id),
-        "IPI_IRQ_VECT_ID_FREERTOS": hex(remote_vect_id - 32),
+        "IPI_IRQ_VECT_ID": ipi_irq_vect_id,
+        "IPI_IRQ_VECT_ID_FREERTOS": ipi_irq_vect_id_rtos,
         "IPI_CHN_BITMASK": host_bitmask,
         "RING_TX": hex(tree.pnode(mem_reg_val[2]).propval("reg")[1]),
         "RING_RX": hex(tree.pnode(mem_reg_val[3]).propval("reg")[1]),
