@@ -88,7 +88,11 @@ def overlay_test( sdt ):
 
     overlay_tree.overlay_of( sdt.tree )
 
-    overlay_tree['/'].reorder_child( "/&amba", "/&fpga", after=True )
+    try:
+        overlay_tree['/'].reorder_child( "/&amba", "/&fpga", after=True, debug=True )
+    except Exception as e:
+        print ( f"ERROR: reordering nodes: {e}")
+        os._exit(1)
 
     overlay_tree.resolve()
 
