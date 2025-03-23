@@ -970,7 +970,7 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
                 soc_ipi_map[nobuf_ipi_key] = nobuf_ipi
 
         IPI_IRQ_VECT_ID = remote_ipi_irq_vect_id if role == 'remote' else host_ipi_irq_vect_id
-        IPI_IRQ_VECT_ID_FREERTOS = hex(int(IPI_IRQ_VECT_ID,16) - 32)
+        IPI_IRQ_VECT_ID_FREERTOS = IPI_IRQ_VECT_ID if platform == SOC_TYPE.ZYNQMP else hex(int(IPI_IRQ_VECT_ID,16) - 32)
 
         POLL_BASE_ADDR = remote_ipi_base if role == 'remote' else host_ipi_base
         # flip this as we are kicking other side with the bitmask value
