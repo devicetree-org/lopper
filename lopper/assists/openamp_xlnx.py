@@ -1915,7 +1915,8 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
                 if ret == False:
                     return ret
 
-    opts,args2 = getopt.getopt( args, "", [ "openamp_role=" ] )
+    opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_no_header", "openamp_role=", "openamp_host=", "openamp_remote=", "openamp_output_filename=" ] )
+
     if opts == [] and args2 == []:
         print('ERROR: No arguments passed for OpenAMP Module. Erroring out now.')
         return False
@@ -1927,9 +1928,6 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
         for o,a in opts:
             if o in ('-l', "--openamp_role"):
                 role = a
-            else:
-                print("Argument: ",o, " is not recognized. Erroring out.")
-                return False
 
     if role == 'host':
         for node in tree["/"].subnodes():
