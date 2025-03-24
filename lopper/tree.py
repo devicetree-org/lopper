@@ -2679,6 +2679,8 @@ class LopperNode(object):
             if self.tree:
                 self.tree.add( node )
 
+            self.resolve()
+
             lopper.log._debug( f"node {self.abs_path} added Node: {node.name}" )
 
         return self
