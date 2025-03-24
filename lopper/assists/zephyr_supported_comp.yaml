@@ -175,3 +175,10 @@ xlnx,ocm-ram-11.0:
     - compatible
     - device_type
     - reg
+
+xlnx,versal-wwdt:
+  required:
+    - compatible
+    - reg
+    - timeout-sec
+    - clocks
