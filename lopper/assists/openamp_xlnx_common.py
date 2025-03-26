@@ -267,7 +267,7 @@ def resolve_host_remote( tree, subnode, verbose = 0 ):
             for p in prop_val:
                 # find each host/remote matching domain node in tree
                 for n in tree["/domains"].subnodes():
-                    if p in n.name:
+                    if p in n.name or p in n.label:
                         # give matching node phandle if needed
                         if n.phandle == 0:
                             n.phandle_or_create()
