@@ -1168,7 +1168,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
             valid_core_inputs.append(j)
     valid_core_inputs = set(valid_core_inputs)
 
-    if arg_host not in valid_core_inputs or arg_remote not in arg_remote:
+    if (arg_host not in valid_core_inputs or arg_remote not in arg_remote) and no_header == False:
         print('ERROR: OpenAMP Host or Remote value is not proper. Valid inputs are:', valid_core_inputs)
         return False
 
@@ -1176,7 +1176,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
     for i in channel_ids:
         if arg_remote in i and arg_host in i:
             chan_id = i
-    if chan_id == None:
+    if chan_id == None and role == 'remote' and no_header == False:
         print("Unable to find channel with pair", arg_host, arg_remote)
         return False
 
