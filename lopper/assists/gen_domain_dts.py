@@ -461,7 +461,6 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                                 new_node['compatible'] = "xlnx,xps-gpio-1.00.a-gpio2"
                                 new_node.name = "gpio2"
                                 new_prop = LopperProp( "gpio-controller" )
-                                new_prop.value = ""
                                 new_node + new_prop
                                 new_node['#gpio-cells'] = 2
                                 new_node.label_set(node.label)
@@ -616,7 +615,6 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                                     new_node['compatible'] = "xlnx,xps-gpio-1.00.a-gpio2"
                                     new_node.name = "gpio2"
                                     new_prop = LopperProp( "gpio-controller" )
-                                    new_prop.value = ""
                                     new_node + new_prop
                                     new_node['#gpio-cells'] = 2
                                     new_node.label_set(node.label)
