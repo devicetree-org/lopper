@@ -155,6 +155,12 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 # It needs to be disabled only for ZynqMP
                 if "okay" in node.propval('status', list)[0]:
                     node.propval('status', list)[0] = "disabled"
+            if linux_dt and node.name == "pcie@fd0e0000":
+		# It needs to be disabled when pcie-mode is EndPoint
+                mode = node.propval('xlnx,pcie-mode')
+                if mode == ['Endpoint , Device']:
+                    if "okay" in node.propval('status', list)[0]:
+                        node.propval('status', list)[0] = "disabled"
             if "okay" in node.propval('status', list)[0]:
                 node_list.append(node)
         if node.propval('device_type') != ['']:
