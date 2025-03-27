@@ -106,6 +106,19 @@ xlnx,axi-iic-2.1:
     - '#address-cells'
     - '#size-cells'
 
+cdns,i2c-r1p14:
+  required:
+    - compatible
+    - status
+    - reg
+    - interrupts
+    - interrupt-parent
+    - clocks
+    - clock-frequency
+    - fifo-depth
+    - '#address-cells'
+    - '#size-cells'
+
 xlnx,xps-gpio-1.00.a:
   required:
     - compatible

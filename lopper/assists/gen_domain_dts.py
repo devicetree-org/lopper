@@ -451,6 +451,25 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                         if node.propval('#size-cells') != ['0']:
                             node["#size-cells"] = LopperProp("#size-cells")
                             node["#size-cells"].value = 0
+                    # PS-IIC
+                    if "cdns,i2c-r1p14" in node["compatible"].value:
+                        node["compatible"].value = ["cdns,i2c"]
+                        if node.propval('clock-frequency') == ['']:
+                            node["clock-frequency"] = LopperProp("clock-frequency")
+                            node["clock-frequency"].value = 100000
+                            node.add(node["clock-frequency"])
+                        if node.propval('fifo-depth') == ['']:
+                            node["fifo-depth"] = LopperProp("fifo-depth")
+                            node["fifo-depth"].value = 16
+                            node.add(node["fifo-depth"])
+                        if node.propval('#address-cells') != [1]:
+                            node["#address-cells"] = LopperProp("#address-cells")
+                            node["#address-cells"].value = 1
+                            node.add(node["#address-cells"])
+                        if node.propval('#size-cells') != [0]:
+                            node["#size-cells"] = LopperProp("#size-cells")
+                            node["#size-cells"].value = 0
+                            node.add(node["#size-cells"])
                     #AXI-GPIO
                     if "xlnx,xps-gpio-1.00.a" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,xps-gpio-1.00.a"]
