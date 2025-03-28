@@ -62,6 +62,10 @@ properties:
     $ref: /schemas/types.yaml#/definitions/uint8
     enum: [ 32, 64 ]
 
+  xlnx,tile-formats:
+    description: Tile format support enabled.
+    type: boolean
+
   xlnx,vid-formats:
     description: |
       A list of strings indicating what video memory
@@ -162,6 +166,7 @@ required:
   - interrupts
   - reset-gpios
   - xlnx,dma-addr-width
+  - xlnx,tile-formats
   - xlnx,vid-formats
   - xlnx,pixels-per-clock
   - xlnx,dma-align
@@ -189,6 +194,7 @@ examples:
         interrupt-parent = <&gic>;
         reset-gpios = <&psng0_axi_gpio_rst 5 1>;
         xlnx,dma-addr-width = <32>;
+        xlnx,tile-formats;
         xlnx,vid-formats = "bgr888";
         xlnx,pixels-per-clock = <2>;
         xlnx,dma-align = <16>;
@@ -210,6 +216,7 @@ examples:
         interrupt-parent = <&gic>;
         reset-gpios = <&psng0_axi_gpio_rst 4 1>;
         xlnx,dma-addr-width = <32>;
+        xlnx,tile-formats;
         xlnx,vid-formats = "bgr888";
         xlnx,pixels-per-clock = <2>;
         xlnx,dma-align = <16>;
