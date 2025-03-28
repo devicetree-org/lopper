@@ -1579,7 +1579,7 @@ class LopperNode(object):
         #       the copied children, to point at the new parent node
 
         new_instance.child_nodes = OrderedDict()
-        for c in reversed(self.child_nodes.values()):
+        for c in self.child_nodes.values():
             new_instance.child_nodes[c.abs_path] = copy.deepcopy( c, memodict )
             new_instance.child_nodes[c.abs_path].number = -1
             new_instance.child_nodes[c.abs_path].parent = new_instance
@@ -3136,7 +3136,7 @@ class LopperNode(object):
         """
         return dict(sorted(self.child_nodes.items(), key=lambda item: item[0].split('/')[1]))
 
-    def reorder_child(self, path_to_move, path_to_move_next_to, after=True):
+    def reorder_child(self, path_to_move, path_to_move_next_to, after=True, debug=False):
         """
         (re)order a specified child node next to another specified child
 
@@ -3151,8 +3151,20 @@ class LopperNode(object):
 
         od = self.child_nodes
 
-        if path_to_move not in od or path_to_move_next_to not in od:
-            raise KeyError("Both keys must be present in the OrderedDict")
+        missing_paths = []
+        if path_to_move not in od:
+            missing_paths.append( path_to_move )
+        elif path_to_move_next_to not in od:
+            missing_paths.append( path_to_move_next_to )
+
+        if missing_paths:
+            message = f"nodes with path {missing_paths} were not found in the node '{self}' (or its children)"
+            _warning( message )
+            if debug:
+                node_details = self.print( as_string=True )
+                _warning( f"dumping node {self}" )
+                _warning( node_details )
+            raise KeyError( message )
 
         items = list(od.items())
         item_to_move = (path_to_move, od[path_to_move])

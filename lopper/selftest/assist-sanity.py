@@ -43,6 +43,12 @@ def overlay_test( sdt ):
 
     # move the amba_pl node to the overlay
     amba_node = sdt.tree["/amba_pl"]
+
+    # take the defaults, we'll be extending this to a new property in this
+    # assist
+    Lopper.phandle_possible_prop_dict = Lopper.phandle_possible_properties()
+    Lopper.phandle_possible_prop_dict["remote_endpoint"] = [ "phandle" ]
+
     new_amba_node = amba_node()
     sdt.tree = sdt.tree - amba_node
 
@@ -81,22 +87,38 @@ def overlay_test( sdt ):
     overlay_tree + fpga_node
 
     overlay_tree.overlay_of( sdt.tree )
+
+    try:
+        overlay_tree['/'].reorder_child( "/&amba", "/&fpga", after=True, debug=True )
+    except Exception as e:
+        print ( f"ERROR: reordering nodes: {e}")
+        os._exit(1)
+
     overlay_tree.resolve()
 
     pl_file = f"{sdt.outdir}/pl-gen.dtsi"
     sdt_file = f"{sdt.outdir}/sdt.dts"
+
+    print( f"[INFO]: pl: {pl_file} sdt: {sdt_file}")
 
     LopperSDT(None).write( overlay_tree, pl_file, True, True )
     sdt.write( sdt.tree, sdt_file )
 
     fpga_count = 0
     ranges_count = 0
+    amba_count = 0
     with open( pl_file ) as fp:
         for line in fp:
             if re.search( r"&fpga", line ):
                 fpga_count += 1
             elif re.search( r"ranges;", line ):
                 ranges_count += 1
+            elif re.search( r"&amba", line ):
+                # was amba after fpga ?
+                if fpga_count == 0:
+                    print( "ERROR: &amba and &fpga nodes are not properly ordered")
+                    os._exit(1)
+
     if fpga_count == 0:
         print( "ERROR: fpga node is not in the overlay" )
         os._exit(1)
@@ -305,5 +327,6 @@ def assist_reference( tgt_node, sdt, options ):
             return True
         else:
             domains_access_test( sdt )
+            return True
     except:
         pass

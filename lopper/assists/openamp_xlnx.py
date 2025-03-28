@@ -843,7 +843,12 @@ def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
         remote_vect_id = vect_id_map[remote_ipi_addr]
 
         host_bitmask = hex(1 << host_ipi_id)
+
+        ipi_irq_vect_id = hex(remote_vect_id)
+        ipi_irq_vect_id_rtos = hex(remote_vect_id-32)
+
         if platform == SOC_TYPE.ZYNQMP:
+            ipi_irq_vect_id_rtos = ipi_irq_vect_id
             host_bitmask = None
             for n in tree["/"].subnodes():
                 xlnx_ipi_id_pval = n.propval("xlnx,ipi-id")
@@ -860,11 +865,11 @@ def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
         "SHM_DEV_NAME": "\"" + hex(elfload_base)[2:] + '.shm\"',
         "DEV_BUS_NAME": "\"generic\"",
         "IPI_DEV_NAME":  "\"" + remote_ipi_str[2:] + '.ipi\"',
-        "IPI_IRQ_VECT_ID": hex(remote_vect_id),
-        "IPI_IRQ_VECT_ID_FREERTOS": hex(remote_vect_id - 32),
+        "IPI_IRQ_VECT_ID": ipi_irq_vect_id,
+        "IPI_IRQ_VECT_ID_FREERTOS": ipi_irq_vect_id_rtos,
         "IPI_CHN_BITMASK": host_bitmask,
-        "RING_TX": hex(tree.pnode(mem_reg_val[2]).propval("reg")[1]),
-        "RING_RX": hex(tree.pnode(mem_reg_val[3]).propval("reg")[1]),
+        "RING_TX": "FW_RSC_U32_ADDR_ANY",
+        "RING_RX": "FW_RSC_U32_ADDR_ANY",
         "SHARED_MEM_PA": hex(tree.pnode(mem_reg_val[2]).propval("reg")[1]),
         "SHARED_MEM_SIZE":"0x100000UL",
         "SHARED_BUF_OFFSET": hex(tree.pnode(mem_reg_val[2]).propval("reg")[3] + tree.pnode(mem_reg_val[3]).propval("reg")[3]),
@@ -965,7 +970,7 @@ def xlnx_openamp_gen_outputs(openamp_channel_info, channel_id, role, verbose = 0
                 soc_ipi_map[nobuf_ipi_key] = nobuf_ipi
 
         IPI_IRQ_VECT_ID = remote_ipi_irq_vect_id if role == 'remote' else host_ipi_irq_vect_id
-        IPI_IRQ_VECT_ID_FREERTOS = hex(int(IPI_IRQ_VECT_ID,16) - 32)
+        IPI_IRQ_VECT_ID_FREERTOS = IPI_IRQ_VECT_ID if platform == SOC_TYPE.ZYNQMP else hex(int(IPI_IRQ_VECT_ID,16) - 32)
 
         POLL_BASE_ADDR = remote_ipi_base if role == 'remote' else host_ipi_base
         # flip this as we are kicking other side with the bitmask value
@@ -1163,7 +1168,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
             valid_core_inputs.append(j)
     valid_core_inputs = set(valid_core_inputs)
 
-    if arg_host not in valid_core_inputs or arg_remote not in arg_remote:
+    if (arg_host not in valid_core_inputs or arg_remote not in arg_remote) and no_header == False:
         print('ERROR: OpenAMP Host or Remote value is not proper. Valid inputs are:', valid_core_inputs)
         return False
 
@@ -1171,7 +1176,7 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
     for i in channel_ids:
         if arg_remote in i and arg_host in i:
             chan_id = i
-    if chan_id == None:
+    if chan_id == None and role == 'remote' and no_header == False:
         print("Unable to find channel with pair", arg_host, arg_remote)
         return False
 
@@ -1910,7 +1915,8 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
                 if ret == False:
                     return ret
 
-    opts,args2 = getopt.getopt( args, "", [ "openamp_role=" ] )
+    opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_no_header", "openamp_role=", "openamp_host=", "openamp_remote=", "openamp_output_filename=" ] )
+
     if opts == [] and args2 == []:
         print('ERROR: No arguments passed for OpenAMP Module. Erroring out now.')
         return False
@@ -1922,9 +1928,6 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
         for o,a in opts:
             if o in ('-l', "--openamp_role"):
                 role = a
-            else:
-                print("Argument: ",o, " is not recognized. Erroring out.")
-                return False
 
     if role == 'host':
         for node in tree["/"].subnodes():

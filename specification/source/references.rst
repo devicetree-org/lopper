@@ -3,6 +3,9 @@
    Bibliography
    ============
 
+.. [GLOB] `GNU Bash Manual - Pattern Matching
+           <https://www.gnu.org/software/bash/manual/html_node/Pattern-Matching.html>`_
+
 .. [DTSpec] `Devicetree Specification
             <https://github.com/devicetree-org/devicetree-specification/releases/download/v0.3/devicetree-specification-v0.3.pdf>`_,
             Version 0.3, `devicetree.org <https://devicetree.org>`_, 13 February 2020.

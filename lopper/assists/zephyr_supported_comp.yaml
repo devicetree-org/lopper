@@ -77,6 +77,7 @@ arm,pl011:
   required:
     - compatible
     - reg
+    - status
     - interrupts
     - interrupt-parent
 
@@ -132,3 +133,52 @@ xlnx,xps-timebase-wdt-1.00.a:
     - clocks
     - xlnx,wdt-interval
     - xlnx,wdt-enable-once
+
+arm,gic-v3:
+  required:
+    - compatible
+    - reg
+    - status
+    - interrupt-controller
+    - '#interrupt-cells'
+
+cpus,cluster:
+  required:
+    - '#address-cells'
+    - '#size-cells'
+
+arm,cortex-r52:
+  required:
+    - compatible
+    - device_type 
+    - reg
+
+arm,armv8-timer:
+  required:
+    - compatible
+    - interrupts
+
+xlnx,axi-noc2-1.0:
+  required:
+    - compatible
+    - device_type
+    - reg
+
+xlnx,psx-ocm-ram-11.0:
+  required:
+    - compatible
+    - device_type
+    - reg
+
+xlnx,ocm-ram-11.0:
+  required:
+    - compatible
+    - device_type
+    - reg
+
+xlnx,versal-wwdt:
+  required:
+    - compatible
+    - reg
+    - timeout-sec
+    - clocks
