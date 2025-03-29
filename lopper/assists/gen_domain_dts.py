@@ -510,6 +510,53 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     symbol_node = sdt.tree['/__symbols__']
     valid_alias_proplist = []
 
+    """
+    DRC Checks
+    1) Interrupt controller is present or not
+	If not:
+		error: Zephyr required at least one interrupt controller IP to be present in the design
+	if present and fast interrupt is enabled
+		error: Fast interrupt is not supported please disable fast interrupt configuration from the design
+    2) Check if timer is present or not
+	if not:
+		error: Zephyr expects at least one timer IP to be present for tick funcationailty
+	if present and interrupt not connected
+		error: For timer IP interrupt is not connected please connect the same.
+    """
+    is_axi_intc_present = None
+    is_axi_timer_present = None
+    for node in root_sub_nodes:
+        if node.propval('xlnx,ip-name') != ['']:
+            val = node.propval('xlnx,ip-name', list)[0]
+            if val == "axi_intc":
+                is_axi_intc_present = node
+            elif val == "axi_timer":
+                is_axi_timer_present = node
+
+    err_no_intc = "\nERROR: Zephyr OS requires the presence of at least one interrupt controller. Please ensure that the axi_intc is included in the design, with fast interrupts disabled.\r"
+    err_no_timer = "\nERROR: Zephyr OS requires at least one timer controller with interrupts enabled for its scheduler. Please include the axi_timer in your hardware design and ensure its interrupts are properly connected.\r"
+    erro_intc_has_fast = "\nERROR: Zephyr OS does not support fast interrupt configurations. Please disable fast interrupts in your hardware design and attempt to build with the updated configuration.\r"
+    err_timer_nointr = "\nERROR: Zephyr OS requires at least one timer with interrupts enabled to manage its scheduler effectively. Please ensure that the interrupt pins for the timer are correctly connected in your hardware design and rebuild with the updated configuration.\r"
+    if not is_axi_intc_present and not is_axi_timer_present:
+        print(err_no_intc)
+        print(err_no_timer)
+        sys.exit(1)
+    elif not is_axi_intc_present:
+        print(err_no_intc)
+        sys.exit(1)
+    elif is_axi_intc_present:
+        if node.propval('xlnx,has-fast') != ['']:
+            val = node.propval('xlnx,has-fast', list)[0]
+            if val != 0 or val != 0x0:
+                print(erro_intc_has_fast)
+                sys.exit(1)
+    if not is_axi_timer_present:
+        print(err_no_timer)
+        sys.exit(1)
+    elif is_axi_timer_present and if node.propval('interrupts') == ['']:
+        print(err_timer_nointr)
+        sys.exit(1)
+
     license_content = '''#
 # Copyright (c) 2024 Advanced Micro Devices, Inc.
 #
