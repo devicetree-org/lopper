@@ -42,6 +42,7 @@ def is_compat( node, compat_string_to_test ):
     return ""
 
 def check_for_mem(sdt, options, mem_type, required_mem):
+    _level(utils.log_setup(options), __name__)
     required_mem_start = 0x0
     required_mem_size = 0x0
     if required_mem.get("start", {}):
@@ -58,7 +59,7 @@ def check_for_mem(sdt, options, mem_type, required_mem):
                     return False, mem_type, required_mem_size
             if size > required_mem_size:
                 return True, mem_type, required_mem_size
-
+    _warning(f"Memory check failed: Required {mem_type} memory ({hex(required_mem_size)} bytes) not found.")
     return False, mem_type, required_mem_size, required_mem_start
 
 def check_required_prop(sdt, node, required_props):
@@ -101,7 +102,7 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
     name = re.split(r"_v(\d+)_(\d+)", name)[0]
     yaml_file = os.path.join(utils.get_dir_path(src_path), "data", f"{name}.yaml")
     if not utils.is_file(yaml_file):
-        print(f"{name} Comp doesn't have yaml file")
+        _error(f"{name} Comp doesn't have yaml file")
         return False
 
     schema = utils.load_yaml(yaml_file)
@@ -149,7 +150,7 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
             drv_yamlpath = os.path.join(drv_dir, "data", f"{drv}.yaml")
 
         if not utils.is_file(drv_yamlpath):
-            print(f"{drv} yaml file {drv_yamlpath} doesnt exist")
+            _error(f"{drv} yaml file {drv_yamlpath} doesnt exist")
             continue
         
         drv_schema = utils.load_yaml(drv_yamlpath)
@@ -180,7 +181,7 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
 
                 drv_yamlpath = os.path.join(drv_dir, "data", f"{drv}.yaml")
                 if not utils.is_file(drv_yamlpath):
-                    print(f"{drv} yaml file {drv_yamlpath} doesnt exist")
+                    _error(f"{drv} yaml file {drv_yamlpath} doesnt exist")
                     continue
 
                 driver_list.append(drv)
