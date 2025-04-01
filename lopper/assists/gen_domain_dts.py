@@ -570,15 +570,15 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
         print(err_no_intc)
         sys.exit(1)
     elif is_axi_intc_present:
-        if node.propval('xlnx,has-fast') != ['']:
-            val = node.propval('xlnx,has-fast', list)[0]
+        if is_axi_intc_present.propval('xlnx,has-fast') != ['']:
+            val = is_axi_intc_present.propval('xlnx,has-fast', list)[0]
             if val != 0 or val != 0x0:
                 print(erro_intc_has_fast)
                 sys.exit(1)
     if not is_axi_timer_present:
         print(err_no_timer)
         sys.exit(1)
-    elif is_axi_timer_present and if node.propval('interrupts') == ['']:
+    elif is_axi_timer_present and is_axi_timer_present.propval('interrupts') == ['']:
         print(err_timer_nointr)
         sys.exit(1)
 
