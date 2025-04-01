@@ -11,11 +11,11 @@ import os
 import re
 import yaml
 import glob
-import common_utils as utils
+
 sys.path.append(os.path.dirname(__file__))
+
 from baremetalconfig_xlnx import compat_list, get_mapped_nodes
-from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
-_init(__name__)
+import common_utils as utils
 
 def is_compat(node, compat_string_to_test):
     if re.search( "module,baremetaldrvlist_xlnx", compat_string_to_test):
@@ -25,7 +25,6 @@ def is_compat(node, compat_string_to_test):
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
-    _level(utils.log_setup(options), __name__)
     if options.get('outdir', {}):
         sdt.outdir = options['outdir']
     root_node = sdt.tree[tgt_node]
@@ -43,7 +42,6 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
             if "okay" in status:
                 node_list.append(node)
         except:
-           _error("Could not fetch node status")
            pass
 
     driver_ip_dict = {}

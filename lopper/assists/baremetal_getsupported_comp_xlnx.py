@@ -17,6 +17,7 @@ sys.path.append(os.path.dirname(__file__))
 import common_utils as utils
 from baremetalconfig_xlnx import get_cpu_node
 from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+
 _init(__name__)
 
 def is_compat( node, compat_string_to_test ):
@@ -44,9 +45,6 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
     repo_path_data = utils.get_abs_path(options['args'][1])
 
     matched_node = get_cpu_node(sdt, options)
-    if not matched_node:
-        _error("No matching CPU node found.")
-        return False
     proc_ip_name = matched_node['xlnx,ip-name'].value[0]
 
     supported_app_dict = {proc_name: {'standalone': {}, 'freertos': {}}}
@@ -61,9 +59,6 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
         }
 
         files = glob.glob(repo_path_data + '/**/data/*.yaml', recursive=True)
-        if not files:
-            _warning(f"No YAML files found in {repo_path_data}.")
-
         for entries in files:
             dir_path = utils.get_dir_path(utils.get_dir_path(entries))
             comp_name = utils.get_base_name(dir_path)
@@ -75,8 +70,8 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
                 continue
 
             if yaml_data['type'] in ['library'] and version == 'vless':
-                _error(f"""
-                    Couldnt set the paths correctly.
+                print(f"""\b
+                    [ERROR]:  Couldnt set the paths correctly.
                     {comp_name} in {repo_path_data} doesnt have a version.
                     Library and OS needs version numbers in its yaml.
                 """)
