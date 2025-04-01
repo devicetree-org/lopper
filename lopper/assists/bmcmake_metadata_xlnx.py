@@ -36,14 +36,13 @@ def write_yaml(filepath, data):
         yaml.dump(data, outfile, Dumper=YamlDumper, default_flow_style=False, sort_keys=False, indent=4, width=32768)
 
 def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
-    _level(utils.log_setup(options), __name__)
     driver_compatlist = []
     drvname = utils.get_base_name(utils.get_dir_path(src_dir))
     # Incase of versioned component strip the version info
     drvname = re.split(r"_v(\d+)_(\d+)", drvname)[0]
     yaml_file = os.path.join(utils.get_dir_path(src_dir), "data", f"{drvname}.yaml")
     if not utils.is_file(yaml_file):
-        _error(f"{drvname} Driver doesn't have yaml file")
+        print(f"{drvname} Driver doesn't have yaml file")
         return False
 
     # Get the example_schema
@@ -165,7 +164,6 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
     write_yaml(yaml_file, example_dict)
 
 def getmatch_nodes(sdt, node_list, yaml_file, options):
-    _level(utils.log_setup(options), __name__)
     # Get the example_schema
     schema = utils.load_yaml(yaml_file)
     driver_nodes = []
@@ -207,7 +205,6 @@ struct xtopology_t xtopology[] = {{'''
     topology_fd.write(topology_str)
 
 def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options, chosen_node, symbol_node):
-    _level(utils.log_setup(options), __name__)
     src_path = src_path.rstrip(os.path.sep)
     name = utils.get_base_name(utils.get_dir_path(src_path))
     # Incase of versioned component strip the version info
@@ -215,7 +212,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
     yaml_file = os.path.join(utils.get_dir_path(src_path), "data", f"{name}.yaml")
 
     if not utils.is_file(yaml_file):
-        _error(f"{name} Driver doesn't have yaml file")
+        print(f"{name} Driver doesn't have yaml file")
         return False
 
     schema = utils.load_yaml(yaml_file)
@@ -239,7 +236,7 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
 
             drv_yamlpath = os.path.join(drv_dir, "data", f"{drv}.yaml")
             if not utils.is_file(drv_yamlpath):
-                _warning(f"{drv} yaml file {drv_yamlpath} doesnt exist")
+                print(f"{drv} yaml file {drv_yamlpath} doesnt exist")
                 continue
 
             nodes = getmatch_nodes(sdt, node_list, drv_yamlpath, options)
