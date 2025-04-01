@@ -42,8 +42,7 @@ def get_cpu_node(sdt, options):
             elif node.propval('reg') != ['']:
                 cpu_labels.append(matched_label)
 
-    print(f"ERROR: In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
-    _error(f"ERROR: In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
+    _error(f"In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
     sys.exit(1)
 
 def item_generator(json_input, lookup_key):
@@ -666,7 +665,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     drvname = re.split(r"_v(\d+)_(\d+)", drvname)[0]
     yaml_file = os.path.join(drvpath, f"data/{drvname}.yaml")
     if not utils.is_file(yaml_file):
-        print(f"{drvname} Driver doesn't have yaml file")
+        _error(f"{drvname} Driver doesn't have yaml file")
         return False
 
     driver_compatlist = []

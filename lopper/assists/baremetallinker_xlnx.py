@@ -17,6 +17,8 @@ from baremetalconfig_xlnx import scan_reg_size, get_cpu_node, get_label
 import common_utils as utils
 from common_utils import to_cmakelist
 from openamp_xlnx import xlnx_openamp_get_ddr_elf_load
+from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+_init(__name__)
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetallinker_xlnx", compat_string_to_test):
@@ -28,6 +30,7 @@ def is_compat( node, compat_string_to_test ):
 # sdt: is the system device-tree
 # options: baremetal application source path
 def get_memranges(tgt_node, sdt, options):
+    _level(utils.log_setup(options), __name__)
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     mem_nodes = []
@@ -202,7 +205,7 @@ def get_unique_memip_list(mem_ranges):
 # sdt: is the system device-tree
 # options: baremetal application source path
 def xlnx_generate_bm_linker(tgt_node, sdt, options):
-
+    _level(utils.log_setup(options), __name__)
     mem_ranges,lable_names = get_memranges(tgt_node, sdt, options)
     openamp_config = None
     memtest_config = None
@@ -221,6 +224,7 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             openamp_config = True
 
     except IndexError:
+        _warning("Not enough arguments in options['args']")
         pass
 
     src_dir = options['args'][1]
@@ -300,7 +304,7 @@ def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,
             stack_size = 0x2000
             heap_size = 0x2000
     if not utils.is_file(yaml_file):
-        print(f"{appname} doesn't have yaml file")
+        _error(f"{appname} doesn't have yaml file")
     else:
         schema = utils.load_yaml(yaml_file)
         if schema.get("linker_constraints"):

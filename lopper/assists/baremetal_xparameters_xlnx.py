@@ -46,6 +46,7 @@ def add_multi_buf(plat,match_cpunode,data_dict,else_ignore_data=[]):
             plat.buf(f'\n#define {value} {data}\n')
         else:
             if key not in else_ignore_data:
+                _warning(f'Property "{key}" not found in CPU node. Defaulting {value} to 0.')
                 plat.buf(f'\n#define {value} 0\n')
 
 def xlnx_generate_xparams(tgt_node, sdt, options):
@@ -109,6 +110,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             if not drv_dir and drv_data.get(drv,{}).get('path',''):
                 drv_dir = drv_data.get(drv,{}).get('path','')[0]
         else:
+            _error(f"YAML file not found at path {repo_path_data}, falling back to default path.")
             drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers", drv)
 
         if not drv_dir:
@@ -333,7 +335,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             if '' in prop_val:
                                 prop_val = [1]
                         except KeyError:
-                            _warning(f"Get property value is failed for {prop} and node is {node.name}, adding default value as {0}")
+                            #_warning(f"Get property value is failed for {prop} and node is {node.name}, adding default value as {0}")
                             prop_val = [0]
                             continue
 

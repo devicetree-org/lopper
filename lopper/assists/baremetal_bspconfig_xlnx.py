@@ -14,13 +14,12 @@ import os
 import glob
 
 sys.path.append(os.path.dirname(__file__))
-
 from baremetalconfig_xlnx import compat_list, get_cpu_node
 from baremetallinker_xlnx import get_memranges
 from common_utils import to_cmakelist,log_setup
 from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
-
 _init(__name__)
+
 
 def is_compat( node, compat_string_to_test ):
     if "module,baremetal_bspconfig_xlnx" in compat_string_to_test:
@@ -69,19 +68,25 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
     machine = options['args'][0]
     # Get the cpu node for a given Processor
     match_cpunode = get_cpu_node(sdt, options)
-
+    if not match_cpunode:
+        _error("Failed to get CPU node for the given processor.")
     srcdir = options['args'][1].rstrip(os.sep)
     datadir = os.path.join(os.path.dirname(srcdir),'data')
     yaml_paths = glob.glob(f"{datadir}/*/*.yaml")
-    
-
+    if not yaml_paths:
+        _warning(f"No YAML files found in the expected path: {datadir}")
+        
     # Generate CPU specific config struct file.
     for yamlfile in yaml_paths:
         name = os.path.basename(os.path.dirname(yamlfile))
         with open(yamlfile) as stream:
             schema = yaml.safe_load(stream)
+            if not schema:
+                _error(f"Failed to load schema from {yamlfile}.")
             compatlist = compat_list(schema)
             prop_list = schema['required']
+            if not prop_list:
+                _warning(f"No required properties found in schema {yamlfile}.")
             match = [compat for compat in compatlist if compat in match_cpunode['compatible'].value]
             if match:
                config_struct = schema['config'][0]
@@ -116,6 +121,7 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
                        for prop in prop_list[:10]:
                            if prop == "xlnx,exceptions-in-delay-slots":
                                if match_cpunode.propval(prop) != ['']:
+                                   _warning(f"Property {prop} is empty in CPU node.")
                                    val = match_cpunode.propval(prop, list)[0]
                                    if val != 0:
                                        fd.write("#define MICROBLAZE_CAN_HANDLE_EXCEPTIONS_IN_DELAY_SLOTS\n")
