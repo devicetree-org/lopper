@@ -13,12 +13,16 @@ import os
 import re
 import shutil
 import glob
-
-sys.path.append(os.path.dirname(__file__))
-from baremetalconfig_xlnx import get_mapped_nodes, get_cpu_node, get_label, compat_list, scan_reg_size, get_stdin
-from baremetallinker_xlnx import get_memranges
 import common_utils as utils
 import baremetalconfig_xlnx as bm_config
+
+from baremetalconfig_xlnx import get_mapped_nodes, get_cpu_node, get_label, compat_list, scan_reg_size, get_stdin
+from baremetallinker_xlnx import get_memranges
+from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+
+sys.path.append(os.path.dirname(__file__))
+
+_init(__name__)
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetal_gentestapp_xlnx", compat_string_to_test):
@@ -29,6 +33,7 @@ def is_compat( node, compat_string_to_test ):
 # sdt: is the system device-tree
 # options: baremetal application source path
 def xlnx_generate_testapp(tgt_node, sdt, options):
+    _level(utils.log_setup(options), __name__)
     ttc_node_list = []
     dma_node_list = []
     root_node = sdt.tree[tgt_node]
@@ -102,7 +107,8 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
         drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers")
         if utils.is_dir(drv_dir):
             yaml_file_list = glob.glob(drv_dir + '/**/data/*.yaml', recursive=True)
-
+        else:
+        _warning(f"Driver directory not found at: {drv_dir}")
     testapp_data = {}
     testapp_name = {}
     # Ensure that the interrupt controller example is the first example run in the peripheral tests sequence by updating the yaml_file_list.
@@ -131,6 +137,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
             drv_config_name = schema['config']
             drv_config_name = drv_config_name[0].rsplit("_", 1)[-2]
         except KeyError:
+            _warning(f"Key '{drv_name}' not found in the configuration. Using default name.")
             drv_config_name = drv_name
 
         if drv_config_name == 'XAxiEthernet' and 'tapp' in schema:
@@ -212,6 +219,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                                         match_list.append(True)
                                         break
                                 else:
+                                    _warning(f"No matching memory range found for driver '{drv_config_name}' in the given memory list: {list_of_mem_list}")
                                     match_list.append(False)
 
                             for prop_name in list_of_hw_props:
@@ -350,3 +358,4 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
             file_handle.writelines(f'{entry}\n')
 
     return True
+
