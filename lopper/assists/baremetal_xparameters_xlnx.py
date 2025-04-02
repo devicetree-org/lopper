@@ -13,15 +13,14 @@ import os
 import re
 import glob
 import logging
-
-
-sys.path.append(os.path.dirname(__file__))
-
 import common_utils as utils
 import baremetalconfig_xlnx as bm_config
+
 from baremetaldrvlist_xlnx import xlnx_generate_bm_drvlist
 from baremetallinker_xlnx import get_memranges
-from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+from lopper.log import _init, _warning, _info, _error, _debug, _level
+
+sys.path.append(os.path.dirname(__file__))
 
 _init(__name__)
 
@@ -46,6 +45,7 @@ def add_multi_buf(plat,match_cpunode,data_dict,else_ignore_data=[]):
             plat.buf(f'\n#define {value} {data}\n')
         else:
             if key not in else_ignore_data:
+                _debug(f'Property "{key}" not found in CPU node. Defaulting {value} to 0.')
                 plat.buf(f'\n#define {value} 0\n')
 
 def xlnx_generate_xparams(tgt_node, sdt, options):
@@ -205,7 +205,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             plat.buf(f'\n#define XPAR_{label_name}_{prop.upper()} {intr[0]}')
                             canondef_dict.update({prop:intr[0]})
                         except KeyError:
-                            _warning(f"Get interrupt prop is failed {node.name}, adding default value as {hex(0xFFFF)}")
+                            _debug(f"Get interrupt prop is failed {node.name}, adding default value as {hex(0xFFFF)}")
                             intr = [0xFFFF]
 
                         """
@@ -217,7 +217,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             inc = intr_parent[0]["#interrupt-cells"].value[0]
                             num_of_intrs = int(len(node[prop].value)/inc)
                         except KeyError:
-                            _warning(f"Get interrupt parent is failed {node.name}, adding default value as {0}")
+                            _debug(f"Get interrupt parent is failed {node.name}, adding default value as {0}")
                             num_of_intrs = 0
                         if num_of_intrs > 1:
                             for j in range(1, num_of_intrs):
@@ -242,7 +242,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                             plat.buf(f'\n#define XPAR_{label_name}_INTR {hex(intr_id[0]+32)}')
                                             canondef_dict.update({"INTR":hex(intr_id[0]+32)})
                         except KeyError:
-                            _warning(f"Get interrupt id is failed {node.name}, adding default value as {[0xFFFF]}")
+                            _debug(f"Get interrupt id is failed {node.name}, adding default value as {[0xFFFF]}")
                             intr_id = [0xFFFF]
                             continue
 
@@ -271,7 +271,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 try:
                                     val = hex(child[1][p].value[0])
                                 except KeyError:
-                                    _warning(f"Get ipi child value is failed {node.name}, adding default value as {0xFFFF}")
+                                    _debug(f"Get ipi child value is failed {node.name}, adding default value as {0xFFFF}")
                                     val = 0xFFFF
                                 p = p.replace("-", "_")
                                 p = p.replace("xlnx,", "")
@@ -303,7 +303,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             if device_type == "pci":
                                 device_ispci = 1
                         except KeyError:
-                            _warning(f"Get device type is failed {node.name}, adding default value as {0}")
+                            _debug(f"Get device type is failed {node.name}, adding default value as {0}")
                             device_ispci = 0
                         if device_ispci:
                             prop_vallist = bm_config.get_pci_ranges(node, node[prop].value, pad)
@@ -334,7 +334,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             if '' in prop_val:
                                 prop_val = [1]
                         except KeyError:
-                            _warning(f"Get property value is failed for {prop} and node is {node.name}, adding default value as {0}")
+                            _debug(f"Get property value is failed for {prop} and node is {node.name}, adding default value as {0}")
                             prop_val = [0]
                             continue
 

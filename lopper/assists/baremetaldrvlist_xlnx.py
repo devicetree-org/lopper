@@ -1,5 +1,5 @@
 #/*
-# * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+# * Copyright (c) 2020 - 2025 Xilinx Inc. All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
@@ -11,11 +11,14 @@ import os
 import re
 import yaml
 import glob
+import common_utils as utils
+
+from baremetalconfig_xlnx import compat_list, get_mapped_nodes
+from lopper.log import _init, _warning, _info, _error, _debug, _level
 
 sys.path.append(os.path.dirname(__file__))
 
-from baremetalconfig_xlnx import compat_list, get_mapped_nodes
-import common_utils as utils
+_init(__name__)
 
 def is_compat(node, compat_string_to_test):
     if re.search( "module,baremetaldrvlist_xlnx", compat_string_to_test):
@@ -25,6 +28,7 @@ def is_compat(node, compat_string_to_test):
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
+    _level(utils.log_setup(options), __name__)
     if options.get('outdir', {}):
         sdt.outdir = options['outdir']
     root_node = sdt.tree[tgt_node]

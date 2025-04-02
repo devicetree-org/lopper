@@ -1,5 +1,5 @@
 #/*
-# * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+# * Copyright (c) 2020 - 2025 Xilinx Inc. All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
@@ -12,6 +12,7 @@ import re
 import yaml
 import logging
 import common_utils as utils
+
 from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
 
 sys.path.append(os.path.dirname(__file__))
@@ -41,9 +42,7 @@ def get_cpu_node(sdt, options):
                 return node
             elif node.propval('reg') != ['']:
                 cpu_labels.append(matched_label)
-
-    print(f"ERROR: In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
-    _error(f"ERROR: In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
+    _error(f"In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
     sys.exit(1)
 
 def item_generator(json_input, lookup_key):
@@ -105,20 +104,20 @@ def scan_reg_size(node, value, idx):
             size1 = value[cells * idx + na]
             size = int(f"{hex(size1)}{value[cells * idx + ns + 1]:08x}", base=16) if size1 !=0 else value[cells * idx + ns + 1]
         except IndexError:
-            _warning(f"The Reg Property is corrupted for the {node.name} and value is {value}")
+            _debug(f"The Reg Property is corrupted for the {node.name} and value is {value}")
             pass
     elif cells == 2:
         try:
             reg = value[idx * cells]
             size = value[idx * cells + 1]
         except IndexError:
-            _warning(f"The Reg Property is corrupted for the {node.name} and value is {value}")
+            _debug(f"The Reg Property is corrupted for the {node.name} and value is {value}")
             pass
     else:
         try:
             reg = value[0]
         except IndexError:
-            _warning(f"The Reg Property is corrupted for the {node.name} and value is {value}")
+            _debug(f"The Reg Property is corrupted for the {node.name} and value is {value}")
             pass
 
     # 4 GB (0xFFFFFFFF) is a boundary condition for a 32-bit cell size. Size is calculated
@@ -412,7 +411,7 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
                 phandle_value = node[subnode_prop].value[0]
             except KeyError:
 	        # Need to create dummy entries
-                _warning(f"Find sub node is failed for {node.name}, creating dummy structure")
+                _debug(f"Find sub node is failed for {node.name}, creating dummy structure")
                 dummy_struct = True
 
             if dummy_struct:
@@ -453,7 +452,7 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
                     drvprop_list.append(hex(val))
                     plat.buf(',\n\t\t%s' % hex(val))
                 except IndexError:
-                    _warning(f"Find reg size is failed for {node.name}, adding default value as {hex(0xFFFF)}")
+                    _debug(f"Find reg size is failed for {node.name}, adding default value as {hex(0xFFFF)}")
                     plat.buf(',\n\t\t%s' % hex(0xFFFF))
     elif prop == "compatible":
         plat.buf('\n\t\t%s' % '"{}"'.format(node[prop].value[0]))
@@ -462,7 +461,7 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
         try:
             intr = get_interrupt_prop(sdt, node, node[prop].value)
         except KeyError:
-            _warning(f"Get interrupt prop is failed {node.name}, adding default value as {hex(0xFFFF)}")
+            _debug(f"Get interrupt prop is failed {node.name}, adding default value as {hex(0xFFFF)}")
             intr = [hex(0xFFFF)]
 
         if pad:
@@ -472,7 +471,7 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
                     plat.buf('%s' % intr[j])
                     drvprop_list.append(intr[j])
                 except IndexError:
-                    _warning(f"Get interrupt prop is failed {node.name}, adding default value as {hex(0xFFFF)}")
+                    _debug(f"Get interrupt prop is failed {node.name}, adding default value as {hex(0xFFFF)}")
                     plat.buf('%s' % hex(0xFFFF))
                     drvprop_list.append(hex(0xFFFF))
                 if j != pad-1:
@@ -485,7 +484,7 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
         try:
             intr_parent = get_intrerrupt_parent(sdt, node[prop].value)
         except KeyError:
-            _warning(f"Get interrupt parent is failed {node.name}, adding default value as {hex(0xFFFF)}")
+            _debug(f"Get interrupt parent is failed {node.name}, adding default value as {hex(0xFFFF)}")
             intr_parent = 0xFFFF
         plat.buf('\n\t\t%s' % hex(intr_parent))
         drvprop_list.append(hex(intr_parent))
@@ -554,7 +553,7 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
                         plat.buf(' /* %s */' % p)
                     except KeyError:
                         if nosub == 0:
-                            _warning(f"Failed to find the driver prop list for {node.name}, adding default value as {hex(0xFFFF)}")
+                            _debug(f"Failed to find the driver prop list for {node.name}, adding default value as {hex(0xFFFF)}")
                             plat.buf('\n\t\t\t\t%s' % hex(0xFFFF))
                             drvprop_list.append(hex(0xFFFF))
             if len(pad) != 1:
@@ -572,7 +571,7 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
         try:
             prop_val = get_phandle_regprop(sdt, prop, node[prop].value)
         except KeyError:
-            _warning(f"Get phandle reg property failed for {node.name}, adding default value as {0}")
+            _debug(f"Get phandle reg property failed for {node.name}, adding default value as {0}")
             prop_val = 0
         plat.buf('\n\t\t%s' % hex(prop_val))
         drvprop_list.append(hex(prop_val))
@@ -582,7 +581,7 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
             if device_type == "pci":
                 device_ispci = 1
         except KeyError:
-            _warning(f"Get device type failed for {node.name}, adding default value as {0}")
+            _debug(f"Get device type failed for {node.name}, adding default value as {0}")
             device_ispci = 0
         if device_ispci:
             match_cpunode = get_cpu_node(sdt, options)
@@ -614,7 +613,7 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
             if '' in prop_val:
                 prop_val = [1]
         except KeyError:
-            _warning(f"Get property value failed for {node.name}, adding default value as {0}")
+            _debug(f"Get property value failed for {node.name}, adding default value as {0}")
             prop_val = [0]
 
         if pad:
@@ -694,7 +693,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     drvname = re.split(r"_v(\d+)_(\d+)", drvname)[0]
     yaml_file = os.path.join(drvpath, f"data/{drvname}.yaml")
     if not utils.is_file(yaml_file):
-        print(f"{drvname} Driver doesn't have yaml file")
+        _warning(f"{drvname} Driver doesn't have yaml file")
         return False
 
     driver_compatlist = []

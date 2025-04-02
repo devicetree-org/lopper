@@ -1,5 +1,5 @@
 #/*
-# * Copyright (C) 2022 Advanced Micro Devices, Inc.  All rights reserved.
+# * Copyright (C) 2022 - 2025 Advanced Micro Devices, Inc.  All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
@@ -11,12 +11,12 @@ import os
 import glob
 import yaml
 import re
-
-sys.path.append(os.path.dirname(__file__))
-
 import common_utils as utils
+
 from baremetalconfig_xlnx import get_cpu_node
 from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+
+sys.path.append(os.path.dirname(__file__))
 
 _init(__name__)
 
@@ -82,6 +82,9 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
     repo_path_data = utils.get_abs_path(options['args'][1])
 
     matched_node = get_cpu_node(sdt, options)
+    if not matched_node:
+        _error("No matching CPU node found.")
+
     proc_ip_name = matched_node['xlnx,ip-name'].value[0]
     family = sdt.tree['/'].propval('family')
     family = family[0] if family else ""
@@ -98,6 +101,9 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
         }
 
         files = glob.glob(repo_path_data + '/**/data/*.yaml', recursive=True)
+        if not files:
+            _warning(f"No YAML files found in {repo_path_data}.")
+
         for entries in files:
             dir_path = utils.get_dir_path(utils.get_dir_path(entries))
             comp_name = utils.get_base_name(dir_path)
@@ -109,8 +115,8 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
                 continue
 
             if yaml_data['type'] in ['library'] and version == 'vless':
-                print(f"""\b
-                    [ERROR]:  Couldnt set the paths correctly.
+                _error(f"""
+                    Couldnt set the paths correctly.
                     {comp_name} in {repo_path_data} doesnt have a version.
                     Library and OS needs version numbers in its yaml.
                 """)
