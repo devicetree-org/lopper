@@ -127,6 +127,23 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         all_phandles.append(address_map[tmp])
         tmp = tmp + cells + na + 1
 
+    # Access the '/amba_pl' node
+    if linux_dt:
+        try:
+            amba_pl_node = sdt.tree['/amba_pl']
+        except KeyError:
+            amba_pl_node = None
+
+        if amba_pl_node:
+            # Iterate over each subnode of '/amba_pl'
+            for subnode in amba_pl_node.subnodes():
+                has_reg = subnode.propval('reg') != ['']
+                has_ranges = subnode.propval('ranges') != ['']
+
+                if not has_reg and not has_ranges:
+                    subnode.abs_path = subnode.abs_path.replace("/amba_pl/", "/")
+                    sdt.tree.add(subnode)
+
     node_list = []
     for node in root_sub_nodes:
         if linux_dt:
