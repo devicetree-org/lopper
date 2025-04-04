@@ -196,3 +196,9 @@ xlnx,versal-wwdt:
     - reg
     - timeout-sec
     - clocks
+
+fixed-clock:
+  required:
+    - compatible
+    - '#clock-cells'
+    - clock-frequency
