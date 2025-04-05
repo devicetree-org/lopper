@@ -442,8 +442,37 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
 
     #CPU parameters related defines
     match_cpunode = bm_config.get_cpu_node(sdt, options)
+    if utils.is_file(repo_path_data):
+        repo_schema = utils.load_yaml(repo_path_data)
+        lib_data = repo_schema['os']
+        lib_dir = lib_data.get("standalone",{}).get('vless','')
+        if not lib_dir and lib_data.get("standalone",{}).get('path',''):
+            srcdir = lib_data.get("standalone",{}).get('path','')[0]
+    else:
+        srcdir = os.path.join(repo_path_data, "lib", "bsp", "standalone")
+    datadir = os.path.join(srcdir, "data")
+    yaml_paths = glob.glob(f"{datadir}/*/*.yaml")
+    if re.search("microblaze", match_cpunode['compatible'].value[0]):
+        for yamlfile in yaml_paths:
+            name = os.path.basename(os.path.dirname(yamlfile))
+            schema = utils.load_yaml(yamlfile)
+            compatlist = bm_config.compat_list(schema)
+            prop_list = schema['required']
+            match = [compat for compat in compatlist if compat in match_cpunode['compatible'].value]
+            if match:
+                plat.buf(f"\n\n/*  CPU parameters definition */\n")
+                if match_cpunode.propval('xlnx,ip-name') != ['']:
+                    ip_name = match_cpunode.propval('xlnx,ip-name', list)[0]
+                else:
+                    ip_name = name
+                for prop in prop_list:
+                    if match_cpunode.propval(prop) != ['']:
+                        prop_val = match_cpunode.propval(prop, list)[0]
+                        prop = prop.replace("-", "_")
+                        prop = prop.replace("xlnx,", "")
+                        plat.buf(f'#define XPAR_{ip_name.upper()}_{prop.upper()} {prop_val}\n')
+
     if re.search("microblaze-riscv", match_cpunode['compatible'].value[0]):
-        plat.buf(f"\n\n/*  CPU parameters definition */\n")
         cpu_parameters={
         'xlnx,freq':"XPAR_CPU_CORE_CLOCK_FREQ_HZ",
         'xlnx,use-dcache':'XPAR_MICROBLAZE_RISCV_USE_DCACHE',
