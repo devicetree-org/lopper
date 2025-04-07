@@ -560,7 +560,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
 
     err_no_intc = "\nERROR: Zephyr OS requires the presence of at least one interrupt controller. Please ensure that the axi_intc is included in the design, with fast interrupts disabled.\r"
     err_no_timer = "\nERROR: Zephyr OS requires at least one timer controller with interrupts enabled for its scheduler. Please include the axi_timer in your hardware design and ensure its interrupts are properly connected.\r"
-    erro_intc_has_fast = "\nERROR: Zephyr OS does not support fast interrupt configurations. Please disable fast interrupts in your hardware design and attempt to build with the updated configuration.\r"
+    warn_intc_has_fast = "\nWARNING: Zephyr does not support fast interrupts; they will be handled as standard interrupts. Therefore, enabling FAST interrupts in the AXI INTC core will not improve interrupt latency. Additionally, fast interrupts are not supported in QEMU.\r"
     err_timer_nointr = "\nERROR: Zephyr OS requires at least one timer with interrupts enabled to manage its scheduler effectively. Please ensure that the interrupt pins for the timer are correctly connected in your hardware design and rebuild with the updated configuration.\r"
     if not is_axi_intc_present and not is_axi_timer_present:
         print(err_no_intc)
@@ -573,8 +573,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
         if is_axi_intc_present.propval('xlnx,has-fast') != ['']:
             val = is_axi_intc_present.propval('xlnx,has-fast', list)[0]
             if val != 0 or val != 0x0:
-                print(erro_intc_has_fast)
-                sys.exit(1)
+                print(warn_intc_has_fast)
     if not is_axi_timer_present:
         print(err_no_timer)
         sys.exit(1)
