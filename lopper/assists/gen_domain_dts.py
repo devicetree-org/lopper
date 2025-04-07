@@ -431,6 +431,10 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
         for node in root_sub_nodes:
             if node.parent:
                 if node.propval("compatible") != ['']:
+                    # R52
+                    if "arm,cortex-r52" in node["compatible"].value:
+                        if node.propval('xlnx,cpu-clk-freq-hz') != ['']:
+                            node["clock-frequency"] = node['xlnx,cpu-clk-freq-hz'].value
                     if node.propval('xlnx,ip-name') != ['']:
                         val = node.propval('xlnx,ip-name', list)[0]
                         if val == "axi_intc":
