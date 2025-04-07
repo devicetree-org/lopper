@@ -166,6 +166,7 @@ arm,cortex-r52:
     - compatible
     - device_type 
     - reg
+    - clock-frequency
 
 arm,armv8-timer:
   required:
