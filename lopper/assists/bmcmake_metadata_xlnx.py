@@ -303,6 +303,9 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
             if sdt.tree['/'].propval('device_id') != ['']:
                 val = sdt.tree['/'].propval('device_id', list)[0]
                 fd.write(f'set(DEVICE_ID "{val}" CACHE STRING "Device Id")\n')
+            if sdt.tree['/'].propval('speed_grade') != ['']:
+                val = sdt.tree['/'].propval('speed_grade', list)[0]
+                fd.write(f'set(SPEED_GRADE "{val}" CACHE STRING "Speed Grade")\n')
             if sdt.tree['/'].propval('board') != ['']:
                 val = sdt.tree['/'].propval('board', list)[0]
                 fd.write(f'set(BOARD "{val}" CACHE STRING "BOARD")\n')
