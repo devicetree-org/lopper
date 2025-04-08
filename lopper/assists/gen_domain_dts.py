@@ -283,7 +283,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psv_pmc_slave_boot_stream', 'psv_pmc_trng', 'psv_psm_global_reg', 'psv_rpu', 'psv_scntr']
 
     versal_gen2_linux_ignore_ip_list = ['mmi_udh_pll', 'mmi_common', 'mmi_pipe_gem_slcr',
-                            'mmi_udh_pll', 'mmi_udh_slcr', 'mmi_usb2phy', 'mmi_usb3phy_crpara', 'mmi_usb3phy_tca', 'mmi_usb_cfg',
+                            'mmi_udh_pll', 'mmi_udh_slcr', 'mmi_usb2phy', 'mmi_usb3phy_crpara', 'mmi_usb3phy_tca',
                             'pmc_rsa', 'pmc_aes', 'pmc_sha2', 'pmc_sha3', "rpu", "apu", "pmc_ppu1_mdm", "pmc_xppu_npi", "pmc_xppu",
                             "pmc_xmpu", "pmc_slave_boot_stream", "pmc_slave_boot", "pmc_ram_npi", "pmc_global", "ocm", "ocm_xmpu",
                             "lpd_xppu", "lpd_systmr_read", "lpd_systmr_ctrl", "lpd_slcr_secure", "lpd_slcr", "lpd_iou_slcr",
@@ -322,7 +322,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 if "cpu" in node.propval('device_type', list)[0]:
                     continue
             if node.propval('status') != ['']:
-                if 'disabled' in node.propval('status', list)[0] and linux_dt:
+                if linux_dt and ('disabled' in node.propval('status', list)[0] or "@" not in node.name):
                     continue
                 elif "tcm" in node.propval('compatible', list)[0]:
                     continue
