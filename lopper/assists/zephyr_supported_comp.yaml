@@ -203,3 +203,18 @@ fixed-clock:
     - compatible
     - '#clock-cells'
     - clock-frequency
+
+xlnx,versal-8.9a:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - power-delay-ms
+    - clocks
+
+xlnx,versal-net-emmc:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - clocks

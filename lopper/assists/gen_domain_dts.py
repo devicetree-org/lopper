@@ -511,6 +511,20 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                                 new_node['#gpio-cells'] = 2
                                 new_node.label_set(node.label)
                                 node.add(new_node)
+                    # SDHC
+                    if any(version in node["compatible"].value for version in ("xlnx,versal-8.9a", "xlnx,versal-net-emmc")):
+                        version = lambda x: x in node["compatible"].value
+                        new_node = LopperNode()
+                        if version("xlnx,versal-net-emmc"):
+                            new_node.name = "mmc"
+                            new_node['compatible'] = "zephyr,mmc-disk"
+                            new_node['bus-width'] = node["xlnx,bus-width"].value
+                        else:
+                            new_node.name = "sdmmc"
+                            new_node['compatible'] = "zephyr,sdmmc-disk"
+                            node['power-delay-ms'] = 10
+                        node.add(new_node)
+                        node["compatible"] = "xlnx,versal-8.9a"
                     if is_supported_periph:
                         required_prop = is_supported_periph[0]["required"]
                         prop_list = list(node.__props__.keys())
