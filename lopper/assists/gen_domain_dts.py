@@ -525,6 +525,32 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             node['power-delay-ms'] = 10
                         node.add(new_node)
                         node["compatible"] = "xlnx,versal-8.9a"
+                    # GPIOPS
+                    if any(version in node["compatible"].value for version in ("xlnx,pmc-gpio-1.0", "xlnx,versal-gpio-1.0")):
+                        version = lambda x: x in node["compatible"].value
+                        platform = sdt.tree['/']['family'].value
+                        if version("xlnx,pmc-gpio-1.0"):
+                            num_banks = [(0,26),(1,26),(3,32),(4,32)]
+                            if platform != ['VersalNet']:
+                                num_banks.extend([(2,26),(5,32)])
+                        else:
+                            num_banks = [(0,26),(3,32)]
+                            if platform != ['VersalNet']:
+                                num_banks.append((4,32))
+                        for bank in num_banks:
+                            new_node = LopperNode()
+                            new_node["compatible"] = "xlnx,ps-gpio-bank"
+                            new_node['reg'] = bank[0]
+                            new_node['#gpio-cells'] = 2
+                            new_prop = LopperProp( "gpio-controller" )
+                            new_node + new_prop
+                            new_node['ngpios'] = bank[1]
+                            new_node.name = f"{node.label}_bank@{bank[0]}"
+                            new_node.label_set(f"{node.label}_bank{bank[0]}")
+                            node.add(new_node)
+                        node['#address-cells'] = 1
+                        node['#size-cells'] = 0
+                        node['compatible'] = "xlnx,ps-gpio"
                     if is_supported_periph:
                         required_prop = is_supported_periph[0]["required"]
                         prop_list = list(node.__props__.keys())

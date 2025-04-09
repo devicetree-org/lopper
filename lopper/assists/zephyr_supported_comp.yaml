@@ -218,3 +218,19 @@ xlnx,versal-net-emmc:
     - reg
     - interrupts
     - clocks
+
+xlnx,versal-gpio-1.0:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - '#address-cells'
+    - '#size-cells'
+
+xlnx,pmc-gpio-1.0:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - '#address-cells'
+    - '#size-cells'
