@@ -1,5 +1,5 @@
 #/*
-# * Copyright (c) 2020 Xilinx Inc. All rights reserved.
+# * Copyright (c) 2020 - 2025 Xilinx Inc. All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
@@ -12,6 +12,7 @@ import re
 import yaml
 import logging
 import common_utils as utils
+
 from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
 
 sys.path.append(os.path.dirname(__file__))
@@ -41,9 +42,7 @@ def get_cpu_node(sdt, options):
                 return node
             elif node.propval('reg') != ['']:
                 cpu_labels.append(matched_label)
-
-    print(f"ERROR: In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
-    _error(f"ERROR: In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
+    _error(f"In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
     sys.exit(1)
 
 def item_generator(json_input, lookup_key):
@@ -666,7 +665,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     drvname = re.split(r"_v(\d+)_(\d+)", drvname)[0]
     yaml_file = os.path.join(drvpath, f"data/{drvname}.yaml")
     if not utils.is_file(yaml_file):
-        print(f"{drvname} Driver doesn't have yaml file")
+        _warning(f"{drvname} Driver doesn't have yaml file")
         return False
 
     driver_compatlist = []

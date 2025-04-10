@@ -1,5 +1,5 @@
 #/*
-# * Copyright (c) 2023 Advanced Micro Devices, Inc. All Rights Reserved.
+# * Copyright (c) 2023 - 2025 Advanced Micro Devices, Inc. All Rights Reserved.
 # *
 # * Author:
 # *       Onkar Harsh <onkar.harsh@amd.com>
@@ -138,20 +138,23 @@ def find_files(search_pattern, search_path):
     """
 
     return glob.glob(f"{search_path}{os.path.sep}{search_pattern}")
-
+    
 def log_setup(options):
-    """To setup the log level based on the verbose given by the user
-    Args:
-        options(obj): Get the verbose from the options
-    Returns:
-        logger level
+  
     """
-    verbose = [i for i in options["args"] if i.startswith('-v')]
-    verbose = verbose[0]  if verbose else ''
-    level = logging.ERROR
-    if verbose == "-vv":
-        level = logging.INFO
-    elif verbose == "-v":
-        level = logging.WARNING
+    Sets up the log level based on the verbosity given by the user.
+    
+    Args:
+        options (dict): Dictionary containing command-line arguments.
+    
+    Returns:
+        int: Logging level.
+    """
+    verbose = [i for i in options.get("args", []) if i.startswith('-v')]
+    verbose_level = 1 if verbose else 0 
+    # Adjust logging level based on verbose level
+    level = logging.DEBUG if verbose_level >= 1 else logging.WARNING
+    #print(f"[LOG_SETUP] Verbose level = {verbose_level}, Final level = {level}")
     return level
+
 
