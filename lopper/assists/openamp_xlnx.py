@@ -1343,7 +1343,7 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
       SOC_TYPE.ZYNQMP : "xlnx,zynqmp-r5fss",
       SOC_TYPE.VERSAL : "xlnx,versal-r5fss",
       SOC_TYPE.VERSAL_NET : "xlnx,versal-net-r52fss",
-      SOC_TYPE.VERSAL2 : "xlnx,versal2-r52fss",
+      SOC_TYPE.VERSAL2 : "xlnx,versal-net-r52fss",
     }
 
     cluster_modes = {
