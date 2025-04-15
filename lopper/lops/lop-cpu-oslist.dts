@@ -28,7 +28,7 @@
                                             continue
                                         yaml_dict[node.label] = {'ip_name' : '','supported_os' : []}
                                         yaml_dict[node.label]['ip_name'] = cpu_ip_name
-                                        if 'cortex' in cpu_ip_name or cpu_ip_name == 'microblaze':
+                                        if ('cortex' in cpu_ip_name or cpu_ip_name == 'microblaze') and cpu_ip_name not in ('cortexa78', 'cortexr52'):
                                             yaml_dict[node.label]['supported_os'] = ['standalone','freertos']
                                         else:
                                             yaml_dict[node.label]['supported_os'] = ['standalone']
