@@ -426,6 +426,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
     valid_alias_proplist = []
 
     zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
+    memnode_list = sdt.tree.nodes('/memory@.*')
     if utils.is_file(zephyr_supported_schema_file):
         schema = utils.load_yaml(zephyr_supported_schema_file)
         for node in root_sub_nodes:
@@ -590,7 +591,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             if prop not in required_prop:
                                 node.delete(prop)
                     else:
-                        if node.name != "axi" and node.name != "soc":
+                        if node.name not in ("axi", "soc") and node not in memnode_list:
                             sdt.tree.delete(node)
 
     alias_node = sdt.tree['/aliases']
