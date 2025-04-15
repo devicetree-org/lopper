@@ -262,51 +262,52 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
                         parent_tab = 0
 
                     label_name = get_label(sdt, symbol_node, node)
-                    plat.buf('\n')
-                    plat.buf('\t' * int(rt-1))
-                    plat.buf('%s: %s {' % (label_name, node.name))
-                    for p in node.__props__.values():
-                        if re.search("phandle =", str(p)) or str(p) == '':
-                            continue
+                    if label_name:
                         plat.buf('\n')
-                        plat.buf('\t' * int(rt))
-                        phandle_prop = None
-                        if p.name in phandle_dict:
-                            # Get the phandle field in the value
-                            phandle_val = phandle_dict[p.name][0].split()
-                            phandle_index = phandle_val.index('phandle')
-                            phandle_to_search = p.value[phandle_index]
-                            node_found = [node for node in sdt.tree['/'].subnodes() if node.phandle == phandle_to_search]
-                            if node_found:
-                                p.value[phandle_index] = f'&{node_found[0].label}'
-                                mod_val =  ' '.join(str(value) for value in p.value)
-                                node[p].value = f'<{mod_val}>'
-                                phandle_prop = str(p).replace('"', '')
-                        if phandle_prop:
-                            plat.buf('%s' % phandle_prop)
-                        elif re.match("clocks =", str(p)):
-                            plat.buf('%s' % node['clocks'])
-                        else:
-                            if p.name == "interrupt-parent":
-                                if gic_node and imux_node:
-                                    if p.value[0] == imux_node.phandle:
-                                        p = str(p).replace('imux', 'gic')
-                            plat.buf('%s' % p)
-
-                    plat.buf('\n')
-                    plat.buf('\t' * int(rt-1))
-                    if child_len < 1:
-                        plat.buf('};')
-                        for count in range(tab_len):
+                        plat.buf('\t' * int(rt-1))
+                        plat.buf('%s: %s {' % (label_name, node.name))
+                        for p in node.__props__.values():
+                            if re.search("phandle =", str(p)) or str(p) == '':
+                                continue
                             plat.buf('\n')
-                            plat.buf('\t' * int(int(rt-2)-count))
-                            plat.buf('};')
+                            plat.buf('\t' * int(rt))
+                            phandle_prop = None
+                            if p.name in phandle_dict:
+                                # Get the phandle field in the value
+                                phandle_val = phandle_dict[p.name][0].split()
+                                phandle_index = phandle_val.index('phandle')
+                                phandle_to_search = p.value[phandle_index]
+                                node_found = [node for node in sdt.tree['/'].subnodes() if node.phandle == phandle_to_search]
+                                if node_found:
+                                    p.value[phandle_index] = f'&{node_found[0].label}'
+                                    mod_val =  ' '.join(str(value) for value in p.value)
+                                    node[p].value = f'<{mod_val}>'
+                                    phandle_prop = str(p).replace('"', '')
+                            if phandle_prop:
+                                plat.buf('%s' % phandle_prop)
+                            elif re.match("clocks =", str(p)):
+                                plat.buf('%s' % node['clocks'])
+                            else:
+                                if p.name == "interrupt-parent":
+                                    if gic_node and imux_node:
+                                        if p.value[0] == imux_node.phandle:
+                                            p = str(p).replace('imux', 'gic')
+                                plat.buf('%s' % p)
 
-                        tab_len = 0
-                    else:
-                        if child_len > tab_len:
-                            parent_node = node.parent
-                            parent_tab = 1
+                        plat.buf('\n')
+                        plat.buf('\t' * int(rt-1))
+                        if child_len < 1:
+                            plat.buf('};')
+                            for count in range(tab_len):
+                                plat.buf('\n')
+                                plat.buf('\t' * int(int(rt-2)-count))
+                                plat.buf('};')
+
+                            tab_len = 0
+                        else:
+                            if child_len > tab_len:
+                                parent_node = node.parent
+                                parent_tab = 1
         except:
            pass
 
