@@ -57,6 +57,52 @@ def remove_node_ref(sdt, tgt_node, ref_node):
             sdt.tree['/' + ref_node.name].delete(prop)
 
 """
+This API removes lines that contain `status = "okay";` from a DTS/DTSI file.
+
+Args:
+	filepath (str): Path to the input DTS/DTSI file.
+"""
+
+def remove_status_okay(filepath):
+    with open(filepath, "r") as f:
+        lines = f.readlines()
+
+    modified_lines = [
+        line for line in lines if 'status = "okay";' not in line.strip()
+    ]
+
+    with open(filepath, "w") as f:
+        f.writelines(modified_lines)
+
+match_list = ["v_tc", "v_smpte_uhdsdi_tx", "v_smpte_uhdsdi_rx", "v_hdmi_tx1", "v_hdmi_rx1",
+	      "v_hdmi_rx", "v_hdmi_tx", "v_dp_tx", "v_dp_rx", "v_dp_rx1", "v_dp_tx1"]
+"""
+This API adds `status = "disabled";` after each line matching `xlnx,ip-name = "{name}";`
+from the provided match_list. Preserves indentation.
+Args:
+	filepath (str): Path to the input DTS/DTSI file.
+	match_list (List[str]): List of IP names to match.
+"""
+def add_status_disabled_after_ipname(filepath, match_list):
+    with open(filepath, "r") as f:
+        lines = f.readlines()
+
+    modified_lines = []
+    for line in lines:
+        modified_lines.append(line)
+        stripped_line = line.strip()
+
+        for name in match_list:
+            if stripped_line == f'xlnx,ip-name = "{name}";':
+                indent = line[:len(line) - len(line.lstrip())]
+                modified_lines.append(f'{indent}status = "disabled";\n')
+                break
+
+    with open(filepath, "w") as f:
+        f.writelines(modified_lines)
+
+
+"""
 This API generates the overlay dts file by taking pl.dtsi
 generated from DTG++.
 Args:
@@ -295,6 +341,9 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
             line = line[1:] if line.startswith("\t") else line  # Remove one leading tab
             line = line.replace("interrupt-parent = <&imux>;", "interrupt-parent = <&gic>;")  # Replace interrupt parent
             outfile.write(line)
+
+    remove_status_okay(output_file)
+    add_status_disabled_after_ipname(output_file, match_list)
 
     print("Overlay generation completed successfully!")
     return True
