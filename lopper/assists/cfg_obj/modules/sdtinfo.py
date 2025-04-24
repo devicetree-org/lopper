@@ -1,5 +1,5 @@
 # /*
-# * Copyright (c) 2022 - 2024 Advanced Micro Devices, Inc. All Rights Reserved.
+# * Copyright (c) 2022 - 2025 Advanced Micro Devices, Inc. All Rights Reserved.
 # *
 # * Author:
 # *       Madhav Bhatt <madhav.bhatt@amd.com>
@@ -47,7 +47,7 @@ class SdtInfo:
     def __get_masters(self):
         masters_tmp = {}
         for master in chc.masters.keys():
-            for node in self.__sdt__.tree:
+            for node in self.__node_tree__:
                 if chc.masters[master]["name"] in  self.__get_cpu_name(node):
                     if self.__is_master_defined(master):
                         master_tmp[master] = chc.masters[master]
@@ -67,19 +67,20 @@ class SdtInfo:
 
     def __parse_ipi_bit_pos(self):
         ip_name = []
-        for node in self.__sdt__.tree:
-            ip_name = self.__get_ip_name(node)
-            if ip_name != None and "psu_ipi" in ip_name:
-                for master in self.masters:
+        for master in self.masters:
+            for node in self.__node_tree__:
+                ip_name = self.__get_ip_name(node)
+                if ip_name != None and "psu_ipi" in ip_name:
                     if self.masters[master]["name"] in self.__get_cpu_name(node):
                        self.masters[master]["ipi_bit_pos"] = node["xlnx,bit-position"].value[0]
                        self.masters[master]["is_ipi_present"] = True
+                       break
         return
 
 
     def __parse_gpo_info(self):
         ip_name = []
-        for node in self.__sdt__.tree:
+        for node in self.__node_tree__:
             ip_name = self.__get_ip_name(node)
             if ip_name != None and "psu_pmu_iomodule" in ip_name:
                 for num in chc.gpo_nums:
@@ -100,7 +101,7 @@ class SdtInfo:
 
     def __parse_ocm_base_high(self):
         ip_name = []
-        for node in self.__sdt__.tree:
+        for node in self.__node_tree__:
             if len(node.child_nodes) > 0:
                 for child_node in node.child_nodes.values():
                     ip_name = self.__get_ip_name(child_node)
@@ -113,7 +114,7 @@ class SdtInfo:
         return
 
     def __parse_slaves_for_master(self):
-        nodes_temp = self.__sdt__.tree
+        nodes_temp = self.__node_tree__
         nodelist = {}
         for node in nodes_temp:
             temp = node.name.split('@')
@@ -213,6 +214,7 @@ class SdtInfo:
 
     def __init__(self, sdt, options):
         self.__sdt__ = sdt
+        self.__node_tree__ = list(self.__sdt__.tree)
         self.__get_proc_type(options)
 
         # Hard coded values
