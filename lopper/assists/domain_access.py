@@ -202,7 +202,9 @@ def core_domain_access( tgt_node, sdt, options ):
                 #       processing, pass it by absolute path.
                 tgt_node = sdt.tree[sdt.target_domain]
             except Exception as e:
-                _error( f"domain_access: target domain {sdt.target_domain} cannot be found", True )
+                tree = sdt.tree['/'].print( as_string=True )
+                _error( f"domain_access: target domain {sdt.target_domain} cannot be found in input:\n{tree}", True )
+
         else:
             try:
                 if command_line_target:
@@ -375,6 +377,7 @@ def core_domain_access( tgt_node, sdt, options ):
         memory_int = domain_node['memory'].int()
         memory_hex = domain_node['memory'].hex()
     except Exception as e:
+        _info( f"the target domain had no memory specification, using default (0)" )
         memory_hex = 0x0
         memory_int = 0
 
@@ -387,10 +390,14 @@ def core_domain_access( tgt_node, sdt, options ):
     # required size adjustments
     memory_nodes = sdt.tree.nodes("/memory@.*")
 
+    # os._exit(1)
     # The memory chunks are what we've built up from the yaml and .iss
     # file Check them against the memory nodes in the tree to see if
     # anything needs to be adjusted. They are in pairs: start, size
-    domain_memory_chunks = chunks( domain_node['memory'].value, 2 )
+    try:
+        domain_memory_chunks = chunks( domain_node['memory'].value, 2 )
+    except:
+        domain_memory_chunks = []
 
     # Build a list of memory node information. We do this so we can
     # update the reg, but also keep the original value around. Otherwise
