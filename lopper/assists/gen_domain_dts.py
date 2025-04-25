@@ -313,6 +313,9 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                         continue
                 elif "tcm" in node.propval('compatible', list)[0]:
                     continue
+                elif linux_dt and "xlnx,versal-ddrmc" in node.propval('compatible', list):
+                    # ddr controller is not mapped to APU and there is a special handling in SDT to make its status okay.
+                    continue
                 else:
                     sdt.tree.delete(node)
         elif node.propval('compatible') != [''] and linux_dt:
