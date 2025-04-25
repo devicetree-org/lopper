@@ -111,6 +111,7 @@ def get_memranges(tgt_node, sdt, options):
 
     mem_ranges = {}
     lable_names = {}
+    lable_names["contains_hole"] = set()
     # Remove Duplicate memory node referenecs
     mem_nodes = list(dict.fromkeys(mem_nodes))
     for node in mem_nodes:
@@ -178,6 +179,9 @@ def get_memranges(tgt_node, sdt, options):
                     if is_valid_noc_ch and (linker_secname in mem_ranges):
                         start_addr, old_size = mem_ranges[linker_secname]
                         new_size = valid_range[0] + size - start_addr
+                        #To find the hole in the memory
+                        if old_size < valid_range[0]:
+                            lable_names["contains_hole"].add(linker_secname)
                         mem_ranges.update({linker_secname: [start_addr, new_size]})
                         continue
                     if fsbl_update_size:
@@ -222,6 +226,10 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
 
     except IndexError:
         pass
+    if memtest_config:
+        for mem in lable_names.get("contains_hole"):
+            del mem_ranges[mem]
+            print(f"""[WARNING]: A memory hole has been detected in the {lable_names[mem]}. Segment ignored in memory test.""")
 
     src_dir = options['args'][1]
     app_path = utils.get_dir_path(src_dir.rstrip(os.sep))
