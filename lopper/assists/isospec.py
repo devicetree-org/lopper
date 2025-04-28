@@ -73,6 +73,7 @@ class domain_yaml(object):
 
     def __init__( self, sdt = None ):
         self.tree = LopperTree()
+        self.tree.phandle_resolution = False
         self.sdt = sdt
 
 
@@ -80,6 +81,7 @@ class domain_yaml(object):
         subsystems_node = LopperNode( abspath=f"/domains/{subsystem_name}", name=subsystem_name )
         subsystems_node["compatible"] = "xilinx,subsystem"
         subsystems_node["id"] = subsystem_id
+        subsystems_node.phandle_resolution = False
 
         self.tree = self.tree + subsystems_node
 
@@ -87,7 +89,10 @@ class domain_yaml(object):
 
     def node_add( self, name, parent ):
         new_node = LopperNode( name=name )
-        parent + new_node
+        try:
+            parent + new_node
+        except Exception as e:
+            _warning( f"node {new_node} could not be added: {e} " )
 
         return new_node
 
@@ -165,6 +170,7 @@ class domain_yaml(object):
             cpu_list = domain_or_subsystem["cpus"]
         except:
             cpu_list = LopperProp( "cpus", -1, domain_or_subsystem, [] )
+            cpu_list.phandle_resolution = False
             ## TODO: we shouldn't need to do this, as the node is passed
             ##       to the init. This is a lopper tree bug
             domain_or_subsystem + cpu_list
@@ -296,6 +302,7 @@ class domain_yaml(object):
             memory_list = domain_or_subsystem[memory_type]
         except:
             memory_list = LopperProp( memory_type, -1, domain_or_subsystem, [] )
+            memory_list.phandle_resolution = False
             ## TODO: we shouldn't need to do this, as the node is passed
             ##       to the init. This is a lopper tree bug
             domain_or_subsystem + memory_list
@@ -366,6 +373,7 @@ class domain_yaml(object):
             access_list = domain_or_subsystem["access"]
         except:
             access_list = LopperProp( "access", -1, domain_or_subsystem, [] )
+            access_list.phandle_resolution = False
             ## TODO: we shouldn't need to do this, as the node is passed
             ##       to the init. This is a lopper tree bug
             domain_or_subsystem + access_list
