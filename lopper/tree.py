@@ -171,6 +171,7 @@ class LopperProp():
         new_instance.pclass = self.pclass
         new_instance.ptype = self.ptype
         new_instance.binary = self.binary
+        new_instance.phandle_resolution = self.phandle_resolution
 
         if self.__dbg__ > 1:
             lopper.log._debug( f"property deep copy done: {[self]} ({type(new_instance.value)})({new_instance.value})" )
@@ -555,6 +556,11 @@ class LopperProp():
         if self.pclass == "json":
             return phandle_map
 
+        # similarly, if phandle resolution has been explictly disabled,
+        # there's no need to go any further
+        if self.phandle_resolution == False:
+            return phandle_map
+
         debug = False
         # this is too verbose, kept for reference
         # debug = self.__dbg__
@@ -797,8 +803,11 @@ class LopperProp():
                                    f"{self.name} ({self.node.abs_path})" )
                 lopper.log._debug( f"  {e}" )
 
-            # just do a fixed record size chunking to continue processing
-            property_value_chunks = chunks(self.value,group_size)
+            try:
+                # just do a fixed record size chunking to continue processing
+                property_value_chunks = chunks(self.value,group_size)
+            except Exception as e:
+                property_value_chunks = chunks(self.value,1)
 
         property_chunk_idx = 0
         property_sub_list = []
@@ -1432,7 +1441,7 @@ class LopperProp():
         if not self.ptype:
             self.ptype = self.property_type_guess()
 
-            lopper.log._debug( f"guessing type for: {self.name}s [{self.ptype}]" )
+            lopper.log._debug( f"guessing type for: {self.name} [{self.ptype}]" )
 
         self.string_val = outstring
         self.__pstate__ = "resolved"
@@ -1481,6 +1490,7 @@ class LopperNode(object):
         self.child_nodes = OrderedDict()
 
         self.phandle = phandle
+        self.phandle_resolution = True
 
         self.label = ""
 
@@ -2389,6 +2399,8 @@ class LopperNode(object):
 
                 dct[f'__{p.name}_pclass__'] = p.pclass
 
+                dct[f'__{p.name}_phandle_resolution__'] = p.phandle_resolution
+
                 lopper.log._debug( f"       node export: [{p.ptype}] property: {p.name} value: {p.value} (state:{p.__pstate__})(type:{dct[f'__{p.name}_type__']})" )
 
             if self.label:
@@ -2413,7 +2425,6 @@ class LopperNode(object):
                     del dct[k]
 
                 dct[label_name] = [ self.label ]
-
 
             self.__modified__ = False
 
@@ -3005,7 +3016,10 @@ class LopperNode(object):
                 cn.resolve( fdt, resolve_children )
 
         for p in self.__props__.values():
-            p.resolve()
+            try:
+                p.resolve()
+            except Exception as e:
+                pass
 
         if self.tree and self.tree.__symbols__:
             try:
@@ -3282,6 +3296,8 @@ class LopperTree:
         #   - dts_overlay
         self._type = "dts"
         self.depth_first = depth_first
+
+        self.phandle_resolution = True
 
         self._external_trees = []
 
@@ -4149,6 +4165,8 @@ class LopperTree:
 
         node.tree = self
         node.__dbg__ = self.__dbg__
+
+        node.phandle_resolution = self.phandle_resolution
 
         if node_full_path == "/":
             node.number = 0
