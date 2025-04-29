@@ -94,6 +94,7 @@ class LopperSDT:
         self.tree = None
         self.subtrees = {}
         self.outdir = "./"
+        self.tmpdir = tempfile.mkdtemp()
         self.target_domain = ""
         self.load_paths = []
         self.permissive = False
@@ -102,6 +103,7 @@ class LopperSDT:
         self.symbols = False
         self.warnings = []
         self.werror = False
+        self.tmpfiles = []
 
     def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True, config=None):
         """executes setup and initialization tasks for a system device tree
@@ -138,6 +140,15 @@ class LopperSDT:
         self.use_libfdt = libfdt
 
         current_dir = os.getcwd()
+
+        # is the tmpdir valid ?
+        tmpdir_path =  Path( self.tmpdir )
+        if tmpdir_path.is_dir():
+            # do nothing, the tempdir is still present
+            pass
+        else:
+            # atexit() has run, so we need to create it again ..
+            self.tmpdir = tempfile.mkdtemp()
 
         self.lops = []
         self.input_files = []
@@ -251,7 +262,11 @@ class LopperSDT:
             # we need the original location of the main SDT file on the search path
             # in case there are dtsi files, etc.
             include_paths += " " + str(sdt_file.parent) + " "
-            self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
+
+            # Note: we use the tmpdir vs the outdir here, since these are files that don't
+            #       need to be kept. The outdir will be used for the main writing of a transformed
+            #       SDT.
+            self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.tmpdir,
                                           self.save_temps, self.verbose, self.enhanced, self.permissive,
                                           self.symbols )
 
@@ -296,6 +311,8 @@ class LopperSDT:
                         self.tree = self.tree.add( node, merge=merge )
 
             fpp.close()
+            self.tmpfiles.append( fpp.name )
+
         elif re.search( r".yaml$", self.dts ):
             if not yaml_support:
                 lopper.log._error( f"no yaml support detected, but system device tree is yaml" )
@@ -326,6 +343,10 @@ class LopperSDT:
             else:
                 self.FDT = None
             self.tree = lt
+
+            fpp.close()
+            self.tmpfiles.append( fpp.name )
+
         elif re.search( r".json$", self.dts ):
             if not yaml_support:
                 lopper.log._error( f"no json detected, but system device tree is json" )
@@ -356,6 +377,9 @@ class LopperSDT:
             else:
                 self.FDT = None
             self.tree = lt
+
+            fpp.close()
+            self.tmpfiles.append( fpp.name )
         else:
             # the system device tree is a dtb
             self.dtb = sdt_file
@@ -414,7 +438,7 @@ class LopperSDT:
                 # TODO: this may need an output directory option, right now it drops
                 #       it where lopper is called from (which may not be writeable.
                 #       hence why our output_dir is set to "./"
-                compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force, self.outdir,
+                compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force, self.tmpdir,
                                                    self.save_temps, self.verbose )
                 if not compiled_file:
                     lopper.log._error( f"could not compile file {ifile}" )
@@ -525,16 +549,32 @@ class LopperSDT:
 
         """
         # remove any .dtb and .pp files we created
-        if self.cleanup and not self.save_temps:
+        if self.cleanup_flag and not self.save_temps:
             try:
                 if self.dtb != self.dts:
                     os.remove( self.dtb )
+            except:
+                pass
+            try:
                 if self.enhanced:
                     os.remove( self.dts + ".enhanced" )
             except:
-                # doesn't matter if the remove failed, it means it is
-                # most likely gone
                 pass
+            try:
+                if self.tmpdir:
+                    shutil.rmtree( self.tmpdir )
+            except:
+                pass
+            try:
+                # these are files that were used at some point
+                # in the processing pipeline and were nominated
+                # for final cleanup.
+                if self.tmpfiles:
+                    for f in self.tmpfiles:
+                        os.remove( f )
+            except:
+                pass
+
 
         # note: we are not deleting assists .dtb files, since they
         #       can actually be binary blobs passed in. We are also
