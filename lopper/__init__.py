@@ -404,6 +404,19 @@ class LopperSDT:
                 embedded_lops_tree = LopperTree()
                 embedded_lops_tree + lops
 
+                # promote any priority designation from the /lops node
+                # to our root node, since that is where future processing
+                # will look (we can't do this at "/" in embedded lops as
+                # the "/" node is added to the main root node of the entire
+                # tree by dtc
+                try:
+                    lops_node = embedded_lops_tree["/lops"]
+                    priority = lops_node["priority"]
+                    embedded_lops_tree["/"] + priority
+                    lops_node - priority
+                except Exception as e:
+                    pass
+
                 lop = LopperFile( "" )
                 lop.dts = ""
                 lop.dtb = ""
@@ -2314,12 +2327,12 @@ class LopperSDT:
                         lopper.log._debug( f"noexec or skip set for:{f.abs_path}" )
                         continue
 
-                    lopper.log._info( f"------> processing lop: {f.abs_path}" )
+                    lopper.log._info( f"------> processing lop: {f.abs_path} {f.name}" )
 
                     result = self.exec_lop( f, fdt_tree )
                     lop_results[f.name] = result
-                    if self.verbose:
-                        print( f"[INFO]: ------> logged result {result} for lop {f.name}")
+
+                    lopper.log._info( f"[INFO]: ------> logged result {result} for lop {f.name}" )
 
 
 class LopperFile:
