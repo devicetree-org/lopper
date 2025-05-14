@@ -38,6 +38,48 @@ def is_compat( node, compat_string_to_test ):
         return assist_reference
     return ""
 
+def phandle_meta_test( sdt, pass_number ):
+    print( f"[INFO]: running phandle_meta_test: {sdt.output_file} pass: {pass_number}" )
+
+    try:
+        if pass_number == "one":
+            sdt.write( sdt.tree, sdt.output_file )
+        else:
+            sdt.write( sdt.tree, sdt.output_file )
+            #sdt.write( sdt.tree, '/tmp/foo.dts' )
+            #sdt.tree.print()
+    except Exception as e:
+        print( f"[ERROR]: {e}" )
+        return False
+
+    if pass_number == "one":
+        phandle_link_is_number = False
+        with open( sdt.output_file ) as fp:
+            for line in fp:
+                if re.search( r"phandle-link.*?=.*?<0x.*>;", line ):
+                    phandle_link_is_number = True
+
+        if phandle_link_is_number:
+            print( "[PASSED]: phandle-link is a number (no symbolic replacement)" )
+        else:
+            print( "[FAILED]: phandle-link is a number (symbolic or not found)" )
+
+        return phandle_link_is_number
+
+    if pass_number == "two":
+        phandle_link_is_sym = False
+        with open( sdt.output_file ) as fp:
+            for line in fp:
+                if re.search( r"phandle-link.*?=.*?<&amba>;", line ):
+                    phandle_link_is_sym = True
+
+        if phandle_link_is_sym:
+            print( "[PASSED]: phandle-link is symbolic (replacement)" )
+        else:
+            print( "[FAILED]: phandle-link is a number (no replacement done)" )
+
+        return phandle_link_is_sym
+
 def overlay_test( sdt ):
     overlay_tree = LopperTree()
 
@@ -324,6 +366,12 @@ def assist_reference( tgt_node, sdt, options ):
         args = options['args']
         if "overlay_test" in args:
             overlay_test( sdt )
+            return True
+        elif "phandle_meta_test_1" in args:
+            phandle_meta_test( sdt, "one" )
+            return True
+        elif "phandle_meta_test_2" in args:
+            phandle_meta_test( sdt, "two" )
             return True
         else:
             domains_access_test( sdt )
