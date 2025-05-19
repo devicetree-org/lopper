@@ -94,6 +94,7 @@ def main():
     config_vals = {}
     symbols = False
     warnings = []
+    usage_flag = False
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "I:W:A:t:dfvdhi:o:a:SO:D:x:",
@@ -119,8 +120,8 @@ def main():
         elif o in ('-f', "--force"):
             force = True
         elif o in ('-h', '--help'):
-            usage()
-            sys.exit(0)
+            # usage()
+            usage_flag = True
         elif o in ('-i', '--input'):
             inputfiles.append(a)
         elif o in ('-a', '--assist'):
@@ -172,64 +173,102 @@ def main():
         else:
             assert False, "unhandled option"
 
+
+    # We split the options into two groups:
+    #    1) options after -- on the command line
+    #    2) options before the -- on the command line
+    #
+    # We can't just reply on getopt processing, since it will stop
+    # handling arguments above when the firt unrecognized non dashed
+    # option is found or when "--" is found as a delimeter.
+    #
+    # That's all fine, but it also doesn't tell us WHY it stopped
+    # handling the options (-- or a non-dashed opttion), which means
+    # we can't easily tell if a subcommand was being run, or it is a
+    # system device tree that was being passed.
+    #
+    # So we double check against argv and split into the two parts
+    # anything remaining before the dash could be a SDT, everything
+    # after is for modules/commands
+    #
+    option_args = []
+    non_option_args = []
+    if '--' in sys.argv:
+        double_dash_index = sys.argv.index('--', 1)
+        # All arguments after '--' are not options
+        option_args_possible = sys.argv[1:double_dash_index]
+        non_option_args = sys.argv[double_dash_index + 1:]
+
+        # Separate only unprocessed arguments
+        option_args = [arg for arg in option_args_possible if arg not in [opt for opt, _ in opts]]
+
+        # print( f"getopt remaining args: {args} option_args: {option_args} non_option_args: {non_option_args}" )
+    else:
+        option_args = args
+
     # any args should be <system device tree> <output file>
     module_name = ""
     module_args = {}
     module_args_found = False
-    for idx, item in enumerate(args):
+    for idx, item in enumerate(option_args):
         # validate that the system device tree file exists
         if idx == 0:
             sdt = item
             sdt_file = Path(sdt)
             try:
-                my_abs_path = sdt_file.resolve()
+                my_abs_path = sdt_file.resolve(strict=True)
             except FileNotFoundError:
                 # doesn't exist
                 print( f"Error: system device tree {sdt} does not exist" )
                 sys.exit(1)
 
-        else:
-            if item == "--":
-                module_args_found = True
-
-            # the last input is the output file. It can't already exist, unless
-            # --force was passed
-            if not module_args_found:
-                if idx == 1:
-                    if output:
-                        print( "Error: output was already provided via -o\n")
-                        usage()
-                        sys.exit(1)
-                    else:
-                        output = item
-                        output_file = Path(output)
-                        if output_file.exists():
-                            if not force:
-                                print( f"Error: output file {output} exists, and -f was not passed" )
-                                sys.exit(1)
+        if idx == 1:
+            if output:
+                print( "Error: output was already provided via -o\n")
+                usage()
+                sys.exit(1)
             else:
-                # module arguments
-                if not item == "--":
-                    if not module_name:
-                        module_name = item
-                        cmdline_assists.append( item )
-                        module_args[module_name] = []
-                    else:
-                        module_args[module_name].append( item )
-                else:
-                    if module_name:
-                        # another module, clear the name to trigger a re-start of the
-                        # processing
-                        module_name = ""
+                output = item
+                output_file = Path(output)
+                if output_file.exists():
+                    if not force:
+                        print( f"Error: output file {output} exists, and -f was not passed" )
+                        sys.exit(1)
+
+    # these are options that followed -- on the original command line
+    for idx, item in enumerate(non_option_args):
+        # check for chained modules "--"
+        if not item == "--":
+            if not module_name:
+                module_name = item
+                cmdline_assists.append( item )
+                module_args[module_name] = []
+            else:
+                module_args[module_name].append( item )
+        else:
+            if module_name:
+                # another module, clear the name to trigger a re-start of the
+                # processing
+                module_name = ""
 
     if module_name and verbose:
         print( f"[DBG]: modules found: {list(module_args.keys())}" )
         print( f"         args: {module_args}" )
 
-    if not sdt:
-        print( "[ERROR]: no system device tree was supplied\n" )
-        usage()
-        sys.exit(1)
+    # was --help passed ?
+    if usage_flag:
+        if not module_name:
+            usage()
+        else:
+            # a module name was found, let's pass this onto it
+            pass
+
+    if not usage_flag and not sdt:
+        # if a module was found, pass along everything to it
+        if not module_name:
+            print( "[ERROR]: no system device tree was supplied\n" )
+            usage()
+            sys.exit(1)
 
     if not libfdt:
         import lopper.dt
@@ -417,8 +456,9 @@ def main():
 
     if not dryrun:
         # write any changes to the FDT, before we do our write
-        lopper.Lopper.sync( device_tree.FDT, device_tree.tree.export() )
-        device_tree.write( enhanced = device_tree.enhanced )
+        if device_tree.dts:
+            lopper.Lopper.sync( device_tree.FDT, device_tree.tree.export() )
+            device_tree.write( enhanced = device_tree.enhanced )
     else:
         print( f"[INFO]: --dryrun was passed, output file {output} not written" )
 

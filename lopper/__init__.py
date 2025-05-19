@@ -213,7 +213,7 @@ class LopperSDT:
 
         # is the sdt a dts ?
         sdt_extended_trees = []
-        if re.search( r".dts$", self.dts ):
+        if self.dts and re.search( r".dts$", self.dts ):
             # do we have any extra sdt files to concatenate first ?
             fp = ""
             fpp = tempfile.NamedTemporaryFile( delete=False )
@@ -313,7 +313,7 @@ class LopperSDT:
             fpp.close()
             self.tmpfiles.append( fpp.name )
 
-        elif re.search( r".yaml$", self.dts ):
+        elif self.dts and re.search( r".yaml$", self.dts ):
             if not yaml_support:
                 lopper.log._error( f"no yaml support detected, but system device tree is yaml" )
                 sys.exit(1)
@@ -347,7 +347,7 @@ class LopperSDT:
             fpp.close()
             self.tmpfiles.append( fpp.name )
 
-        elif re.search( r".json$", self.dts ):
+        elif self.dts and re.search( r".json$", self.dts ):
             if not yaml_support:
                 lopper.log._error( f"no json detected, but system device tree is json" )
                 sys.exit(1)
@@ -381,16 +381,17 @@ class LopperSDT:
             fpp.close()
             self.tmpfiles.append( fpp.name )
         else:
-            # the system device tree is a dtb
-            self.dtb = sdt_file
-            self.dts = sdt_file
-            if not self.use_libfdt:
-                lopper.log._error( f"dtb system device tree passed ({self.dts}), and libfdt is disabled" )
-                sys.exit(1)
-            self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
-            self.tree = LopperTree()
-            self.tree.load( Lopper.export( self.FDT ) )
-            self.tree.strict = not self.permissive
+            if self.dts:
+                # the system device tree is a dtb
+                self.dtb = sdt_file
+                self.dts = sdt_file
+                if not self.use_libfdt:
+                    lopper.log._error( f"dtb system device tree passed ({self.dts}), and libfdt is disabled" )
+                    sys.exit(1)
+                self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
+                self.tree = LopperTree()
+                self.tree.load( Lopper.export( self.FDT ) )
+                self.tree.strict = not self.permissive
 
         try:
             lops = self.tree["/lops"]
@@ -1568,7 +1569,7 @@ class LopperSDT:
             except:
                 cb_node = None
 
-            if not cb_node:
+            if cb_tgt_node_name != "/" and not cb_node:
                 if self.werror:
                     lopper.log._error( f"cannot find assist target node in tree" )
                     sys.exit(1)
