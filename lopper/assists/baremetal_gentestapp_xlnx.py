@@ -186,6 +186,10 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                 for node in node_list:
                     if "xlnx,tmr-sem-1.0" in node["compatible"].value:
                         continue
+                    if any("bram" in c for c in node["compatible"].value):
+                        ecc_val = node.propval("xlnx,ecc-status-registers", list)
+                        if not ecc_val or ecc_val[0] != 1:
+                            continue
                     if sdt.tree[node].propval('reg') != ['']:
                         val, size = scan_reg_size(node, node['reg'].value, 0)
                         if stdin_addr == val:
