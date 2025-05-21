@@ -19,6 +19,7 @@ import tempfile
 from collections import OrderedDict
 
 from lopper.fmt import LopperFmt
+from lopper.fdt import LopperFDT
 
 from lopper.tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
 import lopper.tree
@@ -33,6 +34,10 @@ try:
 except Exception as e:
     print( f"[WARNING]: cant load yaml, disabling support: {e}" )
     yaml_support = False
+
+# Default processing type
+Lopper = LopperFDT
+lopper.tree.Lopper = Lopper
 
 @contextlib.contextmanager
 def stdoutIO(stdout=None):
