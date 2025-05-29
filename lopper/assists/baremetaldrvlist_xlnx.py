@@ -95,6 +95,7 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
                     drv_name = utils.get_base_name(yaml_file).replace('.yaml','')
                     driver_list += [drv_name]
                     if schema.get('depends',{}):
+                        schema['depends'].pop("condition",None)
                         driver_list += list(schema['depends'].keys())
                     node_name = node.propval('xlnx,name')
                     ip_name = node.propval('xlnx,ip-name')

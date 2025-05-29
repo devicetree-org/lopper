@@ -135,6 +135,7 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
     if device type is not there return success
     """
     meta_dict = schema.get('depends',{})
+    meta_dict.pop("condition",None)
     dev_dict = {}
     for drv, prop_list in sorted(meta_dict.items(), key=lambda kv:(kv[0], kv[1])):
         if utils.is_file(repo_path_data):
