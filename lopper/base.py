@@ -111,8 +111,8 @@ class lopper_base:
         includes += os.getcwd()
 
         # try pcpp first
-        ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("pcpp") or "").split()
-        if ppargs and os.path.basename(ppargs[0]) == "pcpp":
+        ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("pcpp") or shutil.which("pcpp-python") or "").split()
+        if ppargs and (os.path.basename(ppargs[0]) == "pcpp" or os.path.basename(ppargs[0]) == "pcpp-python"):
             ppargs += "--passthru-comments".split()
         else:
             ppargs = (os.environ.get('LOPPER_CPP') or shutil.which("cpp") or "").split()
