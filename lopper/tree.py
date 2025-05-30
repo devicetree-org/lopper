@@ -26,6 +26,7 @@ import copy
 import json
 
 import lopper.base
+from lopper.base import lopper_base
 from lopper.fmt import LopperFmt
 
 from lopper.log import _warning, _info, _error, _debug
@@ -816,6 +817,19 @@ class LopperProp():
                 if property_chunk_idx in phandle_index_list:
                     if self.node and self.node.tree:
                         node_deref = self.node.tree.deref( p )
+                        # This second check is currently disabled as it impacts runtime
+                        # significantly. If the pattern learning isn't sufficient, this
+                        # can be re-enabled
+                        if not node_deref and False:
+                            try:
+                                # this is the "learned" set of descriptions
+                                second_opinion = lopper_base.get_phandle_value( self.node.tree.phandle_static_map,
+                                                                                self.node.abs_path, self.name,
+                                                                                property_chunk_idx )
+                                if second_opinion:
+                                    node_deref = second_opinion
+                            except Exception as e:
+                                pass
                     else:
                         # can we use "None" to represent something that IS
                         # a phandle, but that we couldn't look up. That matches
@@ -2220,7 +2234,10 @@ class LopperNode(object):
             if self.tree and self.tree.strict != strict:
                 resolve_props = True
 
-        if self.abs_path != "/":
+        if self.abs_path == "/__lopper-phandles__":
+            # this is an internal node, do not print
+            return
+        elif self.abs_path != "/":
             plabel = ""
             try:
                 if n['lopper-label.*']:
@@ -3298,6 +3315,7 @@ class LopperTree:
         self.depth_first = depth_first
 
         self.phandle_resolution = True
+        self.phandle_static_map = None
 
         self._external_trees = []
 
@@ -4986,6 +5004,10 @@ class LopperTree:
                     node = LopperNode( nn, "", self )
                     node.indent_char = self.indent_char
 
+                if "__lopper-phandles__" in node_path:
+                    pmap = lopper_base.decode_phandle_map_from_dtb( node_in )
+                    self.phandle_static_map = pmap
+
                 # special node processing
                 if abs_path == "/memreserve":
                     lopper.log._debug( f"tree load: memreserve found: {node_in['__memreserve__']}" )
@@ -5065,6 +5087,13 @@ class LopperTree:
                         self.__aliases__[alias.name] = alias_target
             except:
                 pass
+
+            # this is time consuming and we are using a learned pattern technique for
+            # unknown phandle properties. If we start using this phandle map as more
+            # than static, this needs to be re-enabled
+            if self.phandle_static_map and False:
+                self.phandle_static_map = lopper_base.update_phandle_values( self, self.phandle_static_map)
+
         else:
             # breadth first. not currently implemented
             pass

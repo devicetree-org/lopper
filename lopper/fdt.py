@@ -31,6 +31,7 @@ from collections import OrderedDict
 
 from lopper.fmt import LopperFmt
 import lopper.base
+from lopper.base import lopper_base
 from lopper.tree import LopperTreePrinter
 
 from string import printable
@@ -1659,6 +1660,16 @@ class LopperFDT(lopper.base.lopper_base):
 
         preprocessed_name = LopperFDT.dt_preprocess( dts_file, includes, outdir, verbose )
 
+        # even without the enhanced flag we parse phandle information from
+        # the dts file. This allows us to do analysis and error checking
+        # later on new properties that may have phandles.
+        with open( preprocessed_name, 'r') as file:
+            pdata = file.read()
+        phandles = lopper_base.parse_dts_phandles( pdata )
+        phandle_dts = lopper_base.encode_phandle_map_to_dts( phandles )
+        descriptions = lopper_base.generate_property_descriptions( pdata )
+        lopper_base.update_phandle_property_descriptions( descriptions )
+
         if enhanced:
             fp = preprocessed_name
 
@@ -1850,6 +1861,10 @@ class LopperFDT(lopper.base.lopper_base):
                         labeldict[label] = label
 
             f = open( fp_enhanced, 'w' )
+
+            # add our phandle tracking node
+            fp_comments_and_labels_as_attributes +=  "\n" + phandle_dts
+
             f.write( fp_comments_and_labels_as_attributes )
             f.close()
 

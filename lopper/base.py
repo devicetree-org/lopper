@@ -794,3 +794,710 @@ class lopper_base:
         )
         return re.sub(pattern, lopper_base._label_replacer, text)
 
+    @staticmethod
+    def parse_dts_phandles(dts_content):
+        """
+        Parse device tree source content and extract phandle references.
+
+        Args:
+            dts_content: The device tree source content as a string
+
+        Returns:
+            Dictionary structure:
+            {
+                "/path/to/node": {
+                    "property_name": [(index_in_property, "&phandle_name", -1), ...]
+                }
+            }
+        """
+        # Remove comments and clean up whitespace
+        cleaned_content = re.sub(r'//.*$', '', dts_content, flags=re.MULTILINE)
+        cleaned_content = re.sub(r'/\*.*?\*/', '', cleaned_content, flags=re.DOTALL)
+
+        result = {}
+        node_stack = []  # Stack to track current node path
+        current_path = ""
+
+        lines = cleaned_content.split('\n')
+        i = 0
+
+        while i < len(lines):
+            line = lines[i].strip()
+
+            if not line:
+                i += 1
+                continue
+
+            # Check for node definition (name { or label: name { or name@address {)
+            # Handle both labeled and unlabeled nodes
+            node_match = re.match(r'^(?:([a-zA-Z0-9_]+):\s*)?([a-zA-Z0-9_@.-]+)\s*\{', line)
+            if node_match:
+                label = node_match.group(1)  # Optional label (e.g., "amba")
+                node_name = node_match.group(2)  # Node name (e.g., "axi@f1000000")
+
+                # Build the full path
+                if current_path == "" or current_path == "/":
+                    if node_name == "/":
+                        current_path = "/"
+                    else:
+                        current_path = "/" + node_name
+                else:
+                    current_path = current_path + "/" + node_name
+
+                node_stack.append(current_path)
+                i += 1
+                continue
+
+            # Check for closing brace
+            if line == '}' or line.endswith('};'):
+                if node_stack:
+                    node_stack.pop()
+                    if node_stack:
+                        current_path = node_stack[-1]
+                    else:
+                        current_path = ""
+                i += 1
+                continue
+
+            # Check for property definitions with phandles
+            # Handle both single-line and multi-line properties
+            prop_match = re.match(r'^([a-zA-Z0-9_-]+)\s*=\s*(.*)', line)
+            if prop_match and current_path:
+                prop_name = prop_match.group(1)
+                prop_value = prop_match.group(2)
+
+                # Handle multi-line properties
+                if not prop_value.rstrip().endswith(';'):
+                    # Continue reading until we find the semicolon
+                    j = i + 1
+                    while j < len(lines) and not prop_value.rstrip().endswith(';'):
+                        next_line = lines[j].strip()
+                        if next_line:
+                            prop_value += " " + next_line
+                        j += 1
+                    i = j
+                else:
+                    i += 1
+
+                # Remove the trailing semicolon
+                prop_value = prop_value.rstrip(';').strip()
+
+                # Find all phandle references in the property value
+                phandle_refs = lopper_base.find_phandles_in_property(prop_value)
+
+                if phandle_refs:
+                    if current_path not in result:
+                        result[current_path] = {}
+                    result[current_path][prop_name] = phandle_refs
+            else:
+                i += 1
+
+        return result
+
+    @staticmethod
+    def find_phandles_in_property(prop_value):
+        """
+        Find all phandle references in a property value string.
+
+        Args:
+            prop_value: The property value string
+
+        Returns:
+            List of tuples containing (index_in_property, phandle_name, -1)
+        """
+        phandle_refs = []
+
+        # Split the property value into tokens, considering various delimiters
+        # This handles cases like: &gpio1 2 3, &gpio2, <&uart0 &spi1>
+        tokens = re.findall(r'[^,\s<>]+', prop_value)
+
+        for index, token in enumerate(tokens):
+            # Check if token is a phandle reference
+            phandle_match = re.match(r'&([a-zA-Z0-9_-]+)', token)
+            if phandle_match:
+                phandle_name = "&" + phandle_match.group(1)
+                phandle_refs.append((index, phandle_name, -1))
+
+        return phandle_refs
+
+    @staticmethod
+    def print_phandle_map(phandle_map):
+        """Pretty print the phandle map."""
+        print("Phandle Reference Map:")
+        print("=" * 50)
+
+        for node_path in sorted(phandle_map.keys()):
+            print(f"\nNode: {node_path}")
+            for prop_name, phandle_refs in phandle_map[node_path].items():
+                print(f"  Property: {prop_name}")
+                for index, phandle_name, value in phandle_refs:
+                    print(f"    {phandle_name} at index {index}, value: {value}")
+
+    @staticmethod
+    def update_phandle_values(tree, phandle_map):
+        """
+        Update the third value in phandle tuples by dereferencing symbolic names.
+
+        Args:
+            tree: The tree object with deref() method
+            phandle_map: The phandle dictionary to update
+
+        Returns:
+            The updated phandle_map with resolved integer values
+        """
+        for node_path, properties in phandle_map.items():
+            for prop_name, phandle_refs in properties.items():
+                updated_refs = []
+                for index, phandle_name, current_value in phandle_refs:
+                    # Remove the '&' prefix for the deref call
+                    phandle_label = phandle_name[1:] if phandle_name.startswith('&') else phandle_name
+
+                    # Call tree.deref() to get the integer value
+                    deref_value = tree.deref(phandle_label)
+
+                    # If we get a non-None value, use it; otherwise set to -1
+                    new_value = deref_value if deref_value is not None else -1
+                    updated_refs.append((index, phandle_name, new_value))
+
+                # Update the property with the new references
+                properties[prop_name] = updated_refs
+
+        return phandle_map
+
+    @staticmethod
+    def encode_phandle_map_to_dts(phandle_map):
+        """
+        Encode the phandle map into a syntactically correct device tree node
+        that can be appended to an existing complete DTS file.
+
+        Args:
+            phandle_map: The phandle dictionary to encode
+
+        Returns:
+            String containing the "lopper-phandles" device tree node
+        """
+        lines = []
+        lines.append("")
+        lines.append("/ {")
+        lines.append("\t__lopper-phandles__ {")
+        lines.append("\t\tcompatible = \"lopper,phandle-tracker\";")
+        lines.append("")
+
+        # Create a counter for unique property names
+        prop_counter = 0
+
+        # Sort nodes for consistent output
+        for node_path in sorted(phandle_map.keys()):
+            properties = phandle_map[node_path]
+
+            # Each property gets its own phandle_entry, even from the same node
+            for prop_name in sorted(properties.keys()):
+                phandle_refs = properties[prop_name]
+
+                # Create unique property names using counter
+                entry_prop_name = f"phandle_entry_{prop_counter:04d}"
+                prop_counter += 1
+
+                # Combine path and property name into single string (path/property)
+                combined_path = f"{node_path}/{prop_name}"
+
+                # Build the data array as all strings: path, then quartets of (index, symbol, value)
+                prop_values = []
+                prop_values.append(f'"{combined_path}"')
+
+                # Add phandle data as quartets: index, symbol, value (all as strings)
+                for index, phandle_name, value in phandle_refs:
+                    prop_values.append(f'"{index}"')        # Index as string
+                    prop_values.append(f'"{phandle_name}"')  # Symbolic name as string
+                    prop_values.append(f'"{value}"')         # Value as string
+
+                # Join all values - all strings now, no mixed types
+                prop_value_str = ", ".join(prop_values)
+                lines.append(f"\t\t{entry_prop_name} = {prop_value_str};")
+
+                # Add a human-readable comment
+                phandle_names = [phandle_name for _, phandle_name, _ in phandle_refs]
+                comment = " ".join(phandle_names)
+                lines.append(f"\t\t/* {node_path}.{prop_name}: {comment} */")
+                lines.append("")
+
+        lines.append("\t};")
+        lines.append("};")
+        return "\n".join(lines)
+
+    @staticmethod
+    def decode_path_and_property(path_string, prop_string):
+        """
+        Decode the path and property name from the strings (no decoding needed).
+
+        Args:
+            path_string: The path string
+            prop_string: The property name string
+
+        Returns:
+            Tuple of (path, property_name)
+        """
+        return path_string, prop_string
+
+    @staticmethod
+    def decode_phandle_map_from_dtb(lopper_node_dict):
+        """
+        Recreate the original phandle dictionary structure from the DTB-parsed data.
+
+        Args:
+            lopper_node_dict: The parsed lopper-phandles node dictionary from DTB
+
+        Returns:
+            Dictionary structure:
+            {
+                "/path/to/node": {
+                    "property_name": [(index_in_property, "&phandle_name", resolved_value), ...]
+                }
+            }
+        """
+        result = {}
+
+        # Find all phandle entries by looking for phandle_entry_XXXX keys
+        entry_keys = [key for key in lopper_node_dict.keys() if key.startswith('phandle_entry_')]
+
+        for entry_key in sorted(entry_keys):
+            entry_data = lopper_node_dict[entry_key]
+
+            if not entry_data or len(entry_data) < 1:
+                continue
+
+            # First element is the combined path/property string
+            combined_path = entry_data[0]
+
+            # Split path and property - last component after final '/' is property name
+            if '/' not in combined_path:
+                continue
+
+            path_parts = combined_path.split('/')
+            prop_name = path_parts[-1]  # Last component is property name
+            node_path = '/'.join(path_parts[:-1])  # Everything else is the path
+
+            # Handle root path case
+            if not node_path:
+                node_path = '/'
+
+            # Parse remaining data as triplets: index, symbol, value (all strings)
+            phandle_refs = []
+            i = 1  # Start after the combined path string
+            while i + 2 < len(entry_data):
+                index_str = entry_data[i]       # String: "0"
+                symbolic_name = entry_data[i + 1]  # String: "&gpio"
+                value_str = entry_data[i + 2]   # String: "525" or "-1"
+
+                # Convert strings back to integers
+                try:
+                    index = int(index_str)
+                    phandle_value = int(value_str)
+                except ValueError:
+                    # Skip invalid entries
+                    i += 3
+                    continue
+
+                phandle_refs.append((index, symbolic_name, phandle_value))
+                i += 3
+
+            # Add to result dictionary
+            if node_path not in result:
+                result[node_path] = {}
+            result[node_path][prop_name] = phandle_refs
+
+        return result
+
+    @staticmethod
+    def get_phandle_value(phandle_map, node_path, prop_name, index):
+        """
+        Get the phandle value for a specific node, property, and index.
+
+        Args:
+            phandle_map: The phandle dictionary
+            node_path: The full path to the node (e.g., "/axi@f1000000/dma@ffa80000")
+            prop_name: The property name (e.g., "iommus")
+            index: The index within the property (e.g., 0)
+
+        Returns:
+            The phandle value (integer) if found, None if not found
+        """
+        if not phandle_map:
+            return None
+
+        # Check if node exists in the map
+        if node_path not in phandle_map:
+            return None
+
+        # Check if property exists for this node
+        if prop_name not in phandle_map[node_path]:
+            return None
+
+        # Search through the phandle references for the matching index
+        phandle_refs = phandle_map[node_path][prop_name]
+        for ref_index, phandle_name, phandle_value in phandle_refs:
+            if ref_index == index:
+                return phandle_value
+
+        # Index not found
+        return None
+
+    @staticmethod
+    def _extract_property_value(dts_content, node_path, prop_name):
+        """
+        Extract the full property value from DTS content for pattern analysis.
+        Handles multi-line properties and complex formatting.
+
+        Args:
+            dts_content: The device tree source content
+            node_path: Path to the node
+            prop_name: Property name
+
+        Returns:
+            String containing the property value or None if not found
+        """
+        # Remove comments first
+        cleaned_content = re.sub(r'//.*$', '', dts_content, flags=re.MULTILINE)
+        cleaned_content = re.sub(r'/\*.*?\*/', '', cleaned_content, flags=re.DOTALL)
+
+        lines = cleaned_content.split('\n')
+        in_target_node = False
+        brace_count = 0
+
+        # Extract node name from path for matching
+        node_name = node_path.split('/')[-1] if '/' in node_path else node_path
+        if node_name == '':
+            node_name = '/'
+
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+
+            # Track if we're in the right node
+            if node_name in line and '{' in line:
+                in_target_node = True
+                brace_count = line.count('{') - line.count('}')
+                i += 1
+                continue
+
+            if in_target_node:
+                # Track braces to know when we exit the node
+                brace_count += line.count('{') - line.count('}')
+                if brace_count <= 0:
+                    break
+
+                # Look for the property - handle both single line and start of multi-line
+                prop_pattern = rf'\b{re.escape(prop_name)}\s*='
+                if re.search(prop_pattern, line):
+                    # Found the property, extract its value
+                    value_parts = []
+
+                    # Get the part after the = sign
+                    equals_pos = line.find('=')
+                    if equals_pos != -1:
+                        value_part = line[equals_pos + 1:].strip()
+                        value_parts.append(value_part)
+
+                        # If it doesn't end with semicolon, it's multi-line
+                        if not value_part.rstrip().endswith(';'):
+                            # Continue reading until semicolon
+                            i += 1
+                            while i < len(lines):
+                                next_line = lines[i].strip()
+                                value_parts.append(next_line)
+                                if next_line.rstrip().endswith(';'):
+                                    break
+                                i += 1
+
+                    # Join all parts and clean up
+                    full_value = ' '.join(value_parts)
+                    if full_value.endswith(';'):
+                        full_value = full_value[:-1].strip()
+
+                    return full_value
+
+            i += 1
+
+        return None
+
+    @staticmethod
+    def _analyze_property_pattern(prop_value, phandle_refs):
+        """
+        Analyze a property value to determine its phandle pattern.
+        Handles multi-record properties and complex structures.
+
+        Args:
+            prop_value: The property value string
+            phandle_refs: List of phandle references found in this property
+
+        Returns:
+            String describing the pattern or None
+        """
+        if not prop_value or not phandle_refs:
+            return None
+
+        # Clean up the property value and split into records
+        # Records are typically separated by angle bracket groups: <...>, <...>
+        records = []
+        current_record = []
+        in_brackets = False
+        tokens = []
+
+        # First, tokenize respecting angle brackets and commas
+        i = 0
+        current_token = ""
+        while i < len(prop_value):
+            char = prop_value[i]
+
+            if char == '<':
+                if current_token.strip():
+                    tokens.append(current_token.strip())
+                    current_token = ""
+                in_brackets = True
+                tokens.append('<')
+            elif char == '>':
+                if current_token.strip():
+                    tokens.append(current_token.strip())
+                    current_token = ""
+                in_brackets = False
+                tokens.append('>')
+            elif char == ',' and not in_brackets:
+                if current_token.strip():
+                    tokens.append(current_token.strip())
+                    current_token = ""
+                # Comma outside brackets often separates records
+                tokens.append(',')
+            elif char.isspace():
+                if current_token.strip():
+                    tokens.append(current_token.strip())
+                    current_token = ""
+            else:
+                current_token += char
+
+            i += 1
+
+        if current_token.strip():
+            tokens.append(current_token.strip())
+
+        # Now group tokens into records based on angle brackets
+        current_record = []
+        records = []
+        in_record = False
+
+        for token in tokens:
+            if token == '<':
+                in_record = True
+                current_record = []
+            elif token == '>':
+                if in_record and current_record:
+                    records.append(current_record[:])
+                in_record = False
+            elif token == ',' and not in_record:
+                # Record separator outside of brackets
+                continue
+            elif in_record and token not in ['<', '>']:
+                current_record.append(token)
+
+        # If no angle brackets found, treat the whole thing as one record
+        if not records and tokens:
+            # Filter out angle brackets and commas
+            clean_tokens = [t for t in tokens if t not in ['<', '>', ',']]
+            if clean_tokens:
+                records = [clean_tokens]
+
+        # Analyze each record to find the pattern
+        if not records:
+            return None
+
+        # Create mapping of token positions to phandle names
+        # _ is the resolved phandle, which we don't care about for this
+        phandle_map = {}
+        for index, phandle_name, _ in phandle_refs:
+            phandle_map[index] = phandle_name
+
+        # Analyze the first record to establish pattern
+        record_patterns = []
+        for record in records:
+            pattern_parts = []
+            token_index = 0
+
+            for token in record:
+                if token_index in phandle_map or token.startswith('&'):
+                    pattern_parts.append('phandle')
+                else:
+                    # Classify non-phandle tokens
+                    try:
+                        int(token, 0)  # Try parsing as number
+                        pattern_parts.append('field')
+                    except ValueError:
+                        if token.startswith('"') and token.endswith('"'):
+                            pattern_parts.append('string')
+                        else:
+                            pattern_parts.append('field')
+                token_index += 1
+
+            if pattern_parts:
+                record_patterns.append(' '.join(pattern_parts))
+
+        # Find the most common record pattern
+        if record_patterns:
+            from collections import Counter
+            pattern_counts = Counter(record_patterns)
+            most_common_pattern = pattern_counts.most_common(1)[0][0]
+
+            # If we have multiple records with the same pattern, it's repeating
+            if len(records) > 1 and len(set(record_patterns)) == 1:
+                return most_common_pattern  # Will be marked as repeating elsewhere
+            else:
+                return most_common_pattern
+
+        return None
+
+    @staticmethod
+    def _generalize_pattern(patterns):
+        """
+        Create a generalized pattern from multiple observed patterns.
+
+        Args:
+            patterns: List of pattern strings
+
+        Returns:
+            Tuple of (pattern_string, repeat_flag) or None
+        """
+        if not patterns:
+            return None
+
+        # Find the most common pattern
+        from collections import Counter
+        pattern_counts = Counter(patterns)
+        most_common = pattern_counts.most_common(1)[0][0]
+
+        # Determine if this is a repeating pattern
+        # If we see the same pattern multiple times, it's likely repeating
+        repeat_flag = 1 if len(patterns) > 1 and len(set(patterns)) == 1 else 0
+
+        return (most_common, repeat_flag)
+
+    @staticmethod
+    def analyze_phandle_patterns(dts_content):
+        """
+        Analyze DTS content to identify phandle patterns and generate property descriptions.
+
+        Args:
+            dts_content: The device tree source content as a string
+
+        Returns:
+            Dictionary of property descriptions in the format:
+            {
+                "property_name": ["pattern_description", repeat_flag],
+                ...
+            }
+        """
+        # Parse the DTS to get phandle references
+        phandle_map = lopper_base.parse_dts_phandles(dts_content)
+
+        # Dictionary to collect patterns for each property
+        property_patterns = {}
+
+        # Analyze each property that contains phandles
+        for node_path, properties in phandle_map.items():
+            for prop_name, phandle_refs in properties.items():
+                if prop_name not in property_patterns:
+                    property_patterns[prop_name] = []
+
+                # Get the full property value to analyze the pattern
+                prop_value = lopper_base._extract_property_value(dts_content, node_path, prop_name)
+                if prop_value:
+                    pattern = lopper_base._analyze_property_pattern(prop_value, phandle_refs)
+                    if pattern:
+                        property_patterns[prop_name].append(pattern)
+
+        # Generate descriptions from collected patterns
+        descriptions = {}
+        for prop_name, patterns in property_patterns.items():
+            # Find the most common pattern or create a generalized one
+            result = lopper_base._generalize_pattern(patterns)
+            if result:
+                pattern, repeat_flag = result
+                descriptions[prop_name] = [pattern, repeat_flag]
+
+        return descriptions
+
+    @staticmethod
+    def generate_property_descriptions(dts_content):
+        """
+        Generate a complete property description dictionary from DTS analysis.
+
+        Args:
+            dts_content: The device tree source content
+
+        Returns:
+            Dictionary suitable for use as property descriptions
+        """
+        # Get the analyzed patterns
+        patterns = lopper_base.analyze_phandle_patterns(dts_content)
+
+        # Add DEFAULT entry
+        patterns["DEFAULT"] = ["this is the generated phandle map"]
+
+        return patterns
+
+    @staticmethod
+    def update_phandle_property_descriptions(analyzed_patterns):
+        """
+        Update the phandle_possible_prop_dict class variable with new property descriptions
+        from a previous analysis. Existing descriptions are left unchanged.
+
+        Args:
+            analyzed_patterns: Dictionary from analyze_phandle_patterns() containing
+                              {"property_name": ["pattern", repeat_flag], ...}
+
+        Returns:
+            Dictionary of newly added property descriptions
+        """
+        # Check if input is valid
+        if not analyzed_patterns or not isinstance(analyzed_patterns, dict):
+            return {}
+
+        # Get the current base dictionary (this handles the lazy initialization)
+        base_dict = lopper_base.phandle_possible_properties().copy()
+
+        # Track what we add for return value
+        newly_added = {}
+
+        # Update only properties we don't already know about
+        for prop_name, description in analyzed_patterns.items():
+            if prop_name not in base_dict:
+                base_dict[prop_name] = description
+                newly_added[prop_name] = description
+
+        # Assign the combined dictionary back to the class variable
+        lopper_base.phandle_possible_prop_dict = base_dict
+
+        return newly_added
+
+    @staticmethod
+    def get_property_description(prop_name):
+        """
+        Get the property description for a given property name.
+
+        Args:
+            prop_name: The property name to look up
+
+        Returns:
+            List containing [pattern_description, repeat_flag] or DEFAULT if not found
+        """
+        return lopper_base.phandle_possible_prop_dict.get(
+            prop_name,
+            lopper_base.phandle_possible_prop_dict.get("DEFAULT", ["unknown pattern", 0])
+        )
+
+    @staticmethod
+    def list_known_properties():
+        """
+        Get a list of all known property names in the descriptions table.
+
+        Returns:
+            List of property names (excluding DEFAULT)
+        """
+        return [prop for prop in lopper_base.phandle_possible_prop_dict.keys() if prop != "DEFAULT"]
