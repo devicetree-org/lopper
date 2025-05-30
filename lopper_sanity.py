@@ -1242,7 +1242,7 @@ def tree_sanity_test( fdt, verbose=0 ):
             if re.search( r"node:", line ):
                 node_count += 1
 
-    if node_count != 21:
+    if node_count != 22:
         test_failed( f"node count (1) is incorrect. Got {node_count}, expected {21}" )
     else:
         test_passed( "end: node walk passed\n" )
@@ -1378,7 +1378,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpw.close()
     c = test_pattern_count( fpp.name, ".*node:" )
-    if c == 21:
+    if c == 22:
         test_passed( "full walk, after restricted walk" )
     else:
         test_failed( "full walk, after restricted walk (wrong number of nodes)" )
@@ -1416,7 +1416,7 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( f"       starting node test: node: {p}" )
         count += 1
 
-    if count == 15:
+    if count == 16:
         test_passed( "start -> end walk" )
     else:
         test_failed( f"start -> end walk ({count} vs {15})")
@@ -1460,7 +1460,7 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( f"    node: {k.abs_path}" )
         subnodecount += 1
 
-    if subnodecount == 21:
+    if subnodecount == 22:
         test_passed( "full tree subnode" )
     else:
         test_failed( f"full tree subnode ({subnodecount} vs {21})")
