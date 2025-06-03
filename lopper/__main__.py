@@ -200,7 +200,10 @@ def main():
         non_option_args = sys.argv[double_dash_index + 1:]
 
         # Separate only unprocessed arguments
-        option_args = [arg for arg in option_args_possible if arg not in [opt for opt, _ in opts]]
+        option_args = [
+            arg for arg in option_args_possible
+            if arg not in [opt for opt, val in opts] and arg not in [val for opt, val in opts]
+        ]
 
         # print( f"getopt remaining args: {args} option_args: {option_args} non_option_args: {non_option_args}" )
     else:
