@@ -567,8 +567,19 @@ class LopperProp():
         # debug = self.__dbg__
         dname = self.name
 
+        try:
+            exclusions = phandle_props["__phandle_exclude__"]
+            for p in exclusions:
+                if re.search( p, self.node.abs_path):
+                    lopper.log._debug( f"phandle replacement exclusion found: {self.node.abs_path} skipping" )
+                    return []
+        except Exception as e:
+            exclusions = []
+
         if self.node:
             try:
+                # we will eventually replace this entire check with the exclusion
+                # list above. But for now, we want to have the double check on lops
                 compat = self.node["compatible"]
                 is_lop = False
                 for c in compat.value:
