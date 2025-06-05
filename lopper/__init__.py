@@ -130,17 +130,24 @@ class LopperSDT:
         if libfdt:
             lopper.log._info( f"loading dtb and using libfdt to manipulate tree" )
 
-        # check for required support applications
-        if libfdt:
-            support_bins = [ os.environ.get("LOPPER_DTC", "dtc"), os.environ.get("LOPPER_CPP", "cpp") ]
-        else:
-            support_bins = [ os.environ.get("LOPPER_CPP", "cpp") ]
+        if sdt_file:
+            # check for required support applications
+            if libfdt:
+                support_bins = [ os.environ.get("LOPPER_DTC", "dtc") ]
+            else:
+                support_bins = []
 
-        for s in support_bins:
-            lopper.log._info( f"checking for support binary: {s}" )
-            if not shutil.which(s):
-                lopper.log._error( f"support application '{s}' not found, exiting" )
-                sys.exit(2)
+            # cpp or pcpp is required for both libfdt and non-libfdt modes
+            preprocessor = (os.environ.get('LOPPER_CPP') or
+                                           shutil.which("cpp") or
+                                           shutil.which("pcpp") or
+                                           shutil.which("pcpp-python") or "").split()
+            support_bins.extend( preprocessor )
+            for s in support_bins:
+                lopper.log._info( f"checking for support binary: {s}" )
+                if not shutil.which(s):
+                    lopper.log._error( f"support application '{s}' not found, exiting" )
+                    sys.exit(2)
 
         self.use_libfdt = libfdt
 
