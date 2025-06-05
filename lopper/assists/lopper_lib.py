@@ -265,6 +265,10 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
 
         try:
             cpu_node = tree.pnode(cpu_phandle)
+            if not cpu_node:
+                if verbose:
+                    print( f"[DBG]: lopper_lib, no cpu found at phandle {hex(cpu_phandle)}, skipping")
+                    continue
         except:
             # couldn't find the node, skip
             continue
