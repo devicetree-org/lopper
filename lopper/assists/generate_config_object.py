@@ -221,7 +221,9 @@ def get_power_domain_perm_mask_txt(pwr_domain, sdtinfo_obj):
                 continue
             macro_list.append(get_ipi_mask_txt(master, sdtinfo_obj))
     if (pwr_domain == "NODE_FPD" or pwr_domain == "NODE_APU") and (len(macro_list) == 0):
-        macro_list.append("psu_cortexa53_0")
+        hardcode_mask = get_ipi_mask_txt("psu_cortexr5_0", sdtinfo_obj)
+        if hardcode_mask != "":
+            macro_list.append(hardcode_mask)
     if len(macro_list) > 0:
         return " | ".join(macro_list)
     else:
