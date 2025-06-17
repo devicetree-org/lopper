@@ -55,6 +55,8 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                 symbol_node = node
             status = node["status"].value
             if "okay" in status:
+                if "cdns,ttc" in node["compatible"].value and node.props('lop-dynamic-ttc-node'):
+                    continue
                 node_list.append(node)
         except:
            pass
@@ -62,7 +64,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
         node_list = get_mapped_nodes(sdt, node_list, options)
     for node in node_list:
-        if "cdns,ttc" in node["compatible"].value and not node.props('lop-dynamic-ttc-node'):
+        if "cdns,ttc" in node["compatible"].value:
             ttc_node_list += [node]
         compatible_dict.update({node: node["compatible"].value})
         if stdin:
