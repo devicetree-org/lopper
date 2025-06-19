@@ -242,7 +242,8 @@ def get_clock_offset(node):
     if node.propval("clock-names") != ['']:
         clock_names = node["clock-names"].value
         try:
-            tclk_offset = clock_names.index("tx_clk") + 1
+            tclk_offset = clock_names.index("tx_clk")
+            tclk_offset = 2 * tclk_offset + 1
         except ValueError:
                 tclk_offset = 1
 
