@@ -4394,13 +4394,13 @@ class LopperTree:
         return matches
 
 
-    def deref( self, phandle_or_label ):
+    def deref( self, phandle_or_label_or_alias ):
         """Find a node by a phandle or label
 
         dereferences a phandle or label to find the target node.
 
         Args:
-           phandle_or_label (int or string)
+           phandle_or_label_or_alias (int or string)
 
         Returns:
            LopperNode: the matching node if found, None otherwise
@@ -4413,16 +4413,22 @@ class LopperTree:
                 try:
                     if tgn:
                         break
-                    tgn = t.pnode( phandle_or_label )
+                    tgn = t.pnode( phandle_or_label_or_alias )
                     if tgn == None:
                         # if we couldn't find the target, maybe it is in
                         # as a string. So let's check that way.
-                        tgn2 = t.nodes( phandle_or_label )
+                        tgn2 = t.nodes( phandle_or_label_or_alias )
                         if not tgn2:
-                            tgn2 = t.lnodes( re.escape(phandle_or_label) )
+                            tgn2 = t.lnodes( re.escape(phandle_or_label_or_alias) )
 
                         if tgn2:
                             tgn = tgn2[0]
+
+                        if not tgn:
+                            tgn2 = t.alias_node( phandle_or_label_or_alias )
+                            if tgn2:
+                                print( f'debug: deref by alias worked: orig: {tgn} alias: {tgn2}')
+                                tgn = tgn2
                 except:
                     pass
         except Exception as e:
