@@ -1929,6 +1929,13 @@ class LopperSDT:
                     if opt_key:
                         options[opt_key] = opt_val
 
+            # arrange for the system device tree's output directory to
+            # be visible in the executed code environment
+            try:
+                output = options['output']
+            except:
+                options['outdir'] = self.outdir
+
             try:
                 start_node = options['start_node']
             except:
