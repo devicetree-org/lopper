@@ -22,6 +22,7 @@
                               inherit = "lopper_lib";
                               code = "
                                      import yaml
+                                     import os
                                      cpu_output = {}
                                      for c in __selected__:
                                          for c_node in c.subnodes( children_only = True ):
@@ -37,7 +38,7 @@
                                                  cpu_node = None
                                              if cpu_node:
                                              	 cpu_output[cpu_node] = ip_name[0]
-                                     with open('cpulist.yaml', 'w') as fd:
+                                     with open(os.path.join(outdir, 'cpulist.yaml'), 'w') as fd:
                                          fd.write(yaml.dump(cpu_output, indent = 4))
                                      ";
                       };
