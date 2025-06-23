@@ -93,6 +93,7 @@
                            compatible = "system-device-tree-v1,lop,code-v1";
                            code = "
                                import yaml
+                               import os
 
                                for n in tree.__selected__:
                                    proplist= ['xlnx,data-size', 'xlnx,use-muldiv', 'xlnx,use-atomic', 'xlnx,use-fpu', 'xlnx,use-compression']
@@ -196,7 +197,7 @@
                                    cflags_data['libpath'] = libdir 
                                    cflags_data['linkflags'] = bsp_linkflags
 
-                                   with open('cflags.yaml', 'w') as fd:
+                                   with open(os.path.join(outdir, 'cflags.yaml'), 'w') as fd:
                                          fd.write(yaml.dump(cflags_data, indent = 4))
                                ";
                       };
