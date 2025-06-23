@@ -44,6 +44,7 @@ def usage():
 
     print("\nExample:")
     print(" lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi")
+    print("  --firmware-name=<name> - (Optional) Override the default firmware-name in the output")
 
 def remove_node_ref(sdt, tgt_node, ref_node):
     prop_dict = ref_node.__props__.copy()
@@ -118,6 +119,13 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         processor = options['args'][0]
         config = options['args'][1].strip().lower()  # Ensure lowercase for consistency
         input_file = options['args'][2]
+        firmware_override = None
+
+        if len(options['args']) > 3:
+            for arg in options['args'][3:]:
+                if arg.startswith("--firmware-name="):
+                    firmware_override = arg.split("=", 1)[1]
+
     except (IndexError, KeyError):
         print("Error: Missing required arguments.")
         usage()
@@ -309,6 +317,9 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
 
     if config == "external-fpga-config":
         firmware_name = "\t\texternal-fpga-config;\n"
+
+    if firmware_override:
+        firmware_name = f'\t\tfirmware-name = "{firmware_override}";\n'
 
     if firmware_name:
         fpga_block.append(firmware_name)
