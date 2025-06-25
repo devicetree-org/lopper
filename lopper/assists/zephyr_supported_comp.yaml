@@ -81,6 +81,7 @@ arm,pl011:
     - status
     - interrupts
     - interrupt-parent
+    - interrupt-names
 
 arm,sbsa-uart:
   required:
@@ -88,6 +89,7 @@ arm,sbsa-uart:
     - reg
     - interrupts
     - interrupt-parent
+    - interrupt-names
 
 xlnx,xps-iic-2.00.a:
   required:

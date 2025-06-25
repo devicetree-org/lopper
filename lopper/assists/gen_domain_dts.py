@@ -459,6 +459,10 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                     # UARTPSV
                     if any(version in node["compatible"].value for version in ("arm,pl011", "arm,sbsa-uart")):
                         node["compatible"].value = ["arm,sbsa-uart"]
+                        if node.propval('interrupt-names') == ['']:
+                            node["interrupt-names"] = LopperProp("interrupt-names")
+                            node["interrupt-names"].value = node.label
+                            node.add(node["interrupt-names"])
                     # AXI-IIC
                     if "xlnx,axi-iic-2.1" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,xps-iic-2.1"]
