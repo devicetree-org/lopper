@@ -759,6 +759,28 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                             if node.propval('#size-cells') != ['0']:
                                 node["#size-cells"] = LopperProp("#size-cells")
                                 node["#size-cells"].value = 0
+			#AXI-SPI
+                        if "xlnx,xps-spi-2.00.a" in node["compatible"].value:
+                            node["compatible"].value = ["xlnx,xps-spi-2.00.a"]
+                            if node.propval('#address-cells') != ['1']:
+                                node["#address-cells"] = LopperProp("#address-cells")
+                                node["#address-cells"].value = 1
+                            if node.propval('#size-cells') != ['0']:
+                                node["#size-cells"] = LopperProp("#size-cells")
+                                node["#size-cells"].value = 0
+                            new_node = LopperNode()
+                            new_node['compatible'] = "jedec,spi-nor"
+                            new_node.name = "flash@0"
+                            new_node['reg'] = 0
+                            new_node['spi-max-frequency'] = 8000000
+                            new_prop = LopperProp( "has-dpd" )
+                            new_node + new_prop
+                            flashid = "jedec-id = [20 bb 21]"
+                            new_node + LopperProp(flashid)
+                            new_node['size'] = 0x8000000
+                            new_node['t-enter-dpd'] = 10000
+                            new_node['t-exit-dpd'] = 35000
+                            node.add(new_node)
                         #AXI-GPIO
                         if "xlnx,xps-gpio-1.00.a" in node["compatible"].value:
                             node["compatible"].value = ["xlnx,xps-gpio-1.00.a"]
