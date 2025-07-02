@@ -359,8 +359,15 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             sdt.tree['/cpus'].delete('address-map')
 
     if zephyr_dt:
-        if "r52" in machine:
-            xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options)
+        if "r52" in machine or "a78" in machine:
+            xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine)
+            if "a78" in machine:
+                new_dst_node = LopperNode()
+                new_dst_node['compatible'] = "arm,psci-1.0"
+                new_dst_node['method'] = "smc"
+                new_dst_node.abs_path = "/psci "
+                new_dst_node.name = "psci "
+                sdt.tree + new_dst_node
         else:
             xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options)
             zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
@@ -372,20 +379,21 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 match_cpunode.parent.name = "cpus"
     return True
 
-def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options):
-    
-    root_node = sdt.tree[tgt_node]
+def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
+    root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
 
     for node in root_sub_nodes:
         if node.depth == 1:
             if "cpus" not in node.name and "amba" not in node.name and "memory" not in node.name and "chosen" not in node.name and "bus" not in node.name and "axi" not in node.name and "timer" not in node.name and "alias" not in node.name:
                 sdt.tree.delete(node)
+        elif node.name == "cpu-map" or node.name == "idle-states":
+            sdt.tree.delete(node)
 
         if node.propval("compatible") != ['']:
             if node.propval('xlnx,ip-name') != ['']:
                 val = node.propval('xlnx,ip-name', list)[0]
-                if val == "psx_rcpu_gic" or val == "rcpu_gic":
+                if "r52" in machine and (val == "psx_rcpu_gic" or val == "rcpu_gic"):
                     name  = node.name
                     sdt.tree.delete(node)
                     sdt.tree.delete(node.parent)
@@ -393,6 +401,16 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options):
                     new_dst_node['#interrupt-cells'] = 4
                     new_dst_node.abs_path = "/axi/interrupt-controller@e2000000 "
                     new_dst_node.name = "interrupt-controller@e2000000 "
+                    sdt.tree + new_dst_node
+                    sdt.tree.sync()
+                elif "a78" in machine and (val == "psx_acpu_gic" or val == "acpu_gic"):
+                    name  = node.name
+                    sdt.tree.delete(node)
+                    new_dst_node = node()
+                    new_dst_node['#interrupt-cells'] = 4
+                    new_dst_node.abs_path = "/axi/interrupt-controller@e2000000 "
+                    new_dst_node.name = "interrupt-controller@e2000000"
+                    new_dst_node['compatible'].value = ["arm,gic-v3", "arm,gic"]
                     sdt.tree + new_dst_node
                     sdt.tree.sync()
 
@@ -418,7 +436,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options):
     return True
 
 def xlnx_remove_unsupported_nodes(tgt_node, sdt):
-    root_node = sdt.tree[tgt_node]
+    root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
     valid_alias_proplist = []
 
@@ -429,10 +447,9 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
         for node in root_sub_nodes:
             if node.parent:
                 if node.propval("compatible") != ['']:
-                    # R52
-                    if "arm,cortex-r52" in node["compatible"].value:
-                        if node.propval('xlnx,cpu-clk-freq-hz') != ['']:
-                            node["clock-frequency"] = node['xlnx,cpu-clk-freq-hz'].value
+                    if any(version in node["compatible"].value for version in ("arm,cortex-r52", "arm,cortex-a78")):
+                        if node.propval('xlnx,timestamp-clk-freq') != ['']:
+                            node["clock-frequency"] = node['xlnx,timestamp-clk-freq'].value
                     if node.propval('xlnx,ip-name') != ['']:
                         val = node.propval('xlnx,ip-name', list)[0]
                         if val == "axi_intc":

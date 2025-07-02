@@ -166,9 +166,17 @@ cpus,cluster:
 arm,cortex-r52:
   required:
     - compatible
+    - device_type
+    - reg
+    - clock-frequency
+
+arm,cortex-a78:
+  required:
+    - compatible
     - device_type 
     - reg
     - clock-frequency
+    - enable-method
 
 arm,armv8-timer:
   required:
