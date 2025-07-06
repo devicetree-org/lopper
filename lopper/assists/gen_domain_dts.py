@@ -324,7 +324,14 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             if 'xlnx,usp-rf-data-converter-2.6' in node.propval('compatible'):
                 delete_child_nodes = True
             if is_prune_node:
+                if linux_dt and "qdma" in node.label:
+                    mode = node.propval('xlnx,device_port_type')
                 delete_unused_props( node, driver_proplist, delete_child_nodes)
+
+                if linux_dt and "qdma" in node.label:
+                    if mode == ['PCI_Express_Endpoint_device']:
+                        if "okay" in node.propval('status', list)[0]:
+                            node.propval('status', list)[0] = "disabled"
 
     # Remove symbol node referneces
     symbol_node = sdt.tree['/__symbols__']
