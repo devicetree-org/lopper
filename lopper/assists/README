@@ -88,6 +88,19 @@ lopper -O <output_dir> -f --enhanced <system-top.dts> <lopper-gen DT> -- xlnx_ov
 |-----------------------------------------------------------------------------------|
 | <PL DTSI>              | SDT-generated pl.dtsi file                               |
 |-----------------------------------------------------------------------------------|
+|--firmware-name         | optional:                                                |
+|                        |         Overrides the firmware-name property in the      |
+|                        |         generated overlay.                               |
+|-----------------------------------------------------------------------------------|
 
 ##Example:
 lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi
+
+##Example:
+--firmware-name=<custom_name>
+The --firmware-name argument is optional and allows you to override the default firmware-name property in the generated pl.dtsi.
+This is especially useful when:
+-->The bitstream is managed or named externally.
+-->You want to embed a custom bitstream name in the overlay.
+Usage Example:
+lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi --firmware-name=<my_custom.bit>
