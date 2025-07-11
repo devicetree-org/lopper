@@ -25,6 +25,7 @@ from domain_access import update_mem_node
 from openamp_xlnx import xlnx_openamp_find_channels, xlnx_openamp_parse
 from openamp_xlnx_common import openamp_linux_hosts, openamp_roles
 from openamp_xlnx import xlnx_openamp_zephyr_update_tree
+from zephyr_board_dt import process_overlay_with_lopper_api
 
 def delete_unused_props( node, driver_proplist , delete_child_nodes):
     if delete_child_nodes:
@@ -412,6 +413,24 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 proplist = schema["amd,mbv32"]["required"]
                 delete_unused_props( match_cpunode, proplist, False)
                 match_cpunode.parent.name = "cpus"
+        zephyr_board_dt = None
+        try:
+            zephyr_board_dt = options['args'][2]
+        except IndexError:
+            pass
+        if zephyr_board_dt and os.path.exists(zephyr_board_dt):
+            try:
+                # Read the overlay file
+                with open(zephyr_board_dt, 'r') as f:
+                    overlay_content = f.read()
+                cleaned_content = process_overlay_with_lopper_api(overlay_content, sdt.tree)
+                with open(os.path.join(sdt.outdir, "board.overlay"), 'w') as f:
+                    f.write(cleaned_content)
+            except Exception as e:
+                print(f"[ERROR] Failed to process overlay file: {e}")
+                import traceback
+                traceback.print_exc()
+
     return True
 
 def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
