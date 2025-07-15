@@ -552,6 +552,9 @@ def generate_gpo_section_data(sdtinfo_obj):
     out_lines = []
     out_lines.append("\tPM_CONFIG_GPO_SECTION_ID,\t\t/* GPO Section ID */\n")
     for num in chc.gpo_nums:
+        # Validate rows before querying
+        if "gpo" + str(num) not in sdtinfo_obj.gpos:
+            continue
         if 1 == sdtinfo_obj.gpos["gpo" + str(num)]["polarity"]:
             out_lines.append("\tPM_CONFIG_GPO1_BIT_" + str(num) + "_MASK |\n")
         if 1 == sdtinfo_obj.gpos["gpo" + str(num)]["enable"]:
