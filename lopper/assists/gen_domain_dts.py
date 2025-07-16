@@ -127,6 +127,38 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         all_phandles.append(address_map[tmp])
         tmp = tmp + cells + na + 1
 
+    # Access the '/amba_pl' node for Linux device tree
+    if linux_dt:
+        try:
+            amba_pl_node = sdt.tree['/amba_pl']
+        except KeyError:
+            amba_pl_node = None
+
+        if amba_pl_node:
+            # Iterate over each subnode of '/amba_pl' at depth 1 only
+            nodes_to_move = []
+            for subnode in amba_pl_node.subnodes():
+                # Only process nodes at depth 1 (direct children of amba_pl)
+                if subnode.depth == 2:
+                    if len(subnode.subnodes()) > 1:
+                        continue
+                    has_reg = subnode.propval('reg') != ['']
+                    has_ranges = subnode.propval('ranges') != ['']
+                    has_at_symbol = '@' in subnode.name
+
+                    # Move node to root if it doesn't have reg or ranges properties, or no @ in node name
+                    if not has_reg and not has_ranges or not has_at_symbol:
+                        nodes_to_move.append(subnode)
+
+            # Move the identified nodes to root (top-level nodes only, preserving their subnodes)
+            for subnode in nodes_to_move:
+                # Simply move the node by updating its path and parent
+                subnode.abs_path = subnode.abs_path.replace("/amba_pl/", "/")
+
+                # Remove the original node from amba_pl and add the new node to root
+                amba_pl_node.delete(subnode)
+                sdt.tree.add(subnode)
+
     node_list = []
     for node in root_sub_nodes:
         if linux_dt:
