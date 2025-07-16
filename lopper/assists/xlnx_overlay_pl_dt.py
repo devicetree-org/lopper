@@ -356,6 +356,11 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     remove_status_okay(output_file)
     add_status_disabled_after_ipname(output_file, match_list)
 
+    # Copy contents from pl.dtsi to pl.dtso in the same directory
+    dtso_file = os.path.join(sdt.outdir, 'pl.dtso')
+    with open(output_file, "r") as src, open(dtso_file, "w") as dst:
+        dst.writelines(src.readlines())
+
     print("Overlay generation completed successfully!")
     return True
 
