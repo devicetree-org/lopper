@@ -759,6 +759,10 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
 def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
     match_cpunode = get_cpu_node(sdt, options)
     tree = sdt.tree
+    zephyr_mode = False
+    if "args" in options.keys():
+        zephyr_mode = "zephyr_dt" in options["args"]
+
     global machine_to_dt_mappings
     global machine_to_dt_mappings_v2
 
@@ -790,9 +794,29 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
 
     # ELFLOAD carveout for the DT node is first phandle
     elf_load_carveout = tree.pnode(mem_reg_val[0])
+    if zephyr_mode:
+        return elf_load_carveout
+
     elf_load_carveout_reg = elf_load_carveout.propval('reg')
 
     return [elf_load_carveout_reg[1], elf_load_carveout_reg[3]]
+
+# Inputs: openamp-processed SDT, target processor
+# Update zephyr specific nodes
+# This currently includes just the elf load area
+def xlnx_openamp_zephyr_update_tree(machine, sdt, options):
+    #  save the node. we may have to transform this in the future. so store it for now.
+    elf_load_node = xlnx_openamp_get_ddr_elf_load(machine, sdt, options)
+    elf_load_node + LopperProp(name="device_type", value="memory")
+    sdt.tree['/chosen']['zephyr,sram'] = elf_load_node.abs_path
+    sdt.tree['/chosen']['zephyr,console'] = "serial1"
+    sdt.tree['/chosen']['zephyr,shell-uart'] = "serial1"
+
+    root_node = sdt.tree['/']
+    root_node["model"] = "AMD Versal Gen 2"
+    root_node["compatible"] = "xlnx,versal2"
+
+    return True
 
 def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
     global machine_to_dt_mappings_v2
@@ -1252,7 +1276,9 @@ def xlnx_remoteproc_construct_carveouts(tree, channel_id, openamp_channel_info, 
         elif carveout.props("no-map") != []:
             start = carveout.props("start")[0].value
             size = carveout.props("size")[0].value
-            new_node =  LopperNode(-1, "/reserved-memory/"+carveout.name)
+            base_str = hex(start)[2:] # remove first two chars '0x' from string
+            node_name = f"{carveout.name}@{base_str}"
+            new_node = LopperNode(-1, f"/reserved-memory/{carveout.name}@{base_str}")
             new_node + LopperProp(name="no-map")
             new_node + LopperProp(name="reg", value=[0, start, 0, size])
             tree.add(new_node)
@@ -1850,6 +1876,7 @@ def xlnx_openamp_find_channels(sdt, verbose = 0):
     # information and generate Device Tree information.
     tree = sdt.tree
     domains_present = False
+    compat_strs = [REMOTEPROC_D_TO_D_v2, REMOTEPROC_D_TO_D, RPMSG_D_TO_D]
     for n in tree["/"].subnodes():
         if n.name == "domains":
             domains_present = True
@@ -1862,9 +1889,9 @@ def xlnx_openamp_find_channels(sdt, verbose = 0):
             if node_compat != []:
                 node_compat = node_compat[0].value
 
-                if node_compat in [REMOTEPROC_D_TO_D_v2, REMOTEPROC_D_TO_D]:
+                if node_compat in compat_strs:
                     return True
-                if node_compat == RPMSG_D_TO_D:
+                if isinstance(node_compat, list) and node_compat[0] in compat_strs:
                     return True
 
     return False
@@ -1878,10 +1905,12 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
 
     try:
         gen_outputs_only = False
+        # flag will be set to true in case this is needed in the future. This is set in gen-domain plugin parsing
+        zephyr_target = False
         output_file = None
         arg_remote = None
         args = options['args']
-        opts,args2 = getopt.getopt( args, "d:v:n:", [ "verbose", "openamp_header_only", "openamp_output_filename=", "openamp_remote=" ])
+        opts,args2 = getopt.getopt( args, "d:v:n:", [ "verbose", "zephyr_dt", "openamp_header_only", "openamp_output_filename=", "openamp_remote=", "openamp_role=", "openamp_host=", "openamp_remote=" ])
         if opts != []:
             for o,a in opts:
                 print("arg:", o,a)
@@ -1892,10 +1921,20 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
                 elif o in ('-n', "--openamp_remote"):
                     arg_remote = a
 
+        if xlnx_options != None:
+            if "zephyr_dt" in xlnx_options.keys():
+                zephyr_target = xlnx_options["zephyr_dt"]
+            elif "openamp_no_header" in xlnx_options.keys():
+                no_header = True
+            role = xlnx_options["openamp_role"]
+            arg_host = xlnx_options["openamp_host"]
+            arg_remote = xlnx_options["openamp_remote"]
+
         if gen_outputs_only and output_file != None and arg_remote != None:
             return xlnx_openamp_gen_outputs_only(sdt, arg_remote, output_file, verbose)
-    except:
-        pass
+    except getopt.GetoptError as err:
+       print('ERROR: Failed to parse arguments in openamp module.', err)
+       return False
 
     for n in tree["/domains"].subnodes():
             node_compat = n.props("compatible")
@@ -1911,7 +1950,7 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
                 if ret == False:
                     return ret
 
-    opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_no_header", "openamp_role=", "openamp_host=", "openamp_remote=", "openamp_output_filename=" ] )
+    opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_no_header", "openamp_role=", "openamp_host=", "openamp_remote=", "openamp_output_filename=", "zephyr_dt" ] )
 
     if opts == [] and args2 == []:
         print('ERROR: No arguments passed for OpenAMP Module. Erroring out now.')
@@ -1925,10 +1964,14 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
             if o in ('-l', "--openamp_role"):
                 role = a
 
-    if role == 'host':
+    if role == 'host' and get_platform(tree, verbose) != SOC_TYPE.VERSAL2:
         for node in tree["/"].subnodes():
             if "cdns,ttc" in node.propval('compatible'):
                 tree.delete(node)
+
+    if zephyr_target:
+        machine = xlnx_options["machine"]
+        xlnx_openamp_zephyr_update_tree(machine, sdt, options)
 
     xlnx_openamp_remove_channels(tree)
 
