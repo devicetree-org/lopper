@@ -361,6 +361,86 @@ class LopperProp():
         else:
             self.__dict__[name] = value
 
+    def merge(self, other_prop, clobber=False):
+        """Merge the value of another property into this property.
+
+        This function handles merging values of properties based on their
+        types, particularly focusing on JSON-encoded lists. If both values
+        are JSON-encoded lists with a single dictionary each, it merges
+        those dictionaries. Otherwise, it concatenates the lists.
+
+        For non-JSON values, the function considers a list of scenarios:
+          - If both are lists, they are concatenated.
+          - If one is a list and the other is not, the non-list value is
+            added to the list.
+          - If neither is a list, the values are combined into a list
+            unless the clobber flag is set to True, in which case the second
+            value overwrites the first.
+
+        Args:
+            other_prop (Property): The other property to merge into this one.
+            clobber (bool): If true, overwrite with other_prop when both are
+                            non-list values; otherwise, merge into a list.
+
+        Returns:
+            None: Modifies self in place, merging or setting self.value.
+        """
+        if self.pclass == "json" and other_prop.pclass == "json":
+            lopper.log._debug( f"property merge: json -> json" )
+            try:
+                # Decode the JSON strings
+                t1_list = json.loads(self.value)
+                t2_list = json.loads(other_prop.value)
+
+                # Check if both lists have exactly one dictionary each
+                if len(t1_list) == 1 and isinstance(t1_list[0], dict) and \
+                         len(t2_list) == 1 and isinstance(t2_list[0], dict):
+                    # Merge the two dictionaries
+                    merged_dict = {**t1_list[0], **t2_list[0]}
+                    merged_data = [merged_dict]
+                else:
+                    # Otherwise, concatenate the lists
+                    merged_data = t1_list + t2_list
+
+                # Encode the merged result back into a JSON string
+                merged_json_str = json.dumps(merged_data)
+
+                # Assign the merged JSON string to self.value, we assign it
+                # this way to avoid the automatic list handling of __setattr__
+                # on the LopperProp class
+                self.__dict__["value"] = merged_json_str
+
+                lopper.log._debug(f"merged value: {self.value}")
+
+            except Exception as e:
+                lopper.log._warning( f"merge: could not load JSON {e}")
+        else:
+            lopper.log._debug( f"property merge: non json -> non json" )
+            # Non-JSON case handling
+            value1 = self.value
+            value2 = other_prop.value
+            if isinstance(value1, list) and isinstance(value2, list):
+                # Both are lists, concatenate them
+                result = value1 + value2
+            elif isinstance(value1, list):
+                # First is a list, add second value
+                result = value1 + [value2]
+            elif isinstance(value2, list):
+                # Second is a list, add first value
+                result = [value1] + value2
+            else:
+                # Neither is a list
+                if clobber:
+                    result = value2
+                else:
+                    result = [value1, value2]
+
+            # Assume `self.value` can store result directly for non-JSON data
+            self.__dict__["value"] = result
+
+            lopper.log._debug(f"merged value:: {self.value}")
+
+
     def compare( self, other_prop ):
         """Compare one property to another
 
@@ -2865,9 +2945,16 @@ class LopperNode(object):
             self.type = []
             label_props = []
 
+            node_source = ""
             for prop, prop_val in dct.items():
                 if re.search( r"^__", prop ) or prop.startswith( r'/' ):
                     # internal property, skip
+                    # if there was a __nodesrc__ hint, let's latch it for hints
+                    # when looking at properties (this is mainly for json/yaml, but
+                    # there's no need to be specific here
+                    if prop == "__nodesrc__":
+                        node_source = prop_val
+
                     continue
 
                 dtype = LopperFmt.UINT8
@@ -2915,7 +3002,19 @@ class LopperNode(object):
                     if update_props:
                         if self.__props__[prop].value != prop_val:
                             lopper.log._debug( f"existing prop detected ({self.__props__[prop].name}), updating value: {self.__props__[prop].value} -> {prop_val}" )
-                            self.__props__[prop].value = prop_val
+                            lopper.log._debug( f"    type: {type(prop_val)} type2: {type(self.__props__[prop].value)}" )
+
+                            ## 1) create a temporary property, using our yaml source hint from above to set
+                            ##    it as json.
+                            ## 2) merge the two properties via a property merge call.
+                            property_to_be_merged = LopperProp( prop, -1, None, prop_val )
+                            if node_source == "yaml":
+                                property_to_be_merged.pclass = "json"
+
+                            try:
+                                self.__props__[prop].merge( property_to_be_merged )
+                            except Exception as e:
+                                self.__props__[prop].value = prop_val
 
                 else:
                     self.__props__[prop] = LopperProp( prop, -1, self,
@@ -4186,11 +4285,11 @@ class LopperTree:
         if existing_node:
             if not merge:
                 lopper.log._debug( f"add: node: {node.abs_path} already exists" )
-                return self
             else:
                 lopper.log._debug( f"add: node: {node.abs_path} exists, merging properties" )
                 existing_node.merge( node )
-                return self
+
+            return self
 
         node.tree = self
         node.__dbg__ = self.__dbg__
@@ -4567,8 +4666,6 @@ class LopperTree:
         address_dict = {}
         for n in address_nodes:
             node_address = n.address()
-            ## you are here. we shouldn't clobber existing (parent) addresses if we get a match from
-            ## a child
             if node_address:
                 lopper.log._debug( f"node {n.abs_path} has address: {hex(node_address)}" )
                 try:
