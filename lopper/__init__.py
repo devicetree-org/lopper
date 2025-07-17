@@ -211,6 +211,7 @@ class LopperSDT:
                                 if re.search( r"compatible: .*subsystem", line ) or \
                                    re.search( r",domain-v1", line ):
                                     sdt_files.append( ifile )
+                                    found = True
 
                     # it didn't have a dts identifier in the input json or yaml file
                     # so it a supporting input. We need to store it as such.
@@ -242,9 +243,12 @@ class LopperSDT:
                                 shutil.copyfileobj(fd, wfd)
 
                         elif re.search( r".yaml$", f ):
+                            # Note: if tree merging isn't sufficient for these, we could use
+                            #       deepmerge functionality directly on mutltiple yaml files
                             # look for a special front end, for this or any file for that matter
                             yaml = LopperYAML( f, config=config )
                             yaml_tree = yaml.to_tree()
+                            yaml_tree._type = "yaml"
 
                             # save the tree for future processing (and joining with the main
                             # system device tree). No code after this needs to be concerned that
@@ -254,6 +258,7 @@ class LopperSDT:
                             # look for a special front end, for this or any file for that matter
                             json = LopperJSON( json=f, config=config )
                             json_tree = json.to_tree()
+                            json_tree._type = "json"
 
                             # save the tree for future processing (and joining with the main
                             # system device tree). No code after this needs to be concerned that
@@ -319,6 +324,11 @@ class LopperSDT:
                                 merge = True
                         except:
                             pass
+
+                        # we always merge yaml, but this could become
+                        # configurable in the future
+                        if t._type == "yaml":
+                            merge = True
 
                         self.tree = self.tree.add( node, merge=merge )
 
