@@ -38,6 +38,14 @@ import logging
 _init( __name__ )
 _init( "yaml.py" )
 
+
+# Attempt to import Merger globally and use a flag for availability
+try:
+    from deepmerge import Merger
+    DEEPMERGE_AVAILABLE = True
+except ImportError:
+    DEEPMERGE_AVAILABLE = False
+
 def flatten_dict(dd, separator ='_', prefix =''):
     return { prefix + separator + k if prefix else k : v
              for kk, vv in dd.items()
@@ -1189,3 +1197,99 @@ class LopperYAML(LopperJSON):
         self.anytree = importer.import_(self.dct)
 
         #print(RenderTree(self.anytree.root))
+
+
+    @staticmethod
+    def create_merger():
+        """Create a merger configuration or indicate a fallback.
+
+        This method attempts to create a deepmerge `Merger` configuration with specific strategies
+        for handling lists, dictionaries, and sets if the deepmerge library is available.
+
+        Strategies:
+            - Lists are appended.
+            - Dictionaries are merged.
+            - Sets are united.
+            - Fallback strategies and conflict strategies use `override`.
+
+        Returns:
+            Merger object configured with specific strategies if available, otherwise None.
+        """
+        if DEEPMERGE_AVAILABLE:
+            return Merger(
+                [
+                    (list, ["append"]),  # Strategy for lists
+                    (dict, ["merge"]),   # Strategy for dictionaries
+                    (set, ["union"])     # Strategy for sets
+                ],
+                ["override"],           # Default strategy for other types
+                ["override"]            # Strategy for type conflicts
+            )
+        return None  # Return None when deepmerge isn't available
+
+    @staticmethod
+    def deep_merge(dict1, dict2):
+        """Merge two dictionaries using deepmerge or custom logic.
+
+        Depending on the availability of the deepmerge library, this method will either
+        merge the dictionaries using deepmerge strategies or revert to custom recursive logic
+        to perform the merging.
+
+        Args:
+            dict1 (dict): First dictionary to merge.
+            dict2 (dict): Second dictionary to be merged into the first.
+
+        Returns:
+            dict: A merged dictionary containing elements from both inputs.
+        """
+        if DEEPMERGE_AVAILABLE:
+            merger = LopperYAML.create_merger()
+            return merger.merge(dict1, dict2)
+        else:
+            # Custom recursive merge logic
+            for key, value in dict2.items():
+                if key in dict1:
+                    if isinstance(dict1[key], dict) and isinstance(value, dict):
+                        dict1[key] = LopperYAML.deep_merge(dict1[key], value)
+                    elif isinstance(dict1[key], list) and isinstance(value, list):
+                        dict1[key].extend(value)
+                    else:
+                        dict1[key] = value
+                else:
+                    dict1[key] = value
+            return dict1
+
+    @staticmethod
+    def yaml_to_data(yaml_file):
+        """Load YAML from a file into a Python data structure.
+
+        This method reads a YAML file and parses its content into
+        Python data structures using `ruamel.yaml`.
+
+        Args:
+            yaml_file (str): Path to the YAML file to read.
+
+        Returns:
+            The data structure representation of the YAML file.
+        """
+        yaml = ruamel.yaml.YAML()
+        with open(yaml_file, 'r') as file:
+            return yaml.load(file)
+
+    @staticmethod
+    def data_to_yaml(data, file_path):
+        """Write data to a YAML file.
+
+        This method takes a Python data structure and writes it to a file as
+        YAML content, ensuring proper serialization.
+
+        Args:
+            data (object): The Python data structure to serialize into YAML.
+            file_path (str): The path to the file where YAML content will be written.
+
+        Returns:
+            None
+        """
+        yaml = ruamel.yaml.YAML()
+        with open(file_path, 'w') as file:
+            yaml.dump(data, file)
