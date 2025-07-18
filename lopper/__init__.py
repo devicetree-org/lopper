@@ -337,7 +337,7 @@ class LopperSDT:
 
         elif self.dts and re.search( r".yaml$", self.dts ):
             if not yaml_support:
-                lopper.log._error( f"no yaml support detected, but system device tree is yaml" )
+                lopper.log._error( f"no yaml support detected, but input is yaml" )
                 sys.exit(1)
 
             fp = ""
@@ -345,11 +345,17 @@ class LopperSDT:
             if sdt_files:
                 sdt_files.insert( 0, self.dts )
 
-                # this block concatenates all the files into a single yaml file to process
-                with open( fpp.name, 'wb') as wfd:
-                    for f in sdt_files:
-                        with open(f,'rb') as fd:
-                            shutil.copyfileobj(fd, wfd)
+                lopper.log._debug( f"merging yaml: {sdt_files}" )
+
+                merged_data = {}
+                for file_path in sdt_files:
+                    # Load the current YAML file
+                    current_data = LopperYAML.yaml_to_data(file_path)
+
+                    # Merge the current data with the accumulated merged_data
+                    merged_data = LopperYAML.deep_merge(merged_data, current_data)
+
+                LopperYAML.data_to_yaml( merged_data, fpp.name )
 
                 fp = fpp.name
             else:
