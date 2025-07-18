@@ -399,7 +399,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine)
             if "a78" in machine:
                 new_dst_node = LopperNode()
-                new_dst_node['compatible'] = "arm,psci-1.0"
+                new_dst_node['compatible'] = "arm,psci-1.1"
                 new_dst_node['method'] = "smc"
                 new_dst_node.abs_path = "/psci "
                 new_dst_node.name = "psci "
@@ -670,8 +670,11 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
     alias_prop_list = list(alias_node.__props__.keys())
     for prop in alias_prop_list:
         val = sdt.tree['/aliases'].propval(prop, list)[0]
+        pl_node_ref = None
+        if "amba_pl" in val:
+            pl_node_ref = True
         val = val.rsplit('/', 1)[-1]
-        if val not in valid_alias_proplist:
+        if val not in valid_alias_proplist or pl_node_ref:
             sdt.tree['/aliases'].delete(prop)
 
     max_mem_size = 0
