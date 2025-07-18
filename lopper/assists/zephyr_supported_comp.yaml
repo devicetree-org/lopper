@@ -244,3 +244,16 @@ xlnx,pmc-gpio-1.0:
     - interrupts
     - '#address-cells'
     - '#size-cells'
+
+xlnx,xps-spi-2.00.a:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - xlnx,num-ss-bits
+    - xlnx,num-transfer-bits
+    - fifo-size
+    - xlnx,startup-block
+    - interrupt-parent
+    - '#address-cells'
+    - '#size-cells'
