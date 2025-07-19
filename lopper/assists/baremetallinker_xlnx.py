@@ -89,6 +89,7 @@ def get_memranges(tgt_node, sdt, options):
         "0x50000000000" : "DDR_CH_1",
         "0x10000000000" : "DDR_LOW_3",
         "0xC000000000" : "DDR_LOW_2",
+        "0xA00000000" : "DDR_LOW_1A",
         "0x800000000" : "DDR_LOW_1",
         "0x0" : "DDR_LOW_0"
     }
