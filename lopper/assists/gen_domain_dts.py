@@ -439,7 +439,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
 
     for node in root_sub_nodes:
         if node.depth == 1:
-            if "cpus" not in node.name and "amba" not in node.name and "memory" not in node.name and "chosen" not in node.name and "bus" not in node.name and "axi" not in node.name and "timer" not in node.name and "alias" not in node.name:
+            if "cpus" not in node.name and "amba" not in node.name and "memory" not in node.name and "chosen" not in node.name and "bus" not in node.name and "axi" not in node.name and "timer" not in node.name and "alias" not in node.name and "consumer" not in node.name:
                 sdt.tree.delete(node)
         elif node.name == "cpu-map" or node.name == "idle-states":
             sdt.tree.delete(node)
@@ -551,6 +551,9 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                         if node.propval('#size-cells') != ['0']:
                             node["#size-cells"] = LopperProp("#size-cells")
                             node["#size-cells"].value = 0
+                    # Mailbox
+                    if any(version in node["compatible"].value for version in ("vnd,mbox-consumer", "xlnx,mbox-versal-ipi-mailbox", "xlnx,mbox-versal-ipi-dest-mailbox")):
+                        continue
                     # PS-IIC
                     if "cdns,i2c-r1p14" in node["compatible"].value:
                         node["compatible"].value = ["cdns,i2c"]
