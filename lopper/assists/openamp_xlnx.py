@@ -794,11 +794,80 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
 
     # ELFLOAD carveout for the DT node is first phandle
     if zephyr_mode:
-        return mem_reg_val
+        return target_node
 
     elf_load_carveout_reg = elf_load_carveout.propval('reg')
 
     return [elf_load_carveout_reg[1], elf_load_carveout_reg[3]]
+
+def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
+    if target_node.propval('mboxes') != ['']:
+        openamp_mbox_node = sdt.tree.pnode(target_node.propval('mboxes')[0])
+    else:
+        return False
+
+    child_node = None
+    parent_node = None
+
+    openamp_remote_ipi_id = openamp_mbox_node.propval('xlnx,ipi-id')
+    openamp_host_ipi_id = openamp_mbox_node.parent.propval('xlnx,ipi-id')
+
+    for subnode in sdt.tree['/'].subnodes():
+        # find parent ipi
+        if subnode.propval('xlnx,ipi-id') != [''] and subnode.propval('xlnx,ipi-id') == openamp_remote_ipi_id: 
+            # find matching child
+            for child in subnode.subnodes():
+                if child.propval('xlnx,ipi-id') == openamp_host_ipi_id:
+                    child_node = child
+                    parent_node = subnode
+                    print("yay ", parent_node, child_node)
+                    break
+
+    interrupts = parent_node['interrupts'].value
+    interrupts[2] = 2
+    parent_node['interrupts'] = interrupts 
+    parent_node['compatible'] = 'xlnx,mbox-versal-ipi-mailbox'
+    parent_node + LopperProp(name="#address-cells", value=2)
+    parent_node + LopperProp(name="#size-cells", value=2)
+
+    child_node['compatible'] = 'xlnx,mbox-versal-ipi-dest-mailbox'
+    child_node['interrupt-parent'] = parent_node['interrupt-parent'].value
+    child_node_name = hex(child_node['reg'].value[1])[2:]
+    child_node.name = f"mailbox@{child_node_name}"
+
+    for node in [parent_node, child_node]:
+        reg = node['reg'].value
+
+        new_reg = [ 0, reg[1], 0, 0x20 ]
+        if 'msg' in node['reg-names'].value:
+            new_reg.extend( [0, reg[5], 0, 0x1ff] )
+
+        node['reg'] = new_reg
+        node['status'] = 'okay'
+        node['#mbox-cells'] = 1
+
+    child_needed_props = [ "compatible", "status", "#mbox-cells", "interrupt-parent", "#mbox-cells", "reg", "reg-names", "xlnx,ipi-id" ]
+    parent_needed_props = child_needed_props.copy()
+    parent_needed_props.extend( [ "interrupts", "#address-cells", "#size-cells" ] )
+
+
+    for (node, needed_props) in [ (parent_node, parent_needed_props), (child_node, child_needed_props) ]:
+            prop_list = list(node.__props__.keys())
+            print(node, needed_props, prop_list)
+            for p in prop_list:
+                if p not in needed_props:
+                    node.delete(p)
+
+    mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
+    mbox_consumer_node + LopperProp(name="compatible", value='vnd,mbox-consumer')
+    mbox_consumer_node + LopperProp(name="mboxes", value=[child_node.phandle, 0, child_node.phandle, 1])
+    mbox_consumer_node + LopperProp(name="mbox-names", value=['tx', 'rx'])
+    sdt.tree.add(mbox_consumer_node)
+
+    sdt.tree.resolve()
+    sdt.tree.sync()
+
+    return True
 
 # Inputs: openamp-processed SDT, target processor
 # Update zephyr specific nodes
@@ -806,7 +875,12 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
 def xlnx_openamp_zephyr_update_tree(machine, sdt, options):
     # for zephyr dt, this routine will just return the whole mem region property
     # transform list of phandles in that property to list of DT nodes
-    memory_region_nodes = [sdt.tree.pnode(phandle) for phandle in xlnx_openamp_get_ddr_elf_load(machine, sdt, options)]
+    target_node = xlnx_openamp_get_ddr_elf_load(machine, sdt, options)
+
+    xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options)
+
+    mem_reg_val = target_node.propval('memory-region')
+    memory_region_nodes = [sdt.tree.pnode(phandle) for phandle in mem_reg_val]
 
     elf_load_node = memory_region_nodes.pop(0)
     elf_load_node + LopperProp(name="device_type", value="memory")
@@ -840,6 +914,11 @@ def xlnx_openamp_zephyr_update_tree(machine, sdt, options):
     sdt.tree['/chosen']['zephyr,sram'] = elf_load_node.abs_path
     sdt.tree['/chosen']['zephyr,console'] = "serial1"
     sdt.tree['/chosen']['zephyr,shell-uart'] = "serial1"
+
+    if sdt.tree['/chosen'].propval('zephyr,flash') != ['']:
+        sdt.tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,flash'])
+    if sdt.tree['/chosen'].propval('zephyr,ocm') != ['']:
+        sdt.tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,ocm'])
 
     root_node = sdt.tree['/']
     root_node["model"] = "AMD Versal Gen 2"
