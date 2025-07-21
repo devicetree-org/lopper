@@ -793,9 +793,8 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
         return None
 
     # ELFLOAD carveout for the DT node is first phandle
-    elf_load_carveout = tree.pnode(mem_reg_val[0])
     if zephyr_mode:
-        return elf_load_carveout
+        return mem_reg_val
 
     elf_load_carveout_reg = elf_load_carveout.propval('reg')
 
@@ -805,9 +804,39 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
 # Update zephyr specific nodes
 # This currently includes just the elf load area
 def xlnx_openamp_zephyr_update_tree(machine, sdt, options):
-    #  save the node. we may have to transform this in the future. so store it for now.
-    elf_load_node = xlnx_openamp_get_ddr_elf_load(machine, sdt, options)
+    # for zephyr dt, this routine will just return the whole mem region property
+    # transform list of phandles in that property to list of DT nodes
+    memory_region_nodes = [sdt.tree.pnode(phandle) for phandle in xlnx_openamp_get_ddr_elf_load(machine, sdt, options)]
+
+    elf_load_node = memory_region_nodes.pop(0)
     elf_load_node + LopperProp(name="device_type", value="memory")
+
+    ipc_reg = [0x0, 0x0, 0x0, 0x0]
+
+    # get reg property for each reserved memory node
+    memory_region_regs = [node['reg'].value for node in memory_region_nodes]
+
+    # find base of IPC
+    reg_column = [row[1] for row in memory_region_regs]
+    ipc_reg[1] = min(reg_column)
+
+    # total size of IPC
+    sz_column = [row[3] for row in memory_region_regs]
+    ipc_reg[3] = sum(sz_column)
+
+    # remove unneeded nodes
+    for node in memory_region_nodes:
+        sdt.tree.delete(node)
+
+    # create IPC node
+    base_str = hex(ipc_reg[1])[2:] # hex creates string '0x1..2'. remove the leading '0x'
+    ipc_node = LopperNode(-1, f"/memory@{base_str}")
+    ipc_node + LopperProp(name="compatible", value="mmio-sram")
+    ipc_node + LopperProp(name="reg", value=ipc_reg)
+    sdt.tree.add(ipc_node)
+
+    # Add and update zephyr properties
+    sdt.tree['/chosen']['zephyr,ipc_shm'] = ipc_node.abs_path
     sdt.tree['/chosen']['zephyr,sram'] = elf_load_node.abs_path
     sdt.tree['/chosen']['zephyr,console'] = "serial1"
     sdt.tree['/chosen']['zephyr,shell-uart'] = "serial1"
