@@ -52,6 +52,117 @@ def flatten_dict(dd, separator ='_', prefix =''):
              for k, v in flatten_dict(vv, separator, kk).items()
     } if isinstance(dd, dict) else { prefix : dd }
 
+
+def preprocess_yaml_data(data):
+    if isinstance(data, dict):
+        return {k if k != "parent" else "custom_parent": preprocess_yaml_data(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [preprocess_yaml_data(item) for item in data]
+    return data
+
+def postprocess_anytree_tree(root):
+    # Traverse each node in the tree using PreOrderIter, which visits each node in a depth-first order
+    for node in PreOrderIter(root):
+        if 'custom_parent' in node.__dict__:
+            # Rename 'custom_parent' back to 'parent'
+            node.__dict__['parent'] = node.__dict__.pop('custom_parent')
+
+
+from anytree.search import findall_by_attr
+
+def is_ancestor(child, potential_ancestor):
+    """Check if a node is an ancestor of another node.
+
+    Determines whether the specified potential_ancestor is an ancestor
+    of the given child node within the anytree structure.
+
+    Args:
+        child (Node): The node whose ancestry is being checked.
+        potential_ancestor (Node): The node that might be an ancestor of the child node.
+
+    Returns:
+        bool: True if potential_ancestor is an ancestor of child; False otherwise.
+    """
+    return potential_ancestor in child.ancestors
+
+
+def find_node_by_path(root, path):
+    """Find a node by traversing the tree according to a given path.
+
+    Traverses the tree starting from the root node, following the segments
+    in the given path to locate the corresponding node.
+
+    Args:
+        root (Node): The root node of the tree structure to start the search.
+        path (str): The path string separated by '/' indicating the node hierarchy.
+
+    Returns:
+        Node or None: The node corresponding to the provided path, or None if not found.
+    """
+    segments = path.split("/")
+    current_node = root
+
+    for segment in segments:
+        next_node = None
+        for child in current_node.children:
+            if child.name == segment:
+                next_node = child
+                break
+        if next_node is None:
+            return None
+        current_node = next_node
+
+    return current_node
+
+
+def reparent_nodes_by_specified_path(root, spec_data):
+    """Reparent nodes based on specified paths in the given data.
+
+    Using the provided specification data, reparent nodes within the anytree
+    structure based on 'custom_parent' path indications, handling path-like
+    and direct attribute syntax. Exits on missing paths.
+
+    Args:
+        root (Node): The root node of the anytree structure.
+        spec_data (dict): The data specifying reparenting decisions based on 'custom_parent'.
+
+    Returns:
+        None: The tree structure is modified in place.
+    """
+    node_map = {node.name: node for node in PreOrderIter(root)}
+
+    def traverse_yaml_data(yaml_data):
+        for key, value in yaml_data.items():
+            if isinstance(value, dict):
+                if 'custom_parent' in value:
+                    child_node = node_map.get(key)
+                    parent_path = value['custom_parent']
+
+                    if '/' in parent_path:
+                        # Handle path-like syntax
+                        new_parent_node = find_node_by_path(root, parent_path)
+                    else:
+                        # Handle direct name syntax using findall_by_attr
+                        new_parent_node = findall_by_attr(root, value=parent_path, name="name", maxlevel=None)
+                        new_parent_node = new_parent_node[0] if new_parent_node else None
+
+                    if not new_parent_node:
+                        _error(f"Path '{parent_path}' not found for '{key}'. Exiting.", True)
+
+                    if child_node and is_ancestor(child_node, new_parent_node):
+                        _debug(f"Skipping reparenting '{key}'; '{new_parent_node.name}' is already an ancestor.")
+                    else:
+                        _debug(f"Reparenting '{key}' under '{new_parent_node.name}'")
+                        child_node.parent = new_parent_node
+
+                traverse_yaml_data(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        traverse_yaml_data(item)
+
+    traverse_yaml_data(spec_data)
+
 class LopperTreeImporter(object):
 
     def __init__(self, nodecls=AnyNode):
@@ -285,6 +396,10 @@ class LopperDictImporter(object):
 
     def __import(self, data, parent=None, name=None):
         assert isinstance(data, dict)
+        # The below assert breaks the loading of yaml with a "parent:"
+        # key ... We are disabling this for now, otherwise, we may
+        # need to preprocess the yaml and postprocess the tree to
+        # restore "parent"
         assert "parent" not in data
         attrs = dict(data)
         verbose = 0
@@ -1189,6 +1304,10 @@ class LopperYAML(LopperJSON):
             print( "[ERROR]: no data available to load" )
             sys.exit(1)
 
+        # this renames "parent" keys to "custom_parent", so that the anytree
+        # loading won't hit an internal assert (where it checks for parent)
+        self.dct = preprocess_yaml_data( self.dct )
+
         # flatten the dictionary so we can look up aliases and anchors
         # by identity later .. without needing to recurse
         self.dct_flat = flatten_dict(self.dct,separator="/")
@@ -1196,8 +1315,12 @@ class LopperYAML(LopperJSON):
         importer.lists_as_nodes = self.lists_as_nodes
         self.anytree = importer.import_(self.dct)
 
-        #print(RenderTree(self.anytree.root))
 
+        reparent_nodes_by_specified_path( self.anytree, self.dct )
+
+        # This walks the tree and fixes the preprocesed "custom_parent"
+        # keys to "parent"
+        postprocess_anytree_tree( self.anytree )
 
     @staticmethod
     def create_merger():
