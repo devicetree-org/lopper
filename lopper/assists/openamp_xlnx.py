@@ -806,62 +806,60 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
     else:
         return False
 
-    child_node = None
-    parent_node = None
-
     openamp_remote_ipi_id = openamp_mbox_node.propval('xlnx,ipi-id')
     openamp_host_ipi_id = openamp_mbox_node.parent.propval('xlnx,ipi-id')
 
-    for subnode in sdt.tree['/'].subnodes():
-        # find parent ipi
-        if subnode.propval('xlnx,ipi-id') != [''] and subnode.propval('xlnx,ipi-id') == openamp_remote_ipi_id: 
-            # find matching child
-            for child in subnode.subnodes():
-                if child.propval('xlnx,ipi-id') == openamp_host_ipi_id:
-                    child_node = child
-                    parent_node = subnode
-                    print("yay ", parent_node, child_node)
-                    break
+    # Find all nodes that match remoteproc's host
+    child_nodes = [node for node in sdt.tree['/'].subnodes() if node.propval('xlnx,ipi-id') == openamp_host_ipi_id]
 
-    interrupts = parent_node['interrupts'].value
-    interrupts[2] = 2
-    parent_node['interrupts'] = interrupts 
-    parent_node['compatible'] = 'xlnx,mbox-versal-ipi-mailbox'
-    parent_node + LopperProp(name="#address-cells", value=2)
-    parent_node + LopperProp(name="#size-cells", value=2)
+    # Find the parent that has remoteproc's remote (reverse of host arrangement)
+    child_node = [child for child in child_nodes if child.parent.propval('xlnx,ipi-id') == openamp_remote_ipi_id][0]
+    child_node.name = f"mailbox@{hex(child_node['reg'].value[1])[2:]}"
+    parent_node = child_node.parent
 
-    child_node['compatible'] = 'xlnx,mbox-versal-ipi-dest-mailbox'
-    child_node['interrupt-parent'] = parent_node['interrupt-parent'].value
-    child_node_name = hex(child_node['reg'].value[1])[2:]
-    child_node.name = f"mailbox@{child_node_name}"
+    child_props = {
+      "compatible" : 'xlnx,mbox-versal-ipi-dest-mailbox',
+      "status" : 'okay', "#mbox-cells" : 1,
+      "interrupt-parent" : parent_node['interrupt-parent'].value,
+      "reg" : [0, child_node['reg'].value[1], 0, 0x20],
+      "reg-names" : child_node['reg-names'].value,
+      "xlnx,ipi-id" : child_node["xlnx,ipi-id"].value
+    }
 
-    for node in [parent_node, child_node]:
-        reg = node['reg'].value
+    parent_props = {
+      "compatible" : 'xlnx,mbox-versal-ipi-mailbox', "status" : 'okay', "#mbox-cells" : 1,
+      "#address-cells" : 2, "#size-cells" : 2,
+      "interrupt-parent" : parent_node['interrupt-parent'].value,
+      "reg" : [0, parent_node['reg'].value[1], 0, 0x20],
+      "reg-names" : parent_node['reg-names'].value,
+      "xlnx,ipi-id" : parent_node["xlnx,ipi-id"].value,
+      "interrupts" : parent_node['interrupts'].value,
+    }
 
-        new_reg = [ 0, reg[1], 0, 0x20 ]
-        if 'msg' in node['reg-names'].value:
-            new_reg.extend( [0, reg[5], 0, 0x1ff] )
+    parent_props["interrupts"][2] = 0x2
 
-        node['reg'] = new_reg
-        node['status'] = 'okay'
-        node['#mbox-cells'] = 1
+    # update each node so that only needed properties are present and that they have the right values
+    for (node, needed_props) in zip([parent_node, child_node], [parent_props, child_props]):
+        # if ipi has buffers, ensure that reg property reflects this properly
+        if 'msg' in needed_props["reg-names"]:
+            needed_props["reg"].extend([0, node["reg"].value[5], 0, 0x1ff])
 
-    child_needed_props = [ "compatible", "status", "#mbox-cells", "interrupt-parent", "#mbox-cells", "reg", "reg-names", "xlnx,ipi-id" ]
-    parent_needed_props = child_needed_props.copy()
-    parent_needed_props.extend( [ "interrupts", "#address-cells", "#size-cells" ] )
+        existing_props = list(node.__props__.keys())
 
+        # add new properties
+        [node + LopperProp(name=p, value=needed_props[p]) for p in needed_props.keys() if p not in existing_props]
 
-    for (node, needed_props) in [ (parent_node, parent_needed_props), (child_node, child_needed_props) ]:
-            prop_list = list(node.__props__.keys())
-            print(node, needed_props, prop_list)
-            for p in prop_list:
-                if p not in needed_props:
-                    node.delete(p)
+        # delete unneeded properties
+        [node.delete(p) for p in existing_props if p not in needed_props]
+
+        # update existing properties
+        for p in needed_props.keys():
+            if p in existing_props:
+                node[p] = needed_props[p]
 
     mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
-    mbox_consumer_node + LopperProp(name="compatible", value='vnd,mbox-consumer')
-    mbox_consumer_node + LopperProp(name="mboxes", value=[child_node.phandle, 0, child_node.phandle, 1])
-    mbox_consumer_node + LopperProp(name="mbox-names", value=['tx', 'rx'])
+    mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [child_node.phandle, 0, child_node.phandle, 1], "mbox-names" : ['tx', 'rx'] }
+    [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
     sdt.tree.add(mbox_consumer_node)
 
     sdt.tree.resolve()
@@ -869,34 +867,23 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
 
     return True
 
-# Inputs: openamp-processed SDT, target processor
-# Update zephyr specific nodes
-# This currently includes just the elf load area
-def xlnx_openamp_zephyr_update_tree(machine, sdt, options):
-    # for zephyr dt, this routine will just return the whole mem region property
-    # transform list of phandles in that property to list of DT nodes
-    target_node = xlnx_openamp_get_ddr_elf_load(machine, sdt, options)
-
-    xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options)
-
+def xlnx_openamp_zephyr_update_memories(target_node, sdt, options):
     mem_reg_val = target_node.propval('memory-region')
     memory_region_nodes = [sdt.tree.pnode(phandle) for phandle in mem_reg_val]
 
     elf_load_node = memory_region_nodes.pop(0)
     elf_load_node + LopperProp(name="device_type", value="memory")
 
-    ipc_reg = [0x0, 0x0, 0x0, 0x0]
-
     # get reg property for each reserved memory node
     memory_region_regs = [node['reg'].value for node in memory_region_nodes]
 
     # find base of IPC
     reg_column = [row[1] for row in memory_region_regs]
-    ipc_reg[1] = min(reg_column)
 
     # total size of IPC
     sz_column = [row[3] for row in memory_region_regs]
-    ipc_reg[3] = sum(sz_column)
+
+    ipc_reg = [0x0, min(reg_column), 0x0, sum(sz_column)]
 
     # remove unneeded nodes
     for node in memory_region_nodes:
@@ -912,6 +899,18 @@ def xlnx_openamp_zephyr_update_tree(machine, sdt, options):
     # Add and update zephyr properties
     sdt.tree['/chosen']['zephyr,ipc_shm'] = ipc_node.abs_path
     sdt.tree['/chosen']['zephyr,sram'] = elf_load_node.abs_path
+
+    return True
+
+# Inputs: openamp-processed SDT, target processor
+# Update zephyr specific nodes
+# This currently includes just the elf load area
+def xlnx_openamp_zephyr_update_tree(machine, sdt, options):
+    target_node = xlnx_openamp_get_ddr_elf_load(machine, sdt, options)
+
+    xlnx_openamp_zephyr_update_memories(target_node, sdt, options)
+    xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options)
+
     sdt.tree['/chosen']['zephyr,console'] = "serial1"
     sdt.tree['/chosen']['zephyr,shell-uart'] = "serial1"
 
