@@ -177,7 +177,8 @@ class LopperSDT:
             else:
                 ifile = ifile_searched
 
-            if re.search( r".dts$", ifile ) or re.search( r".dtsi$", ifile ):
+            if re.search( r".dts$", ifile ) or re.search( r".dtsi$", ifile ) or \
+               re.search( f".lop$", ifile ):
                 # an input file is either a lopper operation file, or part of the
                 # system device tree. We can check for compatibility to decide which
                 # it is.
@@ -475,7 +476,7 @@ class LopperSDT:
         # concatenated with the main SDT if dtc is doing some of the work, but for
         # now, libfdt is doing the transforms so we compile them separately
         for ifile in lop_files:
-            if re.search( r".dts$", ifile ):
+            if re.search( r".dts$", ifile ) or re.search( r".lop$", ifile ):
                 lop = LopperFile( ifile )
                 # TODO: this may need an output directory option, right now it drops
                 #       it where lopper is called from (which may not be writeable.
@@ -739,6 +740,59 @@ class LopperSDT:
                 if self.werror:
                     lopper.log._error( f"werror is enabled, and no compatible output assist found, exiting" )
                     sys.exit(2)
+
+    def find_any_matching_assists(self, input_files, local_search_paths=[]):
+        """Locates assist files that match any of the given input files (BitBake-style)
+
+        This routine searches both system directories (lopper_directory, lopper_directory +
+        "assists", lopper_directory + "lops") and passed paths (local_search_paths) to
+        locate all assist files (.lop/.dts) that match any of the provided input files.
+        Assist files can match either exactly (on full filename including extension) or via
+        a BitBake-style wildcard: an assist named 'foo%.lop' will match any input file
+        whose base name (with extension) begins with 'foo'.
+
+        Args:
+           input_files (list of strings): input file names (can include paths)
+           local_search_paths (list of strings, optional): list of directories to search
+                                                           in addition to system dirs
+
+        Returns:
+           list of strings: Sorted list of unique absolute paths to assist files
+                            that match any of the input files, or an empty list if none found
+        """
+        search_paths = (
+            self.load_paths +
+            [lopper_directory] +
+            [os.path.join(lopper_directory, "assists")] +
+            [os.path.join(lopper_directory, "lops")] +
+            local_search_paths
+        )
+
+        # Gather all assist files (.lop or .dts)
+        assists = []
+        for apath in search_paths:
+            if not os.path.isdir(apath):
+                continue
+            for fname in os.listdir(apath):
+                if fname.endswith('.dts') or fname.endswith('.lop'):
+                    assists.append(os.path.join(apath, fname))
+
+        found = set()
+        for file_path in input_files:
+            base = os.path.basename(file_path)
+            for assist_path in assists:
+                assist_fname = os.path.basename(assist_path)
+                # Exact match
+                if assist_fname == base:
+                    found.add(assist_path)
+                # Wildcard match: BitBake style
+                elif '%' in assist_fname:
+                    idx = assist_fname.index('%')
+                    prefix = assist_fname[:idx]
+                    if base.startswith(prefix):
+                        found.add(assist_path)
+
+        return sorted(found)  # sorted for determinism
 
     def input_find(self, input_file_name, auto_extensions = [], local_search_paths = []):
         """Locates a python module that matches assist_name
