@@ -406,6 +406,14 @@ def main():
     device_tree.symbols = symbols
     device_tree.warnings = warnings
 
+
+    if auto_run:
+        # look for lops that match the pattern of the input
+        # files, if so, queue them to run
+
+        auto_assists = device_tree.find_any_matching_assists( inputfiles + [sdt] )
+        inputfiles.extend( auto_assists )
+
     device_tree.setup( sdt, inputfiles, "", force, libfdt, config )
     device_tree.assists_setup( cmdline_assists )
 
