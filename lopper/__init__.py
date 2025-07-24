@@ -373,6 +373,8 @@ class LopperSDT:
                 self.FDT = None
             self.tree = lt
 
+            self.tree.strict = not self.permissive
+
             fpp.close()
             self.tmpfiles.append( fpp.name )
 
@@ -406,6 +408,7 @@ class LopperSDT:
             else:
                 self.FDT = None
             self.tree = lt
+            self.tree.strict = not self.permissive
 
             fpp.close()
             self.tmpfiles.append( fpp.name )
