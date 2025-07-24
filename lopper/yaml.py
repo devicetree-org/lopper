@@ -99,6 +99,10 @@ def find_node_by_path(root, path):
     Returns:
         Node or None: The node corresponding to the provided path, or None if not found.
     """
+    # Strip leading slash for consistent traversal
+    if path.startswith('/'):
+        path = path[1:]
+
     segments = path.split("/")
     current_node = root
 
@@ -602,6 +606,8 @@ class LopperJSON():
             return None
 
         lt = LopperTree()
+
+        lt.strict = False
 
         excluded_props = [ "name", "fdt_name" ]
         serialize_json = True

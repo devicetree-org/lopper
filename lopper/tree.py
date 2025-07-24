@@ -361,6 +361,17 @@ class LopperProp():
         else:
             self.__dict__[name] = value
 
+    def _value(self, value ):
+        """ Internal routine that directly assigns to value
+
+        No safeguards or other processing (see __setattr__) are done, and
+        the value is directly assigned
+
+        Returns:
+           Nothing
+        """
+        self.__dict__["value"] = value
+
     def merge(self, other_prop, clobber=False):
         """Merge the value of another property into this property.
 
@@ -1239,7 +1250,7 @@ class LopperProp():
 
         return ptype
 
-    def resolve( self, strict = True ):
+    def resolve( self, strict = None ):
         """resolve (calculate) property details
 
         Some attributes of a property are not known at initialization
@@ -1261,6 +1272,20 @@ class LopperProp():
         Returns:
            Nothing
         """
+
+        if strict:
+            if self.node:
+                if self.node.tree:
+                    if self.node.tree.strict == False:
+                        lopper.log._debug( "Possible strict/permissive inconsistency")
+        else:
+            # If strict wasn't explicitly passed, default to false
+            # and enable it if the tree is in strict mode
+            strict = False
+            if self.node:
+                if self.node.tree:
+                    strict = self.node.tree.strict
+
         outstring = f"{self.name} = {self.value};"
 
         prop_val = self.value
@@ -3144,8 +3169,10 @@ class LopperNode(object):
 
         for p in self.__props__.values():
             try:
-                p.resolve()
+                p.resolve( self.tree.strict )
             except Exception as e:
+                # if we aren't in a tree, the exception will fire, but
+                # that's ok, since we can't resolve in that case anyway
                 pass
 
         if self.tree and self.tree.__symbols__:
