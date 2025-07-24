@@ -74,6 +74,268 @@ def val_as_bool( val ):
     elif val == "True":
         return True
 
+def is_glob_pattern(string):
+    """
+    Determines if a string contains glob-like wildcards.
+
+    Args:
+        string (str): The string to be checked for glob pattern characters.
+
+    Returns:
+        bool: True if the string contains glob pattern characters, otherwise False.
+    """
+    # Check for presence of glob-related characters (*) and (?)
+    return '*' in string or '?' in string
+
+def glob_to_regex(glob_pattern):
+    """
+    Convert a glob pattern to a regex pattern.
+
+    Args:
+        glob_pattern (str): The glob pattern to be converted.
+
+    Returns:
+        str: The converted regex pattern.
+    """
+    # Escape all regex-specific characters except * and ?
+    regex_pattern = re.escape(glob_pattern)
+    # Replace \* with .*
+    regex_pattern = regex_pattern.replace(r'\*', '.*')
+    # Replace \? with .
+    regex_pattern = regex_pattern.replace(r'\?', '.')
+    # Anchor pattern to match the whole string
+    return '^' + regex_pattern + '$'
+
+def domain_parent( domain ):
+    try:
+        parent_name = domain["parent"]
+        return parent_name
+    except Exception as e:
+        return None
+
+def domain_access(node, new_access=None):
+    """
+    Get or set the access value of a node.
+
+    Args:
+        node: The node from which to get or set access.
+        new_access (optional): New access value to set. If not provided, will return the current access.
+
+    Returns:
+        If new_access is None: the current access value.
+        If new_access is provided: None (as it sets the value).
+    """
+    access_props = node.props("access")
+
+    if not access_props:
+        return []
+
+    if not access_props[0]:
+        return []
+
+    if isinstance(access_props[0].value, list):
+        access_prop_string = ','.join(access_props[0].value)
+    else:
+        access_prop_string = access_props[0].value
+
+    if new_access is None:
+        # If no new access is provided, return the current access value
+        access_chunks = json.loads(access_prop_string)
+        return access_chunks
+    else:
+        # Set the new access; assuming new_access is a list of device dictionaries
+        # print( f"setting the value: {new_access}")
+        node["access"]._value(json.dumps(new_access))
+        return None  # No value is returned when setting
+
+from enum import Enum
+
+class Action(Enum):
+    ADD = 'add'
+    GET = 'get'
+    REMOVE = 'remove'
+
+def domain_devices(devices, device_name_or_regex, action: Action):
+    """
+    Manipulates a list of devices based on a regex match or a list of devices.
+
+    Args:
+        devices (list of dict or LopperNode): The list of device dictionaries or a LopperNode object.
+        device_name_or_regex (str or list of dict): The regex pattern to match devices
+                                                     or a list of device dicts to add/remove.
+        action (Action): The action to perform (ADD, GET, REMOVE).
+
+    Returns:
+        list: List of matched devices on GET or the remaining devices after REMOVE.
+              None for ADD.
+    """
+    # Handle LopperNode by extracting 'access' property
+    if isinstance(devices, LopperNode):
+        devices = domain_access(devices)
+
+    if action == Action.GET:
+        matched_devices = []
+        try:
+            matched_devices = [device for device in devices if re.match(device_name_or_regex, device['dev'])]
+        except TypeError as te:
+            print(f"GET operation failed due to a TypeError: {te}")
+        return matched_devices
+
+    elif action == Action.ADD:
+        try:
+            if isinstance(device_name_or_regex, list):
+                devices.extend(device_name_or_regex)
+        except TypeError as te:
+            print(f"ADD operation failed due to a TypeError: {te}")
+        return devices
+
+    elif action == Action.REMOVE:
+        try:
+            if isinstance(device_name_or_regex, list):
+                to_remove = [device['dev'] for device in device_name_or_regex]
+                devices = [device for device in devices if device['dev'] not in to_remove]
+            else:
+                devices = [device for device in devices if not re.match(device_name_or_regex, device['dev'])]
+        except TypeError as te:
+            print(f"REMOVE operation encountered a TypeError: {te}")
+
+        return devices
+
+    else:
+        raise ValueError("Invalid action. Use Action.ADD, Action.GET, or Action.REMOVE.")
+
+
+# this is called from a lop or assist to move/copy wildcard devices to
+# a domain that is using a glob
+def wildcard_devices( tree, domains_node ):
+    verbose = False
+
+    for domain in domains_node.subnodes():
+        if verbose:
+            print( f"[DBG]: wildcard device expansion: processing {domain.abs_path}" )
+
+        try:
+            access_chunks = domain_access( domain )
+            remove_list = []
+            access_list_new = []
+            for a in access_chunks:
+                # display the access element
+                if verbose:
+                    print( f"[DBG]: wildcard: processing: {a}" )
+
+                try:
+                    dev = a["dev"]
+                    if is_glob_pattern( dev ):
+                        # is there a parent domain ? (it is required for wildcards)
+                        # The yaml input validation should have found any misses, but
+                        # dts inputs are also possible, so we double check here
+                        d_parent = domain_parent( domain )
+                        d_parent_name = d_parent.value.split('/')[-1]
+                        d_parent_path = d_parent.value
+
+                        if d_parent_path.startswith('/'):
+                            # if the path isn't valid, an exception will be raised, which
+                            # we catch and indicate the parent cannot be found
+                            try:
+                                parent_domain = tree[d_parent_path]
+                            except:
+                                parent_domain = None
+                        else:
+                            try:
+                                parent_domain = tree.nodes( d_parent_path + "$" )
+                                parent_domain = parent_domain[0]
+                            except:
+                                parent_domain = None
+
+                        if parent_domain:
+                            ## We need to get the access devices from
+                            ## the parent and copy them into our
+                            ## domain
+                            try:
+                                ## TODO: can this be another domain_access() call ?
+                                # parent_access = json.loads(parent_domain["access"].value)
+                                parent_access = domain_access( parent_domain )
+                            except Exception as e:
+                                print( f"[WARNING]: parent domain ({parent_domain.abs_path}) has no devices")
+                                pass
+
+                            # the spec says globs, but if we convert to a regex, the access
+                            # search is easy
+                            regex = glob_to_regex( dev )
+                            devs = domain_devices( parent_access, regex, Action.GET )
+                            remaining_devs = domain_devices( parent_access, devs, Action.REMOVE )
+
+                            # update the parent, since we aren't iterating it, we are ok doing this
+                            # immediately.
+                            domain_access( parent_domain, remaining_devs )
+
+                            if verbose:
+                                print( f"[INFO]: parent domain ({parent_domain.abs_path}) matched devices: {devs}" )
+
+                            # we can't modify the chunks while iterating, so we
+                            # queue the glob (what got is in here) to be deleted
+                            remove_list.append( a )
+                            # And the parent domain devices (what the glob matched) to be added
+                            access_list_new.extend( devs )
+                        else:
+                            # no parent domain, exit
+                            print( f"[ERROR]: glob detected, but no parent domain was found" )
+                            os._exit(1)
+                    else:
+                        # Non-glob device, just copy it or inspect it.
+                        # Currently We aren't doing any checking.
+                        if verbose:
+                           print( f"[INFO]: non wildcard access, copying: {dev}")
+                        access_list_new.append( a )
+
+                except Exception as e:
+                    # This catches an error if there is no "dev" in:
+                    #     dev = a["dev"]
+                    # We just move onto the next item in this case
+                    pass
+
+            if remove_list:
+                # remove the collected devices from the access json dictionary, these
+                # are currently only the wildcard dev: that was found
+                if verbose:
+                    print( f"[INFO]: domain (domain.abs_path): removing: {remove_list}" )
+
+                remaining_access = domain_devices( access_chunks, remove_list, Action.REMOVE )
+                # and then store the updated list into the domain
+                domain_access( domain, remaining_access )
+
+            if access_list_new:
+                # Use this if there's no collection of all elements while processing
+                # the devices.
+                # if access_list_new != access_chunks:
+                #     # if our device list is different than the one we started with, we
+                #     # need to store it
+                #     # We could probably just collect the new devices that we brought in from
+                #     # the glob an extend the list
+                #     if verbose:
+                #         print( f"[INFO]: domain (domain.abs_path): updating: {access_list_new}" )
+
+                #     # we may have just updated it above with the remove, so fetch it again
+                #     existing_access = domain_access( domain )
+                #     # add the new items to the front
+                #     existing_access[:0] = access_list_new
+                #     domain_access( domain, existing_access )
+                #     domain.resolve()
+
+                if access_list_new != access_chunks:
+                    # if our device list is different than the one we started with, we
+                    # need to store it
+                    # We could probably just collect the new devices that we brought in from
+                    # the glob an extend the list
+                    if verbose:
+                        print( f"[INFO]: domain (domain.abs_path): updating: {access_list_new}" )
+
+                    domain_access( domain, access_list_new )
+
+        except Exception as e:
+            print( f"Exception: {e}")
+            os._exit(1)
+
 def firewall_expand( tree, subnode, verbose = 0 ):
     if verbose:
         print( f"[DBG]: firewall_expand: {subnode.abs_path}" )
@@ -211,9 +473,6 @@ def firewall_expand( tree, subnode, verbose = 0 ):
         firewall_prop = LopperProp( "firewallconf", -1, firewall_target_node, firewall_conf_generated_list )
         firewall_target_node + firewall_prop
 
-
-
-
 def access_expand( tree, subnode, verbose = 0 ):
     ## access processing
     # /*
@@ -275,15 +534,23 @@ def access_expand( tree, subnode, verbose = 0 ):
         except:
             flags = None
 
-        dev_handle = 0xdeadbeef
+        dev_handle = 0xFFFFFFFF
         if dev:
+            # this catches missed processing in the other assists
+            if dev == "*":
+                if verbose:
+                    print( f"[WARNING]: found unxpanded glob {dev} in node {subnode.abs_path}" )
+
             try:
                 dev_node = tree.deref( dev )
                 if verbose:
-                    print( f"[DBG]: found dev node {dev_node}" )
+                    if dev_node:
+                        print( f"[DBG]: found dev node {dev_node}" )
+                    else:
+                        print( f"[DBG]: WARNING: could not find device: {dev} in device tree" )
             except:
                 if verbose:
-                    print( f"[DBG]: WARNING: could not find node {dev}" )
+                    print( f"[DBG]: WARNING: could not find device: {dev} in device tree" )
                 dev_node = None
 
             if dev_node:
@@ -294,7 +561,7 @@ def access_expand( tree, subnode, verbose = 0 ):
 
                 dev_handle = dev_node.phandle
             else:
-                dev_handle = 0xdeadbeef
+                dev_handle = 0xFFFFFFFF
 
         flags_value = 0
         if flags:
@@ -365,7 +632,10 @@ def access_expand( tree, subnode, verbose = 0 ):
 
     if verbose:
         # dump the memory as hex
-        print( f"[DBG] setting access: [{', '.join(hex(x) for x in access_list)}]" )
+        print( f"[DBG] ({subnode.abs_path}) setting access: [{', '.join(hex(x) for x in access_list)}]" )
+
+    access_orig_prop = LopperProp( "access-json", -1, subnode, ap.value )
+    subnode + access_orig_prop
 
     ap.value = access_list
 
