@@ -324,14 +324,41 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
             if sdt.tree['/'].propval('board') != ['']:
                 val = sdt.tree['/'].propval('board', list)[0]
                 fd.write(f'set(BOARD "{val}" CACHE STRING "BOARD")\n')
+
+            # Helpful in distinguishing minor differences within the same family device
+            # e.g. spartanuplus-spartanuplusaes, Versal_2ve_2vm (full and small variants)
+            variant_list = sdt.tree['/'].propval('variant', list)
+            if variant_list[0]:
+                fd.write(f'set(VARIANT {";".join(variant_list)})\n')
+
+            cmake_machine = ""
+            cmake_submachine = ""
+
             match_cpunode = bm_config.get_cpu_node(sdt, options)
-            if re.search("microblaze", match_cpunode['compatible'].value[0]):
-                if match_cpunode.propval('xlnx,family') != ['']:
-                    family = match_cpunode.propval('xlnx,family', list)[0]
-                    # Special handling for Versal platform update the variable to inline with PS processors.
-                    if family == "versal":
-                        family = "Versal"
-                    fd.write(f'set(CMAKE_MACHINE "{family}" CACHE STRING "CMAKE MACHINE")\n')
+
+            family = sdt.tree['/'].propval('family', list)
+            if family[0]:
+                if family[0] == "Versal_2VE_2VM":
+                    cmake_machine = "VersalNet"
+                    cmake_submachine = "Versal_2VE_2VM"
+                elif family[0] == "VersalNet":
+                    cmake_machine = "VersalNet"
+                    cmake_submachine = "VersalNet"
+                elif family[0] in ["microblaze", "microblaze_riscv"]:
+                    # For MB/MBV, CMAKE_MACHINE is set to the corresponding MB family, hence a special handling.
+                    if variant_list[0]:
+                        cmake_machine = variant_list[0]
+                    elif match_cpunode.propval('xlnx,family') != ['']:
+                        cmake_machine = match_cpunode.propval('xlnx,family', list)[0]
+                else:
+                    cmake_machine = family[0]
+
+            if cmake_machine:
+                fd.write(f'set(CMAKE_MACHINE "{cmake_machine}" CACHE STRING "CMAKE MACHINE" FORCE)\n')
+
+            if cmake_submachine:
+                fd.write(f'set(CMAKE_SUBMACHINE "{cmake_submachine}" CACHE STRING "CMAKE SUBMACHINE" FORCE)\n')
+
             if match_cpunode.propval('reg') != ['']:
                 cpu_id = match_cpunode.propval('reg', list)[0]
                 fd.write(f'set(XPAR_CPU_ID "{cpu_id}")\n')
