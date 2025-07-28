@@ -60,6 +60,13 @@ def get_memranges(tgt_node, sdt, options):
     except:
         pass
 
+    xparam = False
+    try:
+        if "xparam" in options['args']:
+            xparam = True
+    except:
+        pass
+
     # Ensure that the region addresses are always in descending order of addresses
     # This order is necessary to employ the comparison while mapping the available regions.
     versal_noc_region_ranges =  {
@@ -173,9 +180,16 @@ def get_memranges(tgt_node, sdt, options):
                         linker_secname = key + str("_") + str(xlnx_memipname[key])
                         label_name_new = label_name + str("_") + str(xlnx_memipname[key])
                         xlnx_memipname[key] += 1
+
+                    if not xparam and (linker_secname in mem_ranges):
+                        index_val = str("_") + str(xlnx_memipname[key])
+                        linker_secname += index_val
+                        label_name_new += index_val
+                        xlnx_memipname[key] += 1
+
                     lable_names[linker_secname] = label_name_new
                     # Update the mem_ranges to account for multiple NoC memory segments within a given region.
-                    if is_valid_noc_ch and (linker_secname in mem_ranges):
+                    if is_valid_noc_ch and xparam and (linker_secname in mem_ranges):
                         start_addr, old_size = mem_ranges[linker_secname]
                         new_size = valid_range[0] + size - start_addr
                         mem_ranges.update({linker_secname: [start_addr, new_size]})
