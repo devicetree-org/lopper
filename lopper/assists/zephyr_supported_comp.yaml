@@ -205,7 +205,6 @@ xlnx,versal-wwdt:
   required:
     - compatible
     - reg
-    - timeout-sec
     - clocks
 
 fixed-clock:
