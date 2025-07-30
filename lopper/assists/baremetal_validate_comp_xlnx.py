@@ -125,8 +125,11 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
             if has_valid_mem[-1] != 0x0:
                 err_msg = f'ERROR: {name} application requires atleast {hex(has_valid_mem[2])} bytes of {has_valid_mem[1]} memory at {hex(has_valid_mem[-1])} to run'
             else:
-                err_msg = f'ERROR: {name} application requires atleast {hex(has_valid_mem[2])} bytes of {has_valid_mem[1]} memory'
-            _error(err_msg)
+                err_msg = (
+            f"ERROR: The {has_valid_mem[1]} domain provides exactly {hex(has_valid_mem[2])} bytes, "
+            f"which is insufficient after accounting for stack/heap/runtime usage. "
+            f"Please allocate more than {hex(has_valid_mem[2])} bytes (e.g., 0x4000 bytes) to proceed."
+        )
             print(err_msg)
             sys.exit(1)
 
