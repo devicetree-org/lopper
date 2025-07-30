@@ -793,6 +793,8 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
         return None
 
     # ELFLOAD carveout for the DT node is first phandle
+    elf_load_carveout = tree.pnode(mem_reg_val[0])
+
     if zephyr_mode:
         return target_node
 
