@@ -13,15 +13,14 @@ import os
 import re
 import glob
 import logging
-
-
-sys.path.append(os.path.dirname(__file__))
-
 import common_utils as utils
 import baremetalconfig_xlnx as bm_config
+
 from baremetaldrvlist_xlnx import xlnx_generate_bm_drvlist
 from baremetallinker_xlnx import get_memranges
 from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+
+sys.path.append(os.path.dirname(__file__))
 
 _init(__name__)
 
@@ -46,6 +45,7 @@ def add_multi_buf(plat,match_cpunode,data_dict,else_ignore_data=[]):
             plat.buf(f'\n#define {value} {data}\n')
         else:
             if key not in else_ignore_data:
+                _warning(f'Property "{key}" not found in CPU node. Defaulting {value} to 0.')
                 plat.buf(f'\n#define {value} 0\n')
 
 def xlnx_generate_xparams(tgt_node, sdt, options):
@@ -109,6 +109,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             if not drv_dir and drv_data.get(drv,{}).get('path',''):
                 drv_dir = drv_data.get(drv,{}).get('path','')[0]
         else:
+            _warning(f"YAML file not found at path {repo_path_data}, falling back to default path.")
             drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers", drv)
 
         if not drv_dir:
