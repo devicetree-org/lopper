@@ -56,7 +56,7 @@ def check_for_mem(sdt, options, mem_type, required_mem):
             if required_mem_start != 0x0:
                 if (required_mem_start == start) and (size <= required_mem_size):
                     return False, mem_type, required_mem_size
-            if size > required_mem_size:
+            if size >= required_mem_size:
                 return True, mem_type, required_mem_size
 
     return False, mem_type, required_mem_size, required_mem_start
