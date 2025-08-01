@@ -34,6 +34,8 @@ import lopper.base
 from lopper.base import lopper_base
 from lopper.tree import LopperTreePrinter
 
+import lopper.schema
+
 from string import printable
 
 try:
@@ -687,16 +689,16 @@ class LopperFDT(lopper.base.lopper_base):
         for prop, prop_val in reversed(node_in.items()):
             if re.search( r"^__", prop ) or prop.startswith( '/' ):
                 if verbose:
-                    print( f"          lopper.fdt: node sync: skipping internal property: {prop}")
+                    print( f"          lopper.fdt: node sync: skipping internal property: {prop} ({prop_val})")
                 continue
             else:
-                if verbose:
-                    print( f"          lopper.fdt: node sync: prop: {prop} val: {prop_val}" )
-
                 try:
                     qtype = node_in[f"__{prop}_type__" ]
                 except:
                     qtype = None
+
+                if verbose:
+                    print( f"          lopper.fdt: node sync: prop: {prop} val: {prop_val} type: {qtype}" )
 
                 # We could supply a type hint via the __{}_type__ attribute
                 LopperFDT.property_set( fdt, nn, prop, prop_val, LopperFmt.COMPOUND, verbose, qtype )
@@ -843,7 +845,7 @@ class LopperFDT(lopper.base.lopper_base):
             LopperFDT.node_sync( fdt, node_in, node_in_parent, verbose )
 
     @staticmethod
-    def export( fdt, start_node = "/", verbose = False, strict = False ):
+    def export( fdt, start_node = "/", verbose = False, strict = False, schema = None ):
         """export a FDT to a description / nested dictionary
 
         This routine takes a FDT, a start node, and produces a nested dictionary
@@ -890,7 +892,7 @@ class LopperFDT(lopper.base.lopper_base):
 
         dct["__path__"] = start_node
 
-        np = LopperFDT.node_properties_as_dict( fdt, start_node )
+        np = LopperFDT.node_properties_as_dict( fdt, start_node, schema=schema )
         if np:
             dct.update(np)
 
@@ -907,7 +909,7 @@ class LopperFDT(lopper.base.lopper_base):
         for i,n in enumerate(nodes):
             # Children are indexed by their path (/foo/bar), since properties
             # cannot start with '/'
-            dct[n] = LopperFDT.export( fdt, n, verbose, strict )
+            dct[n] = LopperFDT.export( fdt, n, verbose, strict, schema=schema )
 
         # only when processing the root node, we look to see if there
         # was a peer /memreserve node. if found, we add it to the exported
@@ -941,7 +943,7 @@ class LopperFDT(lopper.base.lopper_base):
         return dct
 
     @staticmethod
-    def node_properties_as_dict( fdt, node, type_hints=True, verbose=0 ):
+    def node_properties_as_dict( fdt, node, type_hints=True, verbose=0, schema=None ):
         """Create a dictionary populated with the nodes properties.
 
         Builds a dictionary that is propulated with a node's properties as
@@ -958,7 +960,6 @@ class LopperFDT(lopper.base.lopper_base):
         Returns:
             dict: dictionary of the properties, if successfull, otherwise and empty dict
         """
-
         prop_dict = {}
 
         # is the node a number ? or do we need to look it up ?
@@ -975,12 +976,44 @@ class LopperFDT(lopper.base.lopper_base):
             print( f"[WARNING]: could not find node {node_path}" )
             return prop_dict
 
+        resolver = None
+        if schema:
+            resolver = lopper.schema.get_schema_manager().get_resolver()
+
         prop_list = LopperFDT.node_properties( fdt, node_path )
         for p in prop_list:
-            property_val = LopperFDT.property_get( fdt, node_number, p.name, LopperFmt.COMPOUND )
+            if resolver:
+                fmt_type = resolver.get_property_type(p.name, node_path)
+                if verbose:
+                    print( f"node_properites_as_dict: {node_path} {p.name}: schema says type {fmt_type}")
+
+                if fmt_type != LopperFmt.UNKNOWN:
+                    dtype = fmt_type
+                else:
+                    dtype = LopperFDT.property_type_guess( p )
+            else:
+                # this is the default of the function, but since we are always
+                # passing an encoding, we need to explicitly assign this for the
+                # no schema case to work. This triggers property type heuristics
+                # at the lowest level
+                fmt_type = LopperFmt.UNKNOWN
+                dtype = LopperFDT.property_type_guess( p )
+
+            property_val = LopperFDT.property_get( fdt, node_number, p.name,
+                                                   LopperFmt.COMPOUND,
+                                                   encode=fmt_type,
+                                                   schema=schema )
+
+            if verbose:
+                print( f"node_properties_as_dict: fetched property with hint was: {property_val}")
+
             prop_dict[p.name] = property_val
             if type_hints:
-                prop_dict[f'__{p.name}_type__'] = LopperFDT.property_type_guess( p )
+                if dtype:
+                    prop_dict[f'__{p.name}_type__'] = dtype
+
+        if verbose:
+            print( f"node {node_path} props as dict: {prop_dict}\n")
 
         return prop_dict
 
@@ -1382,7 +1415,8 @@ class LopperFDT(lopper.base.lopper_base):
 
 
     @staticmethod
-    def property_get( fdt, node_number, prop_name, ftype=LopperFmt.SIMPLE, encode=LopperFmt.DEC ):
+    def property_get( fdt, node_number, prop_name, ftype=LopperFmt.SIMPLE,
+                      encode=LopperFmt.DEC, schema=None ):
         """utility command to get a property (as a string) from a node
 
         A more robust way to get the value of a property in a node, when
@@ -1411,16 +1445,22 @@ class LopperFDT(lopper.base.lopper_base):
            string: if format is SIMPLE: string value of the property, or "" if not found
            list: if format is COMPOUND: list of property values as strings, [] if not found
         """
+        verbose = 0
         try:
+            if verbose:
+                print( f"property_get: {prop_name}, encoding is: {encode} ftype is {ftype}")
             prop = fdt.getprop( node_number, prop_name )
             val = LopperFDT.property_value_decode( prop, 0, ftype, encode )
+            if verbose:
+                print( f"property_get: decoded as {val}" )
         except Exception as e:
             val = ""
 
         return val
 
     @staticmethod
-    def property_set( fdt, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE, verbose=False, typehint=None ):
+    def property_set( fdt, node_number, prop_name, prop_val, ftype=LopperFmt.SIMPLE,
+                      verbose=False, typehint=None ):
         """utility command to set a property in a node
 
         A more robust way to set the value of a property in a node, This routine
@@ -1666,6 +1706,13 @@ class LopperFDT(lopper.base.lopper_base):
         with open( preprocessed_name, 'r') as file:
             pdata = file.read()
         phandles = lopper_base.parse_dts_phandles( pdata )
+
+        generator = lopper.schema.DTSSchemaGenerator()
+        generator.scan_dts_file(pdata)
+
+        # Generate the schema
+        schema = generator.generate_schema()
+
         phandle_dts = lopper_base.encode_phandle_map_to_dts( phandles )
         descriptions = lopper_base.generate_property_descriptions( pdata )
         lopper_base.update_phandle_property_descriptions( descriptions )
@@ -1924,4 +1971,4 @@ class LopperFDT(lopper.base.lopper_base):
         except FileNotFoundError:
             output_dtb = ""
 
-        return str(output_file)
+        return [ str(output_file), schema ]
