@@ -1182,7 +1182,7 @@ ocp:
 
 
 def setup_fdt( device_tree, outdir ):
-    dt = Lopper.dt_compile( device_tree, "", "", True, outdir )
+    dt, _ = Lopper.dt_compile( device_tree, "", "", True, outdir )
 
     if libfdt:
         fdt = Lopper.dt_to_fdt( device_tree + ".dtb" )
