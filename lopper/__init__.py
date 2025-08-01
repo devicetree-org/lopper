@@ -109,6 +109,7 @@ class LopperSDT:
         self.warnings = []
         self.werror = False
         self.tmpfiles = []
+        self.schema = None
 
     def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True, config=None):
         """executes setup and initialization tasks for a system device tree
@@ -284,9 +285,24 @@ class LopperSDT:
             # Note: we use the tmpdir vs the outdir here, since these are files that don't
             #       need to be kept. The outdir will be used for the main writing of a transformed
             #       SDT.
-            self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.tmpdir,
-                                          self.save_temps, self.verbose, self.enhanced, self.permissive,
-                                          self.symbols )
+            self.dtb, schema = Lopper.dt_compile( fp, input_files, include_paths, force, self.tmpdir,
+                                                  self.save_temps, self.verbose, self.enhanced, self.permissive,
+                                                  self.symbols )
+
+            if self.schema == "learn":
+                self.schema = schema
+                lopper.schema.initialize_lopper_properties( self.schema )
+                lopper.schema._schema_manager.update_schema( self.schema )
+                lopper.log._info( f"schema learning complete")
+                lopper.log._debug( f"schema: {self.schema}")
+            elif self.schema == None:
+                # do nothing. We may eventually do some very minimal hints
+                # in this scenario
+                pass
+            else:
+                # this is a schema file, we don't currently have support for
+                # this, so output a warning
+                lopper.log._warning( f"schema file {self.schema}, but external schemas are not supported yet" )
 
             if self.use_libfdt:
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
@@ -297,12 +313,13 @@ class LopperSDT:
                 self.FDT = self.dtb
                 self.dtb = ""
 
-            dct = Lopper.export( self.FDT )
+            dct = Lopper.export( self.FDT, schema = self.schema )
 
             self.tree = LopperTree()
             self.tree.warnings = self.warnings
             self.tree.werror = self.werror
             self.tree.strict = not self.permissive
+            self.tree.schema = self.schema
             self.tree.load( dct )
 
             self.tree.__dbg__ = self.verbose
@@ -484,8 +501,8 @@ class LopperSDT:
                 # TODO: this may need an output directory option, right now it drops
                 #       it where lopper is called from (which may not be writeable.
                 #       hence why our output_dir is set to "./"
-                compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force, self.tmpdir,
-                                                   self.save_temps, self.verbose )
+                compiled_file, _  = Lopper.dt_compile( lop.dts, "", include_paths, force, self.tmpdir,
+                                                       self.save_temps, self.verbose )
                 if not compiled_file:
                     lopper.log._error( f"could not compile file {ifile}" )
                     sys.exit(1)
