@@ -61,6 +61,7 @@ def usage():
     print('  -S, --save-temps    don\'t remove temporary files' )
     print('    , --cfgfile       specify a lopper configuration file to use (configparser format) ' )
     print('    , --cfgval        specify a configuration value to use (in configparser section format). Can be specified multiple times' )
+    print('    , --schema        one of: "path to a dts schema", "learn" or "none" ')
     print('  -h, --help          display this help and exit')
     print('  -O, --outdir        directory to use for output files')
     print('    , --server        after processing, start a server for ReST API calls')
@@ -95,11 +96,12 @@ def main():
     symbols = False
     warnings = []
     usage_flag = False
+    schema = None
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "I:W:A:t:dfvdhi:o:a:SO:D:x:",
                                    [ "debug=", "assist-paths=", "outdir", "enhanced",
-                                     "save-temps", "version", "werror","target=", "dump",
+                                     "schema=", "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
                                      "assist=","server", "auto", "permissive", 'symbols', "xlate=",
                                      "no-libfdt", "overlay", "cfgfile=", "cfgval=", "input-dirs"] )
@@ -144,6 +146,8 @@ def main():
             werror=True
         elif o in ('--server'):
             server=True
+        elif o in ('--schema'):
+            schema = a
         elif o in ('-S', '--save-temps' ):
             save_temps=True
         elif o in ('--no-libfdt' ):
@@ -347,6 +351,17 @@ def main():
                 # global section, not currently implemented
                 pass
 
+    if schema:
+        if schema == "none":
+            schema = None
+        else:
+            schemaf = Path(schema)
+            if not schemaf.exists():
+                print( f"[ERROR]: schema file {schema} does not exist" )
+                sys.exit(1)
+    else:
+        schema = "learn"
+
     if xlate:
         for x in xlate:
             # *x_lop gets all remaining splits. We don't always have the ":", so
@@ -405,7 +420,7 @@ def main():
     device_tree.config = config
     device_tree.symbols = symbols
     device_tree.warnings = warnings
-
+    device_tree.schema = schema
 
     if auto_run:
         # look for lops that match the pattern of the input

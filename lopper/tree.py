@@ -32,6 +32,8 @@ from lopper.fmt import LopperFmt
 from lopper.log import _warning, _info, _error, _debug
 import logging
 
+import lopper.schema
+
 lopper.log._init( __name__ )
 lopper.log._init( "tree.py" )
 
@@ -633,9 +635,16 @@ class LopperProp():
             a LopperNode in the list means phandle. If there are no phandles, an empty list
             is returned.
         """
+
+        ## Note: you cannot print a node from within this routine, or
+        ##       an infinite loop will result (printing nodes calls
+        ##       resolve, which calls this function ...
+
         phandle_map = []
         phandle_sub_list = []
         phandle_props = Lopper.phandle_possible_properties()
+
+        _debug( f"phandle map: {self.name} {phandle_props}")
 
         field_offset_pattern = r'([+-]?)(\d+):(.*)'
         field_offset_regex = re.compile(field_offset_pattern)
@@ -725,6 +734,11 @@ class LopperProp():
             for phandle_desc in property_fields:
                 if re.search( r'^#.*', phandle_desc ):
                     try:
+                        _debug( f" phandle_map: iteration_flag {property_iteration_flag} index: {property_global_index}" )
+                        _debug( f" phandle map: prop: {self.name} descriptor: {phandle_desc}")
+                        _debug( f" phandle map: value of lookup: {self.node.__props__[phandle_desc]}")
+                        _debug( f" phandle map: current node: {self.node.abs_path}")
+
                         field_val = self.node.__props__[phandle_desc].value[0]
                     except Exception as e:
                         if self.node and self.node.tree and self.node.tree.strict:
@@ -803,7 +817,17 @@ class LopperProp():
 
                         except Exception as e:
                             if self.node and self.node.tree and self.node.tree.strict:
-                                return phandle_map
+                                ## this is commented out, as it seems
+                                ## to be stopping invalid phandles
+                                ## from being removed in strict
+                                ## mode. i.e. we need to complete the
+                                ## full loop for the removal to work,
+                                ## but of course, assuming cell_count
+                                ## as one, could break the
+                                ## partitioning and grouping of the
+                                ## output anyway.
+                                # return phandle_map
+                                pass
                             cell_count = 1
 
                         # step 3)
@@ -2971,6 +2995,8 @@ class LopperNode(object):
             label_props = []
 
             node_source = ""
+            resolver = lopper.schema.get_schema_manager().resolver
+
             for prop, prop_val in dct.items():
                 if re.search( r"^__", prop ) or prop.startswith( r'/' ):
                     # internal property, skip
@@ -2986,6 +3012,17 @@ class LopperNode(object):
                 try:
                     # see if we got a type hint as part of the input dictionary
                     dtype = dct[f'__{prop}_type__']
+                    if resolver:
+                        try:
+                            fmt_type = LopperFmt.UNKNOWN
+                            if resolver:
+                                fmt_type = resolver.get_property_type(prop, self.abs_path)
+
+                            if fmt_type != LopperFmt.UNKNOWN:
+                                dtype = fmt_type
+                        except Exception as e:
+                            pass
+
                 except Exception as e:
                     pass
 
@@ -3461,6 +3498,12 @@ class LopperTree:
         self.warnings_issued = {}
         self.werror = []
         self.__check__ = False
+
+        # see the convience unctions in schema to enable
+        # these elements
+        self.schema = None
+        self._resolver = None
+        self._validator = None
 
         # output/print information
         self.indent_char = ' '

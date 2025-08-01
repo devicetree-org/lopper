@@ -15,6 +15,15 @@ from lopper.fmt import LopperFmt
 from string import printable
 from pathlib import Path
 from pathlib import PurePath
+import struct
+
+
+lopper_known_types = {
+    "compatible" : LopperFmt.STRING,
+    ".*mem.*base.*" : LopperFmt.UINT32
+}
+
+lopper_discovered_types = {}
 
 class lopper_base:
     """Class representing the common device tree front / backend interface
@@ -140,7 +149,9 @@ class lopper_base:
         return None
 
     @staticmethod
-    def property_value_decode( prop, poffset, ftype=LopperFmt.SIMPLE, encode=LopperFmt.UNKNOWN, verbose=0 ):
+    def property_value_decode( prop, poffset, ftype=LopperFmt.SIMPLE,
+                               encode=LopperFmt.UNKNOWN, verbose=0,
+                               schema=None ):
         """Decodes a property
 
         Decode a property into a common data type (string, integer, list of
@@ -180,7 +191,10 @@ class lopper_base:
 
         # Note: these could also be nested.
         if ftype == LopperFmt.SIMPLE:
-            encode_calculated = lopper_base.property_type_guess( prop )
+            if encode == LopperFmt.UNKNOWN:
+                encode_calculated = lopper_base.property_type_guess( prop )
+            else:
+                encode_calculated = encode
 
             val = ""
             if repr(encode_calculated) == repr(LopperFmt.STRING) or \
@@ -222,9 +236,19 @@ class lopper_base:
             # compound format
             decode_msg = ""
             val = ['']
-            encode_calculated = lopper_base.property_type_guess( prop )
 
-            if repr(encode_calculated) == repr(LopperFmt.EMPTY):
+            if encode == LopperFmt.UNKNOWN:
+                encode_calculated = lopper_base.property_type_guess( prop )
+            else:
+                encode_calculated = encode
+
+            # this is for properties like "ranges;", if there's no schema
+            # they will show up as EMPTY. But if there's a schema they'll
+            # show as a number type, but have no values (length)
+            if repr(encode_calculated) == repr(LopperFmt.EMPTY) or \
+               ((repr(encode_calculated) == repr(LopperFmt.UINT32) or \
+                 repr(encode_calculated) == repr(LopperFmt.UINT64) or \
+                 repr(encode_calculated) == repr(LopperFmt.UINT8)) and len(prop) == 0) :
                 return val
 
             first_byte = prop[0]
@@ -232,7 +256,8 @@ class lopper_base:
 
             # TODO: we shouldn't need these repr() wrappers around the enums, but yet
             #       it doesn't seem to work on the calculated variable without them
-            if repr(encode_calculated) == repr(LopperFmt.STRING):
+            if repr(encode_calculated) == repr(LopperFmt.STRING) or \
+               repr(encode_calculated) == repr(LopperFmt.MULTI_STRING):
                 try:
                     val = prop[:-1].decode('utf-8').split('\x00')
                     decode_msg = f"(multi-string): {val}"
@@ -381,6 +406,44 @@ class lopper_base:
 
         return type_guess
 
+    @staticmethod
+    def property_type_guess_by_byte(prop):
+        """
+        Determine the property type based on byte content.
+
+        Args:
+            prop: The property object containing name and value data.
+
+        Returns:
+            LopperFmt: The guessed format type for the property.
+        """
+        print(f"guessing type for {prop.name}")
+
+        if len(prop) == 0:
+            return LopperFmt.EMPTY
+
+        # Attempt numeric decoding first - priority given based on length and content
+        num = lopper_base.property_decode_as_number(prop)
+        if num is not None:
+            # print(f"Interpreted as a number: {num} (len {len(prop)})")
+            string = lopper_base.property_decode_as_string(prop)
+            if string:
+                # consult our table of known types to break the tie ...
+                known_type = lopper_base.property_get_known_type(prop.name)
+                if known_type:
+                    return known_type
+                else:
+                    return LopperFmt.STRING
+
+            return LopperFmt.UINT32 if len(prop) == 4 else LopperFmt.UINT64
+
+        # Attempt string decoding - only when number interpretation fails
+        string = lopper_base.property_decode_as_string(prop)
+        if string is not None:
+            return LopperFmt.STRING
+
+        # Default fallthrough to binary type when no match is directly observed
+        return LopperFmt.UINT8
 
     @staticmethod
     def property_convert( property_string ):
@@ -448,6 +511,60 @@ class lopper_base:
                     retval.append( p )
 
         return retval
+
+    @staticmethod
+    def property_get_known_type(property_name):
+        """
+        Determine the known format type for a given property name using predefined patterns.
+
+        Args:
+            property_name (str): The name of the property to check against known types.
+
+        Returns:
+            LopperFmt: The format type if a known type is found, otherwise None.
+        """
+        for pattern, ftype in lopper_known_types.items():
+            if re.match(pattern, property_name):
+                return ftype
+        return None
+
+    @staticmethod
+    def property_decode_as_string(prop):
+        """
+        Decode byte array to a string if it is valid and printable.
+
+        Args:
+            prop (bytes): The property value as a byte array to decode.
+
+        Returns:
+            str: The decoded string if valid and printable, otherwise None.
+        """
+        try:
+            decoded = prop.decode('utf-8', errors='ignore').rstrip('\x00')
+            # Strings should be identifiable by non-numeric characteristics
+            return decoded if decoded.isprintable() else None
+        except UnicodeDecodeError:
+            return None
+
+    @staticmethod
+    def property_decode_as_number(prop):
+        """
+        Decode byte sequence as a numeric type when properly formatted.
+
+        Args:
+            prop (bytes): The property value as a byte array to decode.
+
+        Returns:
+            int: The decoded number if successful, otherwise None.
+        """
+        len_prop = len(prop)
+        if len_prop in [4, 8]:
+            try:
+                num = struct.unpack('>L', prop)[0] if len_prop == 4 else struct.unpack('>Q', prop)[0]
+                return num
+            except struct.error:
+                pass
+        return None
 
     @classmethod
     def phandle_possible_properties(cls):
