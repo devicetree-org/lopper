@@ -169,7 +169,7 @@ def overlay_test( sdt ):
     if ranges_count == 2:
         print( "PASSED: ranges was removed from the overlay" )
     else:
-        print( "FAILED: ranges was not removed from the overlay" )
+        print( f"FAILED: ranges was not removed from the overlay. the count is {ranges_count}" )
         os._exit(1)
 
     amba_count = 0
