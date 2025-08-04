@@ -256,3 +256,22 @@ xlnx,xps-spi-2.00.a:
     - interrupt-parent
     - '#address-cells'
     - '#size-cells'
+
+xlnx,versal-ipi-mailbox:
+  required:
+    - compatible
+    - reg
+    - reg-names
+    - interrupts
+    - interrupt-parent
+    - xlnx,ipi-id
+    - '#address-cells'
+    - '#size-cells'
+
+xlnx,versal-ipi-dest-mailbox:
+  required:
+    - compatible
+    - reg
+    - reg-names
+    - xlnx,ipi-id
+    - '#mbox-cells'
