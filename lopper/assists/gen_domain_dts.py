@@ -227,8 +227,14 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     filter_ipi_nodes_for_cpu(sdt, machine)
 
     node_list = []
+    cpu_ip = match_cpunode.propval('xlnx,ip-name', list)
     for node in root_sub_nodes:
         if linux_dt:
+            is_microblaze = cpu_ip[0] in ('microblaze','microblaze_riscv')
+            # Rename memory@ to sram@ for MicroBlaze/MicroBlaze RISC-V if the memory node IP is lmb_bram
+            if (is_microblaze and 'lmb_bram' in node.propval('xlnx,ip-name', list)[0] 
+                   and node.propval('device_type',list)[0] == "memory"):
+                        node.name = node.name.replace("memory","sram")
             if node.name == "memory@fffc0000" or node.name == "memory@bbf00000":
                 sdt.tree.delete(node)
             if (keep_tcms == None and not openamp_present) and 'tcm' in node.name:
@@ -236,7 +242,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             if node.propval('memory_type', list) == ['linear_flash']:
                 sdt.tree.delete(node)
             for entry in node.propval('compatible', list):
-                pl_memory_compatible_list = ["xlnx,ddr4","xlnx,mig-7series","xlnx,lmb-bram","xlnx,axi-bram"]
+                pl_memory_compatible_list = ["xlnx,axi-bram"] if is_microblaze \
+                                           else ["xlnx,ddr4", "xlnx,mig-7series","xlnx,lmb-bram","xlnx,axi-bram"]
                 if any(entry.startswith(compatible_prefix) for compatible_prefix in pl_memory_compatible_list):
                     sdt.tree.delete(node)
                     break
@@ -349,7 +356,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psu_lpd_slcr_secure', 'psu_lpd_xppu_sink', 'psu_mbistjtag', 'psu_message_buffers', 'psu_ocm_xmpu_cfg',
                             'psu_pcie_attrib_0', 'psu_pcie_dma', 'psu_pcie_high1', 'psu_pcie_high2', 'psu_pcie_low',
                             'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou',
-                            'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu', 'psx_fpd_gpv', 'ddr4', 'ps7_ram', 'ps7_afi',
+                            'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu', 'psx_fpd_gpv', 'ps7_ram', 'ps7_afi',
                             'ps7_pmu', 'ps7_ocmc', 'ps7_scuc', 'ps7_iop_bus_config', 'ps7_gpv', 'psu_ocm_ram_0', 'psv_ocm_ram_0',
                             'psx_ocm_ram', 'ocm_ram', 'psx_ocm_ram_0', 'ocm_ram_0', 'gt_quad_base', 'psv_coresight_apu_cti',
                             'psv_coresight_cpm_cti2d', 'psv_coresight_cpm_ela2a', 'psv_coresight_cpm_ela2b',
@@ -703,7 +710,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                         valid_alias_proplist.append(node.name)
                         # Create fixed clock nodes
                         if 'clocks' in required_prop:
-                            if any(clock_prop := (re.search(r'xlnx,.*-clk-freq-hz$', prop)) for prop in prop_list):
+                            if any(clock_prop == (re.search(r'xlnx,.*-clk-freq-hz$', prop)) for prop in prop_list):
                                 clk_freq = node[clock_prop.group()].value
                             else:
                                 # If there is no clk-freq property use 0MHZ as default this prevent
