@@ -613,6 +613,10 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                     # Mailbox
                     if any(version in node["compatible"].value for version in ("vnd,mbox-consumer", "xlnx,mbox-versal-ipi-mailbox", "xlnx,mbox-versal-ipi-dest-mailbox")):
                         continue
+                    if "xlnx,versal-ipi-mailbox" in node["compatible"].value:
+                        node["compatible"].value = ["xlnx,mbox-versal-ipi-mailbox"]
+                    elif "xlnx,versal-ipi-dest-mailbox" in node["compatible"].value:
+                        node["compatible"].value = ["xlnx,mbox-versal-ipi-dest-mailbox"]
                     # PS-IIC
                     if "cdns,i2c-r1p14" in node["compatible"].value:
                         node["compatible"].value = ["cdns,i2c"]
