@@ -808,44 +808,45 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
     else:
         return False
 
-    openamp_remote_ipi_id = openamp_mbox_node.propval('xlnx,ipi-id')
-    openamp_host_ipi_id = openamp_mbox_node.parent.propval('xlnx,ipi-id')
+    remoteproc_remote_ipi_id = openamp_mbox_node.propval('xlnx,ipi-id')
+    remoteproc_host_ipi_id = openamp_mbox_node.parent.propval('xlnx,ipi-id')
 
-    # Find all nodes that match remoteproc's host
-    child_nodes = [node for node in sdt.tree['/'].subnodes() if node.propval('xlnx,ipi-id') == openamp_host_ipi_id]
+    ipi_parent = None
+    ipi_child = None
 
-    # Find the parent that has remoteproc's remote (reverse of host arrangement)
-    child_node = [child for child in child_nodes if child.parent.propval('xlnx,ipi-id') == openamp_remote_ipi_id][0]
-    child_node.name = f"mailbox@{hex(child_node['reg'].value[1])[2:]}"
-    parent_node = child_node.parent
+    for node in sdt.tree['/axi'].subnodes():
+        if node.propval('xlnx,ipi-id') == remoteproc_remote_ipi_id and node.parent == sdt.tree['/axi']:
+            ipi_parent = node
+            for subnode in ipi_parent.subnodes():
+                if subnode.propval('xlnx,ipi-id') == remoteproc_host_ipi_id:
+                    ipi_child = subnode
+
+    remoteproc_parent = openamp_mbox_node.parent
+    remoteproc_child = openamp_mbox_node
+
+    ipi_child.name = f"mailbox@{hex(remoteproc_parent['reg'].value[1])[2:]}"
 
     child_props = {
-      "compatible" : 'xlnx,mbox-versal-ipi-dest-mailbox',
-      "status" : 'okay', "#mbox-cells" : 1,
-      "interrupt-parent" : parent_node['interrupt-parent'].value,
-      "reg" : [0, child_node['reg'].value[1], 0, 0x20],
-      "reg-names" : child_node['reg-names'].value,
-      "xlnx,ipi-id" : child_node["xlnx,ipi-id"].value
+      "compatible" : 'xlnx,mbox-versal-ipi-dest-mailbox', "status" : 'okay', "#mbox-cells" : 1,
+      "interrupt-parent" : ipi_parent['interrupt-parent'].value,
+      "reg" : remoteproc_parent['reg'].value,
+      "reg-names": remoteproc_parent['reg-names'].value,
+      "xlnx,ipi-id" : ipi_child["xlnx,ipi-id"].value
     }
 
     parent_props = {
-      "compatible" : 'xlnx,mbox-versal-ipi-mailbox', "status" : 'okay', "#mbox-cells" : 1,
-      "#address-cells" : 2, "#size-cells" : 2,
-      "interrupt-parent" : parent_node['interrupt-parent'].value,
-      "reg" : [0, parent_node['reg'].value[1], 0, 0x20],
-      "reg-names" : parent_node['reg-names'].value,
-      "xlnx,ipi-id" : parent_node["xlnx,ipi-id"].value,
-      "interrupts" : parent_node['interrupts'].value,
+      "compatible" : 'xlnx,mbox-versal-ipi-mailbox', "status" : 'okay', "#mbox-cells" : 1, "#address-cells" : 2, "#size-cells" : 2,
+      "interrupt-parent" : ipi_parent['interrupt-parent'].value,
+      "reg" : remoteproc_child['reg'].value,
+      "xlnx,ipi-id" : ipi_parent["xlnx,ipi-id"].value,
+      "interrupts" : ipi_parent["interrupts"].value,
+      "reg-names": remoteproc_child['reg-names'].value,
     }
 
     parent_props["interrupts"][2] = 0x2
 
     # update each node so that only needed properties are present and that they have the right values
-    for (node, needed_props) in zip([parent_node, child_node], [parent_props, child_props]):
-        # if ipi has buffers, ensure that reg property reflects this properly
-        if 'msg' in needed_props["reg-names"]:
-            needed_props["reg"].extend([0, node["reg"].value[5], 0, 0x1ff])
-
+    for (node, needed_props) in zip([ipi_parent, ipi_child], [parent_props, child_props]):
         existing_props = list(node.__props__.keys())
 
         # add new properties
@@ -860,12 +861,13 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
                 node[p] = needed_props[p]
 
     mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
-    mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [child_node.phandle, 0, child_node.phandle, 1], "mbox-names" : ['tx', 'rx'] }
+    mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [ipi_child.phandle, 0, ipi_child.phandle, 1], "mbox-names" : ['tx', 'rx'] }
     [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
     sdt.tree.add(mbox_consumer_node)
 
-    sdt.tree.resolve()
-    sdt.tree.sync()
+    for ipi_subnode in ipi_parent.subnodes():
+        if ipi_subnode != ipi_child and ipi_subnode != ipi_parent:
+            sdt.tree - ipi_subnode
 
     return True
 
@@ -913,8 +915,14 @@ def xlnx_openamp_zephyr_update_tree(machine, sdt, options):
     xlnx_openamp_zephyr_update_memories(target_node, sdt, options)
     xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options)
 
-    sdt.tree['/chosen']['zephyr,console'] = "serial1"
-    sdt.tree['/chosen']['zephyr,shell-uart'] = "serial1"
+    sdt.tree['/chosen']['zephyr,console'] = "serial0"
+    sdt.tree['/chosen']['zephyr,shell-uart'] = "serial0"
+    sdt.tree['/chosen']['stdout-path'] = "serial0:115200n8"
+
+    for subnode in sdt.tree['/axi'].subnodes():
+        if 'serial1' == subnode.label:
+            sdt.tree - subnode
+            break
 
     if sdt.tree['/chosen'].propval('zephyr,flash') != ['']:
         sdt.tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,flash'])
@@ -2045,6 +2053,12 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
        print('ERROR: Failed to parse arguments in openamp module.', err)
        return False
 
+    if zephyr_target:
+        machine = xlnx_options["machine"]
+        xlnx_openamp_zephyr_update_tree(machine, sdt, options)
+        xlnx_openamp_remove_channels(tree)
+        return True
+
     for n in tree["/domains"].subnodes():
             node_compat = n.props("compatible")
             if node_compat != []:
@@ -2077,10 +2091,6 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
         for node in tree["/"].subnodes():
             if "cdns,ttc" in node.propval('compatible'):
                 tree.delete(node)
-
-    if zephyr_target:
-        machine = xlnx_options["machine"]
-        xlnx_openamp_zephyr_update_tree(machine, sdt, options)
 
     xlnx_openamp_remove_channels(tree)
 
