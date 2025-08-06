@@ -33,6 +33,31 @@ def at_exit_cleanup():
 with open(Path(__file__).parent / 'VERSION', 'r') as f:
     LOPPER_VERSION = f.read().strip()
 
+
+def parse_schema_argument(schema_arg):
+    """Parse schema argument to determine action and output path.
+
+    Returns: (action, target) tuple where:
+        action is one of: "none", "learn", "learn_dump", "load"
+        target is: None, output path, or schema path
+    """
+    if not schema_arg:
+        return ("learn", None)
+
+    if schema_arg == "none":
+        return ("none", None)
+    elif schema_arg == "learn":
+        return ("learn", None)
+    elif schema_arg.startswith("learn:"):
+        output_path = schema_arg[6:]  # Remove "learn:"
+        if not output_path:
+            print(f"[ERROR]: schema output path cannot be empty after 'learn:'")
+            sys.exit(1)
+        return ("learn_dump", output_path)
+    else:
+        # Assume it's a path to an existing schema
+        return ("load", schema_arg)
+
 def usage():
     prog = "lopper"
     print(f'Usage: {prog} [OPTION] <system device tree> [<output file>]...')
@@ -352,13 +377,27 @@ def main():
                 pass
 
     if schema:
-        if schema == "none":
+        action, target = parse_schema_argument(schema)
+
+        if action == "none":
             schema = None
-        else:
-            schemaf = Path(schema)
+        elif action == "learn":
+            schema = "learn"
+        elif action == "learn_dump":
+            # Check if output file exists
+            if target != "-":  # Not stdout
+                output_path = Path(target)
+                if output_path.exists():
+                    print(f"[ERROR]: schema output file {target} already exists. "
+                          f"Please remove it or choose a different filename.")
+                    sys.exit(1)
+            schema = ("learn_dump", target)
+        elif action == "load":
+            schemaf = Path(target)
             if not schemaf.exists():
-                print( f"[ERROR]: schema file {schema} does not exist" )
+                print(f"[ERROR]: schema file {target} does not exist")
                 sys.exit(1)
+            schema = target
     else:
         schema = "learn"
 

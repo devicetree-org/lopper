@@ -289,12 +289,62 @@ class LopperSDT:
                                                   self.save_temps, self.verbose, self.enhanced, self.permissive,
                                                   self.symbols )
 
-            if self.schema == "learn":
+            # Determine if we're in a learning mode
+            is_learning = (self.schema == "learn" or
+                           (isinstance(self.schema, tuple) and self.schema[0] == "learn_dump"))
+
+            if is_learning:
+                # Store the output path if we need to dump
+                output_path = None
+                if isinstance(self.schema, tuple):
+                    _, output_path = self.schema
+
+                # Common learning setup
                 self.schema = schema
                 lopper.schema.initialize_lopper_properties( self.schema )
                 lopper.schema._schema_manager.update_schema( self.schema )
                 lopper.log._info( f"schema learning complete")
                 lopper.log._debug( f"schema: {self.schema}")
+
+                # Dump if requested
+                if output_path:
+                    try:
+                        import yaml
+
+                        # Custom representer for multi-line strings
+                        def str_presenter(dumper, data):
+                            if len(data.splitlines()) > 1:  # Multi-line string
+                                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+                            return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
+                        yaml.add_representer(str, str_presenter)
+
+                        # Better formatting for None values
+                        def none_representer(dumper, data):
+                            return dumper.represent_scalar('tag:yaml.org,2002:null', '')
+
+                        yaml.add_representer(type(None), none_representer)
+
+                        if output_path == "-":
+                            # Write to stdout
+                            yaml.dump(self.schema, sys.stdout,
+                                     default_flow_style=False,
+                                     sort_keys=False,
+                                     width=120)
+                            lopper.log._info(f"Schema written to stdout")
+                        else:
+                            # Write to file
+                            with open(output_path, 'w') as f:
+                                yaml.dump(self.schema, f,
+                                         default_flow_style=False,
+                                         sort_keys=False,
+                                         width=120)
+                            lopper.log._info(f"Schema written to {output_path}")
+
+                    except Exception as e:
+                        lopper.log._error(f"Failed to write schema: {e}")
+                        sys.exit(1)
+
             elif self.schema == None:
                 # do nothing. We may eventually do some very minimal hints
                 # in this scenario
