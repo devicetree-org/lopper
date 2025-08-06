@@ -13,6 +13,15 @@ from collections import defaultdict
 from typing import Dict, Any, List, Set, Optional, Union, Tuple
 from lopper import LopperFmt
 
+# Add properties to debug as needed
+PROPERTY_DEBUG_LIST = [
+    # 'xlnx,buffer-base',
+    # 'xlnx,buffer-index',
+    # 'xlnx,csr-slcr',
+    # 'ranges',
+]
+PROPERTY_DEBUG_SET = set(PROPERTY_DEBUG_LIST)
+
 # Property name heuristics for type detection
 PROPERTY_NAME_HEURISTICS = {
     # Suffix patterns (checked with endswith)
@@ -276,16 +285,25 @@ class DTSSchemaGenerator:
                 continue
 
             # Property parsing - handle multi-line properties
-            # prop_match = re.match(r'([\w,.-]+)\s*=?\s*(.*?)$', line)
             prop_match = re.match(r'([#\w,.-]+)\s*=?\s*(.*?)$', line)
             if prop_match:
                 prop_name = prop_match.group(1)
                 prop_value = prop_match.group(2).strip()
 
-                # Check if this is a property assignment (has = or is empty for boolean)
-                if '=' in line or not prop_value:
-                    # Check if property continues on next lines
-                    if prop_value and not prop_value.endswith(';'):
+                # Check if this is a boolean property (no = sign and value is just semicolon)
+                if '=' not in line and prop_value == ';':
+                    # Boolean property
+                    prop_value = ''  # Empty value for boolean
+                else:
+                    # Check if the property is complete (ends with semicolon)
+                    is_complete = prop_value.endswith(';')
+
+                    # Remove trailing semicolon if present
+                    if is_complete:
+                        prop_value = prop_value[:-1].strip()
+
+                    # Only check for multi-line if the property didn't end with semicolon
+                    if not is_complete and '=' in line:
                         # Multi-line property - collect all lines until we find the semicolon
                         value_lines = [prop_value]
                         j = i + 1
@@ -294,15 +312,15 @@ class DTSSchemaGenerator:
                             if next_line:
                                 value_lines.append(next_line)
                                 if next_line.endswith(';'):
+                                    # Remove semicolon from last line
+                                    value_lines[-1] = value_lines[-1][:-1].strip()
                                     break
                             j += 1
                         prop_value = ' '.join(value_lines)
                         i = j  # Skip the lines we just processed
 
-                    # Remove trailing semicolon
-                    if prop_value.endswith(';'):
-                        prop_value = prop_value[:-1].strip()
-
+                # Check if this is a property assignment
+                if '=' in line or prop_value == '':  # Empty value indicates boolean
                     # Determine property type
                     prop_type = self._determine_property_type(prop_name, prop_value)
 
@@ -310,6 +328,7 @@ class DTSSchemaGenerator:
                     self.properties[prop_name].append({
                         'type': prop_type,
                         'value': prop_value,
+                        'original_value': prop_value,  # Keep original for safety
                         'path': '/'.join(current_path),
                         'compatible': current_compatible
                     })
@@ -344,11 +363,21 @@ class DTSSchemaGenerator:
         if name in self.type_hints.get('boolean_properties', []):
             return 'boolean'
 
+        # Generic debug for tracked properties
+        if name in PROPERTY_DEBUG_SET:
+            print(f"DEBUG _determine_property_type: {name} = '{value}'")
+
         if not value:  # Boolean property
             return 'boolean'
         elif value.startswith('<') and value.endswith('>'):
             # Cell or cell array
             cells = value[1:-1].strip().split()
+
+            if name in PROPERTY_DEBUG_SET:
+                print(f"  Cells: {cells}")
+                print(f"  Cell count: {len(cells)}")
+                print(f"  Determined type: uint32-array" if len(cells) > 1 else "  Determined type: uint32")
+
             if not cells:
                 return 'empty'
             elif '&' in value:
@@ -459,11 +488,46 @@ class DTSSchemaGenerator:
         definitions = {}
 
         for prop_name, occurrences in self.properties.items():
-            # Determine most common type
             type_counts = defaultdict(int)
             for occ in occurrences:
                 type_counts[occ['type']] += 1
 
+            if prop_name in PROPERTY_DEBUG_SET:
+                print(f"\nDEBUG _build_property_definitions: {prop_name}")
+                print(f"  Type counts: {dict(type_counts)}")
+                print(f"  Occurrences: {len(occurrences)}")
+
+            # Special handling for properties that can be uint32 or "NIL"
+            if 'uint32' in type_counts and 'string' in type_counts:
+                # Check if all string occurrences are "NIL"
+                string_values = [occ['value'] for occ in occurrences if occ['type'] == 'string']
+                if all(val == '"NIL"' for val in string_values):
+                    # This is a uint32 that can also be "NIL"
+                    definitions[prop_name] = {
+                        'oneOf': [
+                            self._get_property_schema_def('uint32'),
+                            {'type': 'string', 'enum': ['NIL']}
+                        ]
+                    }
+                    if prop_name in PROPERTY_DEBUG_SET:
+                        print(f"  Created union type: uint32 | 'NIL'")
+                    continue
+
+            # Normalize compatible types
+            if 'uint32' in type_counts and 'uint32-array' in type_counts:
+                if prop_name in PROPERTY_DEBUG_SET:
+                    print(f"  Normalizing uint32 + uint32-array → uint32-array")
+                type_counts['uint32-array'] += type_counts['uint32']
+                del type_counts['uint32']
+
+            unique_types = len(type_counts)
+
+            if unique_types > 1:
+                if prop_name in PROPERTY_DEBUG_SET:
+                    print(f"  SKIPPING due to multiple types!")
+                continue
+
+            # Get the (possibly normalized) type
             most_common_type = max(type_counts, key=type_counts.get)
             definitions[prop_name] = self._get_property_schema_def(most_common_type)
 
@@ -568,7 +632,11 @@ class DTSSchemaGenerator:
                 }
             }
         elif prop_type == 'uint8-array':
-            return {'type': 'string', 'pattern': r'^\[[0-9a-fA-F\s]+\]$'}
+            return {
+                'type': 'string',
+                'pattern': r'^\[[0-9a-fA-F\s]+\]$',
+                'format': 'uint8-array'  # Add a format hint
+            }
         elif prop_type == 'string':
             return {'type': 'string'}
         elif prop_type == 'string-array':
@@ -787,16 +855,22 @@ class DTSPropertyTypeResolver:
                 return LopperFmt.UINT32
 
             elif first_option.get('type') == 'string':
-                # String or string pattern
-                pattern = first_option.get('pattern', '')
-                if '<' in pattern:
-                    # Cell value in string form
+                # Check for format hint first
+                if prop_def.get('format') == 'uint8-array':
+                    return LopperFmt.UINT8
+
+                # Check if it has a pattern that indicates it's actually cell data
+                pattern = prop_def.get('pattern', '')
+                if pattern and '<' in pattern:
                     return LopperFmt.UINT32
-                else:
-                    return LopperFmt.STRING
+                return LopperFmt.STRING
 
         # Handle direct type definitions
         elif prop_type == 'string':
+            # Check for format hint FIRST
+            if prop_def.get('format') == 'uint8-array':
+                return LopperFmt.UINT8
+
             # Check if it has a pattern that indicates it's actually cell data
             pattern = prop_def.get('pattern', '')
             if pattern and '<' in pattern:
@@ -849,6 +923,21 @@ class DTSPropertyTypeResolver:
         Returns:
             LopperFmt enum value
         """
+
+        # Generic debug for tracked properties
+        if prop_name in PROPERTY_DEBUG_SET:
+            print(f"\nDEBUG: Looking up {prop_name}")
+            print(f"  Node path: {node_path}")
+            print(f"  Compatible: {compatible}")
+
+            if prop_name in self._property_types:
+                print(f"  Found in _property_types: {self._property_types[prop_name]}")
+
+            if prop_name in self.schema.get('property_definitions', {}):
+                prop_def = self.schema['property_definitions'][prop_name]
+                print(f"  Schema def: {prop_def}")
+                fmt = self._schema_to_lopper_fmt(prop_name, prop_def)
+                print(f"  Converted to: {fmt}")
 
         # Priority 1: Path-specific override
         if node_path and node_path in self._path_properties:
