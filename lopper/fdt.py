@@ -984,8 +984,10 @@ class LopperFDT(lopper.base.lopper_base):
         for p in prop_list:
             if resolver:
                 fmt_type = resolver.get_property_type(p.name, node_path)
+
                 if verbose:
-                    print( f"node_properites_as_dict: {node_path} {p.name}: schema says type {fmt_type}")
+                    if p.name in lopper.schema.PROPERTY_DEBUG_SET:
+                        print( f"node_properites_as_dict: {node_path} {p.name}: schema type {fmt_type}")
 
                 if fmt_type != LopperFmt.UNKNOWN:
                     dtype = fmt_type
