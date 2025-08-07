@@ -1510,7 +1510,7 @@ class LopperFDT(lopper.base.lopper_base):
             pass
 
         # we have to re-encode based on the type of what we just decoded.
-        if type(prop_val) == int:
+        if type(prop_val) == int or type(prop_val) == bool:
             # this seems to break some operations, but a variant may be required
             # to prevent overflow situations
             # if sys.getsizeof(prop_val) >= 32:
