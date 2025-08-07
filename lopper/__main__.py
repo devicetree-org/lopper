@@ -465,6 +465,9 @@ def main():
         # look for lops that match the pattern of the input
         # files, if so, queue them to run
 
+        # note: this may cause duplicates, since all input files are searched
+        #       and they may already be on the list. duplicates will be dealt
+        #       with later.
         auto_assists = device_tree.find_any_matching_assists( inputfiles + [sdt] )
         inputfiles.extend( auto_assists )
 
