@@ -2272,7 +2272,7 @@ class LopperNode(object):
         # we are just a wrapper around the generic subnodes method
         return self.subnodes(max_depth=1,children_only=True)
 
-    def subnodes( self, depth=0, max_depth=None, children_only = False ):
+    def subnodes( self, depth=0, max_depth=None, children_only=False, name=None ):
         """Return all the subnodes of this node
 
         Gathers and returns all the reachable subnodes of the current node
@@ -2290,12 +2290,16 @@ class LopperNode(object):
         else:
             all_kids = [ self ]
 
-
         if depth and max_depth == depth:
             return all_kids
 
         for child_node in self.child_nodes.values():
             all_kids = all_kids + child_node.subnodes( depth + 1, max_depth  )
+
+        # are we looking for a specific name/regex of nodes ?
+        if name:
+            matching_nodes = [node for node in all_kids if re.search(name, node.name)]
+            all_kids = matching_nodes
 
         return all_kids
 
@@ -4277,8 +4281,6 @@ class LopperTree:
 
         return True
 
-
-
     def add( self, node, dont_sync = False, merge = False ):
         """Add a node to a tree
 
@@ -4493,7 +4495,7 @@ class LopperTree:
         return self
 
     def subnodes( self, start_node, node_regex = None ):
-        """return the subnodes of a node
+        """return the subnodes of a node from a tree
 
         Returns a list of all subnodes from a given starting node.
 
