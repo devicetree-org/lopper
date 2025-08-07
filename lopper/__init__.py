@@ -167,6 +167,45 @@ class LopperSDT:
         self.input_files = []
         self.assists = []
 
+        # a) Ensure each file appears only once
+        unique_files = list(set(input_files))
+        if len(unique_files) < len(input_files):
+            lopper.log._debug( "some files were duplicated in the input list." )
+            input_files = unique_files
+
+        # Set of basenames for lookup
+        basenames = {os.path.basename(f) for f in unique_files}
+
+        incompatible_pairs = set()
+        for file in unique_files:
+            try:
+                with open(file) as fptr:
+                    for line in fptr:
+                        lstripped = line.strip()
+                        if lstripped.startswith('incompatible ='):
+                            # Get everything after '='
+                            rhs = lstripped.split('=', 1)[1].strip()
+                            other_names = [name.strip().strip('"') for name in rhs.split(',')]
+                            for other_name in other_names:
+                                if other_name in basenames:
+                                    incompatible_pairs.add((os.path.basename(file), other_name))
+                            break  # Only one incompatible property per file
+            except FileNotFoundError:
+                lopper.log._warning(f"The file '{file}' was not found.")
+            except Exception as e:
+                lopper.log._error(f"occurred while processing the file '{file}': {e}")
+
+        # Convert the set of incompatible pairs to a list
+        incompatible_list = list(incompatible_pairs)
+
+        if incompatible_list:
+            lopper.log._error("Incompatible files found. One must be removed from processing:")
+            for file1, file2 in incompatible_list:
+                lopper.log._error(f"- {file1} is incompatible with {file2}")
+            sys.exit(1)
+        else:
+            lopper.log._debug("No incompatible files found")
+
         lop_files = []
         sdt_files = []
         support_files = []
