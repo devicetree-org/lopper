@@ -11,6 +11,7 @@
 
 / {
         compatible = "system-device-tree-v1,lop";
+        incompatible = "lop-xlate-yaml.dts";
         priority = <2>;
         lops {
                 compatible = "system-device-tree-v1,lop";
