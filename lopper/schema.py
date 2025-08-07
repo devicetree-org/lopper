@@ -1795,7 +1795,6 @@ def schema_add_runtime_property(tree, node, prop_name, prop_value):
         # (you might want to cache and only recreate periodically)
         tree._resolver = None  # Clear cached resolver to force recreation
 
-
 # When you need the resolver again
 def schema_get_resolver(tree):
     """Get or create resolver from current schema"""
@@ -1803,6 +1802,3 @@ def schema_get_resolver(tree):
         tree._resolver = create_property_resolver(schema_dict=tree.schema)
 
     return tree._resolver
-
-# # Export main classes
-# __all__ = ['DTSSchemaGenerator', 'DTSTypeChecker', 'generate_schema_from_dts']
