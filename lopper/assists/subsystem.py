@@ -639,6 +639,28 @@ def access_expand( tree, subnode, verbose = 0 ):
 
     ap.value = access_list
 
+def chosen_expand( tree, chosen_node ):
+    # there isn't any specific processing required for chosen
+    # at the moment. We just copy it to the main tree as-is. If a
+    # chosen node exists, they should be merged.
+
+    # make a deep copy of the node
+    chosen_node_copy = chosen_node()
+    chosen_node_copy.abs_path = "/chosen"
+    chosen_node_copy.resolve()
+    tree.add( chosen_node_copy, merge=True )
+
+def reserved_memory_expand( tree, reserved_memory_node ):
+    # there isn't any specific processing required for reserved memory
+    # at the moment. We just copy it to the main tree as-is. If a
+    # reserved-memory node exists, they should be merged.
+
+    # make a deep copy of the node
+    reserved_memory_node_copy = reserved_memory_node()
+    reserved_memory_node_copy.abs_path = "/reserved-memory"
+    reserved_memory_node_copy.resolve()
+    tree.add( reserved_memory_node_copy, merge=True )
+
 # handle either sram or memory with use of prop_name arg
 def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', verbose = 0 ):
     # /*
