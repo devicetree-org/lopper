@@ -28,6 +28,7 @@ from lopper_lib import chunks
 import copy
 from lopper.log import _init, _warning, _info, _error, _debug
 import logging
+import subsystem
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "access-domain,domain-v1", compat_string_to_test):
@@ -390,7 +391,6 @@ def core_domain_access( tgt_node, sdt, options ):
     # required size adjustments
     memory_nodes = sdt.tree.nodes("/memory@.*")
 
-    # os._exit(1)
     # The memory chunks are what we've built up from the yaml and .iss
     # file Check them against the memory nodes in the tree to see if
     # anything needs to be adjusted. They are in pairs: start, size
@@ -596,6 +596,30 @@ def core_domain_access( tgt_node, sdt, options ):
             # for all modified memory nodes
             cpu_node["address-map"].value = address_map_new
 
+    # 7) reserved memory node processing
+    try:
+        reserved_memory_node = domain_node.subnodes(children_only=True,name="reserved-memory$")
+        if reserved_memory_node:
+            lopper.log._debug( "processing reserved memory" )
+            subsystem.reserved_memory_expand( sdt.tree, reserved_memory_node[0] )
+
+            # we want our domains node last, just for readability
+            sdt.tree['/'].reorder_child( "/domains", "/reserved-memory", after=True )
+    except Exception as e:
+        lopper.log._warning( f"exception while processing reserved-memory: {e}")
+
+    # 8) chosen node processing
+    try:
+        chosen_node = domain_node.subnodes(children_only=True,name="chosen$")
+        if chosen_node:
+            lopper.log._debug( "processing chosen node" )
+            subsystem.chosen_expand( sdt.tree, chosen_node[0] )
+
+            # we want our domains node last, just for readability
+            sdt.tree['/'].reorder_child( "/domains", "/chosen", after=True )
+    except Exception as e:
+        lopper.log._warning( f"exception while processing chosen: {e}")
+
     # delete unreferenced memory nodes
     prop = "memory"
     code = f"""
@@ -613,7 +637,6 @@ def core_domain_access( tgt_node, sdt, options ):
     _info( f"domain_access: core_domain_access: deleting unreferenced memory:\n------{code}\n-------\n" )
 
     sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
-
 
     # final) deal with unreferenced nodes
     refd_nodes = sdt.tree.refd()
