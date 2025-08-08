@@ -1510,6 +1510,7 @@ class lopper_base:
                 "property_name": ["pattern_description", repeat_flag],
                 ...
             }
+            The phandle map (see parse_dts_phandles for structure)
         """
         # Parse the DTS to get phandle references
         phandle_map = lopper_base.parse_dts_phandles(dts_content)
@@ -1539,7 +1540,7 @@ class lopper_base:
                 pattern, repeat_flag = result
                 descriptions[prop_name] = [pattern, repeat_flag]
 
-        return descriptions
+        return descriptions, phandle_map
 
     @staticmethod
     def generate_property_descriptions(dts_content):
@@ -1551,14 +1552,15 @@ class lopper_base:
 
         Returns:
             Dictionary suitable for use as property descriptions
+            The phandle map (see parse_dts_phandles for structure)
         """
         # Get the analyzed patterns
-        patterns = lopper_base.analyze_phandle_patterns(dts_content)
+        patterns, phandle_map = lopper_base.analyze_phandle_patterns(dts_content)
 
         # Add DEFAULT entry
         patterns["DEFAULT"] = ["this is the generated phandle map"]
 
-        return patterns
+        return patterns, phandle_map
 
     @staticmethod
     def update_phandle_property_descriptions(analyzed_patterns):
