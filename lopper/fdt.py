@@ -1707,17 +1707,18 @@ class LopperFDT(lopper.base.lopper_base):
         # later on new properties that may have phandles.
         with open( preprocessed_name, 'r') as file:
             pdata = file.read()
-        phandles = lopper_base.parse_dts_phandles( pdata )
 
         generator = lopper.schema.DTSSchemaGenerator()
         generator.scan_dts_file(pdata)
-
-        # Generate the schema
         schema = generator.generate_schema()
 
-        phandle_dts = lopper_base.encode_phandle_map_to_dts( phandles )
-        descriptions = lopper_base.generate_property_descriptions( pdata )
+        descriptions, phandle_map = lopper_base.generate_property_descriptions( pdata )
         lopper_base.update_phandle_property_descriptions( descriptions )
+
+        # This (the phandle_map saving) can become optional and used
+        # only when a command line flag is passed. The map is quite
+        # large and is a slower lookup.
+        phandle_dts = lopper_base.encode_phandle_map_to_dts( phandle_map )
 
         if enhanced:
             fp = preprocessed_name
