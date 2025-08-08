@@ -12,6 +12,8 @@ import re
 from collections import defaultdict
 from typing import Dict, Any, List, Set, Optional, Union, Tuple
 from lopper import LopperFmt
+from lopper.base import lopper_base
+import os
 
 # Add properties to debug as needed
 PROPERTY_DEBUG_LIST = [
@@ -240,6 +242,14 @@ class DTSSchemaGenerator:
         # Reset state
         self.__init__()
 
+        analyzed_patterns, phandle_map = lopper_base.analyze_phandle_patterns(dts_content)
+        newly_learned = lopper_base.update_phandle_property_descriptions(analyzed_patterns)
+
+        if newly_learned:
+            for prop, pattern in newly_learned.items():
+                if prop in PROPERTY_DEBUG_SET:
+                    print(f"DEBUG: Learned phandle pattern for {prop}: {pattern}")
+
         # Simple state machine for parsing
         current_path = []
         current_compatible = None
@@ -352,6 +362,65 @@ class DTSSchemaGenerator:
                     self.path_properties[full_path].add((prop_name, prop_type))
 
             i += 1
+
+        return analyzed_patterns, phandle_map
+
+    def _extract_context_lookups(self, pattern_desc):
+        """Extract property lookups from phandle pattern"""
+        lookups = []
+
+        # Find :#property patterns
+        for match in re.finditer(r'(phandle|^)?:#([\w-]+)', pattern_desc):
+            target = 'target' if match.group(1) == 'phandle' else 'self'
+            if match.group(1) == '^':
+                target = 'parent'
+
+            lookups.append({
+                'target': target,
+                'property': match.group(2)
+            })
+
+        return lookups if lookups else None
+
+    def _determine_phandle_type(self, pattern_desc, repeat_flag):
+        """Determine specific phandle type from pattern description"""
+
+        # Debug output
+        if any(prop in PROPERTY_DEBUG_SET for prop in ['_phandle_types']):
+            print(f"DEBUG _determine_phandle_type: pattern='{pattern_desc}', repeat={repeat_flag}")
+
+        # Check for variable size patterns (contain size lookups)
+        if ':#' in pattern_desc:
+            # Has size lookups - can't determine fixed grouping
+            return 'phandle-array-variable'
+
+        # Parse pattern to count cells per group
+        parts = pattern_desc.split()
+        cells_per_group = 0
+
+        for part in parts:
+            if part == 'phandle':
+                cells_per_group += 1
+            elif part == 'field':
+                cells_per_group += 1
+            elif part.startswith('#'):
+                # Local property lookup
+                cells_per_group += 1
+            elif part.startswith('^:#'):
+                # Parent property lookup
+                cells_per_group += 1
+
+        # Determine type based on grouping and repeat
+        if cells_per_group == 1 and not repeat_flag:
+            return 'phandle'  # Single phandle reference
+        elif repeat_flag:
+            return 'phandle-array'  # Repeating pattern
+        elif cells_per_group > 1:
+            # Fixed size group
+            return f'phandle-array-{cells_per_group}'
+        else:
+            # Default to generic array
+            return 'phandle-array'
 
     def _determine_property_type(self, name, value):
         """Determine the type of a property from its value"""
@@ -486,6 +555,7 @@ class DTSSchemaGenerator:
     def _build_property_definitions(self):
         """Build global property type definitions"""
         definitions = {}
+        phandle_dict = lopper_base.phandle_possible_properties()
 
         for prop_name, occurrences in self.properties.items():
             type_counts = defaultdict(int)
@@ -530,6 +600,23 @@ class DTSSchemaGenerator:
             # Get the (possibly normalized) type
             most_common_type = max(type_counts, key=type_counts.get)
             definitions[prop_name] = self._get_property_schema_def(most_common_type)
+
+        # Enrich definitions with phandle pattern information
+        for prop_name in definitions:
+            if prop_name in phandle_dict:
+                pattern_desc = phandle_dict[prop_name][0]
+
+                # Add phandle pattern metadata
+                if 'phandle' in pattern_desc:
+                    definitions[prop_name]['phandle-pattern'] = pattern_desc
+
+                    # Extract context lookups
+                    lookups = self._extract_context_lookups(pattern_desc)
+                    if lookups:
+                        definitions[prop_name]['context-lookups'] = lookups
+
+                    if prop_name in PROPERTY_DEBUG_SET:
+                        print(f"  Added phandle metadata: pattern='{pattern_desc}'")
 
         return definitions
 

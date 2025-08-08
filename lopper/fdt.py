@@ -1709,11 +1709,8 @@ class LopperFDT(lopper.base.lopper_base):
             pdata = file.read()
 
         generator = lopper.schema.DTSSchemaGenerator()
-        generator.scan_dts_file(pdata)
+        phandle_descriptions, phandle_map = generator.scan_dts_file(pdata)
         schema = generator.generate_schema()
-
-        descriptions, phandle_map = lopper_base.generate_property_descriptions( pdata )
-        lopper_base.update_phandle_property_descriptions( descriptions )
 
         # This (the phandle_map saving) can become optional and used
         # only when a command line flag is passed. The map is quite
