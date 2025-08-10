@@ -243,9 +243,12 @@ def get_clock_offset(node):
         clock_names = node["clock-names"].value
         try:
             tclk_offset = clock_names.index("tx_clk")
-            tclk_offset = 2 * tclk_offset + 1
-        except ValueError:
-                tclk_offset = 1
+            namelen = len(node["clock-names"].value)
+            clocklen = len(node["clocks"].value)
+            if namelen != clocklen:
+                tclk_offset = 2 * tclk_offset + 1
+        except:
+            tclk_offset = 1
 
     return tclk_offset
 
@@ -255,7 +258,12 @@ def get_clock_prop(sdt, value, offset):
         bits[0] clock parent(controller) type(0: ZynqMP clock controller)
         bits[31:1] clock value
     """
-    return value[offset]
+    if offset < len(value):
+        return value[offset]
+    else:
+        _warning(f"Invalid clock offset returning first clock")
+        return value[1]
+
 
 def get_pci_ranges(node, value, pad):
     """
