@@ -29,7 +29,7 @@ class VerboseSafeDumper(yaml.SafeDumper):
     def ignore_aliases(self, data):
         return True
 
-def get_yaml_data(comp_name, comp_dir,proc_ip_name=None,family=None):
+def get_yaml_data(comp_name, comp_dir,proc_ip_name=None,family=None,variant=None):
     yaml_file = os.path.join(comp_dir, 'data', f'{comp_name}.yaml')
     schema = utils.load_yaml(yaml_file)
     supported_proc_list = schema.get('supported_processors',[])
@@ -43,6 +43,7 @@ def get_yaml_data(comp_name, comp_dir,proc_ip_name=None,family=None):
             local_scope={
                 "proc":proc_ip_name,
                 "platform":family,
+                "variant":variant,
                 "examples":[]
             }
             try:
@@ -58,7 +59,13 @@ def get_yaml_data(comp_name, comp_dir,proc_ip_name=None,family=None):
                 dep_file_list = [dep for dep in deps if "dependency_files" in dep]
                 if dep_plat_list:
                     plat_list = dep_plat_list[0]['supported_platforms']
-                    if family in plat_list:
+                    family_variant = []
+                    if family:
+                        family_variant.append(family)
+                    if variant:
+                        family_variant.extend(variant)
+                    result = any(item in plat_list for item in family_variant)
+                    if result:
                         if dep_file_list:
                             example_dict.update({ex:dep_file_list[0]['dependency_files']})
                         else:
@@ -78,6 +85,7 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
     proc_ip_name = matched_node['xlnx,ip-name'].value[0]
     family = sdt.tree['/'].propval('family')
     family = family[0] if family else ""
+    variant = sdt.tree['/'].propval('variant')
     supported_app_dict = {proc_name: {'standalone': {}, 'freertos': {}}}
     supported_libs_dict = {proc_name: {'standalone': {}, 'freertos': {}}}
 
@@ -136,7 +144,7 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
             lib_dir = cur_lib_dict[version_list[0]]
             sorted_lib_dict = {version: cur_lib_dict[version] for version in version_list}
 
-        supported_proc_list, supported_os_list, description, dep_lib_list, examples = get_yaml_data(lib_name, lib_dir,proc_ip_name,family)
+        supported_proc_list, supported_os_list, description, dep_lib_list, examples = get_yaml_data(lib_name, lib_dir,proc_ip_name,family,variant)
         if proc_ip_name in supported_proc_list:
             if 'path' in version_list:
                 lib_dict = {lib_name : {'description': description, 'depends_libs': dep_lib_list, 'path': sorted_lib_dict['path'],'examples':examples}}
