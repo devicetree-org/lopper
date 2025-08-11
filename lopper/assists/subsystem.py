@@ -635,6 +635,8 @@ def access_expand( tree, subnode, verbose = 0 ):
         print( f"[DBG] ({subnode.abs_path}) setting access: [{', '.join(hex(x) for x in access_list)}]" )
 
     access_orig_prop = LopperProp( "access-json", -1, subnode, ap.value )
+    access_orig_prop.pclass = "json"
+
     subnode + access_orig_prop
 
     ap.value = access_list
