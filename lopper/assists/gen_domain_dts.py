@@ -24,7 +24,7 @@ import common_utils as utils
 from domain_access import update_mem_node
 from openamp_xlnx import xlnx_openamp_find_channels, xlnx_openamp_parse
 from openamp_xlnx_common import openamp_linux_hosts, openamp_roles
-from openamp_xlnx import xlnx_openamp_zephyr_update_tree
+from openamp_xlnx import xlnx_openamp_zephyr_update_tree, xlnx_openamp_remove_conflicting_ipis
 from zephyr_board_dt import process_overlay_with_lopper_api
 
 def delete_unused_props( node, driver_proplist , delete_child_nodes):
@@ -221,6 +221,10 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 sdt.tree.add(subnode)
 
     filter_ipi_nodes_for_cpu(sdt, machine)
+
+    # Need to ensure that if user is passing in OpenAMP channels, they are not conflicting with the openamp nodes
+    if openamp_present and linux_dt:
+        xlnx_openamp_remove_conflicting_ipis(sdt)
 
     node_list = []
     for node in root_sub_nodes:

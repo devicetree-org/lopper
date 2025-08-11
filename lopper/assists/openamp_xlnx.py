@@ -72,6 +72,53 @@ def is_compat( node, compat_string_to_test ):
         return xlnx_openamp_rpu
     return ""
 
+def xlnx_openamp_remove_conflicting_ipis(sdt):
+    axi_node = None
+    try:
+        # Direct access to AXI node instead of looping through all subnodes
+        try:
+            axi_node = sdt.tree['/axi']
+        except KeyError:
+            print(f"[WARNING] AXI node not found in device tree")
+            return
+    except Exception as e:
+        print(f"[ERROR] Failed to delete IPI node...")
+        return
+
+    rpmsg_relation_pruning = False
+    nodes_to_remove = []
+    for node in sdt.tree['/'].subnodes():
+        if "openamp,rpmsg-v1" in node.propval('compatible'):
+            rpmsg_relation_node = node
+            if node.propval('mbox') != ['']:
+                for phandle in node.propval('mbox'):
+                    mbox_node = sdt.tree.pnode(phandle)
+                    if mbox_node not in nodes_to_remove:
+                        nodes_to_remove.append(mbox_node)
+                    rpmsg_relation_pruning = True
+
+    # In this case, only prune nodes relevant for OpenAMP use case
+    if rpmsg_relation_pruning:
+        for node in nodes_to_remove:
+            sdt.tree.delete(node)
+            sdt.tree.sync()
+        return
+
+    # If here, then we cannot tell which nodes will conflict, so remove them all.
+    for node in axi_node.subnodes():
+        # Check if this is an IPI parent node
+        mbox_compat_match = False
+        for compat_str in node.propval('compatible'):
+            if 'mailbox' in compat_str:
+                mbox_compat_match = True
+        if (node.depth == 2 and  # Direct child of /axi/
+            node.propval('compatible') != [''] and
+            mbox_compat_match and
+            node.propval('xlnx,cpu-name') != [''] and
+            node.propval('xlnx,ip-name') != [''] and
+            'ipi' in node.propval('xlnx,ip-name', list)[0]):
+                sdt.tree.delete(node)
+
 def xlnx_rpmsg_native_update_carveouts(tree, elfload_node,
                                        native_shm_mem_area_start, native_shm_mem_area_size,
                                        native_amba_shm_node):
