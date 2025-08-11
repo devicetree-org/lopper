@@ -15,6 +15,12 @@ from lopper import LopperFmt
 from lopper.base import lopper_base
 import os
 
+from lopper.log import _warning, _info, _error, _debug, _init, _level
+import logging
+
+_init( __name__ )
+_init( "schema.py" )
+
 # Add properties to debug as needed
 PROPERTY_DEBUG_LIST = [
     # 'xlnx,buffer-base',
@@ -248,7 +254,7 @@ class DTSSchemaGenerator:
         if newly_learned:
             for prop, pattern in newly_learned.items():
                 if prop in PROPERTY_DEBUG_SET:
-                    print(f"DEBUG: Learned phandle pattern for {prop}: {pattern}")
+                    _debug(f"Learned phandle pattern for {prop}: {pattern}")
 
         # Simple state machine for parsing
         current_path = []
@@ -387,7 +393,7 @@ class DTSSchemaGenerator:
 
         # Debug output
         if any(prop in PROPERTY_DEBUG_SET for prop in ['_phandle_types']):
-            print(f"DEBUG _determine_phandle_type: pattern='{pattern_desc}', repeat={repeat_flag}")
+            _debug(f"_determine_phandle_type: pattern='{pattern_desc}', repeat={repeat_flag}")
 
         # Check for variable size patterns (contain size lookups)
         if ':#' in pattern_desc:
@@ -434,7 +440,7 @@ class DTSSchemaGenerator:
 
         # Generic debug for tracked properties
         if name in PROPERTY_DEBUG_SET:
-            print(f"DEBUG _determine_property_type: {name} = '{value}'")
+            _debug(f"_determine_property_type: {name} = '{value}'")
 
         if not value:  # Boolean property
             return 'boolean'
@@ -443,9 +449,9 @@ class DTSSchemaGenerator:
             cells = value[1:-1].strip().split()
 
             if name in PROPERTY_DEBUG_SET:
-                print(f"  Cells: {cells}")
-                print(f"  Cell count: {len(cells)}")
-                print(f"  Determined type: uint32-array" if len(cells) > 1 else "  Determined type: uint32")
+                _debug(f"  Cells: {cells}")
+                _debug(f"  Cell count: {len(cells)}")
+                _debug(f"  Determined type: uint32-array" if len(cells) > 1 else "  Determined type: uint32")
 
             if not cells:
                 return 'empty'
@@ -563,9 +569,9 @@ class DTSSchemaGenerator:
                 type_counts[occ['type']] += 1
 
             if prop_name in PROPERTY_DEBUG_SET:
-                print(f"\nDEBUG _build_property_definitions: {prop_name}")
-                print(f"  Type counts: {dict(type_counts)}")
-                print(f"  Occurrences: {len(occurrences)}")
+                _debug(f"\n_build_property_definitions: {prop_name}")
+                _debug(f"  Type counts: {dict(type_counts)}")
+                _debug(f"  Occurrences: {len(occurrences)}")
 
             # Special handling for properties that can be uint32 or "NIL"
             if 'uint32' in type_counts and 'string' in type_counts:
@@ -580,13 +586,13 @@ class DTSSchemaGenerator:
                         ]
                     }
                     if prop_name in PROPERTY_DEBUG_SET:
-                        print(f"  Created union type: uint32 | 'NIL'")
+                        _debug(f"  Created union type: uint32 | 'NIL'")
                     continue
 
             # Normalize compatible types
             if 'uint32' in type_counts and 'uint32-array' in type_counts:
                 if prop_name in PROPERTY_DEBUG_SET:
-                    print(f"  Normalizing uint32 + uint32-array → uint32-array")
+                    _debug(f"  Normalizing uint32 + uint32-array → uint32-array")
                 type_counts['uint32-array'] += type_counts['uint32']
                 del type_counts['uint32']
 
@@ -594,7 +600,7 @@ class DTSSchemaGenerator:
 
             if unique_types > 1:
                 if prop_name in PROPERTY_DEBUG_SET:
-                    print(f"  SKIPPING due to multiple types!")
+                    _debug(f"  SKIPPING due to multiple types!")
                 continue
 
             # Get the (possibly normalized) type
@@ -616,7 +622,7 @@ class DTSSchemaGenerator:
                         definitions[prop_name]['context-lookups'] = lookups
 
                     if prop_name in PROPERTY_DEBUG_SET:
-                        print(f"  Added phandle metadata: pattern='{pattern_desc}'")
+                        _debug(f"  Added phandle metadata: pattern='{pattern_desc}'")
 
         return definitions
 
@@ -1013,18 +1019,18 @@ class DTSPropertyTypeResolver:
 
         # Generic debug for tracked properties
         if prop_name in PROPERTY_DEBUG_SET:
-            print(f"\nDEBUG: Looking up {prop_name}")
-            print(f"  Node path: {node_path}")
-            print(f"  Compatible: {compatible}")
+            _debug(f"\nLooking up {prop_name}")
+            _debug(f"  Node path: {node_path}")
+            _debug(f"  Compatible: {compatible}")
 
             if prop_name in self._property_types:
-                print(f"  Found in _property_types: {self._property_types[prop_name]}")
+                _debug(f"  Found in _property_types: {self._property_types[prop_name]}")
 
             if prop_name in self.schema.get('property_definitions', {}):
                 prop_def = self.schema['property_definitions'][prop_name]
-                print(f"  Schema def: {prop_def}")
+                _debug(f"  Schema def: {prop_def}")
                 fmt = self._schema_to_lopper_fmt(prop_name, prop_def)
-                print(f"  Converted to: {fmt}")
+                _debug(f"  Converted to: {fmt}")
 
         # Priority 1: Path-specific override
         if node_path and node_path in self._path_properties:
