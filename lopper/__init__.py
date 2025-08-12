@@ -191,7 +191,7 @@ class LopperSDT:
                                     incompatible_pairs.add((os.path.basename(file), other_name))
                             break  # Only one incompatible property per file
             except FileNotFoundError:
-                lopper.log._warning(f"The file '{file}' was not found.")
+                pass
             except Exception as e:
                 lopper.log._error(f"occurred while processing the file '{file}': {e}")
 
