@@ -15,7 +15,7 @@
         priority = <2>;
         lops {
                 compatible = "system-device-tree-v1,lop";
-                lop_yaml_0_0 {
+                lop_yaml_define_phandles {
                         compatible = "system-device-tree-v1,lop,meta-v1","phandle-desc-v1";
                         address-map = "#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells";
                         interrupt-parent = "phandle";
@@ -27,7 +27,7 @@
                         firewallconf = "phandle type priority";
                 };
 
-                lop_yaml_0_0_1 {
+                lop_yaml_json_expand {
                         compatible = "system-device-tree-v1,lop,code-v1";
                         inherit = "lopper_lib";
                         code = "
@@ -36,7 +36,7 @@
                                         lopper_lib.json_expand( n )
                               ";
                 };
-                lop_yaml_0_1 {
+                lop_yaml_cpu_label_fixup {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/domains/subsystem\\w*$:cpus:.*";
@@ -53,24 +53,22 @@
                         ";
                       };
                 };
-                lop_yaml_0_2 {
+                lop_yaml_wildcard {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/domains";
-                      lop_yaml_0_2 {
+                      lop_yaml_wildcard_expand {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
                                     for i,d in enumerate(__selected__):
                                         subsystem.wildcard_devices( tree, d )
-                        ";
+                              ";
                       };
                 };
-                lop_yaml_0_3 {
+                lop_yaml_id_domains {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
-                      // select_2 = "/domains/subsystem./domains$::";
-                      // select_3 = "/domains/subsystem./domains/xen/domains$::";
                       select_2 = "/.*/domains/.*:id:";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
@@ -82,15 +80,12 @@
                                         # flip the name and label
                                         d.label = name
                                         d.name = 'domain@{}'.format(i)
-
                         ";
                       };
                 };
-                lop_yaml_0_3_2 {
+                lop_yaml_sub_domain_id {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
-                      // select_2 = "/domains/subsystem./domains$::";
-                      // select_3 = "/domains/subsystem./domains/xen/domains$::";
                       select_2 = "/.*/domains/sub*/.*:id:";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
@@ -102,12 +97,11 @@
                                         # flip the name and label
                                         d.label = name
                                         d.name = 'domain@{}'.format(i)
-
                         ";
                       };
                 };
 
-                lop_yaml_0_4 {
+                lop_yaml_resource_groups {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/resource_groups::";
@@ -140,7 +134,7 @@
                         ";
                       };
                 };
-                lop_yaml_0_5 {
+                lop_yaml_include_expand {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:include:";
@@ -163,7 +157,7 @@
                         ";
                       };
                 };
-                lop_yaml_0_6 {
+                lop_yaml_remove_empty_domains {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*?/.*domains$:!compatible:";
@@ -183,7 +177,7 @@
                         ";
                       };
                 };
-                lop_yaml_0_7 {
+                lop_yaml_cpu_expand {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:cpus:";
@@ -196,7 +190,7 @@
                         ";
                       };
                 };
-                lop_yaml_0_8 {
+                lop_yaml_firewall_expand {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       // select firewallconf properties
@@ -212,11 +206,11 @@
                         ";
                       };
                 };
-                lop_yaml_0_10 {
+                lop_yaml_subsystem {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/domains";
-                      lop_yaml_0_2 {
+                      lop_yaml_subsystem_expand {
                               compatible = "system-device-tree-v1,lop,code-v1";
                               inherit = "subsystem";
                               code = "
@@ -224,7 +218,6 @@
                                         return
 
                                     for n in __selected__[0].subnodes():
-
                                         if n.propval('access') != [''] and 'flags' not in n.abs_path:
                                             subsystem.access_expand( tree, n, 0 )
 
@@ -243,7 +236,7 @@
                         ";
                       };
                 };
-                lop_yaml_0_11 {
+                lop_yaml_reg_expand {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*/reg$";
@@ -281,7 +274,7 @@
                               ";
                       };
                };
-               lop_yaml_0_12 {
+               lop_yaml_interrupt_parent {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:interrupt-parent:";
@@ -319,7 +312,7 @@
                               ";
                       };
                };
-               lop_yaml_0_13 {
+               lop_yaml_ranges {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:ranges:";
@@ -344,7 +337,7 @@
                       };
                };
 
-               lop_yaml_0_14 {
+               lop_yaml_cpu_cell_fixup {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/cpus";
@@ -373,7 +366,7 @@
                               ";
                       };
                };
-               lop_yaml_0_15 {
+               lop_yaml_clock_phandle_fixup {
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:clocks:";
