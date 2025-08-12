@@ -1585,6 +1585,12 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
             print("ERROR: Failed to update tree for Remoteproc.")
             return False
 
+    if node.propval("libmetal_ipis") != ['']:
+        for libmetal_ipi in node.propval("libmetal_ipis"):
+            for node in tree['/'].subnodes():
+                if libmetal_ipi == node.label:
+                    tree - node
+
     return True
 
 def xlnx_openamp_remove_channels(tree, verbose = 0):
