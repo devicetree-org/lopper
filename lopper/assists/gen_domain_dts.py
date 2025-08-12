@@ -344,7 +344,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psu_iou_scntr', 'psu_iou_scntrs', 'psu_iousecure_slcr', 'psu_iouslcr_0', 'psu_lpd_slcr',
                             'psu_lpd_slcr_secure', 'psu_lpd_xppu_sink', 'psu_mbistjtag', 'psu_message_buffers', 'psu_ocm_xmpu_cfg',
                             'psu_pcie_attrib_0', 'psu_pcie_dma', 'psu_pcie_high1', 'psu_pcie_high2', 'psu_pcie_low',
-                            'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou', 'psu_ipi',
+                            'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou',
                             'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu', 'psx_fpd_gpv', 'ddr4', 'ps7_ram', 'ps7_afi',
                             'ps7_pmu', 'ps7_ocmc', 'ps7_scuc', 'ps7_iop_bus_config', 'ps7_gpv', 'psu_ocm_ram_0', 'psv_ocm_ram_0',
                             'psx_ocm_ram', 'ocm_ram', 'psx_ocm_ram_0', 'ocm_ram_0', 'gt_quad_base', 'psv_coresight_apu_cti',
@@ -368,7 +368,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             "lpd_iou_secure_slcr", "lpd_afi", "fpd_systmr_read", "fpd_systmr_ctrl", "fpd_slv_asild_xmpu",
                             "fpd_slv_asilb_xmpu", "fpd_slcr_secure", "fpd_slcr", "fpd_cmn", "fpd_afi", "pmc_efuse_ctrl",
                             "pmc_efuse_cache", "crp", "crf", "crl", "coresight_lpd_atm", "coresight_fpd_stm", "pmc_bbram_ctrl",
-                            "pmc_cfi_cframe", "pmc_cfu_apb", "ipi"]
+                            "pmc_cfi_cframe", "pmc_cfu_apb"]
 
     linux_ignore_ip_list += versal_gen2_linux_ignore_ip_list
 
@@ -388,8 +388,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             if node.propval('xlnx,ip-name') != ['']:
                 val = node.propval('xlnx,ip-name', list)[0]
                 if val in linux_ignore_ip_list:
-                    sdt.tree.delete(node)
-                elif 'xlnx,zynqmp-ipi-mailbox' in node.propval('compatible'):
                     sdt.tree.delete(node)
                 if 'xlnx,is-hierarchy' in node.__props__ and 'tcm' not in node.name:
                     sdt.tree.delete(node)
