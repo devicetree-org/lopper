@@ -30,6 +30,7 @@ from lopper_lib import chunks
 import copy
 from collections import OrderedDict
 import filecmp
+import json
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "assist,domain-v1", compat_string_to_test):
@@ -37,6 +38,59 @@ def is_compat( node, compat_string_to_test ):
     if re.search( "module,assist", compat_string_to_test):
         return assist_reference
     return ""
+
+def glob_test( sdt, glob_test_type ):
+    print( f"[INFO] start: glob test: {glob_test_type}" )
+    try:
+        domains = sdt.tree['/domains']
+
+        # after the yaml expansion lops run, the domain is
+        # at /domains/default/domain@0', if they don't run
+        # it is at /domains/default/domains/APU_domain
+        apu_domain = sdt.tree['/domains/default/domain@0']
+        # can we access it by label ?
+        apu_domain2 = sdt.tree.deref( "APU_domain")
+        if not apu_domain2:
+            print( "[ERROR]: domain re-labeling did not work, domain not found a label APU_domain" )
+            os._exit(1)
+
+        if re.search("child-serial", glob_test_type):
+            # this is the child serial glob test, check for the uart node
+            # in the apu domain
+            # apu_domain.print()
+            access = apu_domain["access"]
+            try:
+                if "&uart0" in access.string_val and "&uart1" in access.string_val:
+                    print( f"[PASS]: uart test: both &uart0 and &uart1 are in the access list: {access.string_val}" )
+                else:
+                    print( f"[FAIL]: uart test, both &uart0 and &uart1 are NOT in the access list: {access.string_val}" )
+            except Exception as e:
+                print( f"ERROR: while checking serial glob: {e}" )
+                os._exit(1)
+        elif re.search("child-all", glob_test_type):
+            apu_domain2.print()
+
+            access_chunks = json.loads(apu_domain2["access-json"].value)
+            print( f"access:")
+            for c in access_chunks:
+                print( f"   {c}")
+
+            if len(access_chunks) == 42:
+                print( f"[PASS]: all access entries copied to apu domain")
+            else:
+                print( f"[FAIL]: not all access entries were copied to apu domain")
+                os._exit(1)
+
+            LopperSDT(None).write( sdt.tree, "/tmp/globbed_tree.dts", True, True )
+        else:
+            print( f"[ERROR]: unknown glob test: {glob_test_type}" )
+            os._exit(1)
+
+    except Exception as e:
+        print( f"[ERROR]: exception during glob testing: {e}")
+        os._exit(1)
+
+    return True
 
 def phandle_meta_test( sdt, pass_number ):
     print( f"[INFO]: running phandle_meta_test: {sdt.output_file} pass: {pass_number}" )
@@ -373,8 +427,12 @@ def assist_reference( tgt_node, sdt, options ):
         elif "phandle_meta_test_2" in args:
             phandle_meta_test( sdt, "two" )
             return True
+        elif any(re.search('glob_test', s) for s in args):
+            res = glob_test( sdt, args[0] )
+            return res
         else:
             domains_access_test( sdt )
             return True
-    except:
+    except Exception as e:
+        print( f"Exception during assist-sanity {e}")
         pass
