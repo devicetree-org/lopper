@@ -179,7 +179,11 @@ class LopperSDT:
         incompatible_pairs = set()
         for file in unique_files:
             try:
-                with open(file) as fptr:
+                ifile_searched = self.input_find( file )
+                if not ifile_searched:
+                    raise FileNotFoundError
+
+                with open(ifile_searched) as fptr:
                     for line in fptr:
                         lstripped = line.strip()
                         if lstripped.startswith('incompatible ='):
@@ -191,7 +195,7 @@ class LopperSDT:
                                     incompatible_pairs.add((os.path.basename(file), other_name))
                             break  # Only one incompatible property per file
             except FileNotFoundError:
-                lopper.log._warning(f"The file '{file}' was not found.")
+                sys.exit(1)
             except Exception as e:
                 lopper.log._error(f"occurred while processing the file '{file}': {e}")
 
