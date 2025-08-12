@@ -1,0 +1,291 @@
+domains:
+  default:
+    domains:
+      APU_domain:
+        parent: /domains/default
+        access:
+        - dev: ethernet@ff0c0000
+          flags: {}
+          label: gem0
+          spec_name: GEM0
+        - dev: ethernet@ff0d0000
+          flags: {}
+          label: gem1
+          spec_name: GEM1
+        - dev: spi@f1010000
+          flags: {}
+          label: ospi1
+          spec_name: OSPI
+        - dev: spi@f1030000
+          flags: {}
+          label: qspi
+          spec_name: QSPI
+        - dev: mmc@f1040000
+          flags: {}
+          label: sdhci0
+          spec_name: SD_eMMC0
+        - dev: mmc@f1050000
+          flags: {}
+          label: sdhci1
+          spec_name: SD_eMMC1
+        - dev: usb@ff9d0000
+          flags: {}
+          label: usb0
+          spec_name: USB2_CSR
+        - dev: gpio@ff0b0000
+          flags: {}
+          label: gpio0
+          spec_name: LPD_GPIO
+        - dev: i2c@ff020000
+          flags: {}
+          label: i2c0
+          spec_name: LPD_I2C0
+        - dev: i2c@ff030000
+          flags: {}
+          label: i2c1
+          spec_name: LPD_I2C1
+        - dev: watchdog@ff120000
+          flags: {}
+          label: watchdog1
+          spec_name: LPD_SWDT
+        - dev: gpio@f1020000
+          flags: {}
+          label: gpio1
+          spec_name: PMC_GPIO
+        - dev: i2c@f1000000
+          flags: {}
+          label: i2c2
+          spec_name: PMC_I2C
+        - dev: timer@ff0e0000
+          flags: {}
+          label: ttc0
+          spec_name: TTC0
+        - dev: timer@ff0f0000
+          flags: {}
+          label: ttc1
+          spec_name: TTC1
+        compatible: openamp,domain-v1
+        cpus:
+        - cluster: cpus_a72
+          cpumask: '0x1'
+          dev: cpus_a72
+          mode:
+            el: '0x3'
+            secure: false
+          spec_name: APU0
+        - cluster: cpus_a72
+          cpumask: '0x2'
+          dev: cpus_a72
+          mode:
+            el: '0x3'
+            secure: false
+          spec_name: APU1
+        id: '0x1c000000'
+        memory:
+        - dev: PMC_OSPI_mem
+          size: 512M
+          spec_name: PMC_OSPI_mem
+          start: '0xc0000000'
+        - {}
+        - dev: DDR_CH1
+          size: 8G
+          spec_name: DDR_CH1
+          start: '0x50000000000'
+        - dev: DDR_LOW1
+          size: 6G
+          spec_name: DDR_LOW1
+          start: '0x800000000'
+        - dev: MEM_1G
+          size: 1G
+          spec_name: MEM_1G
+          start: '0x0'
+      RPU0_DOMAIN:
+        access:
+        - dev: can@ff070000
+          flags: {}
+          label: can1
+          spec_name: CANFD1
+        - dev: i2c@ff020000
+          flags: {}
+          label: i2c0
+          spec_name: LPD_I2C0
+        - dev: i2c@ff030000
+          flags: {}
+          label: i2c1
+          spec_name: LPD_I2C1
+        - dev: gpio@f1020000
+          flags: {}
+          label: gpio1
+          spec_name: PMC_GPIO
+        - dev: i2c@f1000000
+          flags: {}
+          label: i2c2
+          spec_name: PMC_I2C
+        - dev: timer@ff100000
+          flags: {}
+          label: ttc2
+          spec_name: TTC2
+        - dev: timer@ff110000
+          flags: {}
+          label: ttc3
+          spec_name: TTC3
+        compatible: openamp,domain-v1
+        cpus:
+        - cluster: cpus_r5_0
+          cpumask: '0x1'
+          dev: cpus_r5_0
+          mode:
+            secure: false
+          spec_name: RPU0
+        - {}
+        id: '0x1c000000'
+        memory:
+        - dev: MEM_S_1G
+          size: 1G
+          spec_name: MEM_S_1G
+          start: '0x40000000'
+        - {}
+        - dev: PMC_OSPI_mem
+          size: 512M
+          spec_name: PMC_OSPI_mem
+          start: '0xc0000000'
+        - dev: RPU0_dCACHE_mem
+          size: 32K
+          spec_name: RPU0_dCACHE_mem
+          start: '0xffe50000'
+        - dev: RPU0_iCACHE_mem
+          size: 32K
+          spec_name: RPU0_iCACHE_mem
+          start: '0xffe40000'
+        - dev: RPU1_dCACHE_mem_dual
+          size: 32K
+          spec_name: RPU1_dCACHE_mem_dual
+          start: '0xffed0000'
+        - dev: RPU1_iCACHE_mem_dual
+          size: 32K
+          spec_name: RPU1_iCACHE_mem_dual
+          start: '0xffec0000'
+        - dev: OCM_mem
+          size: 256K
+          spec_name: OCM_mem
+          start: '0xfffc0000'
+        sram:
+        - dev: RPU0_TCMA_mem
+          size: 64K
+          spec_name: RPU0_TCMA_mem
+          start: '0xffe00000'
+        - dev: RPU0_TCMA_mem_lockstep
+          size: 64K
+          spec_name: RPU0_TCMA_mem_lockstep
+          start: '0xffe10000'
+        - dev: RPU0_TCMB_mem
+          size: 64K
+          spec_name: RPU0_TCMB_mem
+          start: '0xffe20000'
+        - dev: RPU0_TCMB_mem_lockstep
+          size: 64K
+          spec_name: RPU0_TCMB_mem_lockstep
+          start: '0xffe30000'
+        - dev: RPU1_TCMA_mem_dual
+          size: 64K
+          spec_name: RPU1_TCMA_mem_dual
+          start: '0xffe90000'
+        - dev: RPU1_TCMB_mem_dual
+          size: 64K
+          spec_name: RPU1_TCMB_mem_dual
+          start: '0xffeb0000'
+      RPU1_domain:
+        access:
+        - dev: can@ff060000
+          flags: {}
+          label: can0
+          spec_name: CANFD0
+        - dev: can@ff070000
+          flags: {}
+          label: can1
+          spec_name: CANFD1
+        - dev: i2c@ff020000
+          flags: {}
+          label: i2c0
+          spec_name: LPD_I2C0
+        - dev: i2c@ff030000
+          flags: {}
+          label: i2c1
+          spec_name: LPD_I2C1
+        - dev: gpio@f1020000
+          flags: {}
+          label: gpio1
+          spec_name: PMC_GPIO
+        - dev: i2c@f1000000
+          flags: {}
+          label: i2c2
+          spec_name: PMC_I2C
+        - dev: spi@ff040000
+          flags: {}
+          label: spi0
+          spec_name: SPI0
+        - dev: spi@ff050000
+          flags: {}
+          label: spi1
+          spec_name: SPI1
+        compatible: openamp,domain-v1
+        cpus:
+        - cluster: cpus_r5_0
+          cpumask: '0x2'
+          dev: cpus_r5_0
+          mode:
+            secure: false
+          spec_name: RPU1
+        - {}
+        id: '0x1c000000'
+        memory:
+        - dev: PMC_OSPI_mem
+          size: 512M
+          spec_name: PMC_OSPI_mem
+          start: '0xc0000000'
+        - {}
+        - dev: OCM_mem
+          size: 256K
+          spec_name: OCM_mem
+          start: '0xfffc0000'
+        - dev: RPU0_dCACHE_mem
+          size: 32K
+          spec_name: RPU0_dCACHE_mem
+          start: '0xffe50000'
+        - dev: RPU0_iCACHE_mem
+          size: 32K
+          spec_name: RPU0_iCACHE_mem
+          start: '0xffe40000'
+        - dev: RPU1_dCACHE_mem_dual
+          size: 32K
+          spec_name: RPU1_dCACHE_mem_dual
+          start: '0xffed0000'
+        - dev: RPU1_iCACHE_mem_dual
+          size: 32K
+          spec_name: RPU1_iCACHE_mem_dual
+          start: '0xffec0000'
+        sram:
+        - dev: RPU0_TCMA_mem
+          size: 64K
+          spec_name: RPU0_TCMA_mem
+          start: '0xffe00000'
+        - dev: RPU0_TCMA_mem_lockstep
+          size: 64K
+          spec_name: RPU0_TCMA_mem_lockstep
+          start: '0xffe10000'
+        - dev: RPU0_TCMB_mem
+          size: 64K
+          spec_name: RPU0_TCMB_mem
+          start: '0xffe20000'
+        - dev: RPU0_TCMB_mem_lockstep
+          size: 64K
+          spec_name: RPU0_TCMB_mem_lockstep
+          start: '0xffe30000'
+        - dev: RPU1_TCMA_mem_dual
+          size: 64K
+          spec_name: RPU1_TCMA_mem_dual
+          start: '0xffe90000'
+        - dev: RPU1_TCMB_mem_dual
+          size: 64K
+          spec_name: RPU1_TCMB_mem_dual
+          start: '0xffeb0000'
