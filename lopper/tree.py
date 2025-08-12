@@ -222,7 +222,7 @@ class LopperProp():
 
         """
         if type(key) == int:
-            if self.pclass == 'json':
+            if self.pclass == 'json' and self.value:
                 loaded_j = json.loads( self.value )
                 return loaded_j[key]
             else:
@@ -256,7 +256,7 @@ class LopperProp():
            Int: The lenght of the list
 
         """
-        if self.pclass == 'json':
+        if self.pclass == 'json' and self.value:
             loaded_j = json.loads( self.value )
             return len(loaded_j)
         else:
@@ -1846,6 +1846,11 @@ class LopperNode(object):
                         #
                         self.tree.__pnodes__[value] = self
 
+            if name == "label":
+                if self.tree:
+                    if value:
+                        self.label_set( value )
+
             # we could restrict this to only some attributes in the future
             self.__dict__["__modified__"] = True
 
@@ -2183,7 +2188,10 @@ class LopperNode(object):
                         label_val = value
 
                 self.tree.__lnodes__[value] = self
-                self.label = value
+                # this avoids an infinite loop if this is called from
+                # the nodes magic __setattr__ function
+                self.__dict__["label"] = value
+                # self.label = value
         else:
             # there's no associated tree, so the __lnodes__ update
             # will have too come when the node is added.
