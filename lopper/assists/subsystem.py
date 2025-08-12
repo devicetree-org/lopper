@@ -125,18 +125,26 @@ def domain_access(node, new_access=None):
         If new_access is None: the current access value.
         If new_access is provided: None (as it sets the value).
     """
-    access_props = node.props("access")
+    try:
+        access_prop = node.props("access")[0]
+    except:
+        if new_access:
+            # There wasn't an access property in the node, create it
+            # and continue processing
+            access_prop = LopperProp( "access", -1, node )
+            access_prop.pclass = "json"
+            node + access_prop
+        else:
+            return []
 
-    if not access_props:
-        return []
-
-    if not access_props[0]:
-        return []
-
-    if isinstance(access_props[0].value, list):
-        access_prop_string = ','.join(access_props[0].value)
-    else:
-        access_prop_string = access_props[0].value
+    try:
+        if isinstance(access_prop.value, list):
+            access_prop_string = ','.join(access_prop.value)
+        else:
+            access_prop_string = access_prop.value
+    except Exception as e:
+        # it wasn't json, struggle along a bit
+        pass
 
     if new_access is None:
         # If no new access is provided, return the current access value
@@ -144,8 +152,17 @@ def domain_access(node, new_access=None):
         return access_chunks
     else:
         # Set the new access; assuming new_access is a list of device dictionaries
-        # print( f"setting the value: {new_access}")
-        node["access"]._value(json.dumps(new_access))
+        try:
+            if new_access:
+                # we assign to the base python object to avoid the array
+                # processing of LopperNode
+                access_prop.__dict__["value"] = json.dumps(new_access)
+            else:
+                access_prop = node['access']
+                node - access_prop
+        except Exception as e:
+            print( "Exception during domain access update: {e}" )
+
         return None  # No value is returned when setting
 
 from enum import Enum
@@ -252,12 +269,9 @@ def wildcard_devices( tree, domains_node ):
                             ## the parent and copy them into our
                             ## domain
                             try:
-                                ## TODO: can this be another domain_access() call ?
-                                # parent_access = json.loads(parent_domain["access"].value)
                                 parent_access = domain_access( parent_domain )
                             except Exception as e:
                                 print( f"[WARNING]: parent domain ({parent_domain.abs_path}) has no devices")
-                                pass
 
                             # the spec says globs, but if we convert to a regex, the access
                             # search is easy
@@ -267,6 +281,9 @@ def wildcard_devices( tree, domains_node ):
 
                             # update the parent, since we aren't iterating it, we are ok doing this
                             # immediately.
+                            if verbose:
+                                print( f"[DEBUG]: after access: remaining devs: {remaining_devs}" )
+
                             domain_access( parent_domain, remaining_devs )
 
                             if verbose:
@@ -321,19 +338,18 @@ def wildcard_devices( tree, domains_node ):
                 #     existing_access[:0] = access_list_new
                 #     domain_access( domain, existing_access )
                 #     domain.resolve()
-
                 if access_list_new != access_chunks:
                     # if our device list is different than the one we started with, we
                     # need to store it
                     # We could probably just collect the new devices that we brought in from
                     # the glob an extend the list
                     if verbose:
-                        print( f"[INFO]: domain (domain.abs_path): updating: {access_list_new}" )
+                        print( f"[INFO]: domain ({domain.abs_path}): updating: {access_list_new}" )
 
                     domain_access( domain, access_list_new )
 
         except Exception as e:
-            print( f"Exception: {e}")
+            print( f"[ERROR]: Exception: {e}")
             os._exit(1)
 
 def firewall_expand( tree, subnode, verbose = 0 ):
@@ -501,7 +517,12 @@ def access_expand( tree, subnode, verbose = 0 ):
     if not access_props[0]:
         return
 
+    if not access_props[0].value:
+        return
+
     if type(access_props[0].value) == list:
+        if not access_props[0].value[0]:
+            return
         access_prop_string = access_props[0].value.join()
     else:
         access_prop_string = access_props[0].value
