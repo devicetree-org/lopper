@@ -51,6 +51,27 @@ def chunks(l, n):
         # Create an index range for l of n items:
         yield l[i:i+n]
 
+def dtc_escape_string(s):
+    result = []
+    for c in s:
+        code = ord(c)
+        if c == '"':
+            result.append(r'\"')
+        elif c == '\\':
+            result.append(r'\\')
+        elif code < 32 or code >= 127:
+            result.append('\\{:03o}'.format(code))
+        else:
+            result.append(c)
+    return ''.join(result)
+
+def is_json_encoded(s):
+    try:
+        json.loads(s)
+        return True
+    except (ValueError, TypeError):
+        return False
+
 def chunks_variable(lst, chunk_sizes):
     """
     Splits a Python list into variable sized records of different sizes
@@ -1570,7 +1591,8 @@ class LopperProp():
 
                                 formatted_records.append( hex_string )
                         else:
-                            formatted_records.append( f"\"{i}\"" )
+                            dtc_string = dtc_escape_string( i )
+                            formatted_records.append( f"\"{dtc_string}\"" )
 
                     if list_of_nums:
                         if self.binary:
@@ -1590,7 +1612,8 @@ class LopperProp():
                 outstring = outstring_list
 
         else:
-            outstring = f"{self.name} = \"{prop_val}\";"
+            dtc_safe_prop_val = dtc_escape_string( prop_val )
+            outstring = f"{self.name} = \"{dtc_safe_prop_val}\";"
 
         if not self.ptype:
             self.ptype = self.property_type_guess()
