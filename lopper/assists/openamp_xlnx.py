@@ -457,8 +457,19 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
     if not native:
         for rc in rpmsg_carveouts:
             new_mem_region_prop_val.append(rc.phandle)
-        # update property with new values
-        mem_region_prop.value = new_mem_region_prop_val
+
+    # If DDRBOOT, ensure that it is after RPMSG carveouts
+    if openamp_channel_info["ddrboot"+channel_id]:
+        ddrboot_node = None
+        for index, phandle in enumerate(new_mem_region_prop_val):
+            if "ddrboot" in tree.pnode(phandle).name:
+                ddrboot_node = index
+                break
+        ddrboot_node = new_mem_region_prop_val.pop(ddrboot_node)
+        new_mem_region_prop_val.append(ddrboot_node)
+
+    # update property with new values
+    mem_region_prop.value = new_mem_region_prop_val
 
     ret = xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose)
     if ret != True:
@@ -517,43 +528,29 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
 
 def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
     if target_node.propval('mboxes') != ['']:
-        openamp_mbox_node = sdt.tree.pnode(target_node.propval('mboxes')[0])
+        ipi_child = sdt.tree.pnode(target_node.propval('mboxes')[0])
     else:
         return False
 
-    remoteproc_remote_ipi_id = openamp_mbox_node.propval('xlnx,ipi-id')
-    remoteproc_host_ipi_id = openamp_mbox_node.parent.propval('xlnx,ipi-id')
+    ipi_parent = ipi_child.parent
 
-    ipi_parent = None
-    ipi_child = None
-
-    for node in sdt.tree['/axi'].subnodes():
-        if node.propval('xlnx,ipi-id') == remoteproc_remote_ipi_id and node.parent == sdt.tree['/axi']:
-            ipi_parent = node
-            for subnode in ipi_parent.subnodes():
-                if subnode.propval('xlnx,ipi-id') == remoteproc_host_ipi_id:
-                    ipi_child = subnode
-
-    remoteproc_parent = openamp_mbox_node.parent
-    remoteproc_child = openamp_mbox_node
-
-    ipi_child.name = f"mailbox@{hex(remoteproc_parent['reg'].value[1])[2:]}"
+    ipi_child.name = f"mailbox@{hex(ipi_parent['reg'].value[1])[2:]}"
 
     child_props = {
       "compatible" : 'xlnx,mbox-versal-ipi-dest-mailbox', "status" : 'okay', "#mbox-cells" : 1,
       "interrupt-parent" : ipi_parent['interrupt-parent'].value,
-      "reg" : remoteproc_parent['reg'].value,
-      "reg-names": remoteproc_parent['reg-names'].value,
+      "reg" : ipi_parent['reg'].value,
+      "reg-names": ipi_parent['reg-names'].value,
       "xlnx,ipi-id" : ipi_child["xlnx,ipi-id"].value
     }
 
     parent_props = {
       "compatible" : 'xlnx,mbox-versal-ipi-mailbox', "status" : 'okay', "#mbox-cells" : 1, "#address-cells" : 2, "#size-cells" : 2,
       "interrupt-parent" : ipi_parent['interrupt-parent'].value,
-      "reg" : remoteproc_child['reg'].value,
+      "reg" : ipi_child['reg'].value,
       "xlnx,ipi-id" : ipi_parent["xlnx,ipi-id"].value,
       "interrupts" : ipi_parent["interrupts"].value,
-      "reg-names": remoteproc_child['reg-names'].value,
+      "reg-names": ipi_child['reg-names'].value,
     }
 
     parent_props["interrupts"][2] = 0x2
@@ -588,11 +585,26 @@ def xlnx_openamp_zephyr_update_memories(target_node, sdt, options):
     mem_reg_val = target_node.propval('memory-region')
     memory_region_nodes = [sdt.tree.pnode(phandle) for phandle in mem_reg_val]
 
-    elf_load_node = memory_region_nodes.pop(0)
+    elf_load_node = None
+    vring0_node = None
+    vring1_node = None
+    shbuf_node = None
+    for mrn in memory_region_nodes:
+        if "ddrboot" in mrn.name:
+            elf_load_node = mrn
+        if "vdev0buffer" in mrn.name:
+            shbuf_node = mrn
+        if "vring1" in mrn.name:
+            vring1_node = mrn
+        if "vring0" in mrn.name:
+            vring0_node = mrn
+
+    ipc_nodes = [ vring0_node, vring1_node, shbuf_node ]
+
     elf_load_node + LopperProp(name="device_type", value="memory")
 
     # get reg property for each reserved memory node
-    memory_region_regs = [node['reg'].value for node in memory_region_nodes]
+    memory_region_regs = [node['reg'].value for node in ipc_nodes]
 
     # find base of IPC
     reg_column = [row[1] for row in memory_region_regs]
@@ -604,7 +616,8 @@ def xlnx_openamp_zephyr_update_memories(target_node, sdt, options):
 
     # remove unneeded nodes
     for node in memory_region_nodes:
-        sdt.tree.delete(node)
+        if node != elf_load_node:
+            sdt.tree.delete(node)
 
     # create IPC node
     base_str = hex(ipc_reg[1])[2:] # hex creates string '0x1..2'. remove the leading '0x'
@@ -1580,6 +1593,7 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
         openamp_channel_info["elfload"+channel_id] = channel_elfload_nodes
         openamp_channel_info["remote_node"+channel_id] = remote_node
         openamp_channel_info["node"+channel_id] = node
+        openamp_channel_info["ddrboot"+channel_id] = remote_node.propval("xlnx,ddr-boot") == [1]
         ret = xlnx_remoteproc_update_tree(tree, channel_id, openamp_channel_info, verbose = 0 )
         if not ret:
             print("ERROR: Failed to update tree for Remoteproc.")
