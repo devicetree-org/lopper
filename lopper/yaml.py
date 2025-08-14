@@ -52,6 +52,31 @@ def flatten_dict(dd, separator ='_', prefix =''):
              for k, v in flatten_dict(vv, separator, kk).items()
     } if isinstance(dd, dict) else { prefix : dd }
 
+# What's the difference between these two very similar routines ?
+#
+# One creates a copy, the other does changs in place. We need the in
+# place variant as anchors and references in the yaml input are picked
+# up by object references. If we make a copy, code that relies on
+# those references will break.
+def preprocess_yaml_data_in_place(data):
+    """Recursively preprocess the data by changing all 'parent' keys to 'custom_parent',
+    performed in place to maintain anchors and references.
+    """
+    if isinstance(data, dict):
+        # Check if 'parent' exists and rename it to 'custom_parent'
+        if 'parent' in data:
+            data['custom_parent'] = data['parent']  # Create the new key
+            del data['parent']  # Remove the old key
+
+        # Iterate through all keys in the data
+        for key in list(data.keys()):  # We need to list keys to prevent mutation issues
+            preprocess_yaml_data_in_place(data[key])  # Recur for any nested dictionaries
+
+    elif isinstance(data, list):
+        for item in data:
+            preprocess_yaml_data_in_place(item)  # Recur for list items
+
+    return data  # Return modified data (though it's already modified in place)
 
 def preprocess_yaml_data(data):
     if isinstance(data, dict):
@@ -1338,7 +1363,9 @@ class LopperYAML(LopperJSON):
 
         # this renames "parent" keys to "custom_parent", so that the anytree
         # loading won't hit an internal assert (where it checks for parent)
-        self.dct = preprocess_yaml_data( self.dct )
+        orig_dct = self.dct
+        new_dct = preprocess_yaml_data_in_place( self.dct )
+        self.dct = new_dct
 
         # flatten the dictionary so we can look up aliases and anchors
         # by identity later .. without needing to recurse
@@ -1346,7 +1373,6 @@ class LopperYAML(LopperJSON):
         importer = LopperDictImporter(Node)
         importer.lists_as_nodes = self.lists_as_nodes
         self.anytree = importer.import_(self.dct)
-
 
         reparent_nodes_by_specified_path( self.anytree, self.dct )
 
