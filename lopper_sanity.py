@@ -2679,11 +2679,11 @@ if __name__ == "__main__":
         device_tree.dts = "./lopper/selftest/system-top.dts"
         assists_sanity_test( device_tree, None, verbose, "overlay_test" )
 
-        # autorun is NOT on here, so the symbolic replacement won't be done
+        # autorun is NOT on here, so the property won't be deleted
         device_tree.dts = "./lopper/selftest/system-top-embedded-lop.dts"
         assists_sanity_test( device_tree, None, verbose, "phandle_meta_test_1" )
 
-        # must setup auto run for this
+        # must setup auto run for this, and the property will be deleted
         device_tree.autorun = True
         device_tree.dts = "./lopper/selftest/system-top-embedded-lop.dts"
         assists_sanity_test( device_tree, None, verbose, "phandle_meta_test_2" )

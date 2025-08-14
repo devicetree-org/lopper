@@ -117,20 +117,34 @@ def phandle_meta_test( sdt, pass_number ):
             print( "[PASSED]: phandle-link is a number (no symbolic replacement)" )
         else:
             print( "[FAILED]: phandle-link is a number (symbolic or not found)" )
+            os._exit(1)
 
         return phandle_link_is_number
 
     if pass_number == "two":
         phandle_link_is_sym = False
+        phandle_link_invalid_property = False
         with open( sdt.output_file ) as fp:
             for line in fp:
                 if re.search( r"phandle-link.*?=.*?<&amba>;", line ):
                     phandle_link_is_sym = True
 
+                # we shouldn't find this as the embedded lop should
+                # have deleted it
+                if re.search( r"phandle-link-invalid.*?=.*?<&amba>;", line ):
+                    phandle_link_invalid_property = True
+
         if phandle_link_is_sym:
             print( "[PASSED]: phandle-link is symbolic (replacement)" )
         else:
             print( "[FAILED]: phandle-link is a number (no replacement done)" )
+            os._exit(1)
+
+        if phandle_link_invalid_property:
+            print( "[FAILED]: phandle-link-invalid should have been deleted" )
+            os._exit(1)
+        else:
+            print( "[PASSED]: phandle-link-invalid was deleted" )
 
         return phandle_link_is_sym
 
