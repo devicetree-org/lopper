@@ -1874,10 +1874,12 @@ class LopperNode(object):
                         #
                         self.tree.__pnodes__[value] = self
 
-            if name == "label":
-                if self.tree:
-                    if value:
-                        self.label_set( value )
+            # This is left for reference. When this is added, the overhead
+            # makes processing slower AND it seems to break some labels in
+            # the tree. Leaveing this as a breadcrumb in case we get inconsistent
+            # labels at any point and consider this as an option.
+            #if name == "label":
+            #    self.label_set( value )
 
             # we could restrict this to only some attributes in the future
             self.__dict__["__modified__"] = True
@@ -2218,12 +2220,15 @@ class LopperNode(object):
                 self.tree.__lnodes__[value] = self
                 # this avoids an infinite loop if this is called from
                 # the nodes magic __setattr__ function
-                self.__dict__["label"] = value
-                # self.label = value
+                # self.__dict__['label'] = value
+                # but we don't currently need it, as there's no special
+                # label processing
+                self.label = value
         else:
             # there's no associated tree, so the __lnodes__ update
             # will have too come when the node is added.
             self.label = value
+            # self.__dict__['label'] = value
 
 
     def resolve_all_refs( self, property_mask=[], parents=True ):
@@ -4390,97 +4395,102 @@ class LopperTree:
         except:
             existing_node = None
 
+        # if the node already exists, we need to merge the passed node's properties
+        # into the existing one BUT we need to keep processing to pickup any child
+        # nodes it may have
         if existing_node:
             if not merge:
                 lopper.log._debug( f"add: node: {node.abs_path} already exists" )
             else:
                 lopper.log._debug( f"add: node: {node.abs_path} exists, merging properties" )
                 existing_node.merge( node )
+        else:
+            node.tree = self
+            node.__dbg__ = self.__dbg__
 
-            return self
+            node.phandle_resolution = self.phandle_resolution
 
-        node.tree = self
-        node.__dbg__ = self.__dbg__
+            if node_full_path == "/":
+                node.number = 0
 
-        node.phandle_resolution = self.phandle_resolution
+            if not node.name:
+                node.name = os.path.basename( node.abs_path )
 
-        if node_full_path == "/":
-            node.number = 0
+            # pop one chunk off our path for the parent.
+            parent_path = os.path.dirname( node.abs_path )
 
-        if not node.name:
-            node.name = os.path.basename( node.abs_path )
-
-        # pop one chunk off our path for the parent.
-        parent_path = os.path.dirname( node.abs_path )
         # save the child nodes, they are cleared by load (and the
         # load routine is not recursive yet), so we'll need them
         # later.
         saved_child_nodes = list(node.child_nodes.values())
 
-        # TODO: To be complete, we could add the properites of the node
-        #       into the dictionary when calling load, that way we don't
-        #       count on the current behaviour to not drop the properties.
-        if node.phandle == -1:
-            node.phandle = 0
-        elif node.phandle > 0:
-            # we need to generate a new phandle on a collision
-            try:
-                if self.__pnodes__[node.phandle]:
-                    lopper.log._debug( f"node add: would duplicate phandle: {hex(node.phandle)} ({node.phandle})" )
-                    new_phandle = self.phandle_gen()
-                    node.phandle_set( new_phandle )
-            except:
-                pass
+        # aka "new node"
+        if not existing_node:
+            # TODO: To be complete, we could add the properites of the node
+            #       into the dictionary when calling load, that way we don't
+            #       count on the current behaviour to not drop the properties.
+            if node.phandle == -1:
+                node.phandle = 0
+            elif node.phandle > 0:
+                # we need to generate a new phandle on a collision
+                try:
+                    if self.__pnodes__[node.phandle]:
+                        lopper.log._debug( f"node add: would duplicate phandle: {hex(node.phandle)} ({node.phandle})" )
+                        new_phandle = self.phandle_gen()
+                        node.phandle_set( new_phandle )
+                except:
+                    pass
 
-        node.load( { '__path__' : node.abs_path,
-                     '__fdt_name__' : node.name,
-                     '__fdt_phandle__' : node.phandle },
-                   parent_path )
+            node.load( { '__path__' : node.abs_path,
+                         '__fdt_name__' : node.name,
+                         '__fdt_phandle__' : node.phandle },
+                       parent_path )
 
-        lopper.log._debug( f"node add: {node.abs_path}, after load. depth is : {node.depth}"
-                           f"         phandle: {node.phandle} tree: {node.tree}" )
+            lopper.log._debug( f"node add: {node.abs_path}, after load. depth is : {node.depth}"
+                               f"         phandle: {node.phandle} tree: {node.tree}" )
 
-        self.__nodes__[node.abs_path] = node
+            self.__nodes__[node.abs_path] = node
 
-        # note: this is similar to the the tree.load() code, it should be
-        #       consolidated
-        if node.number >= 0:
-            self.__nnodes__[node.number] = node
-        if node.phandle > 0:
-            # note: this should also have been done by node.load()
-            #       and the phandle_set() that was called in case of
-            #       a detected collision, but we assign it here to
-            #       be sure and to mark that we consider it part of the
-            #       tree at this point.
-            self.__pnodes__[node.phandle] = node
-        if node.label:
-            # we should check if there's already a node at the label
-            # value, and either warn, adjust or take some other appropriate
-            # action
-            try:
-                if self.__lnodes__[node.label]:
-                    node.label_set( node.label )
-                    lopper.log._debug( f"node add: duplicate label, generated a new one: {node.label}" )
-            except:
-                pass
+            # note: this is similar to the the tree.load() code, it should be
+            #       consolidated
+            if node.number >= 0:
+                self.__nnodes__[node.number] = node
+            if node.phandle > 0:
+                # note: this should also have been done by node.load()
+                #       and the phandle_set() that was called in case of
+                #       a detected collision, but we assign it here to
+                #       be sure and to mark that we consider it part of the
+                #       tree at this point.
+                self.__pnodes__[node.phandle] = node
+            if node.label:
+                # we should check if there's already a node at the label
+                # value, and either warn, adjust or take some other appropriate
+                # action
+                try:
+                    if self.__lnodes__[node.label]:
+                        node.label_set( node.label )
+                        lopper.log._debug( f"node add: duplicate label, generated a new one: {node.label}" )
+                except:
+                    pass
 
-            self.__lnodes__[node.label] = node
+                self.__lnodes__[node.label] = node
 
-        # Check to see if the node has any children. If it does, are they already in
-        # our node dictionary ? If they aren't, it means we are not just adding one
-        # node but a node + children.
+            # Check to see if the node has any children. If it does, are they already in
+            # our node dictionary ? If they aren't, it means we are not just adding one
+            # node but a node + children.
 
-        # we clear the node's child dict, since if they are new / valid, then
-        # they'll be re-added to the dictionary with adjusted paths, etc.
-        # saved_child_nodes = list(node.child_nodes.values())
-        node.child_nodes = OrderedDict()
+            # we clear the node's child dict, since if they are new / valid, then
+            # they'll be re-added to the dictionary with adjusted paths, etc.
+            # saved_child_nodes = list(node.child_nodes.values())
+            node.child_nodes = OrderedDict()
+
         for child in saved_child_nodes:
             try:
-                existing_node = self.__nodes__[node.abs_path + child.name]
+                existing_child_node = self.__nodes__[node.abs_path + child.name]
             except:
-                existing_node = None
+                existing_child_node = None
 
-            if not existing_node:
+            if not existing_child_node:
                 if self.__dbg__ > 2:
                     print ( f"[DBG+++]:     node add: adding child: {child.abs_path} ({[child]})")
 
@@ -4502,17 +4512,18 @@ class LopperTree:
                 if self.__dbg__ > 2:
                     print ( f"[DBG+++]:     node add: child add complete: {child.abs_path} ({[child]})")
 
-        # in case the node has properties that were previously sync'd, we
-        # need to resync them
-        # TODO: we can likely drop this with the dictionary scheme
-        for p in node.__props__.values():
-            p.__pstate__ = "init"
-            p.__modified__ = True
+        if not existing_node:
+            # in case the node has properties that were previously sync'd, we
+            # need to resync them
+            # TODO: we can likely drop this with the dictionary scheme
+            for p in node.__props__.values():
+                p.__pstate__ = "init"
+                p.__modified__ = True
 
-        lopper.log._debug( f"node added: [{[node]}] {node.abs_path} ({node.label})" )
-        if self.__dbg__ > 2:
-            for p in node:
-                lopper.log._debug( f"      property: {p.name} {p.value} (state:{p.__pstate__})" )
+            lopper.log._debug( f"node added: [{[node]}] {node.abs_path} ({node.label})" )
+            if self.__dbg__ > 2:
+                for p in node:
+                    lopper.log._debug( f"      property: {p.name} {p.value} (state:{p.__pstate__})" )
 
         # we can probably drop this by making the individual node sync's smarter and
         # more efficient when something doesn't need to be written
