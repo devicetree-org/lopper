@@ -52,18 +52,23 @@ def chunks(l, n):
         yield l[i:i+n]
 
 def dtc_escape_string(s):
-    result = []
-    for c in s:
-        code = ord(c)
-        if c == '"':
-            result.append(r'\"')
-        elif c == '\\':
-            result.append(r'\\')
-        elif code < 32 or code >= 127:
-            result.append('\\{:03o}'.format(code))
-        else:
-            result.append(c)
-    return ''.join(result)
+    try:
+        result = []
+        for c in s:
+            code = ord(c)
+            if c == '"':
+                result.append(r'\"')
+            elif c == '\\':
+                result.append(r'\\')
+            elif code < 32 or code >= 127:
+                result.append('\\{:03o}'.format(code))
+            else:
+                result.append(c)
+        return ''.join(result)
+    except Exception as e:
+        # this could be logged, but for now, just return
+        # the input value
+        return s
 
 def is_json_encoded(s):
     try:
