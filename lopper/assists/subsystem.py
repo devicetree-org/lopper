@@ -225,7 +225,7 @@ def domain_devices(devices, device_name_or_regex, action: Action):
 # this is called from a lop or assist to move/copy wildcard devices to
 # a domain that is using a glob
 def wildcard_devices( tree, domains_node ):
-    verbose = False
+    verbose = True
 
     for domain in domains_node.subnodes():
         if verbose:

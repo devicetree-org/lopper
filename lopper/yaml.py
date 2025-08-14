@@ -197,7 +197,23 @@ class LopperTreeImporter(object):
             name = "root"
 
         attrs['name'] = name
+
+        # Retain the LopperNode's 'parent' value but rename it to avoid conflict
+        parent_value = None
+
+        # Check and store the 'parent' value
+        if 'parent' in node.__props__:
+            parent_value = node.__props__['parent'].value # Extract the value for later use
+            # Map it to a different attribute to avoid conflict
+            attrs['custom_parent_value'] = parent_value
+
         for p in node.__props__:
+
+            # Skip the Lopper 'parent' completely during regular property extraction
+            # since this will break anytree's import
+            if p == 'parent':
+                continue
+
             # if the node is from a yaml source, it may have been json encoded,
             # so try that first and otherwise assign it directly.
 
@@ -1224,6 +1240,16 @@ class LopperYAML(LopperJSON):
             else:
                 #dcttype=dict
                 dcttype=OrderedDict
+
+            # Traverse the AnyTree structure and rename 'custom_parent' to 'parent'
+            def update_custom_parent(node):
+                if hasattr(node, 'custom_parent_value'):
+                    node.__dict__['parent'] = node.__dict__.pop('custom_parent_value')
+
+                for child in node.children:
+                    update_custom_parent(child)
+
+            update_custom_parent(start_node)  # Update the custom attributes first
 
             dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
             # This converts the ordered dicts to regular dicts at the last moment
