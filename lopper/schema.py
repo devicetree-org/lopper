@@ -243,10 +243,38 @@ class DTSSchemaGenerator:
         # Load type hints
         self.type_hints = PROPERTY_TYPE_HINTS
 
+    def _looks_like_array(self, value):
+        """Check if a value looks like an array (multiple values in angle brackets)"""
+        if not value:
+            return False
+
+        # Remove angle brackets if present
+        if value.startswith('<') and value.endswith('>'):
+            inner = value[1:-1].strip()
+            if not inner:
+                return False
+
+            # Split by whitespace and check if we have multiple values
+            # Handle both hex (0x...) and decimal values
+            values = inner.split()
+
+            # Single value = not an array
+            if len(values) <= 1:
+                return False
+
+            # Multiple values = array
+            return True
+
+        # No angle brackets = not a numeric array
+        return False
+
     def scan_dts_file(self, dts_content):
         """Parse DTS content and extract property information"""
         # Reset state
         self.__init__()
+
+        # Initialize bit width hints storage
+        self.bit_width_hints = {}
 
         analyzed_patterns, phandle_map = lopper_base.analyze_phandle_patterns(dts_content)
         newly_learned = lopper_base.update_phandle_property_descriptions(analyzed_patterns)
@@ -311,6 +339,18 @@ class DTSSchemaGenerator:
                     # Boolean property
                     prop_value = ''  # Empty value for boolean
                 else:
+                    # Check for /bits/ directive
+                    bits_match = re.match(r'/bits/\s+(\d+)\s+(.+)$', prop_value)
+                    if bits_match:
+                        bit_width = int(bits_match.group(1))
+                        prop_value = bits_match.group(2).strip()
+
+                        # Store bit width hint for this property
+                        self.bit_width_hints[prop_name] = bit_width
+
+                        if prop_name in PROPERTY_DEBUG_SET:
+                            _debug(f"Found /bits/ {bit_width} directive for {prop_name}")
+
                     # Check if the property is complete (ends with semicolon)
                     is_complete = prop_value.endswith(';')
 
@@ -441,6 +481,29 @@ class DTSSchemaGenerator:
         # Generic debug for tracked properties
         if name in PROPERTY_DEBUG_SET:
             _debug(f"_determine_property_type: {name} = '{value}'")
+
+        # PRIORITY 0: Check for bit width hints from /bits/ directive
+        if hasattr(self, 'bit_width_hints') and name in self.bit_width_hints:
+            bit_width = self.bit_width_hints[name]
+
+            # Determine if it's an array based on value
+            is_array = self._looks_like_array(value)
+
+            if bit_width == 64:
+                prop_type = 'uint64-array' if is_array else 'uint64'
+            elif bit_width == 32:
+                prop_type = 'uint32-array' if is_array else 'uint32'
+            elif bit_width == 16:
+                prop_type = 'uint16-array' if is_array else 'uint16'
+            elif bit_width == 8:
+                prop_type = 'uint8-array' if is_array else 'uint8'
+            else:
+                prop_type = 'uint32-array' if is_array else 'uint32'
+
+            if name in PROPERTY_DEBUG_SET:
+                print(f"  Determined type from /bits/ {bit_width}: {prop_type}")
+
+            return prop_type
 
         if not value:  # Boolean property
             return 'boolean'
@@ -748,7 +811,7 @@ class DTSSchemaGenerator:
         return {
             'oneOf': [
                 {'type': 'integer', 'minimum': 0, 'maximum': 0xFFFFFFFF},
-                {'type': 'string', 'pattern': '^<(0x[0-9a-fA-F]+|[0-9]+)>$'}
+                {'type': 'string', 'pattern': r'^<(0x[0-9a-fA-F]+|[0-9]+)>$'}
             ]
         }
 
@@ -757,7 +820,7 @@ class DTSSchemaGenerator:
         return {
             'oneOf': [
                 {'type': 'array', 'items': {'type': 'integer'}},
-                {'type': 'string', 'pattern': '^<([0-9a-fA-Fx\s]+)>$'}
+                {'type': 'string', 'pattern': r'^<([0-9a-fA-Fx\s]+)>$'}
             ]
         }
 
@@ -1344,7 +1407,7 @@ class DTSValidator:
 # update_schema_with_node_pattern(tree.schema, 'widget@*', {'value': LopperFmt.UINT32})
 
 def update_schema(schema_dict, name, schema_type, type_or_props=None, context=None):
-    """
+    r"""
     Universal schema update function for properties and node patterns.
 
     Args:
