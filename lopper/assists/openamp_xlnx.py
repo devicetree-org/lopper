@@ -84,17 +84,13 @@ def get_rpmsg_carveout_nodes(tree, node):
     carveouts_node = tree[node.abs_path + "/domain-to-domain/rpmsg-relation"]
     if isinstance(carveouts_node, LopperNode):
         node = carveouts_node
-    carveout_prop = node.props("carveouts")
-    if carveout_prop == []:
+    carveout_prop = node.propval("carveouts")
+    if carveout_prop == ['']:
         print("ERROR: ", node, " is missing carveouts property")
         return []
-    carveouts_nodes = []
-    for phandle in carveout_prop[0].value:
-        tmp_node = tree.pnode( phandle )
-        carveouts_nodes.append ( tmp_node )
+    carveouts_nodes = [ tree.pnode(phandle) for phandle in carveout_prop ]
 
     return carveouts_nodes
-
 
 reserved_mem_nodes = []
 res_mem_bases = []
@@ -166,7 +162,11 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
     vring_total_sz = 0
     for c in remote_carveouts:
         if "vring" in c.name:
-            vring_total_sz += c.props("size")[0].value
+            pval = c.propval("size")
+            if isinstance(pval, list):
+                pval = pval[0]
+
+            vring_total_sz += pval
 
     openamp_channel_info["shared_buf_offset_"+channel_id] = vring_total_sz
 
@@ -178,8 +178,13 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
         if carveout.props("status") != []:
             continue
         elif carveout.props("no-map") != []:
-            start = carveout.props("start")[0].value
-            size = carveout.props("size")[0].value
+            start = carveout.propval("start")
+            size = carveout.propval("size")
+
+            if isinstance(start, list):
+                start = start[0]
+                size = size[0]
+
             # handle native RPMsg
             if native:
                 if start < native_shm_mem_area_start:
@@ -843,11 +848,11 @@ def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = N
         print("ERROR: ", node, "is missing remote property")
         return False
 
-    remote_nodes = populate_remote_nodes(tree, node.props("remote")[0])
-    carveout_prop = node.props("carveouts")[0]
-    if carveout_prop == []:
-        print("ERROR: ", node, " is missing carveouts property")
+    # check for remote property
+    if node.propval("remote") == ['']:
+        print("ERROR: ", node, "is missing remote property")
         return False
+    remote_nodes = [ tree.pnode(remote_node) for remote_node in node.propval("remote") ]
 
     channel_ids = []
     for i, remote_node in enumerate(remote_nodes):
@@ -1019,8 +1024,13 @@ def xlnx_remoteproc_construct_carveouts(tree, channel_id, openamp_channel_info, 
         if carveout.props("status") != []:
             continue
         elif carveout.props("no-map") != []:
-            start = carveout.props("start")[0].value
-            size = carveout.props("size")[0].value
+            start = carveout.propval("start")
+            size = carveout.propval("size")
+
+            if isinstance(start, list):
+                start = start[0]
+                size = size[0]
+
             base_str = hex(start)[2:] # remove first two chars '0x' from string
             node_name = f"{carveout.name}@{base_str}"
             new_node = LopperNode(-1, f"/reserved-memory/{carveout.name}@{base_str}")
@@ -1539,17 +1549,6 @@ def get_platform(tree, verbose = 0):
 
     return platform
 
-def get_remote_node(tree, remote_nodes, index):
-    return tree.pnode( remote_nodes[i] )
-
-def populate_remote_nodes(tree, remote_prop):
-    remote_nodes = []
-
-    for remote_node in remote_prop.value:
-        remote_nodes.append( tree.pnode(remote_node) )
-
-    return remote_nodes
-
 def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
     # Xilinx OpenAMP subroutine to collect RPMsg information from Remoteproc
     # relation
@@ -1562,11 +1561,10 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
     openamp_channel_info["platform"] = platform
 
     # check for remote property
-    if node.props("remote") == []:
+    if node.propval("remote") == ['']:
         print("ERROR: ", node, "is missing remote property")
         return False
-
-    remote_nodes = populate_remote_nodes(tree, node.props("remote")[0])
+    remote_nodes = [ tree.pnode(remote_node) for remote_node in node.propval("remote") ]
 
     # check for elfload prop
     if node.props("elfload") == []:
@@ -1697,9 +1695,10 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
         return True
 
     for n in tree["/domains"].subnodes():
-            node_compat = n.props("compatible")
-            if node_compat != []:
-                node_compat = node_compat[0].value
+            node_compat = n.propval("compatible")
+            if node_compat != ['']:
+                if not isinstance(node_compat, str):
+                    node_compat = node_compat[0]
                 if node_compat in [REMOTEPROC_D_TO_D_v2, REMOTEPROC_D_TO_D]:
                     openamp_channel_info[REMOTEPROC_D_TO_D_v2] = (node_compat == REMOTEPROC_D_TO_D_v2)
                     ret = xlnx_remoteproc_parse(tree, n, openamp_channel_info, verbose)
