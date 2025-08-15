@@ -117,9 +117,13 @@ def reserved_mem_node_check(tree, node, verbose = 0 ):
         if rm_subnode not in reserved_mem_nodes:
             node_reg = rm_subnode.props("reg")
             if node_reg == []:
-                print("ERROR: malformed reserved-memory node: ", rm_subnode.abs_path)
-                return False
-            node_reg = node_reg[0].value
+                if rm_subnode.propval("start") == [''] or rm_subnode.propval("size") == ['']:
+                    print("ERROR: malformed reserved-memory node. No reg, or size and start: ", rm_subnode.abs_path)
+                    return False
+                rm_subnode + LopperProp(name="reg", value=[0, rm_subnode.propval("start")[0], 0, rm_subnode.propval("size")[0]])
+                rm_subnode.resolve()
+
+            node_reg = rm_subnode.propval("reg")
             if len(node_reg) != 4:
                 print("ERROR: malformed reserved-memory node: ", rm_subnode.abs_path)
                 return False
@@ -194,8 +198,10 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
                 if 'vdev0buffer' in carveout.name:
                     native_shm_mem_area_size += size
             else:
-
-                new_node =  LopperNode(-1, "/reserved-memory/"+carveout.name)
+                try:
+                    new_node = tree["/reserved-memory/"+carveout.name]
+                except:
+                    new_node =  LopperNode(-1, "/reserved-memory/"+carveout.name)
                 new_node + LopperProp(name="no-map")
                 new_node + LopperProp(name="reg", value=[0, start, 0, size])
                 if not reserved_mem_node_check(tree, new_node):
@@ -983,6 +989,11 @@ def check_bit_set(n, k):
 
 
 def determine_cpus_config(remote_domain):
+  if remote_domain.propval("cpu_config_str") == ['split']:
+      return CPU_CONFIG.RPU_SPLIT
+  elif remote_domain.propval("cpu_config_str") == ['lockstep']:
+      return CPU_CONFIG.RPU_LOCKSTEP
+
   cpus_prop_val = remote_domain.propval("cpus")
   cpu_config =  cpus_prop_val[2] # split or lockstep
 
@@ -993,6 +1004,10 @@ def determine_cpus_config(remote_domain):
 
 
 def determinte_rpu_core(tree, cpu_config, remote_node):
+    if remote_node.propval("core_num") != ['']:
+        core_index = int(remote_node.propval("core_num")[0])
+        return RPU_CORE(core_index)
+
     remote_cpus = remote_node.props("cpus")[0]
 
     try:
