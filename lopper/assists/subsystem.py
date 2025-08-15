@@ -853,6 +853,10 @@ def cpu_expand( tree, subnode, verbose = 0):
         # property_set( "cpus", cpus_list, subnode )
         cpus[0].value = cpus_list
 
+    if "r5" in cluster_node.name:
+        subnode + LopperProp(name="cpu_config_str", value="split" if subnode.propval("cpus")[1] == 1 else "lockstep")
+        subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
+
 # sdt: is the system device tree
 def subsystem( tgt_node, sdt, options ):
     try:
@@ -1104,6 +1108,13 @@ def domain_to_domain_expand(tree, tgt_node, verbose = 0 ):
                 print("domain_to_domain_expand: ", tgt_node, n)
             if is_openamp_d_to_d(tree, tgt_node, verbose):
                 ret = openamp_d_to_d_expand(tree, n, verbose)
+
+    # remove definitions
+    try:
+        defn_node =  tree["/definitions"]
+        tree - defn_node
+    except:
+        return True
 
     return True
 
