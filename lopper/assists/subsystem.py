@@ -852,8 +852,7 @@ def cpu_expand( tree, subnode, verbose = 0):
     if cpus_list:
         # property_set( "cpus", cpus_list, subnode )
         cpus[0].value = cpus_list
-
-    if "r5" in cluster_node.name:
+    if cluster_node != None and "r5" in cluster_node.name:
         subnode + LopperProp(name="cpu_config_str", value="split" if subnode.propval("cpus")[1] == 1 else "lockstep")
         subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
 
