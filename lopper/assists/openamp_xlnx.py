@@ -1051,7 +1051,17 @@ def xlnx_remoteproc_construct_carveouts(tree, channel_id, openamp_channel_info, 
 
             base_str = hex(start)[2:] # remove first two chars '0x' from string
             node_name = f"{carveout.name}@{base_str}"
-            new_node = LopperNode(-1, f"/reserved-memory/{carveout.name}@{base_str}")
+            new_node = None
+
+            for n in tree["/reserved-memory/"].subnodes():
+                if carveout.name == n.name:
+                    new_node = n
+                    break
+            if new_node == None:
+                new_node = LopperNode(-1, f"/reserved-memory/{carveout.name}@{base_str}")
+            else:
+                new_node.name = f"{carveout.name}@{base_str}"
+
             new_node + LopperProp(name="no-map")
             new_node + LopperProp(name="reg", value=[0, start, 0, size])
             tree.add(new_node)
