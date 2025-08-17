@@ -132,6 +132,9 @@ def reserved_mem_node_check(tree, node, verbose = 0 ):
 
             overlap = False
             for base,sz,existing_node in zip(res_mem_bases, res_mem_sizes, reserved_mem_nodes):
+                if isinstance(sz, str):
+                    continue
+
                 if new_base < base and (new_base+new_sz) > base:
                     overlap = True
                 if new_base < (base+sz) and (new_base+new_sz) > (base+sz):
