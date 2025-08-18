@@ -505,23 +505,19 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
     global machine_to_dt_mappings_v2
 
     # validate machine
-    mach_to_dt_map = machine_to_dt_mappings
-    for v in machine_to_dt_mappings_v2.values():
-        try:
-            lookup = tree[v]
-            mach_to_dt_map = machine_to_dt_mappings_v2
-            break
-        except KeyError:
-            continue
-
-    if machine not in mach_to_dt_map.keys():
-        print("OPENAMP: XLNX: ERROR: unsupported machine to remoteproc node mapping: ", machine)
+    mach_to_dt_map = None
+    if machine in machine_to_dt_mappings.keys():
+        mach_to_dt_map = machine_to_dt_mappings
+    elif machine in machine_to_dt_mappings_v2.keys():
+        mach_to_dt_map = machine_to_dt_mappings_v2
+    else:
+        print("OPENAMP: XLNX: ERROR: xlnx_openamp_get_ddr_elf_load: unsupported machine to remoteproc node mapping: ", machine)
         return None
 
     try:
         target_node = tree[mach_to_dt_map[machine]]
     except KeyError:
-        print("OPENAMP: XLNX: ERROR: could not find mapping:", machine, mach_to_dt_map[machine])
+        print("OPENAMP: XLNX: ERROR: unable to find node for machine and node: ", machine, mach_to_dt_map[machine])
         return None
 
     mem_reg_val = target_node.propval('memory-region')
@@ -547,9 +543,15 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
         return False
 
     ipi_parent = ipi_child.parent
+    host_node_of_child = None
+
+    # This is the top level node (remote parent in this context) that has information for ipi child of host
+    for node in sdt.tree['/axi'].subnodes():
+        if node.depth == 2 and node.propval("xlnx,ipi-id") == ipi_child.propval("xlnx,ipi-id"):
+            host_node_of_child = node
+            break
 
     ipi_child.name = f"mailbox@{hex(ipi_parent['reg'].value[1])[2:]}"
-
     child_props = {
       "compatible" : 'xlnx,mbox-versal-ipi-dest-mailbox', "status" : 'okay', "#mbox-cells" : 1,
       "interrupt-parent" : ipi_parent['interrupt-parent'].value,
@@ -564,7 +566,7 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
       "reg" : ipi_child['reg'].value,
       "xlnx,ipi-id" : ipi_parent["xlnx,ipi-id"].value,
       "interrupts" : ipi_parent["interrupts"].value,
-      "reg-names": ipi_child['reg-names'].value,
+      "reg-names": host_node_of_child['reg-names'].value,
     }
 
     parent_props["interrupts"][2] = 0x2
@@ -672,7 +674,6 @@ def xlnx_openamp_zephyr_update_tree(machine, sdt, options):
     root_node = sdt.tree['/']
     root_node["model"] = "AMD Versal Gen 2"
     root_node["compatible"] = "xlnx,versal2"
-
     return True
 
 def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
@@ -687,7 +688,7 @@ def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
     try:
         target_node = tree[machine_to_dt_mappings_v2[machine]]
     except KeyError:
-        print("OPENAMP: XLNX: ERROR: could not find mapping:", machine, machine_to_dt_mappings_v2[machine])
+        print("OPENAMP: XLNX: ERROR: xlnx_openamp_gen_outputs_only: could not find mapping:", machine, machine_to_dt_mappings_v2[machine])
         return False
 
     mem_reg_val = target_node.propval("memory-region")
@@ -1651,12 +1652,13 @@ def xlnx_openamp_remove_channels(tree, verbose = 0):
                 tree - n
 
 
-def xlnx_openamp_find_channels(sdt, verbose = 0):
+def xlnx_openamp_find_channels(sdt, machine = None):
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
     tree = sdt.tree
     domains_present = False
     compat_strs = [REMOTEPROC_D_TO_D_v2, REMOTEPROC_D_TO_D, RPMSG_D_TO_D]
+
     for n in tree["/"].subnodes():
         if n.name == "domains":
             domains_present = True
@@ -1665,14 +1667,16 @@ def xlnx_openamp_find_channels(sdt, verbose = 0):
         return False
 
     for n in tree["/domains"].subnodes():
-            node_compat = n.props("compatible")
-            if node_compat != []:
-                node_compat = node_compat[0].value
-
-                if node_compat in compat_strs:
-                    return True
-                if isinstance(node_compat, list) and node_compat[0] in compat_strs:
-                    return True
+        node_compat = n.propval("compatible")[0]
+        if node_compat in compat_strs:
+            if machine == None:
+                return True
+            elif n.parent.propval("cluster_cpu")[0] == machine:
+                # if machine provided, then attempt to find domain with
+                # matching machine. Else return False
+                return True
+            if isinstance(node_compat, list) and node_compat[0] in compat_strs and machine == None:
+                return True
 
     return False
 
@@ -1716,12 +1720,6 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
        print('ERROR: Failed to parse arguments in openamp module.', err)
        return False
 
-    if zephyr_target:
-        machine = xlnx_options["machine"]
-        xlnx_openamp_zephyr_update_tree(machine, sdt, options)
-        xlnx_openamp_remove_channels(tree)
-        return True
-
     for n in tree["/domains"].subnodes():
             node_compat = n.propval("compatible")
             if node_compat != ['']:
@@ -1735,6 +1733,12 @@ def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
 
                 if ret == False:
                     return ret
+    if zephyr_target:
+        machine = xlnx_options["machine"]
+        xlnx_openamp_zephyr_update_tree(machine, sdt, options)
+        xlnx_openamp_remove_channels(tree)
+        return True
+
 
     opts,args2 = getopt.getopt( args, "l:m:n:pv", [ "verbose", "permissive", "openamp_no_header", "openamp_role=", "openamp_host=", "openamp_remote=", "openamp_output_filename=", "zephyr_dt" ] )
 

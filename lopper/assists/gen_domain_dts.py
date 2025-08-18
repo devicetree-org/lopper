@@ -152,7 +152,11 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     except IndexError:
         pass
 
-    openamp_present = xlnx_openamp_find_channels(sdt)
+    openamp_machine = None
+    if machine not in openamp_linux_hosts and linux_dt != 1:
+        openamp_machine = machine
+
+    openamp_present = xlnx_openamp_find_channels(sdt, openamp_machine)
     openamp_host = machine in openamp_linux_hosts and linux_dt == 1
     openamp_remote = machine in openamp_roles.keys() and linux_dt != 1 and machine not in openamp_linux_hosts
     openamp_role = "host" if openamp_host else "remote"
@@ -742,6 +746,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
             sdt.tree['/aliases'].delete(prop)
 
     max_mem_size = 0
+    sram_node = 0
     for node in root_sub_nodes:
         if node.propval('device_type') != ['']:
             val = node.propval('device_type', list)[0]
