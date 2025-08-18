@@ -762,6 +762,7 @@ def cpu_expand( tree, subnode, verbose = 0):
 
     verbose = 0
     cpus_list = []
+    cluster_cpu = None
     for c in cpus[0]:
         # empty dict ? if so, skip
         if not c:
@@ -775,6 +776,8 @@ def cpu_expand( tree, subnode, verbose = 0):
 
         if type(c) == dict:
             cluster = c['cluster']
+            if 'cluster_cpu' in c.keys():
+                cluster_cpu = c['cluster_cpu']
         else:
             cluster = c
 
@@ -850,8 +853,13 @@ def cpu_expand( tree, subnode, verbose = 0):
         cpus_list.extend( [cluster_handle, int(mask), mode_mask ] )
 
     if cpus_list:
-        # property_set( "cpus", cpus_list, subnode )
         cpus[0].value = cpus_list
+
+    if cluster_cpu != None:
+        for n in subnode.subnodes():
+            if n.name == "domain-to-domain":
+                n + LopperProp(name="cluster_cpu", value=cluster_cpu)
+
     if cluster_node != None and "r5" in cluster_node.name:
         subnode + LopperProp(name="cpu_config_str", value="split" if subnode.propval("cpus")[1] == 1 else "lockstep")
         subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
