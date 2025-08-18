@@ -2592,6 +2592,8 @@ if __name__ == "__main__":
 
     main()
 
+    os.environ.pop('LOPPER_DTC_FLAGS', None)
+
     if libfdt:
         import lopper.fdt
         lopper.lopper_type(lopper.fdt.LopperFDT)
