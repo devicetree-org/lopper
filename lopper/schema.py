@@ -23,6 +23,7 @@ _init( "schema.py" )
 
 # Add properties to debug as needed
 PROPERTY_DEBUG_LIST = [
+    # "cooling-device",
     # 'xlnx,buffer-base',
     # 'xlnx,buffer-index',
     # 'xlnx,csr-slcr',
@@ -248,6 +249,9 @@ class DTSSchemaGenerator:
         if not value:
             return False
 
+        # Strip whitespace
+        value = value.strip()
+
         # Remove angle brackets if present
         if value.startswith('<') and value.endswith('>'):
             inner = value[1:-1].strip()
@@ -282,7 +286,7 @@ class DTSSchemaGenerator:
         if newly_learned:
             for prop, pattern in newly_learned.items():
                 if prop in PROPERTY_DEBUG_SET:
-                    _debug(f"Learned phandle pattern for {prop}: {pattern}")
+                    _warning(f"Learned phandle pattern for {prop}: {pattern}")
 
         # Simple state machine for parsing
         current_path = []
@@ -349,7 +353,7 @@ class DTSSchemaGenerator:
                         self.bit_width_hints[prop_name] = bit_width
 
                         if prop_name in PROPERTY_DEBUG_SET:
-                            _debug(f"Found /bits/ {bit_width} directive for {prop_name}")
+                            _warning(f"Found /bits/ {bit_width} directive for {prop_name}")
 
                     # Check if the property is complete (ends with semicolon)
                     is_complete = prop_value.endswith(';')
@@ -433,7 +437,7 @@ class DTSSchemaGenerator:
 
         # Debug output
         if any(prop in PROPERTY_DEBUG_SET for prop in ['_phandle_types']):
-            _debug(f"_determine_phandle_type: pattern='{pattern_desc}', repeat={repeat_flag}")
+            _warning(f"_determine_phandle_type: pattern='{pattern_desc}', repeat={repeat_flag}")
 
         # Check for variable size patterns (contain size lookups)
         if ':#' in pattern_desc:
@@ -471,6 +475,9 @@ class DTSSchemaGenerator:
     def _determine_property_type(self, name, value):
         """Determine the type of a property from its value"""
 
+        # Strip whitespace from value for consistent checking
+        value = value.strip()
+
         # Check explicit type hints first
         if name in self.type_hints.get('string_properties', []):
             return 'string' if '"' in value else 'unknown'
@@ -480,7 +487,92 @@ class DTSSchemaGenerator:
 
         # Generic debug for tracked properties
         if name in PROPERTY_DEBUG_SET:
-            _debug(f"_determine_property_type: {name} = '{value}'")
+            _warning(f"_determine_property_type: {name} = '{value}'")
+
+        # PRIORITY 0: Check for bit width hints from /bits/ directive
+        if hasattr(self, 'bit_width_hints') and name in self.bit_width_hints:
+            bit_width = self.bit_width_hints[name]
+
+            # Determine if it's an array based on value
+            is_array = self._looks_like_array(value)
+
+            if bit_width == 64:
+                prop_type = 'uint64-array' if is_array else 'uint64'
+            elif bit_width == 32:
+                prop_type = 'uint32-array' if is_array else 'uint32'
+            elif bit_width == 16:
+                prop_type = 'uint16-array' if is_array else 'uint16'
+            elif bit_width == 8:
+                prop_type = 'uint8-array' if is_array else 'uint8'
+            else:
+                prop_type = 'uint32-array' if is_array else 'uint32'
+
+            if name in PROPERTY_DEBUG_SET:
+                print(f"  Determined type from /bits/ {bit_width}: {prop_type}")
+
+            return prop_type
+
+        # Now continue with value-based detection
+        if not value:  # Boolean property
+            return 'boolean'
+        elif value.startswith('<') and value.endswith('>'):
+            # Cell or cell array
+            cells = value[1:-1].strip().split()
+
+            if name in PROPERTY_DEBUG_SET:
+                _warning(f"  Cells: {cells}")
+                _warning(f"  Cell count: {len(cells)}")
+
+            if not cells:
+                return 'empty'
+            elif '&' in value:
+                return 'phandle-array'
+            elif len(cells) == 1:
+                return 'uint32'
+            elif len(cells) == 2:
+                # Check if this is a phandle array property
+                if name in self.type_hints.get('phandle_array_properties', []):
+                    # This is a phandle+specifier, not a 64-bit value
+                    grouping = self._determine_cell_grouping(name, cells)
+                    if grouping > 1:
+                        return f'uint32-matrix-{grouping}'
+                    return 'uint32-array'
+                # Check if this could be a 64-bit value
+                elif name in self.type_hints.get('potential_64bit_properties', []) and self._is_64bit_value(cells):
+                    return 'uint64'
+                else:
+                    # Default to array for 2 cells
+                    return 'uint32-array'
+            else:
+                # Multiple cells
+                grouping = self._determine_cell_grouping(name, cells)
+                if grouping > 1:
+                    return f'uint32-matrix-{grouping}'
+                return 'uint32-array'
+        elif value.startswith('[') and value.endswith(']'):
+            return 'uint8-array'
+        elif '"' in value:
+            # Has quotes, so it's a string type
+            if '", "' in value or '","' in value:
+                return 'string-array'
+            else:
+                return 'string'
+        else:
+            return 'unknown'
+
+    def _determine_property_type_old(self, name, value):
+        """Determine the type of a property from its value"""
+
+        # Check explicit type hints first
+        if name in self.type_hints.get('string_properties', []):
+            return 'string' if '"' in value else 'unknown'
+
+        if name in self.type_hints.get('boolean_properties', []):
+            return 'boolean'
+
+        # Generic debug for tracked properties
+        if name in PROPERTY_DEBUG_SET:
+            _warning(f"_determine_property_type: {name} = '{value}'")
 
         # PRIORITY 0: Check for bit width hints from /bits/ directive
         if hasattr(self, 'bit_width_hints') and name in self.bit_width_hints:
@@ -512,9 +604,9 @@ class DTSSchemaGenerator:
             cells = value[1:-1].strip().split()
 
             if name in PROPERTY_DEBUG_SET:
-                _debug(f"  Cells: {cells}")
-                _debug(f"  Cell count: {len(cells)}")
-                _debug(f"  Determined type: uint32-array" if len(cells) > 1 else "  Determined type: uint32")
+                _warning(f"  Cells: {cells}")
+                _warning(f"  Cell count: {len(cells)}")
+                _warning(f"  Determined type: uint32-array" if len(cells) > 1 else "  Determined type: uint32")
 
             if not cells:
                 return 'empty'
@@ -632,9 +724,9 @@ class DTSSchemaGenerator:
                 type_counts[occ['type']] += 1
 
             if prop_name in PROPERTY_DEBUG_SET:
-                _debug(f"\n_build_property_definitions: {prop_name}")
-                _debug(f"  Type counts: {dict(type_counts)}")
-                _debug(f"  Occurrences: {len(occurrences)}")
+                _warning(f"\n_build_property_definitions: {prop_name}")
+                _warning(f"  Type counts: {dict(type_counts)}")
+                _warning(f"  Occurrences: {len(occurrences)}")
 
             # Special handling for properties that can be uint32 or "NIL"
             if 'uint32' in type_counts and 'string' in type_counts:
@@ -649,13 +741,13 @@ class DTSSchemaGenerator:
                         ]
                     }
                     if prop_name in PROPERTY_DEBUG_SET:
-                        _debug(f"  Created union type: uint32 | 'NIL'")
+                        _warning(f"  Created union type: uint32 | 'NIL'")
                     continue
 
             # Normalize compatible types
             if 'uint32' in type_counts and 'uint32-array' in type_counts:
                 if prop_name in PROPERTY_DEBUG_SET:
-                    _debug(f"  Normalizing uint32 + uint32-array → uint32-array")
+                    _warning(f"  Normalizing uint32 + uint32-array → uint32-array")
                 type_counts['uint32-array'] += type_counts['uint32']
                 del type_counts['uint32']
 
@@ -663,7 +755,7 @@ class DTSSchemaGenerator:
 
             if unique_types > 1:
                 if prop_name in PROPERTY_DEBUG_SET:
-                    _debug(f"  SKIPPING due to multiple types!")
+                    _warning(f"  SKIPPING due to multiple types!")
                 continue
 
             # Get the (possibly normalized) type
@@ -685,7 +777,7 @@ class DTSSchemaGenerator:
                         definitions[prop_name]['context-lookups'] = lookups
 
                     if prop_name in PROPERTY_DEBUG_SET:
-                        _debug(f"  Added phandle metadata: pattern='{pattern_desc}'")
+                        _warning(f"  Added phandle metadata: pattern='{pattern_desc}'")
 
         return definitions
 
@@ -799,8 +891,26 @@ class DTSSchemaGenerator:
             return {'type': 'array', 'items': {'type': 'string'}}
         elif prop_type == 'boolean':
             return {'type': 'boolean'}
+        elif prop_type.startswith('phandle-array-'):
+            # Handle phandle-array-N types
+            try:
+                group_size = int(prop_type.split('-')[-1])
+                return {
+                    'type': 'string',
+                    'pattern': '^<.*&.*>$',
+                    'format': prop_type,
+                    'phandle-group-size': group_size,
+                    'description': f'Phandle array with {group_size} cells per reference'
+                }
+            except ValueError:
+                return self._get_property_schema_def('phandle-array')
         elif prop_type == 'phandle-array':
-            return {'type': 'string', 'pattern': '^<.*&.*>$'}
+            return {
+                'type': 'string',
+                'pattern': '^<.*&.*>$',
+                'format': 'phandle-array',
+                'description': 'Array of phandle references'
+            }
         elif prop_type == 'empty':
             return {'type': 'null'}
         else:
@@ -1057,6 +1167,9 @@ class DTSPropertyTypeResolver:
             return LopperFmt.UINT8
         elif prop_type == 'string-array':
             return LopperFmt.MULTI_STRING
+        elif prop_type.startswith('phandle'):
+            # All phandle types map to UINT32
+            return LopperFmt.UINT32
         elif prop_type == 'phandle-array':
             return LopperFmt.UINT32
 
@@ -1082,18 +1195,18 @@ class DTSPropertyTypeResolver:
 
         # Generic debug for tracked properties
         if prop_name in PROPERTY_DEBUG_SET:
-            _debug(f"\nLooking up {prop_name}")
-            _debug(f"  Node path: {node_path}")
-            _debug(f"  Compatible: {compatible}")
+            _warning(f"\nLooking up {prop_name}")
+            _warning(f"  Node path: {node_path}")
+            _warning(f"  Compatible: {compatible}")
 
             if prop_name in self._property_types:
-                _debug(f"  Found in _property_types: {self._property_types[prop_name]}")
+                _warning(f"  Found in _property_types: {self._property_types[prop_name]}")
 
             if prop_name in self.schema.get('property_definitions', {}):
                 prop_def = self.schema['property_definitions'][prop_name]
-                _debug(f"  Schema def: {prop_def}")
+                _warning(f"  Schema def: {prop_def}")
                 fmt = self._schema_to_lopper_fmt(prop_name, prop_def)
-                _debug(f"  Converted to: {fmt}")
+                _warning(f"  Converted to: {fmt}")
 
         # Priority 1: Path-specific override
         if node_path and node_path in self._path_properties:
