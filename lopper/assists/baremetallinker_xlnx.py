@@ -167,7 +167,9 @@ def get_memranges(tgt_node, sdt, options):
                     is_valid_noc_ch = 0
                     if "axi_noc" in key:
                         if "axi_noc2" in key:
-                            noc_regions = versal_net_noc2_region_ranges
+                            family = sdt.tree['/'].propval('family')[0]
+                            if family != "Versal":
+                                noc_regions = versal_net_noc2_region_ranges
                         for region_addr_range in noc_regions.keys():
                             if int(region_addr_range, base=16) <= int(hex(valid_range[0]), base=16):
                                 is_valid_noc_ch = noc_regions[region_addr_range]
