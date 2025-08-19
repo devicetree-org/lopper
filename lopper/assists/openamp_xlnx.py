@@ -501,18 +501,9 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt, options):
     if "args" in options.keys():
         zephyr_mode = "zephyr_dt" in options["args"]
 
-    global machine_to_dt_mappings
-    global machine_to_dt_mappings_v2
-
     # validate machine
-    mach_to_dt_map = None
-    if machine in machine_to_dt_mappings.keys():
-        mach_to_dt_map = machine_to_dt_mappings
-    elif machine in machine_to_dt_mappings_v2.keys():
-        mach_to_dt_map = machine_to_dt_mappings_v2
-    else:
-        print("OPENAMP: XLNX: ERROR: xlnx_openamp_get_ddr_elf_load: unsupported machine to remoteproc node mapping: ", machine)
-        return None
+    global machine_to_dt_mappings_v2
+    mach_to_dt_map = machine_to_dt_mappings_v2
 
     try:
         target_node = tree[mach_to_dt_map[machine]]
