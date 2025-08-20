@@ -1651,6 +1651,8 @@ def xlnx_openamp_find_channels(sdt, machine = None):
         return False
 
     for n in tree["/domains"].subnodes():
+        if n.propval("compatible") in compat_strs and n.parent.propval("cluster_cpu") == machine:
+            return True
         node_compat = n.propval("compatible")[0]
         if node_compat in compat_strs:
             if machine == None:
