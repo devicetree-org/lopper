@@ -72,12 +72,6 @@ def is_compat( node, compat_string_to_test ):
         return xlnx_openamp_rpu
     return ""
 
-def xlnx_rpmsg_native_update_carveouts(tree, elfload_node,
-                                       native_shm_mem_area_start, native_shm_mem_area_size,
-                                       native_amba_shm_node):
-    return True
-
-
 # Given a domain node, get its corresponding node list from the carveouts
 # property. If no prop return empty list
 def get_rpmsg_carveout_nodes(tree, node):
