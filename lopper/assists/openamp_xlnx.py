@@ -149,15 +149,10 @@ def xlnx_rpmsg_format_res_mem_node(node, base):
             node.name = n + "@" + base
             break
 
-native_shm_node_count = 0
 def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, channel_id,
                                    openamp_channel_info, amba_node = None,
                                    elfload_node = None, verbose = 0 ):
-    global native_shm_node_count
     res_mem_node = tree["/reserved-memory"]
-    native_amba_shm_node = None
-    native_shm_mem_area_size = 0
-    native_shm_mem_area_start = 0xFFFFFFFF
     remote_carveouts = get_rpmsg_carveout_nodes(tree, openamp_channel_info["remote_node_"+channel_id])
 
     vring_total_sz = 0
@@ -186,66 +181,33 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
                 start = start[0]
                 size = size[0]
 
-            # handle native RPMsg
-            if native:
-                if start < native_shm_mem_area_start:
-                    native_shm_mem_area_start = start
-                native_shm_mem_area_size += size
-                # add more space for shared buffers
-                if 'vdev0buffer' in carveout.name:
-                    native_shm_mem_area_size += size
-            else:
-                try:
-                    new_node = tree["/reserved-memory/"+carveout.name]
-                except:
-                    new_node =  LopperNode(-1, "/reserved-memory/"+carveout.name)
-                new_node + LopperProp(name="no-map")
-                new_node + LopperProp(name="reg", value=[0, start, 0, size])
-                if not reserved_mem_node_check(tree, new_node):
-                    return False
+            try:
+                new_node = tree["/reserved-memory/"+carveout.name]
+            except:
+                new_node =  LopperNode(-1, "/reserved-memory/"+carveout.name)
 
-                if "vdev0buffer" in carveout.name:
-                    new_node + LopperProp(name="compatible", value="shared-dma-pool")
+            new_node + LopperProp(name="no-map")
+            new_node + LopperProp(name="reg", value=[0, start, 0, size])
+            if not reserved_mem_node_check(tree, new_node):
+                return False
 
-                tree.add(new_node)
-                tree.resolve()
-                if openamp_channel_info[REMOTEPROC_D_TO_D_v2]:
-                    xlnx_rpmsg_format_res_mem_node(new_node, hex(start)[2:])
+            if "vdev0buffer" in carveout.name:
+                new_node + LopperProp(name="compatible", value="shared-dma-pool")
 
-                if new_node.phandle == 0:
-                    new_node.phandle = new_node.phandle_or_create()
+            tree.add(new_node)
+            tree.resolve()
+            if openamp_channel_info[REMOTEPROC_D_TO_D_v2]:
+                xlnx_rpmsg_format_res_mem_node(new_node, hex(start)[2:])
 
-                new_node + LopperProp(name="phandle", value = new_node.phandle)
+            if new_node.phandle == 0:
+                new_node.phandle = new_node.phandle_or_create()
 
-                rpmsg_carveouts.append(new_node)
+            new_node + LopperProp(name="phandle", value = new_node.phandle)
+
+            rpmsg_carveouts.append(new_node)
         else:
             print("ERROR: invalid remoteproc elfload carveout", carveout)
             return False
-
-    if native:
-        # start and size of reserved-mem rproc0
-        start = elfload_node.props("start")[0].value
-        size = elfload_node.props("size")[0].value
-
-        # update size if applicable
-        if start < native_shm_mem_area_start:
-            native_shm_mem_area_start = start
-        native_shm_mem_area_size += size
-        # update rproc0 size
-        elfload_res_mem_node = tree["/reserved-memory/" + elfload_node.name]
-        elfload_res_mem_reg = elfload_res_mem_node.props("reg")[0].value
-        elfload_res_mem_reg[3] = native_shm_mem_area_size
-        elfload_res_mem_node.props("reg")[0].value = elfload_res_mem_reg
-
-        native_amba_shm_node = LopperNode(-1, amba_node.abs_path + "/" + "shm@" + hex(native_shm_mem_area_start)[2:])
-
-        native_amba_shm_node + LopperProp(name="compatible", value="shm_uio")
-        tree.add(native_amba_shm_node)
-        tree.resolve()
-        native_shm_node_count += 1
-        openamp_channel_info["native_shm_node_"+channel_id] = native_amba_shm_node
-        shm_space = [0, native_shm_mem_area_start, 0, native_shm_mem_area_size]
-        native_amba_shm_node + LopperProp(name="reg", value=shm_space)
 
     return True
 
