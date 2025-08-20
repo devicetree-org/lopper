@@ -498,6 +498,10 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
     root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
 
+    if "amd,versal2" in root_node['compatible'].value:
+        root_node["model"] = "AMD Versal Gen 2"
+        root_node["compatible"] = "xlnx,versal2"
+
     for node in root_sub_nodes:
         if node.depth == 1:
             if "cpus" not in node.name and "amba" not in node.name and "memory" not in node.name and "chosen" not in node.name and "bus" not in node.name and "axi" not in node.name and "timer" not in node.name and "alias" not in node.name and "consumer" not in node.name:
@@ -506,6 +510,8 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
             sdt.tree.delete(node)
 
         if node.propval("compatible") != ['']:
+            if node.propval("compatible") == ['xlnx,versal-ipi-dest-mailbox']:
+                node.name = f"child@{hex(node.propval("reg")[1])[2:]}"
             if node.propval('xlnx,ip-name') != ['']:
                 val = node.propval('xlnx,ip-name', list)[0]
                 if "r52" in machine and (val == "psx_rcpu_gic" or val == "rcpu_gic"):
