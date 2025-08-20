@@ -65,7 +65,7 @@ lopper -O <output_dir> -f --enhanced <system-top.dts> <lopper-gen DT> -- xlnx_ov
 |-----------------------------------------------------------------------------------|
 | <lopper-gen DT>        | Lopper-generated DTS (excluding the PL node)             |
 |-----------------------------------------------------------------------------------|
-| <machine>              | Target machine type.                                     |
+| <machine>              | (Optional)Target machine type.                           |
 |                        | Supported values:                                        |
 |                        |      For Zynq-7000 SoC:                                  |
 |                        |              - cortexa9-zynq | cortexa9_0 | cortexa9     |
@@ -75,6 +75,8 @@ lopper -O <output_dir> -f --enhanced <system-top.dts> <lopper-gen DT> -- xlnx_ov
 |                        |              - cortexa72-versal | cortexa72_0 | cortexa72|
 |                        |      For Next-gen Versal architecture:                   |
 |                        |              - psx_cortexa78_0 | cortexa78_0 | cortexa78 |
+|                        |If omitted, platform is automatically inferred from the   |
+|                        |system device tree.                                       |
 |-----------------------------------------------------------------------------------|
 | <config>               | FPGA configuration mode.                                 |
 |                        | Supported values:                                        |
@@ -94,13 +96,17 @@ lopper -O <output_dir> -f --enhanced <system-top.dts> <lopper-gen DT> -- xlnx_ov
 |-----------------------------------------------------------------------------------|
 
 ##Example:
-lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi
 
-##Example:
---firmware-name=<custom_name>
+#With machine specified:
+lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi
+
+#Without machine (auto-infer platform):
+lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts -- xlnx_overlay_pl_dt <config> <path_to_pl_dtsi>/pl.dtsi
+
+#With custom firmware name:
 The --firmware-name argument is optional and allows you to override the default firmware-name property in the generated pl.dtsi.
 This is especially useful when:
 -->The bitstream is managed or named externally.
 -->You want to embed a custom bitstream name in the overlay.
 Usage Example:
-lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi --firmware-name=<my_custom.bit>
+lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi --firmware-name=<my_custom.bit>
