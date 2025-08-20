@@ -541,6 +541,9 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
         if node.depth == 2 and node.propval("xlnx,ipi-id") == ipi_child.propval("xlnx,ipi-id"):
             host_node_of_child = node
             break
+    if host_node_of_child == None:
+        print("[ERROR]: Unable to find axi IPI node with xlnx,ipi-id value: ", ipi_child.propval("xlnx,ipi-id"))
+        return False
 
     ipi_child.name = f"mailbox@{hex(ipi_parent['reg'].value[1])[2:]}"
     child_props = {
@@ -582,9 +585,10 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
     [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
     sdt.tree.add(mbox_consumer_node)
 
-    for ipi_subnode in ipi_parent.subnodes():
-        if ipi_subnode != ipi_child and ipi_subnode != ipi_parent:
-            sdt.tree - ipi_subnode
+    for (host, remote) in [ (ipi_parent, host_node_of_child), (host_node_of_child, ipi_parent) ]:
+        for ipi_subnode in host.subnodes():
+            if ipi_subnode != host and ipi_subnode.propval("xlnx,ipi-id") != remote.propval("xlnx,ipi-id"):
+                sdt.tree - ipi_subnode
 
     return True
 
@@ -593,12 +597,14 @@ def xlnx_openamp_zephyr_update_memories(target_node, sdt, options):
     memory_region_nodes = [sdt.tree.pnode(phandle) for phandle in mem_reg_val]
 
     elf_load_node = None
+    elf_load_node_idx = -1
     vring0_node = None
     vring1_node = None
     shbuf_node = None
-    for mrn in memory_region_nodes:
+    for i, mrn in enumerate(memory_region_nodes):
         if "ddrboot" in mrn.name:
             elf_load_node = mrn
+            elf_load_node_idx = i
         if "vdev0buffer" in mrn.name:
             shbuf_node = mrn
         if "vring1" in mrn.name:
@@ -619,18 +625,17 @@ def xlnx_openamp_zephyr_update_memories(target_node, sdt, options):
     # total size of IPC
     sz_column = [row[3] for row in memory_region_regs]
 
-    ipc_reg = [0x0, min(reg_column), 0x0, sum(sz_column)]
-
+    # keep elf load node
+    memory_region_nodes.pop(elf_load_node_idx)
     # remove unneeded nodes
-    for node in memory_region_nodes:
-        if node != elf_load_node:
-            sdt.tree.delete(node)
+    [sdt.tree.delete(node) for node in memory_region_nodes]
 
     # create IPC node
-    base_str = hex(ipc_reg[1])[2:] # hex creates string '0x1..2'. remove the leading '0x'
-    ipc_node = LopperNode(-1, f"/memory@{base_str}")
+    base_str = hex(min(reg_column))[2:] # hex creates string '0x1..2'. remove the leading '0x'
+    ipc_node = LopperNode(-1, f"/reserved-memory/memory@{base_str}")
     ipc_node + LopperProp(name="compatible", value="mmio-sram")
-    ipc_node + LopperProp(name="reg", value=ipc_reg)
+    ipc_node + LopperProp(name="reg", value=[0x0, min(reg_column), 0x0, sum(sz_column)])
+    ipc_node.label = f"ipc_shm_{base_str}"
     sdt.tree.add(ipc_node)
 
     # Add and update zephyr properties
@@ -648,23 +653,11 @@ def xlnx_openamp_zephyr_update_tree(machine, sdt, options):
     xlnx_openamp_zephyr_update_memories(target_node, sdt, options)
     xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options)
 
-    sdt.tree['/chosen']['zephyr,console'] = "serial0"
-    sdt.tree['/chosen']['zephyr,shell-uart'] = "serial0"
-    sdt.tree['/chosen']['stdout-path'] = "serial0:115200n8"
-
-    for subnode in sdt.tree['/axi'].subnodes():
-        if 'serial1' == subnode.label:
-            sdt.tree - subnode
-            break
-
     if sdt.tree['/chosen'].propval('zephyr,flash') != ['']:
         sdt.tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,flash'])
     if sdt.tree['/chosen'].propval('zephyr,ocm') != ['']:
         sdt.tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,ocm'])
 
-    root_node = sdt.tree['/']
-    root_node["model"] = "AMD Versal Gen 2"
-    root_node["compatible"] = "xlnx,versal2"
     return True
 
 def xlnx_openamp_gen_outputs_only(sdt, machine, output_file, verbose = 0 ):
