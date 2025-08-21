@@ -1191,6 +1191,9 @@ def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, channel_id, power_do
       "memory-region": [ val for val in openamp_channel_info["new_ddr_nodes"+channel_id] ]
     }
 
+    if openamp_channel_info["new_ddr_nodes"+channel_id] == []:
+        core_node_props.pop("memory-region")
+
     for key in core_node_props.keys():
         core_node + LopperProp(name=key, value = core_node_props[key])
 
