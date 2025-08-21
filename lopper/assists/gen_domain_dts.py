@@ -169,7 +169,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                          "openamp_no_header": True if "--openamp_no_header" in options['args'] else False,
                          "machine" : machine,
                        }
-        xlnx_openamp_parse(sdt, options, xlnx_options, verbose = 0 )
+        xlnx_openamp_parse(sdt, options, xlnx_options, 1)
 
     # Delete other CPU Cluster nodes
     cpunode_list = sdt.tree.nodes('/cpu.*@.*', strict=True)

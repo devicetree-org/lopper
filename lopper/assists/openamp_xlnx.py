@@ -96,6 +96,7 @@ reserved_mem_nodes = []
 res_mem_bases = []
 res_mem_sizes = []
 def reserved_mem_node_check(tree, node, verbose = 0 ):
+    print(" -> reserved_mem_node_check", node)
     # check if given node conflicts with reserved memory nodes
 
     res_mem_node = tree["/reserved-memory"]
@@ -159,6 +160,8 @@ native_shm_node_count = 0
 def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, channel_id,
                                    openamp_channel_info, amba_node = None,
                                    elfload_node = None, verbose = 0 ):
+    print(" -> xlnx_rpmsg_construct_carveouts", channel_id)
+ 
     global native_shm_node_count
     res_mem_node = tree["/reserved-memory"]
     native_amba_shm_node = None
@@ -276,6 +279,8 @@ def xlnxl_rpmsg_ipi_get_ipi_id(tree, ipi, role):
 def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_channel_info,
                                      remote_node, channel_id, native, channel_index, 
                                      verbose = 0):
+    print(" -> xlnx_rpmsg_ipi_parse_per_channel", channel_id, host_ipi, remote_ipi, channel_index)
+ 
     ipi_id_prop_name = "xlnx,ipi-id"
     platform =  openamp_channel_info["platform"]
     buffered_ipi_chan = True
@@ -327,6 +332,8 @@ def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_c
 def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
                          remote_node, channel_id, native, channel_index, 
                          verbose = 0 ):
+    print(" -> xlnx_rpmsg_ipi_parse", node, remote_node, channel_index, channel_id)
+ 
     amba_node = None
     ipi_id_prop_name = "xlnx,ipi-id"
     host_to_remote_ipi = None
@@ -364,6 +371,7 @@ def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
 def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
                                   core_node, openamp_channel_info, channel_id):
     target_remote_node = None
+    print(" -> xlnx_rpmsg_kernel_update_ipis", host_ipi, remote_ipi, core_node, channel_id)
 
     # in case of remote run, flip the ipis so that its present for remote parsing later
     if openamp_channel_info['role'+channel_id] == 'remote':
@@ -416,6 +424,8 @@ def xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose = 0 )
 
 
 def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose = 0 ):
+    print(" -> xlnx_rpmsg_update_tree", node, channel_id)
+ 
     platform = openamp_channel_info["platform"]
     cpu_config = None
     host_ipi = None
@@ -821,6 +831,8 @@ def xlnx_rpmsg_parse_generate_native_amba_node(tree):
     return amba_node
 
 def xlnx_rpmsg_parse(tree, node, openamp_channel_info, options, xlnx_options = None, verbose = 0 ):
+    print(" -> xlnx_rpmsg_parse", node)
+ 
     # Xilinx OpenAMP subroutine to collect RPMsg information from RPMsg
     # relation
     amba_node = None
@@ -977,6 +989,7 @@ def check_bit_set(n, k):
 
 
 def determine_cpus_config(remote_domain):
+  print(" -> determine_cpus_config ", remote_domain, remote_domain.propval("cpu_config_str"), remote_domain.propval("cpus"))
   if remote_domain.propval("cpu_config_str") == ['split']:
       return CPU_CONFIG.RPU_SPLIT
   elif remote_domain.propval("cpu_config_str") == ['lockstep']:
@@ -992,6 +1005,8 @@ def determine_cpus_config(remote_domain):
 
 
 def determinte_rpu_core(tree, cpu_config, remote_node):
+    print(" -> determinte_rpu_core", cpu_config, remote_node)
+ 
     if remote_node.propval("core_num") != ['']:
         core_index = int(remote_node.propval("core_num")[0])
         return RPU_CORE(core_index)
@@ -1008,6 +1023,8 @@ def determinte_rpu_core(tree, cpu_config, remote_node):
 
 
 def xlnx_remoteproc_construct_carveouts(tree, channel_id, openamp_channel_info, verbose = 0 ):
+    print(" -> xlnx_remoteproc_construct_carveouts", channel_id)
+ 
     carveouts = openamp_channel_info["elfload"+channel_id]
     new_ddr_nodes = []
     res_mem_node = None
@@ -1022,6 +1039,7 @@ def xlnx_remoteproc_construct_carveouts(tree, channel_id, openamp_channel_info, 
 
     # only applicable for DDR carveouts
     for carveout in carveouts:
+        print(" --> ", carveout)
         # SRAM banks have status prop
         # SRAM banks are not in reserved memory
         if carveout.props("status") != []:
@@ -1317,6 +1335,8 @@ def xlnx_remoteproc_v2_interim(tree, channel_id, cpu_config, openamp_channel_inf
 
 
 def xlnx_remoteproc_v2_construct_cluster(tree, channel_id, openamp_channel_info, verbose = 0):
+    print(" -> xlnx_remoteproc_v2_construct_cluster", channel_id)
+ 
     cpu_config = openamp_channel_info["cpu_config"+channel_id]
 
     rpu_core = determinte_rpu_core(tree, cpu_config, openamp_channel_info["remote_node"+channel_id] )
@@ -1354,6 +1374,8 @@ def xlnx_remoteproc_v2_construct_cluster(tree, channel_id, openamp_channel_info,
 
 
 def xlnx_remoteproc_construct_cluster(tree, channel_id, openamp_channel_info, verbose = 0):
+    print(" -> xlnx_remoteproc_construct_cluster", channel_id)
+ 
     platform = openamp_channel_info["platform"]
     cpu_config = openamp_channel_info["cpu_config"+channel_id]
     node = openamp_channel_info["node"+channel_id]
@@ -1468,9 +1490,13 @@ def xlnx_remoteproc_construct_cluster(tree, channel_id, openamp_channel_info, ve
     return True
 
 def xlnx_remoteproc_update_tree(tree, channel_id, openamp_channel_info, verbose = 0 ):
+    print(" -> xlnx_remoteproc_update_tree", channel_id)
+ 
     global info_rproc_driver_version
     node = openamp_channel_info["node"+channel_id]
     host_node = node.parent.parent
+
+    print(" --> ", node, host_node)
 
     platform = openamp_channel_info["platform"]
 
@@ -1496,6 +1522,8 @@ def xlnx_remoteproc_update_tree(tree, channel_id, openamp_channel_info, verbose 
 
 
 def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, elfload_nodes, verbose = 0):
+    print(" -> xlnx_remoteproc_rpu_parse", node)
+ 
     cpu_config = determine_cpus_config(remote_node)
     platform = get_platform(tree, verbose)
     rpu_core = None
@@ -1511,17 +1539,21 @@ def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, elf
 
     rpu_cluster_node = tree.pnode(remote_node.props("cpus")[0].value[0])
     rpu_core_node = rpu_cluster_node.abs_path + "/cpu@"
+
+    print(" --> xlnx_remoteproc_rpu_parse - found rpu_core_node", rpu_core_node)
     # all cores are in cluster topologically in DTS
     rpu_core_int_val = int(rpu_core)
     rpu_core = str(int(rpu_core)) 
 
     rpu_core_node = tree[rpu_core_node+rpu_core]
+    print(" --> xlnx_remoteproc_rpu_parse - found rpu_core_node", rpu_core_node)
 
     if rpu_core_node.props("power-domains") == []:
         print("ERROR: RPU core does not have power-domains property.")
         return False
 
     rpu_core_pd_prop = rpu_core_node.props("power-domains")[0]
+    print(" --> xlnx_remoteproc_rpu_parse - found power domain for core")
     channel_id = "_"+node.parent.parent.name+"_"+remote_node.name
     openamp_channel_info["elfload"+channel_id] = elfload_nodes
     openamp_channel_info["rpu_core_pd_prop"+channel_id] = rpu_core_pd_prop
@@ -1566,6 +1598,8 @@ def get_platform(tree, verbose = 0):
     return platform
 
 def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
+    print(" -> xlnx_remoteproc_parse", node)
+ 
     # Xilinx OpenAMP subroutine to collect RPMsg information from Remoteproc
     # relation
     elfload_nodes = []
@@ -1601,7 +1635,6 @@ def xlnx_remoteproc_parse(tree, node, openamp_channel_info, verbose = 0 ):
             ret = xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, remote_node, channel_elfload_nodes, verbose)
             if not ret:
                 return ret
-
         channel_id = "_"+node.parent.parent.name+"_"+remote_node.name
 
         openamp_channel_info["elfload"+channel_id] = channel_elfload_nodes
@@ -1672,6 +1705,7 @@ def xlnx_openamp_find_channels(sdt, machine = None):
 def xlnx_openamp_parse(sdt, options, xlnx_options = None, verbose = 0 ):
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
+    print(" -> xlnx_openamp_parse")
     tree = sdt.tree
     ret = -1
     openamp_channel_info = {}
