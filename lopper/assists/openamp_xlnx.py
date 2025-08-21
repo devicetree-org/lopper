@@ -1147,8 +1147,8 @@ def xlnx_remoteproc_v2_parse_tcm_node(tcm_bank, core_reg_names, cluster_ranges_v
     if use_lockstep:
         cluster_tcm_absolute_addr = tcm_absolute_view_base & 0xFFF00000 + rpu_view_base_pval
 
-    cluster_ranges_val.extend((rpu_core.value, hex(rpu_view_base_pval), 0, hex(cluster_tcm_absolute_addr), 0, hex(rpu_bank_sz)))
-    core_reg_val.extend((rpu_core.value, hex(rpu_view_base_pval), 0, hex(rpu_bank_sz)))
+    cluster_ranges_val.extend((rpu_core.value % 2, hex(rpu_view_base_pval), 0, hex(cluster_tcm_absolute_addr), 0, hex(rpu_bank_sz)))
+    core_reg_val.extend((rpu_core.value % 2, hex(rpu_view_base_pval), 0, hex(rpu_bank_sz)))
 
 def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_val, cluster_node_path):
     driver_compat_str  = {
@@ -1199,7 +1199,7 @@ def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, channel_id, power_do
     core_names = { SOC_TYPE.VERSAL_NET: "r52f", SOC_TYPE.VERSAL: "r5f", SOC_TYPE.ZYNQMP: "r5f" }
     core_names[SOC_TYPE.VERSAL2] = core_names[SOC_TYPE.VERSAL_NET]
 
-    core_node = LopperNode(-1, "{}/{}@{}".format( cluster_node_path, core_names[platform], openamp_channel_info["rpu_core"+channel_id]))
+    core_node = LopperNode(-1, "{}/{}@{}".format( cluster_node_path, core_names[platform], int(openamp_channel_info["rpu_core"+channel_id]) % 2))
 
     core_node_props = {
       "compatible" : compatible_strs[platform],
