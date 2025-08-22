@@ -24,6 +24,8 @@ import common_utils as utils
 from domain_access import update_mem_node
 from openamp_xlnx import xlnx_openamp_find_channels, xlnx_openamp_parse
 from openamp_xlnx_common import openamp_linux_hosts, openamp_roles
+from openamp_xlnx import xlnx_openamp_zephyr_update_tree
+from zephyr_board_dt import process_overlay_with_lopper_api
 
 def delete_unused_props( node, driver_proplist , delete_child_nodes):
     if delete_child_nodes:
@@ -43,6 +45,63 @@ def is_compat( node, compat_string_to_test ):
     if "module,gen_domain_dts" in compat_string_to_test:
         return xlnx_generate_domain_dts
     return ""
+
+def filter_ipi_nodes_for_cpu(sdt, machine):
+    """
+    Filter IPI nodes for A78 processors:
+    Keep the IPI nodes with CPU name matching the expected A78 CPU name.
+    """
+    # Only process A78 machines, exit early for all others
+    if "a78" not in machine.lower():
+        return
+
+    # Extract expected A78_* CPU name
+    try:
+        match = re.search(r'a78[_]?(\d+)', machine.lower())
+        expected_cpu_name = f"A78_{match.group(1)}" if match else "A78_0"
+    except Exception as e:
+        print(f"[ERROR] Failed to extract CPU name from machine '{machine}': {e}")
+        return
+
+    try:
+        # Direct access to AXI node instead of looping through all subnodes
+        try:
+            axi_node = sdt.tree['/axi']
+        except KeyError:
+            print(f"[WARNING] AXI node not found in device tree")
+            return
+
+        ipi_nodes_to_remove = []
+
+        for node in axi_node.subnodes():
+            # Check if this is an IPI parent node
+            if (node.depth == 2 and  # Direct child of /axi/
+                node.propval('compatible') != [''] and
+                'xlnx,versal-ipi-mailbox' in node.propval('compatible', list) and
+                node.propval('xlnx,cpu-name') != [''] and
+                node.propval('xlnx,ip-name') != [''] and
+                'ipi' in node.propval('xlnx,ip-name', list)[0]):
+
+                ipi_cpu_name = node.propval('xlnx,cpu-name', list)[0]
+
+                # Only keep A78 nodes that match our target
+                if ipi_cpu_name.startswith('A78_'):
+                    if ipi_cpu_name != expected_cpu_name:
+                        ipi_nodes_to_remove.append(node)
+
+        # Remove unwanted A78 IPI parent nodes (this removes parent and all children automatically)
+        if ipi_nodes_to_remove:
+            for ipi_node in ipi_nodes_to_remove:
+                try:
+                    sdt.tree.delete(ipi_node)  # This removes parent and all children
+                except Exception as e:
+                    print(f"[ERROR] Failed to delete IPI node '{ipi_node.name}' (path: {ipi_node.abs_path}): {e}")
+                    pass
+
+    except Exception as e:
+        print(f"[ERROR] Failed to delete IPI node...")
+        return
+
 
 # tgt_node: is the top level domain node
 # sdt: is the system device-tree
@@ -93,7 +152,11 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     except IndexError:
         pass
 
-    openamp_present = xlnx_openamp_find_channels(sdt)
+    openamp_machine = None
+    if machine not in openamp_linux_hosts and linux_dt != 1:
+        openamp_machine = machine
+
+    openamp_present = xlnx_openamp_find_channels(sdt, openamp_machine)
     openamp_host = machine in openamp_linux_hosts and linux_dt == 1
     openamp_remote = machine in openamp_roles.keys() and linux_dt != 1 and machine not in openamp_linux_hosts
     openamp_role = "host" if openamp_host else "remote"
@@ -101,10 +164,12 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     if openamp_present and (openamp_host or openamp_remote):
         xlnx_options = { "openamp_host":   openamp_roles[machine],
                          "openamp_remote": openamp_roles[machine],
-                         "openamp_role":   openamp_role }
-        if "--openamp_no_header" in options['args']:
-            xlnx_options["openamp_no_header"] = True
-        xlnx_openamp_parse(sdt, options, xlnx_options, verbose = 0 )
+                         "openamp_role":   openamp_role,
+                         "zephyr_dt" : True if zephyr_dt == 1 else False,
+                         "openamp_no_header": True if "--openamp_no_header" in options['args'] else False,
+                         "machine" : machine,
+                       }
+        xlnx_openamp_parse(sdt, options, xlnx_options, 1)
 
     # Delete other CPU Cluster nodes
     cpunode_list = sdt.tree.nodes('/cpu.*@.*', strict=True)
@@ -126,6 +191,40 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     while tmp < len(address_map):
         all_phandles.append(address_map[tmp])
         tmp = tmp + cells + na + 1
+
+    # Access the '/amba_pl' node for Linux device tree
+    if linux_dt:
+        try:
+            amba_pl_node = sdt.tree['/amba_pl']
+        except KeyError:
+            amba_pl_node = None
+
+        if amba_pl_node:
+            # Iterate over each subnode of '/amba_pl' at depth 1 only
+            nodes_to_move = []
+            for subnode in amba_pl_node.subnodes():
+                # Only process nodes at depth 1 (direct children of amba_pl)
+                if subnode.depth == 2:
+                    if len(subnode.subnodes()) > 1:
+                        continue
+                    has_reg = subnode.propval('reg') != ['']
+                    has_ranges = subnode.propval('ranges') != ['']
+                    has_at_symbol = '@' in subnode.name
+
+                    # Move node to root if it doesn't have reg or ranges properties, or no @ in node name
+                    if not has_reg and not has_ranges or not has_at_symbol:
+                        nodes_to_move.append(subnode)
+
+            # Move the identified nodes to root (top-level nodes only, preserving their subnodes)
+            for subnode in nodes_to_move:
+                # Simply move the node by updating its path and parent
+                subnode.abs_path = subnode.abs_path.replace("/amba_pl/", "/")
+
+                # Remove the original node from amba_pl and add the new node to root
+                amba_pl_node.delete(subnode)
+                sdt.tree.add(subnode)
+
+    filter_ipi_nodes_for_cpu(sdt, machine)
 
     node_list = []
     for node in root_sub_nodes:
@@ -155,6 +254,12 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 # It needs to be disabled only for ZynqMP
                 if "okay" in node.propval('status', list)[0]:
                     node.propval('status', list)[0] = "disabled"
+            if linux_dt and node.name == "pcie@fd0e0000":
+		# It needs to be disabled when pcie-mode is EndPoint
+                mode = node.propval('xlnx,pcie-mode')
+                if mode == ['Endpoint , Device']:
+                    if "okay" in node.propval('status', list)[0]:
+                        node.propval('status', list)[0] = "disabled"
             if "okay" in node.propval('status', list)[0]:
                 node_list.append(node)
         if node.propval('device_type') != ['']:
@@ -243,7 +348,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psu_iou_scntr', 'psu_iou_scntrs', 'psu_iousecure_slcr', 'psu_iouslcr_0', 'psu_lpd_slcr',
                             'psu_lpd_slcr_secure', 'psu_lpd_xppu_sink', 'psu_mbistjtag', 'psu_message_buffers', 'psu_ocm_xmpu_cfg',
                             'psu_pcie_attrib_0', 'psu_pcie_dma', 'psu_pcie_high1', 'psu_pcie_high2', 'psu_pcie_low',
-                            'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou', 'psu_ipi',
+                            'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou',
                             'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu', 'psx_fpd_gpv', 'ddr4', 'ps7_ram', 'ps7_afi',
                             'ps7_pmu', 'ps7_ocmc', 'ps7_scuc', 'ps7_iop_bus_config', 'ps7_gpv', 'psu_ocm_ram_0', 'psv_ocm_ram_0',
                             'psx_ocm_ram', 'ocm_ram', 'psx_ocm_ram_0', 'ocm_ram_0', 'gt_quad_base', 'psv_coresight_apu_cti',
@@ -260,14 +365,14 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psv_pmc_slave_boot_stream', 'psv_pmc_trng', 'psv_psm_global_reg', 'psv_rpu', 'psv_scntr']
 
     versal_gen2_linux_ignore_ip_list = ['mmi_udh_pll', 'mmi_common', 'mmi_pipe_gem_slcr',
-                            'mmi_udh_pll', 'mmi_udh_slcr', 'mmi_usb2phy', 'mmi_usb3phy_crpara', 'mmi_usb3phy_tca', 'mmi_usb_cfg',
+                            'mmi_udh_pll', 'mmi_udh_slcr', 'mmi_usb2phy', 'mmi_usb3phy_crpara', 'mmi_usb3phy_tca',
                             'pmc_rsa', 'pmc_aes', 'pmc_sha2', 'pmc_sha3', "rpu", "apu", "pmc_ppu1_mdm", "pmc_xppu_npi", "pmc_xppu",
                             "pmc_xmpu", "pmc_slave_boot_stream", "pmc_slave_boot", "pmc_ram_npi", "pmc_global", "ocm", "ocm_xmpu",
                             "lpd_xppu", "lpd_systmr_read", "lpd_systmr_ctrl", "lpd_slcr_secure", "lpd_slcr", "lpd_iou_slcr",
                             "lpd_iou_secure_slcr", "lpd_afi", "fpd_systmr_read", "fpd_systmr_ctrl", "fpd_slv_asild_xmpu",
                             "fpd_slv_asilb_xmpu", "fpd_slcr_secure", "fpd_slcr", "fpd_cmn", "fpd_afi", "pmc_efuse_ctrl",
                             "pmc_efuse_cache", "crp", "crf", "crl", "coresight_lpd_atm", "coresight_fpd_stm", "pmc_bbram_ctrl",
-                            "pmc_cfi_cframe", "pmc_cfu_apb", "ipi"]
+                            "pmc_cfi_cframe", "pmc_cfu_apb"]
 
     linux_ignore_ip_list += versal_gen2_linux_ignore_ip_list
 
@@ -288,8 +393,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 val = node.propval('xlnx,ip-name', list)[0]
                 if val in linux_ignore_ip_list:
                     sdt.tree.delete(node)
-                elif 'xlnx,zynqmp-ipi-mailbox' in node.propval('compatible'):
-                    sdt.tree.delete(node)
                 if 'xlnx,is-hierarchy' in node.__props__ and 'tcm' not in node.name:
                     sdt.tree.delete(node)
             elif node.name == "rpu-bus":
@@ -299,9 +402,16 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 if "cpu" in node.propval('device_type', list)[0]:
                     continue
             if node.propval('status') != ['']:
-                if 'disabled' in node.propval('status', list)[0] and linux_dt:
-                    continue
+                if linux_dt and ('disabled' in node.propval('status', list)[0] or "@" not in node.name):
+                    delete_pl_node_in_linux_dt = ["xlnx,afi-fpga", "xlnx,fclk"]
+                    if any(entry in node.propval('compatible', list) for entry in delete_pl_node_in_linux_dt):
+                        sdt.tree.delete(node)
+                    else:
+                        continue
                 elif "tcm" in node.propval('compatible', list)[0]:
+                    continue
+                elif linux_dt and "xlnx,versal-ddrmc" in node.propval('compatible', list):
+                    # ddr controller is not mapped to APU and there is a special handling in SDT to make its status okay.
                     continue
                 else:
                     sdt.tree.delete(node)
@@ -311,7 +421,14 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             if 'xlnx,usp-rf-data-converter-2.6' in node.propval('compatible'):
                 delete_child_nodes = True
             if is_prune_node:
+                if linux_dt and "qdma" in node.label:
+                    mode = node.propval('xlnx,device_port_type')
                 delete_unused_props( node, driver_proplist, delete_child_nodes)
+
+                if linux_dt and "qdma" in node.label:
+                    if mode == ['PCI_Express_Endpoint_device']:
+                        if "okay" in node.propval('status', list)[0]:
+                            node.propval('status', list)[0] = "disabled"
 
     # Remove symbol node referneces
     symbol_node = sdt.tree['/__symbols__']
@@ -339,8 +456,15 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             sdt.tree['/cpus'].delete('address-map')
 
     if zephyr_dt:
-        if "r52" in machine:
-            xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options)
+        if "r52" in machine or "a78" in machine:
+            xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine)
+            if "a78" in machine:
+                new_dst_node = LopperNode()
+                new_dst_node['compatible'] = "arm,psci-1.1"
+                new_dst_node['method'] = "smc"
+                new_dst_node.abs_path = "/psci "
+                new_dst_node.name = "psci "
+                sdt.tree + new_dst_node
         else:
             xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options)
             zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
@@ -350,22 +474,47 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 proplist = schema["amd,mbv32"]["required"]
                 delete_unused_props( match_cpunode, proplist, False)
                 match_cpunode.parent.name = "cpus"
+        zephyr_board_dt = None
+        try:
+            zephyr_board_dt = options['args'][2]
+        except IndexError:
+            pass
+        if zephyr_board_dt and os.path.exists(zephyr_board_dt):
+            try:
+                # Read the overlay file
+                with open(zephyr_board_dt, 'r') as f:
+                    overlay_content = f.read()
+                cleaned_content = process_overlay_with_lopper_api(overlay_content, sdt.tree)
+                with open(os.path.join(sdt.outdir, "board.overlay"), 'w') as f:
+                    f.write(cleaned_content)
+            except Exception as e:
+                print(f"[ERROR] Failed to process overlay file: {e}")
+                import traceback
+                traceback.print_exc()
+
     return True
 
-def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options):
-    
-    root_node = sdt.tree[tgt_node]
+def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
+    root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
+
+    if "amd,versal2" in root_node['compatible'].value:
+        root_node["model"] = "AMD Versal Gen 2"
+        root_node["compatible"] = "xlnx,versal2"
 
     for node in root_sub_nodes:
         if node.depth == 1:
-            if "cpus" not in node.name and "amba" not in node.name and "memory" not in node.name and "chosen" not in node.name and "bus" not in node.name and "axi" not in node.name and "timer" not in node.name and "alias" not in node.name:
+            if "cpus" not in node.name and "amba" not in node.name and "memory" not in node.name and "chosen" not in node.name and "bus" not in node.name and "axi" not in node.name and "timer" not in node.name and "alias" not in node.name and "consumer" not in node.name:
                 sdt.tree.delete(node)
+        elif node.name == "cpu-map" or node.name == "idle-states":
+            sdt.tree.delete(node)
 
         if node.propval("compatible") != ['']:
+            if node.propval("compatible") == ['xlnx,versal-ipi-dest-mailbox']:
+                node.name = f"child@{hex(node.propval('reg')[1])[2:]}"
             if node.propval('xlnx,ip-name') != ['']:
                 val = node.propval('xlnx,ip-name', list)[0]
-                if val == "psx_rcpu_gic" or val == "rcpu_gic":
+                if "r52" in machine and (val == "psx_rcpu_gic" or val == "rcpu_gic"):
                     name  = node.name
                     sdt.tree.delete(node)
                     sdt.tree.delete(node.parent)
@@ -373,6 +522,16 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options):
                     new_dst_node['#interrupt-cells'] = 4
                     new_dst_node.abs_path = "/axi/interrupt-controller@e2000000 "
                     new_dst_node.name = "interrupt-controller@e2000000 "
+                    sdt.tree + new_dst_node
+                    sdt.tree.sync()
+                elif "a78" in machine and (val == "psx_acpu_gic" or val == "acpu_gic"):
+                    name  = node.name
+                    sdt.tree.delete(node)
+                    new_dst_node = node()
+                    new_dst_node['#interrupt-cells'] = 4
+                    new_dst_node.abs_path = "/axi/interrupt-controller@e2000000 "
+                    new_dst_node.name = "interrupt-controller@e2000000"
+                    new_dst_node['compatible'].value = ["arm,gic-v3", "arm,gic"]
                     sdt.tree + new_dst_node
                     sdt.tree.sync()
 
@@ -398,16 +557,20 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options):
     return True
 
 def xlnx_remove_unsupported_nodes(tgt_node, sdt):
-    root_node = sdt.tree[tgt_node]
+    root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
     valid_alias_proplist = []
 
     zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
+    memnode_list = sdt.tree.nodes('/memory@.*')
     if utils.is_file(zephyr_supported_schema_file):
         schema = utils.load_yaml(zephyr_supported_schema_file)
         for node in root_sub_nodes:
             if node.parent:
                 if node.propval("compatible") != ['']:
+                    if any(version in node["compatible"].value for version in ("arm,cortex-r52", "arm,cortex-a78")):
+                        if node.propval('xlnx,timestamp-clk-freq') != ['']:
+                            node["clock-frequency"] = node['xlnx,timestamp-clk-freq'].value
                     if node.propval('xlnx,ip-name') != ['']:
                         val = node.propval('xlnx,ip-name', list)[0]
                         if val == "axi_intc":
@@ -441,6 +604,10 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                     # UARTPSV
                     if any(version in node["compatible"].value for version in ("arm,pl011", "arm,sbsa-uart")):
                         node["compatible"].value = ["arm,sbsa-uart"]
+                        if node.propval('interrupt-names') == ['']:
+                            node["interrupt-names"] = LopperProp("interrupt-names")
+                            node["interrupt-names"].value = node.label
+                            node.add(node["interrupt-names"])
                     # AXI-IIC
                     if "xlnx,axi-iic-2.1" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,xps-iic-2.1"]
@@ -451,6 +618,32 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                         if node.propval('#size-cells') != ['0']:
                             node["#size-cells"] = LopperProp("#size-cells")
                             node["#size-cells"].value = 0
+                    # Mailbox
+                    if any(version in node["compatible"].value for version in ("vnd,mbox-consumer", "xlnx,mbox-versal-ipi-mailbox", "xlnx,mbox-versal-ipi-dest-mailbox")):
+                        continue
+                    if "xlnx,versal-ipi-mailbox" in node["compatible"].value:
+                        node["compatible"].value = ["xlnx,mbox-versal-ipi-mailbox"]
+                    elif "xlnx,versal-ipi-dest-mailbox" in node["compatible"].value:
+                        node["compatible"].value = ["xlnx,mbox-versal-ipi-dest-mailbox"]
+                    # PS-IIC
+                    if "cdns,i2c-r1p14" in node["compatible"].value:
+                        node["compatible"].value = ["cdns,i2c"]
+                        if node.propval('clock-frequency') == ['']:
+                            node["clock-frequency"] = LopperProp("clock-frequency")
+                            node["clock-frequency"].value = 100000
+                            node.add(node["clock-frequency"])
+                        if node.propval('fifo-depth') == ['']:
+                            node["fifo-depth"] = LopperProp("fifo-depth")
+                            node["fifo-depth"].value = 16
+                            node.add(node["fifo-depth"])
+                        if node.propval('#address-cells') != [1]:
+                            node["#address-cells"] = LopperProp("#address-cells")
+                            node["#address-cells"].value = 1
+                            node.add(node["#address-cells"])
+                        if node.propval('#size-cells') != [0]:
+                            node["#size-cells"] = LopperProp("#size-cells")
+                            node["#size-cells"].value = 0
+                            node.add(node["#size-cells"])
                     #AXI-GPIO
                     if "xlnx,xps-gpio-1.00.a" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,xps-gpio-1.00.a"]
@@ -465,26 +658,101 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                                 new_node['#gpio-cells'] = 2
                                 new_node.label_set(node.label)
                                 node.add(new_node)
+                    # SDHC
+                    if any(version in node["compatible"].value for version in ("xlnx,versal-8.9a", "xlnx,versal-net-emmc")):
+                        version = lambda x: x in node["compatible"].value
+                        new_node = LopperNode()
+                        if version("xlnx,versal-net-emmc"):
+                            new_node.name = "mmc"
+                            new_node['compatible'] = "zephyr,mmc-disk"
+                            new_node['bus-width'] = node["xlnx,bus-width"].value
+                        else:
+                            new_node.name = "sdmmc"
+                            new_node['compatible'] = "zephyr,sdmmc-disk"
+                            node['power-delay-ms'] = 10
+                        node.add(new_node)
+                        node["compatible"] = "xlnx,versal-8.9a"
+                    # GPIOPS
+                    if any(version in node["compatible"].value for version in ("xlnx,pmc-gpio-1.0", "xlnx,versal-gpio-1.0")):
+                        version = lambda x: x in node["compatible"].value
+                        platform = sdt.tree['/']['family'].value
+                        if version("xlnx,pmc-gpio-1.0"):
+                            num_banks = [(0,26),(1,26),(3,32),(4,32)]
+                            if platform != ['VersalNet']:
+                                num_banks.extend([(2,26),(5,32)])
+                        else:
+                            num_banks = [(0,26),(3,32)]
+                            if platform != ['VersalNet']:
+                                num_banks.append((4,32))
+                        for bank in num_banks:
+                            new_node = LopperNode()
+                            new_node["compatible"] = "xlnx,ps-gpio-bank"
+                            new_node['reg'] = bank[0]
+                            new_node['#gpio-cells'] = 2
+                            new_prop = LopperProp( "gpio-controller" )
+                            new_node + new_prop
+                            new_node['ngpios'] = bank[1]
+                            new_node.name = f"{node.label}_bank@{bank[0]}"
+                            new_node.label_set(f"{node.label}_bank{bank[0]}")
+                            node.add(new_node)
+                        node['#address-cells'] = 1
+                        node['#size-cells'] = 0
+                        node['compatible'] = "xlnx,ps-gpio"
                     if is_supported_periph:
                         required_prop = is_supported_periph[0]["required"]
                         prop_list = list(node.__props__.keys())
                         valid_alias_proplist.append(node.name)
+                        # Create fixed clock nodes
+                        if 'clocks' in required_prop:
+                            if any(clock_prop := (re.search(r'xlnx,.*-clk-freq-hz$', prop)) for prop in prop_list):
+                                clk_freq = node[clock_prop.group()].value
+                            else:
+                                # If there is no clk-freq property use 0MHZ as default this prevent
+                                # build failure if any of the ip does not have this property.
+                                clk_freq = 0
+                            new_ref_clk = True
+                            # Check clock node with requested clk-freq is already available or not,
+                            # if yes use the existing clk node else create new ref clock node.
+                            for clk_node in sdt.tree.nodes(r'.*ref_clock$'):
+                                if clk_freq == clk_node['clock-frequency'].value:
+                                    if node.props('clocks') != []:
+                                        node.delete('clocks')
+                                    clock_prop = f"clocks = <&{clk_node.name}>"
+                                    node + LopperProp(clock_prop)
+                                    new_ref_clk = False
+                            if new_ref_clk:
+                                new_node = LopperNode()
+                                new_node.abs_path = "/clocks"
+                                new_node.name = node.label + "_ref_clock"
+                                new_node['compatible'] = ["fixed-clock"]
+                                new_node['#clock-cells'] = 0
+                                new_node['clock-frequency'] = clk_freq
+                                new_node.label_set(new_node.name)
+                                sdt.tree.add(new_node)
+                                if node.props('clocks') != []:
+                                    node.delete('clocks')
+                                clock_prop = f"clocks = <&{new_node.name}>"
+                                node + LopperProp(clock_prop)
                         for prop in prop_list:
                             if prop not in required_prop:
                                 node.delete(prop)
                     else:
-                        if node.name != "axi" and node.name != "soc":
+                        if node.name not in ("axi", "soc") and node not in memnode_list:
                             sdt.tree.delete(node)
 
     alias_node = sdt.tree['/aliases']
     alias_prop_list = list(alias_node.__props__.keys())
     for prop in alias_prop_list:
         val = sdt.tree['/aliases'].propval(prop, list)[0]
+        pl_node_ref = None
+        if "amba_pl" in val:
+            pl_node_ref = True
         val = val.rsplit('/', 1)[-1]
-        if val not in valid_alias_proplist:
+        if val not in valid_alias_proplist or pl_node_ref:
             sdt.tree['/aliases'].delete(prop)
 
     max_mem_size = 0
+    sram_node = 0
     for node in root_sub_nodes:
         if node.propval('device_type') != ['']:
             val = node.propval('device_type', list)[0]
@@ -498,10 +766,13 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                 var = sdt.tree[node].propval('stdout-path', list)[0]
                 dev_node = var.split(':')[0]
 
-                sdt.tree[node]['zephyr,console'] = dev_node
-                sdt.tree[node]['zephyr,shell-uart'] = dev_node
-    
-    sdt.tree['/chosen']['zephyr,sram'] = sram_node
+                if sdt.tree['/chosen'].propval('zephyr,console') == ['']:
+                   sdt.tree[node]['zephyr,console'] = dev_node
+                   sdt.tree[node]['zephyr,shell-uart'] = dev_node
+
+    if sdt.tree['/chosen'].propval('zephyr,sram') == ['']:
+        sdt.tree['/chosen'] + LopperProp(name="zephyr,sram", value = sram_node)
+
     return True
 
 def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
@@ -509,6 +780,52 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     root_sub_nodes = root_node.subnodes()
     symbol_node = sdt.tree['/__symbols__']
     valid_alias_proplist = []
+
+    """
+    DRC Checks
+    1) Interrupt controller is present or not
+	If not:
+		error: Zephyr required at least one interrupt controller IP to be present in the design
+	if present and fast interrupt is enabled
+		error: Fast interrupt is not supported please disable fast interrupt configuration from the design
+    2) Check if timer is present or not
+	if not:
+		error: Zephyr expects at least one timer IP to be present for tick funcationailty
+	if present and interrupt not connected
+		error: For timer IP interrupt is not connected please connect the same.
+    """
+    is_axi_intc_present = None
+    is_axi_timer_present = None
+    for node in root_sub_nodes:
+        if node.propval('xlnx,ip-name') != ['']:
+            val = node.propval('xlnx,ip-name', list)[0]
+            if val == "axi_intc":
+                is_axi_intc_present = node
+            elif val == "axi_timer":
+                is_axi_timer_present = node
+
+    err_no_intc = "\nERROR: Zephyr OS requires the presence of at least one interrupt controller. Please ensure that the axi_intc is included in the design, with fast interrupts disabled.\r"
+    err_no_timer = "\nERROR: Zephyr OS requires at least one timer controller with interrupts enabled for its scheduler. Please include the axi_timer in your hardware design and ensure its interrupts are properly connected.\r"
+    warn_intc_has_fast = "\nWARNING: Zephyr does not support fast interrupts; they will be handled as standard interrupts. Therefore, enabling FAST interrupts in the AXI INTC core will not improve interrupt latency. Additionally, fast interrupts are not supported in QEMU.\r"
+    err_timer_nointr = "\nERROR: Zephyr OS requires at least one timer with interrupts enabled to manage its scheduler effectively. Please ensure that the interrupt pins for the timer are correctly connected in your hardware design and rebuild with the updated configuration.\r"
+    if not is_axi_intc_present and not is_axi_timer_present:
+        print(err_no_intc)
+        print(err_no_timer)
+        sys.exit(1)
+    elif not is_axi_intc_present:
+        print(err_no_intc)
+        sys.exit(1)
+    elif is_axi_intc_present:
+        if is_axi_intc_present.propval('xlnx,has-fast') != ['']:
+            val = is_axi_intc_present.propval('xlnx,has-fast', list)[0]
+            if val != 0 or val != 0x0:
+                print(warn_intc_has_fast)
+    if not is_axi_timer_present:
+        print(err_no_timer)
+        sys.exit(1)
+    elif is_axi_timer_present and is_axi_timer_present.propval('interrupts') == ['']:
+        print(err_timer_nointr)
+        sys.exit(1)
 
     license_content = '''#
 # Copyright (c) 2024 Advanced Micro Devices, Inc.
@@ -619,6 +936,13 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                                     new_node['#gpio-cells'] = 2
                                     new_node.label_set(node.label)
                                     node.add(new_node)
+                        #AXI-SPI
+                        if any(version in node["compatible"].value for version in ("xlnx,xps-spi-2.00.a", "xlnx,axi-quad-spi-3.2")):
+                            if node.propval('#address-cells') != ['1']:
+                                node['#address-cells'] = 1
+                            if node.propval('#size-cells') != ['0']:
+                                node['#size-cells'] = 0
+                            node["compatible"] = "xlnx,xps-spi-2.00.a"
                         if is_supported_periph:
                             required_prop = is_supported_periph[0]["required"]
                             prop_list = list(node.__props__.keys())
@@ -660,9 +984,10 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
         if node.name == "chosen":
                 var = sdt.tree[node].propval('stdout-path', list)[0]
                 dev_node = var.split(':')[0]
-                
-                sdt.tree[node]['zephyr,console'] = dev_node
-                sdt.tree[node]['zephyr,shell-uart'] = dev_node
+
+                if sdt.tree['/chosen'].propval('zephyr,console') == ['']:
+                    sdt.tree[node]['zephyr,console'] = dev_node
+                    sdt.tree[node]['zephyr,shell-uart'] = dev_node
  
         if node.name == "amba_pl":
                 sdt.tree.delete(node)
@@ -762,7 +1087,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                     defconfig_kconfig.write("  default $(dt_node_int_prop_int,/cpus/cpu@0,clock-frequency)")
 
                     val = node.propval('xlnx,pmp-entries', list)[0]
-                    if val % 8 == 0:
+                    if val % 8 == 0 and val != 0:
                         soc_kconfig = open(soc_kconfig_file, 'a')
                         soc_kconfig.write("  select RISCV_PMP\n")
                         soc_kconfig.close()
@@ -785,7 +1110,8 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     defconfig_kconfig.write("\nendif\n")
     defconfig_kconfig.close()
 
-    sdt.tree['/chosen']['zephyr,sram'] = sram_node
+    if sdt.tree['/chosen'].propval('zephyr,sram') == ['']:
+        sdt.tree['/chosen'] + LopperProp(name="zephyr,sram", value = sram_node)
 
     # Update memory nodes
     # For DDR keep only device_type and remove compatible

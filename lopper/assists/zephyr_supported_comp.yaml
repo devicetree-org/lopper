@@ -16,6 +16,7 @@ xlnx,xps-intc-1.00.a:
     - interrupts-extended
     - xlnx,kind-of-intr
     - xlnx,num-intr-inputs
+    - xlnx,is-fast
 
 xlnx,xps-timer-1.00.a:
   required:
@@ -80,6 +81,7 @@ arm,pl011:
     - status
     - interrupts
     - interrupt-parent
+    - interrupt-names
 
 arm,sbsa-uart:
   required:
@@ -87,6 +89,7 @@ arm,sbsa-uart:
     - reg
     - interrupts
     - interrupt-parent
+    - interrupt-names
 
 xlnx,xps-iic-2.00.a:
   required:
@@ -103,6 +106,19 @@ xlnx,axi-iic-2.1:
     - reg
     - interrupts
     - interrupt-parent
+    - '#address-cells'
+    - '#size-cells'
+
+cdns,i2c-r1p14:
+  required:
+    - compatible
+    - status
+    - reg
+    - interrupts
+    - interrupt-parent
+    - clocks
+    - clock-frequency
+    - fifo-depth
     - '#address-cells'
     - '#size-cells'
 
@@ -150,8 +166,17 @@ cpus,cluster:
 arm,cortex-r52:
   required:
     - compatible
+    - device_type
+    - reg
+    - clock-frequency
+
+arm,cortex-a78:
+  required:
+    - compatible
     - device_type 
     - reg
+    - clock-frequency
+    - enable-method
 
 arm,armv8-timer:
   required:
@@ -180,5 +205,73 @@ xlnx,versal-wwdt:
   required:
     - compatible
     - reg
-    - timeout-sec
     - clocks
+
+fixed-clock:
+  required:
+    - compatible
+    - '#clock-cells'
+    - clock-frequency
+
+xlnx,versal-8.9a:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - power-delay-ms
+    - clocks
+
+xlnx,versal-net-emmc:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - clocks
+
+xlnx,versal-gpio-1.0:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - '#address-cells'
+    - '#size-cells'
+
+xlnx,pmc-gpio-1.0:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - '#address-cells'
+    - '#size-cells'
+
+xlnx,xps-spi-2.00.a:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - xlnx,num-ss-bits
+    - xlnx,num-transfer-bits
+    - fifo-size
+    - xlnx,startup-block
+    - interrupt-parent
+    - '#address-cells'
+    - '#size-cells'
+
+xlnx,versal-ipi-mailbox:
+  required:
+    - compatible
+    - reg
+    - reg-names
+    - interrupts
+    - interrupt-parent
+    - xlnx,ipi-id
+    - '#address-cells'
+    - '#size-cells'
+
+xlnx,versal-ipi-dest-mailbox:
+  required:
+    - compatible
+    - reg
+    - reg-names
+    - xlnx,ipi-id
+    - '#mbox-cells'

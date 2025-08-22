@@ -170,6 +170,7 @@
                            compatible = "system-device-tree-v1,lop,code-v1";
                            code = "
                                import yaml
+                               import os
                                for n in tree.__selected__:
                                    proplist= ['xlnx,use-barrel', 'xlnx,endianness', 'xlnx,data-size', 'xlnx,use-pcmp-instr', 'xlnx,use-reorder-instr', 'xlnx,area-optimized', 'xlnx,use-hw-mul', 'xlnx,use-div', 'xlnx,use-fpu', 'model']
 
@@ -207,7 +208,7 @@
                                    cflags_data['cflags'] = cflags
                                    cflags_data['libpath'] = libdir
 
-                                   with open('cflags.yaml', 'w') as fd:
+                                   with open(os.path.join(outdir, 'cflags.yaml'), 'w') as fd:
                                          fd.write(yaml.dump(cflags_data, indent = 4))
                                ";
                       };

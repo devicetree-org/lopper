@@ -83,6 +83,7 @@ required:
   - clocks
   - clock-names
   - xlnx,include-edh
+  - xlnx,dyn-bpc
   - xlnx,line-rate
   - xlnx,include-hfr
   - xlnx,video-format

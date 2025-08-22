@@ -1182,7 +1182,7 @@ ocp:
 
 
 def setup_fdt( device_tree, outdir ):
-    dt = Lopper.dt_compile( device_tree, "", "", True, outdir )
+    dt, _ = Lopper.dt_compile( device_tree, "", "", True, outdir )
 
     if libfdt:
         fdt = Lopper.dt_to_fdt( device_tree + ".dtb" )
@@ -1242,7 +1242,7 @@ def tree_sanity_test( fdt, verbose=0 ):
             if re.search( r"node:", line ):
                 node_count += 1
 
-    if node_count != 21:
+    if node_count != 22:
         test_failed( f"node count (1) is incorrect. Got {node_count}, expected {21}" )
     else:
         test_passed( "end: node walk passed\n" )
@@ -1378,7 +1378,7 @@ def tree_sanity_test( fdt, verbose=0 ):
 
     fpw.close()
     c = test_pattern_count( fpp.name, ".*node:" )
-    if c == 21:
+    if c == 22:
         test_passed( "full walk, after restricted walk" )
     else:
         test_failed( "full walk, after restricted walk (wrong number of nodes)" )
@@ -1416,7 +1416,7 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( f"       starting node test: node: {p}" )
         count += 1
 
-    if count == 15:
+    if count == 16:
         test_passed( "start -> end walk" )
     else:
         test_failed( f"start -> end walk ({count} vs {15})")
@@ -1460,7 +1460,7 @@ def tree_sanity_test( fdt, verbose=0 ):
             print( f"    node: {k.abs_path}" )
         subnodecount += 1
 
-    if subnodecount == 21:
+    if subnodecount == 22:
         test_passed( "full tree subnode" )
     else:
         test_failed( f"full tree subnode ({subnodecount} vs {21})")
@@ -2301,12 +2301,12 @@ def lops_sanity_test( device_tree, lop_file, verbose ):
 
     device_tree.cleanup()
 
-def assists_sanity_test( device_tree, lop_file, verbose, options = "" ):
+def assists_sanity_test( device_tree, lop_file, verbose, options = "", input_files=[] ):
     if "lop_test" in options:
         device_tree.setup( device_tree.dts, [lop_file], "", True, libfdt = libfdt )
         device_tree.assists_setup( [ "lopper/assists/domain_access.py" ] )
     else:
-        device_tree.setup( device_tree.dts, [], "", True, libfdt = libfdt )
+        device_tree.setup( device_tree.dts, input_files, "", True, libfdt = libfdt )
 
         device_tree.load_paths.append( "lopper/selftest/" )
         # this loads the external aassist
@@ -2592,6 +2592,8 @@ if __name__ == "__main__":
 
     main()
 
+    os.environ.pop('LOPPER_DTC_FLAGS', None)
+
     if libfdt:
         import lopper.fdt
         lopper.lopper_type(lopper.fdt.LopperFDT)
@@ -2678,6 +2680,33 @@ if __name__ == "__main__":
         ## todo: can probably just overwrite the sdt.dts file name, and re-init ?
         device_tree.dts = "./lopper/selftest/system-top.dts"
         assists_sanity_test( device_tree, None, verbose, "overlay_test" )
+
+        # autorun is NOT on here, so the property won't be deleted
+        device_tree.dts = "./lopper/selftest/system-top-embedded-lop.dts"
+        assists_sanity_test( device_tree, None, verbose, "phandle_meta_test_1" )
+
+        # must setup auto run for this, and the property will be deleted
+        device_tree.autorun = True
+        device_tree.dts = "./lopper/selftest/system-top-embedded-lop.dts"
+        assists_sanity_test( device_tree, None, verbose, "phandle_meta_test_2" )
+
+        # multi-yaml + parent + glob testing
+        device_tree.autorun = True
+        device_tree.dts = "./lopper/selftest/system-top.dts"
+        input_files = [ "./lopper/selftest/domains/domains-parent.yaml",
+                        "./lopper/selftest/domains/domains-child-serial-glob.yaml" ]
+        auto_assists = device_tree.find_any_matching_assists( input_files )
+        input_files.extend( auto_assists )
+        assists_sanity_test( device_tree, None, verbose, "domains_glob_test_child-serial", input_files )
+
+        # multi-yaml + parent + glob testing: type 2
+        device_tree.autorun = True
+        device_tree.dts = "./lopper/selftest/system-top.dts"
+        input_files = [ "./lopper/selftest/domains/domains-parent.yaml",
+                        "./lopper/selftest/domains/domains-child-all-glob.yaml" ]
+        auto_assists = device_tree.find_any_matching_assists( input_files )
+        input_files.extend( auto_assists )
+        assists_sanity_test( device_tree, None, verbose, "domains_glob_test_child-all", input_files )
 
     if format:
         dt = setup_format_tree( outdir )

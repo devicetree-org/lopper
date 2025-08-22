@@ -221,7 +221,9 @@ def get_power_domain_perm_mask_txt(pwr_domain, sdtinfo_obj):
                 continue
             macro_list.append(get_ipi_mask_txt(master, sdtinfo_obj))
     if (pwr_domain == "NODE_FPD" or pwr_domain == "NODE_APU") and (len(macro_list) == 0):
-        macro_list.append("psu_cortexa53_0")
+        hardcode_mask = get_ipi_mask_txt("psu_cortexr5_0", sdtinfo_obj)
+        if hardcode_mask != "":
+            macro_list.append(hardcode_mask)
     if len(macro_list) > 0:
         return " | ".join(macro_list)
     else:
@@ -550,6 +552,9 @@ def generate_gpo_section_data(sdtinfo_obj):
     out_lines = []
     out_lines.append("\tPM_CONFIG_GPO_SECTION_ID,\t\t/* GPO Section ID */\n")
     for num in chc.gpo_nums:
+        # Validate rows before querying
+        if "gpo" + str(num) not in sdtinfo_obj.gpos:
+            continue
         if 1 == sdtinfo_obj.gpos["gpo" + str(num)]["polarity"]:
             out_lines.append("\tPM_CONFIG_GPO1_BIT_" + str(num) + "_MASK |\n")
         if 1 == sdtinfo_obj.gpos["gpo" + str(num)]["enable"]:

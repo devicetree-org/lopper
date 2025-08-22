@@ -29,15 +29,52 @@ class VerboseSafeDumper(yaml.SafeDumper):
     def ignore_aliases(self, data):
         return True
 
-def get_yaml_data(comp_name, comp_dir):
+def get_yaml_data(comp_name, comp_dir,proc_ip_name=None,family=None,variant=None):
     yaml_file = os.path.join(comp_dir, 'data', f'{comp_name}.yaml')
     schema = utils.load_yaml(yaml_file)
     supported_proc_list = schema.get('supported_processors',[])
     supported_os_list = schema.get('supported_os',[])
     description = schema.get('description',"")
     dep_lib_list = list(schema.get('depends_libs',{}).keys())
-
-    return supported_proc_list, supported_os_list, description, dep_lib_list
+    examples = schema.get('examples', {})
+    example_dict = {}
+    if examples and proc_ip_name:
+        if examples.get("condition"):
+            local_scope={
+                "proc":proc_ip_name,
+                "platform":family,
+                "variant":variant,
+                "examples":[]
+            }
+            try:
+                exec(examples["condition"], {}, local_scope)
+                examples = {key: value for key, value in examples.items() if key in local_scope["examples"]}
+            except Exception as e:
+                _warning(f"The condition in the {yaml_file} file has failed. -> {e}")
+        examples.pop("condition",None)
+        for ex,deps in examples.items():
+            if deps:
+                # Read the supported_platforms check if any
+                dep_plat_list = [dep for dep in deps if "supported_platforms" in dep]
+                dep_file_list = [dep for dep in deps if "dependency_files" in dep]
+                if dep_plat_list:
+                    plat_list = dep_plat_list[0]['supported_platforms']
+                    family_variant = []
+                    if family:
+                        family_variant.append(family)
+                    if variant:
+                        family_variant.extend(variant)
+                    result = any(item in plat_list for item in family_variant)
+                    if result:
+                        if dep_file_list:
+                            example_dict.update({ex:dep_file_list[0]['dependency_files']})
+                        else:
+                            example_dict.update({ex:[]})
+                elif dep_file_list:
+                    example_dict.update({ex:dep_file_list[0]['dependency_files']})
+            else:
+                example_dict.update({ex:[]})
+    return supported_proc_list, supported_os_list, description, dep_lib_list, example_dict
 
 def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
@@ -46,7 +83,9 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
 
     matched_node = get_cpu_node(sdt, options)
     proc_ip_name = matched_node['xlnx,ip-name'].value[0]
-
+    family = sdt.tree['/'].propval('family')
+    family = family[0] if family else ""
+    variant = sdt.tree['/'].propval('variant')
     supported_app_dict = {proc_name: {'standalone': {}, 'freertos': {}}}
     supported_libs_dict = {proc_name: {'standalone': {}, 'freertos': {}}}
 
@@ -84,9 +123,9 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
 
     for app_name in list(apps_dict.keys()):
         try:
-            supported_proc_list, supported_os_list, description, dep_lib_list = get_yaml_data(app_name, apps_dict[app_name]['vless'])
+            supported_proc_list, supported_os_list, description, dep_lib_list, _ = get_yaml_data(app_name, apps_dict[app_name]['vless'])
         except KeyError:
-            supported_proc_list, supported_os_list, description, dep_lib_list = get_yaml_data(app_name, apps_dict[app_name]['path'][0])
+            supported_proc_list, supported_os_list, description, dep_lib_list, _ = get_yaml_data(app_name, apps_dict[app_name]['path'][0])
         if proc_ip_name in supported_proc_list:
             app_dict = {app_name : {'description': description, 'depends_libs': dep_lib_list}}
             if 'standalone' in supported_os_list:
@@ -105,12 +144,12 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
             lib_dir = cur_lib_dict[version_list[0]]
             sorted_lib_dict = {version: cur_lib_dict[version] for version in version_list}
 
-        supported_proc_list, supported_os_list, description, dep_lib_list = get_yaml_data(lib_name, lib_dir)
+        supported_proc_list, supported_os_list, description, dep_lib_list, examples = get_yaml_data(lib_name, lib_dir,proc_ip_name,family,variant)
         if proc_ip_name in supported_proc_list:
             if 'path' in version_list:
-                lib_dict = {lib_name : {'description': description, 'depends_libs': dep_lib_list, 'path': sorted_lib_dict['path']}}
+                lib_dict = {lib_name : {'description': description, 'depends_libs': dep_lib_list, 'path': sorted_lib_dict['path'],'examples':examples}}
             else:
-                lib_dict = {lib_name : {'description': description, 'depends_libs': dep_lib_list, 'versions': sorted_lib_dict}}
+                lib_dict = {lib_name : {'description': description, 'depends_libs': dep_lib_list, 'versions': sorted_lib_dict,'examples':examples}}
             if 'standalone' in supported_os_list:
                 supported_libs_dict[proc_name]['standalone'].update(lib_dict)
             if "freertos10_xilinx" in supported_os_list:

@@ -3,6 +3,11 @@
 xlnx_overlay_dt.py is a Lopper assist script that generates an overlay device tree source
 file from a system device tree. It enables dynamic reconfiguration of FPGAs using overlays.
 
+Note: xlnx_overlay_pl_dt.py is an enhanced Lopper assist that addressesa the limitations
+of the older xlnx_overlay_dt.py implementation. For improved correctness, robustness,
+and compatibility with SDT-generated pl.dtsi structures, it is recommended to use
+xlnx_overlay_pl_dt.py instead of xlnx_overlay_dt.py.
+
 ## Usage
 lopper.py <system_device_tree> -- xlnx_overlay_dt <machine_name> <configuration>
 
@@ -38,3 +43,70 @@ lopper.py system.dts -- xlnx_overlay_dt cortexa72-versal dfx
 
 ### 3. Use external FPGA configuration on Zynq-7000:
 lopper.py system.dts -- xlnx_overlay_dt cortexa9-zynq external-fpga-config
+
+################################################################################################
+
+# xlnx_overlay_pl_dt.py - Device Tree Overlay Assist
+
+xlnx_overlay_pl_dt.py is a Lopper assist script designed to generate an overlay device tree source
+file (pl.dtsi) from a SDT-generated pl.dtsi. It facilitates dynamic FPGA reconfiguration using
+device tree overlays.
+
+## Usage
+lopper -O <output_dir> -f --enhanced <system-top.dts> <lopper-gen DT> -- xlnx_overlay_pl_dt <machine> <config> <PL DTSI>
+
+## Arguments
+|-----------------------------------------------------------------------------------|
+| Argument               | Description                                              |
+|-----------------------------------------------------------------------------------|
+| <output_dir>           | Output directory for the generated pl.dtsi overlay file  |
+|-----------------------------------------------------------------------------------|
+| <system-top.dts>       | Full system-level device tree                            |
+|-----------------------------------------------------------------------------------|
+| <lopper-gen DT>        | Lopper-generated DTS (excluding the PL node)             |
+|-----------------------------------------------------------------------------------|
+| <machine>              | (Optional)Target machine type.                           |
+|                        | Supported values:                                        |
+|                        |      For Zynq-7000 SoC:                                  |
+|                        |              - cortexa9-zynq | cortexa9_0 | cortexa9     |
+|                        |      For Zynq UltraScale+ MPSoC:                         |
+|                        |              - cortexa53-zynqmp | cortexa53_0 | cortexa53|
+|                        |      For Versal Adaptive SoC:                            |
+|                        |              - cortexa72-versal | cortexa72_0 | cortexa72|
+|                        |      For Next-gen Versal architecture:                   |
+|                        |              - psx_cortexa78_0 | cortexa78_0 | cortexa78 |
+|                        |If omitted, platform is automatically inferred from the   |
+|                        |system device tree.                                       |
+|-----------------------------------------------------------------------------------|
+| <config>               | FPGA configuration mode.                                 |
+|                        | Supported values:                                        |
+|                        | - full:      Complete PL configuration.                  |
+|                        | - segmented: Segmented PL configuration.                 |
+|                        | - dfx:       Dynamic Function eXchange (DFX) mode for    |
+|                        |              partial reconfiguration.                    |
+|                        |                                                          |
+|                        | - external-fpga-config: Configuration using an external  |
+|                        |                         FPGA manager.                    |
+|-----------------------------------------------------------------------------------|
+| <PL DTSI>              | SDT-generated pl.dtsi file                               |
+|-----------------------------------------------------------------------------------|
+|--firmware-name         | optional:                                                |
+|                        |         Overrides the firmware-name property in the      |
+|                        |         generated overlay.                               |
+|-----------------------------------------------------------------------------------|
+
+##Example:
+
+#With machine specified:
+lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi
+
+#Without machine (auto-infer platform):
+lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts -- xlnx_overlay_pl_dt <config> <path_to_pl_dtsi>/pl.dtsi
+
+#With custom firmware name:
+The --firmware-name argument is optional and allows you to override the default firmware-name property in the generated pl.dtsi.
+This is especially useful when:
+-->The bitstream is managed or named externally.
+-->You want to embed a custom bitstream name in the overlay.
+Usage Example:
+lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi --firmware-name=<my_custom.bit>

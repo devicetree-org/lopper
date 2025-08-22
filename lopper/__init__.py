@@ -19,6 +19,7 @@ import tempfile
 from collections import OrderedDict
 
 from lopper.fmt import LopperFmt
+from lopper.fdt import LopperFDT
 
 from lopper.tree import LopperNode, LopperTree, LopperTreePrinter, LopperProp
 import lopper.tree
@@ -33,6 +34,10 @@ try:
 except Exception as e:
     print( f"[WARNING]: cant load yaml, disabling support: {e}" )
     yaml_support = False
+
+# Default processing type
+Lopper = LopperFDT
+lopper.tree.Lopper = Lopper
 
 @contextlib.contextmanager
 def stdoutIO(stdout=None):
@@ -94,6 +99,7 @@ class LopperSDT:
         self.tree = None
         self.subtrees = {}
         self.outdir = "./"
+        self.tmpdir = tempfile.mkdtemp()
         self.target_domain = ""
         self.load_paths = []
         self.permissive = False
@@ -102,6 +108,8 @@ class LopperSDT:
         self.symbols = False
         self.warnings = []
         self.werror = False
+        self.tmpfiles = []
+        self.schema = None
 
     def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True, config=None):
         """executes setup and initialization tasks for a system device tree
@@ -123,25 +131,84 @@ class LopperSDT:
         if libfdt:
             lopper.log._info( f"loading dtb and using libfdt to manipulate tree" )
 
-        # check for required support applications
-        if libfdt:
-            support_bins = [ os.environ.get("LOPPER_DTC", "dtc"), os.environ.get("LOPPER_CPP", "cpp") ]
-        else:
-            support_bins = [ os.environ.get("LOPPER_CPP", "cpp") ]
+        if sdt_file:
+            # check for required support applications
+            if libfdt:
+                support_bins = [ os.environ.get("LOPPER_DTC", "dtc") ]
+            else:
+                support_bins = []
 
-        for s in support_bins:
-            lopper.log._info( f"checking for support binary: {s}" )
-            if not shutil.which(s):
-                lopper.log._error( f"support application '{s}' not found, exiting" )
-                sys.exit(2)
+            # cpp or pcpp is required for both libfdt and non-libfdt modes
+            preprocessor = (os.environ.get('LOPPER_CPP') or
+                                           shutil.which("cpp") or
+                                           shutil.which("pcpp") or
+                                           shutil.which("pcpp-python") or "").split()
+            support_bins.extend( preprocessor )
+            for s in support_bins:
+                lopper.log._info( f"checking for support binary: {s}" )
+                if not shutil.which(s):
+                    lopper.log._error( f"support application '{s}' not found, exiting" )
+                    sys.exit(2)
 
         self.use_libfdt = libfdt
 
         current_dir = os.getcwd()
 
+        # is the tmpdir valid ?
+        tmpdir_path =  Path( self.tmpdir )
+        if tmpdir_path.is_dir():
+            # do nothing, the tempdir is still present
+            pass
+        else:
+            # atexit() has run, so we need to create it again ..
+            self.tmpdir = tempfile.mkdtemp()
+
         self.lops = []
         self.input_files = []
         self.assists = []
+
+        # a) Ensure each file appears only once
+        unique_files = list(set(input_files))
+        if len(unique_files) < len(input_files):
+            lopper.log._debug( "some files were duplicated in the input list." )
+            input_files = unique_files
+
+        # Set of basenames for lookup
+        basenames = {os.path.basename(f) for f in unique_files}
+
+        incompatible_pairs = set()
+        for file in unique_files:
+            try:
+                ifile_searched = self.input_find( file )
+                if not ifile_searched:
+                    raise FileNotFoundError
+
+                with open(ifile_searched) as fptr:
+                    for line in fptr:
+                        lstripped = line.strip()
+                        if lstripped.startswith('incompatible ='):
+                            # Get everything after '='
+                            rhs = lstripped.split('=', 1)[1].strip()
+                            other_names = [name.strip().strip('"') for name in rhs.split(',')]
+                            for other_name in other_names:
+                                if other_name in basenames:
+                                    incompatible_pairs.add((os.path.basename(file), other_name))
+                            break  # Only one incompatible property per file
+            except FileNotFoundError:
+                sys.exit(1)
+            except Exception as e:
+                lopper.log._error(f"occurred while processing the file '{file}': {e}")
+
+        # Convert the set of incompatible pairs to a list
+        incompatible_list = list(incompatible_pairs)
+
+        if incompatible_list:
+            lopper.log._error("Incompatible files found. One must be removed from processing:")
+            for file1, file2 in incompatible_list:
+                lopper.log._error(f"- {file1} is incompatible with {file2}")
+            sys.exit(1)
+        else:
+            lopper.log._debug("No incompatible files found")
 
         lop_files = []
         sdt_files = []
@@ -154,7 +221,8 @@ class LopperSDT:
             else:
                 ifile = ifile_searched
 
-            if re.search( r".dts$", ifile ) or re.search( r".dtsi$", ifile ):
+            if re.search( r".dts$", ifile ) or re.search( r".dtsi$", ifile ) or \
+               re.search( f".lop$", ifile ):
                 # an input file is either a lopper operation file, or part of the
                 # system device tree. We can check for compatibility to decide which
                 # it is.
@@ -188,6 +256,7 @@ class LopperSDT:
                                 if re.search( r"compatible: .*subsystem", line ) or \
                                    re.search( r",domain-v1", line ):
                                     sdt_files.append( ifile )
+                                    found = True
 
                     # it didn't have a dts identifier in the input json or yaml file
                     # so it a supporting input. We need to store it as such.
@@ -202,7 +271,7 @@ class LopperSDT:
 
         # is the sdt a dts ?
         sdt_extended_trees = []
-        if re.search( r".dts$", self.dts ):
+        if self.dts and re.search( r".dts$", self.dts ):
             # do we have any extra sdt files to concatenate first ?
             fp = ""
             fpp = tempfile.NamedTemporaryFile( delete=False )
@@ -219,9 +288,12 @@ class LopperSDT:
                                 shutil.copyfileobj(fd, wfd)
 
                         elif re.search( r".yaml$", f ):
+                            # Note: if tree merging isn't sufficient for these, we could use
+                            #       deepmerge functionality directly on mutltiple yaml files
                             # look for a special front end, for this or any file for that matter
                             yaml = LopperYAML( f, config=config )
                             yaml_tree = yaml.to_tree()
+                            yaml_tree._type = "yaml"
 
                             # save the tree for future processing (and joining with the main
                             # system device tree). No code after this needs to be concerned that
@@ -231,6 +303,7 @@ class LopperSDT:
                             # look for a special front end, for this or any file for that matter
                             json = LopperJSON( json=f, config=config )
                             json_tree = json.to_tree()
+                            json_tree._type = "json"
 
                             # save the tree for future processing (and joining with the main
                             # system device tree). No code after this needs to be concerned that
@@ -251,9 +324,78 @@ class LopperSDT:
             # we need the original location of the main SDT file on the search path
             # in case there are dtsi files, etc.
             include_paths += " " + str(sdt_file.parent) + " "
-            self.dtb = Lopper.dt_compile( fp, input_files, include_paths, force, self.outdir,
-                                          self.save_temps, self.verbose, self.enhanced, self.permissive,
-                                          self.symbols )
+
+            # Note: we use the tmpdir vs the outdir here, since these are files that don't
+            #       need to be kept. The outdir will be used for the main writing of a transformed
+            #       SDT.
+            self.dtb, schema = Lopper.dt_compile( fp, input_files, include_paths, force, self.tmpdir,
+                                                  self.save_temps, self.verbose, self.enhanced, self.permissive,
+                                                  self.symbols )
+
+            # Determine if we're in a learning mode
+            is_learning = (self.schema == "learn" or
+                           (isinstance(self.schema, tuple) and self.schema[0] == "learn_dump"))
+
+            if is_learning:
+                # Store the output path if we need to dump
+                output_path = None
+                if isinstance(self.schema, tuple):
+                    _, output_path = self.schema
+
+                # Common learning setup
+                self.schema = schema
+                lopper.schema.initialize_lopper_properties( self.schema )
+                lopper.schema._schema_manager.update_schema( self.schema )
+                lopper.log._info( f"schema learning complete")
+                lopper.log._debug( f"schema: {self.schema}")
+
+                # Dump if requested
+                if output_path:
+                    try:
+                        import yaml
+
+                        # Custom representer for multi-line strings
+                        def str_presenter(dumper, data):
+                            if len(data.splitlines()) > 1:  # Multi-line string
+                                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+                            return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
+                        yaml.add_representer(str, str_presenter)
+
+                        # Better formatting for None values
+                        def none_representer(dumper, data):
+                            return dumper.represent_scalar('tag:yaml.org,2002:null', '')
+
+                        yaml.add_representer(type(None), none_representer)
+
+                        if output_path == "-":
+                            # Write to stdout
+                            yaml.dump(self.schema, sys.stdout,
+                                     default_flow_style=False,
+                                     sort_keys=False,
+                                     width=120)
+                            lopper.log._info(f"Schema written to stdout")
+                        else:
+                            # Write to file
+                            with open(output_path, 'w') as f:
+                                yaml.dump(self.schema, f,
+                                         default_flow_style=False,
+                                         sort_keys=False,
+                                         width=120)
+                            lopper.log._info(f"Schema written to {output_path}")
+
+                    except Exception as e:
+                        lopper.log._error(f"Failed to write schema: {e}")
+                        sys.exit(1)
+
+            elif self.schema == None:
+                # do nothing. We may eventually do some very minimal hints
+                # in this scenario
+                pass
+            else:
+                # this is a schema file, we don't currently have support for
+                # this, so output a warning
+                lopper.log._warning( f"schema file {self.schema}, but external schemas are not supported yet" )
 
             if self.use_libfdt:
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
@@ -264,12 +406,13 @@ class LopperSDT:
                 self.FDT = self.dtb
                 self.dtb = ""
 
-            dct = Lopper.export( self.FDT )
+            dct = Lopper.export( self.FDT, schema = self.schema )
 
             self.tree = LopperTree()
             self.tree.warnings = self.warnings
             self.tree.werror = self.werror
             self.tree.strict = not self.permissive
+            self.tree.schema = self.schema
             self.tree.load( dct )
 
             self.tree.__dbg__ = self.verbose
@@ -281,7 +424,7 @@ class LopperSDT:
 
             # join any extended trees to the one we just created
             for t in sdt_extended_trees:
-                for node in t:
+                for node in t['/'].children():
                     if node.abs_path != "/":
                         # old: deep copy the node
                         # new_node = node()
@@ -293,12 +436,20 @@ class LopperSDT:
                         except:
                             pass
 
+                        # we always merge yaml, but this could become
+                        # configurable in the future
+                        if t._type == "yaml":
+                            merge = True
+
                         self.tree = self.tree.add( node, merge=merge )
 
             fpp.close()
-        elif re.search( r".yaml$", self.dts ):
+            self.tmpfiles.append( fpp.name )
+
+
+        elif self.dts and re.search( r".yaml$", self.dts ):
             if not yaml_support:
-                lopper.log._error( f"no yaml support detected, but system device tree is yaml" )
+                lopper.log._error( f"no yaml support detected, but input is yaml" )
                 sys.exit(1)
 
             fp = ""
@@ -306,11 +457,17 @@ class LopperSDT:
             if sdt_files:
                 sdt_files.insert( 0, self.dts )
 
-                # this block concatenates all the files into a single yaml file to process
-                with open( fpp.name, 'wb') as wfd:
-                    for f in sdt_files:
-                        with open(f,'rb') as fd:
-                            shutil.copyfileobj(fd, wfd)
+                lopper.log._debug( f"merging yaml: {sdt_files}" )
+
+                merged_data = {}
+                for file_path in sdt_files:
+                    # Load the current YAML file
+                    current_data = LopperYAML.yaml_to_data(file_path)
+
+                    # Merge the current data with the accumulated merged_data
+                    merged_data = LopperYAML.deep_merge(merged_data, current_data)
+
+                LopperYAML.data_to_yaml( merged_data, fpp.name )
 
                 fp = fpp.name
             else:
@@ -326,7 +483,13 @@ class LopperSDT:
             else:
                 self.FDT = None
             self.tree = lt
-        elif re.search( r".json$", self.dts ):
+
+            self.tree.strict = not self.permissive
+
+            fpp.close()
+            self.tmpfiles.append( fpp.name )
+
+        elif self.dts and re.search( r".json$", self.dts ):
             if not yaml_support:
                 lopper.log._error( f"no json detected, but system device tree is json" )
                 sys.exit(1)
@@ -356,17 +519,22 @@ class LopperSDT:
             else:
                 self.FDT = None
             self.tree = lt
-        else:
-            # the system device tree is a dtb
-            self.dtb = sdt_file
-            self.dts = sdt_file
-            if not self.use_libfdt:
-                lopper.log._error( f"dtb system device tree passed ({self.dts}), and libfdt is disabled" )
-                sys.exit(1)
-            self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
-            self.tree = LopperTree()
-            self.tree.load( Lopper.export( self.FDT ) )
             self.tree.strict = not self.permissive
+
+            fpp.close()
+            self.tmpfiles.append( fpp.name )
+        else:
+            if self.dts:
+                # the system device tree is a dtb
+                self.dtb = sdt_file
+                self.dts = sdt_file
+                if not self.use_libfdt:
+                    lopper.log._error( f"dtb system device tree passed ({self.dts}), and libfdt is disabled" )
+                    sys.exit(1)
+                self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
+                self.tree = LopperTree()
+                self.tree.load( Lopper.export( self.FDT ) )
+                self.tree.strict = not self.permissive
 
         try:
             lops = self.tree["/lops"]
@@ -379,6 +547,19 @@ class LopperSDT:
                 # and save them in a lops tree
                 embedded_lops_tree = LopperTree()
                 embedded_lops_tree + lops
+
+                # promote any priority designation from the /lops node
+                # to our root node, since that is where future processing
+                # will look (we can't do this at "/" in embedded lops as
+                # the "/" node is added to the main root node of the entire
+                # tree by dtc
+                try:
+                    lops_node = embedded_lops_tree["/lops"]
+                    priority = lops_node["priority"]
+                    embedded_lops_tree["/"] + priority
+                    lops_node - priority
+                except Exception as e:
+                    pass
 
                 lop = LopperFile( "" )
                 lop.dts = ""
@@ -409,13 +590,13 @@ class LopperSDT:
         # concatenated with the main SDT if dtc is doing some of the work, but for
         # now, libfdt is doing the transforms so we compile them separately
         for ifile in lop_files:
-            if re.search( r".dts$", ifile ):
+            if re.search( r".dts$", ifile ) or re.search( r".lop$", ifile ):
                 lop = LopperFile( ifile )
                 # TODO: this may need an output directory option, right now it drops
                 #       it where lopper is called from (which may not be writeable.
                 #       hence why our output_dir is set to "./"
-                compiled_file = Lopper.dt_compile( lop.dts, "", include_paths, force, self.outdir,
-                                                   self.save_temps, self.verbose )
+                compiled_file, _  = Lopper.dt_compile( lop.dts, "", include_paths, force, self.tmpdir,
+                                                       self.save_temps, self.verbose )
                 if not compiled_file:
                     lopper.log._error( f"could not compile file {ifile}" )
                     sys.exit(1)
@@ -525,16 +706,32 @@ class LopperSDT:
 
         """
         # remove any .dtb and .pp files we created
-        if self.cleanup and not self.save_temps:
+        if self.cleanup_flag and not self.save_temps:
             try:
                 if self.dtb != self.dts:
                     os.remove( self.dtb )
+            except:
+                pass
+            try:
                 if self.enhanced:
                     os.remove( self.dts + ".enhanced" )
             except:
-                # doesn't matter if the remove failed, it means it is
-                # most likely gone
                 pass
+            try:
+                if self.tmpdir:
+                    shutil.rmtree( self.tmpdir )
+            except:
+                pass
+            try:
+                # these are files that were used at some point
+                # in the processing pipeline and were nominated
+                # for final cleanup.
+                if self.tmpfiles:
+                    for f in self.tmpfiles:
+                        os.remove( f )
+            except:
+                pass
+
 
         # note: we are not deleting assists .dtb files, since they
         #       can actually be binary blobs passed in. We are also
@@ -658,6 +855,59 @@ class LopperSDT:
                     lopper.log._error( f"werror is enabled, and no compatible output assist found, exiting" )
                     sys.exit(2)
 
+    def find_any_matching_assists(self, input_files, local_search_paths=[]):
+        """Locates assist files that match any of the given input files (BitBake-style)
+
+        This routine searches both system directories (lopper_directory, lopper_directory +
+        "assists", lopper_directory + "lops") and passed paths (local_search_paths) to
+        locate all assist files (.lop/.dts) that match any of the provided input files.
+        Assist files can match either exactly (on full filename including extension) or via
+        a BitBake-style wildcard: an assist named 'foo%.lop' will match any input file
+        whose base name (with extension) begins with 'foo'.
+
+        Args:
+           input_files (list of strings): input file names (can include paths)
+           local_search_paths (list of strings, optional): list of directories to search
+                                                           in addition to system dirs
+
+        Returns:
+           list of strings: Sorted list of unique absolute paths to assist files
+                            that match any of the input files, or an empty list if none found
+        """
+        search_paths = (
+            self.load_paths +
+            [lopper_directory] +
+            [os.path.join(lopper_directory, "assists")] +
+            [os.path.join(lopper_directory, "lops")] +
+            local_search_paths
+        )
+
+        # Gather all assist files (.lop or .dts)
+        assists = []
+        for apath in search_paths:
+            if not os.path.isdir(apath):
+                continue
+            for fname in os.listdir(apath):
+                if fname.endswith('.dts') or fname.endswith('.lop'):
+                    assists.append(os.path.join(apath, fname))
+
+        found = set()
+        for file_path in input_files:
+            base = os.path.basename(file_path)
+            for assist_path in assists:
+                assist_fname = os.path.basename(assist_path)
+                # Exact match
+                if assist_fname == base:
+                    found.add(assist_path)
+                # Wildcard match: BitBake style
+                elif '%' in assist_fname:
+                    idx = assist_fname.index('%')
+                    prefix = assist_fname[:idx]
+                    if base.startswith(prefix):
+                        found.add(assist_path)
+
+        return sorted(found)  # sorted for determinism
+
     def input_find(self, input_file_name, auto_extensions = [], local_search_paths = []):
         """Locates a python module that matches assist_name
 
@@ -690,7 +940,7 @@ class LopperSDT:
                 input_file_abs = input_file.resolve( True )
             if not input_file_abs:
                 raise FileNotFoundError( f"Unable to find file: {input_file}" )
-        except FileNotFoundError:
+        except (FileNotFoundError,NotADirectoryError):
             # check the path from which lopper is running, that
             # directory + lops, and paths specified on the command line
             input_file_abs = ""
@@ -713,7 +963,7 @@ class LopperSDT:
                         raise FileNotFoundError( f"Unable to find file: {input_file}" )
                     else:
                         lopper.log._debug( f"input_find: found {input_file_abs}" )
-                except FileNotFoundError:
+                except (FileNotFoundError,NotADirectoryError):
                     input_file_abs = ""
 
                 if not input_file_abs:
@@ -728,7 +978,7 @@ class LopperSDT:
                                 input_file_abs = input_file_with_ext.resolve( True )
                                 if not input_file_abs:
                                     raise FileNotFoundError( f"Unable to find input file: {mod_file}" )
-                        except FileNotFoundError:
+                        except (FileNotFoundError,NotADirectoryError):
                             input_file_abs = ""
 
             if not input_file_abs:
@@ -1515,7 +1765,7 @@ class LopperSDT:
             except:
                 cb_node = None
 
-            if not cb_node:
+            if cb_tgt_node_name != "/" and not cb_node:
                 if self.werror:
                     lopper.log._error( f"cannot find assist target node in tree" )
                     sys.exit(1)
@@ -1862,6 +2112,13 @@ class LopperSDT:
                     opt_key,opt_val = o.split(":")
                     if opt_key:
                         options[opt_key] = opt_val
+
+            # arrange for the system device tree's output directory to
+            # be visible in the executed code environment
+            try:
+                output = options['output']
+            except:
+                options['outdir'] = self.outdir
 
             try:
                 start_node = options['start_node']
@@ -2274,12 +2531,12 @@ class LopperSDT:
                         lopper.log._debug( f"noexec or skip set for:{f.abs_path}" )
                         continue
 
-                    lopper.log._info( f"------> processing lop: {f.abs_path}" )
+                    lopper.log._info( f"------> processing lop: {f.abs_path} {f.name}" )
 
                     result = self.exec_lop( f, fdt_tree )
                     lop_results[f.name] = result
-                    if self.verbose:
-                        print( f"[INFO]: ------> logged result {result} for lop {f.name}")
+
+                    lopper.log._info( f"[INFO]: ------> logged result {result} for lop {f.name}" )
 
 
 class LopperFile:

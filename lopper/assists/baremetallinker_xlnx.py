@@ -60,11 +60,18 @@ def get_memranges(tgt_node, sdt, options):
     except:
         pass
 
+    xparam = False
+    try:
+        if "xparam" in options['args']:
+            xparam = True
+    except:
+        pass
+
     # Ensure that the region addresses are always in descending order of addresses
     # This order is necessary to employ the comparison while mapping the available regions.
     versal_noc_region_ranges =  {
         "0x70000000000": "DDR_CH_3", "0x60000000000": "DDR_CH_2", "0x50000000000": "DDR_CH_1",
-        "0x10000000000": "DDR_LOW_3", "0xC000000000": "DDR_LOW_2",
+        "0x20000000000": "DDR_PL_NOC", "0x10000000000": "DDR_LOW_3", "0xC000000000": "DDR_LOW_2",
         "0x47C0000000": "HBM15_PC1", "0x4780000000": "HBM15_PC0", "0x4740000000": "HBM14_PC1", "0x4700000000": "HBM14_PC0",
         "0x46C0000000": "HBM13_PC1", "0x4680000000": "HBM13_PC0", "0x4640000000": "HBM12_PC1", "0x4600000000": "HBM12_PC0",
         "0x45C0000000": "HBM11_PC1", "0x4580000000": "HBM11_PC0", "0x4540000000": "HBM10_PC1", "0x4500000000": "HBM10_PC0",
@@ -160,7 +167,9 @@ def get_memranges(tgt_node, sdt, options):
                     is_valid_noc_ch = 0
                     if "axi_noc" in key:
                         if "axi_noc2" in key:
-                            noc_regions = versal_net_noc2_region_ranges
+                            family = sdt.tree['/'].propval('family')[0]
+                            if family != "Versal":
+                                noc_regions = versal_net_noc2_region_ranges
                         for region_addr_range in noc_regions.keys():
                             if int(region_addr_range, base=16) <= int(hex(valid_range[0]), base=16):
                                 is_valid_noc_ch = noc_regions[region_addr_range]
@@ -173,9 +182,16 @@ def get_memranges(tgt_node, sdt, options):
                         linker_secname = key + str("_") + str(xlnx_memipname[key])
                         label_name_new = label_name + str("_") + str(xlnx_memipname[key])
                         xlnx_memipname[key] += 1
+
+                    if not xparam and (linker_secname in mem_ranges):
+                        index_val = str("_") + str(xlnx_memipname[key])
+                        linker_secname += index_val
+                        label_name_new += index_val
+                        xlnx_memipname[key] += 1
+
                     lable_names[linker_secname] = label_name_new
                     # Update the mem_ranges to account for multiple NoC memory segments within a given region.
-                    if is_valid_noc_ch and (linker_secname in mem_ranges):
+                    if is_valid_noc_ch and xparam and (linker_secname in mem_ranges):
                         start_addr, old_size = mem_ranges[linker_secname]
                         new_size = valid_range[0] + size - start_addr
                         mem_ranges.update({linker_secname: [start_addr, new_size]})

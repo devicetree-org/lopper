@@ -119,6 +119,7 @@ required:
   - clocks
   - clock-names
   - xlnx,dsi-num-lanes
+  - xlnx,dphy-linerate
   - xlnx,dsi-data-type
   - port@0
   - simple-panel@0

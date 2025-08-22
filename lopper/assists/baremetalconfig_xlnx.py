@@ -237,13 +237,33 @@ def scan_ranges_size(range_value, ns):
 
     return addr, size
 
-def get_clock_prop(sdt, value):
+def get_clock_offset(node):
+    tclk_offset = 1
+    if node.propval("clock-names") != ['']:
+        clock_names = node["clock-names"].value
+        try:
+            tclk_offset = clock_names.index("tx_clk")
+            namelen = len(node["clock-names"].value)
+            clocklen = len(node["clocks"].value)
+            if namelen != clocklen:
+                tclk_offset = 2 * tclk_offset + 1
+        except:
+            tclk_offset = 1
+
+    return tclk_offset
+
+def get_clock_prop(sdt, value, offset):
     """
     Baremetal clock format:
         bits[0] clock parent(controller) type(0: ZynqMP clock controller)
         bits[31:1] clock value
     """
-    return value[1]
+    if offset < len(value):
+        return value[offset]
+    else:
+        _warning(f"Invalid clock offset returning first clock")
+        return value[1]
+
 
 def get_pci_ranges(node, value, pad):
     """
@@ -350,7 +370,7 @@ def get_mapped_nodes(sdt, node_list, options):
     valid_nodes = [node for node in node_list for handle in all_phandles if handle == node.phandle]
     return valid_nodes
 
-def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, is_subnode):
+def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, is_subnode, options):
     for i, prop in enumerate(driver_proplist):
         pad = 0
         phandle_prop = 0
@@ -384,7 +404,7 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
             plat.buf('\n\t{')
 
         if not subnode_gen:
-            xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop)
+            xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, options)
         else:
             # Get the sub node
             dummy_struct = None
@@ -406,7 +426,7 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
                         plat.buf(',')
             else:
                 sub_node = [node for node in sdt.tree['/'].subnodes() if node.phandle == phandle_value]
-                xlnx_generate_config_struct(sdt, sub_node[0], drvprop_list, plat, subnode_prop_list, 1)
+                xlnx_generate_config_struct(sdt, sub_node[0], drvprop_list, plat, subnode_prop_list, 1, options)
     
         if i == len(driver_proplist)-1:
             if "subnode_phandle" not in prop:
@@ -420,7 +440,7 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
             if "subnode_phandle" not in prop:
                 plat.buf(' /* %s */' % prop)
 
-def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
+def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, options):
     nosub = 0
     if prop == "reg":
         val, size = scan_reg_size(node, node[prop].value, 0)
@@ -470,7 +490,10 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
         plat.buf('\n\t\t%s' % hex(intr_parent))
         drvprop_list.append(hex(intr_parent))
     elif prop == "clocks":
-        clkprop_val = get_clock_prop(sdt, node[prop].value)
+
+        tclk_offset = get_clock_offset(node)
+
+        clkprop_val = get_clock_prop(sdt, node[prop].value, tclk_offset)
         plat.buf('\n\t\t%s' % hex(clkprop_val))
         drvprop_list.append(hex(clkprop_val))
     elif prop == "mdioproducer-baseaddr":
@@ -521,7 +544,7 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
                         numsplits = len(splitidxs);
                         continue
                     pv = list(p.values())
-                    xlnx_generate_prop(sdt, child[1], prop, drvprop_list, plat, pv[0], phandle_prop)
+                    xlnx_generate_prop(sdt, child[1], prop, drvprop_list, plat, pv[0], phandle_prop, options)
                 else:
                     try:
                         plat.buf('\n\t\t\t\t%s' % str(child[1][p].value[0]))
@@ -562,6 +585,11 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop):
             _warning(f"Get device type failed for {node.name}, adding default value as {0}")
             device_ispci = 0
         if device_ispci:
+            match_cpunode = get_cpu_node(sdt, options)
+            if match_cpunode.propval('xlnx,ip-name') != ['']:
+                ip_name = match_cpunode.propval('xlnx,ip-name', list)[0]
+                if ip_name in ["psu_cortexr5", "psv_cortexr5", "psx_cortexr52", "cortexr52"]:
+                    pad = 1
             prop_vallist = get_pci_ranges(node, node[prop].value, pad)
             for j, prop_val in enumerate(prop_vallist):
                 plat.buf('\n\t\t%s' % prop_val)
@@ -730,7 +758,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         if index == 0:
             plat.buf('#include "%s.h"\n' % drvname)
             plat.buf('\n%s %s __attribute__ ((section (".drvcfg_sec"))) = {\n' % (config_struct, config_struct + str("Table[]")))
-        xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 0)
+        xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 0, options)
         if index == len(driver_nodes)-1:
             plat.buf('\n\t {\n\t\t NULL\n\t}')
             plat.buf('\n};')

@@ -1,0 +1,319 @@
+domains:
+  default:
+    id: 0
+    memory:
+    - dev: PMC_OSPI_mem
+      size: 512M
+      spec_name: PMC_OSPI_mem
+      start: '0xc0000000'
+    - {}
+    sram:
+    - dev: OCM0_mem
+      size: 64K
+      spec_name: OCM0_mem
+      start: '0xfffc0000'
+    - dev: OCM1_mem
+      size: 64K
+      spec_name: OCM1_mem
+      start: '0xfffd0000'
+    - dev: OCM2_mem
+      size: 64K
+      spec_name: OCM2_mem
+      start: '0xfffe0000'
+    - dev: OCM3_mem
+      size: 64K
+      spec_name: OCM3_mem
+      start: '0xffff0000'
+    - dev: RPU0_TCMA_mem
+      size: 64K
+      spec_name: RPU0_TCMA_mem
+      start: '0xffe00000'
+    - dev: RPU0_TCMB_mem
+      size: 64K
+      spec_name: RPU0_TCMB_mem
+      start: '0xffe20000'
+    - dev: RPU1_TCMA_mem_dual
+      size: 64K
+      spec_name: RPU1_TCMA_mem_dual
+      start: '0xffe90000'
+    - dev: RPU1_TCMB_mem_dual
+      size: 64K
+      spec_name: RPU1_TCMB_mem_dual
+      start: '0xffeb0000'
+    access:
+    - dev: serial@ff000000
+      flags:
+        requested: true
+        requested_emit_wakeup: true
+        requested_full_access: true
+        requested_preserve_context: true
+        shared: true
+      label: serial0
+      spec_name: UART0
+    - dev: serial@ff010000
+      flags:
+        requested: true
+        requested_emit_wakeup: true
+        requested_full_access: true
+        requested_preserve_context: true
+        shared: true
+      label: serial1
+      spec_name: UART1
+    - dev: ethernet@ff0c0000
+      flags:
+        requested: true
+        requested_emit_wakeup: true
+        requested_full_access: true
+        requested_preserve_context: true
+        shared: true
+      label: gem0
+      spec_name: GEM0
+    - dev: ethernet@ff0d0000
+      flags:
+        requested: true
+        requested_emit_wakeup: true
+        requested_full_access: true
+        requested_preserve_context: true
+        shared: true
+      label: gem1
+      spec_name: GEM1
+    - dev: spi@f1010000
+      flags:
+        requested: true
+        requested_full_access: true
+        shared: true
+      label: ospi
+      spec_name: OSPI
+    - dev: spi@f1030000
+      flags:
+        requested: true
+        requested_full_access: true
+        shared: true
+      label: qspi
+      spec_name: QSPI
+    - dev: mmc@f1040000
+      flags:
+        requested: true
+        requested_full_access: true
+        shared: true
+      label: sdhci0
+      spec_name: SD_eMMC0
+    - dev: mmc@f1050000
+      flags:
+        requested: true
+        requested_full_access: true
+        shared: true
+      label: sdhci1
+      spec_name: SD_eMMC1
+    - dev: i2c@ff020000
+      flags:
+        requested: true
+        requested_full_access: true
+        shared: true
+      label: i2c0
+      spec_name: LPD_I2C0
+    - dev: i2c@ff030000
+      flags:
+        requested: true
+        requested_full_access: true
+        shared: true
+      label: i2c1
+      spec_name: LPD_I2C1
+    - dev: timer@ff0e0000
+      flags:
+        requested: true
+        requested_full_access: true
+        shared: true
+      label: ttc0
+      spec_name: TTC0
+    - dev: timer@ff0f0000
+      flags:
+        requested: true
+        requested_full_access: true
+        shared: true
+      label: ttc1
+      spec_name: TTC1
+    - dev: timer@ff100000
+      flags:
+        requested: true
+        requested_full_access: true
+        shared: true
+      label: ttc2
+      spec_name: TTC2
+    - dev: timer@ff110000
+      flags:
+        requested: true
+        requested_full_access: true
+        shared: true
+      label: ttc3
+      spec_name: TTC3
+    - dev: child@0
+      flags:
+        requested: true
+        requested_full_access: true
+      label: CIPS_0_pspmc_0_psv_ipi_0_0
+      spec_name: IPI0
+    - dev: child@0
+      flags:
+        requested: true
+        requested_full_access: true
+      label: CIPS_0_pspmc_0_psv_ipi_1_0
+      spec_name: IPI1
+    - dev: child@0
+      flags:
+        requested: true
+        requested_full_access: true
+      label: CIPS_0_pspmc_0_psv_ipi_2_0
+      spec_name: IPI2
+    - dev: child@0
+      flags:
+        requested: true
+        requested_full_access: true
+      label: CIPS_0_pspmc_0_psv_ipi_5_0
+      spec_name: IPI5
+    - dev: child@0
+      flags:
+        requested: true
+        requested_full_access: true
+      label: CIPS_0_pspmc_0_psv_ipi_3_0
+      spec_name: IPI3
+    - dev: child@0
+      flags:
+        requested: true
+        requested_full_access: true
+      label: CIPS_0_pspmc_0_psv_ipi_4_0
+      spec_name: IPI4
+    - dev: child@0
+      flags:
+        requested: true
+        requested_full_access: true
+      label: CIPS_0_pspmc_0_psv_ipi_6_0
+      spec_name: IPI6
+    - dev: usb@ff9d0000
+      flags:
+        shared: true
+      label: usb0
+      spec_name: USB2_CSR
+    - dev: dma@ffa80000
+      flags:
+        shared: true
+      label: lpd_dma_chan0
+      spec_name: LPD_DMA_CH0
+    - dev: dma@ffa90000
+      flags:
+        shared: true
+      label: lpd_dma_chan1
+      spec_name: LPD_DMA_CH1
+    - dev: dma@ffaa0000
+      flags:
+        shared: true
+      label: lpd_dma_chan2
+      spec_name: LPD_DMA_CH2
+    - dev: dma@ffab0000
+      flags:
+        shared: true
+      label: lpd_dma_chan3
+      spec_name: LPD_DMA_CH3
+    - dev: dma@ffac0000
+      flags:
+        shared: true
+      label: lpd_dma_chan4
+      spec_name: LPD_DMA_CH4
+    - dev: dma@ffad0000
+      flags:
+        shared: true
+      label: lpd_dma_chan5
+      spec_name: LPD_DMA_CH5
+    - dev: dma@ffae0000
+      flags:
+        shared: true
+      label: lpd_dma_chan6
+      spec_name: LPD_DMA_CH6
+    - dev: dma@ffaf0000
+      flags:
+        shared: true
+      label: lpd_dma_chan7
+      spec_name: LPD_DMA_CH7
+    - dev: sysmon@f1270000
+      flags:
+        shared: true
+      label: sysmon0
+      spec_name: PMC_SYSMON_CSR
+    - dev: watchdog@fd4d0000
+      flags:
+        shared: true
+      label: watchdog
+      spec_name: FPD_SWDT
+    - dev: can@ff060000
+      flags:
+        shared: true
+      label: can0
+      spec_name: CANFD0
+    - dev: can@ff070000
+      flags:
+        shared: true
+      label: can1
+      spec_name: CANFD1
+    - dev: gpio@ff0b0000
+      flags:
+        shared: true
+      label: gpio0
+      spec_name: LPD_GPIO
+    - dev: watchdog@ff120000
+      flags:
+        shared: true
+      label: watchdog1
+      spec_name: LPD_SWDT
+    - dev: CIPS_0_pspmc_0_psv_pmc_efuse_cache@f1250000
+      flags:
+        shared: true
+      label: CIPS_0_pspmc_0_psv_pmc_efuse_cache
+      spec_name: PMC_EFUSE_CACHE
+    - dev: gpio@f1020000
+      flags:
+        shared: true
+      label: gpio1
+      spec_name: PMC_GPIO
+    - dev: i2c@f1000000
+      flags:
+        shared: true
+      label: i2c2
+      spec_name: PMC_I2C
+    - dev: rtc@f12a0000
+      flags:
+        shared: true
+      label: rtc
+      spec_name: PMC_RTC
+    - dev: spi@ff040000
+      flags:
+        shared: true
+      label: spi0
+      spec_name: SPI0
+    - dev: spi@ff050000
+      flags:
+        shared: true
+      label: spi1
+      spec_name: SPI1
+    compatible: xilinx,subsystem
+    cpus:
+    - cluster: cpus_a72
+      cpumask: '0x1'
+      dev: cpus_a72
+      mode:
+        el: '0x3'
+        secure: false
+      spec_name: APU0
+    - cluster: cpus_a72
+      cpumask: '0x2'
+      dev: cpus_a72
+      mode:
+        el: '0x3'
+        secure: false
+      spec_name: APU1
+    - cluster: cpus_r5_0
+      cpumask: '0x1'
+      dev: cpus_r5_0
+      mode:
+        secure: false
+      spec_name: RPU0
+    - {}

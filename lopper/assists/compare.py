@@ -101,8 +101,8 @@ def compare( tgt_node, sdt, options ):
     if verbose:
         print( "[INFO]: comparing: %s" % compare_list )
 
-    compiled_file = Lopper.dt_compile( compare_dts, "", "", True, sdt.outdir,
-                                       sdt.save_temps, verbose )
+    compiled_file, _ = Lopper.dt_compile( compare_dts, "", "", True, sdt.outdir,
+                                          sdt.save_temps, verbose )
     if not compiled_file:
         lopper.log._error( f"could not compile file {compare_dts}" )
         sys.exit(1)

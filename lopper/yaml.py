@@ -38,11 +38,159 @@ import logging
 _init( __name__ )
 _init( "yaml.py" )
 
+
+# Attempt to import Merger globally and use a flag for availability
+try:
+    from deepmerge import Merger
+    DEEPMERGE_AVAILABLE = True
+except ImportError:
+    DEEPMERGE_AVAILABLE = False
+
 def flatten_dict(dd, separator ='_', prefix =''):
     return { prefix + separator + k if prefix else k : v
              for kk, vv in dd.items()
              for k, v in flatten_dict(vv, separator, kk).items()
     } if isinstance(dd, dict) else { prefix : dd }
+
+# What's the difference between these two very similar routines ?
+#
+# One creates a copy, the other does changs in place. We need the in
+# place variant as anchors and references in the yaml input are picked
+# up by object references. If we make a copy, code that relies on
+# those references will break.
+def preprocess_yaml_data_in_place(data):
+    """Recursively preprocess the data by changing all 'parent' keys to 'custom_parent',
+    performed in place to maintain anchors and references.
+    """
+    if isinstance(data, dict):
+        # Check if 'parent' exists and rename it to 'custom_parent'
+        if 'parent' in data:
+            data['custom_parent'] = data['parent']  # Create the new key
+            del data['parent']  # Remove the old key
+
+        # Iterate through all keys in the data
+        for key in list(data.keys()):  # We need to list keys to prevent mutation issues
+            preprocess_yaml_data_in_place(data[key])  # Recur for any nested dictionaries
+
+    elif isinstance(data, list):
+        for item in data:
+            preprocess_yaml_data_in_place(item)  # Recur for list items
+
+    return data  # Return modified data (though it's already modified in place)
+
+def preprocess_yaml_data(data):
+    if isinstance(data, dict):
+        return {k if k != "parent" else "custom_parent": preprocess_yaml_data(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [preprocess_yaml_data(item) for item in data]
+    return data
+
+def postprocess_anytree_tree(root):
+    # Traverse each node in the tree using PreOrderIter, which visits each node in a depth-first order
+    for node in PreOrderIter(root):
+        if 'custom_parent' in node.__dict__:
+            # Rename 'custom_parent' back to 'parent'
+            node.__dict__['parent'] = node.__dict__.pop('custom_parent')
+
+
+from anytree.search import findall_by_attr
+
+def is_ancestor(child, potential_ancestor):
+    """Check if a node is an ancestor of another node.
+
+    Determines whether the specified potential_ancestor is an ancestor
+    of the given child node within the anytree structure.
+
+    Args:
+        child (Node): The node whose ancestry is being checked.
+        potential_ancestor (Node): The node that might be an ancestor of the child node.
+
+    Returns:
+        bool: True if potential_ancestor is an ancestor of child; False otherwise.
+    """
+    return potential_ancestor in child.ancestors
+
+
+def find_node_by_path(root, path):
+    """Find a node by traversing the tree according to a given path.
+
+    Traverses the tree starting from the root node, following the segments
+    in the given path to locate the corresponding node.
+
+    Args:
+        root (Node): The root node of the tree structure to start the search.
+        path (str): The path string separated by '/' indicating the node hierarchy.
+
+    Returns:
+        Node or None: The node corresponding to the provided path, or None if not found.
+    """
+    # Strip leading slash for consistent traversal
+    if path.startswith('/'):
+        path = path[1:]
+
+    segments = path.split("/")
+    current_node = root
+
+    for segment in segments:
+        next_node = None
+        for child in current_node.children:
+            if child.name == segment:
+                next_node = child
+                break
+        if next_node is None:
+            return None
+        current_node = next_node
+
+    return current_node
+
+
+def reparent_nodes_by_specified_path(root, spec_data):
+    """Reparent nodes based on specified paths in the given data.
+
+    Using the provided specification data, reparent nodes within the anytree
+    structure based on 'custom_parent' path indications, handling path-like
+    and direct attribute syntax. Exits on missing paths.
+
+    Args:
+        root (Node): The root node of the anytree structure.
+        spec_data (dict): The data specifying reparenting decisions based on 'custom_parent'.
+
+    Returns:
+        None: The tree structure is modified in place.
+    """
+    node_map = {node.name: node for node in PreOrderIter(root)}
+
+    def traverse_yaml_data(yaml_data):
+        for key, value in yaml_data.items():
+            if isinstance(value, dict):
+                if 'custom_parent' in value:
+                    child_node = node_map.get(key)
+                    parent_path = value['custom_parent']
+
+                    if '/' in parent_path:
+                        # Handle path-like syntax
+                        new_parent_node = find_node_by_path(root, parent_path)
+                    else:
+                        # Handle direct name syntax using findall_by_attr
+                        new_parent_node = findall_by_attr(root, value=parent_path, name="name", maxlevel=None)
+                        new_parent_node = new_parent_node[0] if new_parent_node else None
+
+                    if not new_parent_node:
+                        _error(f"Path '{parent_path}' not found for '{key}'. Exiting.", True)
+
+                    if child_node and is_ancestor(child_node, new_parent_node):
+                        _debug(f"Skipping reparenting '{key}'; '{new_parent_node.name}' is already an ancestor.")
+                    else:
+                        _debug(f"Reparenting '{key}' under '{new_parent_node.name}'")
+                        child_node.parent = new_parent_node
+
+                traverse_yaml_data(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        traverse_yaml_data(item)
+
+    traverse_yaml_data(spec_data)
 
 class LopperTreeImporter(object):
 
@@ -74,7 +222,23 @@ class LopperTreeImporter(object):
             name = "root"
 
         attrs['name'] = name
+
+        # Retain the LopperNode's 'parent' value but rename it to avoid conflict
+        parent_value = None
+
+        # Check and store the 'parent' value
+        if 'parent' in node.__props__:
+            parent_value = node.__props__['parent'].value # Extract the value for later use
+            # Map it to a different attribute to avoid conflict
+            attrs['custom_parent_value'] = parent_value
+
         for p in node.__props__:
+
+            # Skip the Lopper 'parent' completely during regular property extraction
+            # since this will break anytree's import
+            if p == 'parent':
+                continue
+
             # if the node is from a yaml source, it may have been json encoded,
             # so try that first and otherwise assign it directly.
 
@@ -277,6 +441,10 @@ class LopperDictImporter(object):
 
     def __import(self, data, parent=None, name=None):
         assert isinstance(data, dict)
+        # The below assert breaks the loading of yaml with a "parent:"
+        # key ... We are disabling this for now, otherwise, we may
+        # need to preprocess the yaml and postprocess the tree to
+        # restore "parent"
         assert "parent" not in data
         attrs = dict(data)
         verbose = 0
@@ -479,6 +647,8 @@ class LopperJSON():
             return None
 
         lt = LopperTree()
+
+        lt.strict = False
 
         excluded_props = [ "name", "fdt_name" ]
         serialize_json = True
@@ -1096,6 +1266,16 @@ class LopperYAML(LopperJSON):
                 #dcttype=dict
                 dcttype=OrderedDict
 
+            # Traverse the AnyTree structure and rename 'custom_parent' to 'parent'
+            def update_custom_parent(node):
+                if hasattr(node, 'custom_parent_value'):
+                    node.__dict__['parent'] = node.__dict__.pop('custom_parent_value')
+
+                for child in node.children:
+                    update_custom_parent(child)
+
+            update_custom_parent(start_node)  # Update the custom attributes first
+
             dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
             # This converts the ordered dicts to regular dicts at the last moment
             # As a result, the order is preserved AND we don't get YAML that is all
@@ -1181,6 +1361,12 @@ class LopperYAML(LopperJSON):
             print( "[ERROR]: no data available to load" )
             sys.exit(1)
 
+        # this renames "parent" keys to "custom_parent", so that the anytree
+        # loading won't hit an internal assert (where it checks for parent)
+        orig_dct = self.dct
+        new_dct = preprocess_yaml_data_in_place( self.dct )
+        self.dct = new_dct
+
         # flatten the dictionary so we can look up aliases and anchors
         # by identity later .. without needing to recurse
         self.dct_flat = flatten_dict(self.dct,separator="/")
@@ -1188,4 +1374,103 @@ class LopperYAML(LopperJSON):
         importer.lists_as_nodes = self.lists_as_nodes
         self.anytree = importer.import_(self.dct)
 
-        #print(RenderTree(self.anytree.root))
+        reparent_nodes_by_specified_path( self.anytree, self.dct )
+
+        # This walks the tree and fixes the preprocesed "custom_parent"
+        # keys to "parent"
+        postprocess_anytree_tree( self.anytree )
+
+    @staticmethod
+    def create_merger():
+        """Create a merger configuration or indicate a fallback.
+
+        This method attempts to create a deepmerge `Merger` configuration with specific strategies
+        for handling lists, dictionaries, and sets if the deepmerge library is available.
+
+        Strategies:
+            - Lists are appended.
+            - Dictionaries are merged.
+            - Sets are united.
+            - Fallback strategies and conflict strategies use `override`.
+
+        Returns:
+            Merger object configured with specific strategies if available, otherwise None.
+        """
+        if DEEPMERGE_AVAILABLE:
+            return Merger(
+                [
+                    (list, ["append"]),  # Strategy for lists
+                    (dict, ["merge"]),   # Strategy for dictionaries
+                    (set, ["union"])     # Strategy for sets
+                ],
+                ["override"],           # Default strategy for other types
+                ["override"]            # Strategy for type conflicts
+            )
+        return None  # Return None when deepmerge isn't available
+
+    @staticmethod
+    def deep_merge(dict1, dict2):
+        """Merge two dictionaries using deepmerge or custom logic.
+
+        Depending on the availability of the deepmerge library, this method will either
+        merge the dictionaries using deepmerge strategies or revert to custom recursive logic
+        to perform the merging.
+
+        Args:
+            dict1 (dict): First dictionary to merge.
+            dict2 (dict): Second dictionary to be merged into the first.
+
+        Returns:
+            dict: A merged dictionary containing elements from both inputs.
+        """
+        if DEEPMERGE_AVAILABLE:
+            merger = LopperYAML.create_merger()
+            return merger.merge(dict1, dict2)
+        else:
+            # Custom recursive merge logic
+            for key, value in dict2.items():
+                if key in dict1:
+                    if isinstance(dict1[key], dict) and isinstance(value, dict):
+                        dict1[key] = LopperYAML.deep_merge(dict1[key], value)
+                    elif isinstance(dict1[key], list) and isinstance(value, list):
+                        dict1[key].extend(value)
+                    else:
+                        dict1[key] = value
+                else:
+                    dict1[key] = value
+            return dict1
+
+    @staticmethod
+    def yaml_to_data(yaml_file):
+        """Load YAML from a file into a Python data structure.
+
+        This method reads a YAML file and parses its content into
+        Python data structures using `ruamel.yaml`.
+
+        Args:
+            yaml_file (str): Path to the YAML file to read.
+
+        Returns:
+            The data structure representation of the YAML file.
+        """
+        yaml = ruamel.yaml.YAML()
+        with open(yaml_file, 'r') as file:
+            return yaml.load(file)
+
+    @staticmethod
+    def data_to_yaml(data, file_path):
+        """Write data to a YAML file.
+
+        This method takes a Python data structure and writes it to a file as
+        YAML content, ensuring proper serialization.
+
+        Args:
+            data (object): The Python data structure to serialize into YAML.
+            file_path (str): The path to the file where YAML content will be written.
+
+        Returns:
+            None
+        """
+        yaml = ruamel.yaml.YAML()
+        with open(file_path, 'w') as file:
+            yaml.dump(data, file)

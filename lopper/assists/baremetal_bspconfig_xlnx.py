@@ -36,10 +36,11 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
     root_sub_nodes = root_node.subnodes()
     if options.get('outdir', {}):
         sdt.outdir = options['outdir']
-   
+    options["args"].append("xparam")
     mem_ranges, _ = get_memranges(tgt_node, sdt, options)
     if not mem_ranges:
-        return
+        _warning("No memory node is mapped to the processor. Moving ahead")
+
     # Generate Memconfig cmake meta-data file.
     memconfig_path = os.path.join(sdt.outdir,'MemConfig.cmake')
     with open(memconfig_path, 'w') as fd:

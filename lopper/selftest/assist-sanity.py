@@ -30,6 +30,7 @@ from lopper_lib import chunks
 import copy
 from collections import OrderedDict
 import filecmp
+import json
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "assist,domain-v1", compat_string_to_test):
@@ -37,6 +38,115 @@ def is_compat( node, compat_string_to_test ):
     if re.search( "module,assist", compat_string_to_test):
         return assist_reference
     return ""
+
+def glob_test( sdt, glob_test_type ):
+    print( f"[INFO] start: glob test: {glob_test_type}" )
+    try:
+        domains = sdt.tree['/domains']
+
+        # after the yaml expansion lops run, the domain is
+        # at /domains/default/domain@0', if they don't run
+        # it is at /domains/default/domains/APU_domain
+        apu_domain = sdt.tree['/domains/default/domain@0']
+        # can we access it by label ?
+        apu_domain2 = sdt.tree.deref( "APU_domain")
+        if not apu_domain2:
+            print( "[ERROR]: domain re-labeling did not work, domain not found a label APU_domain" )
+            os._exit(1)
+
+        if re.search("child-serial", glob_test_type):
+            # this is the child serial glob test, check for the uart node
+            # in the apu domain
+            # apu_domain.print()
+            access = apu_domain["access"]
+            try:
+                if "&uart0" in access.string_val and "&uart1" in access.string_val:
+                    print( f"[PASS]: uart test: both &uart0 and &uart1 are in the access list: {access.string_val}" )
+                else:
+                    print( f"[FAIL]: uart test, both &uart0 and &uart1 are NOT in the access list: {access.string_val}" )
+            except Exception as e:
+                print( f"ERROR: while checking serial glob: {e}" )
+                os._exit(1)
+        elif re.search("child-all", glob_test_type):
+            apu_domain2.print()
+
+            access_chunks = json.loads(apu_domain2["access-json"].value)
+            print( f"access:")
+            for c in access_chunks:
+                print( f"   {c}")
+
+            if len(access_chunks) == 42:
+                print( f"[PASS]: all access entries copied to apu domain")
+            else:
+                print( f"[FAIL]: not all access entries were copied to apu domain")
+                os._exit(1)
+
+            LopperSDT(None).write( sdt.tree, "/tmp/globbed_tree.dts", True, True )
+        else:
+            print( f"[ERROR]: unknown glob test: {glob_test_type}" )
+            os._exit(1)
+
+    except Exception as e:
+        print( f"[ERROR]: exception during glob testing: {e}")
+        os._exit(1)
+
+    return True
+
+def phandle_meta_test( sdt, pass_number ):
+    print( f"[INFO]: running phandle_meta_test: {sdt.output_file} pass: {pass_number}" )
+
+    try:
+        if pass_number == "one":
+            sdt.write( sdt.tree, sdt.output_file )
+        else:
+            sdt.write( sdt.tree, sdt.output_file )
+            #sdt.write( sdt.tree, '/tmp/foo.dts' )
+            #sdt.tree.print()
+    except Exception as e:
+        print( f"[ERROR]: {e}" )
+        return False
+
+    if pass_number == "one":
+        phandle_link_is_number = False
+        with open( sdt.output_file ) as fp:
+            for line in fp:
+                if re.search( r"phandle-link.*?=.*?<0x.*>;", line ):
+                    phandle_link_is_number = True
+
+        if phandle_link_is_number:
+            print( "[PASSED]: phandle-link is a number (no symbolic replacement)" )
+        else:
+            print( "[FAILED]: phandle-link is a number (symbolic or not found)" )
+            os._exit(1)
+
+        return phandle_link_is_number
+
+    if pass_number == "two":
+        phandle_link_is_sym = False
+        phandle_link_invalid_property = False
+        with open( sdt.output_file ) as fp:
+            for line in fp:
+                if re.search( r"phandle-link.*?=.*?<&amba>;", line ):
+                    phandle_link_is_sym = True
+
+                # we shouldn't find this as the embedded lop should
+                # have deleted it
+                if re.search( r"phandle-link-invalid.*?=.*?<&amba>;", line ):
+                    phandle_link_invalid_property = True
+
+        if phandle_link_is_sym:
+            print( "[PASSED]: phandle-link is symbolic (replacement)" )
+        else:
+            print( "[FAILED]: phandle-link is a number (no replacement done)" )
+            os._exit(1)
+
+        if phandle_link_invalid_property:
+            print( "[FAILED]: phandle-link-invalid should have been deleted" )
+            os._exit(1)
+        else:
+            print( "[PASSED]: phandle-link-invalid was deleted" )
+
+        return phandle_link_is_sym
 
 def overlay_test( sdt ):
     overlay_tree = LopperTree()
@@ -127,7 +237,7 @@ def overlay_test( sdt ):
     if ranges_count == 2:
         print( "PASSED: ranges was removed from the overlay" )
     else:
-        print( "FAILED: ranges was not removed from the overlay" )
+        print( f"FAILED: ranges was not removed from the overlay. the count is {ranges_count}" )
         os._exit(1)
 
     amba_count = 0
@@ -325,8 +435,18 @@ def assist_reference( tgt_node, sdt, options ):
         if "overlay_test" in args:
             overlay_test( sdt )
             return True
+        elif "phandle_meta_test_1" in args:
+            phandle_meta_test( sdt, "one" )
+            return True
+        elif "phandle_meta_test_2" in args:
+            phandle_meta_test( sdt, "two" )
+            return True
+        elif any(re.search('glob_test', s) for s in args):
+            res = glob_test( sdt, args[0] )
+            return res
         else:
             domains_access_test( sdt )
             return True
-    except:
+    except Exception as e:
+        print( f"Exception during assist-sanity {e}")
         pass
