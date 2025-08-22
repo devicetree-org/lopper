@@ -260,93 +260,11 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
     return True
 
 
-def xlnxl_rpmsg_ipi_get_ipi_id(tree, ipi, role):
-    ipi_node = None
-    ipi_id_prop_name = "xlnx,ipi-id"
-    ipi_node = tree.pnode( ipi )
-
-    if ipi_node == None:
-        print("ERROR: Unable to find ipi: ", ipi, " for role: ", role)
-        return False
-
-    ipi_id = ipi_node.props(ipi_id_prop_name)
-    if ipi_id == []:
-        print("ERROR: Unable to find IPI ID for ", ipi)
-        return False
-
-    return ipi_id[0]
-
-
-def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_channel_info,
-                                     remote_node, channel_id, native, channel_index, 
-                                     verbose = 0):
-    print(" -> xlnx_rpmsg_ipi_parse_per_channel", channel_id, host_ipi, remote_ipi, channel_index)
- 
-    ipi_id_prop_name = "xlnx,ipi-id"
-    platform =  openamp_channel_info["platform"]
-    buffered_ipi_chan = True
-
-    host_ipi_id = xlnxl_rpmsg_ipi_get_ipi_id(tree, host_ipi[channel_index], "host")
-
-    if host_ipi_id == False:
-        return host_ipi_id
-
-    remote_ipi_id = xlnxl_rpmsg_ipi_get_ipi_id(tree, remote_ipi, "remote")
-    if remote_ipi_id == False:
-        return remote_ipi_id
-
-    host_ipi = tree.pnode( host_ipi[channel_index])
-
-    if platform in [ SOC_TYPE.VERSAL_NET , SOC_TYPE.VERSAL2 ] and (host_ipi_id.value[0] >= 9 or remote_ipi_id.value[0] >= 9):
-        buffered_ipi_chan = False
-
-    # find host to remote buffers
-    host_to_remote_ipi_channel = None
-    for subnode in host_ipi.subnodes():
-        subnode_ipi_id = subnode.props(ipi_id_prop_name)
-        if subnode_ipi_id != [] and remote_ipi_id.value[0] == subnode_ipi_id[0].value[0]:
-            openamp_channel_info["host_to_remote_ipi_channel_" + channel_id] = subnode
-            host_to_remote_ipi_channel = subnode
-    if host_to_remote_ipi_channel == None and buffered_ipi_chan:
-        print("WARNING no host to remote IPI channel has been found.")
-        return False
-
-    remote_ipi = tree.pnode( remote_ipi )
-
-    # find remote to host buffers
-    remote_to_host_ipi_channel = None
-    for subnode in remote_ipi.subnodes():
-        subnode_ipi_id = subnode.props(ipi_id_prop_name)
-        if subnode_ipi_id != [] and host_ipi_id.value[0] == subnode_ipi_id[0].value[0]:
-            openamp_channel_info["remote_to_host_ipi_channel_" + channel_id] = subnode
-            remote_to_host_ipi_channel = subnode
-    if remote_to_host_ipi_channel == None and buffered_ipi_chan:
-        print("WARNING no remote to host IPI channel has been found.")
-        return False
-
-    openamp_channel_info["host_ipi_"+channel_id] = host_ipi
-    openamp_channel_info["remote_ipi_"+channel_id] = remote_ipi
-
-    return True
-
-
 def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
                          remote_node, channel_id, native, channel_index, 
                          verbose = 0 ):
     print(" -> xlnx_rpmsg_ipi_parse", node, remote_node, channel_index, channel_id)
  
-    amba_node = None
-    ipi_id_prop_name = "xlnx,ipi-id"
-    host_to_remote_ipi = None
-    remote_to_host_ipi = None
-
-    # collect host ipi
-    host_ipi_prop = node.props("mbox")
-    if host_ipi_prop == []:
-        print("ERROR: ", node, " is missing mbox property")
-        return False
-
-    host_ipi_prop = host_ipi_prop[0].value
     remote_rpmsg_relation = None
     try:
         remote_rpmsg_relation = tree[remote_node.abs_path + "/domain-to-domain/rpmsg-relation"]
@@ -354,18 +272,22 @@ def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
         print("ERROR: ", remote_node, " is missing rpmsg relation")
         return False
 
-    # collect remote ipi
-    remote_ipi_prop = remote_rpmsg_relation.props("mbox")
-    if remote_ipi_prop == []:
-        print("ERROR: ", remote_node, " is missing mbox property")
-        return False
+    # for each relevant IPI
+    # find its mbox property in the relation node
+    # map the mbox property phandle to a node in the tree
+    # save node for later use
+    #
+    # note for remote relation only one mbox value is used so index at 0
+    for (relation_node, role, idx) in [ (node, "host", channel_index), (remote_rpmsg_relation, "remote", 0) ]:
+        if relation_node.propval("mbox") == ['']:
+            print("ERROR: ", relation_node, " is missing mbox property")
+            return False
+        ipi_node = tree.pnode( relation_node.propval("mbox")[idx] )
+        if ipi_node == None:
+            print("ERROR: Unable to find ipi: ", ipi_phandle, " for role", role)
+            return False
 
-    remote_ipi_prop = remote_ipi_prop[0].value
-
-    ret = xlnx_rpmsg_ipi_parse_per_channel(remote_ipi_prop[0], host_ipi_prop, tree, node, openamp_channel_info,
-                                           remote_node, channel_id, native, channel_index, verbose)
-    if ret != True:
-        return False
+        openamp_channel_info[f"{role}_ipi_{channel_id}"] = ipi_node
 
     return True
 
