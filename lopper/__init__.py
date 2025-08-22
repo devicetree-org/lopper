@@ -424,7 +424,7 @@ class LopperSDT:
 
             # join any extended trees to the one we just created
             for t in sdt_extended_trees:
-                for node in t:
+                for node in t['/'].children():
                     if node.abs_path != "/":
                         # old: deep copy the node
                         # new_node = node()
@@ -445,6 +445,7 @@ class LopperSDT:
 
             fpp.close()
             self.tmpfiles.append( fpp.name )
+
 
         elif self.dts and re.search( r".yaml$", self.dts ):
             if not yaml_support:
