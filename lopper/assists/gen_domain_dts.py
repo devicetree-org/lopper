@@ -511,7 +511,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
 
         if node.propval("compatible") != ['']:
             if node.propval("compatible") == ['xlnx,versal-ipi-dest-mailbox']:
-                node.name = f"child@{hex(node.propval("reg")[1])[2:]}"
+                node.name = f"child@{hex(node.propval('reg')[1])[2:]}"
             if node.propval('xlnx,ip-name') != ['']:
                 val = node.propval('xlnx,ip-name', list)[0]
                 if "r52" in machine and (val == "psx_rcpu_gic" or val == "rcpu_gic"):
