@@ -291,9 +291,14 @@ def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
 
     return True
 
-def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
-                                  core_node, openamp_channel_info, channel_id):
-    print(" -> xlnx_rpmsg_kernel_update_ipis", host_ipi, remote_ipi, core_node, channel_id)
+
+def xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose = 0 ):
+    native = openamp_channel_info["rpmsg_native_"+ channel_id]
+    platform = openamp_channel_info["platform"]
+    core_node = openamp_channel_info["core_node"+channel_id]
+    host_ipi = openamp_channel_info["host_ipi_"+ channel_id]
+    remote_ipi = openamp_channel_info["remote_ipi_"+ channel_id]
+    print(" -> xlnx_rpmsg_update_ipis", host_ipi, remote_ipi, core_node, channel_id)
 
     # in case of remote run, flip the ipis so that its present for remote parsing later
     if openamp_channel_info['role'+channel_id] == 'remote':
@@ -303,42 +308,13 @@ def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
 
     target_remote_node = [ node for node in host_ipi.subnodes(children_only=True) if node.propval('xlnx,ipi-id') == remote_ipi.propval('xlnx,ipi-id') ]
     if target_remote_node == []:
-        print("ERROR: xlnx_rpmsg_kernel_update_ipis: could not find host to remote ipi mapping.")
+        print("ERROR: xlnx_rpmsg_update_ipis: could not find host to remote ipi mapping.")
         return False
 
     core_node + LopperProp(name="mboxes", value = [target_remote_node[0].phandle, 0, target_remote_node[0].phandle, 1])
     core_node + LopperProp(name="mbox-names", value = ["tx", "rx"])
 
     return True
-
-def xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose = 0 ):
-    native = openamp_channel_info["rpmsg_native_"+ channel_id]
-    platform = openamp_channel_info["platform"]
-    core_node = openamp_channel_info["core_node"+channel_id]
-    host_ipi = openamp_channel_info["host_ipi_"+ channel_id]
-    remote_ipi = openamp_channel_info["remote_ipi_"+ channel_id]
-    controller_parent = None
-    amba_node = None
-    gic_node_phandle = None
-
-    if platform == SOC_TYPE.VERSAL:
-        gic_node_phandle = tree["/apu-bus/interrupt-controller@f9000000"].phandle
-    elif platform == SOC_TYPE.VERSAL_NET:
-        gic_node_phandle = tree["/apu-bus/interrupt-controller@e2000000"].phandle
-    elif platform == SOC_TYPE.VERSAL2:
-        gic_node_phandle = tree["/apu-bus/interrupt-controller@e2000000"].phandle
-    elif platform == SOC_TYPE.ZYNQMP:
-        gic_node_phandle = tree["/apu-bus/interrupt-controller@f9010000"].phandle
-    elif platform == SOC_TYPE.ZYNQ:
-        gic_node_phandle = tree["/axi/interrupt-controller@f8f01000"].phandle
-        core_node + LopperProp(name="interrupt-parent",value=[gic_node_phandle])
-        return True
-    else:
-        print("invalid platform")
-        return False
-
-    return xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
-                                         core_node, openamp_channel_info, channel_id)
 
 
 def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose = 0 ):
