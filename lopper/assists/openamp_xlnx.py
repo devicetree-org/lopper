@@ -260,93 +260,11 @@ def xlnx_rpmsg_construct_carveouts(tree, carveouts, rpmsg_carveouts, native, cha
     return True
 
 
-def xlnxl_rpmsg_ipi_get_ipi_id(tree, ipi, role):
-    ipi_node = None
-    ipi_id_prop_name = "xlnx,ipi-id"
-    ipi_node = tree.pnode( ipi )
-
-    if ipi_node == None:
-        print("ERROR: Unable to find ipi: ", ipi, " for role: ", role)
-        return False
-
-    ipi_id = ipi_node.props(ipi_id_prop_name)
-    if ipi_id == []:
-        print("ERROR: Unable to find IPI ID for ", ipi)
-        return False
-
-    return ipi_id[0]
-
-
-def xlnx_rpmsg_ipi_parse_per_channel(remote_ipi, host_ipi, tree, node, openamp_channel_info,
-                                     remote_node, channel_id, native, channel_index, 
-                                     verbose = 0):
-    print(" -> xlnx_rpmsg_ipi_parse_per_channel", channel_id, host_ipi, remote_ipi, channel_index)
- 
-    ipi_id_prop_name = "xlnx,ipi-id"
-    platform =  openamp_channel_info["platform"]
-    buffered_ipi_chan = True
-
-    host_ipi_id = xlnxl_rpmsg_ipi_get_ipi_id(tree, host_ipi[channel_index], "host")
-
-    if host_ipi_id == False:
-        return host_ipi_id
-
-    remote_ipi_id = xlnxl_rpmsg_ipi_get_ipi_id(tree, remote_ipi, "remote")
-    if remote_ipi_id == False:
-        return remote_ipi_id
-
-    host_ipi = tree.pnode( host_ipi[channel_index])
-
-    if platform in [ SOC_TYPE.VERSAL_NET , SOC_TYPE.VERSAL2 ] and (host_ipi_id.value[0] >= 9 or remote_ipi_id.value[0] >= 9):
-        buffered_ipi_chan = False
-
-    # find host to remote buffers
-    host_to_remote_ipi_channel = None
-    for subnode in host_ipi.subnodes():
-        subnode_ipi_id = subnode.props(ipi_id_prop_name)
-        if subnode_ipi_id != [] and remote_ipi_id.value[0] == subnode_ipi_id[0].value[0]:
-            openamp_channel_info["host_to_remote_ipi_channel_" + channel_id] = subnode
-            host_to_remote_ipi_channel = subnode
-    if host_to_remote_ipi_channel == None and buffered_ipi_chan:
-        print("WARNING no host to remote IPI channel has been found.")
-        return False
-
-    remote_ipi = tree.pnode( remote_ipi )
-
-    # find remote to host buffers
-    remote_to_host_ipi_channel = None
-    for subnode in remote_ipi.subnodes():
-        subnode_ipi_id = subnode.props(ipi_id_prop_name)
-        if subnode_ipi_id != [] and host_ipi_id.value[0] == subnode_ipi_id[0].value[0]:
-            openamp_channel_info["remote_to_host_ipi_channel_" + channel_id] = subnode
-            remote_to_host_ipi_channel = subnode
-    if remote_to_host_ipi_channel == None and buffered_ipi_chan:
-        print("WARNING no remote to host IPI channel has been found.")
-        return False
-
-    openamp_channel_info["host_ipi_"+channel_id] = host_ipi
-    openamp_channel_info["remote_ipi_"+channel_id] = remote_ipi
-
-    return True
-
-
 def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
                          remote_node, channel_id, native, channel_index, 
                          verbose = 0 ):
     print(" -> xlnx_rpmsg_ipi_parse", node, remote_node, channel_index, channel_id)
  
-    amba_node = None
-    ipi_id_prop_name = "xlnx,ipi-id"
-    host_to_remote_ipi = None
-    remote_to_host_ipi = None
-
-    # collect host ipi
-    host_ipi_prop = node.props("mbox")
-    if host_ipi_prop == []:
-        print("ERROR: ", node, " is missing mbox property")
-        return False
-
-    host_ipi_prop = host_ipi_prop[0].value
     remote_rpmsg_relation = None
     try:
         remote_rpmsg_relation = tree[remote_node.abs_path + "/domain-to-domain/rpmsg-relation"]
@@ -354,45 +272,25 @@ def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
         print("ERROR: ", remote_node, " is missing rpmsg relation")
         return False
 
-    # collect remote ipi
-    remote_ipi_prop = remote_rpmsg_relation.props("mbox")
-    if remote_ipi_prop == []:
-        print("ERROR: ", remote_node, " is missing mbox property")
-        return False
+    # for each relevant IPI
+    # find its mbox property in the relation node
+    # map the mbox property phandle to a node in the tree
+    # save node for later use
+    #
+    # note for remote relation only one mbox value is used so index at 0
+    for (relation_node, role, idx) in [ (node, "host", channel_index), (remote_rpmsg_relation, "remote", 0) ]:
+        if relation_node.propval("mbox") == ['']:
+            print("ERROR: ", relation_node, " is missing mbox property")
+            return False
+        ipi_node = tree.pnode( relation_node.propval("mbox")[idx] )
+        if ipi_node == None:
+            print("ERROR: Unable to find ipi: ", ipi_phandle, " for role", role)
+            return False
 
-    remote_ipi_prop = remote_ipi_prop[0].value
-
-    ret = xlnx_rpmsg_ipi_parse_per_channel(remote_ipi_prop[0], host_ipi_prop, tree, node, openamp_channel_info,
-                                           remote_node, channel_id, native, channel_index, verbose)
-    if ret != True:
-        return False
-
-    return True
-
-def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
-                                  core_node, openamp_channel_info, channel_id):
-    target_remote_node = None
-    print(" -> xlnx_rpmsg_kernel_update_ipis", host_ipi, remote_ipi, core_node, channel_id)
-
-    # in case of remote run, flip the ipis so that its present for remote parsing later
-    if openamp_channel_info['role'+channel_id] == 'remote':
-        tmp = host_ipi
-        host_ipi = remote_ipi
-        remote_ipi = tmp
-
-    for node in host_ipi.subnodes():
-        if node != host_ipi and node.propval('xlnx,ipi-id') == remote_ipi.propval('xlnx,ipi-id'):
-           target_remote_node = node
-           break
-
-    if target_remote_node == None:
-        print("ERROR: xlnx_rpmsg_kernel_update_ipis: could not find host to remote ipi mapping.")
-        return False
-
-    core_node + LopperProp(name="mboxes", value = [target_remote_node.phandle, 0, target_remote_node.phandle, 1])
-    core_node + LopperProp(name="mbox-names", value = ["tx", "rx"])
+        openamp_channel_info[f"{role}_ipi_{channel_id}"] = ipi_node
 
     return True
+
 
 def xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose = 0 ):
     native = openamp_channel_info["rpmsg_native_"+ channel_id]
@@ -400,104 +298,63 @@ def xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose = 0 )
     core_node = openamp_channel_info["core_node"+channel_id]
     host_ipi = openamp_channel_info["host_ipi_"+ channel_id]
     remote_ipi = openamp_channel_info["remote_ipi_"+ channel_id]
-    controller_parent = None
-    amba_node = None
-    gic_node_phandle = None
+    print(" -> xlnx_rpmsg_update_ipis", host_ipi, remote_ipi, core_node, channel_id)
 
-    if platform == SOC_TYPE.VERSAL:
-        gic_node_phandle = tree["/apu-bus/interrupt-controller@f9000000"].phandle
-    elif platform == SOC_TYPE.VERSAL_NET:
-        gic_node_phandle = tree["/apu-bus/interrupt-controller@e2000000"].phandle
-    elif platform == SOC_TYPE.VERSAL2:
-        gic_node_phandle = tree["/apu-bus/interrupt-controller@e2000000"].phandle
-    elif platform == SOC_TYPE.ZYNQMP:
-        gic_node_phandle = tree["/apu-bus/interrupt-controller@f9010000"].phandle
-    elif platform == SOC_TYPE.ZYNQ:
-        gic_node_phandle = tree["/axi/interrupt-controller@f8f01000"].phandle
-        core_node + LopperProp(name="interrupt-parent",value=[gic_node_phandle])
-        return True
-    else:
-        print("invalid platform")
+    # in case of remote run, flip the ipis so that its present for remote parsing later
+    if openamp_channel_info['role'+channel_id] == 'remote':
+        tmp = host_ipi
+        host_ipi = remote_ipi
+        remote_ipi = tmp
+
+    target_remote_node = [ node for node in host_ipi.subnodes(children_only=True) if node.propval('xlnx,ipi-id') == remote_ipi.propval('xlnx,ipi-id') ]
+    if target_remote_node == []:
+        print("ERROR: xlnx_rpmsg_update_ipis: could not find host to remote ipi mapping.")
         return False
 
-    return xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
-                                         core_node, openamp_channel_info, channel_id)
+    core_node + LopperProp(name="mboxes", value = [target_remote_node[0].phandle, 0, target_remote_node[0].phandle, 1])
+    core_node + LopperProp(name="mbox-names", value = ["tx", "rx"])
+
+    return True
 
 
 def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose = 0 ):
     print(" -> xlnx_rpmsg_update_tree", node, channel_id)
  
     platform = openamp_channel_info["platform"]
-    cpu_config = None
     host_ipi = None
     remote_ipi = None
-    rpu_core = None
     carveouts_nodes = openamp_channel_info["carveouts_"+ channel_id]
-    amba_node = None
     native = False
     rpmsg_carveouts = []
-    core_node = None
-
-    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
-        native = openamp_channel_info["rpmsg_native_"+ channel_id]
-        cpu_config =  openamp_channel_info["cpu_config"+channel_id]
-        rpu_core = openamp_channel_info["rpu_core" + channel_id]
+    cpu_config =  openamp_channel_info["cpu_config"+channel_id]
+    rpu_core = openamp_channel_info["rpu_core" + channel_id]
 
     elfload_node = None
-    if native:
-        amba_node = openamp_channel_info["amba_node"]
 
-    # if Amba node exists, then this is for RPMsg native.
-    # in this case find elfload node in case of native RPMsg as it may be contiguous
-    # for AMBA Shm Node
-    if native:
-        for node in openamp_channel_info["elfload"+ channel_id]:
-            if node.props("start") != []:
-                elfload_node = node
-
-    ret = xlnx_rpmsg_construct_carveouts(tree, carveouts_nodes, rpmsg_carveouts, native, channel_id, openamp_channel_info,
-                                         amba_node=amba_node, elfload_node=elfload_node, verbose=verbose)
-    if ret == False:
+    if not xlnx_rpmsg_construct_carveouts(tree, carveouts_nodes, rpmsg_carveouts, native, channel_id, openamp_channel_info,
+                                          amba_node=None, elfload_node=elfload_node, verbose=verbose):
         return ret
 
-    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2]:
-        core_node = openamp_channel_info["core_node"+channel_id]
-    else:
-        core_node = tree["/remoteproc@0"]
+    core_node = openamp_channel_info["core_node"+channel_id]
 
-    mem_region_prop = core_node.props("memory-region")[0]
-
-    # add rpmsg carveouts to cluster core node if using rpmsg kernel driver
-
-    vdev0buf = None
-    for index, rc in enumerate(rpmsg_carveouts):
-        if "vdev0buffer" in rc.name:
-            vdev0buf = index
-            break
     # vdev0buf should be first after the ELF load prop already in memory-region
+    vdev0buf = [ index for index, rc in enumerate(rpmsg_carveouts) if "vdev0buffer" in rc.name ][0]
     vdev0buf = rpmsg_carveouts.pop(vdev0buf)
     rpmsg_carveouts.insert(0, vdev0buf)
 
-    new_mem_region_prop_val = mem_region_prop.value
-    if not native:
-        for rc in rpmsg_carveouts:
-            new_mem_region_prop_val.append(rc.phandle)
+    new_mem_region_prop_val = core_node.propval("memory-region")
+    [ new_mem_region_prop_val.append(rc.phandle) for rc in rpmsg_carveouts ]
 
     # If DDRBOOT, ensure that it is after RPMSG carveouts
+    # # save ddrboot node and add to end of list
     if openamp_channel_info["ddrboot"+channel_id]:
-        ddrboot_node = None
-        for index, phandle in enumerate(new_mem_region_prop_val):
-            if "ddrboot" in tree.pnode(phandle).name:
-                ddrboot_node = index
-                break
-        ddrboot_node = new_mem_region_prop_val.pop(ddrboot_node)
-        new_mem_region_prop_val.append(ddrboot_node)
+        ddrboot_node_index = [ index for index, phandle in enumerate(new_mem_region_prop_val) if "ddrboot" in tree.pnode(phandle).name ]
+        new_mem_region_prop_val.append( new_mem_region_prop_val.pop(ddrboot_node_index[0]) )
 
     # update property with new values
-    mem_region_prop.value = new_mem_region_prop_val
+    core_node["memory-region"].value = new_mem_region_prop_val
 
-    ret = xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose)
-    if ret != True:
+    if not xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose):
         return False
 
     return True
@@ -542,53 +399,18 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
     if target_node.propval('mboxes') != ['']:
         ipi_child = sdt.tree.pnode(target_node.propval('mboxes')[0])
     else:
+        print("OPENAMP: XLNX: ERROR: Zephyr IPI: could not find mboxes property for", target_node)
         return False
 
     ipi_parent = ipi_child.parent
-
-    ipi_child.name = f"child@{hex(ipi_child['reg'].value[1])[2:]}"
-    child_props = {
-      "compatible" : 'xlnx,mbox-versal-ipi-dest-mailbox', "status" : 'okay', "#mbox-cells" : 1,
-      "interrupt-parent" : ipi_parent['interrupt-parent'].value,
-      "reg" : ipi_child['reg'].value,
-      "reg-names": ipi_child['reg-names'].value,
-      "xlnx,ipi-id" : ipi_child["xlnx,ipi-id"].value
-    }
-
-    parent_props = {
-      "compatible" : 'xlnx,mbox-versal-ipi-mailbox', "status" : 'okay', "#mbox-cells" : 1, "#address-cells" : 2, "#size-cells" : 2,
-      "interrupt-parent" : ipi_parent['interrupt-parent'].value,
-      "reg" : ipi_parent['reg'].value,
-      "xlnx,ipi-id" : ipi_parent["xlnx,ipi-id"].value,
-      "interrupts" : ipi_parent["interrupts"].value,
-      "reg-names": ipi_parent['reg-names'].value,
-    }
-
-    parent_props["interrupts"][2] = 0x2
-
-    # update each node so that only needed properties are present and that they have the right values
-    for (node, needed_props) in zip([ipi_parent, ipi_child], [parent_props, child_props]):
-        existing_props = list(node.__props__.keys())
-
-        # add new properties
-        [node + LopperProp(name=p, value=needed_props[p]) for p in needed_props.keys() if p not in existing_props]
-
-        # delete unneeded properties
-        [node.delete(p) for p in existing_props if p not in needed_props]
-
-        # update existing properties
-        for p in needed_props.keys():
-            if p in existing_props:
-                node[p] = needed_props[p]
 
     mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
     mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [ipi_child.phandle, 0, ipi_child.phandle, 1], "mbox-names" : ['tx', 'rx'] }
     [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
     sdt.tree.add(mbox_consumer_node)
 
-    for ipi_subnode in ipi_parent.subnodes():
-        if ipi_subnode != ipi_parent and ipi_subnode != ipi_child:
-            sdt.tree - ipi_subnode
+    # delete all other children of ipi parent
+    [ sdt.tree - ipi_subnode for ipi_subnode in ipi_parent.subnodes(children_only=True) if ipi_subnode != ipi_child ]
 
     return True
 
