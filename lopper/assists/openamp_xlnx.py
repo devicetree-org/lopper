@@ -321,73 +321,40 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
     print(" -> xlnx_rpmsg_update_tree", node, channel_id)
  
     platform = openamp_channel_info["platform"]
-    cpu_config = None
     host_ipi = None
     remote_ipi = None
-    rpu_core = None
     carveouts_nodes = openamp_channel_info["carveouts_"+ channel_id]
-    amba_node = None
     native = False
     rpmsg_carveouts = []
-    core_node = None
-
-    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
-        native = openamp_channel_info["rpmsg_native_"+ channel_id]
-        cpu_config =  openamp_channel_info["cpu_config"+channel_id]
-        rpu_core = openamp_channel_info["rpu_core" + channel_id]
+    cpu_config =  openamp_channel_info["cpu_config"+channel_id]
+    rpu_core = openamp_channel_info["rpu_core" + channel_id]
 
     elfload_node = None
-    if native:
-        amba_node = openamp_channel_info["amba_node"]
 
-    # if Amba node exists, then this is for RPMsg native.
-    # in this case find elfload node in case of native RPMsg as it may be contiguous
-    # for AMBA Shm Node
-    if native:
-        for node in openamp_channel_info["elfload"+ channel_id]:
-            if node.props("start") != []:
-                elfload_node = node
-
-    ret = xlnx_rpmsg_construct_carveouts(tree, carveouts_nodes, rpmsg_carveouts, native, channel_id, openamp_channel_info,
-                                         amba_node=amba_node, elfload_node=elfload_node, verbose=verbose)
-    if ret == False:
+    if not xlnx_rpmsg_construct_carveouts(tree, carveouts_nodes, rpmsg_carveouts, native, channel_id, openamp_channel_info,
+                                          amba_node=None, elfload_node=elfload_node, verbose=verbose):
         return ret
 
-    if platform in [ SOC_TYPE.VERSAL, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2]:
-        core_node = openamp_channel_info["core_node"+channel_id]
-    else:
-        core_node = tree["/remoteproc@0"]
-
-    mem_region_prop = core_node.props("memory-region")[0]
-
-    # add rpmsg carveouts to cluster core node if using rpmsg kernel driver
-
-    vdev0buf = [ index for index, rc in enumerate(rpmsg_carveouts) if "vdev0buffer" in rc.name ][0]
+    core_node = openamp_channel_info["core_node"+channel_id]
 
     # vdev0buf should be first after the ELF load prop already in memory-region
+    vdev0buf = [ index for index, rc in enumerate(rpmsg_carveouts) if "vdev0buffer" in rc.name ][0]
     vdev0buf = rpmsg_carveouts.pop(vdev0buf)
     rpmsg_carveouts.insert(0, vdev0buf)
 
-    new_mem_region_prop_val = mem_region_prop.value
-    if not native:
-        for rc in rpmsg_carveouts:
-            new_mem_region_prop_val.append(rc.phandle)
+    new_mem_region_prop_val = core_node.propval("memory-region")
+    [ new_mem_region_prop_val.append(rc.phandle) for rc in rpmsg_carveouts ]
 
     # If DDRBOOT, ensure that it is after RPMSG carveouts
+    # # save ddrboot node and add to end of list
     if openamp_channel_info["ddrboot"+channel_id]:
-        ddrboot_node = None
-        for index, phandle in enumerate(new_mem_region_prop_val):
-            if "ddrboot" in tree.pnode(phandle).name:
-                ddrboot_node = index
-                break
-        ddrboot_node = new_mem_region_prop_val.pop(ddrboot_node)
-        new_mem_region_prop_val.append(ddrboot_node)
+        ddrboot_node_index = [ index for index, phandle in enumerate(new_mem_region_prop_val) if "ddrboot" in tree.pnode(phandle).name ]
+        new_mem_region_prop_val.append( new_mem_region_prop_val.pop(ddrboot_node_index[0]) )
 
     # update property with new values
-    mem_region_prop.value = new_mem_region_prop_val
+    core_node["memory-region"].value = new_mem_region_prop_val
 
-    ret = xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose)
-    if ret != True:
+    if not xlnx_rpmsg_update_ipis(tree, channel_id, openamp_channel_info, verbose):
         return False
 
     return True
