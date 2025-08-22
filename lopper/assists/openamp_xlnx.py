@@ -133,9 +133,10 @@ def reserved_mem_node_check(tree, node, verbose = 0 ):
 
             overlap = False
             for base,sz,existing_node in zip(res_mem_bases, res_mem_sizes, reserved_mem_nodes):
-                if isinstance(sz, str):
+                if isinstance(sz, str) or isinstance(base, str) or isinstance(new_sz, str) or isinstance(new_base, str):
                     continue
 
+                print(" --> reserved_mem_node_check", node, rm_subnode, new_base, base, new_sz, sz)
                 if new_base < base and (new_base+new_sz) > base:
                     overlap = True
                 if new_base < (base+sz) and (new_base+new_sz) > (base+sz):
@@ -544,33 +545,23 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
         return False
 
     ipi_parent = ipi_child.parent
-    host_node_of_child = None
 
-    # This is the top level node (remote parent in this context) that has information for ipi child of host
-    for node in sdt.tree['/axi'].subnodes():
-        if node.depth == 2 and node.propval("xlnx,ipi-id") == ipi_child.propval("xlnx,ipi-id"):
-            host_node_of_child = node
-            break
-    if host_node_of_child == None:
-        print("[ERROR]: Unable to find axi IPI node with xlnx,ipi-id value: ", ipi_child.propval("xlnx,ipi-id"))
-        return False
-
-    ipi_child.name = f"mailbox@{hex(ipi_parent['reg'].value[1])[2:]}"
+    ipi_child.name = f"child@{hex(ipi_child['reg'].value[1])[2:]}"
     child_props = {
       "compatible" : 'xlnx,mbox-versal-ipi-dest-mailbox', "status" : 'okay', "#mbox-cells" : 1,
       "interrupt-parent" : ipi_parent['interrupt-parent'].value,
-      "reg" : ipi_parent['reg'].value,
-      "reg-names": ipi_parent['reg-names'].value,
+      "reg" : ipi_child['reg'].value,
+      "reg-names": ipi_child['reg-names'].value,
       "xlnx,ipi-id" : ipi_child["xlnx,ipi-id"].value
     }
 
     parent_props = {
       "compatible" : 'xlnx,mbox-versal-ipi-mailbox', "status" : 'okay', "#mbox-cells" : 1, "#address-cells" : 2, "#size-cells" : 2,
       "interrupt-parent" : ipi_parent['interrupt-parent'].value,
-      "reg" : ipi_child['reg'].value,
+      "reg" : ipi_parent['reg'].value,
       "xlnx,ipi-id" : ipi_parent["xlnx,ipi-id"].value,
       "interrupts" : ipi_parent["interrupts"].value,
-      "reg-names": host_node_of_child['reg-names'].value,
+      "reg-names": ipi_parent['reg-names'].value,
     }
 
     parent_props["interrupts"][2] = 0x2
@@ -595,10 +586,9 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
     [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
     sdt.tree.add(mbox_consumer_node)
 
-    for (host, remote) in [ (ipi_parent, host_node_of_child), (host_node_of_child, ipi_parent) ]:
-        for ipi_subnode in host.subnodes():
-            if ipi_subnode != host and ipi_subnode.propval("xlnx,ipi-id") != remote.propval("xlnx,ipi-id"):
-                sdt.tree - ipi_subnode
+    for ipi_subnode in ipi_parent.subnodes():
+        if ipi_subnode != ipi_parent and ipi_subnode != ipi_child:
+            sdt.tree - ipi_subnode
 
     return True
 
