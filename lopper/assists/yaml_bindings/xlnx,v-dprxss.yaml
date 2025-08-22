@@ -96,6 +96,18 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [6, 8, 10, 12, 16]
 
+  xlnx,mode:
+    description: |
+      This denotes mst protocol is enabled in the IP.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  xlnx,num-streams:
+    description: Max number of MST Streams that IP configured with.
+                 Possible values are 1, 2, 4.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [1, 2, 4]
+
   xlnx,hdcp22-enable:
     description: |
       This denotes hdcp22 protocol is enabled in the IP.
@@ -188,6 +200,7 @@ required:
   - xlnx,hdcp22-enable
   - xlnx,xilinx-vfmc
   - xlnx,mode
+  - xlnx,num-streams
   - phys
   - ports
 
