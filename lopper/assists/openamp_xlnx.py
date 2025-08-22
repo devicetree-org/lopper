@@ -371,7 +371,6 @@ def xlnx_rpmsg_ipi_parse(tree, node, openamp_channel_info,
 
 def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
                                   core_node, openamp_channel_info, channel_id):
-    target_remote_node = None
     print(" -> xlnx_rpmsg_kernel_update_ipis", host_ipi, remote_ipi, core_node, channel_id)
 
     # in case of remote run, flip the ipis so that its present for remote parsing later
@@ -380,16 +379,12 @@ def xlnx_rpmsg_kernel_update_ipis(tree, host_ipi, remote_ipi, gic_node_phandle,
         host_ipi = remote_ipi
         remote_ipi = tmp
 
-    for node in host_ipi.subnodes():
-        if node != host_ipi and node.propval('xlnx,ipi-id') == remote_ipi.propval('xlnx,ipi-id'):
-           target_remote_node = node
-           break
-
-    if target_remote_node == None:
+    target_remote_node = [ node for node in host_ipi.subnodes(children_only=True) if node.propval('xlnx,ipi-id') == remote_ipi.propval('xlnx,ipi-id') ]
+    if target_remote_node == []:
         print("ERROR: xlnx_rpmsg_kernel_update_ipis: could not find host to remote ipi mapping.")
         return False
 
-    core_node + LopperProp(name="mboxes", value = [target_remote_node.phandle, 0, target_remote_node.phandle, 1])
+    core_node + LopperProp(name="mboxes", value = [target_remote_node[0].phandle, 0, target_remote_node[0].phandle, 1])
     core_node + LopperProp(name="mbox-names", value = ["tx", "rx"])
 
     return True
@@ -469,11 +464,8 @@ def xlnx_rpmsg_update_tree(tree, node, channel_id, openamp_channel_info, verbose
 
     # add rpmsg carveouts to cluster core node if using rpmsg kernel driver
 
-    vdev0buf = None
-    for index, rc in enumerate(rpmsg_carveouts):
-        if "vdev0buffer" in rc.name:
-            vdev0buf = index
-            break
+    vdev0buf = [ index for index, rc in enumerate(rpmsg_carveouts) if "vdev0buffer" in rc.name ][0]
+
     # vdev0buf should be first after the ELF load prop already in memory-region
     vdev0buf = rpmsg_carveouts.pop(vdev0buf)
     rpmsg_carveouts.insert(0, vdev0buf)
