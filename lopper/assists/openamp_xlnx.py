@@ -542,53 +542,18 @@ def xlnx_openamp_zephyr_update_tree_ipi(target_node, sdt, options):
     if target_node.propval('mboxes') != ['']:
         ipi_child = sdt.tree.pnode(target_node.propval('mboxes')[0])
     else:
+        print("OPENAMP: XLNX: ERROR: Zephyr IPI: could not find mboxes property for", target_node)
         return False
 
     ipi_parent = ipi_child.parent
-
-    ipi_child.name = f"child@{hex(ipi_child['reg'].value[1])[2:]}"
-    child_props = {
-      "compatible" : 'xlnx,mbox-versal-ipi-dest-mailbox', "status" : 'okay', "#mbox-cells" : 1,
-      "interrupt-parent" : ipi_parent['interrupt-parent'].value,
-      "reg" : ipi_child['reg'].value,
-      "reg-names": ipi_child['reg-names'].value,
-      "xlnx,ipi-id" : ipi_child["xlnx,ipi-id"].value
-    }
-
-    parent_props = {
-      "compatible" : 'xlnx,mbox-versal-ipi-mailbox', "status" : 'okay', "#mbox-cells" : 1, "#address-cells" : 2, "#size-cells" : 2,
-      "interrupt-parent" : ipi_parent['interrupt-parent'].value,
-      "reg" : ipi_parent['reg'].value,
-      "xlnx,ipi-id" : ipi_parent["xlnx,ipi-id"].value,
-      "interrupts" : ipi_parent["interrupts"].value,
-      "reg-names": ipi_parent['reg-names'].value,
-    }
-
-    parent_props["interrupts"][2] = 0x2
-
-    # update each node so that only needed properties are present and that they have the right values
-    for (node, needed_props) in zip([ipi_parent, ipi_child], [parent_props, child_props]):
-        existing_props = list(node.__props__.keys())
-
-        # add new properties
-        [node + LopperProp(name=p, value=needed_props[p]) for p in needed_props.keys() if p not in existing_props]
-
-        # delete unneeded properties
-        [node.delete(p) for p in existing_props if p not in needed_props]
-
-        # update existing properties
-        for p in needed_props.keys():
-            if p in existing_props:
-                node[p] = needed_props[p]
 
     mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
     mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [ipi_child.phandle, 0, ipi_child.phandle, 1], "mbox-names" : ['tx', 'rx'] }
     [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
     sdt.tree.add(mbox_consumer_node)
 
-    for ipi_subnode in ipi_parent.subnodes():
-        if ipi_subnode != ipi_parent and ipi_subnode != ipi_child:
-            sdt.tree - ipi_subnode
+    # delete all other children of ipi parent
+    [ sdt.tree - ipi_subnode for ipi_subnode in ipi_parent.subnodes(children_only=True) if ipi_subnode != ipi_child ]
 
     return True
 
