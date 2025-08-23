@@ -1,6 +1,6 @@
 #/*
 # * Copyright (c) 2020 Xilinx Inc. All rights reserved.
-# * Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
+# * Copyright (c) 2024 - 2025 Advanced Micro Devices, Inc. All Rights Reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
@@ -13,14 +13,15 @@ import sys
 import os
 import glob
 
-sys.path.append(os.path.dirname(__file__))
-
 from baremetalconfig_xlnx import compat_list, get_cpu_node
 from baremetallinker_xlnx import get_memranges
 from common_utils import to_cmakelist,log_setup
 from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
 
+sys.path.append(os.path.dirname(__file__))
+
 _init(__name__)
+
 
 def is_compat( node, compat_string_to_test ):
     if "module,baremetal_bspconfig_xlnx" in compat_string_to_test:
@@ -39,7 +40,7 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
     options["args"].append("xparam")
     mem_ranges, _ = get_memranges(tgt_node, sdt, options)
     if not mem_ranges:
-        _warning("No memory node is mapped to the processor. Moving ahead")
+        _debug("No memory node is mapped to the processor. Moving ahead")
 
     # Generate Memconfig cmake meta-data file.
     memconfig_path = os.path.join(sdt.outdir,'MemConfig.cmake')
@@ -70,19 +71,25 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
     machine = options['args'][0]
     # Get the cpu node for a given Processor
     match_cpunode = get_cpu_node(sdt, options)
-
+    if not match_cpunode:
+        _error("Failed to get CPU node for the given processor.")
     srcdir = options['args'][1].rstrip(os.sep)
     datadir = os.path.join(os.path.dirname(srcdir),'data')
     yaml_paths = glob.glob(f"{datadir}/*/*.yaml")
-    
-
+    if not yaml_paths:
+        _debug(f"No YAML files found in the expected path: {datadir}")
+        
     # Generate CPU specific config struct file.
     for yamlfile in yaml_paths:
         name = os.path.basename(os.path.dirname(yamlfile))
         with open(yamlfile) as stream:
             schema = yaml.safe_load(stream)
+            if not schema:
+                _debug(f"Failed to load schema from {yamlfile}.")
             compatlist = compat_list(schema)
             prop_list = schema['required']
+            if not prop_list:
+                _debug(f"No required properties found in schema {yamlfile}.")
             match = [compat for compat in compatlist if compat in match_cpunode['compatible'].value]
             if match:
                config_struct = schema['config'][0]
@@ -99,7 +106,7 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
                                if i != (len(match_cpunode[prop].value) - 1):
                                    fd.write(",")
                        except:
-                           _warning(f"Property value not douf for {prop}, writing value 0")
+                           _debug(f"Property value not found for {prop}, writing value 0")
                            fd.write("\n\t\t 0")
                        if prop == prop_list[-1]:
                            fd.write(f"  /* {prop} */")
