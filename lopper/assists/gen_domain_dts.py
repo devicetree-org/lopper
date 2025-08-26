@@ -510,8 +510,6 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
             sdt.tree.delete(node)
 
         if node.propval("compatible") != ['']:
-            if node.propval("compatible") == ['xlnx,versal-ipi-dest-mailbox']:
-                node.name = f"child@{hex(node.propval('reg')[1])[2:]}"
             if node.propval('xlnx,ip-name') != ['']:
                 val = node.propval('xlnx,ip-name', list)[0]
                 if "r52" in machine and (val == "psx_rcpu_gic" or val == "rcpu_gic"):
@@ -625,6 +623,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                         node["compatible"].value = ["xlnx,mbox-versal-ipi-mailbox"]
                     elif "xlnx,versal-ipi-dest-mailbox" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,mbox-versal-ipi-dest-mailbox"]
+                        node.name = f"child@{hex(node.propval('reg')[1])[2:]}"
                     # PS-IIC
                     if "cdns,i2c-r1p14" in node["compatible"].value:
                         node["compatible"].value = ["cdns,i2c"]
