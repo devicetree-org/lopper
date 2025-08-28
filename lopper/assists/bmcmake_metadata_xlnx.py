@@ -224,19 +224,13 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
     comp_type = schema.get('type',{})
     family =  sdt.tree['/'].propval('family')
     family = family[0] if family else ""
+    variant = sdt.tree['/'].propval('variant')
     if meta_dict.get("condition") and family:
         match_cpunode = bm_config.get_cpu_node(sdt, options)
         proc_ip_name = match_cpunode.propval('xlnx,ip-name')[0]
-        local_scope={
-            "proc":proc_ip_name,
-            "platform":family,
-            "depends":[]
-        }
-        try:
-            exec(meta_dict["condition"], {"__builtins__": {}}, local_scope)
-            meta_dict = {key: value for key, value in meta_dict.items() if key in local_scope["depends"]}
-        except Exception as e:
-            _warning("The condition in the {yaml_file} file has failed. -> {e}")
+        local_scope = utils.run_exec(meta_dict["condition"], proc_ip_name, family, variant, return_list="depends", yaml_file=yaml_file)
+        meta_dict = {key: value for key, value in meta_dict.items() if key in local_scope}
+
     meta_dict.pop("condition",None)
     lwip = re.search("lwip", name)
     standalone = re.search("standalone", name)

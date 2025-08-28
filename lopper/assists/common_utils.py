@@ -15,6 +15,9 @@ import yaml
 from typing import Any, List, Optional, Dict, Union
 import shutil
 import logging
+from lopper.log import _init, _warning
+
+_init(__name__)
 
 def to_cmakelist(pylist):
     cmake_list = ';'.join(pylist)
@@ -157,4 +160,33 @@ def log_setup(options):
     #print(f"[LOG_SETUP] Verbose level = {verbose_level}, Final level = {level}")
     return level
 
+def run_exec(yaml_condition, proc_ip_name, family, variant=None, return_list="examples", yaml_file=""):
+    """
+    Executes a Python condition string in a restricted local scope and returns a specified list.
 
+    Args:
+        yaml_condition (str): Python code to execute, typically from a YAML file.
+        proc_ip_name (str): Name of the processor IP available in the local scope as 'proc'.
+        family (str): Platform family available in the local scope as 'platform'.
+        variant (str, optional): Variant available in the local scope as 'variant'.
+        return_list (str, optional): Name of the list to return from the local scope. Defaults to "examples".
+        yaml_file (str, optional): YAML file name for error reporting.
+
+    Returns:
+        list: The list named by `return_list` from the local scope after executing the condition.
+
+    Notes:
+        Any exceptions during execution are caught and logged as warnings.
+    """
+    local_scope = {
+        "proc": proc_ip_name,
+        "platform": family,
+        "variant": variant,
+        return_list: []
+    }
+    try:
+        exec(yaml_condition, {"__builtins__": {}}, local_scope)
+    except Exception as e:
+        _warning(f"The condition in the {yaml_file} file has failed. -> {e}")
+    finally:
+        return local_scope[return_list]

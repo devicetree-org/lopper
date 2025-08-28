@@ -33,6 +33,10 @@ def get_yaml_data(comp_name, comp_dir,proc_ip_name=None,family=None,variant=None
     yaml_file = os.path.join(comp_dir, 'data', f'{comp_name}.yaml')
     schema = utils.load_yaml(yaml_file)
     supported_proc_list = schema.get('supported_processors',[])
+    condition_item = next((proc for proc in supported_proc_list if isinstance(proc, dict) and "condition" in proc), None)
+    if condition_item:
+        local_scope = utils.run_exec(condition_item["condition"], proc_ip_name, family, variant, return_list="supported_processors", yaml_file=yaml_file)
+        supported_proc_list = [proc for proc in supported_proc_list if proc in local_scope]
     supported_os_list = schema.get('supported_os',[])
     description = schema.get('description',"")
     dep_lib_list = list(schema.get('depends_libs',{}).keys())
@@ -40,17 +44,8 @@ def get_yaml_data(comp_name, comp_dir,proc_ip_name=None,family=None,variant=None
     example_dict = {}
     if examples and proc_ip_name:
         if examples.get("condition"):
-            local_scope={
-                "proc":proc_ip_name,
-                "platform":family,
-                "variant":variant,
-                "examples":[]
-            }
-            try:
-                exec(examples["condition"], {}, local_scope)
-                examples = {key: value for key, value in examples.items() if key in local_scope["examples"]}
-            except Exception as e:
-                _warning(f"The condition in the {yaml_file} file has failed. -> {e}")
+            local_scope = utils.run_exec(examples["condition"], proc_ip_name, family, variant, return_list="examples", yaml_file=yaml_file)
+            examples = {key: value for key, value in examples.items() if key in local_scope}
         examples.pop("condition",None)
         for ex,deps in examples.items():
             if deps:
