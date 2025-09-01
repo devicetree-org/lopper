@@ -530,6 +530,9 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
         numsplits = 0
         splitidx = 0
         for j,child in enumerate(list(node.child_nodes.items())):
+            # Avoid sysmon temp child node as it is not supported in baremetal
+            if re.search(r"(sysmon@[a-zA-Z0-9]+/temp@[a-zA-Z0-9]+$)", child[0]):
+                continue
             if len(pad) != 1:
                 plat.buf('\n\t\t\t{')
             for k,p in enumerate(pad):
@@ -767,9 +770,12 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                pad = list(prop.values())[0]
                prop = list(prop.keys())[0]
             if prop == "child,required":
+
                 for j,child in enumerate(list(node.child_nodes.items())):
                     for k,p in enumerate(pad):
-                        drvoptprop_list.append(child[1][p].value[0])
+                        # Avoid sysmon temp child node as it is not supported in baremetal
+                        if not re.search(r"(sysmon@[a-zA-Z0-9]+/temp@[a-zA-Z0-9]+$)", child[0]):
+                            drvoptprop_list.append(child[1][p].value[0])
             else:
                 try:
                     drvoptprop_list.append(hex(node[prop].value[0]))
