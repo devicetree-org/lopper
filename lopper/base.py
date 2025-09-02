@@ -246,7 +246,8 @@ class lopper_base:
             # they will show up as EMPTY. But if there's a schema they'll
             # show as a number type, but have no values (length)
             if repr(encode_calculated) == repr(LopperFmt.EMPTY) or \
-               ((repr(encode_calculated) == repr(LopperFmt.UINT32) or \
+               ((repr(encode_calculated) == repr(LopperFmt.UINT16) or \
+                 repr(encode_calculated) == repr(LopperFmt.UINT32) or \
                  repr(encode_calculated) == repr(LopperFmt.UINT64) or \
                  repr(encode_calculated) == repr(LopperFmt.UINT8)) and len(prop) == 0) :
                 return val
@@ -264,7 +265,8 @@ class lopper_base:
                 except:
                     encode_calculated = encode
 
-            if repr(encode_calculated) == repr(LopperFmt.UINT32) or \
+            if repr(encode_calculated) == repr(LopperFmt.UINT16) or \
+               repr(encode_calculated) == repr(LopperFmt.UINT32) or \
                repr(encode_calculated) == repr(LopperFmt.UINT64) or \
                repr(encode_calculated) == repr(LopperFmt.UINT8) :
                 try:
@@ -276,6 +278,12 @@ class lopper_base:
                         end_index = 1
                         short_int_size = 1
                         num_nums = num_bits
+                    elif encode_calculated == LopperFmt.UINT16:
+                        binary_data = False
+                        num_nums = 1
+                        start_index = 0
+                        end_index = 2
+                        short_int_size = 2
                     else:
                         binary_data = False
                         num_nums = num_bits // 4

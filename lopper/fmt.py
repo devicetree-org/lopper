@@ -15,4 +15,5 @@ class LopperFmt(Enum):
     UINT64 = 9
     EMPTY = 10
     UNKNOWN = 11
+    UINT16 = 12
 

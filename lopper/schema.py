@@ -23,6 +23,7 @@ _init( "schema.py" )
 
 # Add properties to debug as needed
 PROPERTY_DEBUG_LIST = [
+    # "xlnx,num-queues",
     # "cooling-device",
     # 'xlnx,buffer-base',
     # 'xlnx,buffer-index',
@@ -272,6 +273,56 @@ class DTSSchemaGenerator:
         # No angle brackets = not a numeric array
         return False
 
+    def strip_dts_comments(self, line):
+        """Remove comments from a DTS line while preserving strings"""
+        # State tracking for quotes
+        in_string = False
+        in_char = False
+        escaped = False
+
+        result = []
+        i = 0
+        while i < len(line):
+            char = line[i]
+
+            # Handle escape sequences
+            if escaped:
+                result.append(char)
+                escaped = False
+                i += 1
+                continue
+
+            if char == '\\':
+                escaped = True
+                result.append(char)
+                i += 1
+                continue
+
+            # Toggle string state
+            if char == '"' and not in_char:
+                in_string = not in_string
+                result.append(char)
+                i += 1
+                continue
+
+            # Toggle char state
+            if char == "'" and not in_string:
+                in_char = not in_char
+                result.append(char)
+                i += 1
+                continue
+
+            # Check for comment start when not in string/char
+            if not in_string and not in_char:
+                if i + 1 < len(line) and line[i:i+2] == '//':
+                    # Found comment, stop here
+                    break
+
+            result.append(char)
+            i += 1
+
+        return ''.join(result).strip()
+
     def scan_dts_file(self, dts_content):
         """Parse DTS content and extract property information"""
         # Reset state
@@ -297,6 +348,9 @@ class DTSSchemaGenerator:
 
         while i < len(lines):
             line = lines[i].strip()
+
+            # Remove comments
+            line = self.strip_dts_comments(line)
 
             # Skip comments and empty lines
             if not line or line.startswith('//') or line.startswith('/*'):
@@ -344,16 +398,24 @@ class DTSSchemaGenerator:
                     prop_value = ''  # Empty value for boolean
                 else:
                     # Check for /bits/ directive
-                    bits_match = re.match(r'/bits/\s+(\d+)\s+(.+)$', prop_value)
+                    bits_match = re.match(r'/bits/\s+(\d+)\s+(.+?)(\s*;?\s*)$', prop_value)
                     if bits_match:
                         bit_width = int(bits_match.group(1))
-                        prop_value = bits_match.group(2).strip()
+                        value_part = bits_match.group(2).strip()
+                        semicolon_part = bits_match.group(3)
 
                         # Store bit width hint for this property
                         self.bit_width_hints[prop_name] = bit_width
 
+                        # Ensure we have a semicolon
+                        if ';' in semicolon_part:
+                            prop_value = value_part + ';'
+                        else:
+                            prop_value = value_part
+
                         if prop_name in PROPERTY_DEBUG_SET:
                             _warning(f"Found /bits/ {bit_width} directive for {prop_name}")
+                            _warning(f"     prop value: {prop_value}")
 
                     # Check if the property is complete (ends with semicolon)
                     is_complete = prop_value.endswith(';')
@@ -361,6 +423,10 @@ class DTSSchemaGenerator:
                     # Remove trailing semicolon if present
                     if is_complete:
                         prop_value = prop_value[:-1].strip()
+
+                    if prop_name in PROPERTY_DEBUG_SET:
+                        print(f"DEBUG is_complete value: {is_complete}")
+                        print(f"prop_value: {prop_value}")
 
                     # Only check for multi-line if the property didn't end with semicolon
                     if not is_complete and '=' in line:
@@ -522,91 +588,6 @@ class DTSSchemaGenerator:
             if name in PROPERTY_DEBUG_SET:
                 _warning(f"  Cells: {cells}")
                 _warning(f"  Cell count: {len(cells)}")
-
-            if not cells:
-                return 'empty'
-            elif '&' in value:
-                return 'phandle-array'
-            elif len(cells) == 1:
-                return 'uint32'
-            elif len(cells) == 2:
-                # Check if this is a phandle array property
-                if name in self.type_hints.get('phandle_array_properties', []):
-                    # This is a phandle+specifier, not a 64-bit value
-                    grouping = self._determine_cell_grouping(name, cells)
-                    if grouping > 1:
-                        return f'uint32-matrix-{grouping}'
-                    return 'uint32-array'
-                # Check if this could be a 64-bit value
-                elif name in self.type_hints.get('potential_64bit_properties', []) and self._is_64bit_value(cells):
-                    return 'uint64'
-                else:
-                    # Default to array for 2 cells
-                    return 'uint32-array'
-            else:
-                # Multiple cells
-                grouping = self._determine_cell_grouping(name, cells)
-                if grouping > 1:
-                    return f'uint32-matrix-{grouping}'
-                return 'uint32-array'
-        elif value.startswith('[') and value.endswith(']'):
-            return 'uint8-array'
-        elif '"' in value:
-            # Has quotes, so it's a string type
-            if '", "' in value or '","' in value:
-                return 'string-array'
-            else:
-                return 'string'
-        else:
-            return 'unknown'
-
-    def _determine_property_type_old(self, name, value):
-        """Determine the type of a property from its value"""
-
-        # Check explicit type hints first
-        if name in self.type_hints.get('string_properties', []):
-            return 'string' if '"' in value else 'unknown'
-
-        if name in self.type_hints.get('boolean_properties', []):
-            return 'boolean'
-
-        # Generic debug for tracked properties
-        if name in PROPERTY_DEBUG_SET:
-            _warning(f"_determine_property_type: {name} = '{value}'")
-
-        # PRIORITY 0: Check for bit width hints from /bits/ directive
-        if hasattr(self, 'bit_width_hints') and name in self.bit_width_hints:
-            bit_width = self.bit_width_hints[name]
-
-            # Determine if it's an array based on value
-            is_array = self._looks_like_array(value)
-
-            if bit_width == 64:
-                prop_type = 'uint64-array' if is_array else 'uint64'
-            elif bit_width == 32:
-                prop_type = 'uint32-array' if is_array else 'uint32'
-            elif bit_width == 16:
-                prop_type = 'uint16-array' if is_array else 'uint16'
-            elif bit_width == 8:
-                prop_type = 'uint8-array' if is_array else 'uint8'
-            else:
-                prop_type = 'uint32-array' if is_array else 'uint32'
-
-            if name in PROPERTY_DEBUG_SET:
-                print(f"  Determined type from /bits/ {bit_width}: {prop_type}")
-
-            return prop_type
-
-        if not value:  # Boolean property
-            return 'boolean'
-        elif value.startswith('<') and value.endswith('>'):
-            # Cell or cell array
-            cells = value[1:-1].strip().split()
-
-            if name in PROPERTY_DEBUG_SET:
-                _warning(f"  Cells: {cells}")
-                _warning(f"  Cell count: {len(cells)}")
-                _warning(f"  Determined type: uint32-array" if len(cells) > 1 else "  Determined type: uint32")
 
             if not cells:
                 return 'empty'
@@ -862,7 +843,31 @@ class DTSSchemaGenerator:
 
     def _get_property_schema_def(self, prop_type):
         """Get JSON schema definition for a property type"""
-        if prop_type == 'uint32':
+        if prop_type == 'uint16':
+            return {
+                'oneOf': [
+                    {
+                        'type': 'integer',
+                        'minimum': 0,
+                        'maximum': 65535,
+                        'format': 'uint16'  # Add format here too
+                    },
+                    {
+                        'type': 'string',
+                        'pattern': '^<(0x[0-9a-fA-F]+|[0-9]+)>$',
+                        'format': 'uint16'  # And here
+                    }
+                ],
+                'format': 'uint16'  # And at the top level
+            }
+        elif prop_type == 'uint16-array':
+            return {
+                'type': 'string',
+                'pattern': '^<(\\s*(0x[0-9a-fA-F]+|[0-9]+)\\s*)+>$',
+                'format': 'uint16-array',
+                'description': 'Array of 16-bit unsigned integers'
+            }
+        elif prop_type == 'uint32':
             return self._get_cell_schema()
         elif prop_type == 'uint64':
             return {'type': 'string', 'pattern': '^<0x[0-9a-fA-F]+ 0x[0-9a-fA-F]+>$'}
@@ -1102,6 +1107,11 @@ class DTSPropertyTypeResolver:
         if 'oneOf' in prop_def:
             # Look at the first option to determine type
             first_option = prop_def['oneOf'][0] if prop_def['oneOf'] else {}
+            opt_format = first_option.get('format', '')
+            if opt_format == 'uint16' or opt_format == 'uint16-array':
+                return LopperFmt.UINT16
+            elif opt_format == 'uint64' or opt_format == 'uint64-array':
+                return LopperFmt.UINT64
 
             # Check for array type first
             if first_option.get('type') == 'array':
