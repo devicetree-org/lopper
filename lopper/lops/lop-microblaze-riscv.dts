@@ -99,55 +99,23 @@
                                    proplist= ['xlnx,data-size', 'xlnx,use-muldiv', 'xlnx,use-atomic', 'xlnx,use-fpu', 'xlnx,use-compression']
 
                                    archflags = []
-                                   libpath = []
-                                   libpath.append('riscv64-unknown-elf/riscv32-xilinx-elf/usr/lib/')
                                    cflags_data = {}
-                                   archflags_lib_map = {
-                                       'rv32imf' : 'rv32imf_zicsr',
-                                       'rv32imfc' : 'rv32imfc_zicsr',
-                                       'rv32ia' : 'rv32i',
-                                       'rv32ima' : 'rv32im',
-                                       'rv32imaf' : 'rv32imf_zicsr',
-                                       'rv32iac' : 'rv32ic',
-                                       'rv32imafc' : 'rv32imfc_zicsr',
-                                       'rv32imfdc' : 'rv32imfdc_zicsr',
-                                       'rv64imf' : 'rv64imf_zicsr',
-                                       'rv64imfc' : 'rv64imfc_zicsr',
-                                       'rv64ia' : 'rv64i',
-                                       'rv64ima' : 'rv64im',
-                                       'rv64imaf' : 'rv64imf_zicsr',
-                                       'rv64iac' : 'rv64ic',
-                                       'rv64imfdc' : 'rv64imfdc_zicsr',
-                                       'rv64imafc' : 'rv64imfc_zicsr',
-                                       'rv64imafd' : 'rv64imfd_zicsr'
-
-                                   }
 
                                    for property in proplist:
                                        try:
                                            archflags.append(n[property].tunes)
                                            if property == 'xlnx,use-compression':
-                                               archflags_libpath = ''.join(archflags)
                                                arch_option = '-march='
                                                arch_linkflags = ''.join(archflags)
                                                bsp_linkflags = arch_option + arch_linkflags
                    
                                        except:
                                            if property == 'xlnx,use-compression':
-                                               archflags_libpath = ''.join(archflags)
                                                arch_option = '-march='
                                                arch_linkflags = ''.join(archflags)
                                                bsp_linkflags = arch_option + arch_linkflags
                                            continue
 
-
-                                   for val in archflags_lib_map.keys():
-                                       if val == archflags_libpath:
-                                           archflags_libpath = archflags_lib_map[val]
-                                           bsp_linkflags = '-march=' + archflags_lib_map[val]
-
-                                   libpath.append(archflags_libpath)
-                                   libpath.append('/')
 
                                    if n['xlnx,use-bitman-a'].value[0] == 1 and n['xlnx,use-bitman-b'].value[0] == 1 and n['xlnx,use-bitman-s'].value[0] == 1:
                                        archflags.append('b')
@@ -172,29 +140,20 @@
                                        archflags.append('_zicbom')
 
                                    if n['xlnx,data-size'].value[0] == 64:
-                                       libpath.append('lp64')
                                        archflags.append(' -mabi=lp64') 
                                    else:
-                                       libpath.append('ilp32')
                                        archflags.append(' -mabi=ilp32') 
 
                                    if n['xlnx,use-fpu'].value[0] == 1:
-                                       libpath.append('f')
                                        archflags.append('f') 
                                    elif n['xlnx,use-fpu'].value[0] == 2:
-                                       libpath.append('d')
                                        archflags.append('d') 
                                    
-                                   libpath.append('/')
-
                                    archflags.insert(0, '-march=')
                                    n.tunes = archflags
 
-                                   libdir = ''.join(libpath)
-
                                    flags = ''.join(archflags) 
                                    cflags_data['cflags'] = flags
-                                   cflags_data['libpath'] = libdir 
                                    cflags_data['linkflags'] = bsp_linkflags
 
                                    with open(os.path.join(outdir, 'cflags.yaml'), 'w') as fd:
