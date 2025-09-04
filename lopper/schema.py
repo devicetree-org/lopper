@@ -23,6 +23,7 @@ _init( "schema.py" )
 
 # Add properties to debug as needed
 PROPERTY_DEBUG_LIST = [
+    # "xlnx,aie-gen",
     # "xlnx,num-queues",
     # "cooling-device",
     # 'xlnx,buffer-base',
@@ -408,7 +409,7 @@ class DTSSchemaGenerator:
                     prop_value = ''  # Empty value for boolean
                 else:
                     # Check for /bits/ directive
-                    bits_match = re.match(r'/bits/\s+(\d+)\s+(.+?)(\s*;?\s*)$', prop_value)
+                    bits_match = re.match(r'/bits/\s*(\d+)\s+(<[^>]+>)\s*(.*)', prop_value)
                     if bits_match:
                         bit_width = int(bits_match.group(1))
                         value_part = bits_match.group(2).strip()
@@ -894,6 +895,26 @@ class DTSSchemaGenerator:
                     'maxItems': grouping
                 }
             }
+        elif prop_type == 'uint8':
+            # Single uint8 value
+            return {
+                'oneOf': [
+                    {
+                        'type': 'integer',
+                        'minimum': 0,
+                        'maximum': 255,
+                        'format': 'uint8'
+                        #'format': 'uint8-array'
+                    },
+                    {
+                        'type': 'string',
+                        'pattern': '^<(0x[0-9a-fA-F]+|[0-9]+)>$',
+                        'format': 'uint8'
+                        #'format': 'uint8-array'
+                    }
+                ],
+                'format': 'uint8'
+            }
         elif prop_type == 'uint8-array':
             return {
                 'type': 'string',
@@ -1113,6 +1134,9 @@ class DTSPropertyTypeResolver:
         # Get the type from the property definition
         prop_type = prop_def.get('type', 'unknown')
 
+        if prop_name in PROPERTY_DEBUG_SET:
+            _warning(f"_schema_to_lopper_fmt: prop_def: {prop_def}")
+
         # Handle oneOf schemas first
         if 'oneOf' in prop_def:
             # Look at the first option to determine type
@@ -1137,6 +1161,9 @@ class DTSPropertyTypeResolver:
                     return LopperFmt.UINT32  # Default for arrays
 
             elif first_option.get('type') == 'integer':
+                if prop_def.get('format') == 'uint8':
+                    return LopperFmt.UINT8
+
                 # Single integer value
                 return LopperFmt.UINT32
 
@@ -1155,6 +1182,9 @@ class DTSPropertyTypeResolver:
         elif prop_type == 'string':
             # Check for format hint FIRST
             if prop_def.get('format') == 'uint8-array':
+                return LopperFmt.UINT8
+
+            if prop_def.get('format') == 'uint8':
                 return LopperFmt.UINT8
 
             # Check if it has a pattern that indicates it's actually cell data
@@ -1180,9 +1210,14 @@ class DTSPropertyTypeResolver:
         elif prop_type == 'boolean':
             return LopperFmt.EMPTY
         elif prop_type in ['uint32', 'uint32-array']:
+            if prop_def.get('format') == 'uint8':
+                return LopperFmt.UINT8
+
             return LopperFmt.UINT32
         elif prop_type == 'uint64':
             return LopperFmt.UINT64
+        elif prop_type == 'uint8':
+            return LopperFmt.UINT8
         elif prop_type == 'uint8-array':
             return LopperFmt.UINT8
         elif prop_type == 'string-array':
