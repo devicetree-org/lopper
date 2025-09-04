@@ -563,7 +563,6 @@ class LopperProp():
                             # update our value so the rest of the code can stay the same
                             self.ptype = LopperFmt.UINT32
                             self.value[0] = phandle
-
                         else:
                             pass
                             #print( "[ERROR]: phandle is being compared, and target node does not start with & (%s)" % lop_compare_value )
@@ -584,7 +583,7 @@ class LopperProp():
                     return False
 
                 if self.__dbg__ > 2:
-                    lopper.log._debug( f"    single:single. Condition: {constructed_condition}" )
+                    lopper.log._warning( f"    single:single. Condition: {constructed_condition}" )
 
                 constructed_check = eval(constructed_condition)
                 if constructed_check:
@@ -2551,6 +2550,8 @@ class LopperNode(object):
         new_ph = self.tree.phandle_gen()
         self.phandle = new_ph
 
+        _debug( "phandle {self.phandle} created for node {self.abs_path}" )
+
         newprop = LopperProp(name='phandle',value=new_ph)
         self + newprop
 
@@ -3143,25 +3144,33 @@ class LopperNode(object):
                                 self.__props__[prop].value = prop_val
 
                 else:
-                    self.__props__[prop] = LopperProp( prop, -1, self,
-                                                       prop_val, self.__dbg__ )
-                    if dtype == LopperFmt.UINT8:
-                        self.__props__[prop].binary = True
+                    if prop == "phandle":
+                        # placeholder for resolution and validation, we can never
+                        # have a phandle of 0x0, it is invalid
+                        # we shouldn't create an explicit phandle property for everything
+                        _debug( f"node {self} skipping creation of explicit phandle property (via input dict)" )
+                        _debug( f"   phandle is currently: {self.phandle}" )
+                    else:
+                        self.__props__[prop] = LopperProp( prop, -1, self,
+                                                           prop_val, self.__dbg__ )
 
-                    self.__props__[prop].ptype = dtype
-                    self.__props__[prop].pclass = pclass
+                        if dtype == LopperFmt.UINT8:
+                            self.__props__[prop].binary = True
 
-                    if node_source:
-                        self._source = node_source
+                        self.__props__[prop].ptype = dtype
+                        self.__props__[prop].pclass = pclass
 
-                    self.__props__[prop].resolve( strict )
-                    self.__props__[prop].__modified__ = False
+                        if node_source:
+                            self._source = node_source
 
-                    # if our node has a property of type label, we bubble it up to the node
-                    # for future use when replacing phandles, etc.
-                    if self.__props__[prop].pclass == "label":
-                        self.label = self.__props__[prop].value[0]
-                        label_props.append( self.__props__[prop] )
+                        self.__props__[prop].resolve( strict )
+                        self.__props__[prop].__modified__ = False
+
+                        # if our node has a property of type label, we bubble it up to the node
+                        # for future use when replacing phandles, etc.
+                        if self.__props__[prop].pclass == "label":
+                            self.label = self.__props__[prop].value[0]
+                            label_props.append( self.__props__[prop] )
 
 
             # second pass: re-resolve properties if we found some that had labels
@@ -3922,9 +3931,12 @@ class LopperTree:
             # no phandles at all yet!
             highest_phandle = 0
 
-        # self.__pnodes__[highest_phandle + 1] = None
+        ret_phandle = highest_phandle + 1
+        if ret_phandle == 0:
+            _warning( "phandle of 0 (invalid) was generated, tree may be corrupted" )
+            ret_phandle = ret_phandle + 1
 
-        return highest_phandle + 1
+        return ret_phandle
 
     def ref_all( self, starting_node, parent_nodes=False ):
         """Increment the refcount for a node and its subnodes (and optionally parents)
@@ -4457,7 +4469,11 @@ class LopperTree:
             #       into the dictionary when calling load, that way we don't
             #       count on the current behaviour to not drop the properties.
             if node.phandle == -1:
-                node.phandle = 0
+                # note: we must generate a phandle if we need one, since a
+                # phandle of -1 or phandle of 0 will break the output and
+                # lookups in subtle ways
+                new_phandle = self.phandle_gen()
+                node.phandle_set( new_phandle )
             elif node.phandle > 0:
                 # we need to generate a new phandle on a collision
                 try:

@@ -1328,7 +1328,6 @@ class LopperSDT:
                                     selected_nodes_possible = selected_nodes_possible + tree.lnodes( node_regex )
                                 else:
                                     selected_nodes_possible = tree.lnodes( node_regex )
-
                         else:
                             # if the node_regex is empty, we operate on previously
                             # selected nodes.
@@ -2205,6 +2204,7 @@ class LopperSDT:
                 if not modify_path:
                     if not tree.__selected__:
                         lopper.log._warning( f"no nodes supplied to modify, and no nodes are selected" )
+                        lop_node.print()
                         return False
                     else:
                         nodes = tree.__selected__
