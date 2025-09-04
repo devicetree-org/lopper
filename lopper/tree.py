@@ -400,7 +400,7 @@ class LopperProp():
         """
         self.__dict__["value"] = value
 
-    def merge(self, other_prop, clobber=False):
+    def merge(self, other_prop, clobber=True):
         """Merge the value of another property into this property.
 
         This function handles merging values of properties based on their
@@ -454,21 +454,37 @@ class LopperProp():
             except Exception as e:
                 lopper.log._warning( f"merge: could not load JSON {e}")
         else:
-            lopper.log._debug( f"property merge: non json -> non json" )
+            lopper.log._debug( f"property merge: non json -> non json (clobber {clobber})" )
+
             # Non-JSON case handling
             value1 = self.value
             value2 = other_prop.value
+
             if isinstance(value1, list) and isinstance(value2, list):
-                # Both are lists, concatenate them
-                result = value1 + value2
+                if len(value1) == 1 and len(value2) == 1:
+                    if clobber:
+                        result = value2[0]
+                    else:
+                        result = [value1[0], value2[0]]
+                else:
+                    result = value1 + value2
             elif isinstance(value1, list):
-                # First is a list, add second value
-                result = value1 + [value2]
+                if len(value1) == 1:
+                    if clobber:
+                        result = [value2]
+                    else:
+                        result = [value1[0], value2]
+                else:
+                    result = [value2] if clobber else value1 + [value2]
             elif isinstance(value2, list):
-                # Second is a list, add first value
-                result = [value1] + value2
+                if len(value2) == 1:
+                    if clobber:
+                        result = value2[0]
+                    else:
+                        result = [value1, value2[0]]
+                else:
+                    result = [value1] + value2
             else:
-                # Neither is a list
                 if clobber:
                     result = value2
                 else:
@@ -2913,6 +2929,7 @@ class LopperNode(object):
            Nothing
 
         """
+        lopper.log._debug( f"merging secondary node: {other_node.abs_path} into: {self.abs_path}")
         # export the dictionary (properties)
         o_export = other_node.export()
 
@@ -3040,6 +3057,8 @@ class LopperNode(object):
             label_props = []
 
             node_source = ""
+            ## TODO: in a --schema none run, this should return nothing, so
+            ##       we don't use it.
             resolver = lopper.schema.get_schema_manager().resolver
 
             for prop, prop_val in dct.items():
@@ -4342,6 +4361,19 @@ class LopperTree:
 
         """
 
+        # do we already have a node at this path ?
+        try:
+            existing_node = self.__nodes__[node.abs_path]
+        except:
+            # was it a label that was used ?
+            try:
+                existing_node = self.__lnodes__[node.name]
+                node.abs_path = existing_node.abs_path
+                node.label = node.name
+                node.name = existing_node.name
+            except:
+                existing_node = None
+
         lopper.log._debug( f"tree: node add: [{node.name}] {[ node ]} ({node.abs_path})({node.number})"
                            f" phandle: {node.phandle} label: {node.label}" )
 
@@ -4372,6 +4404,7 @@ class LopperTree:
         if move:
             lopper.log._debug( f"move detected, will delete node: {move} state: {move.__nstate__}" )
             self.delete( move )
+            existing_node = None
 
         # check all the path components, up until the last one (since
         # that's why this routine was called). If the nodes don't exist, we
@@ -4380,29 +4413,23 @@ class LopperTree:
         if node_full_path != "/":
             for p in os.path.split( node_full_path )[:-1]:
                 try:
-                    existing_node = self.__nodes__[p]
+                    intermediate_existing_node = self.__nodes__[p]
                 except:
-                    existing_node = None
+                    intermediate_existing_node = None
 
-                if not existing_node:
+                if not intermediate_existing_node:
                     # an intermediate node is missing, we need to add it
                     i_node = LopperNode( -1, p )
                     self.add( i_node, True, merge )
-
-        # do we already have a node at this path ?
-        try:
-            existing_node = self.__nodes__[node.abs_path]
-        except:
-            existing_node = None
 
         # if the node already exists, we need to merge the passed node's properties
         # into the existing one BUT we need to keep processing to pickup any child
         # nodes it may have
         if existing_node:
             if not merge:
-                lopper.log._debug( f"add: node: {node.abs_path} already exists" )
+                lopper.log._debug( f"add: node: {node.abs_path} already exists ({existing_node.abs_path})" )
             else:
-                lopper.log._debug( f"add: node: {node.abs_path} exists, merging properties" )
+                lopper.log._debug( f"add: node: {existing_node.abs_path} exists, merging properties from {node.abs_path}" )
                 existing_node.merge( node )
         else:
             node.tree = self
@@ -4485,14 +4512,14 @@ class LopperTree:
             node.child_nodes = OrderedDict()
 
         for child in saved_child_nodes:
+            lopper.log._debug( f"add node: {node.abs_path}, processing child: {child.name}" )
             try:
                 existing_child_node = self.__nodes__[node.abs_path + child.name]
             except:
                 existing_child_node = None
 
             if not existing_child_node:
-                if self.__dbg__ > 2:
-                    print ( f"[DBG+++]:     node add: adding child: {child.abs_path} ({[child]})")
+                lopper.log._debug( f"     node add: adding child: {child.abs_path} ({[child]})")
 
                 # this mainly adjusts the path, since it hasn't been sync'd yet.
                 child.number = -1
@@ -4507,10 +4534,9 @@ class LopperTree:
 
                 child.resolve()
 
-                self.add( child, True )
+                self.add( child, True, merge = merge )
 
-                if self.__dbg__ > 2:
-                    print ( f"[DBG+++]:     node add: child add complete: {child.abs_path} ({[child]})")
+                lopper.log._debug( f"     node add: child add complete: {child.abs_path} ({[child]})")
 
         if not existing_node:
             # in case the node has properties that were previously sync'd, we
