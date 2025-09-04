@@ -318,6 +318,16 @@ class DTSSchemaGenerator:
                     # Found comment, stop here
                     break
 
+            # Now handle /* */ comments
+            if '/*' in line and '*/' in line:
+                # Find comment boundaries
+                start = line.find('/*')
+                end = line.find('*/') + 2  # Include */ in removal
+
+                # Remove the comment
+                line = line[:start] + line[end:]
+                line = line.strip()
+
             result.append(char)
             i += 1
 
