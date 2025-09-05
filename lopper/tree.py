@@ -1578,6 +1578,14 @@ class LopperProp():
                                     formatted_records.append( ";" )
                 else:
                     # no phandles
+                    resolver = lopper.schema.get_schema_manager().resolver
+                    if resolver:
+                        resolver_type = resolver.get_property_type(self.name)
+                        if resolver_type == LopperFmt.UINT16:
+                            formatted_records.append( '/bits/ 16 ' )
+                    else:
+                        resolver_type = None
+
                     if list_of_nums:
                         if self.binary:
                             formatted_records.append( "[" )
@@ -1600,12 +1608,15 @@ class LopperProp():
                                 formatted_records.append( f"{i:02X}" )
                             else:
                                 try:
-                                    if check_32_bit(i):
-                                        hex_string = f'0x{i:x}'
+                                    if resolver_type == LopperFmt.UINT16:
+                                        hex_string = f'0x{i:04x}'  # Format as 4 hex digits
                                     else:
-                                        upper = i >> 32
-                                        lower = i & 0x00000000FFFFFFFF
-                                        hex_string = f'0x{upper:08x}' + f' 0x{lower:08x}'
+                                        if check_32_bit(i):
+                                            hex_string = f'0x{i:x}'
+                                        else:
+                                            upper = i >> 32
+                                            lower = i & 0x00000000FFFFFFFF
+                                            hex_string = f'0x{upper:08x}' + f' 0x{lower:08x}'
                                 except Exception as e:
                                     hex_string = f'{i}' 
 

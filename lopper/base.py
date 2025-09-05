@@ -280,7 +280,7 @@ class lopper_base:
                         num_nums = num_bits
                     elif encode_calculated == LopperFmt.UINT16:
                         binary_data = False
-                        num_nums = 1
+                        num_nums = num_bits // 2
                         start_index = 0
                         end_index = 2
                         short_int_size = 2
