@@ -566,7 +566,7 @@ def access_expand( tree, subnode, verbose = 0 ):
                 dev_node = tree.deref( dev )
                 if verbose:
                     if dev_node:
-                        print( f"[DBG]: found dev node {dev_node}" )
+                        print( f"[DBG]: found dev node {dev_node} with phandle: {dev_node.phandle}" )
                     else:
                         print( f"[DBG]: WARNING: could not find device: {dev} in device tree" )
             except:
@@ -575,10 +575,11 @@ def access_expand( tree, subnode, verbose = 0 ):
                 dev_node = None
 
             if dev_node:
-                if dev_node.phandle == 0:
+                if dev_node.phandle == 0 or dev_node.phandle == -1:
                     dev_node.phandle_or_create()
                     if verbose:
-                        print( f"[DBG]: generated phandle {dev_node.phandle} for node: {dev_node.abs_path}")
+                        print( f"[DBG]: access_expand: generated phandle {dev_node.phandle} for node: {dev_node.abs_path}")
+                        dev_node.print()
 
                 dev_handle = dev_node.phandle
             else:
