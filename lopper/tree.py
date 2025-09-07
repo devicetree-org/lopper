@@ -40,6 +40,54 @@ lopper.log._init( "tree.py" )
 # must be set to the Lopper class to call
 global Lopper
 
+import inspect
+
+def dump_caller(fn):
+    """
+    utility routiner to dump the caller stack. You can use this
+    as a decorator to a function. Simply add @dump_caller before
+    the function definition and the stack will be dumped on each
+    call.
+    """
+    def wrapper(*args, **kwargs):
+        # Get the current frame
+        current_frame = inspect.currentframe()
+
+        # Get the caller's frame (1 level back)
+        caller_frame = current_frame.f_back
+        caller_info = inspect.getframeinfo(caller_frame)
+
+        # Get the caller's caller's frame (2 levels back)
+        caller_of_caller_frame = caller_frame.f_back
+        caller_of_caller_info = inspect.getframeinfo(caller_of_caller_frame)
+
+        print(f"Caller of '{fn.__name__}' called from:")
+        print(f"  File: {caller_info.filename}, Line: {caller_info.lineno}, Function: {caller_info.function}")
+        print(f"Caller of caller of '{fn.__name__}' called from:")
+        print(f"  File: {caller_of_caller_info.filename}, Line: {caller_of_caller_info.lineno}, Function: {caller_of_caller_info.function}\n")
+
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+def dump_caller_small(fn):
+    """
+    This is the same as dump_caller, except it only dumps
+    one frame deep.
+    """
+
+    def wrapper(*args, **kwargs):
+        # Get information about the caller
+        frame = inspect.currentframe().f_back
+        caller_info = inspect.getframeinfo(frame)
+
+        print(f"Caller of '{fn.__name__}' called from:")
+        print(f"File: {caller_info.filename}, Line: {caller_info.lineno}, Function: {caller_info.function}")
+
+        return fn(*args, **kwargs)
+
+    return wrapper
+
 # utility function to return true or false if a number
 # is 32 bit, or not.
 def check_32_bit(n):
@@ -1904,7 +1952,7 @@ class LopperNode(object):
             # makes processing slower AND it seems to break some labels in
             # the tree. Leaveing this as a breadcrumb in case we get inconsistent
             # labels at any point and consider this as an option.
-            #if name == "label":
+            # if name == "label":
             #    self.label_set( value )
 
             # we could restrict this to only some attributes in the future
@@ -2463,6 +2511,7 @@ class LopperNode(object):
 
                 plabel = self.label
 
+            # this non-zero check is for root node, not phandle printing as below
             if self.phandle != 0:
                 if plabel:
                     outstring = plabel + ": " + nodename + " {"
@@ -2502,6 +2551,21 @@ class LopperNode(object):
                 print( "/ {", file=output, flush=True )
             elif tree_type == "dts_overlay":
                 print( "/plugin/;", file=output, flush=True )
+
+        # special handling for phandles. They are not always explicitly
+        # properties (they are only that if created and assigned to the tree
+        # somewhere in the pipeline. If they are in the node like that, they'll
+        # be printed normally, so to avoid a duplicate, we test for the property
+        #
+        # if the phandle is valid (not 0 or -1) then we print it here. We must
+        # do this, since otherwise any numeric references to phandles would
+        # be broken on a roundtrip.
+        if self.phandle != 0 and self.phandle != -1:
+            try:
+                phandle_explicit_prop = self["phandle"]
+            except:
+                outstring = f"phandle = <{hex(self.phandle)}>;"
+                print(outstring.rjust(len(outstring)+(depth*8)+8, self.indent_char), file=output, flush=True )
 
         # now the properties
         for p in self:
@@ -2563,8 +2627,15 @@ class LopperNode(object):
 
         _debug( "phandle {self.phandle} created for node {self.abs_path}" )
 
-        newprop = LopperProp(name='phandle',value=new_ph)
-        self + newprop
+        all_explicit_phandles = False
+
+        # we typically do not want or need all phandles as properties
+        # in a node. Just the phandle attribute is enough and that is
+        # what should be checked. But this check allows this to be
+        # changed in the futre if that decision is proven wrong.
+        if all_explicit_phandles:
+            newprop = LopperProp(name='phandle',value=new_ph)
+            self + newprop
 
         return new_ph
 
@@ -2897,11 +2968,30 @@ class LopperNode(object):
         if isinstance( prop, LopperProp ):
             lopper.log._debug( f"node {self.abs_path} adding property: {prop.name}" )
 
-            self.__props__[prop.name] = prop
-            prop.node = self
+            prop_to_add = True
+            if prop.name == 'phandle':
+                if isinstance( prop.value, list):
+                    test_val = prop.value[0]
+                else:
+                    test_val = prop.value
 
-            # indicates that we should be sync'd
-            self.__modified__ = True
+                # if the phandle is -1 or 0, there's no reason to
+                # assign it, or create the phandle property
+                if test_val == -1:
+                    prop_to_add = False
+                    self.phandle = test_val
+                elif test_val == 0:
+                    prop_to_add = False
+                    # don't assign zero at all
+                else:
+                    self.phandle = test_val
+
+            if prop_to_add:
+                self.__props__[prop.name] = prop
+                prop.node = self
+
+                # indicates that we should be sync'd
+                self.__modified__ = True
         elif isinstance( prop, LopperNode):
             node = prop
             # this isn't ideal. We don't have a path, but are getting
@@ -4387,6 +4477,7 @@ class LopperTree:
         # do we already have a node at this path ?
         try:
             existing_node = self.__nodes__[node.abs_path]
+            # we should drop any old phandles from that node
         except:
             # was it a label that was used ?
             try:
@@ -4397,7 +4488,7 @@ class LopperTree:
             except:
                 existing_node = None
 
-        lopper.log._debug( f"tree: node add: [{node.name}] {[ node ]} ({node.abs_path})({node.number})"
+        lopper.log._debug( f"tree: [{self}]: node add: [{node.name}] {[ node ]} ({node.abs_path})({node.number})"
                            f" phandle: {node.phandle} label: {node.label}" )
 
         node_full_path = node.abs_path
@@ -4476,16 +4567,43 @@ class LopperTree:
 
         # aka "new node"
         if not existing_node:
+            # delete any explict phandle properties on added nodes as
+            # we process them. The node variable "phandle" tracks this
+            # and we don't want them to get out of sync. So only having
+            # one wherever possible is better
+            if node.phandle != -1:
+                try:
+                    pprop = node.__props__["phandle"]
+                    node - pprop
+                except Exception as e:
+                    pass
+
+            # set a default of 0, since there are existing tests for it
+            # note: a phandle of 0 is invalid, and this will never be
+            #       output if it stays at zero. Only using -1 would be better
+            #       but we'd have to convert all users to a function or
+            #       double conditional
+            node.phandle = 0
+
+            # a node that is being added has come programatically.
+            # node's from FDTs are brought in via load(). So if
+            # there's a phandle in this new node, we just clear it,
+            # since it could be from another tree context and not
+            # useful here.
+
+            # if the node is ever referenced, it will GET a phandle
+            # created then. Once that phandle is written to the FDT,
+            # it will never change, so numeric values are persistently
+            # valid.
+
             # TODO: To be complete, we could add the properites of the node
             #       into the dictionary when calling load, that way we don't
             #       count on the current behaviour to not drop the properties.
-            if node.phandle == -1:
-                # note: we must generate a phandle if we need one, since a
-                # phandle of -1 or phandle of 0 will break the output and
-                # lookups in subtle ways
-                new_phandle = self.phandle_gen()
-                node.phandle_set( new_phandle )
-            elif node.phandle > 0:
+
+            # the following won't run, since we set the phandle to zero
+            # above, but it is kept in case we allow this in the future and
+            # need the conflict resolution block to return
+            if node.phandle > 0:
                 # we need to generate a new phandle on a collision
                 try:
                     if self.__pnodes__[node.phandle]:
@@ -5220,6 +5338,14 @@ class LopperTree:
            Nothing
 
         """
+
+        cached_tree_loading = False
+        # consider this in combination with the modified flag on the
+        # tree. load() get called a lot and a early exit on no changes
+        # will save a lot
+        if cached_tree_loading and dct == self.dct:
+            return
+
         if dct:
             self.dct = dct
         else:
