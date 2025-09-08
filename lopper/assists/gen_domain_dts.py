@@ -362,7 +362,10 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psv_ocm', 'psv_pmc_aes', 'psv_pmc_bbram_ctrl', 'psv_pmc_cfi_cframe', 'psv_pmc_cfu_apb',
                             'psv_pmc_efuse_cache', 'psv_pmc_efuse_ctrl', 'psv_pmc_global', 'psv_pmc_ppu1_mdm',
                             'psv_pmc_ram_npi', 'psv_pmc_rsa', 'psv_pmc_sha', 'psv_pmc_slave_boot', 'psv_scntrs',
-                            'psv_pmc_slave_boot_stream', 'psv_pmc_trng', 'psv_psm_global_reg', 'psv_rpu', 'psv_scntr']
+                            'psv_pmc_slave_boot_stream', 'psv_pmc_trng', 'psv_psm_global_reg', 'psv_rpu', 'psv_scntr',
+                            'psu_r5_tcm_ram', 'psu_r5_0_btcm', 'psu_r5_0_btcm_global', 'psu_r5_0_atcm_global', 'psu_r5_0_atcm',
+                            'xlnx,tcm', 'r52_atcm_global', 'r52_btcm_global', 'r52_ctcm_global',
+                            'psv_r5_tcm', 'psv_tcm_global']
 
     versal_gen2_linux_ignore_ip_list = ['mmi_udh_pll', 'mmi_common', 'mmi_pipe_gem_slcr',
                             'mmi_udh_pll', 'mmi_udh_slcr', 'mmi_usb2phy', 'mmi_usb3phy_crpara', 'mmi_usb3phy_tca',
