@@ -270,6 +270,17 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     mapped_nodelist.append(symbol_node)
     mapped_nodelist.append(sdt.tree['/aliases'])
 
+    # Save nodes mentioned in access list of relevant domain
+    try:
+        # Find domain node that matches target cpu
+        relevant_domain_node = [ node for node in sdt.tree["/domains"].subnodes() if match_cpunode.parent.phandle == node.propval("cpus")[0] ]
+        # map phandles in access list to DT nodes
+        access_nodes = [ sdt.tree.pnode(phandle) for phandle in relevant_domain_node[0].propval("access")[::2] ]
+        # Save nodes that are not already in mapped_nodelist
+        [ mapped_nodelist.append(node) for node in access_nodes if node not in mapped_nodelist ]
+    except: # domains node and access list are optional so leave this as a blanket catch of exceptions.
+        pass
+
     # Update memory nodes as per address-map cluster mapping
     memnode_list = sdt.tree.nodes('/memory@.*')
     # Iterate through memories where the device_type is set as "memory."
@@ -411,8 +422,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                         sdt.tree.delete(node)
                     else:
                         continue
-                elif "tcm" in node.propval('compatible', list)[0]:
-                    continue
                 elif linux_dt and "xlnx,versal-ddrmc" in node.propval('compatible', list):
                     # ddr controller is not mapped to APU and there is a special handling in SDT to make its status okay.
                     continue
