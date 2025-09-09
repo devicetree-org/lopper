@@ -377,7 +377,7 @@ class DTSSchemaGenerator:
             # Skip preprocessor directives
             if line.startswith('#line') or line.startswith('#include') or line.startswith('#'):
                 if debug:
-                    print(f"DEBUG: Skipping preprocessor directive at line {i}: {line}")
+                    _warning(f"DEBUG: Skipping preprocessor directive at line {i}: {line}")
                 i += 1
                 continue
 
@@ -386,7 +386,7 @@ class DTSSchemaGenerator:
                 # This is a root node, reset path
                 current_path = []
                 if debug:
-                    print(f"DEBUG: Found root node declaration at line {i}")
+                    _warning(f"DEBUG: Found root node declaration at line {i}")
                 i += 1
                 continue
 
@@ -401,11 +401,11 @@ class DTSSchemaGenerator:
                     ref_path = self.label_to_path[label]
                     current_path = ref_path.split('/') if ref_path else []
                     if debug:
-                        print(f"DEBUG: Node reference &{label} -> path {ref_path}")
-                        print(f"  current_path set to: {current_path}")
+                        _warning(f"DEBUG: Node reference &{label} -> path {ref_path}")
+                        _warning(f"  current_path set to: {current_path}")
                 else:
                     if debug:
-                        print(f"WARNING: Unknown label reference: &{label}")
+                        _warning(f"WARNING: Unknown label reference: &{label}")
                     # Try to find it by searching existing nodes
                     found = False
                     for node in self.nodes:
@@ -414,7 +414,7 @@ class DTSSchemaGenerator:
                         if label in node_name or node_name in label:
                             current_path = node['path'].split('/')
                             if debug:
-                                print(f"  Found by name search: {node['path']}")
+                                _warning(f"  Found by name search: {node['path']}")
                             found = True
                             break
 
@@ -422,7 +422,7 @@ class DTSSchemaGenerator:
                         # If still not found, assume it's a new node at root
                         current_path = [label]
                         if debug:
-                            print(f"  Creating new path for unknown label: /{label}")
+                            _warning(f"  Creating new path for unknown label: /{label}")
 
                 i += 1
                 continue
@@ -441,7 +441,7 @@ class DTSSchemaGenerator:
                     full_path = '/'.join(current_path)
                     self.label_to_path[label] = full_path
                     if debug:
-                        print(f"DEBUG: Stored label '{label}' -> path '{full_path}'")
+                        _warning(f"DEBUG: Stored label '{label}' -> path '{full_path}'")
 
                 # Track node patterns
                 if '@' in node_name + node_addr:
@@ -465,16 +465,16 @@ class DTSSchemaGenerator:
                     current_path = []
                     in_reference_block = False
                     if debug:
-                        print(f"DEBUG: End of reference block, returning to root")
+                        _warning(f"DEBUG: End of reference block, returning to root")
                 else:
                     # Normal node closing
                     if current_path:
                         current_path.pop()
                         if debug:
-                            print(f"DEBUG: Popped node, current_path now: {current_path}")
+                            _warning(f"DEBUG: Popped node, current_path now: {current_path}")
                     else:
                         if debug:
-                            print(f"WARNING: Found }} but current_path is already empty!")
+                            _warning(f"WARNING: Found }} but current_path is already empty!")
 
                 current_compatible = None
                 i += 1
@@ -519,8 +519,8 @@ class DTSSchemaGenerator:
                         prop_value = prop_value[:-1].strip()
 
                     if prop_name in PROPERTY_DEBUG_SET:
-                        print(f"DEBUG is_complete value: {is_complete}")
-                        print(f"prop_value: {prop_value}")
+                        _warning(f"DEBUG is_complete value: {is_complete}")
+                        _warning(f"prop_value: {prop_value}")
 
                     # Only check for multi-line if the property didn't end with semicolon
                     if not is_complete and '=' in line:
@@ -574,13 +574,13 @@ class DTSSchemaGenerator:
                     self.path_properties[full_path].add((prop_name, prop_type))
 
                     if prop_name in PROPERTY_DEBUG_SET:
-                        print(f"adding path: {full_path} for {(prop_name, prop_type)}")
+                        _warning(f"adding path: {full_path} for {(prop_name, prop_type)}")
 
             i += 1
 
         # Optimize path_properties - only keep entries for properties with multiple types
         if debug:
-            print("\nOptimizing path-specific properties...")
+            _warning("\nOptimizing path-specific properties...")
 
         mixed_type_props = set()
 
@@ -593,7 +593,7 @@ class DTSSchemaGenerator:
                     types_summary = defaultdict(int)
                     for occ in occurrences:
                         types_summary[occ['type']] += 1
-                    print(f"  {prop_name}: {dict(types_summary)}")
+                    _warning(f"  {prop_name}: {dict(types_summary)}")
 
         # Now rebuild path_properties with only mixed-type properties
         optimized_path_properties = defaultdict(set)
@@ -609,13 +609,13 @@ class DTSSchemaGenerator:
         optimized_count = sum(len(props) for props in self.path_properties.values())
 
         if debug:
-            print(f"Path properties optimization complete:")
-            print(f"  Properties with mixed types: {len(mixed_type_props)}")
-            print(f"  Path entries: {original_count} -> {optimized_count}")
+            _warning(f"Path properties optimization complete:")
+            _warning(f"  Properties with mixed types: {len(mixed_type_props)}")
+            _warning(f"  Path entries: {original_count} -> {optimized_count}")
             if original_count > 0:
-                print(f"  Reduction: {((original_count - optimized_count) / original_count * 100):.1f}%")
+                _warning(f"  Reduction: {((original_count - optimized_count) / original_count * 100):.1f}%")
             else:
-                print( f" Reduction: none")
+                _warning( f" Reduction: none")
 
         return analyzed_patterns, phandle_map
 
@@ -712,7 +712,7 @@ class DTSSchemaGenerator:
                 prop_type = 'uint32-array' if is_array else 'uint32'
 
             if name in PROPERTY_DEBUG_SET:
-                print(f"  Determined type from /bits/ {bit_width}: {prop_type}")
+                _warning(f"  Determined type from /bits/ {bit_width}: {prop_type}")
 
             return prop_type
 
@@ -888,8 +888,8 @@ class DTSSchemaGenerator:
                         }
                     }
                     if prop_name in PROPERTY_DEBUG_SET:
-                        print(f"  Created union type: uint32 | string")
-                        print(f"  Frequencies: uint32={type_counts['uint32']}, string={type_counts['string']}")
+                        _warning(f"  Created union type: uint32 | string")
+                        _warning(f"  Frequencies: uint32={type_counts['uint32']}, string={type_counts['string']}")
 
                 continue
 
@@ -1315,7 +1315,7 @@ class DTSPropertyTypeResolver:
                 most_common = max(type_frequencies, key=type_frequencies.get)
 
                 if prop_name in PROPERTY_DEBUG_SET:
-                    print(f"  Using most common type '{most_common}' from frequencies: {type_frequencies}")
+                    _warning(f"  Using most common type '{most_common}' from frequencies: {type_frequencies}")
 
                 if most_common == 'uint32':
                     return LopperFmt.UINT32
