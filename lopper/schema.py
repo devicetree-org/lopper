@@ -23,6 +23,7 @@ _init( "schema.py" )
 
 # Add properties to debug as needed
 PROPERTY_DEBUG_LIST = [
+    # "xlnx,cpu-clk-freq-hz",
     # "xlnx,aie-gen",
     # "xlnx,num-queues",
     # "cooling-device",
@@ -353,9 +354,13 @@ class DTSSchemaGenerator:
         # Simple state machine for parsing
         current_path = []
         current_compatible = None
+        in_reference_block = False  # Track if we're in a &label { } block
+
+        self.label_to_path = {}  # Map labels to their paths
 
         lines = dts_content.split('\n')
         i = 0
+        debug = False
 
         while i < len(lines):
             line = lines[i].strip()
@@ -368,12 +373,74 @@ class DTSSchemaGenerator:
                 i += 1
                 continue
 
-            # Node opening
-            node_match = re.match(r'([\w-]+)(@[\w,.-]+)?\s*{', line)
+            # Skip preprocessor directives
+            if line.startswith('#line') or line.startswith('#include') or line.startswith('#'):
+                if debug:
+                    print(f"DEBUG: Skipping preprocessor directive at line {i}: {line}")
+                i += 1
+                continue
+
+            # Handle root node specially
+            if re.match(r'^/\s*{', line):
+                # This is a root node, reset path
+                current_path = []
+                if debug:
+                    print(f"DEBUG: Found root node declaration at line {i}")
+                i += 1
+                continue
+
+            # Check for node reference syntax: &label {
+            ref_match = re.match(r'&(\w+)\s*{', line)
+            if ref_match:
+                in_reference_block = True
+                label = ref_match.group(1)
+
+                if label in self.label_to_path:
+                    # Set current_path to the referenced node's path
+                    ref_path = self.label_to_path[label]
+                    current_path = ref_path.split('/') if ref_path else []
+                    if debug:
+                        print(f"DEBUG: Node reference &{label} -> path {ref_path}")
+                        print(f"  current_path set to: {current_path}")
+                else:
+                    if debug:
+                        print(f"WARNING: Unknown label reference: &{label}")
+                    # Try to find it by searching existing nodes
+                    found = False
+                    for node in self.nodes:
+                        # Check if the label might match the node name
+                        node_name = node['name']
+                        if label in node_name or node_name in label:
+                            current_path = node['path'].split('/')
+                            if debug:
+                                print(f"  Found by name search: {node['path']}")
+                            found = True
+                            break
+
+                    if not found:
+                        # If still not found, assume it's a new node at root
+                        current_path = [label]
+                        if debug:
+                            print(f"  Creating new path for unknown label: /{label}")
+
+                i += 1
+                continue
+
+            # Node opening (with optional label)
+            node_match = re.match(r'(?:(\w+):\s+)?([\w-]+)(@[\w,.-]+)?\s*{', line)
             if node_match:
-                node_name = node_match.group(1)
-                node_addr = node_match.group(2) or ''
+                label = node_match.group(1)
+                node_name = node_match.group(2)
+                node_addr = node_match.group(3) or ''
+
                 current_path.append(node_name + node_addr)
+
+                # Store label mapping if present
+                if label:
+                    full_path = '/'.join(current_path)
+                    self.label_to_path[label] = full_path
+                    if debug:
+                        print(f"DEBUG: Stored label '{label}' -> path '{full_path}'")
 
                 # Track node patterns
                 if '@' in node_name + node_addr:
@@ -390,9 +457,24 @@ class DTSSchemaGenerator:
                 continue
 
             # Node closing
+            # if line.startswith('}'):
             if line == '};':
-                if current_path:
-                    current_path.pop()
+                if in_reference_block:
+                    # End of reference block, return to root
+                    current_path = []
+                    in_reference_block = False
+                    if debug:
+                        print(f"DEBUG: End of reference block, returning to root")
+                else:
+                    # Normal node closing
+                    if current_path:
+                        current_path.pop()
+                        if debug:
+                            print(f"DEBUG: Popped node, current_path now: {current_path}")
+                    else:
+                        if debug:
+                            print(f"WARNING: Found }} but current_path is already empty!")
+
                 current_compatible = None
                 i += 1
                 continue
@@ -446,6 +528,7 @@ class DTSSchemaGenerator:
                         j = i + 1
                         while j < len(lines):
                             next_line = lines[j].strip()
+                            next_line = self.strip_dts_comments(next_line)
                             if next_line:
                                 value_lines.append(next_line)
                                 if next_line.endswith(';'):
@@ -462,11 +545,13 @@ class DTSSchemaGenerator:
                     prop_type = self._determine_property_type(prop_name, prop_value)
 
                     # Store property info
+                    full_path = '/' + '/'.join(current_path) if current_path else '/'
+
                     self.properties[prop_name].append({
                         'type': prop_type,
                         'value': prop_value,
                         'original_value': prop_value,  # Keep original for safety
-                        'path': '/'.join(current_path),
+                        'path': full_path,
                         'compatible': current_compatible
                     })
 
@@ -485,10 +570,51 @@ class DTSSchemaGenerator:
                         self.nodes[-1]['properties'][prop_name] = prop_type
 
                     # Track path-specific properties
-                    full_path = '/'.join(current_path)
                     self.path_properties[full_path].add((prop_name, prop_type))
 
+                    if prop_name in PROPERTY_DEBUG_SET:
+                        print(f"adding path: {full_path} for {(prop_name, prop_type)}")
+
             i += 1
+
+        # Optimize path_properties - only keep entries for properties with multiple types
+        if debug:
+            print("\nOptimizing path-specific properties...")
+
+        mixed_type_props = set()
+
+        # First, identify properties with multiple types
+        for prop_name, occurrences in self.properties.items():
+            type_set = {occ['type'] for occ in occurrences}
+            if len(type_set) > 1:
+                mixed_type_props.add(prop_name)
+                if prop_name in PROPERTY_DEBUG_SET or 'req' in prop_name:
+                    types_summary = defaultdict(int)
+                    for occ in occurrences:
+                        types_summary[occ['type']] += 1
+                    print(f"  {prop_name}: {dict(types_summary)}")
+
+        # Now rebuild path_properties with only mixed-type properties
+        optimized_path_properties = defaultdict(set)
+        original_count = sum(len(props) for props in self.path_properties.values())
+
+        for path, prop_set in self.path_properties.items():
+            for prop_name, prop_type in prop_set:
+                if prop_name in mixed_type_props:
+                    optimized_path_properties[path].add((prop_name, prop_type))
+
+        # Replace with optimized version
+        self.path_properties = optimized_path_properties
+        optimized_count = sum(len(props) for props in self.path_properties.values())
+
+        if debug:
+            print(f"Path properties optimization complete:")
+            print(f"  Properties with mixed types: {len(mixed_type_props)}")
+            print(f"  Path entries: {original_count} -> {optimized_count}")
+            if original_count > 0:
+                print(f"  Reduction: {((original_count - optimized_count) / original_count * 100):.1f}%")
+            else:
+                print( f" Reduction: none")
 
         return analyzed_patterns, phandle_map
 
@@ -746,8 +872,24 @@ class DTSSchemaGenerator:
             unique_types = len(type_counts)
 
             if unique_types > 1:
-                if prop_name in PROPERTY_DEBUG_SET:
-                    _warning(f"  SKIPPING due to multiple types!")
+                # For uint32/string combinations, create a union
+                if set(type_counts.keys()) == {'uint32', 'string'}:
+                    definitions[prop_name] = {
+                        'oneOf': [
+                            self._get_property_schema_def('uint32'),
+                            self._get_property_schema_def('string')
+                        ],
+                        'description': f'Mixed type: uint32 ({type_counts["uint32"]}x) or string ({type_counts["string"]}x)',
+                        # Store type frequency for resolver
+                        '_type_frequencies': {
+                            'uint32': type_counts['uint32'],
+                            'string': type_counts['string']
+                        }
+                    }
+                    if prop_name in PROPERTY_DEBUG_SET:
+                        print(f"  Created union type: uint32 | string")
+                        print(f"  Frequencies: uint32={type_counts['uint32']}, string={type_counts['string']}")
+
                 continue
 
             # Get the (possibly normalized) type
@@ -829,7 +971,9 @@ class DTSSchemaGenerator:
 
         for path, props in self.path_properties.items():
             if props:
-                overrides[path] = {
+                normalized_path = '/' + path if not path.startswith('/') else path
+
+                overrides[normalized_path] = {
                     'type': 'object',
                     'properties': {
                         prop_name: self._get_property_schema_def(prop_type)
@@ -1139,6 +1283,21 @@ class DTSPropertyTypeResolver:
 
         # Handle oneOf schemas first
         if 'oneOf' in prop_def:
+            # Check if we have type frequency information
+            type_frequencies = prop_def.get('_type_frequencies', {})
+
+            if type_frequencies:
+                # Use the most common type
+                most_common = max(type_frequencies, key=type_frequencies.get)
+
+                if prop_name in PROPERTY_DEBUG_SET:
+                    print(f"  Using most common type '{most_common}' from frequencies: {type_frequencies}")
+
+                if most_common == 'uint32':
+                    return LopperFmt.UINT32
+                elif most_common == 'string':
+                    return LopperFmt.STRING
+
             # Look at the first option to determine type
             first_option = prop_def['oneOf'][0] if prop_def['oneOf'] else {}
             opt_format = first_option.get('format', '')
