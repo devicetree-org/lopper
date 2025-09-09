@@ -23,6 +23,7 @@ _init( "schema.py" )
 
 # Add properties to debug as needed
 PROPERTY_DEBUG_LIST = [
+    # "parallel-memories",
     # "xlnx,cpu-clk-freq-hz",
     # "xlnx,aie-gen",
     # "xlnx,num-queues",
@@ -1024,8 +1025,31 @@ class DTSSchemaGenerator:
             }
         elif prop_type == 'uint32':
             return self._get_cell_schema()
+
         elif prop_type == 'uint64':
-            return {'type': 'string', 'pattern': '^<0x[0-9a-fA-F]+ 0x[0-9a-fA-F]+>$'}
+            return {
+                'oneOf': [
+                    {
+                        'type': 'integer',
+                        'minimum': 0,
+                        'maximum': 18446744073709551615,  # 2^64 - 1
+                        'format': 'uint64'
+                    },
+                    {
+                        'type': 'string',
+                        'pattern': '^<(0x[0-9a-fA-F]+|[0-9]+)>$',
+                        'format': 'uint64'
+                    }
+                ],
+                'format': 'uint64'
+            }
+        elif prop_type == 'uint64-array':
+            return {
+                'type': 'string',
+                'pattern': '^<(\\s*(0x[0-9a-fA-F]+|[0-9]+)\\s*)+>$',
+                'format': 'uint64-array',
+                'description': 'Array of 64-bit unsigned integers'
+            }
         elif prop_type == 'uint32-array':
             return self._get_cell_array_schema()
         elif prop_type.startswith('uint32-matrix-'):
