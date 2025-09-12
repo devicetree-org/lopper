@@ -23,6 +23,7 @@ _init( "schema.py" )
 
 # Add properties to debug as needed
 PROPERTY_DEBUG_LIST = [
+    # "xlnx,max-frl-rate",
     # "parallel-memories",
     # "xlnx,cpu-clk-freq-hz",
     # "xlnx,aie-gen",
@@ -510,6 +511,12 @@ class DTSSchemaGenerator:
                         if prop_name in PROPERTY_DEBUG_SET:
                             _warning(f"Found /bits/ {bit_width} directive for {prop_name}")
                             _warning(f"     prop value: {prop_value}")
+                    else:
+                        if hasattr(self, 'bit_width_hints') and prop_name in self.bit_width_hints:
+                            _debug( f"NOTE: possibly invalid dts {prop_name} had a bit hint, but was now found without")
+
+                            # force 32 bit when we have a mismatch like this
+                            self.bit_width_hints[prop_name] = 32
 
                     # Check if the property is complete (ends with semicolon)
                     is_complete = prop_value.endswith(';')
@@ -553,7 +560,7 @@ class DTSSchemaGenerator:
                         'value': prop_value,
                         'original_value': prop_value,  # Keep original for safety
                         'path': full_path,
-                        'compatible': current_compatible
+                        'compatible': current_compatible,
                     })
 
                     # Track compatible string
