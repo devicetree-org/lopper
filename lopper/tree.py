@@ -1430,6 +1430,14 @@ class LopperProp():
 
         self.pclass = prop_type
 
+        is_bits = False
+        resolver2_type = None
+        resolver = lopper.schema.get_schema_manager().resolver
+        if resolver:
+            resolver_type = resolver.get_property_type(self.name)
+            if resolver.is_bits_format(self.name):
+                is_bits = True
+
         if self.phandle_resolution:
             phandle_map = self.phandle_map()
         else:
@@ -1537,7 +1545,7 @@ class LopperProp():
                         drop_sub_record = False
                         phandle_sub_record = []
 
-                        if self.binary:
+                        if self.binary and not is_bits:
                             phandle_sub_record.append( "[" )
                         else:
                             # we have to open with a '<', if this is a list of numbers
@@ -1614,7 +1622,7 @@ class LopperProp():
                             if phandle_sub_record:
                                 formatted_records.extend( phandle_sub_record )
 
-                                if self.binary:
+                                if self.binary and not is_bits:
                                     formatted_records.append( "]" )
                                 else:
                                     formatted_records.append( ">" )
@@ -1626,16 +1634,18 @@ class LopperProp():
                                     formatted_records.append( ";" )
                 else:
                     # no phandles
-                    resolver = lopper.schema.get_schema_manager().resolver
-                    if resolver:
-                        resolver_type = resolver.get_property_type(self.name)
+                    if resolver_type:
                         if resolver_type == LopperFmt.UINT16:
                             formatted_records.append( '/bits/ 16 ' )
+
+                        if resolver_type == LopperFmt.UINT8:
+                            if is_bits:
+                                formatted_records.append( '/bits/ 8 ' )
                     else:
                         resolver_type = None
 
                     if list_of_nums:
-                        if self.binary:
+                        if self.binary and not is_bits:
                             formatted_records.append( "[" )
                         else:
                             # we have to open with a '<', if this is a list of numbers
@@ -1653,11 +1663,16 @@ class LopperProp():
                             
                         if list_of_nums:
                             if self.binary:
-                                formatted_records.append( f"{i:02X}" )
+                                if is_bits:
+                                    formatted_records.append( f"0x{i:02X}" ) # Format as 2 hex digits
+                                else:
+                                    formatted_records.append( f"{i:02X}" )
                             else:
                                 try:
                                     if resolver_type == LopperFmt.UINT16:
                                         hex_string = f'0x{i:04x}'  # Format as 4 hex digits
+                                    elif resolver_type == LopperFmt.UINT8:
+                                        hex_string = f'0x{i:02x}'  # Format as 2 hex digits
                                     else:
                                         if check_32_bit(i):
                                             hex_string = f'0x{i:x}'
@@ -1674,7 +1689,7 @@ class LopperProp():
                             formatted_records.append( f"\"{dtc_string}\"" )
 
                     if list_of_nums:
-                        if self.binary:
+                        if self.binary and not is_bits:
                             formatted_records.append( "];" )
                         else:
                             formatted_records.append( ">;" );

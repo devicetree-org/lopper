@@ -23,6 +23,8 @@ _init( "schema.py" )
 
 # Add properties to debug as needed
 PROPERTY_DEBUG_LIST = [
+    # "ceva,p0-retry-params",
+    # "ceva,p0-cominit-params",
     # "xlnx,max-frl-rate",
     # "parallel-memories",
     # "xlnx,cpu-clk-freq-hz",
@@ -600,7 +602,7 @@ class DTSSchemaGenerator:
                     types_summary = defaultdict(int)
                     for occ in occurrences:
                         types_summary[occ['type']] += 1
-                    _warning(f"  {prop_name}: {dict(types_summary)}")
+                    # _warning(f"  {prop_name}: {dict(types_summary)}")
 
         # Now rebuild path_properties with only mixed-type properties
         optimized_path_properties = defaultdict(set)
@@ -714,7 +716,7 @@ class DTSSchemaGenerator:
             elif bit_width == 16:
                 prop_type = 'uint16-array' if is_array else 'uint16'
             elif bit_width == 8:
-                prop_type = 'uint8-array' if is_array else 'uint8'
+                prop_type = 'uint8-bits-array' if is_array else 'uint8'
             else:
                 prop_type = 'uint32-array' if is_array else 'uint32'
 
@@ -1096,6 +1098,13 @@ class DTSSchemaGenerator:
                 'pattern': r'^\[[0-9a-fA-F\s]+\]$',
                 'format': 'uint8-array'  # Add a format hint
             }
+        elif prop_type == 'uint8-bits-array':  # /bits/ 8 with multiple values
+            return {
+                'type': 'string',
+                'pattern': '^<(\\s*(0x[0-9a-fA-F]+|[0-9]+)\\s*)+>$',
+                'format': 'uint8-bits-array',  # New format name
+                'description': 'Array of 8-bit values from /bits/ 8'
+            }
         elif prop_type == 'string':
             return {'type': 'string'}
         elif prop_type == 'string-array':
@@ -1298,6 +1307,26 @@ class DTSPropertyTypeResolver:
                 'type': fmt_type
             })
 
+    def is_bits_format(self, prop_name, node_path=None):
+        """Check if property uses /bits/ format vs byte array format"""
+
+        # Get the schema definition
+        prop_def = None
+        if prop_name in self.schema.get('property_definitions', {}):
+            prop_def = self.schema['property_definitions'][prop_name]
+
+        if not prop_def:
+            return False
+
+        # Path-specific override
+        if node_path and node_path in self._path_properties:
+            path_props = self._path_properties[node_path].get('properties', {})
+            if prop_name in path_props:
+                prop_def = path_props[prop_name]
+
+        format_str = prop_def.get('format', '')
+
+        return '-bits' in format_str
 
     def _schema_to_lopper_fmt(self, prop_name, prop_def):
         """Convert schema property definition to LopperFmt type"""
@@ -1371,11 +1400,18 @@ class DTSPropertyTypeResolver:
         # Handle direct type definitions
         elif prop_type == 'string':
             # Check for format hint FIRST
+            if prop_def.get('format') == 'uint8':
+                return LopperFmt.UINT8
+
             if prop_def.get('format') == 'uint8-array':
                 return LopperFmt.UINT8
 
-            if prop_def.get('format') == 'uint8':
-                return LopperFmt.UINT8
+            if prop_def.get('format') == 'uint8-bits' or prop_def.get('format') == 'uint8-bits-array':
+                # This is /bits/ 8 format
+                return LopperFmt.UINT8  # But caller knows it's from /bits/
+
+            if prop_def.get('format') == 'uint16-array':
+                return LopperFmt.UINT16
 
             # Check if it has a pattern that indicates it's actually cell data
             pattern = prop_def.get('pattern', '')
@@ -1410,6 +1446,9 @@ class DTSPropertyTypeResolver:
             return LopperFmt.UINT8
         elif prop_type == 'uint8-array':
             return LopperFmt.UINT8
+        elif prop_type == 'uint8-bits' or prop_type == 'uint8-bits-array':
+            # This is /bits/ 8 format
+            return LopperFmt.UINT8  # But caller knows it's from /bits/
         elif prop_type == 'string-array':
             return LopperFmt.MULTI_STRING
         elif prop_type.startswith('phandle'):
