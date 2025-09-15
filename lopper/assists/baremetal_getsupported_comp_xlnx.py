@@ -35,8 +35,7 @@ def get_yaml_data(comp_name, comp_dir,proc_ip_name=None,family=None,variant=None
     supported_proc_list = schema.get('supported_processors',[])
     condition_item = next((proc for proc in supported_proc_list if isinstance(proc, dict) and "condition" in proc), None)
     if condition_item:
-        local_scope = utils.run_exec(condition_item["condition"], proc_ip_name, family, variant, return_list="supported_processors", yaml_file=yaml_file)
-        supported_proc_list = [proc for proc in supported_proc_list if proc in local_scope]
+        supported_proc_list = utils.run_exec(condition_item["condition"], proc_ip_name, family, variant, return_list="supported_processors", yaml_file=yaml_file)
     supported_os_list = schema.get('supported_os',[])
     description = schema.get('description',"")
     dep_lib_list = list(schema.get('depends_libs',{}).keys())
