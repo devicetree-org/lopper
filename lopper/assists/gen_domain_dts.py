@@ -521,6 +521,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
     root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
+    wwdt_nodes = []
 
     if "amd,versal2" in root_node['compatible'].value:
         root_node["model"] = "AMD Versal Gen 2"
@@ -568,8 +569,17 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
             if compatible == "cpus,cluster":
                 node.name = "cpus" 
 
+            # Collect all the wwdt nodes
+            if any(version in node["compatible"].value for version in ("xlnx,versal-wwdt-1.0", "xlnx,versal-wwdt")):
+                wwdt_nodes.append(node)
 
     xlnx_remove_unsupported_nodes(tgt_node, sdt)
+
+    # Zephyr Watchdog samples/tests expects watchdog0 alias.
+    # Add watchdog0 alias by referring it to the first occurence of the wwdt node
+    if wwdt_nodes:
+        wwdt_node = sdt.tree.pnode(wwdt_nodes[0].phandle)
+        sdt.tree['/aliases'] + LopperProp(name="watchdog0", value = wwdt_node.abs_path)
 
     for node in root_sub_nodes:
         if node.propval("compatible") != ['']:
@@ -899,6 +909,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
     if utils.is_file(zephyr_supported_schema_file):
         schema = utils.load_yaml(zephyr_supported_schema_file)
+        axi_wdt_nodes = []
         for node in root_sub_nodes:
             if node.parent:
                 if "amba_pl" in node.parent.name:
@@ -966,6 +977,9 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                             if node.propval('#size-cells') != ['0']:
                                 node['#size-cells'] = 0
                             node["compatible"] = "xlnx,xps-spi-2.00.a"
+                        # Collect all the axi-timebase-wdt nodes
+                        if any(version in node["compatible"].value for version in ("xlnx,axi-timebase-wdt-3.0", "xlnx,xps-timebase-wdt-1.00.a")):
+                            axi_wdt_nodes.append(node)
                         if is_supported_periph:
                             required_prop = is_supported_periph[0]["required"]
                             prop_list = list(node.__props__.keys())
@@ -1135,6 +1149,12 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
 
     if sdt.tree['/chosen'].propval('zephyr,sram') == ['']:
         sdt.tree['/chosen'] + LopperProp(name="zephyr,sram", value = sram_node)
+
+    # Zephyr Watchdog samples/tests expects watchdog0 alias.
+    # Add watchdog0 alias by referring it to the first occurence of the axi-timebase-wdt node
+    if axi_wdt_nodes:
+        axi_wdt_node = sdt.tree.pnode(axi_wdt_nodes[0].phandle)
+        sdt.tree['/aliases'] + LopperProp(name="watchdog0", value = axi_wdt_node.abs_path)
 
     # Update memory nodes
     # For DDR keep only device_type and remove compatible
