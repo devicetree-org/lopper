@@ -363,6 +363,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psv_pmc_efuse_cache', 'psv_pmc_efuse_ctrl', 'psv_pmc_global', 'psv_pmc_ppu1_mdm',
                             'psv_pmc_ram_npi', 'psv_pmc_rsa', 'psv_pmc_sha', 'psv_pmc_slave_boot', 'psv_scntrs',
                             'psv_pmc_slave_boot_stream', 'psv_pmc_trng', 'psv_psm_global_reg', 'psv_rpu', 'psv_scntr',
+                            'psu_r5_tcm_ram', 'psu_r5_0_btcm', 'psu_r5_0_btcm_global', 'psu_r5_0_atcm_global', 'psu_r5_0_atcm', 'psu_r5_0_atcm_lockstep',
                             'psu_r5_tcm_ram', 'psu_r5_0_btcm', 'psu_r5_0_btcm_global', 'psu_r5_0_atcm_global', 'psu_r5_0_atcm',
                             'xlnx,tcm', 'r52_atcm_global', 'r52_btcm_global', 'r52_ctcm_global',
                             'psv_r5_tcm', 'psv_tcm_global']
