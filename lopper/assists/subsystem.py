@@ -860,8 +860,10 @@ def cpu_expand( tree, subnode, verbose = 0):
         for n in subnode.subnodes():
             if n.name == "domain-to-domain":
                 n + LopperProp(name="cluster_cpu", value=cluster_cpu)
-                n.resolve()
-                n.sync()
+
+    pd_prop_node = [ n for n in cluster_node.subnodes() if n.propval("power-domains") != [''] ]
+    if len(pd_prop_node) == 1:
+        subnode + LopperProp(name="rpu_pd_val", value=pd_prop_node[0].propval("power-domains"))
 
     if cluster_node != None and "r5" in cluster_node.name:
         subnode + LopperProp(name="cpu_config_str", value="split" if subnode.propval("cpus")[1] == 1 else "lockstep")
