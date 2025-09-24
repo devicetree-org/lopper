@@ -99,45 +99,46 @@
                                    proplist= ['xlnx,data-size', 'xlnx,use-muldiv', 'xlnx,use-atomic', 'xlnx,use-fpu', 'xlnx,use-compression']
 
                                    archflags = []
+                                   bsp_archflags = []
                                    cflags_data = {}
 
                                    for property in proplist:
                                        try:
                                            archflags.append(n[property].tunes)
-                                           if property == 'xlnx,use-compression':
-                                               arch_option = '-march='
-                                               arch_linkflags = ''.join(archflags)
-                                               bsp_linkflags = arch_option + arch_linkflags
-                   
+                                           bsp_archflags.append(n[property].tunes)
                                        except:
-                                           if property == 'xlnx,use-compression':
-                                               arch_option = '-march='
-                                               arch_linkflags = ''.join(archflags)
-                                               bsp_linkflags = arch_option + arch_linkflags
                                            continue
 
 
                                    if n['xlnx,use-bitman-a'].value[0] == 1 and n['xlnx,use-bitman-b'].value[0] == 1 and n['xlnx,use-bitman-s'].value[0] == 1:
                                        archflags.append('b')
                                        archflags.append('_zicsr_zifencei')
+                                       bsp_archflags.append('b')
+                                       bsp_archflags.append('_zicsr_zifencei')
                                    else:
                                        archflags.append('_zicsr_zifencei')
+                                       bsp_archflags.append('_zicsr_zifencei')
 
                                        if n['xlnx,use-bitman-a'].value[0] == 1:
                                           archflags.append('_zba')
-					
+                                          bsp_archflags.append('_zba')
+
                                        if n['xlnx,use-bitman-b'].value[0] == 1:
                                           archflags.append('_zbb')
+                                          bsp_archflags.append('_zbb')
 
                                        if n['xlnx,use-bitman-s'].value[0] == 1:
                                           archflags.append('_zbs')
+                                          bsp_archflags.append('_zbs')
 
 
                                    if n['xlnx,use-bitman-c'].value[0] == 1:
                                        archflags.append('_zbc')
+                                       bsp_archflags.append('_zbc')
 
                                    if n['xlnx,use-dcache'].value[0] == 1 or n['xlnx,use-icache'].value[0] == 1:
                                        archflags.append('_zicbom')
+                                       bsp_archflags.append('_zicbom')
 
                                    if n['xlnx,data-size'].value[0] == 64:
                                        archflags.append(' -mabi=lp64') 
@@ -146,13 +147,17 @@
 
                                    if n['xlnx,use-fpu'].value[0] == 1:
                                        archflags.append('f') 
+                                       bsp_archflags.append('f')
                                    elif n['xlnx,use-fpu'].value[0] == 2:
                                        archflags.append('d') 
+                                       bsp_archflags.append('d')
                                    
                                    archflags.insert(0, '-march=')
+                                   bsp_archflags.insert(0, '-march=')
                                    n.tunes = archflags
 
                                    flags = ''.join(archflags) 
+                                   bsp_linkflags = ''.join(bsp_archflags)
                                    cflags_data['cflags'] = flags
                                    cflags_data['linkflags'] = bsp_linkflags
 
