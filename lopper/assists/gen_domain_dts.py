@@ -523,6 +523,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
     root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
     wwdt_nodes = []
+    ufs_nodes = []
 
     if "amd,versal2" in root_node['compatible'].value:
         root_node["model"] = "AMD Versal Gen 2"
@@ -573,6 +574,8 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
             # Collect all the wwdt nodes
             if any(version in node["compatible"].value for version in ("xlnx,versal-wwdt-1.0", "xlnx,versal-wwdt")):
                 wwdt_nodes.append(node)
+            if "amd,versal2-ufs" in node["compatible"].value:
+                ufs_nodes.append(node)
 
     xlnx_remove_unsupported_nodes(tgt_node, sdt)
 
@@ -581,6 +584,10 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
     if wwdt_nodes:
         wwdt_node = sdt.tree.pnode(wwdt_nodes[0].phandle)
         sdt.tree['/aliases'] + LopperProp(name="watchdog0", value = wwdt_node.abs_path)
+    # Zephyr UFS tests expects ufs0 alias, referring to first ufs node
+    if ufs_nodes:
+        ufs_node = sdt.tree.pnode(ufs_nodes[0].phandle)
+        sdt.tree['/aliases'] + LopperProp(name="ufs0", value = ufs_node.abs_path)
 
     for node in root_sub_nodes:
         if node.propval("compatible") != ['']:
@@ -678,6 +685,31 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             node["#size-cells"] = LopperProp("#size-cells")
                             node["#size-cells"].value = 0
                             node.add(node["#size-cells"])
+                    #UFS
+                    if "amd,versal2-ufs" in node["compatible"].value:
+                        new_node = LopperNode()
+                        new_node.name = "ufsdisk0"
+                        new_node['compatible'] = "zephyr,ufs-disk"
+                        new_node['disk-name'] = "UFS"
+                        node.add(new_node)
+                        ufs_reg_val = node["reg"].value;
+                        platform = sdt.tree['/']['family'].value
+                        if platform == ['Versal_2VE_2VM']:
+                            ufs_slcr_reg = [0, 0xf1060000, 0, 0x2000]
+                            ufs_reg_val = ufs_reg_val + ufs_slcr_reg
+                        for node_efuse in root_sub_nodes:
+                            if node_efuse.propval("compatible") != ['']:
+                                if any("xlnx,pmc-efuse-cache" in comp for comp in node_efuse["compatible"].value):
+                                    ufs_efuse_reg = node_efuse["reg"].value
+                                    ufs_reg_val = ufs_reg_val + ufs_efuse_reg
+                                    break
+                        for node_crp in root_sub_nodes:
+                            if node_crp.propval("compatible") != ['']:
+                                if any("xlnx,crp" in comp for comp in node_crp["compatible"].value):
+                                    ufs_crp_reg = node_crp["reg"].value
+                                    ufs_reg_val = ufs_reg_val + ufs_crp_reg
+                                    break
+                        node["reg"].value = ufs_reg_val
                     #AXI-GPIO
                     if "xlnx,xps-gpio-1.00.a" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,xps-gpio-1.00.a"]
