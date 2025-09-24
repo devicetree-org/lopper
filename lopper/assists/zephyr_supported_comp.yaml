@@ -275,3 +275,13 @@ xlnx,versal-ipi-dest-mailbox:
     - reg-names
     - xlnx,ipi-id
     - '#mbox-cells'
+
+amd,versal2-ufs:
+  required:
+    - compatible
+    - status
+    - reg
+    - interrupts
+    - interrupt-parent
+    - clocks
+    - clock-names
