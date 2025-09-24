@@ -22,9 +22,6 @@ from baremetalconfig_xlnx import compat_list, get_cpu_node, get_mapped_nodes, ge
 from common_utils import to_cmakelist
 import common_utils as utils
 from domain_access import update_mem_node
-from openamp_xlnx import xlnx_openamp_find_channels, xlnx_openamp_parse
-from openamp_xlnx_common import openamp_linux_hosts, openamp_roles
-from openamp_xlnx import xlnx_openamp_zephyr_update_tree
 from zephyr_board_dt import process_overlay_with_lopper_api
 
 def delete_unused_props( node, driver_proplist , delete_child_nodes):
@@ -146,31 +143,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     except IndexError:
         pass
 
-    keep_tcms = None
-    try:
-        keep_tcms = options['args'][2]
-    except IndexError:
-        pass
-
-    openamp_machine = None
-    if machine not in openamp_linux_hosts and linux_dt != 1:
-        openamp_machine = machine
-
-    openamp_present = xlnx_openamp_find_channels(sdt, openamp_machine)
-    openamp_host = machine in openamp_linux_hosts and linux_dt == 1
-    openamp_remote = machine in openamp_roles.keys() and linux_dt != 1 and machine not in openamp_linux_hosts
-    openamp_role = "host" if openamp_host else "remote"
-
-    if openamp_present and (openamp_host or openamp_remote):
-        xlnx_options = { "openamp_host":   openamp_roles[machine],
-                         "openamp_remote": openamp_roles[machine],
-                         "openamp_role":   openamp_role,
-                         "zephyr_dt" : True if zephyr_dt == 1 else False,
-                         "openamp_no_header": True if "--openamp_no_header" in options['args'] else False,
-                         "machine" : machine,
-                       }
-        xlnx_openamp_parse(sdt, options, xlnx_options, 1)
-
     # Delete other CPU Cluster nodes
     cpunode_list = sdt.tree.nodes('/cpu.*@.*', strict=True)
     clustercpu_nodes = []
@@ -230,8 +202,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     for node in root_sub_nodes:
         if linux_dt:
             if node.name == "memory@fffc0000" or node.name == "memory@bbf00000":
-                sdt.tree.delete(node)
-            if (keep_tcms == None and not openamp_present) and 'tcm' in node.name:
                 sdt.tree.delete(node)
             if node.propval('memory_type', list) == ['linear_flash']:
                 sdt.tree.delete(node)
@@ -415,8 +385,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                         sdt.tree.delete(node)
                     else:
                         continue
-                elif "tcm" in node.propval('compatible', list)[0]:
-                    continue
                 elif linux_dt and "xlnx,versal-ddrmc" in node.propval('compatible', list):
                     # ddr controller is not mapped to APU and there is a special handling in SDT to make its status okay.
                     continue
