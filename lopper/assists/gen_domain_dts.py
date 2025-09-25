@@ -738,6 +738,9 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             node['power-delay-ms'] = 10
                         node.add(new_node)
                         node["compatible"] = "xlnx,versal-8.9a"
+                    # CANFD
+                    if "xlnx,canfd-2.0" in node["compatible"].value:
+                        node["compatible"] = "xlnx,canfd-2.0"
                     # GPIOPS
                     if any(version in node["compatible"].value for version in ("xlnx,pmc-gpio-1.0", "xlnx,versal-gpio-1.0")):
                         version = lambda x: x in node["compatible"].value
@@ -835,6 +838,18 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                 if sdt.tree['/chosen'].propval('zephyr,console') == ['']:
                    sdt.tree[node]['zephyr,console'] = dev_node
                    sdt.tree[node]['zephyr,shell-uart'] = dev_node
+
+                   # Find CANFD nodes for zephyr,canbus
+                   can_nodes = []
+                   for root_node in root_sub_nodes:
+                       if root_node.propval('compatible') != ['']:
+                           compatible_list = root_node.propval('compatible', list)
+                           if any('xlnx,canfd-2.0' in compat for compat in compatible_list):
+                               can_nodes.append(root_node)
+
+                   # Set zephyr,canbus to first CANFD node if available
+                   if can_nodes:
+                       sdt.tree[node]['zephyr,canbus'] = can_nodes[0].abs_path
 
     if sdt.tree['/chosen'].propval('zephyr,sram') == ['']:
         sdt.tree['/chosen'] + LopperProp(name="zephyr,sram", value = sram_node)

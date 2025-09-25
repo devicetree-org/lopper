@@ -285,3 +285,10 @@ amd,versal2-ufs:
     - interrupt-parent
     - clocks
     - clock-names
+
+xlnx,canfd-2.0:
+  required:
+    - compatible
+    - reg
+    - interrupts
+    - clocks
