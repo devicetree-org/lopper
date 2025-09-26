@@ -304,3 +304,17 @@ xlnx,versal-ospi-1.0:
     - cdns,fifo-width
     - '#address-cells'
     - '#size-cells'
+
+cdns,spi-r1p6:
+  required:
+    - compatible
+    - status
+    - reg
+    - interrupts
+    - interrupt-parent
+    - cdns,num-ss-bits
+    - is-decoded-cs
+    - clock-frequency
+    - clocks
+    - '#address-cells'
+    - '#size-cells'
