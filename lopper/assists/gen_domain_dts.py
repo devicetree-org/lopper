@@ -741,6 +741,17 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                     # CANFD
                     if "xlnx,canfd-2.0" in node["compatible"].value:
                         node["compatible"] = "xlnx,canfd-2.0"
+                    # OSPI
+                    if "xlnx,versal-ospi-1.0" in node["compatible"].value:
+                        node["compatible"].value = ["xlnx,versal-ospi-1.0"]
+                        if node.propval('#address-cells') != [1]:
+                            node["#address-cells"] = LopperProp("#address-cells")
+                            node["#address-cells"].value = 1
+                            node.add(node["#address-cells"])
+                        if node.propval('#size-cells') != [0]:
+                            node["#size-cells"] = LopperProp("#size-cells")
+                            node["#size-cells"].value = 0
+                            node.add(node["#size-cells"])
                     # GPIOPS
                     if any(version in node["compatible"].value for version in ("xlnx,pmc-gpio-1.0", "xlnx,versal-gpio-1.0")):
                         version = lambda x: x in node["compatible"].value

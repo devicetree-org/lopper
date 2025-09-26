@@ -292,3 +292,15 @@ xlnx,canfd-2.0:
     - reg
     - interrupts
     - clocks
+
+xlnx,versal-ospi-1.0:
+  required:
+    - compatible
+    - status
+    - reg
+    - interrupts
+    - interrupt-parent
+    - cdns,fifo-depth
+    - cdns,fifo-width
+    - '#address-cells'
+    - '#size-cells'
