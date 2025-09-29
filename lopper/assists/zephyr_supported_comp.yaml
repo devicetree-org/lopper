@@ -228,6 +228,26 @@ xlnx,versal-net-emmc:
     - interrupts
     - clocks
 
+xlnx,zynqmp-dma-1.0:
+  required:
+    - compatible
+    - reg
+    - '#dma-cells'
+    - interrupts
+    - clocks
+    - clock-names
+    - xlnx,bus-width
+
+amd,versal2-dma-1.0:
+  required:
+    - compatible
+    - reg
+    - '#dma-cells'
+    - interrupts
+    - clocks
+    - clock-names
+    - xlnx,bus-width
+
 xlnx,versal-gpio-1.0:
   required:
     - compatible
