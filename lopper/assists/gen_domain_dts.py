@@ -480,6 +480,13 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         if sdt.tree['/cpus'].propval('address-map') != ['']:
             sdt.tree['/cpus'].delete('address-map')
 
+        # if domains is present then remove it
+        try:
+            domains_node = sdt.tree['/domains']
+            sdt.tree.delete(domains_node)
+        except:
+            pass
+
     if zephyr_dt:
         if "r52" in machine or "a78" in machine:
             xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine)
