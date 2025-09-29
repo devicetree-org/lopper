@@ -762,6 +762,23 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             node["#size-cells"] = LopperProp("#size-cells")
                             node["#size-cells"].value = 0
                             node.add(node["#size-cells"])
+                    #ADMA
+                    if any(version in node["compatible"].value for version in ("xlnx,zynqmp-dma-1.0", "amd,versal2-dma-1.0")):
+                        if node.props("clocks") != [] and node.propval("clocks") != []:
+                            node["clocks"].value = []
+                        if node.props('clock-names') != []:
+                            desired_clock_names = ["clk_main", "clk_apb"]
+                            clk_names = node.propval("clock-names")
+                            if clk_names == []:
+                                clk_names_list = []
+                            else:
+                                clk_names_list = [str(x) for x in clk_names]
+                            if clk_names_list != desired_clock_names:
+                                node["clock_names"].value = desired_clock_names
+                        if node.props("#dma-cells") != [] and node.propval("#dma-cells") != [1]:
+                            node['#dma-cells'].value = [1]
+                        if node.props("xlnx,bus-width") != [] and node.propval("xlnx,bus-width") != [64]:
+                            node["xlnx,bus-width"].value = [64]
                     # GPIOPS
                     if any(version in node["compatible"].value for version in ("xlnx,pmc-gpio-1.0", "xlnx,versal-gpio-1.0")):
                         version = lambda x: x in node["compatible"].value
@@ -813,15 +830,23 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             if new_ref_clk:
                                 new_node = LopperNode()
                                 new_node.abs_path = "/clocks"
-                                new_node.name = node.label + "_ref_clock"
+                                if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
+                                    new_node.name = "adma_ref_clk"
+                                else:
+                                    new_node.name = node.label + "_ref_clock"
                                 new_node['compatible'] = ["fixed-clock"]
                                 new_node['#clock-cells'] = 0
+                                if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
+                                    clk_freq = 450000000
                                 new_node['clock-frequency'] = clk_freq
                                 new_node.label_set(new_node.name)
                                 sdt.tree.add(new_node)
                                 if node.props('clocks') != []:
                                     node.delete('clocks')
-                                clock_prop = f"clocks = <&{new_node.name}>"
+                                if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
+                                    clock_prop = f"clocks = <&{new_node.name}>, <&{new_node.name}>"
+                                else:
+                                    clock_prop = f"clocks = <&{new_node.name}>"
                                 node + LopperProp(clock_prop)
                         for prop in prop_list:
                             if prop not in required_prop:
