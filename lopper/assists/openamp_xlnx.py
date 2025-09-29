@@ -1380,11 +1380,8 @@ def get_platform(tree, verbose = 0):
     global banner_printed
     platform = None
     root_node = tree["/"]
-    root_model = root_node.propval("model")[0]
-    root_compat = root_node.propval("compatible")
 
-    inputs = root_node.propval("compatible")
-    inputs.append(root_model)
+    inputs = root_node.propval("compatible") + root_node.propval("model")
 
     zynqmp = [ 'Xilinx ZynqMP',  "xlnx,zynqmp" ]
     versal = [ 'xlnx,versal', 'Xilinx Versal']
@@ -1395,7 +1392,7 @@ def get_platform(tree, verbose = 0):
     rpu_socs_enums = [ SOC_TYPE.VERSAL2, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]
 
     if verbose > 0 and not banner_printed:
-        print("[INFO]: ------> OPENAMP: XLNX: \troot_model: ", root_model, "\troot_compat: ", root_compat)
+        print("[INFO]: ------> OPENAMP: XLNX: \t platform info: ", inputs)
         banner_printed = True
 
     for index, soc in enumerate(rpu_socs):
