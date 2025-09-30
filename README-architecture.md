@@ -16,10 +16,12 @@ device tree. As long as Lopper routines and abstractions are used, the internal
 format of the files, and libraries to manipulate the tree can change in the
 future without the inputs and outputs differing.
 
-Currently, Lopper operates on dtb files. It does not parse or otherwise
-manipulate source dts files (except for pre-processing). Lopper uses libfdt for
-operations on these files, and uses the standard dtc tools to prepare the files
-for manipulation.
+Although Lopper maintains the ability to operate directly on dtb files, uses
+dtc to sanitize inputs (through compilation) and libfdt to confirm associations
+within the tree it can also parse and learn information from input .dts files.
+This includes the ability to pass comments through to output source, to detect
+and learn symbolic phandle patterns and generate a scheme that allows enhanced
+type checking (and formatting) for the properties in the tree.
 
 The flow of lopper processing is broken into the following broad categories:
 
@@ -38,6 +40,12 @@ The flow of lopper processing is broken into the following broad categories:
     compilation to ensure that dtbs are generated (with the assumption that the
     lopper operations will adjust and fix any issues with the input files).
 
+    It is in the normalization step that lopper performs source analysis
+    (if source is passed as an input) and uses preprocessing (if --enhanced
+    is passed) to maintain non-device tree information (comments, labels, etc).
+    Schema and phandle learning also takes place at this stage (for supported
+    input file types)
+
     system device tree, device tree and lopper operations files are all
     processed with the same tools during input file normalization.
 
@@ -50,11 +58,15 @@ The flow of lopper processing is broken into the following broad categories:
 
     Once the system device tree is established, and lopper operation files
     identified, the lops are processed in priority order (priority specified at
-    the file level), and the rules processed in order as they appear in the lop
-    file.
+    the file level), and the operations processed in order as they appear in
+    the lop file.
 
     lopper operations can immediately process the output of the previous
     operation and hence can be stacked to perform complex operations.
+
+    The operation runqueue processing is also where lopper assists are triggered
+    and executed against the tree. Assists are discussed in detail later in this
+    file.
 
   - finalization / output
 
@@ -83,16 +95,18 @@ tree:
   - LopperTree
        - LopperNode
        - LopperProp
-       - LopperTreePrinter
-  - LopperYAML
+  - LopperFDT, LopperDT
+  - LopperYAML, LopperJSON
   - LopperFile (internal use only)
   - LopperAssist (internal use only)
 
-The Lopper class is a container class (with static methods) of utility routines
-and wrappers around libfdt functions for flattened device trees. More robust
-encode, decode of properties, node copy, etc. These utilities routines will work
-on any FDT object as returned by libfdt, and hence can work on both the fdt
+The LopperFDT and LopperDT classes are a containers (with static methods) of
+utility routine and wrappers around libfdt functions for flattened device trees.
+More robust encode, decode of properties, node copy, etc. These utilities routines
+will work on any FDT object as returned by libfdt, and hence can work on both the fdt
 embedded in LopperSDT/LopperTree objects, or on loaded lopper operation files.
+LopperDT provides non-libfdt equivalent routines which allows different parsing and
+base routines to be supported behind the common abstraction.
 
 The LopperSDT class is an abstraction around the loaded system device tree, and
 is the primary target of lopper operations. This class is responsible for the
@@ -100,10 +114,10 @@ setup of the FDT (using dtc, pcpp (or cpp), etc, to compile it to a dtb), loadin
 operations and assists, running operations, writing the default output and
 cleaning up any temporary files.
 
-LopperYAML is a reader/writer of YAML inputs, and it converts what is read to
-LopperTree format (and from tree -> YAML on write). The internals of LopperYAML
-are not significant, except for the routines to_yaml() and to_tree(), which are
-used to convert formats.
+LopperYAML (and LopperJSON) are readers/writers of YAML inputs, and convert
+what is read to LopperTree format (and from tree -> YAML on write). The internals
+of LopperYAML are not significant, except for the routines to_yaml() and to_tree(),
+which are used to convert formats.
 
 LopperSDT uses the LopperTree + LopperNode + LopperProp classes to manipulate
 the underlying FDT without the details of those manipulations being throughout
@@ -114,24 +128,26 @@ A snapshot of pydoc information for lopper is maintained in README.pydoc. For
 the latest detailed information on lopper, execute the following:
 
     % pydoc3 lopper/__init__.py
+    % pydoc3 lopper/__main__.py
     % pydoc3 lopper/tree.py
     % pydoc3 lopper/fdt.py
     % pydoc3 lopper/dt.py
+    % pydoc3 lopper/schema.py
 
 # Lopper Inputs / Outputs:
 
 Although most inputs and outputs from Lopper are dts files (or dtb in rare cases),
-YAML is also supported. While not everything can (or should) be expressed in
+YAML/JSON is also supported. While not everything can (or should) be expressed in
 YAML, both lops and device tree elements can be expressed in this format.
 
 Note: The core of Lopper, assists, lops, etc, are not aware of the input /
-output formats, but operate on the LopperTree/Lopper data structures. It is this
-separation that allows Lopper to abstract both the tree and convert between the
-various formats.
+      output formats, but operate on the LopperTree/Lopper data structures. It
+      is this separation that allows Lopper to abstract both the tree and convert
+      between the various formats.
 
 To aid decoding and interpretation of properties carried in a LopperTree, if a
 node has been created from yaml, the LopperNode field '_source' is set to "yaml"
-(otherwise it is "dts").
+or "json" (otherwise it is "dts").
 
 # Lopper Tree and complex (non-dts) types:
 
@@ -147,16 +163,56 @@ types are json encoded and carried as a string in a LopperProp. When json
 encoding is used, the "pclass" of the LopperProp is set to "json", so that it
 can be loaded and expanded for processing.
 
+Lopper provides two methods to translate/expand input formats with additional
+information and to ensure that all input methods look the same to lops and
+assists in the pipeline
+
+  method 1 (explicit): -x (--xlate)
+
+    example: --auto -x '*.yaml' -i my_file_to_expand.yaml
+
+    This method constructs an input wrapper on the users behalf that is
+    of the format: lop-xlate-<pattern>.dts, which maps to an file
+    such as lopper/lops/lop-xlate-yaml.dts. That file contains lops that
+    run and expand yaml
+
+  method 2: .lop files (coupled with --auto)
+
+    example: --auto -i my_file_to_expand.yaml
+
+    This method is very simlar to method 1, but with a simplified command
+    line and a more flexible trigger which can be used for any purpose.
+
+    When --auto is passed, the known lops directories are searched for
+    .dts files that glob match (bitbake bbappend style) for the input
+    files and that end in ".lop", if a match is found, it is queued and
+    executed (to do translation, expansion or whatever)
+
+    In the above example:
+
+        lopper/lops/my_file%.lop
+        lopper/lops/my_file_to_expand.lop
+        lopper/lops/my%.lop
+
+    Would all match and be queued for execution in the pipeline
+
 # Lopper operations
 
-Lopper operations are passed to the tool in a dts format file. Any number of
-operations files can be passed, and they will be executed in priority order.
+Lopper operations (in "lop files") are a series of base/core operations that
+are largely self contained and that are be applied to the input device
+tree(s).
+
+Lopper operations are encoded a dts format and passed to lopper as input. Any
+number of operations files can be passed, and they will be executed in priority
+order.
+
+The following sections explain the format of the file and the operations.
 
 A lopper operations (lops) file has the following structure:
 
 -----
     /dts-v1/;
-    
+
     / {
             compatible = "system-device-tree-v1";
             // optional priority, normally not specified
@@ -195,11 +251,11 @@ lops are identified through the compatible string:
 
     compatible = "system-device-tree-v1,lop,<lop type>
 
-The valid lop types are desribed below. Note that the lop type can have an
+The valid lop types are described below. Note that the lop type can have an
 optional "-v<version>" appended (i.e. -v1) and will be accepted. The version
 specification is optional at the moment, since only -v1 operations exist.
 
-A lop can be specified, and have execution inhibited via the 'nexec;' property
+A lop can be specified, and have execution inhibited via the 'noexec;' property
 in that lop (child lops also need this to be specified). This allows for lopper
 operations to be carried, but only enabled for debug, etc.
 
@@ -372,26 +428,26 @@ NOTE/TODO: bindings will be written for the lopper operations.
                        // * is "all nodes"
                        nodes = "*";
                 };
-		lop_16 {
-		       compatible = "system-device-tree-v1,lop,output";
-		       outfile = "linux-partial.dts";
-		       // * is "all nodes"
-		       nodes = "axi.*";
-	        };
-		lop_17 {
+        lop_16 {
                compatible = "system-device-tree-v1,lop,output";
-		       outfile = "plm.cdo";
-		       // * is "all nodes"
-		       nodes = "*";
+               outfile = "linux-partial.dts";
+               // * is "all nodes"
+               nodes = "axi.*";
+            };
+        lop_17 {
+               compatible = "system-device-tree-v1,lop,output";
+               outfile = "plm.cdo";
+               // * is "all nodes"
+               nodes = "*";
                // lopper output assist will kick in
-		       id = "xlnx,output,cdo";
-	        };
-		lop_18 {
-		       compatible = "system-device-tree-v1,lop,output";
-		       outfile = "linux-special-props.dts";
-		       // nodes (regex), with a property that must be set
-		       nodes = "axi.*:testprop:testvalue";
-		};
+               id = "xlnx,output,cdo";
+            };
+        lop_18 {
+               compatible = "system-device-tree-v1,lop,output";
+               outfile = "linux-special-props.dts";
+               // nodes (regex), with a property that must be set
+               nodes = "axi.*:testprop:testvalue";
+        };
 
 # conditional: do a conditional test on nodes of the tree, and execute an operation
 
@@ -477,7 +533,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
     # See the 'xlate' lop for an example of 'inherit'
     #
     # See README.pydoc for details of the code execution environment
-    
+
                 lop_15_1 {
                       compatible = "system-device-tree-v1,lop,conditional-v1";
                       cond_root = "cpus";
@@ -906,10 +962,10 @@ lop.
 
 "noexec" takes no values and when present, the lop will not be exected:
 
-	    lop_2 {
+        lop_2 {
                   compatible = "system-device-tree-v1,lop,select-v1";
-		  // do not run this lop
-		  noexec;
+          // do not run this lop
+          noexec;
                   // clear any old selections
                   select_1;
                   select_2 = "/:compatible:.*xlnx,zynq-zc702.*";
@@ -927,31 +983,31 @@ either was specified (and both are provided to show a long and short
 form of the operation). If a matching compatible node is found in the
 tree, then lop_1_1_1 will be executed.
 
-	    lop_1: lop_1 {
-		  compatible = "system-device-tree-v1,lop,select-v1";
-		  // clear any old selections
-		  select_1;
-		  select_2 = "/:compatible:.*xlnx,versal-vc-p-a2197-00-revA.*";
-	    };
-	    lop_1_1: lop_1_1 {
-		  compatible = "system-device-tree-v1,lop,code-v1";
-		  code = "
-			  if __selected__:
-			      print( 'Compatible dts (type1) found: %s' % node )
+        lop_1: lop_1 {
+          compatible = "system-device-tree-v1,lop,select-v1";
+          // clear any old selections
+          select_1;
+          select_2 = "/:compatible:.*xlnx,versal-vc-p-a2197-00-revA.*";
+        };
+        lop_1_1: lop_1_1 {
+          compatible = "system-device-tree-v1,lop,code-v1";
+          code = "
+              if __selected__:
+                  print( 'Compatible dts (type1) found: %s' % node )
 
-			  if __selected__:
-			      return True
-			  else:
-			      return False
-		      ";
-	    };
-	    lop_1_1_1 {
-		  compatible = "system-device-tree-v1,lop,code-v1";
-		  cond = <&lop_1>;
-		  code = "
-			 print( 'Conditional Code is running!' )
-			 ";
-	     };
+              if __selected__:
+                  return True
+              else:
+                  return False
+              ";
+        };
+        lop_1_1_1 {
+          compatible = "system-device-tree-v1,lop,code-v1";
+          cond = <&lop_1>;
+          code = "
+             print( 'Conditional Code is running!' )
+             ";
+         };
 
 
 
@@ -1001,7 +1057,7 @@ If compatible, lopper calls the assist routine with the arguments set to:
 
 The options dictionary minimally contains the following keys:
 
-   'verbose': indicates the level of verbosity that lopper is using. 
+   'verbose': indicates the level of verbosity that lopper is using.
    'outdir': indicates the lopper output directory (from a lop or command line)
    'args': any remaining assist specific arguments (from a lop or command line)
 
