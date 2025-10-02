@@ -675,15 +675,89 @@ def chosen_expand( tree, chosen_node ):
     tree.add( chosen_node_copy, merge=True )
 
 def reserved_memory_expand( tree, reserved_memory_node ):
-    # there isn't any specific processing required for reserved memory
-    # at the moment. We just copy it to the main tree as-is. If a
-    # reserved-memory node exists, they should be merged.
+    # for each domain calling into this:
+    # 1. look up to see if reserved memory already exists
+    # 2. store old nodes
+    # 3. transform domain's reserved memory list of strings to phandles
+    #     where each string matches a rserved memory entry name
+    # 4. If a reserved memory node has a start/size tuple then transform
+    #    this to a reg property
+    try:
+        res_mem_node = tree["/reserved-memory"]
+        # get reg vals from pre-existing reserved memory
+        pre_existing_res_mem_nodes = [ n for n in res_mem_node.subnodes(children_only=True) ]
+    except:
+        pre_existing_res_mem_nodes = []
+        res_mem_node = LopperNode(-1, "/reserved-memory")
+        tree.add(res_mem_node)
 
-    # make a deep copy of the node
-    reserved_memory_node_copy = reserved_memory_node()
-    reserved_memory_node_copy.abs_path = "/reserved-memory"
-    reserved_memory_node_copy.resolve()
-    tree.add( reserved_memory_node_copy, merge=True )
+    new_res_mem_nodes = reserved_memory_node.subnodes(children_only=True)
+
+    resmem_list = reserved_memory_node.props( "reserved-memory" )
+
+    if not resmem_list:
+        return
+
+    if not resmem_list[0]:
+        return
+
+    if not resmem_list[0].value:
+        return
+
+    if type(resmem_list[0].value) == list:
+        if not resmem_list[0].value[0]:
+            return
+        resmem_prop_string = resmem_list[0].value
+    else:
+        resmem_prop_string = resmem_list[0].value
+
+    # will set to list of phandles instead
+    new_res_mem_pval = []
+
+    for dev in resmem_prop_string:
+        dev_node = [ n for n in pre_existing_res_mem_nodes if dev == n.name ]
+        dev_node = dev_node[0] if len(dev_node) == 1 else None
+        if dev_node == None:
+            print( f"[DBG]: WARNING: could not find node {dev}" )
+        else:
+            if dev_node.phandle == 0:
+                dev_node.phandle_or_create()
+            if dev_node.props("phandle") == []:
+               dev_node + LopperProp(name="phandle", value=dev_node.phandle)
+            new_res_mem_pval.append(dev_node.phandle)
+
+    # save phandles in domain
+    resmem_list[0].value = new_res_mem_pval
+
+     # read start and size. then form 'reg' property for the node.
+     # then remove start and size
+    for n in pre_existing_res_mem_nodes:
+        # handle no map
+        if n.propval("no-map") == 1:
+            n.delete("no-map")
+            n + LopperProp(name="no-map")
+
+        if n.propval("reg") != ['']:
+            continue
+
+        start_size_pair = { "start": 0xbeef, "size": 0xbeef }
+        for key in start_size_pair.keys():
+            val = n.propval(key) if n.propval(key) != [''] else str(0xbeef)
+            if val == str(0xbeef):
+                print("WARNING: reserved memory expand: carveout provided without property: ", key, n.abs_path)
+            try:
+                val = humanfriendly.parse_size( val, True )
+            except:
+                try:
+                    val = int(val,16)
+                except:
+                    val = int(val)
+
+            start_size_pair[key] = val
+            n.delete(key)
+
+        # convert to start/size to reg
+        n + LopperProp(name="reg", value=[0, start_size_pair["start"], 0, start_size_pair["size"]])
 
 # handle either sram or memory with use of prop_name arg
 def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', verbose = 0 ):
