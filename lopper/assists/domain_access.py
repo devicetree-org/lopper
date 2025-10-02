@@ -601,14 +601,10 @@ def core_domain_access( tgt_node, sdt, options ):
             # for all modified memory nodes
             cpu_node["address-map"].value = address_map_new
 
-    # 7) reserved memory node processing
+    # 7) want our domains node last, just for readability
     try:
         reserved_memory_node = domain_node.subnodes(children_only=True,name="reserved-memory$")
         if reserved_memory_node:
-            lopper.log._debug( "processing reserved memory" )
-            subsystem.reserved_memory_expand( sdt.tree, reserved_memory_node[0] )
-
-            # we want our domains node last, just for readability
             sdt.tree['/'].reorder_child( "/domains", "/reserved-memory", after=True )
     except Exception as e:
         lopper.log._warning( f"exception while processing reserved-memory: {e}")
