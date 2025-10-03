@@ -30,7 +30,9 @@ from lopper.tree import *
 
 from lopper import *
 import lopper
+import lopper.schema
 from lopper.yaml import *
+from lopper.fmt import LopperFmt
 
 from io import StringIO
 import sys
@@ -1101,6 +1103,49 @@ def setup_system_device_tree( outdir ):
 """)
 
     return outdir + "/sdt-tester.dts"
+
+def setup_schema_types_tree( outdir ):
+    with open( outdir + "/schema-types.dts", "w") as w:
+            w.write("""\
+/dts-v1/;
+
+/ {
+        compatible = "schema,types-test";
+
+        schema-types {
+                refnode: endpoint {
+                        compatible = "schema,endpoint";
+                        phandle = <0x1>;
+                };
+
+                test {
+                        compatible = "schema,test";
+                        string-prop = "string-value";
+                        names-list = "alpha", "beta";
+                        flag-prop;
+                        cells-prop = <0x1 0x2 0x3>;
+                        range64 = /bits/ 64 <0x0 0x1>;
+                        width16 = /bits/ 16 <0x0 0x1234>;
+                        mac-bytes = [00 11 22 33 44 55];
+                        single-u8 = /bits/ 8 <0x7f>;
+                        phandle-list = <&refnode 0x7>;
+                        custom-names = "gamma", "delta";
+                        stream-map = <0x8 0x9>;
+                };
+        };
+
+        amba_rpu: rpu-bus {
+                #address-cells = <0x2>;
+                #size-cells = <0x2>;
+
+                gic_r5: interrupt-controller@f9000000 {
+                        reg = <0x0 0xf9000000 0x0 0x1000 0x0 0xf9001000 0x0 0x1000>;
+                };
+        };
+};
+""")
+
+    return outdir + "/schema-types.dts"
 
 def setup_format_tree( outdir ):
     with open( outdir + "/format-tester.dts", "w") as w:
@@ -2330,6 +2375,82 @@ def format_sanity_test( device_tree, verbose ):
     device_tree.write( enhanced = True )
 
 
+def schema_type_sanity_test( outdir, verbose ):
+    dt = setup_schema_types_tree( outdir )
+
+    device_tree = LopperSDT( dt )
+
+    device_tree.dryrun = False
+    device_tree.verbose = verbose
+    device_tree.werror = werror
+    device_tree.output_file = outdir + "/schema-types-output.dts"
+    device_tree.cleanup_flag = True
+    device_tree.save_temps = False
+    device_tree.enhanced = True
+    device_tree.outdir = outdir
+    device_tree.use_libfdt = libfdt
+    device_tree.schema = ("learn_dump", outdir + "/schema-types-schema.yaml")
+
+    device_tree.setup( dt, [], "", True, libfdt = libfdt )
+
+    print( "[TEST]: running schema type coverage" )
+    device_tree.perform_lops()
+
+    if device_tree.output_file:
+        print( f"[TEST]: writing resulting schema DTS to {device_tree.output_file}" )
+        device_tree.write( enhanced = True )
+
+    resolver = lopper.schema.get_schema_manager().get_resolver()
+
+    expected_formats = {
+        "/schema-types/test": {
+            "string-prop": LopperFmt.STRING,
+            "names-list": LopperFmt.MULTI_STRING,
+            "flag-prop": LopperFmt.EMPTY,
+            "cells-prop": LopperFmt.UINT32,
+            "range64": LopperFmt.UINT64,
+            "width16": LopperFmt.UINT16,
+            "mac-bytes": LopperFmt.UINT8,
+            "single-u8": LopperFmt.UINT8,
+            "phandle-list": LopperFmt.UINT32,
+            "custom-names": LopperFmt.MULTI_STRING,
+            "stream-map": LopperFmt.UINT32,
+        }
+    }
+
+    with open(device_tree.output_file) as fp:
+        for line in fp:
+            print( f"{line}", end='' )
+
+    for node_path, properties in expected_formats.items():
+        for prop_name, expected_fmt in properties.items():
+            detected_fmt = LopperFmt.UNKNOWN
+            if resolver:
+                detected_fmt = resolver.get_property_type( prop_name, node_path )
+
+            if detected_fmt == expected_fmt:
+                test_passed( f"schema type detection for {prop_name} ({expected_fmt.name})" )
+            else:
+                test_failed( f"schema type detection for {prop_name}: expected {expected_fmt.name}, got {detected_fmt.name if isinstance(detected_fmt, LopperFmt) else detected_fmt}" )
+
+    pattern_checks = {
+        "flag property preserved": r"flag-prop;",
+        "multi-string preserved": r"names-list = \"alpha\", \"beta\"",
+        "64-bit literal preserved": r"range64 = /bits/ 64",
+        "16-bit literal preserved": r"width16 = /bits/ 16",
+        "phandle reference preserved": r"phandle-list = <&refnode",
+    }
+
+    for description, pattern in pattern_checks.items():
+        count = test_pattern_count( device_tree.output_file, pattern )
+        if count >= 1:
+            test_passed( description )
+        else:
+            test_failed( description )
+
+    device_tree.cleanup()
+
+
 def fdt_sanity_test( device_tree, verbose ):
 
     device_tree.setup( dt, [], "", True, libfdt = libfdt )
@@ -2498,6 +2619,7 @@ def usage():
     print('  -x, --generate_domain run xilinx-amd sanity tests')
     print('  -a, --assists       run assist tests' )
     print('  -f, --format        run format tests (dts/yaml)' )
+    print('  -s, --schema_types  run schema coverage tests' )
     print('  -d, --fdt           run fdt abstraction tests' )
     print('    , --werror        treat warnings as errors' )
     print('    , --all           run all sanity tests' )
@@ -2515,6 +2637,7 @@ def main():
     global tree
     global assists
     global format
+    global schema_types
     global continue_on_error
     global fdttest
     global libfdt
@@ -2529,11 +2652,12 @@ def main():
     generate_domain_test = False
     assists = False
     format = False
+    schema_types = False
     fdttest = False
     continue_on_error = False
     libfdt = True
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlhoxd", [ "generate_domain", "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "openamp", "werror","verbose", "help"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlhoxds", [ "generate_domain", "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "openamp", "werror","verbose", "help", "schema_types"])
     except getopt.GetoptError as err:
         print(f'{str(err)}')
         usage()
@@ -2567,6 +2691,8 @@ def main():
             assists=True
         elif o in ( '-f', '--format'):
             format=True
+        elif o in ( '-s', '--schema_types'):
+            schema_types = True
         elif o in ( '-d', '--fdt' ):
             fdttest = True
         elif o in ( '--no-libfdt' ):
@@ -2579,6 +2705,7 @@ def main():
             fdttest = True
             format = True
             generate_domain_test = True
+            schema_types = True
         elif o in ( '--continue' ):
             continue_on_error = True
         elif o in ('--version'):
@@ -2644,6 +2771,9 @@ if __name__ == "__main__":
         device_tree.use_libfdt = libfdt
 
         lops_code_test( device_tree, lop_file_2, verbose )
+
+    if schema_types:
+        schema_type_sanity_test( outdir, verbose )
 
     if openamp_tests:
         openamp_sanity_test( verbose )
