@@ -1642,6 +1642,9 @@ class LopperProp():
                         if resolver_type == LopperFmt.UINT8:
                             if is_bits:
                                 formatted_records.append( '/bits/ 8 ' )
+
+                        if resolver_type == LopperFmt.UINT64 and is_bits:
+                            formatted_records.append( '/bits/ 64 ' )
                     else:
                         resolver_type = None
 

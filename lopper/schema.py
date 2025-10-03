@@ -710,7 +710,7 @@ class DTSSchemaGenerator:
             is_array = self._looks_like_array(value)
 
             if bit_width == 64:
-                prop_type = 'uint64-array' if is_array else 'uint64'
+                prop_type = 'uint64-bits-array' if is_array else 'uint64-bits'
             elif bit_width == 32:
                 prop_type = 'uint32-array' if is_array else 'uint32'
             elif bit_width == 16:
@@ -1052,12 +1052,36 @@ class DTSSchemaGenerator:
                 ],
                 'format': 'uint64'
             }
+        elif prop_type == 'uint64-bits':
+            return {
+                'oneOf': [
+                    {
+                        'type': 'integer',
+                        'minimum': 0,
+                        'maximum': 18446744073709551615,
+                        'format': 'uint64-bits'
+                    },
+                    {
+                        'type': 'string',
+                        'pattern': '^<(0x[0-9a-fA-F]+|[0-9]+)>$',
+                        'format': 'uint64-bits'
+                    }
+                ],
+                'format': 'uint64-bits'
+            }
         elif prop_type == 'uint64-array':
             return {
                 'type': 'string',
                 'pattern': '^<(\\s*(0x[0-9a-fA-F]+|[0-9]+)\\s*)+>$',
                 'format': 'uint64-array',
                 'description': 'Array of 64-bit unsigned integers'
+            }
+        elif prop_type == 'uint64-bits-array':
+            return {
+                'type': 'string',
+                'pattern': '^<(\\s*(0x[0-9a-fA-F]+|[0-9]+)\\s*)+>$',
+                'format': 'uint64-bits-array',
+                'description': 'Array of /bits/ 64 unsigned integers'
             }
         elif prop_type == 'uint32-array':
             return self._get_cell_array_schema()
@@ -1363,7 +1387,7 @@ class DTSPropertyTypeResolver:
             opt_format = first_option.get('format', '')
             if opt_format == 'uint16' or opt_format == 'uint16-array':
                 return LopperFmt.UINT16
-            elif opt_format == 'uint64' or opt_format == 'uint64-array':
+            elif opt_format in ['uint64', 'uint64-array', 'uint64-bits', 'uint64-bits-array']:
                 return LopperFmt.UINT64
 
             # Check for array type first
@@ -1413,6 +1437,9 @@ class DTSPropertyTypeResolver:
             if prop_def.get('format') == 'uint16-array':
                 return LopperFmt.UINT16
 
+            if prop_def.get('format') in ['uint64-bits', 'uint64-bits-array']:
+                return LopperFmt.UINT64
+
             # Check if it has a pattern that indicates it's actually cell data
             pattern = prop_def.get('pattern', '')
             if pattern and '<' in pattern:
@@ -1440,7 +1467,7 @@ class DTSPropertyTypeResolver:
                 return LopperFmt.UINT8
 
             return LopperFmt.UINT32
-        elif prop_type == 'uint64':
+        elif prop_type == 'uint64' or prop_type == 'uint64-bits' or prop_type == 'uint64-bits-array':
             return LopperFmt.UINT64
         elif prop_type == 'uint8':
             return LopperFmt.UINT8
