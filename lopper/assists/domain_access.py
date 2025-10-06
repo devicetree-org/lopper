@@ -424,6 +424,9 @@ def core_domain_access( tgt_node, sdt, options ):
 
     modified_memory_nodes = []
     for domain_memory_entry in domain_memory_chunks:
+        if domain_memory_entry == ['']:
+            continue
+
         domain_memory_start_addr = domain_memory_entry[0]
         domain_memory_size = domain_memory_entry[1]
 
