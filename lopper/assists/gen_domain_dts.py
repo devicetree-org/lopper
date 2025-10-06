@@ -1016,6 +1016,36 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                         is_supported_periph = [value for key,value in schema.items() if key in node["compatible"].value]
                         if "xlnx,xps-timer-1.00.a" in node["compatible"].value:
                             node["compatible"].value = ["amd,xps-timer-1.00.a"]
+                        #AXI-ETHERNET-DMA
+                        if "xlnx,eth-dma" in node["compatible"].value:
+                            node["compatible"].value = ["xlnx,eth-dma"]
+                        #AXI-ETHERNET
+                        if "xlnx,axi-ethernet-1.00.a" in node["compatible"].value:
+                            node["compatible"].value = ["xlnx,axi-ethernet-1.00.a"]
+                            subnodes = node.subnodes()
+                            for subnode in subnodes:
+                                node.delete(subnode)
+                            emacnode = LopperNode()
+                            required_prop = [value for key,value in schema.items() if key in node["compatible"].value][0]["required"]
+                            for prop in required_prop:
+                                if prop == "compatible":
+                                    emacnode[prop] = ["xlnx,axi-ethernet-1.00.a"]
+                                elif prop == "reg" or prop == "status":
+                                    continue
+                                else:
+                                    emacnode[prop] = node[prop]
+                            emacnode.name = "ethernet-mac"
+                            emacnode.label_set("axi_ethernet")
+                            node.add(emacnode)
+                            for prop in required_prop:
+                                if prop not in ["compatible", "reg", "status"] and node.props(prop) != []:
+                                    node.delete(prop)
+                            node["compatible"].value = ["xlnx,axi-ethernet-subsystem-7.2"]
+                            node.label_set("axi_enet")
+                            name = node.name
+                            parts = name.split("@")
+                            new_name = f"axi-{parts[0]}-subsystem@{parts[1]}"
+                            node.name = new_name
                         # UARTNS550
                         if "xlnx,axi-uart16550-2.0" in node["compatible"].value:
                             node["compatible"].value = ["ns16550"]
