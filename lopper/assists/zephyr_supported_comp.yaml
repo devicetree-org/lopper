@@ -338,3 +338,35 @@ cdns,spi-r1p6:
     - clocks
     - '#address-cells'
     - '#size-cells'
+
+xlnx,eth-dma:
+  required:
+    - compatible
+    - reg
+    - '#dma-cells'
+    - status
+    - interrupt-parent
+    - interrupts
+    - xlnx,addrwidth
+    - dma-channels
+    - clock-frequency
+    - xlnx,include-dre
+
+xlnx,axi-ethernet-subsystem-7.2:
+  required:
+    - compatible
+    - reg
+    - status
+
+xlnx,axi-ethernet-1.00.a:
+  required:
+    - compatible
+    - reg
+    - status
+    - interrupt-parent
+    - interrupts
+    - axistream-connected
+    - axistream-control-connected
+    - local-mac-address
+    - xlnx,rxcsum
+    - xlnx,txcsum
