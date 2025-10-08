@@ -902,6 +902,109 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
 
     return True
 
+def generate_board_kconfig_defconfig(isa_string, cpu_node, intc_node, num_interrupts):
+    """
+    Generate board-level Kconfig.defconfig content based on hardware configuration.
+    Similar to boards/amd/mbv32/Kconfig.defconfig structure.
+
+    Args:
+        isa_string: The RISC-V ISA string from cflags.yaml
+        cpu_node: The CPU node from device tree
+        intc_node: The interrupt controller node
+        num_interrupts: Number of interrupts detected
+
+    Returns:
+        str: Complete board-level Kconfig.defconfig content
+    """
+    license_content = '''#
+# Copyright (c) 2025 Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# This is an auto-generated board-level Kconfig.defconfig file.
+# It configures RISC-V ISA extensions and board-specific features
+# based on the hardware configuration detected from your design.
+#
+
+'''
+
+    content = license_content
+    content += f"if BOARD_MBV32\n"
+    # Parse ISA string to determine what extensions are available
+    # Base ISA configurations - always add RV32I for MicroBlaze RISC-V
+    content += "config RISCV_ISA_RV32I\n"
+    content += "        default y\n\n"
+
+    # Always add zicsr and zifencei for MicroBlaze RISC-V as they are typically required
+    # These are fundamental extensions needed for proper RISC-V operation
+    content += "config RISCV_ISA_EXT_ZICSR\n"
+    content += "        default y\n\n"
+    content += "config RISCV_ISA_EXT_ZIFENCEI\n"
+    content += "        default y\n\n"
+    # Standard extension mappings for board-level configuration
+    extension_mapping = {
+        'm': 'RISCV_ISA_EXT_M',
+        'a': 'RISCV_ISA_EXT_A',
+        'c': 'RISCV_ISA_EXT_C',
+        'f': 'RISCV_ISA_EXT_F',
+        'd': 'RISCV_ISA_EXT_D',
+        'zba': 'RISCV_ISA_EXT_ZBA',
+        'zbb': 'RISCV_ISA_EXT_ZBB',
+        'zbc': 'RISCV_ISA_EXT_ZBC',
+        'zbs': 'RISCV_ISA_EXT_ZBS',
+    }
+
+    # Track added extensions to avoid duplicates (zicsr and zifencei already added)
+    added_extensions = {'zicsr', 'zifencei'}
+    # Process ISA string for additional extensions
+    if isa_string:
+        # Split by underscore to get different parts
+        isa_parts = isa_string.split('_')
+        for part in isa_parts:
+            part_lower = part.lower()
+            # Handle base ISA part (rv32imafc style)
+            if part_lower.startswith('rv32i'):
+                # Extract single-letter extensions after rv32i
+                extensions_part = part_lower[5:]  # Remove 'rv32i'
+                for ext_char in extensions_part:
+                    if ext_char in extension_mapping and ext_char not in added_extensions:
+                        content += f"config {extension_mapping[ext_char]}\n"
+                        content += "        default y\n\n"
+                        added_extensions.add(ext_char)
+            # Handle explicit Z-extensions (but skip zicsr/zifencei as already added)
+            elif part_lower in extension_mapping and part_lower not in added_extensions:
+                content += f"config {extension_mapping[part_lower]}\n"
+                content += "        default y\n\n"
+                added_extensions.add(part_lower)
+
+    # Add interrupt controller configuration - always add for MicroBlaze RISC-V
+    # This matches the structure found in boards/amd/mbv32/Kconfig.mbv32
+    # MicroBlaze RISC-V designs typically use multi-level interrupt controllerscontent += "config MULTI_LEVEL_INTERRUPTS\n"
+    content += "        default y\n\n"
+    content += "config 2ND_LEVEL_INTERRUPTS\n"
+    content += "        default y\n\n"
+    content += "config 2ND_LVL_INTR_00_OFFSET\n"
+    content += "        default 11\n\n"
+    content += "config 2ND_LVL_ISR_TBL_OFFSET\n"
+    content += "        default 12\n\n"
+    content += "config MAX_IRQ_PER_AGGREGATOR\n"
+    content += "        default 32\n\n"
+
+    # Add additional board-specific configurations based on hardware
+    if cpu_node:
+        # Add PMP configuration if available and valid
+        if cpu_node.propval('xlnx,pmp-entries') != ['']:
+            pmp_entries = cpu_node.propval('xlnx,pmp-entries', list)[0]
+            if pmp_entries > 0 and pmp_entries % 8 == 0:  # Valid PMP configuration
+                content += "config PMP_SLOTS\n"
+                content += f"        default {pmp_entries}\n\n"
+                if cpu_node.propval('xlnx,pmp-granularity') != ['']:
+                    pmp_granularity = cpu_node.propval('xlnx,pmp-granularity', list)[0]
+                    granularity_val = pow(pmp_granularity + 2, 2)
+                    content += "config PMP_GRANULARITY\n"
+                    content += f"        default {granularity_val}\n\n"
+    content += "endif\n"
+    return content
 def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
@@ -1263,6 +1366,10 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                         defconfig_kconfig.write("  default %s\n" % str(val))
 
                     defconfig_kconfig.close()
+                    board_defconfig_content = generate_board_kconfig_defconfig(isa, node, is_axi_intc_present, num_intr)
+                    board_defconfig_file = os.path.join(sdt.outdir, f"board_Kconfig.defconfig")
+                    with open(board_defconfig_file, 'w') as board_defconfig:
+                        board_defconfig.write(board_defconfig_content)
 
 
     defconfig_kconfig = open(soc_defconfig_file, 'a')
