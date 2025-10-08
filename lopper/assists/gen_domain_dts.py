@@ -1122,6 +1122,9 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                         #AXI-ETHERNET-DMA
                         if "xlnx,eth-dma" in node["compatible"].value:
                             node["compatible"].value = ["xlnx,eth-dma"]
+                            if node.props("dma-channels") == []:
+                                node + LopperProp("dma-channels")
+                                node["dma-channels"].value = [2]
                         #AXI-ETHERNET
                         if "xlnx,axi-ethernet-1.00.a" in node["compatible"].value:
                             node["compatible"].value = ["xlnx,axi-ethernet-1.00.a"]
