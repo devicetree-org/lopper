@@ -1,13 +1,26 @@
+"""Xilinx OpenAMP common helpers shared across assist modules.
+
+This module defines enumerations representing CPU configuration state, the
+memory map metadata consumed during remoteproc construction, and helper
+routines that resolve references within generated device-tree relations.
+Global collections exposed here are documented with inline docstrings so they
+can be surfaced by documentation tooling.
+"""
+
 from lopper.tree import *
 from enum import Enum
 from enum import IntEnum
 import ast
 
 class CPU_CONFIG(IntEnum):
+    """Enumerate the supported RPU execution configurations."""
+
     RPU_SPLIT = 0
     RPU_LOCKSTEP = 1
 
 class RPU_CORE(IntEnum):
+    """Enumerate individual RPU core indices."""
+
     RPU_0 = 0
     RPU_1 = 1
     RPU_2 = 2
@@ -22,6 +35,8 @@ class RPU_CORE(IntEnum):
 # This is used for YAML representation
 # after this is parsed, the above enums are used for internal record keeping.
 class CLUSTER_CONFIG(Enum):
+    """Enumerate cluster configuration strings used by YAML input."""
+
     RPU_LOCKSTEP = 0
     RPU_0 = 1
     RPU_1 = 2
@@ -132,14 +147,21 @@ memory_nodes = {
         "rpu_view": [0x1, 0x18000, 0x0, 0x8000]
     },
 }
+"""dict[int, dict[str, list[int]]]: Mapping of power-domain identifiers to
+system-view and RPU-view memory descriptors used for remoteproc construction."""
 
 openamp_linux_hosts = [ "psv_cortexa72_0", "psx_cortexa78_0", "psu_cortexa53_0", "cortexa78_0" ]
+"""list[str]: Names of processor nodes recognized as OpenAMP Linux hosts."""
+
 openamp_remotes = { "psx_cortexr52_0", "psx_cortexr52_1", "psx_cortexr52_2", "psx_cortexr52_3",
  "cortexr52_0", "cortexr52_1", "cortexr52_2", "cortexr52_3", "cortexr52_4",
  "cortexr52_5", "cortexr52_6", "cortexr52_7", "cortexr52_8", "cortexr52_9",
  "psu_cortexr5_0", "psu_cortexr5_1", "psv_cortexr5_1", "psv_cortexr5_0", }
+"""set[str]: Names of processor nodes supported as OpenAMP remotes."""
 
 class SOC_TYPE:
+    """Enum-like constants for supported SoC families."""
+
     UNINITIALIZED = -1
     VERSAL = 0
     ZYNQMP = 1
@@ -149,6 +171,22 @@ class SOC_TYPE:
 
 
 def resolve_carveouts( tree, subnode, carveout_prop_name, verbose = 0 ):
+    """Resolve carveout node references within a relation.
+
+    Args:
+        tree (LopperTree): Device tree that contains the reserved/AXI nodes.
+        subnode (LopperNode): Relation container node being expanded.
+        carveout_prop_name (str): Property name, such as ``carveouts`` or ``elfload``.
+        verbose (int): Verbosity flag for diagnostic logging.
+
+    Returns:
+        bool: True when all carveout names resolve to phandles, False otherwise.
+
+    Algorithm:
+        Iterates relation children, searches reserved-memory and AXI subtrees for
+        matching node names or labels, ensures phandles exist, and replaces the
+        string references with numeric phandle lists.
+    """
     prop = None
     domain_node = None
 
@@ -185,6 +223,21 @@ def resolve_carveouts( tree, subnode, carveout_prop_name, verbose = 0 ):
     return True
 
 def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
+    """Replace RPMsg mailbox string identifiers with phandles.
+
+    Args:
+        tree (LopperTree): Device tree used to locate mailbox nodes.
+        subnode (LopperNode): Relation container node that references mailboxes.
+        verbose (int): Verbosity flag for diagnostic logging.
+
+    Returns:
+        bool: True when mailbox references resolve successfully, False otherwise.
+
+    Algorithm:
+        Validates the presence of ``mbox`` properties, searches the AXI subtree for
+        nodes whose name or label matches the mailbox string, and writes the located
+        phandle back into the relation.
+    """
     for relation in subnode.subnodes(children_only=True):
         if relation.props("mbox") == []:
             print("WARNING:", "rpmsg relation does not have mbox")
@@ -202,6 +255,21 @@ def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
     return True
 
 def resolve_host_remote( tree, subnode, verbose = 0 ):
+    """Resolve host/remote references within a relation description.
+
+    Args:
+        tree (LopperTree): Device tree containing ``/domains`` children.
+        subnode (LopperNode): Relation container node with host/remote properties.
+        verbose (int): Verbosity flag for diagnostic logging.
+
+    Returns:
+        bool: True when exactly one role resolves to a domain node, False otherwise.
+
+    Algorithm:
+        Checks each relation child to ensure exactly one of ``host`` or ``remote`` is
+        provided, searches ``/domains`` for the named node, ensures that node has a
+        phandle, and replaces the role property with the corresponding phandle.
+    """
     for relation in subnode.subnodes(children_only=True):
         roles_dict = {'host': [], 'remote': []}
         # save host and remote info for relation
@@ -274,3 +342,4 @@ $EXTRAS
 
 #endif /* _AMD_GENERATED_H_ */
 """
+"""str: Template used to generate OpenAMP R5 platform header files."""
