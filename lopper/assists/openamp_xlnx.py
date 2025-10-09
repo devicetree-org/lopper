@@ -41,11 +41,48 @@ REMOTEPROC_D_TO_D_v2 = "openamp,remoteproc-v2"
 RPMSG_D_TO_D = "openamp,rpmsg-v1"
 
 def is_compat( node, compat_string_to_test ):
+    """Identify whether this plugin handles the provided compatibility string.
+
+    Args:
+        node (LopperNode): Device tree node being evaluated. Present to satisfy the
+            dispatcher interface; not used for the decision.
+        compat_string_to_test (str): Compatibility string extracted from the node.
+
+    Returns:
+        Callable | str: ``xlnx_openamp_rpu`` when the compatibility string matches,
+        otherwise an empty string to indicate no match.
+
+    Algorithm:
+        Performs a regular-expression search for ``openamp,xlnx-rpu`` within the
+        provided string and returns the registered handler on success.
+    """
     if re.search( "openamp,xlnx-rpu", compat_string_to_test):
         return xlnx_openamp_rpu
     return ""
 
 def xlnx_handle_relations(sdt, machine, find_only = True, os = None, out_file_name = None):
+    """Process OpenAMP relation domains for a given machine.
+
+    Args:
+        sdt (LopperSDT): Structured device tree wrapper containing the parsed tree.
+        machine (str): Name of the remote machine to target.
+        find_only (bool): When True, return the first matching domain without
+            modifying the tree.
+        os (str | None): Operating-system context (for example ``linux_dt``).
+        out_file_name (str | None): Optional path used for generated header output.
+
+    Returns:
+        LopperNode | bool | None: Matching domain when ``find_only`` is True, True
+        when processing succeeds, False on failure, or None when the search mode
+        finds no relations.
+
+    Algorithm:
+        Resolves the CPU node associated with the requested machine, collects
+        remoteproc and RPMsg relation nodes, delegates processing to the dedicated
+        parsers, tracks carveouts for later validation, and verifies the resulting
+        reserved-memory layout does not contain overlaps. Emits a warning when no
+        relations are discovered and exits without modifying the tree.
+    """
     tree = sdt.tree
 
     # get_cpu_node expects dictionary where first arg first element is machine
@@ -101,12 +138,34 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None, out_file_na
     if not xlnx_validate_carveouts(tree, carveout_validation_arr):
             return False
 
+    if not remoteproc_relations and not rpmsg_relations:
+        print("OPENAMP: XLNX: WARNING: no remoteproc or rpmsg relations found for machine", machine)
+
     # if here for find case, then return None as failure
     # if processing too and we are here, then this did not encounter error. So return True.
     # note that if the tree does not have openamp nodes True is also returned.
     return None if find_only else True
 
 def xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveouts, verbose = 0 ):
+    """Inject Linux-specific RPMsg properties into the device tree.
+
+    Args:
+        tree (LopperTree): Device tree being updated.
+        node (LopperNode): RPMsg relation child describing a channel endpoint.
+        ipi_node (LopperNode): Interrupt node used for mailbox communication.
+        core_node (LopperNode): Remoteproc core node associated with the channel.
+        rpmsg_carveouts (list[LopperNode]): Reserved-memory nodes assigned to RPMsg.
+        verbose (int): Verbosity flag controlling diagnostic output.
+
+    Returns:
+        bool: True when the tree is updated successfully, False on validation errors.
+
+    Algorithm:
+        Validates carveout naming, promotes the buffer carveout to the front of the
+        memory-region list, appends carveouts to the core node, reorders DDR boot
+        entries to trail RPMsg carveouts, and injects mailbox properties required by
+        the Linux remoteproc driver.
+    """
     print(" -> xlnx_rpmsg_update_tree_linux", node)
     vdev0buf_node = [n for n in rpmsg_carveouts if "vdev0buf" in n.name]
     if len(vdev0buf_node) == 1:
@@ -143,6 +202,21 @@ def xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveout
 # If there exists a DDR carveout for ELF-Loading, return the start and size
 # of the carveout
 def xlnx_openamp_get_ddr_elf_load(machine, sdt):
+    """Retrieve the DDR ELF-load carveout for a target machine.
+
+    Args:
+        machine (str): Identifier for the remote processor of interest.
+        sdt (LopperSDT): Processed device tree structure.
+
+    Returns:
+        tuple[int, int] | bool: Tuple of (base, size) when a carveout exists, or
+        False if the carveout cannot be resolved.
+
+    Algorithm:
+        Matches the machine to its CPU node, locates the associated RPMsg relation,
+        validates host references, iterates remoteproc relations, and returns the
+        ``reg`` data from the first ELFLOAD node mapped to DDR.
+    """
     # get_cpu_node expects dictionary where first arg first element is machine
     match_cpunode = get_cpu_node(sdt, {'args':[machine]})
     if not match_cpunode:
@@ -217,6 +291,22 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
 
 # Inputs: openamp-processed SDT, target processor, ipi, ipc node
 def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, ipc_nodes):
+    """Tailor the device tree for Zephyr RPMsg communication.
+
+    Args:
+        machine (str): Remote machine identifier (unused, present for symmetry).
+        tree (LopperTree): Device tree being updated.
+        ipi_node (LopperNode): IPI node used for mailbox signaling.
+        ipc_nodes (list[LopperNode]): IPC shared-memory nodes tied to RPMsg.
+
+    Returns:
+        bool: True when Zephyr-specific updates succeed, False on validation failure.
+
+    Algorithm:
+        Validates IPC node count, sets Zephyr chosen-node properties, injects a
+        mailbox consumer helper, removes alternative IPI siblings to avoid conflicts,
+        and clears flash/OCM choices that would clash with RPMsg shared memory.
+    """
 
     if len(ipc_nodes) != 1:
         print("ERROR: zephyr: rpmsg: only length of 1 ipc node allowed. got: ", ipc_nodes)
@@ -240,6 +330,25 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, ipc_nodes):
     return True
 
 def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_nodes, host_ipi, verbose = 0 ):
+    """Generate C header output for OpenAMP RPMsg channels.
+
+    Args:
+        tree (LopperTree): Device tree being inspected for metadata.
+        machine (str): Remote machine identifier (unused directly but retained for
+            debugging).
+        output_file (str): Destination filepath for the generated header.
+        memory_region_nodes (list[LopperNode]): Carveouts associated with RPMsg.
+        host_ipi (LopperNode): IPI node connected to the host processor.
+        verbose (int): Verbosity flag for diagnostic printing.
+
+    Returns:
+        bool: True on successful file generation, False on failure.
+
+    Algorithm:
+        Aggregates VRING and buffer sizes from carveouts, extracts IPI configuration
+        data, prepares a template substitution dictionary, and writes the rendered
+        header to the requested output path.
+    """
     vrings = [n for n in memory_region_nodes if 'vring' in n.name]
     vring_total_sz = hex(sum([n.propval("reg")[3] for n in vrings]))
     shm_pa = hex(min([n.propval("reg")[1] for n in vrings]))
@@ -280,6 +389,28 @@ def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_node
     return True
 
 def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr, channel_to_core_dict = None, os = None, out_file_name = None, verbose = 0 ):
+    """Parse RPMsg relations and update the device tree accordingly.
+
+    Args:
+        tree (LopperTree): Device tree being modified.
+        rpmsg_relation_node (LopperNode): Domain relation describing RPMsg channels.
+        machine (str): Remote machine identifier (used for logging and lookups).
+        carveout_validation_arr (list[LopperNode]): Accumulator for carveouts to be
+            validated later.
+        channel_to_core_dict (dict[str, LopperNode] | None): Mapping of remote names
+            to remoteproc core nodes.
+        os (str | None): Operating-system context (``linux_dt`` or ``zephyr_dt``).
+        out_file_name (str | None): Optional header generation target path.
+        verbose (int): Verbosity flag for diagnostic messages.
+
+    Returns:
+        bool: True when parsing succeeds, False if required metadata is missing.
+
+    Algorithm:
+        Determines the platform, iterates RPMsg endpoints, validates remote/host
+        references, gathers carveouts, applies OS-specific tree rewrites, and
+        optionally emits a header file via ``xlnx_openamp_gen_outputs_only``.
+    """
     print(" -> xlnx_rpmsg_parse", rpmsg_relation_node)
 
     platform = get_platform(tree, verbose)
@@ -337,6 +468,19 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
 
 # tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
 def check_bit_set(n, k):
+    """Check whether the k-th bit within an integer is set.
+
+    Args:
+        n (int): Value to test.
+        k (int): Bit index to inspect.
+
+    Returns:
+        bool: True when the bit is set, otherwise False.
+
+    Algorithm:
+        Applies a bitmask constructed via ``1 << k`` and performs a bitwise AND,
+        returning True when the result is non-zero.
+    """
     if n & (1 << (k)):
         return True
 
@@ -344,18 +488,44 @@ def check_bit_set(n, k):
 
 
 def determine_cpus_config(remote_domain):
-  print(" -> determine_cpus_config ", remote_domain, remote_domain.propval("cpu_config_str"), remote_domain.propval("cpus"))
-  if remote_domain.propval("cpu_config_str") == ['']:
-      print(" determine_cpus_config failed. could not find cpu_config_str property on remote domain", remote_domain)
-      return -1
+    """Map the remote domain CPU configuration string to an enum value.
 
-  if remote_domain.propval("cpu_config_str") not in [ ['split'], ['lockstep'] ]:
-      print(" determine_cpus_config failed. invalid cpu_config_str: ", remote_domain.propval("cpu_config_str"))
-      return -1
+    Args:
+        remote_domain (LopperNode): Domain node describing the remote processor.
 
-  return { "split": CPU_CONFIG.RPU_SPLIT, "lockstep": CPU_CONFIG.RPU_LOCKSTEP }[remote_domain.propval("cpu_config_str")[0]]
+    Returns:
+        CPU_CONFIG | int: CPU configuration enum for split/lockstep, or -1 on error.
+
+    Algorithm:
+        Validates that ``cpu_config_str`` exists, ensures the value is one of the known
+        strings, and converts it into the matching ``CPU_CONFIG`` enum constant.
+    """
+    print(" -> determine_cpus_config ", remote_domain, remote_domain.propval("cpu_config_str"), remote_domain.propval("cpus"))
+    if remote_domain.propval("cpu_config_str") == ['']:
+        print(" determine_cpus_config failed. could not find cpu_config_str property on remote domain", remote_domain)
+        return -1
+
+    if remote_domain.propval("cpu_config_str") not in [ ['split'], ['lockstep'] ]:
+        print(" determine_cpus_config failed. invalid cpu_config_str: ", remote_domain.propval("cpu_config_str"))
+        return -1
+
+    return { "split": CPU_CONFIG.RPU_SPLIT, "lockstep": CPU_CONFIG.RPU_LOCKSTEP }[remote_domain.propval("cpu_config_str")[0]]
 
 def determinte_rpu_core(tree, cpu_config, remote_node):
+    """Determine which RPU core index is used for the remote node.
+
+    Args:
+        tree (LopperTree): Device tree containing the remote node.
+        cpu_config (CPU_CONFIG): RPU configuration (split or lockstep).
+        remote_node (LopperNode): Remote node describing the remote processor.
+
+    Returns:
+        RPU_CORE | bool: Enum representing the selected core, or False on failure.
+
+    Algorithm:
+        Validates the presence of ``core_num`` and converts it into the appropriate
+        ``RPU_CORE`` enum instance.
+    """
     print(" -> determinte_rpu_core", cpu_config, remote_node)
     if remote_node.propval("core_num") == ['']:
         print(" determinte_rpu_core failed. could not find core_num property no node: ", remote_node)
@@ -365,6 +535,20 @@ def determinte_rpu_core(tree, cpu_config, remote_node):
     return RPU_CORE(core_index)
 
 def xlnx_validate_carveouts(tree, carveouts):
+    """Verify that carveout regions do not overlap within reserved memory.
+
+    Args:
+        tree (LopperTree): Device tree containing reserved-memory nodes.
+        carveouts (list[LopperNode]): Carveout nodes to validate.
+
+    Returns:
+        bool: True when no overlaps are detected and reserved-memory exists, False
+        otherwise.
+
+    Algorithm:
+        Ensures the ``/reserved-memory`` node exists, gathers ``reg`` tuples from
+        carveouts, and checks for pairwise overlap among relevant regions.
+    """
     print(" -> xlnx_validate_carveouts")
     expect_ddr = any(["/reserved-memory/" in n.abs_path for n in carveouts])
     try:
@@ -396,12 +580,41 @@ def xlnx_validate_carveouts(tree, carveouts):
     return True
 
 def platform_validate(platform):
+    """Confirm that the detected SoC platform is supported.
+
+    Args:
+        platform (SOC_TYPE): Enum representing the current platform.
+
+    Returns:
+        bool: True when the platform is one of the supported SOC_TYPE values.
+
+    Algorithm:
+        Compares the provided enum against a whitelist and prints an error when the
+        platform is not supported.
+    """
     if platform not in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
         print("ERROR: unsupported platform: ", platform)
         return False
     return True
 
 def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_val, cluster_node_path):
+    """Create or update the remoteproc cluster node for an RPU complex.
+
+    Args:
+        tree (LopperTree): Device tree to mutate.
+        platform (SOC_TYPE): Detected SoC platform.
+        cpu_config (CPU_CONFIG): RPU configuration (split or lockstep).
+        cluster_ranges_val (list[int]): Flattened ``ranges`` property values.
+        cluster_node_path (str): Path of the cluster node in the tree.
+
+    Returns:
+        bool: True when the cluster node is valid or successfully created.
+
+    Algorithm:
+        Derives compatibility strings/modes from the platform, verifies existing
+        cluster nodes for mode consistency, merges ranges when in split mode, or
+        constructs a new node populated with all required properties.
+    """
     driver_compat_str  = {
       SOC_TYPE.ZYNQMP : "xlnx,zynqmp-r5fss",
       SOC_TYPE.VERSAL : "xlnx,versal-r5fss",
@@ -448,6 +661,25 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
     return True
 
 def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, power_domains, core_reg_val, core_reg_names, cluster_node_path, platform):
+    """Insert a remoteproc core node beneath the cluster node.
+
+    Args:
+        tree (LopperTree): Device tree being updated.
+        openamp_channel_info (dict): Aggregated metadata for the current channel.
+        power_domains (list[int]): Flattened list of power-domain phandles/indices.
+        core_reg_val (list[int]): Flattened ``reg`` values for core memories.
+        core_reg_names (list[str]): Names corresponding to each ``reg`` entry.
+        cluster_node_path (str): Absolute path to the cluster node.
+        platform (SOC_TYPE): Detected SoC platform.
+
+    Returns:
+        LopperNode: The newly created core node.
+
+    Algorithm:
+        Determines the core node naming scheme from the platform and core index,
+        builds the property set (compatibility, power domains, register ranges,
+        memory regions), and attaches the node to the tree.
+    """
     print(" --> xlnx_remoteproc_v2_add_core")
     compatible_strs = { SOC_TYPE.VERSAL2:  "xlnx,versal2-r52f", SOC_TYPE.VERSAL_NET:  "xlnx,versal-net-r52f", SOC_TYPE.VERSAL: "xlnx,versal-r5f", SOC_TYPE.ZYNQMP: "xlnx,zynqmp-r5f" }
     core_names = { SOC_TYPE.VERSAL_NET: "r52f", SOC_TYPE.VERSAL: "r5f", SOC_TYPE.ZYNQMP: "r5f" }
@@ -475,6 +707,19 @@ def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, power_domains, core_
 
 
 def xlnx_remoteproc_v2_cluster_base_str(platform, rpu_core):
+    """Return the remoteproc cluster base address string for an RPU core.
+
+    Args:
+        platform (SOC_TYPE): Detected platform.
+        rpu_core (RPU_CORE): Enum indicating the RPU core index.
+
+    Returns:
+        str: Hexadecimal string representing the base address for the cluster.
+
+    Algorithm:
+        Performs a table lookup keyed by platform and core index to derive the base
+        address required for the cluster node path.
+    """
     base_addresses = {
         SOC_TYPE.VERSAL_NET: {
             RPU_CORE.RPU_0: "eba00000",
@@ -507,6 +752,23 @@ def xlnx_remoteproc_v2_cluster_base_str(platform, rpu_core):
     return base_addresses[platform][rpu_core]
 
 def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elfload_nodes, verbose = 0):
+    """Build the remoteproc cluster and core nodes for a channel.
+
+    Args:
+        tree (LopperTree): Device tree to mutate.
+        openamp_channel_info (dict): Aggregated metadata describing the channel.
+        channel_elfload_nodes (list[LopperNode]): ELFLOAD carveouts referenced by the channel.
+        verbose (int): Verbosity flag for diagnostic output.
+
+    Returns:
+        LopperNode | bool: Newly created core node on success, or False on failure.
+
+    Algorithm:
+        Validates platform support, merges power-domain data from carveouts, derives
+        ranges for TCM and DDR nodes, ensures the cluster node exists with correct
+        configuration, tracks newly added DDR regions, and finally inserts the core
+        node using ``xlnx_remoteproc_v2_add_core``.
+    """
     print(" -> xlnx_remoteproc_v2_construct_cluster")
  
     cpu_config = openamp_channel_info["cpu_config"]
@@ -545,6 +807,23 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
                                        core_reg_val, core_reg_names, cluster_node_path, platform)
 
 def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, elfload_nodes, verbose = 0):
+    """Populate RPU-specific metadata for a remoteproc relation.
+
+    Args:
+        tree (LopperTree): Device tree being analyzed.
+        node (LopperNode): Remoteproc relation child node.
+        openamp_channel_info (dict): Mutable accumulator for channel information.
+        elfload_nodes (list[LopperNode]): Carveout nodes used for ELF loading.
+        verbose (int): Verbosity flag for diagnostic output.
+
+    Returns:
+        bool: True when parsing succeeds, False on validation errors.
+
+    Algorithm:
+        Determines CPU configuration mode, resolves the targeted RPU core index,
+        validates required power-domain properties, and stores the derived values in
+        ``openamp_channel_info`` for downstream processing.
+    """
     print(" -> xlnx_remoteproc_rpu_parse", node)
 
     remote_node = openamp_channel_info["remote_node"] 
@@ -570,6 +849,20 @@ def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, elfload_nodes, v
 
 banner_printed = False
 def get_platform(tree, verbose = 0):
+    """Derive the platform enum from the root node's model/compatible strings.
+
+    Args:
+        tree (LopperTree): Device tree object.
+        verbose (int): Verbosity flag controlling banner output.
+
+    Returns:
+        SOC_TYPE | None: Enum value representing the platform, or None when unknown.
+
+    Algorithm:
+        Combines the root node's ``compatible`` and ``model`` properties, optionally
+        emits a banner once per execution, and scans for known substrings to map the
+        tree onto a ``SOC_TYPE`` enum value.
+    """
     # set platform
     global banner_printed
     platform = None
@@ -601,6 +894,24 @@ def get_platform(tree, verbose = 0):
     return platform
 
 def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_arr, verbose = 0 ):
+    """Parse remoteproc relations and construct core nodes.
+
+    Args:
+        tree (LopperTree): Device tree being updated.
+        remoteproc_relation_node (LopperNode): Domain relation describing remoteproc channels.
+        carveout_validation_arr (list[LopperNode]): Accumulator for carveout validation.
+        verbose (int): Verbosity level for diagnostic printing.
+
+    Returns:
+        dict[str, LopperNode] | bool: Mapping of remote node names to created core nodes,
+        or False when parsing fails.
+
+    Algorithm:
+        Verifies platform support, iterates relation children, validates required
+        properties, tracks ELFLOAD carveouts, enriches channel metadata via
+        ``xlnx_remoteproc_rpu_parse``, constructs cluster/core nodes, and records the
+        core nodes for later RPMsg processing.
+    """
     print(" -> xlnx_remoteproc_parse", remoteproc_relation_node)
 
     # Xilinx OpenAMP subroutine to collect Remoteproc information from relation node in tree
@@ -640,6 +951,19 @@ def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_ar
     return channel_to_core_dict
 
 def xlnx_openamp_find_compat_domains(tree, delete_nodes = False):
+    """Locate or remove OpenAMP-compatible domain nodes.
+
+    Args:
+        tree (LopperTree): Device tree object.
+        delete_nodes (bool): When True, delete matching domains instead of reporting them.
+
+    Returns:
+        bool: True when compatible domains are found (or removed), False otherwise.
+
+    Algorithm:
+        Scans the ``/domains`` node for children whose compatibility matches the known
+        OpenAMP strings and optionally deletes them from the tree.
+    """
     try:
         domain_node = tree["/domains"]
     except:
@@ -658,6 +982,20 @@ def xlnx_openamp_find_compat_domains(tree, delete_nodes = False):
     return False
 
 def parse_openamp_args(arg_inputs):
+    """Parse command-line style arguments for the OpenAMP assist.
+
+    Args:
+        arg_inputs (list[str]): Argument list passed to the assist.
+
+    Returns:
+        dict: Normalized configuration containing output filename, machine name,
+        and detected device tree type.
+
+    Algorithm:
+        Filters the argument list for OpenAMP-specific flags, uses argparse to obtain
+        structured values, infers the device tree type from positional inputs, and
+        normalizes the result for downstream consumption.
+    """
     parser = argparse.ArgumentParser(description="OpenAMP argument parser")
     parser.add_argument("--openamp_output_filename", type=str, help="Output header file name")
     parser.add_argument("--openamp_remote", type=str, help="OpenAMP remote machine name")
@@ -677,6 +1015,21 @@ def parse_openamp_args(arg_inputs):
     return config
 
 def xlnx_openamp_parse(sdt, options, verbose = 0 ):
+    """Entry point for the OpenAMP assist to process remoteproc/RPMsg data.
+
+    Args:
+        sdt (LopperSDT): Structured device tree wrapper.
+        options (dict): Plugin options containing ``args``.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        bool: True when processing succeeds or no domains exist, False on errors.
+
+    Algorithm:
+        Parses assist arguments, checks for OpenAMP-compatible domains, delegates
+        relation handling when appropriate, and prunes conflicting TTC nodes for the
+        Linux device tree case.
+    """
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
     print(" -> xlnx_openamp_parse")
@@ -703,6 +1056,20 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
     return True
 
 def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
+    """Expand RPMsg YAML specialization into full device tree references.
+
+    Args:
+        tree (LopperTree): Device tree to update.
+        subnode (LopperNode): RPMsg YAML subnode being expanded.
+        verbose (int): Verbosity flag for diagnostics.
+
+    Returns:
+        bool: True when all references are resolved successfully.
+
+    Algorithm:
+        Resolves host/remote phandles, hydrates carveout references, and assigns
+        mailbox definitions using shared helper functions.
+    """
     # Xilinx-specific YAML expansion of RPMsg description.
     if not resolve_host_remote( tree, subnode, verbose):
         return False
@@ -712,6 +1079,20 @@ def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
     return resolve_rpmsg_mbox( tree, subnode, verbose)
 
 def xlnx_openamp_remoteproc_expand(tree, subnode, verbose = 0 ):
+    """Expand remoteproc YAML specialization into device tree references.
+
+    Args:
+        tree (LopperTree): Device tree to mutate.
+        subnode (LopperNode): Remoteproc YAML subnode being expanded.
+        verbose (int): Verbosity flag for diagnostics.
+
+    Returns:
+        bool: True when host/remote and carveout references resolve.
+
+    Algorithm:
+        Resolves host/remote references and materializes ELFLOAD carveout phandles
+        into the tree using common resolver helpers.
+    """
     # Xilinx-specific YAML expansion of Remoteproc description.
     if not resolve_host_remote( tree, subnode, verbose):
         return False
