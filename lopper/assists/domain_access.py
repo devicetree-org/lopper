@@ -28,7 +28,6 @@ from lopper_lib import chunks
 import copy
 from lopper.log import _init, _warning, _info, _error, _debug
 import logging
-import subsystem
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "access-domain,domain-v1", compat_string_to_test):
@@ -612,7 +611,6 @@ def core_domain_access( tgt_node, sdt, options ):
         chosen_node = domain_node.subnodes(children_only=True,name="chosen$")
         if chosen_node:
             lopper.log._debug( "processing chosen node" )
-            subsystem.chosen_expand( sdt.tree, chosen_node[0] )
 
             # we want our domains node last, just for readability
             sdt.tree['/'].reorder_child( "/domains", "/chosen", after=True )
