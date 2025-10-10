@@ -917,94 +917,84 @@ def generate_board_kconfig_defconfig(isa_string, cpu_node, intc_node, num_interr
         str: Complete board-level Kconfig.defconfig content
     """
     license_content = '''#
-# Copyright (c) 2025 Advanced Micro Devices, Inc.
+# Copyright (c) 2024 - 2025 Advanced Micro Devices, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
-#
-# This is an auto-generated board-level Kconfig.defconfig file.
-# It configures RISC-V ISA extensions and board-specific features
-# based on the hardware configuration detected from your design.
 #
 
 '''
 
     content = license_content
     content += f"if BOARD_MBV32\n"
-    # Parse ISA string to determine what extensions are available
+
+    # Track added extensions to avoid duplicates
+    added_extensions = set()
+
     # Base ISA configurations - always add RV32I for MicroBlaze RISC-V
     content += "config RISCV_ISA_RV32I\n"
-    content += "        default y\n\n"
+    content += "\tdefault y\n\n"
+    added_extensions.add('RISCV_ISA_RV32I')  # Track it to avoid duplicates
 
-    # Always add zicsr and zifencei for MicroBlaze RISC-V as they are typically required
-    # These are fundamental extensions needed for proper RISC-V operation
-    content += "config RISCV_ISA_EXT_ZICSR\n"
-    content += "        default y\n\n"
-    content += "config RISCV_ISA_EXT_ZIFENCEI\n"
-    content += "        default y\n\n"
-    # Standard extension mappings for board-level configuration
-    extension_mapping = {
-        'm': 'RISCV_ISA_EXT_M',
-        'a': 'RISCV_ISA_EXT_A',
-        'c': 'RISCV_ISA_EXT_C',
-        'f': 'RISCV_ISA_EXT_F',
-        'd': 'RISCV_ISA_EXT_D',
-        'zba': 'RISCV_ISA_EXT_ZBA',
-        'zbb': 'RISCV_ISA_EXT_ZBB',
-        'zbc': 'RISCV_ISA_EXT_ZBC',
-        'zbs': 'RISCV_ISA_EXT_ZBS',
-    }
-
-    # Track added extensions to avoid duplicates (zicsr and zifencei already added)
-    added_extensions = {'zicsr', 'zifencei'}
-    # Process ISA string for additional extensions
+    # Process ISA string to generate configs in the exact order: RV32I, M, A, C, ZICSR, ZIFENCEI
     if isa_string:
-        # Split by underscore to get different parts
-        isa_parts = isa_string.split('_')
-        for part in isa_parts:
-            part_lower = part.lower()
-            # Handle base ISA part (rv32imafc style)
-            if part_lower.startswith('rv32i'):
-                # Extract single-letter extensions after rv32i
-                extensions_part = part_lower[5:]  # Remove 'rv32i'
-                for ext_char in extensions_part:
-                    if ext_char in extension_mapping and ext_char not in added_extensions:
-                        content += f"config {extension_mapping[ext_char]}\n"
-                        content += "        default y\n\n"
-                        added_extensions.add(ext_char)
-            # Handle explicit Z-extensions (but skip zicsr/zifencei as already added)
-            elif part_lower in extension_mapping and part_lower not in added_extensions:
-                content += f"config {extension_mapping[part_lower]}\n"
-                content += "        default y\n\n"
-                added_extensions.add(part_lower)
+        # Define the exact order matching the existing board defconfig
+        ordered_extensions = [
+            ('m', 'RISCV_ISA_EXT_M'),
+            ('a', 'RISCV_ISA_EXT_A'),
+            ('c', 'RISCV_ISA_EXT_C'),
+            ('_zicsr', 'RISCV_ISA_EXT_ZICSR'),
+            ('_zifencei', 'RISCV_ISA_EXT_ZIFENCEI'),
+        ]
 
-    # Add interrupt controller configuration - always add for MicroBlaze RISC-V
-    # This matches the structure found in boards/amd/mbv32/Kconfig.mbv32
-    # MicroBlaze RISC-V designs typically use multi-level interrupt controllerscontent += "config MULTI_LEVEL_INTERRUPTS\n"
-    content += "        default y\n\n"
-    content += "config 2ND_LEVEL_INTERRUPTS\n"
-    content += "        default y\n\n"
-    content += "config 2ND_LVL_INTR_00_OFFSET\n"
-    content += "        default 11\n\n"
-    content += "config 2ND_LVL_ISR_TBL_OFFSET\n"
-    content += "        default 12\n\n"
-    content += "config MAX_IRQ_PER_AGGREGATOR\n"
-    content += "        default 32\n\n"
+        # Process base ISA part for M, A, C detection
+        isa_base = isa_string.split('_')[0]  # Same as SOC level
 
-    # Add additional board-specific configurations based on hardware
-    if cpu_node:
-        # Add PMP configuration if available and valid
-        if cpu_node.propval('xlnx,pmp-entries') != ['']:
-            pmp_entries = cpu_node.propval('xlnx,pmp-entries', list)[0]
-            if pmp_entries > 0 and pmp_entries % 8 == 0:  # Valid PMP configuration
-                content += "config PMP_SLOTS\n"
-                content += f"        default {pmp_entries}\n\n"
-                if cpu_node.propval('xlnx,pmp-granularity') != ['']:
-                    pmp_granularity = cpu_node.propval('xlnx,pmp-granularity', list)[0]
-                    granularity_val = pow(pmp_granularity + 2, 2)
-                    content += "config PMP_GRANULARITY\n"
-                    content += f"        default {granularity_val}\n\n"
+        # Process each extension in the defined order
+        for key, config_name in ordered_extensions:
+            if config_name not in added_extensions:
+                # For M, A, C - check in base ISA part
+                if key in ['m', 'a', 'c']:
+                    if isa_base.find(key) != -1:
+                        content += f"config {config_name}\n"
+                        content += "\tdefault y\n\n"
+                        added_extensions.add(config_name)
+                # For ZICSR, ZIFENCEI - check in full ISA string
+                elif key.startswith('_'):
+                    if isa_string.find(key) != -1:
+                        content += f"config {config_name}\n"
+                        content += "\tdefault y\n\n"
+                        added_extensions.add(config_name)
+
+        # Handle any additional extensions (F, D, ZBA, ZBB, etc.) after the core ones
+        additional_z_extensions = [
+            ('_zba', 'RISCV_ISA_EXT_ZBA'),
+            ('_zbb', 'RISCV_ISA_EXT_ZBB'),
+            ('_zbc', 'RISCV_ISA_EXT_ZBC'),
+            ('_zbs', 'RISCV_ISA_EXT_ZBS'),
+        ]
+
+        additional_base_extensions = [
+            ('f', 'RISCV_ISA_EXT_F'),
+            ('d', 'RISCV_ISA_EXT_D'),
+        ]
+
+        # Add F, D extensions if present
+        for key, config_name in additional_base_extensions:
+            if isa_base.find(key) != -1 and config_name not in added_extensions:
+                content += f"config {config_name}\n"
+                content += "\tdefault y\n\n"
+                added_extensions.add(config_name)
+
+        # Add additional Z-extensions if present
+        for key, config_name in additional_z_extensions:
+            if isa_string.find(key) != -1 and config_name not in added_extensions:
+                content += f"config {config_name}\n"
+                content += "\tdefault y\n\n"
+                added_extensions.add(config_name)
+
     content += "endif\n"
     return content
+
 def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
@@ -1058,31 +1048,31 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
         sys.exit(1)
 
     license_content = '''#
-# Copyright (c) 2024 Advanced Micro Devices, Inc.
+# Copyright (c) 2024 - 2025 Advanced Micro Devices, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 '''
     fix_part= '''
-  imply ARCH_CPU_IDLE_CUSTOM
-  select CLOCK_CONTROL
-  select CLOCK_CONTROL_FIXED_RATE_CLOCK
-  select CONSOLE
-  select SERIAL
-  select UART_CONSOLE if (UART_NS16550 || UART_XLNX_UARTLITE)
-  select UART_INTERRUPT_DRIVEN if (UART_NS16550 || UART_XLNX_UARTLITE)
-  imply UART_NS16550 if DT_HAS_NS16550_ENABLED
-  imply UART_XLNX_UARTLITE if DT_HAS_UARTLITE_ENABLED
-  imply GPIO if DT_HAS_XLNX_XPS_GPIO_1_00_A_ENABLED
-  imply GPIO_XLNX_AXI if DT_HAS_XLNX_XPS_GPIO_1_00_A_ENABLED
-  imply AMD_TMRCTR if DT_HAS_AMD_XPS_TIMER_1_00_A_ENABLED
-  imply XLNX_INTC if DT_HAS_XLNX_XPS_INTC_1_00_A_ENABLED
-  select XLNX_INTC_USE_IPR if XLNX_INTC
-  select XLNX_INTC_USE_SIE if XLNX_INTC
-  select XLNX_INTC_USE_CIE if XLNX_INTC
-  select XLNX_INTC_USE_IVR if XLNX_INTC
-    '''
+	imply ARCH_CPU_IDLE_CUSTOM
+	select CLOCK_CONTROL
+	select CLOCK_CONTROL_FIXED_RATE_CLOCK
+	select CONSOLE
+	select SERIAL
+	select UART_CONSOLE if (UART_NS16550 || UART_XLNX_UARTLITE)
+	select UART_INTERRUPT_DRIVEN if (UART_NS16550 || UART_XLNX_UARTLITE)
+	imply UART_NS16550 if DT_HAS_NS16550_ENABLED
+	imply UART_XLNX_UARTLITE if DT_HAS_UARTLITE_ENABLED
+	imply GPIO if DT_HAS_XLNX_XPS_GPIO_1_00_A_ENABLED
+	imply GPIO_XLNX_AXI if DT_HAS_XLNX_XPS_GPIO_1_00_A_ENABLED
+	imply AMD_TMRCTR if DT_HAS_AMD_XPS_TIMER_1_00_A_ENABLED
+	imply XLNX_INTC if DT_HAS_XLNX_XPS_INTC_1_00_A_ENABLED
+	select XLNX_INTC_USE_IPR if XLNX_INTC
+	select XLNX_INTC_USE_SIE if XLNX_INTC
+	select XLNX_INTC_USE_CIE if XLNX_INTC
+	select XLNX_INTC_USE_IVR if XLNX_INTC
+'''
 
     max_mem_size = 0
     num_intr = None
@@ -1301,6 +1291,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                     match = re.search(r"(?<=\=).+?(?=\ )",var)
                     sdt.tree[node]['riscv,isa'] = match.group()
                     isa = match.group()
+                    original_isa_string = isa  # Store original ISA string before modification
 
                     ''' Parse isa string and generate Kconfig.soc
                         and Kconfig.defconfig based on that 
@@ -1309,16 +1300,16 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                     soc_kconfig.write(str(license_content))
                     soc_kconfig.write("config SOC_MBV32\n")
 
-                    soc_kconfig.write("  select RISCV\n")
-                    soc_kconfig.write("  select ATOMIC_OPERATIONS_C\n")
-                    soc_kconfig.write("  select INCLUDE_RESET_VECTOR\n")
+                    soc_kconfig.write("\tselect RISCV\n")
+                    soc_kconfig.write("\tselect ATOMIC_OPERATIONS_C\n")
+                    soc_kconfig.write("\tselect INCLUDE_RESET_VECTOR\n")
 
-                    data_dict={'_zicsr':"  select RISCV_ISA_EXT_ZICSR\n",
-                               '_zifencei':"  select RISCV_ISA_EXT_ZIFENCEI\n",
-                               '_zba':"  select RISCV_ISA_EXT_ZBA\n",
-                               '_zbb':"  select RISCV_ISA_EXT_ZBB\n",
-                               '_zbc':"  select RISCV_ISA_EXT_ZBC\n",
-                               '_zbs':"  select RISCV_ISA_EXT_ZBS\n",
+                    data_dict={'_zicsr':"\tselect RISCV_ISA_EXT_ZICSR\n",
+                               '_zifencei':"\tselect RISCV_ISA_EXT_ZIFENCEI\n",
+                               '_zba':"\tselect RISCV_ISA_EXT_ZBA\n",
+                               '_zbb':"\tselect RISCV_ISA_EXT_ZBB\n",
+                               '_zbc':"\tselect RISCV_ISA_EXT_ZBC\n",
+                               '_zbs':"\tselect RISCV_ISA_EXT_ZBS\n",
                     }
                     for key, value in data_dict.items():
                         if isa.find(key) != -1:
@@ -1326,12 +1317,12 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
 
                     isa = isa.split('_')[0]
 
-                    data_dict={'rv32i':"  select RISCV_ISA_RV32I\n",
-                        'm':"  select RISCV_ISA_EXT_M\n",
-                        'a':"  select RISCV_ISA_EXT_A\n",
-                        'c':"  select RISCV_ISA_EXT_C\n",
-                        'f':"  select RISCV_ISA_EXT_F\n",
-                        'd':"  select RISCV_ISA_EXT_D\n",
+                    data_dict={'rv32i':"\tselect RISCV_ISA_RV32I\n",
+                        'm':"\tselect RISCV_ISA_EXT_M\n",
+                        'a':"\tselect RISCV_ISA_EXT_A\n",
+                        'c':"\tselect RISCV_ISA_EXT_C\n",
+                        'f':"\tselect RISCV_ISA_EXT_F\n",
+                        'd':"\tselect RISCV_ISA_EXT_D\n",
                     }
                     for key, value in data_dict.items():
                         if isa.find(key) != -1:
@@ -1345,42 +1336,42 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                     defconfig_kconfig = open(soc_defconfig_file, 'a')
                     
                     defconfig_kconfig.write(str(license_content))
-                    defconfig_kconfig.write("\nif SOC_MBV32\n")
-                    defconfig_kconfig.write("\nconfig MBV_CSR_DATA_WIDTH\n")
-                    defconfig_kconfig.write("  int \"Select Control/Status register width\"\n")
-                    defconfig_kconfig.write("  default 32\n")
-
-                    val = node.propval('clock-frequency', list)[0]
-                    defconfig_kconfig.write("\nconfig SYS_CLOCK_HW_CYCLES_PER_SEC\n")
-                    defconfig_kconfig.write("  default $(dt_node_int_prop_int,/cpus/cpu@0,clock-frequency)")
+                    defconfig_kconfig.write("if SOC_MBV32\n\n")
+                    defconfig_kconfig.write("config MBV_CSR_DATA_WIDTH\n")
+                    defconfig_kconfig.write("\tint \"Select Control/Status register width\"\n")
+                    defconfig_kconfig.write("\tdefault 32\n\n")
 
                     val = node.propval('xlnx,pmp-entries', list)[0]
                     if val % 8 == 0 and val != 0:
                         soc_kconfig = open(soc_kconfig_file, 'a')
-                        soc_kconfig.write("  select RISCV_PMP\n")
+                        soc_kconfig.write("\tselect RISCV_PMP\n")
                         soc_kconfig.close()
 
-                        defconfig_kconfig.write("\nconfig PMP_SLOTS\n")
-                        defconfig_kconfig.write("  default %s\n" % str(val))
+                        defconfig_kconfig.write("config PMP_SLOTS\n")
+                        defconfig_kconfig.write("\tdefault %s\n\n" % str(val))
 
                         val = node.propval('xlnx,pmp-granularity', list)[0]
-                        defconfig_kconfig.write("\nconfig PMP_GRANULARITY\n")
+                        defconfig_kconfig.write("config PMP_GRANULARITY\n")
                         val = pow(val + 2, 2)
-                        defconfig_kconfig.write("  default %s\n" % str(val))
+                        defconfig_kconfig.write("\tdefault %s\n\n" % str(val))
+
+                    # Add NUM_IRQS configuration
+                    if num_intr:
+                        defconfig_kconfig.write("config NUM_IRQS\n")
+                        defconfig_kconfig.write("\tdefault %s\n\n" % str(num_intr))
+
+                    # Add SYS_CLOCK_HW_CYCLES_PER_SEC at the end
+                    val = node.propval('clock-frequency', list)[0]
+                    defconfig_kconfig.write("config SYS_CLOCK_HW_CYCLES_PER_SEC\n")
+                    defconfig_kconfig.write("\tdefault $(dt_node_int_prop_int,/cpus/cpu@0,clock-frequency)\n\n")
+
+                    defconfig_kconfig.write("endif # SOC_MBV32\n")
 
                     defconfig_kconfig.close()
-                    board_defconfig_content = generate_board_kconfig_defconfig(isa, node, is_axi_intc_present, num_intr)
+                    board_defconfig_content = generate_board_kconfig_defconfig(original_isa_string, node, is_axi_intc_present, num_intr)
                     board_defconfig_file = os.path.join(sdt.outdir, f"board_Kconfig.defconfig")
                     with open(board_defconfig_file, 'w') as board_defconfig:
                         board_defconfig.write(board_defconfig_content)
-
-
-    defconfig_kconfig = open(soc_defconfig_file, 'a')
-    defconfig_kconfig.write("\nconfig NUM_IRQS\n")
-    if num_intr:
-        defconfig_kconfig.write("  default %s\n" % str(num_intr))
-    defconfig_kconfig.write("\nendif\n")
-    defconfig_kconfig.close()
 
     if sdt.tree['/chosen'].propval('zephyr,sram') == ['']:
         sdt.tree['/chosen'] + LopperProp(name="zephyr,sram", value = sram_node)
