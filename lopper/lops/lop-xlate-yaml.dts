@@ -41,7 +41,7 @@
                       select_2 = "/domains/subsystem\\w*$:cpus:.*";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               code = "
                                     for i, d in enumerate(__selected__):
                                         d['compatible'] = [ 'xilinx,subsystem-v1', 'openamp,domain-v1' ]
@@ -60,7 +60,7 @@
                       select_2 = "/.*/domains/.*:id:";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               code = "
                                     for i,d in enumerate(__selected__):
                                         d['compatible'] = 'openamp,domain-v1';
@@ -80,7 +80,7 @@
                       select_2 = "/.*/domains/sub*/.*:id:";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               code = "
                                     for i,d in enumerate(__selected__):
                                         d['compatible'] = 'openamp,domain-v1';
@@ -99,7 +99,7 @@
                       select_2 = "/resource_groups::";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               code = "
                                     try:
                                         domain_node = tree['/domains']
@@ -132,7 +132,7 @@
                       select_2 = "/.*:include:";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               code = "
                                     for d in __selected__:
                                         included_resources = d['include'].value
@@ -155,7 +155,7 @@
                       select_2 = "/.*?/.*domains$:!compatible:";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               code = "
                                     for d in __selected__:
                                         parent = d.parent
@@ -175,10 +175,10 @@
                       select_2 = "/.*:cpus:";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               code = "
                                     for d in __selected__:
-                                        subsystem.cpu_expand( tree, d, 0 )
+                                        yaml_to_dts_expansion.cpu_expand( tree, d, 0 )
                         ";
                       };
                 };
@@ -191,10 +191,10 @@
                       select_3 = "/.*/firewallconf::";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               code = "
                                     for d in __selected__:
-                                        subsystem.firewall_expand( tree, d, 0 )
+                                        yaml_to_dts_expansion.firewall_expand( tree, d, 0 )
                         ";
                       };
                 };
@@ -204,7 +204,7 @@
                       select_2 = "/domains";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               code = "
                                     if __selected__ == []:
                                         return
@@ -212,30 +212,30 @@
                                     for n in __selected__[0].subnodes():
 
                                         if n.propval('access') != [''] and 'flags' not in n.abs_path:
-                                            subsystem.access_expand( tree, n, 0 )
+                                            yaml_to_dts_expansion.access_expand( tree, n, 0 )
 
                                         if n.propval('memory') != ['']:
-                                            subsystem.memory_expand( tree, n )
+                                            yaml_to_dts_expansion.memory_expand( tree, n )
                                         if n.propval('sram') != ['']:
-                                            subsystem.memory_expand( tree, n, prop_name = 'sram' )
+                                            yaml_to_dts_expansion.memory_expand( tree, n, prop_name = 'sram' )
                                         if n.propval('reserved-memory') != ['']:
-                                            subsystem.reserved_memory_expand(tree,n)
+                                            yaml_to_dts_expansion.reserved_memory_expand(tree,n)
 
                                         for child_n in n.subnodes():
                                             if child_n.abs_path.endswith('/flags') and child_n.depth == n.depth + 1:
-                                                subsystem.flags_expand( tree, n)
+                                                yaml_to_dts_expansion.flags_expand( tree, n)
                         ";
                       };
                       lop_yaml_0_3 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               code = "
                                     if __selected__ == []:
                                         return
 
                                     for n in __selected__[0].subnodes(children_only=True, name='domain-to-domain$'):
                                         if n.abs_path.endswith('/domain-to-domain'):
-                                            subsystem.domain_to_domain_expand( tree, n)
+                                            yaml_to_dts_expansion.domain_to_domain_expand( tree, n)
                         ";
                       };
                 };
@@ -245,7 +245,7 @@
                       select_2 = "/.*/reg$";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               // disabled by default
                               noexec;
                               code = "
@@ -283,7 +283,7 @@
                       select_2 = "/.*:interrupt-parent:";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               // disabled by default
                               noexec;
                               code = "
@@ -321,7 +321,7 @@
                       select_2 = "/.*:ranges:";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               // disabled by default
                               noexec;
                               code = "
@@ -346,7 +346,7 @@
                       select_2 = "/cpus";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               // disabled by default
                               noexec;
                               code = "
@@ -375,7 +375,7 @@
                       select_2 = "/.*:clocks:";
                       lop_yaml_0_2 {
                               compatible = "system-device-tree-v1,lop,code-v1";
-                              inherit = "subsystem";
+                              inherit = "yaml_to_dts_expansion";
                               // disabled by default
                               noexec;
                               code = "
