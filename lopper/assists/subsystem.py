@@ -34,68 +34,134 @@ import json
 import humanfriendly
 
 sys.path.append(os.path.dirname(__file__))
-from openamp import is_openamp_d_to_d
-from openamp import openamp_d_to_d_expand
-
 
 def is_compat( node, compat_string_to_test ):
+    """Identify whether this assist handles the provided compatibility string.
+
+    Args:
+        node (LopperNode): Device tree node being evaluated. Present to satisfy the
+            dispatcher interface; not used for the decision.
+        compat_string_to_test (str): Compatibility string extracted from the node.
+
+    Returns:
+        Callable | str: ``subsystem`` when the compatibility string matches,
+        otherwise an empty string to indicate no match.
+
+    Algorithm:
+        Performs a regular-expression search for ``module,subsystem`` within the
+        provided string and returns the registered handler on success.
+    """
     if re.search( r"module,subsystem", compat_string_to_test):
         return subsystem
     return ""
 
 # tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
 def check_bit_set(n, k):
+    """Check whether the k-th bit within an integer is set.
+
+    Args:
+        n (int): Integer whose bits are being inspected.
+        k (int): Zero-based bit index where 0 represents the least-significant bit.
+
+    Returns:
+        bool: True when the requested bit is set, otherwise False.
+    """
     if n & (1 << (k)):
         return True
 
     return False
 
 def set_bit(value, bit):
+    """Return a copy of ``value`` with a specific bit set.
+
+    Args:
+        value (int): Base integer to modify.
+        bit (int): Zero-based index of the bit to set.
+
+    Returns:
+        int: Integer with the requested bit forced high.
+    """
     return value | (1<<bit)
 
 def clear_bit(value, bit):
+    """Return a copy of ``value`` with a specific bit cleared.
+
+    Args:
+        value (int): Base integer to modify.
+        bit (int): Zero-based index of the bit to clear.
+
+    Returns:
+        int: Integer with the requested bit forced low.
+    """
     return value & ~(1<<bit)
 
 def chunks(l, n):
+    """Yield consecutive slices from ``l`` of length ``n``.
+
+    Args:
+        l (list[Any]): Collection that will be divided.
+        n (int): Maximum length of each chunk.
+
+    Yields:
+        list: Subsection of the original collection containing up to ``n`` items.
+    """
     # For item i in a range that is a length of l,
     for i in range(0, len(l), n):
         # Create an index range for l of n items:
         yield l[i:i+n]
 
 def property_set( property_name, property_val, node, fdt=None ):
+    """Create or update a property on a node and optionally sync to the FDT.
+
+    Args:
+        property_name (str): Name of the property to set.
+        property_val (Any): Value assigned to the property.
+        node (LopperNode): Node receiving the property.
+        fdt (Any | None): Optional low-level tree used for synchronization.
+
+    Returns:
+        None: Always returns None.
+    """
     newprop = LopperProp( property_name, -1, None, property_val )
     node += newprop
     if fdt:
         node.sync()
 
 def val_as_bool( val ):
+    """Convert string representations of booleans into Python bools.
+
+    Args:
+        val (str): String value expected to be ``"True"`` or ``"False"``.
+
+    Returns:
+        bool | None: True or False when the string matches a known value, otherwise
+        None to indicate no conversion occurred.
+    """
     if val == "False":
         return False
     elif val == "True":
         return True
 
 def is_glob_pattern(string):
-    """
-    Determines if a string contains glob-like wildcards.
+    """Determine whether ``string`` contains glob-style wildcards.
 
     Args:
-        string (str): The string to be checked for glob pattern characters.
+        string (str): Text to be inspected.
 
     Returns:
-        bool: True if the string contains glob pattern characters, otherwise False.
+        bool: True when ``*`` or ``?`` is present, otherwise False.
     """
     # Check for presence of glob-related characters (*) and (?)
     return '*' in string or '?' in string
 
 def glob_to_regex(glob_pattern):
-    """
-    Convert a glob pattern to a regex pattern.
+    """Convert a glob pattern into an anchored regular expression.
 
     Args:
-        glob_pattern (str): The glob pattern to be converted.
+        glob_pattern (str): Glob expression using ``*`` and ``?`` wildcards.
 
     Returns:
-        str: The converted regex pattern.
+        str: Regular-expression string that matches the same set of inputs.
     """
     # Escape all regex-specific characters except * and ?
     regex_pattern = re.escape(glob_pattern)
@@ -107,6 +173,14 @@ def glob_to_regex(glob_pattern):
     return '^' + regex_pattern + '$'
 
 def domain_parent( domain ):
+    """Return the parent reference recorded by a domain node.
+
+    Args:
+        domain (LopperNode): Domain node being queried.
+
+    Returns:
+        LopperProp | None: Node reference property when present, otherwise None.
+    """
     try:
         parent_name = domain["parent"]
         return parent_name
@@ -114,16 +188,18 @@ def domain_parent( domain ):
         return None
 
 def domain_access(node, new_access=None):
-    """
-    Get or set the access value of a node.
+    """Get or set the JSON-encoded access property for a domain node.
 
     Args:
-        node: The node from which to get or set access.
-        new_access (optional): New access value to set. If not provided, will return the current access.
+        node (LopperNode): Domain node whose access property will be read or
+            mutated.
+        new_access (list[dict] | None): When provided, updates the property with
+            the supplied access list. When omitted, the current access definition
+            is returned.
 
     Returns:
-        If new_access is None: the current access value.
-        If new_access is provided: None (as it sets the value).
+        list[dict]: Current access configuration when ``new_access`` is None.
+        None: When the property is updated or removed.
     """
     try:
         access_prop = node.props("access")[0]
@@ -173,18 +249,17 @@ class Action(Enum):
     REMOVE = 'remove'
 
 def domain_devices(devices, device_name_or_regex, action: Action):
-    """
-    Manipulates a list of devices based on a regex match or a list of devices.
+    """Manipulate domain device lists based on regex or explicit matches.
 
     Args:
-        devices (list of dict or LopperNode): The list of device dictionaries or a LopperNode object.
-        device_name_or_regex (str or list of dict): The regex pattern to match devices
-                                                     or a list of device dicts to add/remove.
-        action (Action): The action to perform (ADD, GET, REMOVE).
+        devices (list[dict] | LopperNode): Source of device entries to inspect.
+        device_name_or_regex (str | list[dict]): Pattern or device list used for
+            the requested action.
+        action (Action): Action specifying whether to add, find, or remove devices.
 
     Returns:
-        list: List of matched devices on GET or the remaining devices after REMOVE.
-              None for ADD.
+        list[dict] | None: Matched or remaining devices for GET/REMOVE actions,
+        or None when adding devices.
     """
     # Handle LopperNode by extracting 'access' property
     if isinstance(devices, LopperNode):
@@ -225,6 +300,15 @@ def domain_devices(devices, device_name_or_regex, action: Action):
 # this is called from a lop or assist to move/copy wildcard devices to
 # a domain that is using a glob
 def wildcard_devices( tree, domains_node ):
+    """Expand wildcard device entries for the supplied domains.
+
+    Args:
+        tree (LopperTree): Device tree containing the domain hierarchy.
+        domains_node (LopperNode): Root node that aggregates domain definitions.
+
+    Returns:
+        None
+    """
     verbose = True
 
     for domain in domains_node.subnodes():
@@ -353,6 +437,16 @@ def wildcard_devices( tree, domains_node ):
             os._exit(1)
 
 def firewall_expand( tree, subnode, verbose = 0 ):
+    """Expand firewall helper nodes into generated firewall properties.
+
+    Args:
+        tree (LopperTree): Device tree being modified.
+        subnode (LopperNode): Node containing firewall configuration details.
+        verbose (int): Verbosity level for debug logging.
+
+    Returns:
+        None
+    """
     if verbose:
         print( f"[DBG]: firewall_expand: {subnode.abs_path}" )
 
@@ -490,6 +584,16 @@ def firewall_expand( tree, subnode, verbose = 0 ):
         firewall_target_node + firewall_prop
 
 def access_expand( tree, subnode, verbose = 0 ):
+    """Normalize access helper nodes into standard domain properties.
+
+    Args:
+        tree (LopperTree): Device tree containing access configuration.
+        subnode (LopperNode): Node with a JSON-encoded ``access`` property.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        None
+    """
     ## access processing
     # /*
     # * Access specifies which resources this domain
@@ -663,18 +767,27 @@ def access_expand( tree, subnode, verbose = 0 ):
 
     ap.value = access_list
 
-def chosen_expand( tree, chosen_node ):
-    # there isn't any specific processing required for chosen
-    # at the moment. We just copy it to the main tree as-is. If a
-    # chosen node exists, they should be merged.
-
-    # make a deep copy of the node
-    chosen_node_copy = chosen_node()
-    chosen_node_copy.abs_path = "/chosen"
-    chosen_node_copy.resolve()
-    tree.add( chosen_node_copy, merge=True )
+#def chosen_expand( tree, chosen_node ):
+#    # there isn't any specific processing required for chosen
+#    # at the moment. We just copy it to the main tree as-is. If a
+#    # chosen node exists, they should be merged.
+#
+#    # make a deep copy of the node
+#    chosen_node_copy = chosen_node()
+#    chosen_node_copy.abs_path = "/chosen"
+#    chosen_node_copy.resolve()
+#    tree.add( chosen_node_copy, merge=True )
 
 def reserved_memory_expand( tree, reserved_memory_node ):
+    """Generate carveout nodes for the subsystem reserved-memory section.
+
+    Args:
+        tree (LopperTree): Device tree being modified.
+        reserved_memory_node (LopperNode): Reserved-memory parent node.
+
+    Returns:
+        None
+    """
     # for each domain calling into this:
     # 1. look up to see if reserved memory already exists
     # 2. store old nodes
@@ -761,6 +874,18 @@ def reserved_memory_expand( tree, reserved_memory_node ):
 
 # handle either sram or memory with use of prop_name arg
 def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', verbose = 0 ):
+    """Expand helper nodes describing memory regions.
+
+    Args:
+        tree (LopperTree): Device tree being modified.
+        subnode (LopperNode): Node containing memory description metadata.
+        memory_start (int): Default address used when the source omits a value.
+        prop_name (str): Property name created on the target node.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        None
+    """
     # /*
     # * 1:1 map, it should match the memory regions
     # * specified under access below.
@@ -830,6 +955,16 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
 
 
 def cpu_expand( tree, subnode, verbose = 0):
+    """Expand compact CPU descriptors into fully fledged domain properties.
+
+    Args:
+        tree (LopperTree): Device tree being modified.
+        subnode (LopperNode): Node describing CPU resources to attach.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        None
+    """
     ## cpu processing
     cpus = subnode.props( "cpus" )
     if not cpus:
@@ -945,6 +1080,20 @@ def cpu_expand( tree, subnode, verbose = 0):
 
 # sdt: is the system device tree
 def subsystem( tgt_node, sdt, options ):
+    """Entry point for subsystem assist processing.
+
+    Args:
+        tgt_node (LopperNode): Target node supplied by the dispatcher.
+        sdt (LopperSDT): Structured device tree wrapper containing the domain data.
+        options (dict[str, Any]): Assist invocation parameters.
+
+    Returns:
+        bool: True after expansion or generation completes successfully.
+
+    Algorithm:
+        Inspects the options to determine whether to create a template subsystem
+        or expand an existing YAML description into a full OpenAMP domain tree.
+    """
     try:
         verbose = options['verbose']
     except:
@@ -968,6 +1117,16 @@ def subsystem( tgt_node, sdt, options ):
 
 # sdt: is the system device tree
 def subsystem_generate( tgt_node, sdt, verbose = 0):
+    """Generate a template subsystem description within ``/domains``.
+
+    Args:
+        tgt_node (LopperNode): Target node supplied by the dispatcher.
+        sdt (LopperSDT): Structured device tree wrapper containing the domain data.
+        verbose (int): Verbosity flag for diagnostic logging.
+
+    Returns:
+        bool: True when the template subsystem is populated.
+    """
     if verbose:
         print( f"[INFO]: cb: subsystem_generate( {tgt_node}, {sdt} )")
 
@@ -1021,12 +1180,28 @@ def subsystem_generate( tgt_node, sdt, verbose = 0):
 
 
 def do_expand_cdo_flags(tgt_node):
+    """Determine whether a subsystem requires CDO flag expansion.
+
+    Args:
+        tgt_node (LopperNode): Subsystem node under evaluation.
+
+    Returns:
+        bool: True when the subsystem declares ``xilinx,subsystem-v1`` compatibility.
+    """
     if 'xilinx,subsystem-v1' in tgt_node.propval("compatible"):
         return True
     return False
 
 
 def expand_cdo_flags(tgt_node):
+    """Expand a CDO-derived flag description into flattened lists.
+
+    Args:
+        tgt_node (LopperNode): Subsystem node whose flags will be expanded.
+
+    Returns:
+        list: Tuple-style list containing flag names, flag values, and cell count.
+    """
     flags_names = []
     flags = []
     # find default flags
@@ -1050,6 +1225,16 @@ def expand_cdo_flags(tgt_node):
 
 def expand_cdo_flags_bits_first_word(flags_node, ref_flags,
                                      default_flags_node):
+    """Populate the first 32-bit word of a flag descriptor.
+
+    Args:
+        flags_node (LopperNode): Node providing per-flag overrides.
+        ref_flags (list[int]): Mutable list of four integers capturing bitfields.
+        default_flags_node (LopperNode): Node containing default flag values.
+
+    Returns:
+        None
+    """
     first_keywords = {
         'allow-secure': 2,
         'read-only': 4,
@@ -1102,6 +1287,16 @@ def expand_cdo_flags_bits_first_word(flags_node, ref_flags,
 
 def expand_cdo_flags_bits_third_word(flags_node, ref_flags,
                                      default_flags_node):
+    """Populate the third 32-bit word of a flag descriptor.
+
+    Args:
+        flags_node (LopperNode): Node providing per-flag overrides.
+        ref_flags (list[int]): Mutable list of four integers capturing bitfields.
+        default_flags_node (LopperNode): Node containing default flag values.
+
+    Returns:
+        None
+    """
     third_keywords = {
         'access': 0,
         'context': 1,
@@ -1138,6 +1333,15 @@ def expand_cdo_flags_bits_third_word(flags_node, ref_flags,
 
 # given flags node, return int that is bitmask of relevant bits
 def expand_cdo_flags_bits(flags_node, default_flags_node):
+    """Expand a flag node into four 32-bit words describing policy.
+
+    Args:
+        flags_node (LopperNode): Node providing per-flag overrides.
+        default_flags_node (LopperNode): Node containing default flag values.
+
+    Returns:
+        list[int]: Four-element list representing the expanded flag words.
+    """
     ref_flags = [0x0, 0x0, 0x0, 0x0]
 
     expand_cdo_flags_bits_first_word(flags_node, ref_flags, default_flags_node)
@@ -1159,6 +1363,16 @@ def expand_cdo_flags_bits(flags_node, default_flags_node):
 
 
 def flags_expand(tree, tgt_node, verbose = 0 ):
+    """Materialize flattened flag properties for a subsystem relation.
+
+    Args:
+        tree (LopperTree): Device tree being modified.
+        tgt_node (LopperNode): Subsystem relation node.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        bool: True once the ``flags`` properties have been generated.
+    """
 
     default_flags = None
     flags_names = []
@@ -1183,6 +1397,16 @@ def flags_expand(tree, tgt_node, verbose = 0 ):
     return True
 
 def domain_to_domain_expand(tree, tgt_node, verbose = 0 ):
+    """Expand domain-to-domain relations into device tree references.
+
+    Args:
+        tree (LopperTree): Device tree containing OpenAMP relations.
+        tgt_node (LopperNode): Domain-to-domain container node.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        bool: True when expansion finishes successfully or no action is required.
+    """
 
     if 'openamp,domain-to-domain-v1' not in tgt_node.propval("compatible"):
         return False
@@ -1204,7 +1428,276 @@ def domain_to_domain_expand(tree, tgt_node, verbose = 0 ):
 
     return True
 
+def resolve_carveouts( tree, subnode, carveout_prop_name, verbose = 0 ):
+    """Resolve carveout node references within a relation.
+
+    Args:
+        tree (LopperTree): Device tree that contains the reserved/AXI nodes.
+        subnode (LopperNode): Relation container node being expanded.
+        carveout_prop_name (str): Property name, such as ``carveouts`` or ``elfload``.
+        verbose (int): Verbosity flag for diagnostic logging.
+
+    Returns:
+        bool: True when all carveout names resolve to phandles, False otherwise.
+
+    Algorithm:
+        Iterates relation children, searches reserved-memory and AXI subtrees for
+        matching node names or labels, ensures phandles exist, and replaces the
+        string references with numeric phandle lists.
+    """
+    prop = None
+    domain_node = None
+
+    subnodes_to_check = subnode.tree["/reserved-memory"].subnodes(children_only=True) + subnode.tree["/axi"].subnodes(children_only=True)
+    for relation in subnode.subnodes(children_only=True):
+        if relation.props(carveout_prop_name) == []:
+            print("WARNING: resolve_carveouts: ", subnode, relation, "missing property", carveout_prop_name)
+            return False
+        carveoutlist = relation.propval(carveout_prop_name)
+        new_prop_val = []
+
+        for carveout_str in carveoutlist:
+            current_node = [ n for n in subnodes_to_check if carveout_str == n.name or carveout_str == n.label ]
+
+            # there can be tcm in / and not /axi
+            if "tcm" in carveout_str and current_node == []:
+                current_node = [ n for n in subnode.tree["/"].subnodes(children_only=True) if carveout_str == n.name or carveout_str == n.label ]
+
+            if current_node == []:
+                print("ERROR: Unable to find referenced node name: ", carveout_str, current_node, relation)
+                return False
+            current_node = current_node[0]
+
+            if current_node.phandle == 0:
+                current_node.phandle_or_create()
+
+            if current_node.props("phandle") == []:
+               current_node + LopperProp(name="phandle", value=current_node.phandle)
+
+            new_prop_val.append(current_node.phandle)
+
+        relation + LopperProp(name=carveout_prop_name, value = new_prop_val)
+
+    return True
+
+def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
+    """Replace RPMsg mailbox string identifiers with phandles.
+
+    Args:
+        tree (LopperTree): Device tree used to locate mailbox nodes.
+        subnode (LopperNode): Relation container node that references mailboxes.
+        verbose (int): Verbosity flag for diagnostic logging.
+
+    Returns:
+        bool: True when mailbox references resolve successfully, False otherwise.
+
+    Algorithm:
+        Validates the presence of ``mbox`` properties, searches the AXI subtree for
+        nodes whose name or label matches the mailbox string, and writes the located
+        phandle back into the relation.
+    """
+    for relation in subnode.subnodes(children_only=True):
+        if relation.props("mbox") == []:
+            print("WARNING:", "rpmsg relation does not have mbox")
+            return False
+
+        mbox = relation.propval("mbox")
+
+        # if the node name or label matches then save it
+        new_prop_val = [ n.phandle for n in subnode.tree["/axi"].subnodes(children_only=True) if n.name == mbox or n.label == mbox ]
+        if new_prop_val == []:
+            print("WARNING: could not find ", mbox)
+
+        relation.props("mbox")[0].value = new_prop_val[0]
+
+    return True
+
+def resolve_host_remote( tree, subnode, verbose = 0 ):
+    """Resolve host/remote references within a relation description.
+
+    Args:
+        tree (LopperTree): Device tree containing ``/domains`` children.
+        subnode (LopperNode): Relation container node with host/remote properties.
+        verbose (int): Verbosity flag for diagnostic logging.
+
+    Returns:
+        bool: True when exactly one role resolves to a domain node, False otherwise.
+
+    Algorithm:
+        Checks each relation child to ensure exactly one of ``host`` or ``remote`` is
+        provided, searches ``/domains`` for the named node, ensures that node has a
+        phandle, and replaces the role property with the corresponding phandle.
+    """
+    for relation in subnode.subnodes(children_only=True):
+        roles_dict = {'host': [], 'remote': []}
+        # save host and remote info for relation
+        [ roles_dict[role].append(relation.propval(role)) for role in roles_dict.keys() if relation.propval(role) != [''] ]
+
+        if all(roles_dict.values()):
+            print("WARNING: relation has both host and remote", relation)
+            return False
+        if not any(roles_dict.values()):
+            print("WARNING: could not find host or remote for ", relation)
+            return False
+
+        role = [ k for k, v in roles_dict.items() if v ][0]
+
+        # find each matching domain node in tree for the role
+        relevant_node = tree["/domains"].subnodes(children_only=True,name=roles_dict[role][0]+"$")
+        if relevant_node == []:
+            print("WARNING: could not find relevant node for ", prop_val)
+            return False
+
+        relevant_node = relevant_node[0]
+
+        # give matching node phandle if needed
+        if relevant_node.phandle == 0:
+            relevant_node.phandle_or_create()
+
+        if relevant_node.props("phandle") == []:
+            relevant_node + LopperProp(name="phandle", value=relevant_node.phandle)
+
+        relation[role] = relevant_node.phandle
+
+    return True
+
+
+def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
+    """Expand RPMsg YAML specialization into full device tree references.
+
+    Args:
+        tree (LopperTree): Device tree to update.
+        subnode (LopperNode): RPMsg YAML subnode being expanded.
+        verbose (int): Verbosity flag for diagnostics.
+
+    Returns:
+        bool: True when all references are resolved successfully.
+
+    Algorithm:
+        Resolves host/remote phandles, hydrates carveout references, and assigns
+        mailbox definitions using shared helper functions.
+    """
+    # Xilinx-specific YAML expansion of RPMsg description.
+    if not resolve_host_remote( tree, subnode, verbose):
+        return False
+    if not resolve_carveouts(tree, subnode, "carveouts", verbose):
+        return False
+
+    return resolve_rpmsg_mbox( tree, subnode, verbose)
+
+def xlnx_openamp_remoteproc_expand(tree, subnode, verbose = 0 ):
+    """Expand remoteproc YAML specialization into device tree references.
+
+    Args:
+        tree (LopperTree): Device tree to mutate.
+        subnode (LopperNode): Remoteproc YAML subnode being expanded.
+        verbose (int): Verbosity flag for diagnostics.
+
+    Returns:
+        bool: True when host/remote and carveout references resolve.
+
+    Algorithm:
+        Resolves host/remote references and materializes ELFLOAD carveout phandles
+        into the tree using common resolver helpers.
+    """
+    # Xilinx-specific YAML expansion of Remoteproc description.
+    if not resolve_host_remote( tree, subnode, verbose):
+        return False
+
+    return resolve_carveouts(tree, subnode, "elfload", verbose)
+
+def openamp_remoteproc_expand(tree, subnode, verbose = 0 ):
+    """Delegate remoteproc expansion to the appropriate vendor handler.
+
+    Args:
+        tree (LopperTree): Device tree that may contain vendor identifiers.
+        subnode (LopperNode): Remoteproc relation node requiring expansion.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        bool: Result of the vendor-specific expansion routine.
+    """
+    # Generic OpenAMP expansion subroutine which selects the applicable
+    # vendor method to use for Remoteproc YAML expansion
+    for i in tree["/"]["compatible"].value:
+        for j in ['amd', 'xlnx']:
+            if j in i:
+                return xlnx_openamp_remoteproc_expand(tree, subnode, verbose)
+    return True
+
+
+def openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
+    """Delegate RPMsg expansion to the appropriate vendor handler.
+
+    Args:
+        tree (LopperTree): Device tree that may contain vendor identifiers.
+        subnode (LopperNode): RPMsg relation node requiring expansion.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        bool: Result of the vendor-specific expansion routine.
+    """
+    # Generic OpenAMP expansion subroutine which selects the applicable
+    # vendor method to use for RPMsg YAML expansion
+    for i in tree["/"]["compatible"].value:
+        for j in ['amd','xlnx']:
+            if j in i:
+                return xlnx_openamp_rpmsg_expand(tree, subnode, verbose)
+
+    return True
+
+openamp_d_to_d_compat_strings = {
+    "openamp,rpmsg-v1" : openamp_rpmsg_expand,
+    "openamp,remoteproc-v2" : openamp_remoteproc_expand,
+}
+
+def is_openamp_d_to_d(tree, subnode, verbose = 0 ):
+    """Check whether a relation is an OpenAMP domain-to-domain description.
+
+    Args:
+        tree (LopperTree): Device tree containing the relation nodes.
+        subnode (LopperNode): Candidate relation node.
+        verbose (int): Verbosity flag retained for interface consistency.
+
+    Returns:
+        bool: True when a known OpenAMP compatibility string is detected.
+    """
+    for n in subnode.subnodes():
+        if len(n["compatible"]) == 1 and n["compatible"][0]  in openamp_d_to_d_compat_strings.keys():
+            return True
+    return False
+
+def openamp_d_to_d_expand(tree, subnode, verbose = 0 ):
+    """Expand domain-to-domain OpenAMP nodes using compatibility dispatch.
+
+    Args:
+        tree (LopperTree): Device tree being modified.
+        subnode (LopperNode): Domain-to-domain relation node.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        bool: Result of the dispatched expansion routine.
+    """
+    # landing function for generic YAML expansion of
+    # domain-to-domain property
+    for n in subnode.subnodes():
+        if len(n["compatible"]) == 1 and n["compatible"][0]  in openamp_d_to_d_compat_strings.keys():
+            return openamp_d_to_d_compat_strings[n["compatible"][0]](tree, n, verbose)
+
+    return False
+
+
 def subsystem_expand( tgt_node, sdt, verbose = 0 ):
+    """Expand YAML subsystem descriptions into full device tree domains.
+
+    Args:
+        tgt_node (LopperNode): Target node supplied by the dispatcher.
+        sdt (LopperSDT): Structured device tree wrapper containing the domain data.
+        verbose (int): Verbosity flag for diagnostic logging.
+
+    Returns:
+        bool: True when YAML nodes are expanded successfully.
+    """
     if verbose:
         print( f"[INFO]: cb: subsystem_expand( {tgt_node}, {sdt} )")
 
