@@ -62,6 +62,9 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
             if "okay" in status:
                 if "cdns,ttc" in node["compatible"].value and node.props('lop-dynamic-ttc-node'):
                     continue
+                # Check if xlnx,is-hierarchy property exists and skip if present
+                if node.props('xlnx,is-hierarchy'):
+                    continue
                 node_list.append(node)
         except:
            pass
