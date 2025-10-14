@@ -489,10 +489,12 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
         plat.buf('\n\t\t%s' % hex(intr_parent))
         drvprop_list.append(hex(intr_parent))
     elif prop == "clocks":
-
-        tclk_offset = get_clock_offset(node)
-
-        clkprop_val = get_clock_prop(sdt, node[prop].value, tclk_offset)
+        try:
+            tclk_offset = get_clock_offset(node)
+            clkprop_val = get_clock_prop(sdt, node[prop].value, tclk_offset)
+        except KeyError:
+            _warning(f"Clock property is missing for this node {node.name}, adding default value as {hex(0xFFFF)}")
+            clkprop_val = 0xFFFF
         plat.buf('\n\t\t%s' % hex(clkprop_val))
         drvprop_list.append(hex(clkprop_val))
     elif prop == "mdioproducer-baseaddr":
