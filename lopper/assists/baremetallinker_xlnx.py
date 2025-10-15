@@ -45,7 +45,7 @@ def get_memranges(tgt_node, sdt, options):
         "psv_ocm": 0, "psx_ocm": 0, "ocm_ram": 0, "ddr4": 0,
         "ddr5": 0, "mig_7series": 0, "ps7_ram": 0,
         "axi_emc": 0, "psu_qspi_linear": 0, "ps7_qspi_linear": 0, "pmc_ram": 0,
-        "ddr3": 0
+        "ddr3": 0, "lpddr": 0
     }
     symbol_node = ""
     for node in root_sub_nodes:
