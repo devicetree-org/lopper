@@ -619,6 +619,7 @@ class lopper_base:
                     "cpus" : [ 'phandle mask mode' ],
                     "clocks" : [ 'phandle:#clock-cells' ],
                     "reset-gpios" : [ 'phandle field field' ],
+                    "gpios" : [ 'phandle:#gpio-cells' ],
                     "resets" : [ 'phandle field' ],
                     "assigned-clocks" : [ 'phandle:#clock-cells' ],
                     "cpu-idle-states" : [ 'phandle' ],
