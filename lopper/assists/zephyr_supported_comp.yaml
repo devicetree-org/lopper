@@ -370,3 +370,7 @@ xlnx,axi-ethernet-1.00.a:
     - local-mac-address
     - xlnx,rxcsum
     - xlnx,txcsum
+mmio-sram:
+  required:
+    - compatible
+    - reg
