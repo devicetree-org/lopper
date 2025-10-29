@@ -11,37 +11,64 @@ import logging
 import os
 import sys
 
+TRACE_LEVEL_NUM = 5
+TRACE2_LEVEL_NUM = 1
+
+logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
+logging.addLevelName(TRACE2_LEVEL_NUM, "TRACE2")
+
+TRACE = TRACE_LEVEL_NUM
+TRACE2 = TRACE2_LEVEL_NUM
+
+
+def _trace_log(self, message, *args, **kwargs):
+    if self.isEnabledFor(TRACE_LEVEL_NUM):
+        self._log(TRACE_LEVEL_NUM, message, args, **kwargs)
+
+
+def _trace2_log(self, message, *args, **kwargs):
+    if self.isEnabledFor(TRACE2_LEVEL_NUM):
+        self._log(TRACE2_LEVEL_NUM, message, args, **kwargs)
+
+
+if not hasattr(logging.Logger, "trace"):
+    logging.Logger.trace = _trace_log
+
+if not hasattr(logging.Logger, "trace2"):
+    logging.Logger.trace2 = _trace2_log
+
 root_logger = logging.getLogger()
 
+def _level_from_verbose(verbose):
+    if verbose is None:
+        verbose = 0
+
+    if verbose <= 0:
+        return logging.WARNING
+    if verbose == 1:
+        return logging.INFO
+    if verbose == 2:
+        return logging.DEBUG
+    if verbose == 3:
+        return TRACE_LEVEL_NUM
+    return TRACE2_LEVEL_NUM
+
+
 def init( verbose ):
-    logging.basicConfig( format='[%(levelname)s]: %(message)s' )
+    desired_level = _level_from_verbose(verbose)
+    logging.basicConfig( level=desired_level, format='[%(levelname)s]: %(message)s' )
 
     # iterate registered loggers and set their default level to a
     # consistent value.
     # This loop is repeatidly setting the root logger, but that is
     # easier than making a second conditional just to make the root
     # deafult match.
+    root_logger.setLevel(desired_level)
     loggers = logging.root.manager.loggerDict.items()
     for lname,logger in loggers:
         if type(logger) == logging.Logger:
             # default to showing WARNING and above
-            logger.setLevel( logging.WARNING )
-            logging.getLogger().setLevel( logging.WARNING )
-            if verbose == 1:
-                logger.setLevel( logging.INFO )
-                logging.getLogger().setLevel( logging.INFO )
-            elif verbose == 2:
-                logger.setLevel( logging.DEBUG )
-                logging.getLogger().setLevel( logging.DEBUG )
-            elif verbose == 3:
-                logger.setLevel( logging.DEBUG )
-                logging.getLogger().setLevel( logging.DEBUG )
-            elif verbose > 3:
-                logger.setLevel( logging.DEBUG )
-                logging.getLogger().setLevel( logging.DEBUG )
-            else:
-                logger.setLevel( logging.WARNING )
-                logging.getLogger().setLevel( logging.WARNING )
+            logger.setLevel( desired_level )
 
 
 def _init( name ):
@@ -162,7 +189,7 @@ def _error( message, also_exit = 0, logger = None ):
     if also_exit:
         sys.exit(also_exit)
 
-def _debug( message, object_to_print = None, logger = None ):
+def _debug( message, object_to_print = None, logger = None, level = logging.DEBUG ):
     """
     output a debug mesage
 
@@ -181,11 +208,16 @@ def _debug( message, object_to_print = None, logger = None ):
     if not logger:
         logger = __logger__()
 
-    logger.debug( message )
+    logger.log(level, message)
 
-    if object_to_print:
-        if logger.isEnabledFor( logging.DEBUG ):
-            object_to_print.print()
+    if object_to_print and logger.isEnabledFor( logging.DEBUG ):
+        object_to_print.print()
+
+
+def _is_enabled(level, logger=None):
+    if not logger:
+        logger = __logger__()
+    return logger.isEnabledFor(level)
 
 
 ## internal calls only, since this pokes at the call stack and is
