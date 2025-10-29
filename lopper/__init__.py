@@ -2518,8 +2518,7 @@ class LopperSDT:
                         cond_exec = f['cond'].value[0]
                         tgt_lop = fdt_tree.pnode(cond_exec)
                         cond_exec_value = lop_results[tgt_lop.name]
-                        if self.verbose > 1:
-                            print( f"[INFO]: conditional {tgt_lop.name} has result {cond_exec_value}")
+                        lopper.log._debug( f"conditional {tgt_lop.name} has result {cond_exec_value}" )
                         if cond_exec_value:
                             noexec = False
                         else:
@@ -2536,7 +2535,7 @@ class LopperSDT:
                     result = self.exec_lop( f, fdt_tree )
                     lop_results[f.name] = result
 
-                    lopper.log._info( f"[INFO]: ------> logged result {result} for lop {f.name}" )
+                    lopper.log._info( f"------> logged result {result} for lop {f.name}" )
 
 
 class LopperFile:
