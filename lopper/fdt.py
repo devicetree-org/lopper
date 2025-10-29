@@ -31,10 +31,14 @@ from collections import OrderedDict
 
 from lopper.fmt import LopperFmt
 import lopper.base
+import lopper.log
 from lopper.base import lopper_base
 from lopper.tree import LopperTreePrinter
 
 import lopper.schema
+
+lopper.log._init(__name__)
+lopper.log._init("fdt.py")
 
 from string import printable
 
@@ -409,8 +413,7 @@ class LopperFDT(lopper.base.lopper_base):
         """
         target_node_name = fdt.get_name( target_node_offset )
 
-        if verbose > 1:
-            print( f"[NOTE]: deleting node: {target_node_name}" )
+        lopper.log._debug( f"node_remove: deleting node {target_node_name}" )
 
         try:
             fdt.del_node( target_node_offset, True )
@@ -439,8 +442,7 @@ class LopperFDT(lopper.base.lopper_base):
             int: The node offset of the created node, if successfull, otherwise -1
         """
 
-        if verbose:
-            print( f"[DBG]: lopper fdt: node add: {node_full_path}" )
+        lopper.log._debug( f"node_add: creating {node_full_path}" )
 
         paths_to_check = [ node_full_path ]
         n_path = node_full_path
@@ -461,20 +463,17 @@ class LopperFDT(lopper.base.lopper_base):
                 # -1 and exit. Otherwise, create all missing components
                 if p != paths_to_check[-1]:
                     if not create_parents:
-                        if verbose:
-                            print( f"[DBG]: LopperFDT: parent node {p} doesn't exist, but create parents is not set, returning -1" )
+                        lopper.log._debug( f"node_add: parent node {p} missing and parent creation disabled; returning -1" )
                         return -1
 
                 # add it
                 for _ in range(MAX_RETRIES):
                     try:
-                        if verbose:
-                            print( f"[DBG]:       LopperFDT: node_add: adding node: '{node_name}' parent: {node_parent}")
+                        lopper.log._debug( f"node_add: adding node '{node_name}' with parent offset {node_parent}" )
                         node_parent = fdt_dest.add_subnode( node_parent, node_name )
                     except FdtException as e:
                         if e.err == -2:
-                            if verbose:
-                                print( "[DBG]:       LopperFDT: node_add: existing node found, creating temporary placeholder node" )
+                            lopper.log._debug( "node_add: existing node found, creating temporary placeholder node" )
 
                             # node exists. This shouldn't happen, unless we've
                             # hit the prefix bug. Let's delete the node that
@@ -645,24 +644,22 @@ class LopperFDT(lopper.base.lopper_base):
         Returns:
             Nothing
         """
-        if verbose:
-            print( f"[DBG]: lopper.fdt: node_sync: start: {node_in['__fdt_name__']} ({node_in['__path__']})")
+        lopper.log._debug( f"node_sync: start {node_in['__fdt_name__']} ({node_in['__path__']})")
 
         nn = LopperFDT.node_find( fdt, node_in['__path__'] )
         if nn == -1:
             # -1 means the node wasn't found
-            if verbose:
-                print( f"[DBG]:    lopper.fdt: adding node: {node_in['__path__']}" )
+            lopper.log._debug( f"node_sync: creating node {node_in['__path__']}" )
 
             nn = LopperFDT.node_add( fdt, node_in['__path__'], True )
             if nn == -1:
-                print( "[ERROR]:    lopper.fdt: node could not be added, exiting" )
+                lopper.log._error( "node_sync: node could not be added; exiting" )
                 sys.exit(1)
 
         nname = node_in['__fdt_name__']
         nflag = LopperFDT.node_setname( fdt, nn, nname )
         if not nflag:
-            print( f"[ERROR]: unable to set node {nn} name to: {nname}" )
+            lopper.log._error( f"node_sync: unable to set node {nn} name to {nname}" )
             sys.exit(1)
 
         try:
@@ -675,8 +672,7 @@ class LopperFDT(lopper.base.lopper_base):
         props = LopperFDT.node_properties( fdt, nn )
         props_to_delete = []
         for p in props:
-            if verbose:
-                print( f"              node sync, considering property: {p.name} {p}" )
+            lopper.log._debug( f"node_sync: considering property {p.name} {p}" )
             if node_in['__fdt_phandle__'] and p.name == "phandle":
                 # we just added this, it won't be in the node_in items under
                 # the name name
@@ -684,12 +680,10 @@ class LopperFDT(lopper.base.lopper_base):
             else:
                 props_to_delete.append( p.name )
 
-        if verbose:
-            print( f"              node sync: props to delete: {props_to_delete}" )
+        lopper.log._debug( f"node_sync: properties pending deletion {props_to_delete}" )
         for prop, prop_val in reversed(node_in.items()):
             if re.search( r"^__", prop ) or prop.startswith( '/' ):
-                if verbose:
-                    print( f"          lopper.fdt: node sync: skipping internal property: {prop} ({prop_val})")
+                lopper.log._debug( f"node_sync: skipping internal property {prop} ({prop_val})" )
                 continue
             else:
                 try:
@@ -697,8 +691,7 @@ class LopperFDT(lopper.base.lopper_base):
                 except:
                     qtype = None
 
-                if verbose:
-                    print( f"          lopper.fdt: node sync: prop: {prop} val: {prop_val} type: {qtype}" )
+                lopper.log._debug( f"node_sync: property {prop} value {prop_val} type {qtype}" )
 
                 # We could supply a type hint via the __{}_type__ attribute
                 LopperFDT.property_set( fdt, nn, prop, prop_val, LopperFmt.COMPOUND, verbose, qtype )
@@ -713,8 +706,7 @@ class LopperFDT(lopper.base.lopper_base):
                         pass
 
         for p in props_to_delete:
-            if verbose:
-                print( f"[DBG]:    lopper.fdt: node sync, deleting property: {p}" )
+            lopper.log._debug( f"node_sync: deleting property {p}" )
             LopperFDT.property_remove( fdt, nname, p )
 
     @staticmethod
@@ -763,8 +755,7 @@ class LopperFDT(lopper.base.lopper_base):
         if not fdt:
             return
 
-        if verbose:
-            print( "[DBG]: lopper.fdt sync: start" )
+        lopper.log._debug( "sync: start" )
 
         # we have a list of: containing dict, value, parent
         dwalk = [ [dct,dct,None]  ]
@@ -798,23 +789,19 @@ class LopperFDT(lopper.base.lopper_base):
         for node in nodes_to_remove:
             nn = LopperFDT.node_find( fdt, node )
             if nn != -1:
-                if verbose:
-                    print( f"[DBG]:    lopper.fdt: sync: removing: node {node}" )
+                lopper.log._debug( f"sync: removing node {node}" )
                 LopperFDT.node_remove( fdt, nn )
             else:
-                if verbose:
-                    print( f"[DBG]:    lopper.fdt: sync: node {node} was not found, and could not be removed" )
+                lopper.log._debug( f"sync: node {node} not found; nothing to remove" )
                 # child nodes are removed with their parent, and follow in the
                 # list, so this isn't an error.
                 pass
 
         for n in node_special_list:
-            if verbose:
-                print( f"[DBG]:    lopper.fdt: sync: special node: {n}" )
+            lopper.log._debug( f"sync: special node {n}" )
             if n['__path__'] == "/memreserve":
                 memreserve_vals = n['__memreserve__']
-                if verbose:
-                    print( f"[DBG]:    lopper.fdt: sync: memreserve: {memreserve_vals}" )
+                lopper.log._debug( f"sync: memreserve {memreserve_vals}" )
                 # no swig wrapper, so we do this the hard way
                 libfdt.fdt_add_mem_rsv( fdt._fdt, memreserve_vals[0], memreserve_vals[1] )
 
@@ -824,11 +811,10 @@ class LopperFDT(lopper.base.lopper_base):
             if nn == -1:
                 new_number = LopperFDT.node_add( fdt, n[0]['__path__'], True, verbose )
                 if new_number == -1:
-                    print( f"[ERROR]:    lopper_fdt: node {n[0]['__path__']} could not be added, exiting" )
+                    lopper.log._error( f"sync: node {n[0]['__path__']} could not be added; exiting" )
                     sys.exit(1)
                 else:
-                    if verbose:
-                        print( f"[DBG]:    lopper.fdt: sync: node {n[0]['__path__']} added, number is: {new_number}" )
+                    lopper.log._debug( f"sync: node {n[0]['__path__']} added as offset {new_number}" )
 
 
         # were there any __lopper<>__ nodes created ? These were
@@ -901,10 +887,9 @@ class LopperFDT(lopper.base.lopper_base):
         dct["__fdt_name__"] = LopperFDT.node_getname( fdt, start_node )
         dct["__fdt_phandle__"] = LopperFDT.node_getphandle( fdt, nn )
 
-        if verbose:
-            print( "[DBG]: lopper.fdt export: " )
-            print( f"[DBG]:     [startnode: {start_node}]: subnodes: {nodes}")
-            print( f"[DBG]:          props: {np}" )
+        lopper.log._debug( "export: start" )
+        lopper.log._debug( f"export: startnode {start_node} subnodes {nodes}" )
+        lopper.log._debug( f"export: properties {np}" )
 
         for i,n in enumerate(nodes):
             # Children are indexed by their path (/foo/bar), since properties
@@ -923,12 +908,10 @@ class LopperFDT(lopper.base.lopper_base):
                 mdct["__fdt_phandle__"] = -1
                 mdct["__path__"] = "/memreserve"
 
-                if verbose:
-                    print( f"[DBG]:     lopper.fdt export: memreserve: {memreserve}" )
+                lopper.log._debug( f"export: memreserve entries {memreserve}" )
                 for idx in range(0,memreserve):
                     mr = fdt.get_mem_rsv(idx)
-                    if verbose:
-                        print( f"[DBG]:     lopper.fdt export: memreserve: {mr}")
+                    lopper.log._debug( f"export: memreserve {mr}" )
 
                     if type(mr) == int:
                         # we got a single number, which means our start address
@@ -973,7 +956,7 @@ class LopperFDT(lopper.base.lopper_base):
             node_path = node
 
         if node_number == -1:
-            print( f"[WARNING]: could not find node {node_path}" )
+            lopper.log._warning( f"could not find node {node_path}" )
             return prop_dict
 
         resolver = None
@@ -985,9 +968,8 @@ class LopperFDT(lopper.base.lopper_base):
             if resolver:
                 fmt_type = resolver.get_property_type(p.name, node_path)
 
-                if verbose:
-                    if p.name in lopper.schema.PROPERTY_DEBUG_SET:
-                        print( f"node_properites_as_dict: {node_path} {p.name}: schema type {fmt_type}")
+                if p.name in lopper.schema.PROPERTY_DEBUG_SET:
+                    lopper.log._debug( f"node_properties_as_dict: {node_path} {p.name}: schema type {fmt_type}" )
 
                 if fmt_type != LopperFmt.UNKNOWN:
                     dtype = fmt_type
@@ -1006,16 +988,14 @@ class LopperFDT(lopper.base.lopper_base):
                                                    encode=fmt_type,
                                                    schema=schema )
 
-            if verbose:
-                print( f"node_properties_as_dict: fetched property with hint was: {property_val}")
+            lopper.log._debug( f"node_properties_as_dict: fetched property with hint was: {property_val}")
 
             prop_dict[p.name] = property_val
             if type_hints:
                 if dtype:
                     prop_dict[f'__{p.name}_type__'] = dtype
 
-        if verbose:
-            print( f"node {node_path} props as dict: {prop_dict}\n")
+        lopper.log._debug( f"node {node_path} props as dict: {prop_dict}\n")
 
         return prop_dict
 
@@ -1042,8 +1022,7 @@ class LopperFDT(lopper.base.lopper_base):
             bool: True if the node was copied, otherise, False
         """
 
-        if verbose > 1:
-            print( f"[DBG ]: node_copy_from_path: {node_source_path} -> {node_full_dest}" )
+        lopper.log._debug( f"node_copy_from_path: {node_source_path} -> {node_full_dest}" )
 
         node_to_copy = LopperFDT.node_find( fdt_source, node_source_path )
         node_dest_path = os.path.dirname( node_full_dest )
@@ -1057,7 +1036,7 @@ class LopperFDT(lopper.base.lopper_base):
             if node_dest_parent_offset == -1:
                 node_dest_parent_offset = LopperFDT.node_add( fdt_dest, node_dest_path )
                 if node_dest_parent_offset <= 0:
-                    print( "[ERROR]: could not create new node" )
+                    lopper.log._error( "node_copy_from_path: unable to create destination node" )
                     sys.exit(1)
 
         if node_to_copy:
@@ -1107,14 +1086,13 @@ class LopperFDT(lopper.base.lopper_base):
                 else:
                     break
             else:
-                print( "[ERROR]: could not create subnode for node copy" )
+                lopper.log._error( "node_copy: unable to create destination subnode" )
                 sys.exit(1)
 
             prop_offset = fdt_dest.subnode_offset( newoff, nn_name )
 
-            if verbose > 2:
-                print( "" )
-                print( f"[DBG+]: properties for: {fdt_source.get_name(nn)}" )
+            lopper.log._debug( "", level=lopper.log.TRACE )
+            lopper.log._debug( f"node_copy: properties for {fdt_source.get_name(nn)}", level=lopper.log.TRACE )
 
             # TODO: Investigate whether or not we can just copy the properties
             #       byte array directly. Versus decode -> encode, which could
@@ -1128,17 +1106,15 @@ class LopperFDT(lopper.base.lopper_base):
                 # discovering the properties
                 prop_list.insert( 0, [ poffset, prop ] )
 
-                if verbose > 2:
-                    print( f"            prop name: {prop.name}" )
-                    print( f"            prop raw: {prop}" )
-
-                if verbose > 2:
+                lopper.log._debug( f"            prop name: {prop.name}", level=lopper.log.TRACE )
+                lopper.log._debug( f"            prop raw: {prop}", level=lopper.log.TRACE )
+                if lopper.log._is_enabled(lopper.log.TRACE):
                     prop_val = LopperFDT.property_value_decode( prop, 0 )
                     if not prop_val:
                         prop_val = LopperFDT.property_value_decode( prop, 0, LopperFmt.COMPOUND )
-                    print( f"            prop decoded: {prop_val}" )
-                    print( f"            prop type: {type(prop_val)}")
-                    print( "" )
+                    lopper.log._debug( f"            prop decoded: {prop_val}", level=lopper.log.TRACE )
+                    lopper.log._debug( f"            prop type: {type(prop_val)}", level=lopper.log.TRACE )
+                    lopper.log._debug( "", level=lopper.log.TRACE )
 
                 poffset = fdt_source.next_property_offset(poffset, QUIET_NOTFOUND)
 
@@ -1224,7 +1200,7 @@ class LopperFDT(lopper.base.lopper_base):
                     node_number, matching_nodes = LopperFDT.node_find_by_name( fdt, os.path.basename(node) + "$" )
 
         if node_number == -1:
-            print( f"[WARNING]: could not find node {node}" )
+            lopper.log._warning( f"could not find node {node}" )
 
         return node_number
 
@@ -1263,7 +1239,7 @@ class LopperFDT(lopper.base.lopper_base):
             node = 0
 
         if node < 0:
-            print( f"[WARNING]: could not find starting node: {start_path}" )
+            lopper.log._error( f"could not find starting node {start_path}" )
             sys.exit(1)
 
         while depth >= 0:
@@ -1314,29 +1290,26 @@ class LopperFDT(lopper.base.lopper_base):
             return
 
         if re.search( r"\.dtb$", output_filename ):
-            if verbose:
-                print( f"[INFO]: dtb output format detected, writing {output_filename}" )
+            lopper.log._info( f"write_fdt: dtb output format detected; writing {output_filename}" )
 
             byte_array = fdt_to_write.as_bytearray()
 
-            if verbose:
-                print( f"[INFO]: writing output dtb: {output_filename}" )
+            lopper.log._info( f"write_fdt: writing output dtb {output_filename}" )
 
             o = Path(output_filename)
             if o.exists() and not overwrite:
-                print( f"[ERROR]: output file {output_filename} exists and force overwrite is not enabled" )
+                lopper.log._error( f"write_fdt: output file {output_filename} exists and overwrite disabled" )
                 sys.exit(1)
 
             with open(output_filename, 'wb') as w:
                 w.write(byte_array)
 
         elif re.search( r"\.dts$", output_filename ):
-            if verbose:
-                print( f"[INFO]: dts format detected, writing {output_filename}" )
+            lopper.log._info( f"write_fdt: dts output format detected; writing {output_filename}" )
 
             o = Path(output_filename)
             if o.exists() and not overwrite:
-                print( f"[ERROR]: output file {output_filename} exists and force overwrite is not enabled" )
+                lopper.log._error( f"write_fdt: output file {output_filename} exists and overwrite disabled" )
                 sys.exit(1)
 
             if enhanced:
@@ -1355,7 +1328,7 @@ class LopperFDT(lopper.base.lopper_base):
                 # close the temp file so it is removed
                 fp.close()
         else:
-            print( f"[INFO]: unknown file type ({output_filename}) passed for writing, skipping" )
+            lopper.log._info( f"write_fdt: unknown file type ({output_filename}); skipping" )
 
     @staticmethod
     def dtb_dts_export( dtb, outfilename="", verbose=0 ):
@@ -1376,13 +1349,12 @@ class LopperFDT(lopper.base.lopper_base):
             dtcargs += ["-o", f"{outfilename}"]
         dtcargs += ["-I", "dtb", "-O", "dts", dtb]
 
-        if verbose:
-            print( f"[INFO]: dumping dtb: {dtcargs}" )
+        lopper.log._info( f"dtb_dts_export: dumping dtb with args {dtcargs}" )
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
         if result.returncode != 0:
-            print( "[ERROR]: unable to export a dts" )
-            print( f"\n{textwrap.indent(result.stderr.decode(), '         ')}" )
+            lopper.log._error( "dtb_dts_export: unable to export dts" )
+            lopper.log._error( f"\n{textwrap.indent(result.stderr.decode(), '         ')}" )
 
         return result
 
@@ -1447,14 +1419,11 @@ class LopperFDT(lopper.base.lopper_base):
            string: if format is SIMPLE: string value of the property, or "" if not found
            list: if format is COMPOUND: list of property values as strings, [] if not found
         """
-        verbose = 0
         try:
-            if verbose:
-                print( f"property_get: {prop_name}, encoding is: {encode} ftype is {ftype}")
+            lopper.log._debug( f"property_get: {prop_name}, encoding is: {encode} ftype is {ftype}" )
             prop = fdt.getprop( node_number, prop_name )
             val = LopperFDT.property_value_decode( prop, 0, ftype, encode )
-            if verbose:
-                print( f"property_get: decoded as {val}" )
+            lopper.log._debug( f"property_get: decoded as {val}" )
         except Exception as e:
             val = ""
 
@@ -1539,8 +1508,7 @@ class LopperFDT(lopper.base.lopper_base):
                     fdt.setprop_str( node_number, prop_name, prop_val )
                     break
                 except Exception as e:
-                    if verbose:
-                        print( f"[WARNING]: property set exception: {e}")
+                    lopper.log._debug( f"property_set: exception {e}" )
                     fdt.resize( fdt.totalsize() + 1024 )
                     continue
                 else:
@@ -1590,9 +1558,9 @@ class LopperFDT(lopper.base.lopper_base):
                         break
                 else:
                     # fail!
-                    print( f"[WARNING]: lopper_fdt: unable to write property '{prop_name}' to fdt" )
+                    lopper.log._warning( f"property_set: unable to write property '{prop_name}' to fdt" )
         else:
-            print( f"[WARNING]: {prop_name}: unknown type was used: {type(prop_val)}" )
+            lopper.log._warning( f"property_set: {prop_name} has unsupported type {type(prop_val)}" )
 
     @staticmethod
     def property_remove( fdt, node_name, prop_name, verbose=0 ):
@@ -1634,8 +1602,7 @@ class LopperFDT(lopper.base.lopper_base):
 
         if prop_name in prop_list:
             # node is an integer offset, prop_name is a string
-            if verbose:
-                print( f"[INFO]: removing property {prop_name} from {fdt.get_name(node)}" )
+            lopper.log._info( f"property_remove: removing {prop_name} from {fdt.get_name(node)}" )
 
             fdt.delprop(node, prop_name)
         else:
@@ -1744,8 +1711,7 @@ class LopperFDT(lopper.base.lopper_base):
             memres_regex = re.compile( r'\/memreserve\/(.*)?;' )
             memres = re.search( memres_regex, data )
             if memres:
-                if verbose:
-                    print ( f"[DBG]: memreserve detected: {memres.group(1)}" )
+                lopper.log._debug( f"memreserve detected: {memres.group(1)}" )
                 memres_string = f"/memreserve/ {memres.group(1)};"
 
             # This captures everything at the start of the file (i.e. a comment block)
@@ -1800,8 +1766,7 @@ class LopperFDT(lopper.base.lopper_base):
                 # and look for structures.
                 ml = re.search( r"^\#line.*\"(.*?)\"", f )
                 if ml:
-                    if verbose > 2:
-                        print( f"[DBG++]: comment scan: include file boundary passed: {ml.group(1)}" )
+                    lopper.log._debug( f"comment scan: include file boundary passed {ml.group(1)}" )
                     file_boundary_index = i
                     # clear the node tracking counts, we are into a new file
                     subnode_at_depth = { 0: False }
@@ -1810,39 +1775,33 @@ class LopperFDT(lopper.base.lopper_base):
                 mn = re.search( r"^\s*(.*){", f )
                 if mn:
                     node_depth += 1
-                    if verbose > 2:
-                        print( f"[DBG++] comment scan: -> node depth inc: {node_depth} ({mn.group(1)})" )
+                    lopper.log._debug( f"comment scan: node depth increased to {node_depth} ({mn.group(1)})" )
                     subnode_at_depth[node_depth-1] = True
                     subnode_at_depth[node_depth] = False
 
                 mn = re.search( r"^\s*};", f )
                 if mn:
-                    if verbose > 2:
-                        print( f"[DBG++] comment scan: -> node depth dec: {node_depth}" )
+                    lopper.log._debug( f"comment scan: node depth decreased to {node_depth}" )
                     node_depth -= 1
 
                 m = re.search( lopper_comment_open_pattern, f )
                 if m:
                     comment_number = m.group(1)
-                    if verbose > 2:
-                        print( f"[DBG++]: comment scan: line {i} has comment #{comment_number} [{m.group(2)}]" )
+                    lopper.log._debug( f"comment scan: line {i} has comment #{comment_number} [{m.group(2)}]" )
 
                     if subnode_at_depth[node_depth]:
-                        if verbose > 1:
-                            print( "[DBG+]: comment scan: comment found after first subnode, tagging to delete" )
+                        lopper.log._debug( "comment scan: comment found after first subnode, tagging to delete" )
                         comments_to_delete.append( comment_number )
 
                     if node_depth == 0:
-                        if verbose > 1:
-                            print( "[DBG+]: comment scan: comment before any nodes, tagging to delete" )
+                        lopper.log._debug( "comment scan: comment before any nodes, tagging to delete" )
                         comments_to_delete.append( comment_number )
 
                     m2 = re.search( r"^\s*lopper-comment", file_as_array[i] )
                     if not m2:
                         m3 = re.search( r"[{;]\s*lopper-comment", file_as_array[i] )
                         if not m3:
-                            if verbose > 1:
-                                print( "[DBG+]: comment scan: comment embedded in property, tagging to delete" )
+                            lopper.log._debug( "comment scan: comment embedded in property, tagging to delete" )
                             comments_to_delete.append( comment_number )
 
             # in case our comment fixups miss something, pull an env variable that is a list
@@ -1850,8 +1809,7 @@ class LopperFDT(lopper.base.lopper_base):
             extra_drops = os.environ.get('LOPPER_COMMENT_DROPLIST')
             if extra_drops:
                 comments_to_delete.extend( extra_drops.split() )
-                if verbose > 1:
-                    print( f"[DBG+]: comment scan: droplist: {comments_to_delete}" )
+                lopper.log._debug( f"comment scan: droplist {comments_to_delete}" )
             for cnum in comments_to_delete:
                 lopper_comment_regex = re.compile( r'lopper-comment-{0} = ".*?";'.format(cnum), re.MULTILINE | re.DOTALL )
                 fp_comments_and_labels_as_attributes = re.sub( lopper_comment_regex, "", fp_comments_and_labels_as_attributes )
@@ -1877,29 +1835,28 @@ class LopperFDT(lopper.base.lopper_base):
                     try:
                         existing_label = labeldict[label]
                         if not permissive:
-                            print( f"[ERROR]: duplicate label '{label}' detected, processing cannot continue" )
-                            if verbose:
-                                print( "[DBG+]: Dumping label dictionary (as processed to error)" )
-                                for l in labeldict:
-                                    print( f"    {l}" )
+                            lopper.log._error( f"duplicate label '{label}' detected; processing cannot continue" )
+                            lopper.log._debug( "label processing: dumping label dictionary (as processed to error)" )
+                            for l in labeldict:
+                                lopper.log._debug( f"    {l}" )
 
-                                print( "\n[DBG+]: Offending label lines with context:" )
-                                file_as_array = data.splitlines()
-                                pattern = re.compile( r'^\s*?({})\s*?\:(.*?)$'.format(label), re.DOTALL | re.MULTILINE )
-                                match_line = 0
-                                for i,f in enumerate(file_as_array):
-                                    m = re.search( pattern, f )
-                                    if m:
-                                        try:
-                                            print( f"    {i - 2} {file_as_array[i - 2]}" )
-                                            print( f"    {i - 1} {file_as_array[i - 1]}" )
-                                            print( f"    {i} {file_as_array[i]}" )
-                                            print( f"    {i + 1} {file_as_array[i + 1]}" )
-                                            print( f"    {i + 2} {file_as_array[i + 2]}" )
-                                        except:
-                                            print( f"    {i} {file_as_array[i]}" )
+                            lopper.log._debug( "\noffending label lines with context:" )
+                            file_as_array = data.splitlines()
+                            pattern = re.compile( r'^\s*?({})\s*?\:(.*?)$'.format(label), re.DOTALL | re.MULTILINE )
+                            match_line = 0
+                            for i,f in enumerate(file_as_array):
+                                m = re.search( pattern, f )
+                                if m:
+                                    try:
+                                        lopper.log._debug( f"    {i - 2} {file_as_array[i - 2]}" )
+                                        lopper.log._debug( f"    {i - 1} {file_as_array[i - 1]}" )
+                                        lopper.log._debug( f"    {i} {file_as_array[i]}" )
+                                        lopper.log._debug( f"    {i + 1} {file_as_array[i + 1]}" )
+                                        lopper.log._debug( f"    {i + 2} {file_as_array[i + 2]}" )
+                                    except:
+                                        lopper.log._debug( f"    {i} {file_as_array[i]}" )
 
-                                        print( "\n" )
+                                    lopper.log._debug( "\n" )
                             os._exit(1)
                         else:
                             # clobber the dup
@@ -1926,7 +1883,7 @@ class LopperFDT(lopper.base.lopper_base):
         # default.
         if os.path.exists( output_dtb ):
             if not force_overwrite:
-                print( f"[ERROR]: output dtb ({output_dtb}) exists and -f was not passed" )
+                lopper.log._error( f"output dtb ({output_dtb}) exists and -f was not passed" )
                 sys.exit(1)
             os.remove( output_dtb )
 
@@ -1943,20 +1900,18 @@ class LopperFDT(lopper.base.lopper_base):
         if symbols:
             dtcargs += [ "-@" ]
         dtcargs += ["-I", "dts", "-O", "dtb", preprocessed_name ]
-        if verbose:
-            print( f"[INFO]: compiling dtb: {dtcargs}" )
+        lopper.log._info( f"dt_compile: compiling dtb with args {dtcargs}" )
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
         if result.returncode != 0:
             # force the dtb, we need to do processing
             dtcargs += [ "-f" ]
-            if verbose:
-                print( f"[INFO]: forcing dtb generation: {dtcargs}" )
+            lopper.log._info( f"dt_compile: forcing dtb generation with args {dtcargs}" )
 
             result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
             if result.returncode != 0:
-                print( f"[ERROR]: unable to (force) compile {dtcargs}" )
-                print( f"\n{textwrap.indent(result.stderr.decode(), '         ')}" )
+                lopper.log._error( f"dt_compile: unable to compile with args {dtcargs}" )
+                lopper.log._error( f"\n{textwrap.indent(result.stderr.decode(), '         ')}" )
                 sys.exit(1)
 
         # cleanup: remove the .pp file
