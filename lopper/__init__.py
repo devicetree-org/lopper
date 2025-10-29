@@ -48,6 +48,30 @@ def stdoutIO(stdout=None):
         yield stdout
         sys.stdout = old
 
+def resolve_path_with_drive_preservation(path_obj):
+    """
+    Resolves a path to absolute form while preserving drive substitution on Windows.
+
+    On Windows, this function checks if the file exists before resolving to preserve
+    substituted drives. On other systems or when the file doesn't exist, it uses
+    the standard resolve() method.
+
+    Args:
+        path_obj (Path): Path object to resolve
+
+    Returns:
+        Path: Resolved absolute path
+    """
+    if sys.platform.startswith("win") and path_obj.exists():
+        # For Windows, if the file exists, convert to absolute path but preserve drive substitution
+        return path_obj.absolute()
+    else:
+        # Original behavior for other systems or when file doesn't exist
+        if sys.version_info.minor < 6:
+            return path_obj.resolve()
+        else:
+            return path_obj.resolve(True)
+
 def lopper_type(cls):
     global Lopper
     Lopper = cls
@@ -319,7 +343,7 @@ class LopperSDT:
             #       filter out non-dts files before the call .. we should probably still do
             #       that.
             sdt_file = Path( sdt_file )
-            sdt_file_abs = sdt_file.resolve( True )
+            sdt_file_abs = resolve_path_with_drive_preservation(sdt_file)
 
             # we need the original location of the main SDT file on the search path
             # in case there are dtsi files, etc.
@@ -644,7 +668,7 @@ class LopperSDT:
         for a in assists:
             a_file = self.assist_find( a )
             if a_file:
-                self.assists.append( LopperAssist( str(a_file.resolve()) ) )
+                self.assists.append( LopperAssist( str(resolve_path_with_drive_preservation(a_file)) ) )
             else:
                 lopper.log._error( f"assist {a} not found" )
                 os._exit(1)
@@ -934,10 +958,7 @@ class LopperSDT:
 
         input_file = Path( input_file_name )
         try:
-            if sys.version_info.minor < 6:
-                input_file_abs = input_file.resolve()
-            else:
-                input_file_abs = input_file.resolve( True )
+            input_file_abs = resolve_path_with_drive_preservation(input_file)
             if not input_file_abs:
                 raise FileNotFoundError( f"Unable to find file: {input_file}" )
         except (FileNotFoundError,NotADirectoryError):
@@ -954,10 +975,7 @@ class LopperSDT:
                 lopper.log._debug( f"input_find: checking directory: {s} for: {input_file}")
                 input_file_test = Path( s + "/" + input_file.as_posix() )
                 try:
-                    if sys.version_info.minor < 6:
-                        input_file_abs = input_file_test.resolve()
-                    else:
-                        input_file_abs = input_file_test.resolve( True )
+                    input_file_abs = resolve_path_with_drive_preservation(input_file_test)
 
                     if not input_file_abs:
                         raise FileNotFoundError( f"Unable to find file: {input_file}" )
@@ -972,12 +990,9 @@ class LopperSDT:
                         # try it with a the extension
                         input_file_with_ext = Path( s + "/" + input_file.as_posix() + extension )
                         try:
-                            if sys.version_info.minor < 6:
-                                input_file_abs = input_file_with_ext.resolve()
-                            else:
-                                input_file_abs = input_file_with_ext.resolve( True )
-                                if not input_file_abs:
-                                    raise FileNotFoundError( f"Unable to find input file: {mod_file}" )
+                            input_file_abs = resolve_path_with_drive_preservation(input_file_with_ext)
+                            if not input_file_abs:
+                                raise FileNotFoundError( f"Unable to find input file: {input_file_with_ext}" )
                         except (FileNotFoundError,NotADirectoryError):
                             input_file_abs = ""
 
