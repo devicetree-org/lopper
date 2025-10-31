@@ -30,6 +30,7 @@ from lopper.base import lopper_base
 from lopper.fmt import LopperFmt
 
 from lopper.log import _warning, _info, _error, _debug
+import lopper.log
 import logging
 
 import lopper.schema
@@ -5214,11 +5215,10 @@ class LopperTree:
             node_list = []
             lopper.log._error( f"no nodes found that match prefix {node_prefix}" )
 
-        if verbose > 1:
-            lopper.log._debug( f"filter: node list: " )
-            for nn in node_list:
-                lopper.log._debug( f"    {nn.abs_path}" )
-            lopper.log._debug( f"" )
+        lopper.log._debug( "filter: node list:", level=lopper.log.TRACE )
+        for nn in node_list:
+            lopper.log._debug( f"    {nn.abs_path}", level=lopper.log.TRACE )
+        lopper.log._debug( "", level=lopper.log.TRACE )
 
         for n in node_list:
             lopper.log._debug( f"filter node cmd:\n{test_cmd}" )
