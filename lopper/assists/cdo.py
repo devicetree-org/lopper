@@ -25,8 +25,10 @@ from pathlib import PurePath
 from io import StringIO
 import contextlib
 import importlib
+import logging
 from lopper import Lopper
 import lopper
+import lopper.log
 from lopper.tree import *
 from xlnx import subsystem
 
@@ -57,12 +59,26 @@ def cdo_write(root_node, sdt, options):
     except BaseException:
         verbose = 0
 
+    lopper.log._init(__name__)
+    # determine desired logging level based on verbose flag
+    if verbose > 3:
+        desired_level = lopper.log.TRACE2
+    elif verbose > 2:
+        desired_level = lopper.log.TRACE
+    elif verbose > 1:
+        desired_level = logging.DEBUG
+    elif verbose > 0:
+        desired_level = logging.INFO
+    else:
+        desired_level = logging.WARNING
+
+    lopper.log._level(desired_level, __name__)
+
     domain_node = None
     try:
         domain_node = root_node.tree["/domains"]
     except KeyError:
-        if verbose > 0:
-            print("[DBG++]: CDO plugin unable to find domains node")
+        lopper.log._debug("CDO plugin unable to find domains node", level=logging.DEBUG)
         return True
 
     if (len(options["args"]) > 0):
