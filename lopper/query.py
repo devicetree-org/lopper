@@ -14,6 +14,9 @@ import getopt
 import sys
 import os
 import json
+from pathlib import Path
+
+import lopper.log
 
 # a simple script to replace calls like this:
 # curl http://127.0.0.1:5000/domains | python3 -c 'import json,sys;print( json.load(sys.stdin))'
@@ -36,14 +39,18 @@ def main():
     global verbose
     global json
     global url
+    global output
+    global force
 
     url = None
     verbose = 0
     json = False
+    output = None
+    force = False
     try:
         opts, args = getopt.getopt(sys.argv[1:], "vj", [ "version", "json"])
     except getopt.GetoptError as err:
-        print('%s' % str(err))
+        lopper.log._error(str(err))
         usage()
         sys.exit(2)
 
@@ -62,6 +69,9 @@ def main():
         else:
             assert False, "unhandled option"
 
+    lopper.log._init(__name__)
+    lopper.log.init(verbose)
+
     # any args should be <url> <output file>
     module_name = ""
     module_args= []
@@ -79,7 +89,7 @@ def main():
             if not module_args_found:
                 if idx == 1:
                     if output:
-                        print( "Error: output was already provided via -o\n")
+                        lopper.log._error("output was already provided via -o")
                         usage()
                         sys.exit(1)
                     else:
@@ -87,7 +97,7 @@ def main():
                         output_file = Path(output)
                         if output_file.exists():
                             if not force:
-                                print( "Error: output file %s exists, and -f was not passed" % output )
+                                lopper.log._error( f"output file {output} exists, and -f was not passed" )
                                 sys.exit(1)
             else:
                 # module arguments
@@ -98,16 +108,15 @@ def main():
                         module_args.append( item )
 
     if not url:
-        print( "[ERROR]: no url was supplied\n" )
+        lopper.log._error("no url was supplied")
         usage()
         sys.exit(1)
 
-    if verbose:
-        print( "[INFO]: url: %s" % url )
+    lopper.log._info( f"url: {url}" )
 
     r = requests.get( url )
     if not r:
-        print( r )
+        lopper.log._error( f"request failed: {r}" )
     else:
         if json:
             print( r.text )
@@ -117,4 +126,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
