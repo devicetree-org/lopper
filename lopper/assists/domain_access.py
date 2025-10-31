@@ -29,6 +29,7 @@ import copy
 from lopper.log import _init, _warning, _info, _error, _debug
 import logging
 import subsystem
+import lopper.log
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "access-domain,domain-v1", compat_string_to_test):
@@ -183,6 +184,10 @@ def core_domain_access( tgt_node, sdt, options ):
         lopper.log._level( logging.INFO, __name__ )
     if verbose > 1:
         lopper.log._level( logging.DEBUG, __name__ )
+    if verbose > 2:
+        lopper.log._level( lopper.log.TRACE, __name__ )
+    if verbose > 3:
+        lopper.log._level( lopper.log.TRACE2, __name__ )
 
     # "/" indicates we were run from the command line as an autorun, not
     # triggered from a lop file associated to a node
@@ -640,19 +645,4 @@ def core_domain_access( tgt_node, sdt, options ):
 
     # final) deal with unreferenced nodes
     refd_nodes = sdt.tree.refd()
-    if verbose:
-        for p in refd_nodes:
-            code = """
-                p = node.ref
-                if p <= 0:
-                    return True
-                else:
-                    return False
-                """
-            # delete any unreferenced nodes
-            # not currently enabled, as it deletes our domain and other nodes
-            # of values. We could refernece those nodes explicitly if we want
-            # to use this as a final house cleaning step in the future.
-            # sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
-
     return True
