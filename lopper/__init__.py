@@ -283,8 +283,8 @@ class LopperSDT:
                 # compile
                 with open( fpp.name, 'wb') as wfd:
                     for f in sdt_files:
-                        if re.search( r".dts$", f ):
-                            with open(f,'rb') as fd:
+                        if f.endswith(".dts") or f.endswith(".dtsi"):
+                            with open(f, 'rb') as fd:
                                 shutil.copyfileobj(fd, wfd)
 
                         elif re.search( r".yaml$", f ):
@@ -2553,4 +2553,3 @@ class LopperFile:
         self.dtb = ""
         self.fdt = ""
         self.tree = None
-
