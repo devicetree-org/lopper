@@ -424,6 +424,8 @@ def core_domain_access( tgt_node, sdt, options ):
 
     modified_memory_nodes = []
     for domain_memory_entry in domain_memory_chunks:
+        # NOTE: if the domain either does not have a memory field described OR the
+        # the memory field is just 'memory:' then domain_memory_entry will show up as ['']
         if domain_memory_entry == ['']:
             continue
 
