@@ -21,11 +21,14 @@ from pathlib import PurePath
 from io import StringIO
 import contextlib
 import importlib
+import logging
+
 from lopper import Lopper
 from lopper import LopperFmt
 from lopper.tree import LopperAction
 from lopper.tree import LopperTree
 import lopper
+import lopper.log
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,compare", compat_string_to_test):
@@ -57,9 +60,21 @@ def compare( tgt_node, sdt, options ):
         args = options['args']
     except:
         args = []
-    
-    if verbose:
-        print( "[INFO]: cb: compare( %s, %s, %s, %s )" % (tgt_node, sdt, verbose, args))
+
+    lopper.log._init(__name__)
+    if verbose > 3:
+        desired_level = lopper.log.TRACE2
+    elif verbose > 2:
+        desired_level = lopper.log.TRACE
+    elif verbose > 1:
+        desired_level = logging.DEBUG
+    elif verbose > 0:
+        desired_level = logging.INFO
+    else:
+        desired_level = logging.WARNING
+    lopper.log._level(desired_level, __name__)
+
+    lopper.log._debug( f"cb: compare( {tgt_node}, {sdt}, {verbose}, {args} )", level=logging.DEBUG )
 
     opts,args2 = getopt.getopt( args, "c:i:pvt:o:x:h", [ "help", "verbose", "permissive" ] )
 
@@ -71,6 +86,7 @@ def compare( tgt_node, sdt, options ):
     include_list=[]
     compare_list=[]
     output=None
+    permissive = False
     for o,a in opts:
         # print( "o: %s a: %s" % (o,a))
         if o in ('-x'):
@@ -90,7 +106,7 @@ def compare( tgt_node, sdt, options ):
             sys.exit(1)
 
     if len(args2) < 1:
-        print( "[ERROR]: comparison tree not passed" )
+        lopper.log._error( "comparison tree not passed" )
         sys.exit(1)
 
     compare_dts = args2[0]
@@ -98,8 +114,7 @@ def compare( tgt_node, sdt, options ):
     if not compare_list:
         compare_list = [ "name" ]
 
-    if verbose:
-        print( "[INFO]: comparing: %s" % compare_list )
+    lopper.log._info( f"comparing: {compare_list}" )
 
     compiled_file, _ = Lopper.dt_compile( compare_dts, "", "", True, sdt.outdir,
                                           sdt.save_temps, verbose )
@@ -112,8 +127,7 @@ def compare( tgt_node, sdt, options ):
     compare_tree.load( Lopper.export( fdt ) )
 
     if "name" in compare_list:
-        if verbose:
-            print( "[INFO]: running name comparision ..." )
+        lopper.log._info( "running name comparison ..." )
         name_pass = True
         for node_tree_one in sdt.tree:
             # print( "n: %s" % node_tree_one.name )
@@ -122,11 +136,11 @@ def compare( tgt_node, sdt, options ):
                     other_tree_node = compare_tree.nodes( ".*/" + node_tree_one.name + "$" )
                     if not other_tree_node and not node_tree_one.name in exclude_list:
                         other_tree_node_fuzzy = compare_tree.nodes( node_tree_one.name )
-                        print( "[ERROR]: node with name '%s' does not exist in comparison tree" % node_tree_one.name )
+                        lopper.log._error( f"node with name '{node_tree_one.name}' does not exist in comparison tree" )
                         if other_tree_node_fuzzy:
-                            print( "[ERROR]: closest matches were: " )
+                            lopper.log._error( "closest matches were:" )
                             for o in other_tree_node_fuzzy:
-                                print( "            %s" % o.name )
+                                lopper.log._error( f"            {o.name}" )
                         name_pass = False
                     else:
                         True
