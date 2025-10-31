@@ -11,11 +11,18 @@ import re
 import os
 import shutil
 import subprocess
-from lopper.fmt import LopperFmt
-from string import printable
+import struct
+import sys
+import textwrap
+
 from pathlib import Path
 from pathlib import PurePath
-import struct
+from string import printable
+
+from lopper.fmt import LopperFmt
+import lopper.log
+
+lopper.log._init(__name__)
 
 
 lopper_known_types = {
@@ -132,13 +139,12 @@ class lopper_base:
         for i in includes.split():
             ppargs.append(f"-I{i}")
         ppargs += ["-o", preprocessed_name, dts_file]
-        if verbose:
-            print( f"[INFO]: preprocessing dts_file: {ppargs}" )
+        lopper.log._info( f"preprocessing dts_file: {ppargs}" )
 
         result = subprocess.run( ppargs, check = True )
         if result.returncode != 0:
-            print( f"[ERROR]: unable to preprocess dts file: {ppargs}" )
-            print( f"\n{textwrap.indent(result.stderr.decode(), '         ')}" )
+            lopper.log._error( f"unable to preprocess dts file: {ppargs}" )
+            lopper.log._error( f"\n{textwrap.indent(result.stderr.decode(), '         ')}" )
             sys.exit(result.returncode)
 
         return preprocessed_name
@@ -186,8 +192,8 @@ class lopper_base:
            (list): if COMPOUND. The property as a list of strings / values
 
         """
-        if verbose > 3:
-            print( f"[DBG+]: decode start: {prop} {ftype}")
+        if lopper.log._is_enabled(lopper.log.TRACE2):
+            lopper.log._debug( f"decode start: {prop} {ftype}", level=lopper.log.TRACE2 )
 
         # Note: these could also be nested.
         if ftype == LopperFmt.SIMPLE:
@@ -307,8 +313,8 @@ class lopper_base:
                     decode_msg = "** unable to decode value **"
 
 
-        if verbose > 3:
-            print( f"[DBG+]: decoding prop: \"{prop}\" ({poffset}) [{prop}] --> {decode_msg}" )
+        if lopper.log._is_enabled(lopper.log.TRACE2):
+            lopper.log._debug( f"decoding prop: \"{prop}\" ({poffset}) [{prop}] --> {decode_msg}", level=lopper.log.TRACE2 )
 
         return val
 
@@ -425,7 +431,7 @@ class lopper_base:
         Returns:
             LopperFmt: The guessed format type for the property.
         """
-        print(f"guessing type for {prop.name}")
+        lopper.log._debug(f"guessing type for {prop.name}", level=lopper.log.TRACE)
 
         if len(prop) == 0:
             return LopperFmt.EMPTY
@@ -488,7 +494,7 @@ class lopper_base:
                     n_as_int = int(n,base)
                     n = n_as_int
                 except Exception as e:
-                    print( f"[ERROR]: cannot convert element {n} to number ({e})" )
+                    lopper.log._error( f"cannot convert element {n} to number ({e})" )
                     sys.exit(1)
 
                 retval.append( n )
