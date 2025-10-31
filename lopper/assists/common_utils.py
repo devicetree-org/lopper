@@ -108,8 +108,8 @@ def load_yaml(filepath: str) -> Optional[dict]:
             with open(filepath) as f:
                 data = yaml.safe_load(f)
             return data
-        except:
-            print("%s file reading failed" % filepath)
+        except Exception as e:
+            _warning(f"{filepath} file reading failed: {e}")
             return {}
     else:
         return {}
