@@ -12,6 +12,7 @@ import types
 import os
 import getopt
 import re
+import logging
 from pathlib import Path
 from pathlib import PurePath
 from lopper import Lopper
@@ -21,6 +22,9 @@ from lopper.tree import LopperTree
 from lopper.tree import LopperNode
 from lopper.tree import LopperProp
 import lopper
+import lopper.log
+
+lopper.log._init(__name__)
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,extract$", compat_string_to_test):
@@ -51,9 +55,6 @@ def extract( tgt_node, sdt, options ):
     except:
         args = []
 
-    if verbose:
-        print( f"[INFO]: cb: extract( {tgt_node}, {sdt}, {verbose}, {args} )")
-
     opts,args2 = getopt.getopt( args, "i:pvt:o:x:", [ "verbose", "permissive" ] )
 
     if opts == [] and args2 == []:
@@ -80,8 +81,24 @@ def extract( tgt_node, sdt, options ):
         elif o in ('-p', "--permissive"):
             permissive = True
 
+    if verbose > 3:
+        desired_level = lopper.log.TRACE2
+    elif verbose > 2:
+        desired_level = lopper.log.TRACE
+    elif verbose > 1:
+        desired_level = logging.DEBUG
+    elif verbose > 0:
+        desired_level = logging.INFO
+    else:
+        desired_level = None
+
+    if desired_level is not None:
+        lopper.log._level(desired_level, __name__)
+
+    lopper.log._info( f"cb: extract( {tgt_node}, {sdt}, {verbose}, {args} )" )
+
     if not target_node_name:
-        print( "[ERROR]: no target node provided" )
+        lopper.log._error( "no target node provided" )
         usage()
         sys.exit(1)
 
@@ -93,13 +110,12 @@ def extract( tgt_node, sdt, options ):
             tgt_nodes = sdt.tree.nodes( target_node_name )
 
     if not tgt_nodes:
-        print( f"[ERROR]: node {target_node_name} not found in tree" )
-        if verbose:
+        lopper.log._error( f"node {target_node_name} not found in tree" )
+        if verbose > 0 or lopper.log._is_enabled(logging.INFO):
             sdt.tree.print()
         sys.exit(1)
 
-    if verbose:
-        print( "[INFO]: target node(s) %s found" % [y.abs_path for y in tgt_nodes] )
+    lopper.log._info( f"target node(s) {[y.abs_path for y in tgt_nodes]} found" )
 
     extracted_tree = LopperTree()
 
@@ -122,22 +138,18 @@ def extract( tgt_node, sdt, options ):
     for n in tgt_nodes:
         node_refs = n.resolve_all_refs( parents=False )
         refd_paths = [y.abs_path for y in node_refs]
-
-        if verbose:
-            print( f"[INFO]: Extracted node {n.abs_path} refs: {refd_paths}")
+        lopper.log._info( f"Extracted node {n.abs_path} refs: {refd_paths}" )
 
         for r in node_refs:
             # Don't add the parent, just ourself + phandle refs
             if r == n.parent:
-                if verbose:
-                    print( f"[INFO]: skipping parent of target node: {r}" )
+                lopper.log._info( f"skipping parent of target node: {r}" )
                 pass
             else:
                 copy_node = True
                 for exclude in exclude_list:
                     if re.search( exclude, r.name ):
-                        if verbose:
-                            print( f"[INFO]: skipping node (matched exclude): {r.abs_path}" )
+                        lopper.log._info( f"skipping node (matched exclude): {r.abs_path}" )
                         copy_node = False
 
                 if copy_node:
@@ -160,8 +172,7 @@ def extract( tgt_node, sdt, options ):
                         else:
                             extracted_node_copy = r()
                     else:
-                        if verbose:
-                            print( f"[INFO] adding {r}: to /extracted" )
+                        lopper.log._info( f"adding {r}: to /extracted" )
                         extracted_node_copy = r()
                     extracted_container_node + extracted_node_copy
                     extracted_node_copy["extracted,path"] = r.abs_path
@@ -174,7 +185,7 @@ def extract( tgt_node, sdt, options ):
                 for p in extracted_node_copy:
                     for exclude in exclude_list:
                         if re.search( exclude, p.name ):
-                            print( f"[INFO]: dropping masked property {p.name}" )
+                            lopper.log._info( f"dropping masked property {p.name}" )
                             extracted_node_copy - p
 
 
