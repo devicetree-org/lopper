@@ -51,8 +51,7 @@ def parse_schema_argument(schema_arg):
     elif schema_arg.startswith("learn:"):
         output_path = schema_arg[6:]  # Remove "learn:"
         if not output_path:
-            print(f"[ERROR]: schema output path cannot be empty after 'learn:'")
-            sys.exit(1)
+            _error("schema output path cannot be empty after 'learn:'", also_exit=1)
         return ("learn_dump", output_path)
     else:
         # Assume it's a path to an existing schema
@@ -131,7 +130,7 @@ def main():
                                      "assist=","server", "auto", "permissive", 'symbols', "xlate=",
                                      "no-libfdt", "overlay", "cfgfile=", "cfgval=", "input-dirs"] )
     except getopt.GetoptError as err:
-        print(f'{str(err)}')
+        _error(f"{err}")
         usage()
         sys.exit(2)
 
@@ -250,13 +249,11 @@ def main():
             try:
                 my_abs_path = sdt_file.resolve(strict=True)
             except FileNotFoundError:
-                # doesn't exist
-                print( f"Error: system device tree {sdt} does not exist" )
-                sys.exit(1)
+                _error(f"system device tree {sdt} does not exist", also_exit=1)
 
         if idx == 1:
             if output:
-                print( "Error: output was already provided via -o\n")
+                _error("output was already provided via -o")
                 usage()
                 sys.exit(1)
             else:
@@ -264,8 +261,7 @@ def main():
                 output_file = Path(output)
                 if output_file.exists():
                     if not force:
-                        print( f"Error: output file {output} exists, and -f was not passed" )
-                        sys.exit(1)
+                        _error(f"output file {output} exists, and -f was not passed", also_exit=1)
 
     # these are options that followed -- on the original command line
     for idx, item in enumerate(non_option_args):
@@ -283,9 +279,9 @@ def main():
                 # processing
                 module_name = ""
 
-    if module_name and verbose:
-        print( f"[DBG]: modules found: {list(module_args.keys())}" )
-        print( f"         args: {module_args}" )
+    if module_name:
+        _debug(f"modules found: {list(module_args.keys())}")
+        _debug(f"         args: {module_args}")
 
     # was --help passed ?
     if usage_flag:
@@ -298,7 +294,7 @@ def main():
     if not usage_flag and not sdt:
         # if a module was found, pass along everything to it
         if not module_name:
-            print( "[ERROR]: no system device tree was supplied\n" )
+            _error("no system device tree was supplied")
             usage()
             sys.exit(1)
 
@@ -313,9 +309,8 @@ def main():
         op = Path( outdir )
         try:
             op.resolve(True)
-        except:
-            print( f"[ERROR]: output directory \"{outdir}\" does not exist" )
-            sys.exit(1)
+        except Exception:
+            _error(f"output directory \"{outdir}\" does not exist", also_exit=1)
 
     # Not indicated in the help message, but we combine all the search
     # directories + environment variables. Assists, lops and dts files
@@ -337,8 +332,7 @@ def main():
         valid_ifile_types = [ ".json", ".dtsi", ".dtb", ".dts", ".yaml" ]
         itype = lopper.Lopper.input_file_type(i)
         if not itype in valid_ifile_types:
-            print( "[ERROR]: unrecognized input file type passed" )
-            sys.exit(1)
+            _error("unrecognized input file type passed", also_exit=1)
 
     # config file handling
     config = configparser.ConfigParser()
@@ -347,8 +341,7 @@ def main():
 
     inf = Path(config_file)
     if not inf.exists():
-        print( f"Error: config file {config_file} does not exist" )
-        sys.exit(1)
+        _error(f"config file {config_file} does not exist", also_exit=1)
 
     config.read( inf.absolute() )
 
@@ -388,15 +381,12 @@ def main():
             if target != "-":  # Not stdout
                 output_path = Path(target)
                 if output_path.exists():
-                    print(f"[ERROR]: schema output file {target} already exists. "
-                          f"Please remove it or choose a different filename.")
-                    sys.exit(1)
+                    _error(f"schema output file {target} already exists. Please remove it or choose a different filename.", also_exit=1)
             schema = ("learn_dump", target)
         elif action == "load":
             schemaf = Path(target)
             if not schemaf.exists():
-                print(f"[ERROR]: schema file {target} does not exist")
-                sys.exit(1)
+                _error(f"schema file {target} does not exist", also_exit=1)
             schema = target
     else:
         schema = "learn"
@@ -424,8 +414,7 @@ def main():
                 x = f"{lopper_directory}/lops/" + x
                 inf = Path( x )
                 if not inf.exists():
-                    print( f"[ERROR]: input file {x} does not exist" )
-                    sys.exit(1)
+                    _error(f"input file {x} does not exist", also_exit=1)
 
             inputfiles.append( x )
 
@@ -509,14 +498,14 @@ def main():
                 func_to_call = getattr( imported_test, func_name_to_call )
                 func_to_call( device_tree )
             except Exception as e:
-                print( f"ERROR: {e}" )
+                _error(f"{e}")
         else:
             try:
                 # is it a python string ? try compiling and runnig it
                 block = compile( debug, '<string>', 'exec' )
                 eval( block )
             except Exception as e:
-                print( f"ERROR: {e}" )
+                _error(f"{e}")
 
         sys.exit(1)
     else:
@@ -528,17 +517,16 @@ def main():
             lopper.Lopper.sync( device_tree.FDT, device_tree.tree.export() )
             device_tree.write( enhanced = device_tree.enhanced )
     else:
-        print( f"[INFO]: --dryrun was passed, output file {output} not written" )
+        _info(f"--dryrun was passed, output file {output} not written")
 
     if server:
-        if verbose:
-            print( "[INFO]: starting WSGI server" )
+        _info("starting WSGI server")
 
         try:
             import lopper.rest
             rest_support = True
         except Exception as e:
-            print( f"[ERROR]: rest support is not loaded, check dependencies: {e}" )
+            _error(f"rest support is not loaded, check dependencies: {e}")
             rest_support = False
 
         if rest_support:
@@ -552,4 +540,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
