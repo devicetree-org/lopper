@@ -674,6 +674,14 @@ def access_expand( tree, subnode, verbose = 0 ):
 #    chosen_node_copy.resolve()
 #    tree.add( chosen_node_copy, merge=True )
 
+# NOTE TODO reserved_memory_expand note that this present
+# implementation does not account for anchors.
+# Previously, if an anchor was used, a deep copy of the node
+# was copied in, but this made accounting for new nodes and reconciling
+# this with existing nodes a very complex. In order to simplify tracking,
+# only consider reserved memory if a domain explicitly mentions it
+# via 'reserved-memory:' as a property and then pull in referenced nodes.
+# anchors are presently marked as a gap in this current implementation.
 def reserved_memory_expand( tree, reserved_memory_node ):
     """Generate carveout nodes for the subsystem reserved-memory section.
 
@@ -849,6 +857,34 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
 
     property_set( prop_name, mem_list, subnode )
 
+def openamp_remote_cpu_expand( tree, subnode, cluster_cpu, cluster_node, verbose = 0):
+    """ Routine to add OpenAMP specific information for later processing as the remote CPU
+        node will be removed before OpenAMP processing can be called.
+    Args:
+        tree (LopperTree): Device tree being modified.
+        subnode (LopperNode): Node describing CPU resources to attach.
+        cluster_cpu (arr): None or array to check for cluster CPU information
+        cluster_node (LopperNode): Node for core CPU information
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        None
+    """
+    if cluster_cpu == None:
+        return
+
+    for n in subnode.subnodes():
+        if n.name == "domain-to-domain":
+            n + LopperProp(name="cluster_cpu", value=cluster_cpu)
+
+    pd_prop_node = [ n for n in cluster_node.subnodes() if n.propval("power-domains") != [''] ]
+    if len(pd_prop_node) == 1:
+        subnode + LopperProp(name="rpu_pd_val", value=pd_prop_node[0].propval("power-domains"))
+
+    if cluster_node != None and "r5" in cluster_node.name:
+        subnode + LopperProp(name="cpu_config_str", value="split" if subnode.propval("cpus")[1] == 1 else "lockstep")
+        subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
+
 
 def cpu_expand( tree, subnode, verbose = 0):
     """Expand compact CPU descriptors into fully fledged domain properties.
@@ -961,18 +997,8 @@ def cpu_expand( tree, subnode, verbose = 0):
     if cpus_list:
         cpus[0].value = cpus_list
 
-    if cluster_cpu != None:
-        for n in subnode.subnodes():
-            if n.name == "domain-to-domain":
-                n + LopperProp(name="cluster_cpu", value=cluster_cpu)
-
-    pd_prop_node = [ n for n in cluster_node.subnodes() if n.propval("power-domains") != [''] ]
-    if len(pd_prop_node) == 1:
-        subnode + LopperProp(name="rpu_pd_val", value=pd_prop_node[0].propval("power-domains"))
-
-    if cluster_node != None and "r5" in cluster_node.name:
-        subnode + LopperProp(name="cpu_config_str", value="split" if subnode.propval("cpus")[1] == 1 else "lockstep")
-        subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
+    # This is a no-op if cluster_cpu and cluster_node are not set up.
+    openamp_remote_cpu_expand(tree, subnode, cluster_cpu, cluster_node, verbose)
 
 # sdt: is the system device tree
 def subsystem( tgt_node, sdt, options ):
