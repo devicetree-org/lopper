@@ -26,13 +26,14 @@ from lopper.tree import LopperProp
 from anytree.importer import DictImporter
 from anytree.exporter import DictExporter
 from anytree.importer import JsonImporter
-from pprint import pprint  # just for nice printing
+import pprint  # just for nice printing
 from anytree import RenderTree  # just for nice printing
 from anytree import PreOrderIter
 from anytree import AnyNode
 from anytree import Node
 
 from lopper.log import _warning, _info, _error, _debug, _init, _level
+import lopper.log
 import logging
 
 _init( __name__ )
@@ -653,10 +654,6 @@ class LopperJSON():
         excluded_props = [ "name", "fdt_name" ]
         serialize_json = True
 
-        # _level( logging.DEBUG, "yaml.py" )
-        # _level( logging.DEBUG, __name__ )
-        verbose = 0
-
         for node in PreOrderIter(self.anytree):
             if node.name == "root":
                 ln = lt["/"]
@@ -666,7 +663,7 @@ class LopperJSON():
                 ln = LopperNode( -1, node.name )
                 ln.abs_path = self.path( node )
 
-            if verbose:
+            if lopper.log._is_enabled(logging.INFO):
                 lt.__dbg__ = 4
                 ln.__dbg__ = 4
 
@@ -786,6 +783,7 @@ class LopperJSON():
                 if p.pclass == "json":
                     _debug( f"json: {p.value} (len: {len(p)})" )
                     extension_found = False
+                    trace_enabled = lopper.log._is_enabled(lopper.log.TRACE)
                     for x in range(0, len(p)):
                         try:
                             m_val = p[x][expand_string]
@@ -810,15 +808,13 @@ class LopperJSON():
                             else:
                                 m_val = p[x][expand_string]
                                 dict_check = x
-                            if verbose:
-                                print( f"[DBG]                      mval {m_val} ({dict_check})")
+                            lopper.log._debug( f"                      mval {m_val} ({dict_check})", level=lopper.log.TRACE )
                             # Whether we allow chunks greater than 1 to go through this loop changes
                             # the output nodes (versus json strings). Keeping the old condition around
                             # as a reference, since this may become a tunable in the future
                             # if type(m_val) == list and len(m_val) == 1 and type(m_val[dict_check]) == dict:
                             if type(m_val) == list and len(m_val) > 0 and type(m_val[dict_check]) == dict:
-                                if verbose:
-                                    print( f"[DBG]: -------> promote json to a node: {p.name} ({p.abs_path})" )
+                                lopper.log._debug( f"-------> promote json to a node: {p.name} ({p.abs_path})", level=lopper.log.TRACE )
 
                                 # the new node name will be: <parent node>@<number> by default
                                 new_name = p.name
@@ -827,7 +823,7 @@ class LopperJSON():
                                         # this can be overriden by an anchor name, if discovered below
                                         new_name = p.node.name + "@" + str(x)
                                     except Exception as e:
-                                        print( f"[DBG]: Exception during new node name creation: {e}" )
+                                        lopper.log._debug( f"Exception during new node name creation: {e}", level=lopper.log.TRACE )
 
                                 # A secondary name (and better) for the new node, is the name of
                                 # the alias (if one was used). To do that, we pull out the dictionary
@@ -839,8 +835,7 @@ class LopperJSON():
                                     possible_alias = self.dct_flat[p.abs_path[1:]][x]
                                     # if there is a dictionary there, then this could have been an
                                     # expanded alias.
-                                    if verbose:
-                                        print( f"[DBG]: [{p.abs_path[1:]}] found {possible_alias}")
+                                    lopper.log._debug( f"[{p.abs_path[1:]}] found {possible_alias}", level=lopper.log.TRACE )
 
                                     # Searching that same flattened yaml dictionary for the *same*
                                     # dictionary in another location indicates that this is an expanded
@@ -848,8 +843,7 @@ class LopperJSON():
                                     i_name = None
                                     for flat_thing_name,flat_thing in self.dct_flat.items():
                                         if possible_alias is flat_thing:
-                                            if verbose:
-                                                print( f"[DBG]: alias/anchor identity match: {flat_thing_name}" )
+                                            lopper.log._debug( f"alias/anchor identity match: {flat_thing_name}", level=lopper.log.TRACE )
                                             # we take the first hit, that's the anchor, other hits will just
                                             # be more aliases .. which point to the same anchor and of course
                                             # will also pass
@@ -864,14 +858,11 @@ class LopperJSON():
                                 except Exception as e:
                                     pass
 
-                                if verbose:
-                                    print( f"[DBG]: new node name: {new_name}" )
+                                lopper.log._debug( f"new node name: {new_name}", level=lopper.log.TRACE )
                                 try:
-                                    if verbose:
-                                        print( f"[DBG]: checking for existing node at: {n.abs_path}" + "/" + new_name )
+                                    lopper.log._debug( f"checking for existing node at: {n.abs_path}/{new_name}", level=lopper.log.TRACE )
                                     node_check = lt[n.abs_path + "/" + new_name]
-                                    if verbose:
-                                        print( "[DBG] node exists" )
+                                    lopper.log._debug( "node exists", level=lopper.log.TRACE )
                                 except:
                                     pass
 
@@ -879,8 +870,7 @@ class LopperJSON():
                                 ##       values and make them @<x> properties.
                                 new_node = LopperNode( -1, name=new_name )
                                 for i,v in m_val[dict_check].items():
-                                    if verbose:
-                                        print( f"[DBG]:                adding prop: {i} -> {v}")
+                                    lopper.log._debug( f"                adding prop: {i} -> {v}", level=lopper.log.TRACE )
                                     new_prop = LopperProp(i, -1, new_node, v )
                                     new_node + new_prop
                                     new_prop.resolve()
@@ -898,8 +888,7 @@ class LopperJSON():
                                 lt = lt + new_node
                             else:
                                 if new_node:
-                                    if verbose:
-                                        print( "[DBG]: extension found, adding as property to the new node" )
+                                    lopper.log._debug( "extension found, adding as property to the new node", level=lopper.log.TRACE )
                                     new_prop_name = new_node.name + "-xtend"
                                     new_prop = LopperProp( new_prop_name, -1, new_node, json.dumps(m_val) )
                                     new_prop.pclass = "json"
@@ -907,11 +896,9 @@ class LopperJSON():
                                     new_prop.resolve()
                                 else:
                                     if type(m_val) == dict:
-                                        if verbose:
-                                            print( f"[DBG]: extending properties to node: {n.abs_path}" )
+                                        lopper.log._debug( f"extending properties to node: {n.abs_path}", level=lopper.log.TRACE )
                                         for i,v in m_val.items():
-                                            if verbose:
-                                                print( f"[DBG]:                     adding prop: {i} -> {v}")
+                                            lopper.log._debug( f"                    adding prop: {i} -> {v}", level=lopper.log.TRACE )
                                             new_prop = LopperProp(i, -1, n, v )
                                             n + new_prop
                                             new_prop.resolve()
@@ -966,6 +953,7 @@ class LopperJSON():
            Nothing
         """
         if self.anytree:
+            trace_enabled = verbose > 2 or lopper.log._is_enabled(lopper.log.TRACE)
             # if there's only one child, we use that, which allows us to skip the Anytree
             # "root" node, without any tricks.
             no_root = False
@@ -975,24 +963,22 @@ class LopperJSON():
                     start_node = self.anytree.children[0]
 
             # at high verbosity, use an ordered dict for debug reasons
-            if verbose > 2:
+            if trace_enabled:
                 dcttype=OrderedDict
             else:
                 dcttype=dict
 
             dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
 
-            if verbose > 1:
-                print( "[DBG++]: dumping export dictionary" )
-                pprint( dct )
+            lopper.log._debug("dumping export dictionary", level=lopper.log.TRACE)
+            lopper.log._debug(pprint.pformat(dct), level=lopper.log.TRACE)
 
             if not outfile:
                 print(json.dump(dct))
             else:
                 pjson = json.dumps(dct, indent=4, separators=(',', ': '))
-                if verbose > 1:
-                    print( "[DBG++]: dumping generated json to stdout:" )
-                    print(pjson)
+                lopper.log._debug("dumping generated json to stdout:", level=lopper.log.TRACE)
+                lopper.log._debug(pjson, level=lopper.log.TRACE)
 
                 with open( outfile, "w") as file:
                     file.write(pjson)
@@ -1251,6 +1237,7 @@ class LopperYAML(LopperJSON):
            Nothing
         """
         if self.anytree:
+            trace_enabled = verbose > 2 or lopper.log._is_enabled(lopper.log.TRACE)
             # if there's only one child, we use that, which allows us to skip the Anytree
             # "root" node, without any tricks.
             no_root = False
@@ -1260,7 +1247,7 @@ class LopperYAML(LopperJSON):
                     start_node = self.anytree.children[0]
 
             # at high verbosity, use an ordered dict for debug reasons
-            if verbose > 2:
+            if trace_enabled:
                 dcttype=OrderedDict
             else:
                 #dcttype=dict
@@ -1283,14 +1270,17 @@ class LopperYAML(LopperJSON):
             # to yaml.
             dct = json.loads(json.dumps(dct))
 
-            if verbose > 1:
-                print( "[DBG++]: to_yaml: dumping export dictionary" )
-                pprint( dct )
+            lopper.log._debug("to_yaml: dumping export dictionary", level=lopper.log.TRACE)
+            lopper.log._debug(pprint.pformat(dct), level=lopper.log.TRACE)
 
             if version.parse(ruamel.yaml.__version__) < version.parse("0.18"):
                 yaml = ruamel.yaml
+                yaml_obj = None
             else:
-                yaml = YAML(typ='safe')
+                yaml_obj = YAML(typ='safe')
+                yaml_obj.default_flow_style = False
+                yaml_obj.canonical = False
+                yaml_obj.default_style = None
 
             # This stops tags from being output.
             # We could make this a configuration option in the future
@@ -1299,21 +1289,27 @@ class LopperYAML(LopperJSON):
             # supported
             # yaml.emitter.Emitter.process_tag = lambda self, *args, **kw: None
             if not outfile:
-                print(yaml.dump(dct))
+                if yaml_obj:
+                    from io import StringIO
+                    buf = StringIO()
+                    yaml_obj.dump(dct, buf)
+                    print(buf.getvalue())
+                else:
+                    print(yaml.dump(dct))
             else:
-                if verbose > 1:
-                    print(RenderTree(self.anytree.root))
-                    print( "[DBG++]: dumping generated yaml to stdout:" )
-                    if version.parse(ruamel.yaml.__version__) < version.parse("0.18"):
-                        print(ruamel.yaml.dump(dct,
-                                               default_flow_style=False,
-                                               canonical=False,
-                                               default_style=None))
-                    else:
-                        yaml.default_flow_style = False
-                        yaml.canonical = False
-                        yaml.default_style = None
-                        print( yaml.dump(dct) )
+                lopper.log._debug(str(RenderTree(self.anytree.root)), level=lopper.log.TRACE)
+                lopper.log._debug("dumping generated yaml to stdout:", level=lopper.log.TRACE)
+                if version.parse(ruamel.yaml.__version__) < version.parse("0.18"):
+                    lopper.log._debug(ruamel.yaml.dump(dct,
+                                                       default_flow_style=False,
+                                                       canonical=False,
+                                                       default_style=None), level=lopper.log.TRACE)
+                else:
+                    from io import StringIO
+
+                    buf = StringIO()
+                    yaml_obj.dump(dct, buf)
+                    lopper.log._debug(buf.getvalue(), level=lopper.log.TRACE)
 
                 with open( outfile, "w") as file:
                     if version.parse(ruamel.yaml.__version__) < version.parse("0.18"):
@@ -1322,10 +1318,7 @@ class LopperYAML(LopperJSON):
                                                     canonical=False,
                                                     default_style=None)
                     else:
-                        yaml.default_flow_style = False
-                        yaml.canonical = False
-                        yaml.default_style = None
-                        yaml.dump(dct, file )
+                        yaml_obj.dump(dct, file )
 
 
 
