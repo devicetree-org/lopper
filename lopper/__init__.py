@@ -32,7 +32,7 @@ try:
     from lopper.yaml import *
     yaml_support = True
 except Exception as e:
-    print( f"[WARNING]: cant load yaml, disabling support: {e}" )
+    lopper.log._warning( f"cant load yaml, disabling support: {e}" )
     yaml_support = False
 
 # Default processing type
@@ -578,13 +578,13 @@ class LopperSDT:
 
         if self.verbose:
             search_paths = self.load_paths + [ lopper_directory ] + [ lopper_directory + "/assists/" ]
-            print( "" )
-            print( "Lopper summary:")
+            print("")
+            print("Lopper summary:")
             print( f"   system device tree: {sdt_files}" )
             print( f"   lops: {lop_files}" )
             print( f"   search paths: {search_paths}" )
             print( f"   output: {self.output_file}" )
-            print( "" )
+            print("")
 
         # Individually compile the input files. At some point these may be
         # concatenated with the main SDT if dtc is doing some of the work, but for
@@ -846,7 +846,7 @@ class LopperSDT:
                         lopper.log._warning( f"output assist {cb_func} failed: {e}" )
                         exc_type, exc_obj, exc_tb = sys.exc_info()
                         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                        print(exc_type, fname, exc_tb.tb_lineno)
+                        lopper.log._warning( f"{exc_type} {fname} {exc_tb.tb_lineno}" )
                         if self.werror:
                             sys.exit(1)
             else:
@@ -1269,7 +1269,7 @@ class LopperSDT:
                         # is it a phandle?
                         node = self.tree.pnode(line)
                         if node:
-                            print( "%s {" % node )
+                            print( f"{node} {{" )
                             for p in node:
                                 print( f"    {p}" )
                             print( "}" )
@@ -1336,10 +1336,9 @@ class LopperSDT:
                             else:
                                 selected_nodes_possible = tree.__selected__
 
-                            if self.verbose > 1:
-                                lopper.log._debug( f"selected potential nodes:" )
-                                for n in selected_nodes_possible:
-                                    print( f"       {n}" )
+                            lopper.log._debug( "selected potential nodes:", level=lopper.log.TRACE )
+                            for n in selected_nodes_possible:
+                                lopper.log._debug( f"       {n}", level=lopper.log.TRACE )
 
                         if prop and prop_val:
                             invert_result = False
@@ -1439,10 +1438,9 @@ class LopperSDT:
                             selected_nodes = selected_nodes_possible
 
 
-                    if self.verbose > 1:
-                        lopper.log._debug( f"select pass done: selected nodes:" )
-                        for n in selected_nodes:
-                            print( f"    {n}" )
+                    lopper.log._debug( "select pass done: selected nodes:", level=lopper.log.TRACE )
+                    for n in selected_nodes:
+                        lopper.log._debug( f"    {n}", level=lopper.log.TRACE )
 
                     # these are now our possible selected nodes for any follow
                     # up "or" conditions
@@ -1586,10 +1584,9 @@ class LopperSDT:
                             lopper.log._warning( f"exception caught during output processing: {e}" )
 
                 if output_regex:
-                    if self.verbose > 2:
-                        lopper.log._debug( f"output lop, final nodes:" )
-                        for oo in output_nodes:
-                            print( f"       {oo.abs_path}" )
+                    lopper.log._debug( "output lop, final nodes:", level=lopper.log.TRACE )
+                    for oo in output_nodes:
+                        lopper.log._debug( f"       {oo.abs_path}", level=lopper.log.TRACE )
 
                 if not output_tree and output_nodes:
                     output_tree = LopperTreePrinter()
@@ -1771,11 +1768,10 @@ class LopperSDT:
                 else:
                     return False
 
-            if self.verbose:
-                lopper.log._info( f"assist lop detected" )
-                if cb:
-                    print( f"        cb: {cb}" )
-                print( f"        id: {cb_id} opts: {cb_opts}" )
+            lopper.log._info( "assist lop detected" )
+            if cb:
+                lopper.log._debug( f"        cb: {cb}" )
+            lopper.log._debug( f"        id: {cb_id} opts: {cb_opts}" )
 
             cb_funcs = self.find_compatible_assist( cb_node, cb_id )
             if cb_funcs:
@@ -1787,7 +1783,7 @@ class LopperSDT:
                         lopper.log._warning( f"assist %{cb_func} failed: {e}" )
                         exc_type, exc_obj, exc_tb = sys.exc_info()
                         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                        print(exc_type, fname, exc_tb.tb_lineno)
+                        lopper.log._warning( f"{exc_type} {fname} {exc_tb.tb_lineno}" )
                         # exit if warnings are treated as errors
                         if self.werror:
                             sys.exit(1)
