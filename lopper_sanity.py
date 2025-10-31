@@ -306,7 +306,7 @@ def setup_code_lops( outdir ):
                       true {
                            compatible = "system-device-tree-v1,lop,code-v1";
                            code = "
-                               print( '[INFO] compatible a72 found: %s' % node )
+                               print( '[INFO]: compatible a72 found: %s' % node )
                                print( '[FOUND] enable-method: %s' % node['enable-method'].value[0] )
 
                                return True
@@ -333,7 +333,7 @@ def setup_code_lops( outdir ):
                       true {
                            compatible = "system-device-tree-v1,lop,code-v1";
                            code = "
-                               print( '[INFO] compatible invalid a72 found: %s' % node )
+                               print( '[INFO]: compatible invalid a72 found: %s' % node )
 
                                return True
                                ";
@@ -360,7 +360,7 @@ def setup_code_lops( outdir ):
                       true {
                            compatible = "system-device-tree-v1,lop,code-v1";
                            code = "
-                               print( '[INFO] double condition a72 found: %s' % node )
+                               print( '[INFO]: double condition a72 found: %s' % node )
 
                                return True
                                ";
@@ -379,7 +379,7 @@ def setup_code_lops( outdir ):
                       false {
                            compatible = "system-device-tree-v1,lop,code-v1";
                            code = "
-                               print( '[INFO] double condition a72 not found: %s' % node )
+                               print( '[INFO]: double condition a72 not found: %s' % node )
 
                                return True
                                ";
@@ -398,7 +398,7 @@ def setup_code_lops( outdir ):
                       true {
                            compatible = "system-device-tree-v1,lop,code-v1";
                            code = "
-                               print( '[INFO] double condition inverted a72 found: %s' % node )
+                               print( '[INFO]: double condition inverted a72 found: %s' % node )
 
                                return True
                                ";
@@ -417,7 +417,7 @@ def setup_code_lops( outdir ):
                       true {
                            compatible = "system-device-tree-v1,lop,code-v1";
                            code = "
-                               print( '[INFO] double condition list a72 found: %s' % node )
+                               print( '[INFO]: double condition list a72 found: %s' % node )
                                node['magic-clock'] = 'True'
 
                                return True
@@ -454,9 +454,9 @@ def setup_code_lops( outdir ):
                       true {
                            compatible = "system-device-tree-v1,lop,code-v1";
                            code = "
-                               print( '[INFO] node tag: %s (tag:%s)' % (node,node['tag'].value[0]) )
+                               print( '[INFO]: node tag: %s (tag:%s)' % (node,node['tag'].value[0]) )
                                try:
-                                   print( '[INFO] clock magic: %s' % node['magic-clock'].value[0] )
+                                   print( '[INFO]: clock magic: %s' % node['magic-clock'].value[0] )
                                except:
                                    pass
 
@@ -2015,37 +2015,37 @@ def lops_code_test( device_tree, lop_file, verbose ):
     else:
         test_failed( "compatible node, false block" )
 
-    c = len(re.findall( r"[^']\[INFO\] double condition a72 found", test_output ))
+    c = len(re.findall( r"[^']\[INFO\]: double condition a72 found", test_output ))
     if c == 2:
         test_passed( "double condition" )
     else:
         test_failed( "double condition" )
 
-    c = len(re.findall( r"[^']\[INFO\] double condition a72 not found", test_output ))
+    c = len(re.findall( r"[^']\[INFO\]: double condition a72 not found", test_output ))
     if c == 2:
         test_passed( "double condition, false" )
     else:
         test_failed( "double condition, false" )
 
-    c = len(re.findall( r"[^']\[INFO\] double condition inverted a72 found", test_output ))
+    c = len(re.findall( r"[^']\[INFO\]: double condition inverted a72 found", test_output ))
     if c == 2:
         test_passed( "double condition, inverted" )
     else:
         test_failed( "double condition, inverted" )
 
-    c = len(re.findall( r"[^']\[INFO\] double condition list a72 found", test_output ))
+    c = len(re.findall( r"[^']\[INFO\]: double condition list a72 found", test_output ))
     if c == 1:
         test_passed( "double condition, list" )
     else:
         test_failed( "double condition, list" )
 
-    c = len(re.findall( r"[^']\[INFO\] node tag:", test_output ))
+    c = len(re.findall( r"[^']\[INFO\]: node tag:", test_output ))
     if c == 3:
         test_passed( "data persistence" )
     else:
         test_failed( "data persistence" )
 
-    c = len(re.findall( r"[^']\[INFO\] clock magic", test_output ))
+    c = len(re.findall( r"[^']\[INFO\]: clock magic", test_output ))
     if c == 1:
         test_passed( "data persistence 2" )
     else:
@@ -2549,7 +2549,7 @@ def fdt_sanity_test( device_tree, verbose ):
     Lopper.sync( device_tree.FDT, dct2 )
     dct3 = Lopper.export( device_tree.FDT )
 
-    print( "[INFO] second print. nodes gone, and new ones still present ")
+    print( "[INFO]: second print. nodes gone, and new ones still present " )
     lt3 = lopper.tree.LopperTreePrinter()
     lt3.load( dct3 )
     lt3.__dbg__ = 0

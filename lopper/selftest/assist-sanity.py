@@ -226,18 +226,18 @@ def overlay_test( sdt ):
             elif re.search( r"&amba", line ):
                 # was amba after fpga ?
                 if fpga_count == 0:
-                    print( "ERROR: &amba and &fpga nodes are not properly ordered")
+                    print( "[ERROR]: &amba and &fpga nodes are not properly ordered")
                     os._exit(1)
 
     if fpga_count == 0:
-        print( "ERROR: fpga node is not in the overlay" )
+        print( "[ERROR]: fpga node is not in the overlay" )
         os._exit(1)
     else:
-        print( "PASSED: fpga node is in the overlay")
+        print( "[PASS]: fpga node is in the overlay")
     if ranges_count == 2:
-        print( "PASSED: ranges was removed from the overlay" )
+        print( "[PASS]: ranges was removed from the overlay" )
     else:
-        print( f"FAILED: ranges was not removed from the overlay. the count is {ranges_count}" )
+        print( f"[FAIL]: ranges was not removed from the overlay. the count is {ranges_count}" )
         os._exit(1)
 
     amba_count = 0
@@ -246,9 +246,9 @@ def overlay_test( sdt ):
             if re.search( r"amba_pl", line ):
                 amba_count += 1
     if amba_count == 0:
-        print( "PASSED: amba_pl was removed from the SDT" )
+        print( "[PASS]: amba_pl was removed from the SDT" )
     else:
-        print( "FAILED: amba_pl was removed from the SDT" )
+        print( "[FAIL]: amba_pl was not removed from the SDT" )
         os._exit(1)
 
 
