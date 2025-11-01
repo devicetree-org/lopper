@@ -923,7 +923,8 @@ class lopper_base:
             r'^\s*?\w*?\s*?\:', re.DOTALL
         )
         pattern = re.compile(
-            r'^\s*?(\w*?)\s*?\:([^{]*?)\s*\{', re.DOTALL | re.MULTILINE
+            r'^\s*?([A-Za-z_]\w*)\s*?:\s*([^{\s][^{\n]*?)\s*(?:\{\s*|\n\s*\{)',
+            re.MULTILINE
         )
         return re.sub(pattern, lopper_base._label_replacer, text)
 
