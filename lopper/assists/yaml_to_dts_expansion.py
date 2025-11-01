@@ -31,9 +31,8 @@ from lopper.tree import LopperTree
 from lopper.yaml import LopperYAML
 import lopper
 import json
-import humanfriendly
 
-from .lopper_lib import check_bit_set, clear_bit, chunks, property_set, set_bit
+from .lopper_lib import check_bit_set, clear_bit, chunks, property_set, set_bit, expand_start_size_to_reg
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -757,24 +756,32 @@ def reserved_memory_expand( tree, reserved_memory_node ):
         if n.propval("reg") != ['']:
             continue
 
-        start_size_pair = { "start": 0xbeef, "size": 0xbeef }
-        for key in start_size_pair.keys():
-            val = n.propval(key) if n.propval(key) != [''] else str(0xbeef)
-            if val == str(0xbeef):
-                print("WARNING: reserved memory expand: carveout provided without property: ", key, n.abs_path)
+        raw_start = n.propval("start")
+        raw_size = n.propval("size")
+        missing_keys = []
+        if raw_start == [''] or raw_start is None:
+            missing_keys.append("start")
+        if raw_size == [''] or raw_size is None:
+            missing_keys.append("size")
+
+        reg_cells, _, _ = expand_start_size_to_reg(
+            {"start": raw_start, "size": raw_size},
+            address_cells=2,
+            size_cells=2,
+            default_start=0xbeef,
+            default_size=0xbeef
+        )
+
+        for key in ("start", "size"):
             try:
-                val = humanfriendly.parse_size( val, True )
-            except:
-                try:
-                    val = int(val,16)
-                except:
-                    val = int(val)
+                n.delete(key)
+            except Exception:
+                pass
 
-            start_size_pair[key] = val
-            n.delete(key)
+        for key in missing_keys:
+            print("WARNING: reserved memory expand: carveout provided without property: ", key, n.abs_path)
 
-        # convert to start/size to reg
-        n + LopperProp(name="reg", value=[0, start_size_pair["start"], 0, start_size_pair["size"]])
+        n + LopperProp(name="reg", value=reg_cells)
 
 # handle either sram or memory with use of prop_name arg
 def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', verbose = 0 ):
@@ -810,42 +817,29 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
             if not m:
                 continue
 
-            try:
-                start = str(m['start'])
-            except:
-                start = str(int(memory_start))
-            try:
-                size = str(m['size'])
-            except:
-                size = str(int(0xbeef))
-
             if 'flags' in m.keys():
                 flags = str(m['flags'])
                 flags_names = LopperProp(prop_name+'-flags-names',value = str(flags))
                 subnode + flags_names
 
-            if verbose:
-                print( f"memory expand: start/size as read: {start}/{size}")
-            try:
-                start = humanfriendly.parse_size( start, True )
-            except:
-                try:
-                    start = int(start,16)
-                except:
-                    start = int(start)
-            try:
-                size = humanfriendly.parse_size( size, True )
-            except:
-                try:
-                    size = int(size,16)
-                except:
-                    size = int(size)
+            raw_start = m.get('start', memory_start)
+            raw_size = m.get('size', 0xbeef)
 
             if verbose:
-                print( f"memory expand: start/size as converted: {start}/{size}")
+                print(f"memory expand: start/size as read: {raw_start}/{raw_size}")
 
-            mem_list.append(int(start))
-            mem_list.append(int(size))
+            reg_cells, start_val, size_val = expand_start_size_to_reg(
+                m,
+                address_cells=1,
+                size_cells=1,
+                default_start=memory_start,
+                default_size=0xbeef
+            )
+
+            if verbose:
+                print(f"memory expand: start/size as converted: {start_val}/{size_val}")
+
+            mem_list.extend(reg_cells)
 
     except Exception as e:
         # print( "Exception expanding memory: %s" % e )
