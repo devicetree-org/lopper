@@ -617,7 +617,6 @@ def core_domain_access( tgt_node, sdt, options ):
         chosen_node = domain_node.subnodes(children_only=True,name="chosen$")
         if chosen_node:
             lopper.log._debug( "processing chosen node" )
-            subsystem.chosen_expand( sdt.tree, chosen_node[0] )
 
             # we want our domains node last, just for readability
             sdt.tree['/'].reorder_child( "/domains", "/chosen", after=True )
