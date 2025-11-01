@@ -32,6 +32,7 @@ from lopper.yaml import LopperYAML
 import lopper
 import json
 from itertools import chain
+import humanfriendly
 
 # utility function to return true or false if a number
 # is 32 bit, or not.
@@ -210,6 +211,88 @@ def cell_value_split( value, cell_size ):
         ret_val.append(value)
 
     return ret_val
+
+def _normalize_start_size_value(raw_value, default_value):
+    """Convert YAML-provided start/size representations into integers."""
+    if raw_value is None:
+        return int(default_value)
+
+    if raw_value == [''] or raw_value == '':
+        return int(default_value)
+
+    if isinstance(raw_value, list):
+        if not raw_value:
+            return int(default_value)
+
+        if len(raw_value) == 1:
+            return _normalize_start_size_value(raw_value[0], default_value)
+
+        if all(isinstance(v, int) for v in raw_value):
+            combined = 0
+            for v in raw_value:
+                combined = (combined << 32) | (v & 0xFFFFFFFF)
+            return combined
+
+        return _normalize_start_size_value(raw_value[0], default_value)
+
+    if isinstance(raw_value, (int, float)):
+        return int(raw_value)
+
+    value_str = str(raw_value).strip()
+    if not value_str:
+        return int(default_value)
+
+    try:
+        return humanfriendly.parse_size(value_str, True)
+    except Exception:
+        pass
+
+    try:
+        return int(value_str, 16)
+    except Exception:
+        pass
+
+    try:
+        return int(value_str)
+    except Exception:
+        return int(default_value)
+
+def expand_start_size_to_reg(start_size_source, address_cells=2, size_cells=2,
+                             default_start=0xbeef, default_size=0xbeef):
+    """Convert YAML start/size tuples into reg cell values.
+
+    Args:
+        start_size_source (dict | tuple | list | LopperNode): Source providing
+            ``start`` and ``size`` values. When a node is supplied, properties
+            of the same name are used.
+        address_cells (int): Number of cells for the start portion.
+        size_cells (int): Number of cells for the size portion.
+        default_start (int): Fallback value when start is missing.
+        default_size (int): Fallback value when size is missing.
+
+    Returns:
+        tuple[list[int], int, int]: A ``reg``-compatible list of integers,
+        along with the parsed start and size values.
+    """
+    if isinstance(start_size_source, LopperNode):
+        start_raw = start_size_source.propval("start")
+        size_raw = start_size_source.propval("size")
+    elif isinstance(start_size_source, dict):
+        start_raw = start_size_source.get("start")
+        size_raw = start_size_source.get("size")
+    elif isinstance(start_size_source, (list, tuple)) and len(start_size_source) >= 2:
+        start_raw, size_raw = start_size_source[0], start_size_source[1]
+    else:
+        raise TypeError("expand_start_size_to_reg expects dict, tuple/list, or LopperNode input")
+
+    start_val = _normalize_start_size_value(start_raw, default_start)
+    size_val = _normalize_start_size_value(size_raw, default_size)
+
+    reg_cells = []
+    reg_cells.extend(cell_value_split(int(start_val), address_cells))
+    reg_cells.extend(cell_value_split(int(size_val), size_cells))
+
+    return reg_cells, int(start_val), int(size_val)
 
 # returns a list of all properties in the tree that
 # reference a given node (via phandle)
