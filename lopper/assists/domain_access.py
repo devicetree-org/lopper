@@ -18,18 +18,18 @@ from pathlib import PurePath
 from io import StringIO
 import contextlib
 import importlib
+import copy
+from itertools import chain
+
+sys.path.append(os.path.dirname(__file__))
+
 from lopper import Lopper
 from lopper import LopperFmt
 from lopper.tree import LopperAction
 import lopper
 import lopper_lib
-from itertools import chain
-from lopper_lib import chunks
-import copy
 from lopper.log import _init, _warning, _info, _error, _debug
 import logging
-import subsystem
-import lopper.log
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "access-domain,domain-v1", compat_string_to_test):
