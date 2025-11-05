@@ -338,6 +338,11 @@ class DtbtoCStruct(object):
         self._lines = []
         return lines
 
+    def close(self):
+        """Close the output file to ensure all content is flushed and written"""
+        if self._outfile and not self._outfile.closed:
+            self._outfile.close()
+
 def is_compat(node, compat_string_to_test):
     if re.search( "module,baremetalconfig_xlnx", compat_string_to_test):
         return xlnx_generate_bm_config
@@ -789,5 +794,6 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
            fd.write("set(DRIVER_OPTPROP_%s_LIST %s)\n" % (index, utils.to_cmakelist(drvoptprop_list)))
            fd.write("list(APPEND TOTAL_DRIVER_PROP_LIST DRIVER_PROP_%s_LIST)\n" % index)
     plat.out(''.join(plat.get_buf()))
+    plat.close()
 
     return True
