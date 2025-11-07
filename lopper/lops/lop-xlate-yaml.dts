@@ -19,7 +19,7 @@
                         address-map = "#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells";
                         interrupt-parent = "phandle";
                         iommus = "phandle field";
-                        interrupt-map = "#interrupt-cells phandle #interrupt-cells";
+                        interrupt-map = "#address-cells #interrupt-cells phandle:#interrupt-cells";
                         access = "phandle flags";
                         cpus = "phandle mask mode";
                         include = "phandle";
