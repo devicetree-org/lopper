@@ -1,0 +1,13 @@
+{
+    "HARDWARE_PRIMITIVE": [
+        {
+            "AIE": {
+                "AIE_ARRAY_COLUMN": "36",
+                "AIE_TILE_ROW": "3:4",
+                "HARDWARE_GENERATION": "AIE2PS",
+                "MEM_TILE_ROW": "1:2",
+                "SHIM_ROW": "0:1"
+            }
+        }
+    ]
+}
