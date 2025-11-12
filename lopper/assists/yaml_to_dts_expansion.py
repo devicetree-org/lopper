@@ -876,7 +876,7 @@ def openamp_remote_cpu_expand( tree, subnode, cluster_cpu, cluster_node, verbose
         subnode + LopperProp(name="rpu_pd_val", value=pd_prop_node[0].propval("power-domains"))
 
     if cluster_node != None and "r5" in cluster_node.name:
-        subnode + LopperProp(name="cpu_config_str", value="split" if subnode.propval("cpus")[1] == 1 else "lockstep")
+        subnode + LopperProp(name="cpu_config_str", value="lockstep" if check_bit_set(subnode.propval("cpus")[2], 30) else "split")
         subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
 
 
