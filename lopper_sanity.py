@@ -25,6 +25,7 @@ from collections import UserDict
 from collections import OrderedDict
 import copy
 import getopt
+import subprocess
 
 from lopper.tree import *
 
@@ -2102,58 +2103,24 @@ def inplace_change(filename, old_string, new_string):
         s = s.replace(old_string, new_string)
         f.write(s)
 
-def openamp_sanity_test_generic( sdt, overlay, output_sdt, target_soc, test_str, nodes_to_check, verbose ):
-    demo_area = os.getcwd() + "/demos/openamp/inputs/"
-    lops_area = os.getcwd() + "/lopper/lops/"
+def openamp_sanity_test_generic( nodes_to_check, output_sdt, demo_script, files_to_remove, test_str, verbose ):
+    result = subprocess.run([demo_script], cwd=os.getcwd(), capture_output=True, text=True)
+    device_tree = LopperSDT( output_sdt )
+    device_tree.setup( output_sdt, [], "", True, libfdt=libfdt )
 
-    dt = setup_system_device_tree( outdir )
-    device_tree = LopperSDT( sdt )
-    device_tree.dryrun = False
-    device_tree.output_file = outdir + output_sdt
-    device_tree.cleanup_flag = True
-    device_tree.save_temps = False
-    device_tree.enhanced = True
-    device_tree.symbols = True
-    device_tree.outdir = outdir
+    for i in files_to_remove:
+        os.remove(i)
 
-    shutil.copyfile(lops_area + "lop-gen_domain_dts-invoke.dts",lops_area + "lop-gen_domain_dts-invoke.dts" + ".original")
+    for i in nodes_to_check:
+        n = device_tree.tree[i]
+        if not isinstance(n, LopperNode):
+            print("openamp_sanity_test_generic - ", test_str, "could not find node", i)
+            print("below is log from script")
+            print(result.stdout)
+            print(result.stderr)
+            test_failed(test_str)
 
-    gen_domain_mapping = { 'a72': 'psv_cortexa72_0', 'a53' : 'psu_cortexa53_0' }
-
-    inplace_change(lops_area + "lop-gen_domain_dts-invoke.dts", 'psv_cortexa72_0' , gen_domain_mapping[target_soc])
-
-    local_inputs = [ overlay,
-                     lops_area + "lop-load.dts",
-                     lops_area + "lop-xlate-yaml.dts",
-                     lops_area + "lop-gen_domain_dts-invoke.dts",
-                     lops_area + "lop-" + target_soc + "-imux.dts" ]
-
-    device_tree.setup( sdt, local_inputs, "", True, libfdt=libfdt )
-    device_tree.perform_lops()
-    device_tree.write( enhanced = True )
-
-    nodes_found = []
-    for i, v in enumerate(nodes_to_check):
-        nodes_found.append(False)
-
-    shutil.copyfile(lops_area + "lop-gen_domain_dts-invoke.dts" + ".original",lops_area + "lop-gen_domain_dts-invoke.dts")
-    os.remove(lops_area + "lop-gen_domain_dts-invoke.dts" + ".original")
-
-    pass_test = False
-    for n in device_tree.tree.__nodes__["/"].subnodes():
-
-        for i, v in enumerate(nodes_to_check):
-            if n.name == v or n.label == v:
-                nodes_found[i] = True
-
-    for i,v in enumerate(nodes_to_check):
-        if nodes_found[i] == False:
-            print('did not find node: ', nodes_to_check[i])
-
-    if not any(nodes_to_check):
-        test_failed(test_str)
-    else:
-        test_passed(test_str)
+    test_passed(test_str)
 
 def xlnx_gen_domain_sanity_test( verbose ):
     ws_area = os.getcwd()
@@ -2196,21 +2163,10 @@ def xlnx_gen_domain_sanity_test( verbose ):
 def openamp_sanity_test( verbose ):
     demo_area = os.getcwd() + "/demos/openamp/inputs/"
 
-    sdt = demo_area + "openamp_zu.dts"
-    overlay = demo_area + "/openamp-overlay-zynqmp.yaml"
-    target_soc = "a53"
-    test_str = "OpenAMP ZynqMP Sanity Test"
-    output_sdt = "openamp_sanity_output_zynqmp.dts"
-    nodes_to_check = [ "r5f@0", "remoteproc@ffe00000", "rpu0vdev0buffer", "ipi_mailbox_rpu0" ]
-    openamp_sanity_test_generic(sdt, overlay, output_sdt, target_soc, test_str, nodes_to_check, verbose)
-
-    output_sdt = "/openamp_sanity_output_versal.dts"
-    sdt = demo_area + "openamp_versal.dts"
-    overlay = demo_area + "/openamp-overlay-versal.yaml"
-    target_soc = "a72"
-    test_str = "OpenAMP Versal Sanity Test"
-    nodes_to_check = [ "r5f@0", "remoteproc@ffe00000", "rpu0vdev0buffer", "openamp_mailbox@ff360000" ]
-    openamp_sanity_test_generic(sdt, overlay, output_sdt, target_soc, test_str, nodes_to_check, verbose)
+    openamp_sanity_test_generic(["/remoteproc@eba00000"] , "linux.dts", demo_area + "versal2_run.sh",
+                                [ "linux.dts", "out.dts", "APU_Linux.dts", "openamp_APU_Linux.dts"],
+                                "OpenAMP Versal2 Sanity Test", verbose )
+    #openamp_sanity_test_generie(sdt, overlay, output_sdt, , test_str, nodes_to_check, verbose)
 
 def lops_sanity_test( device_tree, lop_file, verbose ):
     if not libfdt:

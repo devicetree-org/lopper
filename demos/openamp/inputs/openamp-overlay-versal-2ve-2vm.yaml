@@ -1,0 +1,463 @@
+reserved-memory:
+  ranges: true
+  "#size-cells": 2
+  "#address-cells": 2
+
+  ddrboot@9800100:
+    no-map: 1
+    start: 0x9800100
+    size: 0x5FF00
+    device_type: "memory"
+  rpu0vdev0vring0@9860000:
+    start: 0x9860000
+    size: 0x4000
+    no-map: 1
+  rpu0vdev0vring1@9864000:
+    start: 0x9864000
+    size: 0x4000
+    no-map: 1
+  rpu0vdev0buffer@9868000:
+    size: 0x40000
+    start: 0x9868000
+    no-map: 1
+  rsctbl@9800000:
+    start: 0x9800000
+    size: 0x100
+    no-map: 1
+  ipc@9860000:
+    start: 0x9860000
+    size: 0x48000
+    compatible: "mmio-sram"
+  rproc6@c000000:
+    start: 0xc000000
+    size: 0x3800000
+    no-map: 1
+  rproc7@1082A000:
+    start: 0x1082A000
+    size: 0x3800000
+    no-map: 1
+  rproc8:
+    no-map: 1
+    size: 0x3800000
+    start: 0x15054000
+  rproc9:
+    start: 0x1987E000
+    size: 0x3800000
+    no-map: 1
+
+definitions:
+  OpenAMP:
+  linux_cma: &linux_cma
+    - start: '0x00A00000000'
+      size: 4096M
+      no-map: true
+      linux,cma-default: true
+      reusable: true
+  
+  xrt_allocator: &xrt_allocator
+    - start: '0x50000000000'
+      size: 2048M
+      no-map: true
+
+domains:
+  APU_Linux:
+    compatible: openamp,domain-v1
+    cpus:
+      - cluster: cpus_a78
+        cpumask: 0xf
+        mode:
+          secure: false
+          el: 0x3   
+    os,type: linux
+    memory:
+      - dev: linux_ddrmc0_0
+        size: 2048M
+        start: '0x00'
+      - dev: linux_ddrmc0_1
+        size: 2048M
+        start: '0x00800000000'
+      - dev: linux_ddrmc1_0
+        size: 2048M
+        start: '0x50000000000'
+    sram:
+      - dev: axi_bram_ctrl_0@b0000000
+        size: 8 KB
+        spec_name: axi_bram_ctrl_0
+        start: '0xb0000000'
+    reserved-memory:
+      - rpu0vdev0vring0@9860000
+      - rpu0vdev0vring1@9864000
+      - rpu0vdev0buffer@9868000
+      - ddrboot@9800100
+      - rsctbl@9800000
+      - rproc6@c000000
+      - rproc7@1082A000
+
+    domain-to-domain:
+      compatible: openamp,domain-to-domain-v1
+      remoteproc-relation:
+        compatible: openamp,remoteproc-v2
+        relation0:
+            remote: RPU_Zephyr
+            elfload: [ r52_0a_atcm_global, r52_0a_btcm_global, r52_0a_ctcm_global, ddrboot@9800100, rsctbl@9800000 ]
+        relation1:
+            remote: RPU_ISP0
+            elfload: [ r52_0d_atcm_global, r52_0d_btcm_global, r52_0d_ctcm_global, rproc6@c000000 ]
+        relation2:
+            remote: RPU_ISP1
+            elfload: [ r52_1d_atcm_global, r52_1d_btcm_global, r52_1d_ctcm_global, rproc7@1082A000 ]
+
+      rpmsg-relation:
+        compatible: openamp,rpmsg-v1
+        relation0:
+            remote: RPU_Zephyr
+            carveouts: [ rpu0vdev0vring0@9860000, rpu0vdev0vring1@9864000, rpu0vdev0buffer@9868000 ]
+            mbox: ipi_1_nobuf_to_ipi_2_nobuf #IPI_BO_BUF1 OpenAMP example app (APU)
+
+    access:
+      - dev: rpu0vdev0vring0@9860000
+        flags: {}
+      - dev: rpu0vdev0vring1@9864000
+        flags: {}
+      - dev: rpu0vdev0buffer@9868000
+        flags: {}
+      - dev: ddrboot@9800100
+        flags: {}
+      - dev: rsctbl@9800000
+        flags: {}
+      - dev: rproc6@c000000
+        flags: {}
+      - dev: rproc7@1082A000
+        flags: {}
+      - dev: ethernet@f1a60000
+        flags: {}
+        label: gem0
+      - dev: ethernet@ed920000
+        flags: {}
+        label: mmi_10gbe
+      - dev: dma-controller@ebd00000
+        flags: {}
+        label: adma0
+      - dev: dma-controller@ebd10000
+        flags: {}
+        label: adma1
+      - dev: dma-controller@ebd20000
+        flags: {}
+        label: adma2
+      - dev: dma-controller@ebd30000
+        flags: {}
+        label: adma3
+      - dev: dma-controller@ebd40000
+        flags: {}
+        label: adma4
+      - dev: dma-controller@ebd50000
+        flags: {}
+        label: adma5
+      - dev: dma-controller@ebd60000
+        flags: {}
+        label: adma6
+      - dev: dma-controller@ebd70000
+        flags: {}
+        label: adma7
+      - dev: i2c@f1950000
+        flags: {}
+        label: i2c1
+      - dev: timer@f1e60000
+        flags: {}
+        label: ttc0
+      - dev: timer@f1e70000
+        flags: {}
+        label: ttc1
+      - dev: usb@f1ef0000
+        flags: {}
+        label: usb1
+      - dev: can@f19e0000
+        flags: {}
+        label: can0
+      - dev: can@f19f0000
+        flags: {}
+        label: can1
+      - dev: can@f1a00000
+        flags: {}
+        label: can2
+      - dev: can@f1a10000
+        flags: {}
+        label: can3
+      - dev: gpio@f1a50000
+        flags: {}
+        label: gpio0
+      - dev: spi@f1010000
+        flags: {}
+        label: ospi
+      - dev: serial@f1930000
+        flags: {}
+        label: serial1
+      - dev: mailbox@eb330000
+        flags: {}
+        label: ipi0
+      - dev: mailbox@eb350000
+        flags: {}
+        label: ipi2
+      - dev: mailbox@eb360000
+        flags: {}
+        label: ipi3
+      - dev: mailbox@eb370000
+        flags: {}
+        label: ipi4
+      - dev: mailbox@eb380000
+        flags: {}
+        label: ipi5
+      - dev: mailbox@eb3a0000
+        flags: {}
+        label: ipi6
+      - dev: mailbox@eb3b0000
+        flags: {}
+        label: ipi_nobuf1
+      - dev: gpu@ed000000
+        flags: {}
+        label: gpu
+      - dev: physical-memory-group-manager
+        flags: {}
+        label: gpu_physical_memory_group_manager
+      - dev: mmi_dptx@ede00000
+        flags: {}
+        label: mmi_dptx
+      - dev: mmi_dc@edd00000
+        flags: {}
+        label: mmi_dc
+      - dev: dma-controller@edd10000
+        flags: {}
+        label: mmi_dcdma
+        spec_name: MMI_DCDMA
+      - dev: mmi-usb
+        flags: {}
+        label: mmi_usb
+      - dev: gpio@f1a50000
+        flags: {}
+        label: gpio0
+      - dev: gpio@b2000000
+        flags: {}
+        label: axi_gpio_0
+      - dev: gpio@b2010000
+        flags: {}
+        label: axi_gpio_1
+      - dev: gpio@b2020000
+        flags: {}
+        label: axi_gpio_2
+      - dev: timer@b0010000
+        flags: {}
+        label: axi_timer_0
+      - dev: pcie@ed931000
+        flags: {}
+        label: mdb_pcie0
+      - dev: pcie@ed939000
+        flags: {}
+        label: mdb_pcie1
+      - dev: ufs@f10b0000
+        flags: {}
+        label: ufshc
+      - dev: rtc@f12a0000
+        flags: {}
+        label: rtc
+      - dev: mmi_gpu_slcr@ed720000
+        flags: {}
+        label: mmi_gpu_slcr
+      - dev: pmcdma@f11c0000 
+        flags: {}
+        label: pmcdma
+      - dev: pmcdma@f11d0000
+        flags: {}
+        label: pmcdma1
+      - dev: asudma@ebe8c000
+        flags: {}
+        label: asudma
+      - dev: gpio@f1020000
+        flags: {}
+        label: pmc_gpio
+      - dev: pmc_trng@f1230000
+        flags: {}
+        label: pmc_trng
+      - dev: sysmon@f1270000
+        flags: {}
+        label: sysmon
+      - dev: coresight@f0800000
+        flags: {}
+        label: coresight
+      - dev: ps_wizard_0_mmi_0_cpm_cdx_dpu_high@100000000000
+      - dev: ps_wizard_0_mmi_0_mmi_gtyp_cfg@ed900000
+      - dev: ps_wizard_0_mmi_0_mmi_hdcp@edeb0000
+      - dev: ps_wizard_0_mmi_0_mmi_pipe_gem_slcr@ed930000
+      - dev: ps_wizard_0_mmi_0_mmi_trng@ede80000
+      - dev: ps_wizard_0_mmi_0_mmi_pcie_region_0@a0000000
+      - dev: ps_wizard_0_ps11_0_cpm_cdx_dpu_high@100000000000
+      - dev: ps_wizard_0_ps11_0_noc_pcie_0@a0000000
+      - dev: ps_wizard_0_ps11_0_pmc_ufs_0@f10a0000
+      - dev: r52_0a_atcm_global@eba00000
+        flags: 0
+      - dev: r52_0a_btcm_global@eba10000
+        flags: 0
+      - dev: r52_0a_ctcm_global@eba20000
+        flags: 0
+      - dev: r52_1a_atcm_global@eba40000
+        flags: 0
+      - dev: r52_1a_btcm_global@eba50000
+        flags: 0
+      - dev: r52_1a_ctcm_global@eba60000
+        flags: 0
+      - dev: r52_0d_atcm_global@ebb80000
+        flags: 0
+      - dev: r52_0d_btcm_global@ebb90000
+        flags: 0
+      - dev: r52_0d_ctcm_global@ebba0000
+        flags: 0
+      - dev: r52_1d_atcm_global@ebbc0000
+        flags: 0
+      - dev: r52_1d_btcm_global@ebbd0000
+        flags: 0
+      - dev: r52_1d_ctcm_global@ebbe0000
+        flags: 0
+      - dev: r52_0e_atcm_global@ebc00000
+        flags: 0
+      - dev: r52_0e_btcm_global@ebc10000
+        flags: 0
+      - dev: r52_0e_ctcm_global@ebc20000
+        flags: 0
+      - dev: r52_1e_atcm_global@ebc40000
+        flags: 0
+      - dev: r52_1e_btcm_global@ebc50000
+        flags: 0
+      - dev: r52_1e_ctcm_global@ebc60000
+        flags: 0
+
+  RPU_Zephyr:
+    compatible: openamp,domain-v1
+    cpus: 
+      - cluster: cpus_r52_0
+        cluster_cpu: cortexr52_0
+        cpumask: 0x1
+        mode:
+          secure: true
+          el: 0x3  
+    os,type: zephyr
+    sram:
+      - dev: ddrboot@9800100
+        start: 0x9800100
+        size: 0x5FF00
+      - dev: r52_0a_atcm_global@eba00000
+        label: r52_0a_atcm_global
+        size: 64K
+        spec_name: R52_0A_ATCM_GLOBAL
+        start: '0xeba00000'
+      - dev: r52_0a_btcm_global@eba10000
+        label: r52_0a_btcm_global
+        size: 32K
+        spec_name: R52_0A_BTCM_GLOBAL
+        start: '0xeba10000'
+      - dev: r52_0a_ctcm_global@eba20000
+        label: r52_0a_ctcm_global
+        size: 32K
+        spec_name: R52_0A_CTCM_GLOBAL
+        start: '0xeba20000'
+    reserved-memory:
+        - ipc@9860000
+        - ddrboot@9800100
+
+    domain-to-domain:
+      compatible: openamp,domain-to-domain-v1
+      rpmsg-relation:
+        compatible: openamp,rpmsg-v1
+        relation0:
+            host: APU_Linux
+            mbox: ipi_2_nobuf_to_ipi_1_nobuf #IPI_NO_BUF2 OpenAMP example app (RPU)
+            carveouts: [ ipc@9860000 ]
+    access:
+      - dev: ddrboot@9800100
+        flags: {}
+      - dev: ipc@9860000
+        flags: {}
+      - dev: timer@f1e80000
+        flags: {}
+        label: ttc2
+      - dev: mailbox@eb340000
+        flags: {}
+        label: ipi1
+      - dev: mailbox@eb3b1000
+        flags: {}
+        label: ipi_nobuf2
+  
+  RPU_BM:
+    compatible: openamp,domain-v1
+    cpus:
+      - cluster: cpus_r52_1
+        cluster_cpu: cortexr52_1
+        cpumask: 0x2
+        mode:
+          secure: true
+          el: 0x3  
+    os,type: baremetal
+    memory:
+    sram:
+      - dev: r52_1a_atcm_global@eba40000
+        label: r52_1a_atcm_global
+        size: 64K
+        spec_name: R52_1A_ATCM_GLOBAL
+        start: '0xeba40000'
+      - dev: r52_1a_btcm_global@eba50000
+        label: r52_1a_btcm_global
+        size: 32K
+        spec_name: R52_1A_BTCM_GLOBAL
+        start: '0xeba50000'
+      - dev: r52_1a_ctcm_global@eba60000
+        label: r52_1a_ctcm_global
+        size: 32K
+        spec_name: R52_1A_CTCM_GLOBAL
+        start: '0xeba60000'
+    access:
+      - dev: serial@f1920000
+        flags: {}
+        label: serial0
+      - dev: timer@f1e90000
+        flags: {}
+        label: ttc3
+
+  RPU_ISP0:
+    compatible: openamp,domain-v1
+    cpus:
+      - cluster: cpus_r52_6
+        cluster_cpu: cortexr52_6
+        cpumask: 0x1
+        mode:
+          secure: true
+          el: 0x3  
+    os,type: baremetal
+  RPU_ISP1:
+    compatible: openamp,domain-v1
+    cpus:
+      - cluster: cpus_r52_7
+        cluster_cpu: cortexr52_7
+        cpumask: 0x1
+        mode:
+          secure: true
+          el: 0x3  
+    os,type: baremetal
+  RPU_ISP2:
+    compatible: openamp,domain-v1
+    cpus:
+      - cluster: cpus_r52_8
+        cluster_cpu: cortexr52_9
+        cpumask: 0x1
+        mode:
+          secure: true
+          el: 0x3  
+    os,type: baremetal
+  RPU_ISP3:
+    compatible: openamp,domain-v1
+    cpus:
+      - cluster: cpus_r52_9
+        cluster_cpu: cortexr52_9
+        cpumask: 0x1
+        mode:
+          secure: true
+          el: 0x3  
+    os,type: baremetal
+

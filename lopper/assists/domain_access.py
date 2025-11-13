@@ -18,18 +18,18 @@ from pathlib import PurePath
 from io import StringIO
 import contextlib
 import importlib
+import copy
+from itertools import chain
+
+sys.path.append(os.path.dirname(__file__))
+
 from lopper import Lopper
 from lopper import LopperFmt
 from lopper.tree import LopperAction
 import lopper
 import lopper_lib
-from itertools import chain
-from lopper_lib import chunks
-import copy
 from lopper.log import _init, _warning, _info, _error, _debug
 import logging
-import subsystem
-import lopper.log
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "access-domain,domain-v1", compat_string_to_test):
@@ -424,6 +424,11 @@ def core_domain_access( tgt_node, sdt, options ):
 
     modified_memory_nodes = []
     for domain_memory_entry in domain_memory_chunks:
+        # NOTE: if the domain either does not have a memory field described OR the
+        # the memory field is just 'memory:' then domain_memory_entry will show up as ['']
+        if domain_memory_entry == ['']:
+            continue
+
         domain_memory_start_addr = domain_memory_entry[0]
         domain_memory_size = domain_memory_entry[1]
 
@@ -601,14 +606,10 @@ def core_domain_access( tgt_node, sdt, options ):
             # for all modified memory nodes
             cpu_node["address-map"].value = address_map_new
 
-    # 7) reserved memory node processing
+    # 7) want our domains node last, just for readability
     try:
         reserved_memory_node = domain_node.subnodes(children_only=True,name="reserved-memory$")
         if reserved_memory_node:
-            lopper.log._debug( "processing reserved memory" )
-            subsystem.reserved_memory_expand( sdt.tree, reserved_memory_node[0] )
-
-            # we want our domains node last, just for readability
             sdt.tree['/'].reorder_child( "/domains", "/reserved-memory", after=True )
     except Exception as e:
         lopper.log._warning( f"exception while processing reserved-memory: {e}")
@@ -618,7 +619,6 @@ def core_domain_access( tgt_node, sdt, options ):
         chosen_node = domain_node.subnodes(children_only=True,name="chosen$")
         if chosen_node:
             lopper.log._debug( "processing chosen node" )
-            subsystem.chosen_expand( sdt.tree, chosen_node[0] )
 
             # we want our domains node last, just for readability
             sdt.tree['/'].reorder_child( "/domains", "/chosen", after=True )

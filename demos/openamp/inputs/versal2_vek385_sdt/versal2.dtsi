@@ -1,0 +1,1987 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * dts file for AMD Versal Gen 2
+ *
+ * Copyright (C) 2025, Advanced Micro Devices, Inc.
+ *
+ * Michal Simek <michal.simek@amd.com>
+ */
+
+/ {
+	compatible = "xlnx,versal2";
+	model = "AMD Versal Gen 2";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	interrupt-parent = <&imux>;
+
+	options {
+		u-boot {
+			compatible = "u-boot,config";
+			bootscr-address = /bits/ 64 <0x78000000>;
+		};
+	};
+
+	cpus_a78: cpus-a78@0 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cpu-map {
+			cluster0 {
+				core0 {
+					cpu = <&cortexa78_0>;
+				};
+				core1 {
+					cpu = <&cortexa78_1>;
+				};
+			};
+			cluster1 {
+				core0 {
+					cpu = <&cortexa78_2>;
+				};
+				core1 {
+					cpu = <&cortexa78_3>;
+				};
+			};
+			cluster2 {
+				core0 {
+					cpu = <&cortexa78_4>;
+				};
+				core1 {
+					cpu = <&cortexa78_5>;
+				};
+			};
+			cluster3 {
+				core0 {
+					cpu = <&cortexa78_6>;
+				};
+				core1 {
+					cpu = <&cortexa78_7>;
+				};
+			};
+		};
+
+		cortexa78_0: cpu@0 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0>;
+			cpu-idle-states = <&CPU_RETENTION_0>;
+		};
+		cortexa78_1: cpu@100 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x100>;
+			cpu-idle-states = <&CPU_RETENTION_0>;
+		};
+		cortexa78_2: cpu@10000 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x10000>;
+			cpu-idle-states = <&CPU_RETENTION_0>;
+		};
+		cortexa78_3: cpu@10100 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x10100>;
+			cpu-idle-states = <&CPU_RETENTION_0>;
+		};
+		cortexa78_4: cpu@20000 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x20000>;
+			cpu-idle-states = <&CPU_RETENTION_0>;
+		};
+		cortexa78_5: cpu@20100 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x20100>;
+			cpu-idle-states = <&CPU_RETENTION_0>;
+		};
+		cortexa78_6: cpu@30000 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x30000>;
+			cpu-idle-states = <&CPU_RETENTION_0>;
+		};
+		cortexa78_7: cpu@30100 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			enable-method = "psci";
+			reg = <0x30100>;
+			cpu-idle-states = <&CPU_RETENTION_0>;
+		};
+		idle-states {
+			entry-method = "psci";
+
+			CPU_RETENTION_0: cpu-retention-0 {
+				compatible = "arm,idle-state";
+				arm,psci-suspend-param = <0>;
+				local-timer-stop;
+				entry-latency-us = <300>;
+				exit-latency-us = <600>;
+				min-residency-us = <10000>;
+			};
+		};
+	};
+
+	cpus_r52_0: cpus-r52@0 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_0: cpu@0 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0x0>;
+		};
+	};
+
+	cpus_r52_1: cpus-r52@1 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_1: cpu@1 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0x1>;
+		};
+	};
+
+	cpus_r52_2: cpus-r52@2 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_2: cpu@2 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0x2>;
+		};
+	};
+
+	cpus_r52_3: cpus-r52@3 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_3: cpu@3 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0x3>;
+		};
+	};
+
+	cpus_r52_4: cpus-r52@4 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_4: cpu@4 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0x4>;
+		};
+	};
+
+	cpus_r52_5: cpus-r52@5 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_5: cpu@5 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0x5>;
+		};
+	};
+
+	cpus_r52_6: cpus-r52@6 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_6: cpu@6 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0x6>;
+		};
+	};
+
+	cpus_r52_7: cpus-r52@7 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_7: cpu@7 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0x7>;
+		};
+	};
+
+	cpus_r52_8: cpus-r52@8 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_8: cpu@8 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0x8>;
+		};
+	};
+
+	cpus_r52_9: cpus-r52@9 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_9: cpu@9 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0x9>;
+		};
+	};
+
+	cpus_microblaze_0: cpus_microblaze@0 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		pmc_0: cpu@0 {
+			compatible = "pmc-microblaze";
+			device_type = "cpu";
+			reg = <0x0>;
+		};
+	};
+
+	cpus_asu: cpus_asu@0 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		asu: cpu@0 {
+			compatible = "xlnx,asu-microblaze_riscv";
+			device_type = "cpu";
+			reg = <0x0>;
+		};
+	};
+
+	aliases {
+		serial0 = &serial0;
+		serial1 = &serial1;
+		mmc0 = &sdhci0;
+		mmc1 = &sdhci1;
+		i2c0 = &i2c0;
+		i2c1 = &i2c1;
+		i2c2 = &i2c2;
+		i2c3 = &i2c3;
+		i2c4 = &i2c4;
+		i2c5 = &i2c5;
+		i2c6 = &i2c6;
+		i2c7 = &i2c7;
+		i2c8 = &i2c8;
+		spi0 = &ospi;
+		spi1 = &qspi;
+		spi2 = &spi0;
+		spi3 = &spi1;
+	};
+	firmware {
+		psci: psci { /* Should be injected by firmware */
+			compatible = "arm,psci-1.0";
+			method = "smc";
+		};
+	};
+
+	fpga: fpga-region {
+		compatible = "fpga-region";
+		fpga-mgr = <&versal_fpga>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+	};
+
+	timer: timer {
+		compatible = "arm,armv8-timer";
+		interrupts = <1 13 4>, <1 14 4>, <1 11 4>, <1 10 4>;
+	};
+
+	versal_fpga: versal-fpga {
+		compatible = "xlnx,versal-fpga";
+	};
+
+	amba_apu: apu-bus {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		interrupt-parent = <&gic_a78>;
+		u-boot,dm-pre-reloc;
+
+		gic_a78: interrupt-controller@e2000000 {
+			compatible = "arm,gic-v3";
+			#interrupt-cells = <3>;
+			reg = <0 0xe2000000 0 0x10000>,
+			      <0 0xe2060000 0 0x200000>;
+			interrupt-controller;
+			interrupt-parent = <&gic_a78>;
+			interrupts = <1 9 4>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+			its: msi-controller@e2040000 {
+				compatible = "arm,gic-v3-its";
+				msi-controller;
+				#msi-cells = <1>;
+				reg = <0 0xe2040000 0 0x20000>;
+			};
+		};
+	};
+
+	// Check the RPU GIC address
+	amba_rpu: rpu-bus {
+		compatible = "indirect-bus";
+		#address-cells = <0x2>;
+		#size-cells = <0x2>;
+		ranges;
+		interrupt-parent = <&gic_r52>;
+		u-boot,dm-pre-reloc;
+
+		gic_r52: interrupt-controller@e2000000 {
+			compatible = "arm,gic-v3", "arm,gic";
+			#interrupt-cells = <3>;
+			interrupt-controller;
+			interrupt-parent = <&gic_r52>;
+			interrupts = <1 9 4>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			reg = <0x0 0xe2000000 0x0 0x10000>,
+			      <0x0 0xe2100000 0x0 0x80000>;
+		};
+	};
+
+	amba: axi {
+		compatible = "simple-bus";
+		bootph-all;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		interrupt-parent = <&imux>;
+
+		// check imux entries
+		/* Proxy Interrupt Controller */
+		imux: interrupt-multiplex {
+			compatible = "interrupt-multiplex";
+			#address-cells = <0x0>;
+			#interrupt-cells = <3>;
+			interrupt-controller;
+			interrupt-parent = <&gic_a78>, <&gic_r52>;
+			/* mask for address cells, mask for interrupt cells of the children */
+			interrupt-map-mask = <0x0 0xffff 0x0>;
+			/* 1:1 mapping of all interrupts to gic_a78 and gic_r52 */
+			/* child address cells, child interrupt cells, parent, parent interrupt cells */
+			interrupt-map = <0x0 0x14 0x0 &gic_a78 0x0 0x14 0x4>,
+					<0x0 0x13 0x0 &gic_a78 0x0 0x13 0x4>,
+					<0x0 0x15 0x0 &gic_a78 0x0 0x15 0x4>,
+					<0x0 0x16 0x0 &gic_a78 0x0 0x16 0x4>,
+					<0x0 0x17 0x0 &gic_a78 0x0 0x17 0x4>,
+					<0x0 0x18 0x0 &gic_a78 0x0 0x18 0x4>,
+					<0x0 0x19 0x0 &gic_a78 0x0 0x19 0x4>,
+					<0x0 0x1a 0x0 &gic_a78 0x0 0x1a 0x4>,
+					<0x0 0x1b 0x0 &gic_a78 0x0 0x1b 0x4>,
+					<0x0 0x1c 0x0 &gic_a78 0x0 0x1c 0x4>,
+					<0x0 0x1d 0x0 &gic_a78 0x0 0x1d 0x4>,
+					<0x0 0x21 0x0 &gic_a78 0x0 0x21 0x4>,
+					<0x0 0x22 0x0 &gic_a78 0x0 0x22 0x4>,
+					<0x0 0x26 0x0 &gic_a78 0x0 0x26 0x4>,
+					<0x0 0x27 0x0 &gic_a78 0x0 0x27 0x4>,
+					<0x0 0x29 0x0 &gic_a78 0x0 0x29 0x4>,
+					<0x0 0x2b 0x0 &gic_a78 0x0 0x2b 0x4>,
+					<0x0 0x2c 0x0 &gic_a78 0x0 0x2c 0x4>,
+					<0x0 0x2d 0x0 &gic_a78 0x0 0x2d 0x4>,
+					<0x0 0x2e 0x0 &gic_a78 0x0 0x2e 0x4>,
+					<0x0 0x2f 0x0 &gic_a78 0x0 0x2f 0x4>,
+					<0x0 0x30 0x0 &gic_a78 0x0 0x30 0x4>,
+					<0x0 0x31 0x0 &gic_a78 0x0 0x31 0x4>,
+					<0x0 0x32 0x0 &gic_a78 0x0 0x32 0x4>,
+					<0x0 0x33 0x0 &gic_a78 0x0 0x33 0x4>,
+					<0x0 0x34 0x0 &gic_a78 0x0 0x34 0x4>,
+					<0x0 0x35 0x0 &gic_a78 0x0 0x35 0x4>,
+					<0x0 0x36 0x0 &gic_a78 0x0 0x36 0x4>,
+					<0x0 0x48 0x0 &gic_a78 0x0 0x48 0x4>,
+					<0x0 0x49 0x0 &gic_a78 0x0 0x49 0x4>,
+					<0x0 0x4a 0x0 &gic_a78 0x0 0x4a 0x4>,
+					<0x0 0x4b 0x0 &gic_a78 0x0 0x4b 0x4>,
+					<0x0 0x4c 0x0 &gic_a78 0x0 0x4c 0x4>,
+					<0x0 0x4d 0x0 &gic_a78 0x0 0x4d 0x4>,
+					<0x0 0x4e 0x0 &gic_a78 0x0 0x4e 0x4>,
+					<0x0 0x4f 0x0 &gic_a78 0x0 0x4f 0x4>,
+					<0x0 0x5f 0x0 &gic_a78 0x0 0x5f 0x4>,
+					<0x0 0x60 0x0 &gic_a78 0x0 0x60 0x4>,
+					<0x0 0x61 0x0 &gic_a78 0x0 0x61 0x4>,
+					<0x0 0x62 0x0 &gic_a78 0x0 0x62 0x4>,
+					<0x0 0x63 0x0 &gic_a78 0x0 0x63 0x4>,
+					<0x0 0xa9 0x0 &gic_a78 0x0 0xa9 0x4>,
+					<0x0 0xb4 0x0 &gic_a78 0x0 0xb4 0x4>,
+					<0x0 0xb5 0x0 &gic_a78 0x0 0xb5 0x4>,
+					<0x0 0xb6 0x0 &gic_a78 0x0 0xb6 0x4>,
+					<0x0 0xb7 0x0 &gic_a78 0x0 0xb7 0x4>,
+					<0x0 0xb9 0x0 &gic_a78 0x0 0xb9 0x4>,
+					<0x0 0xbe 0x0 &gic_a78 0x0 0xbe 0x4>,
+					<0x0 0xbf 0x0 &gic_a78 0x0 0xbf 0x4>,
+					<0x0 0xc8 0x0 &gic_a78 0x0 0xc8 0x4>,
+					<0x0 0xc9 0x0 &gic_a78 0x0 0xc9 0x4>,
+					<0x0 0x8b 0x0 &gic_a78 0x0 0x8b 0x1>,
+					<0x0 0x8c 0x0 &gic_a78 0x0 0x8c 0x1>,
+					<0x0 0x8f 0x0 &gic_a78 0x0 0x8f 0x1>,
+					<0x0 0x90 0x0 &gic_a78 0x0 0x90 0x1>,
+					<0x0 0x93 0x0 &gic_a78 0x0 0x93 0x1>,
+					<0x0 0x94 0x0 &gic_a78 0x0 0x94 0x1>,
+					<0x0 0xa4 0x0 &gic_a78 0x0 0xa4 0x1>,
+					<0x0 0xa5 0x0 &gic_a78 0x0 0xa5 0x1>,
+					<0x0 0x13 0x0 &gic_r52 0x0 0x13 0x4>,
+					<0x0 0x14 0x0 &gic_r52 0x0 0x14 0x4>,
+					<0x0 0x15 0x0 &gic_r52 0x0 0x15 0x4>,
+					<0x0 0x16 0x0 &gic_r52 0x0 0x16 0x4>,
+					<0x0 0x17 0x0 &gic_r52 0x0 0x17 0x4>,
+					<0x0 0x18 0x0 &gic_r52 0x0 0x18 0x4>,
+					<0x0 0x19 0x0 &gic_r52 0x0 0x19 0x4>,
+					<0x0 0x1a 0x0 &gic_r52 0x0 0x1a 0x4>,
+					<0x0 0x1b 0x0 &gic_r52 0x0 0x1b 0x4>,
+					<0x0 0x1c 0x0 &gic_r52 0x0 0x1c 0x4>,
+					<0x0 0x1d 0x0 &gic_r52 0x0 0x1d 0x4>,
+					<0x0 0x21 0x0 &gic_r52 0x0 0x21 0x4>,
+					<0x0 0x22 0x0 &gic_r52 0x0 0x22 0x4>,
+					<0x0 0x26 0x0 &gic_r52 0x0 0x26 0x4>,
+					<0x0 0x27 0x0 &gic_r52 0x0 0x27 0x4>,
+					<0x0 0x29 0x0 &gic_r52 0x0 0x29 0x4>,
+					<0x0 0x2b 0x0 &gic_r52 0x0 0x2b 0x4>,
+					<0x0 0x2c 0x0 &gic_r52 0x0 0x2c 0x4>,
+					<0x0 0x2d 0x0 &gic_r52 0x0 0x2d 0x4>,
+					<0x0 0x2e 0x0 &gic_r52 0x0 0x2e 0x4>,
+					<0x0 0x2f 0x0 &gic_r52 0x0 0x2f 0x4>,
+					<0x0 0x30 0x0 &gic_r52 0x0 0x30 0x4>,
+					<0x0 0x31 0x0 &gic_r52 0x0 0x31 0x4>,
+					<0x0 0x32 0x0 &gic_r52 0x0 0x32 0x4>,
+					<0x0 0x33 0x0 &gic_r52 0x0 0x33 0x4>,
+					<0x0 0x34 0x0 &gic_r52 0x0 0x34 0x4>,
+					<0x0 0x35 0x0 &gic_r52 0x0 0x35 0x4>,
+					<0x0 0x36 0x0 &gic_r52 0x0 0x36 0x4>,
+					<0x0 0x48 0x0 &gic_r52 0x0 0x48 0x4>,
+					<0x0 0x49 0x0 &gic_r52 0x0 0x49 0x4>,
+					<0x0 0x4a 0x0 &gic_r52 0x0 0x4a 0x4>,
+					<0x0 0x4b 0x0 &gic_r52 0x0 0x4b 0x4>,
+					<0x0 0x4c 0x0 &gic_r52 0x0 0x4c 0x4>,
+					<0x0 0x4d 0x0 &gic_r52 0x0 0x4d 0x4>,
+					<0x0 0x4e 0x0 &gic_r52 0x0 0x4e 0x4>,
+					<0x0 0x4f 0x0 &gic_r52 0x0 0x4f 0x4>,
+					<0x0 0x5f 0x0 &gic_r52 0x0 0x5f 0x4>,
+					<0x0 0x60 0x0 &gic_r52 0x0 0x60 0x4>,
+					<0x0 0x61 0x0 &gic_r52 0x0 0x61 0x4>,
+					<0x0 0x62 0x0 &gic_r52 0x0 0x62 0x4>,
+					<0x0 0x63 0x0 &gic_r52 0x0 0x63 0x4>,
+					<0x0 0xa9 0x0 &gic_r52 0x0 0xa9 0x4>,
+					<0x0 0xb4 0x0 &gic_r52 0x0 0xb4 0x4>,
+					<0x0 0xb5 0x0 &gic_r52 0x0 0xb5 0x4>,
+					<0x0 0xb6 0x0 &gic_r52 0x0 0xb6 0x4>,
+					<0x0 0xb7 0x0 &gic_r52 0x0 0xb7 0x4>,
+					<0x0 0xb9 0x0 &gic_r52 0x0 0xb9 0x4>,
+					<0x0 0xbe 0x0 &gic_r52 0x0 0xbe 0x4>,
+					<0x0 0xbf 0x0 &gic_r52 0x0 0xbf 0x4>,
+					<0x0 0xc8 0x0 &gic_r52 0x0 0xc8 0x4>,
+					<0x0 0xc9 0x0 &gic_r52 0x0 0xc9 0x4>,
+					<0x0 0x8b 0x0 &gic_r52 0x0 0x8b 0x1>,
+					<0x0 0x8c 0x0 &gic_r52 0x0 0x8c 0x1>,
+					<0x0 0x8f 0x0 &gic_r52 0x0 0x8f 0x1>,
+					<0x0 0x90 0x0 &gic_r52 0x0 0x90 0x1>,
+					<0x0 0x93 0x0 &gic_r52 0x0 0x93 0x1>,
+					<0x0 0x94 0x0 &gic_r52 0x0 0x94 0x1>,
+					<0x0 0xa4 0x0 &gic_r52 0x0 0xa4 0x1>,
+					<0x0 0xa5 0x0 &gic_r52 0x0 0xa5 0x1>;
+		};
+
+		mmi_gpu_slcr@ed720000 {
+			reg = <0x00 0xed720000 0x00 0x20000>;
+			no-map;
+		};
+
+		gpu_physical_memory_group_manager: physical-memory-group-manager {
+			compatible = "arm,physical-memory-group-manager";
+		};
+
+		gpu: gpu@ed000000 {
+			status = "disabled";
+			compatible = "arm,mali-ptm";
+			ranges;
+			#address-cells = <0x02>;
+			#size-cells = <0x02>;
+			#interrupt-cells = <0x02>;
+			xlnx,gpu-slices = <2>;
+			xlnx,gpu-clk-freq-mhz = <900000000>;
+
+			gpu_interface@ed700000 {
+				compatible = "arm,mali-ptm-interface";
+				ranges = <0x00 0x00 0x00 0xed700000 0x00 0x20000>;
+				reg = <0x00 0xed700000 0x00 0x20000>;
+				#address-cells = <0x02>;
+				#size-cells = <0x02>;
+
+				gpu_system@0 {
+					compatible = "arm,mali-gpu-system";
+					reg = <0x00 0x00 0x00 0x10000>;
+					interrupt-parent = <&imux>;
+					interrupt-names = "PTM_UNCORRECTED_ERROR_IRQ", "PTM_DEFERRED_ERROR_IRQ";
+					interrupts = <0 188 4>, <0 188 4>;
+				};
+
+				gpu_assign@10000 {
+					compatible = "arm,mali-gpu-assign";
+					reg = <0x00 0x10000 0x00 0x10000>;
+				};
+			};
+
+			gpu_interface@ed000000 {
+				compatible = "arm,mali-ptm-interface";
+				ranges = <0x00 0x00 0x00 0xed000000 0x00 0x300000>;
+				reg = <0x00 0xed000000 0x00 0x300000>;
+				#address-cells = <0x02>;
+				#size-cells = <0x02>;
+
+				gpu_partition_config_a_0: gpu_partition_config@20000 {
+					compatible = "arm,mali-gpu-partition-config";
+					reg = <0x00 0x20000 0x00 0x10000>;
+				};
+
+				gpu_partition_control_a_0: gpu_partition_control@30000 {
+					compatible = "arm,mali-gpu-partition-control";
+					reg = <0x00 0x30000 0x00 0x10000>;
+					interrupt-parent = <&imux>;
+					interrupt-names = "PTM_PARTITION_IRQ";
+					interrupts = <0 182 4>;
+				};
+
+				gpu_resource_group@a0000 {
+					compatible = "arm,mali-gpu-resource-group";
+					reg = <0x00 0xa0000 0x00 0x10000>;
+					partition-config = <&gpu_partition_config_a_0>;
+					partition-control = <&gpu_partition_control_a_0>;
+					interrupt-parent = <&imux>;
+					interrupt-names = "PTM_GROUP_IRQ";
+					interrupts = <0 181 4>;
+				};
+
+				gpu_aw_message_a_0: gpu_aw_message@fffc0 {
+					compatible = "arm,mali-gpu-aw-message";
+					reg = <0x00 0xfffc0 0x00 0x40>;
+					interrupt-parent = <&imux>;
+					interrupt-names = "PTM_MESSAGE";
+					interrupts = <0 180 4>;
+				};
+
+				gpu@e0000 {
+					compatible = "arm,mali-midgard";
+					reg = <0x00 0xe0000 0x00 0x1ffc0>;
+					interrupt-parent = <&imux>;
+					interrupt-names = "JOB", "MMU", "GPU";
+					interrupts = <0 180 4>, <0 180 4>, <0 180 4>;
+					arbiter-if = <&gpu_aw_message_a_0>;
+					system-coherency = <0x1f>;
+					physical-memory-group-manager = <&gpu_physical_memory_group_manager>;
+				};
+			};
+		};
+
+		mmi_dptx: mmi_dptx@ede00000 {
+			compatible = "amd,mmi-dptx-1.0";
+			status = "disabled";
+			reg = <0x0 0xede00000 0x0 0x40000>,
+			      <0x0 0xedeb0000 0x0 0x100>;
+			reg-names = "dp", "hdcp";
+			interrupts = <0 178 4>, <0 167 4>;
+			interrupt-names = "dptx", "hdcp";
+			interrupt-parent = <&imux>;
+			clock-names = "pixel_clk";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					dptx_in_0: endpoint {
+						remote-endpoint = <&dc_out_0>;
+					};
+				};
+				port@1 {
+					reg = <1>;
+					dptx_in_1: endpoint {
+						remote-endpoint = <&dc_out_1>;
+					};
+				};
+				port@2 {
+					reg = <2>;
+					dptx_in_2: endpoint {
+						remote-endpoint = <&dc_out_2>;
+					};
+				};
+				port@3 {
+					reg = <3>;
+					dptx_in_3: endpoint {
+						remote-endpoint = <&dc_out_3>;
+					};
+				};
+			};
+		};
+
+		mmi_dcdma: dma-controller@edd10000 {
+			compatible = "amd,mmi-dcdma-1.0";
+			status = "disabled";
+			reg = <0 0xedd10000 0 0x1000>;
+			interrupts = <0 179 4>;
+			interrupt-parent = <&imux>;
+			clock-names = "axi_clk";
+			#dma-cells = <0x01>;
+		};
+
+		mmi_dc: mmi_dc@edd00000 {
+			compatible = "amd,mmi-dc-1.0";
+			status = "disabled";
+			reg = <0x0 0xedd00000 0x0 0x1000>,
+			      <0x0 0xedd0a000 0x0 0x1000>,
+			      <0x0 0xedd0b000 0x0 0x1000>,
+			      <0x0 0xedd0c000 0x0 0x1000>,
+			      <0x0 0xedd0d000 0x0 0x1000>;
+			reg-names = "dp", "blend", "avbuf", "misc", "irq";
+			interrupts = <0 179 4>;
+			interrupt-parent = <&imux>;
+			dma-names = "vid.0.0", "vid.0.1", "vid.0.2",
+				    "vid.1.0", "vid.1.1", "vid.1.2",
+				    "aud", "cur";
+			dmas = <&mmi_dcdma 0>, <&mmi_dcdma 1>, <&mmi_dcdma 2>,
+			       <&mmi_dcdma 3>, <&mmi_dcdma 4>, <&mmi_dcdma 5>,
+			       <&mmi_dcdma 6>, <&mmi_dcdma 7>;
+			clock-names = "ps_vid_clk";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+				};
+				port@1 {
+					reg = <1>;
+				};
+				port@2 {
+					reg = <2>;
+				};
+				port@3 {
+					reg = <3>;
+				};
+				port@4 {
+					reg = <4>;
+				};
+				port@5 {
+					reg = <5>;
+				};
+				port@6 {
+					reg = <6>;
+				};
+				port@7 {
+					reg = <7>;
+				};
+				port@8 {
+					reg = <8>;
+				};
+				port@9 {
+					reg = <9>;
+				};
+				port@a {
+					reg = <10>;
+				};
+				port@b {
+					reg = <11>;
+				};
+				port@c {
+					reg = <12>;
+					dc_out_0: endpoint {
+						remote-endpoint = <&dptx_in_0>;
+					};
+				};
+				port@d {
+					reg = <13>;
+					dc_out_1: endpoint {
+						remote-endpoint = <&dptx_in_1>;
+					};
+				};
+				port@e {
+					reg = <14>;
+					dc_out_2: endpoint {
+						remote-endpoint = <&dptx_in_2>;
+					};
+				};
+				port@f {
+					reg = <15>;
+					dc_out_3: endpoint {
+						remote-endpoint = <&dptx_in_3>;
+					};
+				};
+				port@10 {
+					reg = <16>;
+				};
+				port@11 {
+					reg = <17>;
+				};
+				port@12 {
+					reg = <18>;
+				};
+			};
+		};
+
+		adma0: dma-controller@ebd00000 {
+			compatible = "amd,versal2-dma-1.0";
+			status = "disabled";
+			reg = <0 0xebd00000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 72 4>;
+			clock-names = "clk_main", "clk_apb";
+			#dma-cells = <1>;
+			xlnx,bus-width = <64>;
+		};
+
+		adma1: dma-controller@ebd10000 {
+			compatible = "amd,versal2-dma-1.0";
+			status = "disabled";
+			reg = <0 0xebd10000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 73 4>;
+			clock-names = "clk_main", "clk_apb";
+			#dma-cells = <1>;
+			xlnx,bus-width = <64>;
+		};
+
+		adma2: dma-controller@ebd20000 {
+			compatible = "amd,versal2-dma-1.0";
+			status = "disabled";
+			reg = <0 0xebd20000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 74 4>;
+			clock-names = "clk_main", "clk_apb";
+			#dma-cells = <1>;
+			xlnx,bus-width = <64>;
+		};
+
+		adma3: dma-controller@ebd30000 {
+			compatible = "amd,versal2-dma-1.0";
+			status = "disabled";
+			reg = <0 0xebd30000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 75 4>;
+			clock-names = "clk_main", "clk_apb";
+			#dma-cells = <1>;
+			xlnx,bus-width = <64>;
+		};
+
+		adma4: dma-controller@ebd40000 {
+			compatible = "amd,versal2-dma-1.0";
+			status = "disabled";
+			reg = <0 0xebd40000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 76 4>;
+			clock-names = "clk_main", "clk_apb";
+			#dma-cells = <1>;
+			xlnx,bus-width = <64>;
+		};
+
+		adma5: dma-controller@ebd50000 {
+			compatible = "amd,versal2-dma-1.0";
+			status = "disabled";
+			reg = <0 0xebd50000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 77 4>;
+			clock-names = "clk_main", "clk_apb";
+			#dma-cells = <1>;
+			xlnx,bus-width = <64>;
+		};
+
+		adma6: dma-controller@ebd60000 {
+			compatible = "amd,versal2-dma-1.0";
+			status = "disabled";
+			reg = <0 0xebd60000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 78 4>;
+			clock-names = "clk_main", "clk_apb";
+			#dma-cells = <1>;
+			xlnx,bus-width = <64>;
+		};
+
+		adma7: dma-controller@ebd70000 {
+			compatible = "amd,versal2-dma-1.0";
+			status = "disabled";
+			reg = <0 0xebd70000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 79 4>;
+			clock-names = "clk_main", "clk_apb";
+			#dma-cells = <1>;
+			xlnx,bus-width = <64>;
+		};
+
+		can0: can@f19e0000 {
+			compatible = "xlnx,canfd-2.0";
+			status = "disabled";
+			reg = <0 0xf19e0000 0 0x6000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 27 4>;
+			clock-names = "can_clk", "s_axi_aclk";
+			rx-fifo-depth = <64>;
+			tx-mailbox-count = <32>;
+		};
+
+		can1: can@f19f0000 {
+			compatible = "xlnx,canfd-2.0";
+			status = "disabled";
+			reg = <0 0xf19f0000 0 0x6000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 28 4>;
+			clock-names = "can_clk", "s_axi_aclk";
+			rx-fifo-depth = <64>;
+			tx-mailbox-count = <32>;
+		};
+
+		can2: can@f1a00000 {
+			compatible = "xlnx,canfd-2.0";
+			status = "disabled";
+			reg = <0 0xf1a00000 0 0x6000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 95 4>;
+			clock-names = "can_clk", "s_axi_aclk";
+			rx-fifo-depth = <64>;
+			tx-mailbox-count = <32>;
+		};
+
+		can3: can@f1a10000 {
+			compatible = "xlnx,canfd-2.0";
+			status = "disabled";
+			reg = <0 0xf1a10000 0 0x6000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 96 4>;
+			clock-names = "can_clk", "s_axi_aclk";
+			rx-fifo-depth = <64>;
+			tx-mailbox-count = <32>;
+		};
+
+		/* can4 and can5 are for small variants of versal_2ve_2vm devices */
+		can4: can@f1a90000 {
+			compatible = "xlnx,canfd-2.0";
+			status = "disabled";
+			reg = <0 0xf1a90000 0 0x6000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 97 4>;
+			clock-names = "can_clk", "s_axi_aclk";
+			rx-fifo-depth = <64>;
+			tx-mailbox-count = <32>;
+		};
+
+		can5: can@f1aa0000 {
+			compatible = "xlnx,canfd-2.0";
+			status = "disabled";
+			reg = <0 0xf1aa0000 0 0x6000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 19 4>;
+			clock-names = "can_clk", "s_axi_aclk";
+			rx-fifo-depth = <64>;
+			tx-mailbox-count = <32>;
+		};
+
+		dma0: pmcdma@f11c0000 {
+			status = "disabled";
+			compatible = "xlnx,zynqmp-csudma-1.0";
+			interrupt-parent = <&imux>;
+			interrupts = <0 224 4>;
+			reg = <0x0 0xf11c0000 0x0 0x10000>;
+			xlnx,dma-type = <1>;
+		};
+
+		dma1: pmcdma@f11d0000 {
+			status = "disabled";
+			compatible = "xlnx,zynqmp-csudma-1.0";
+			interrupt-parent = <&imux>;
+			interrupts = <0 225 4>;
+			reg = <0x0 0xf11d0000 0x0 0x10000>;
+			xlnx,dma-type = <2>;
+		};
+
+		asu_dma0: asudma@ebe8c000 {
+			status = "disabled";
+			compatible = "amd,versal2-asudma-1.0";
+			interrupt-parent = <&imux>;
+			interrupts = <0 190 4>;
+			reg = <0x0 0xebe8c000 0x0 0x1000>;
+			xlnx,dma-type = <3>;
+		};
+
+		asu_dma1: asudma@ebe8d000 {
+			status = "disabled";
+			compatible = "amd,versal2-asudma-1.0";
+			interrupt-parent = <&imux>;
+			interrupts = <0 191 4>;
+			reg = <0x0 0xebe8d000 0x0 0x1000>;
+			xlnx,dma-type = <4>;
+		};
+
+		gem0: ethernet@f1a60000 {
+			compatible = "xlnx,versal-gem", "cdns,gem";
+			status = "disabled";
+			reg = <0 0xf1a60000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 39 4>, <0 39 4>;
+			clock-names = "pclk", "hclk", "tx_clk", "rx_clk",
+				      "tsu_clk";
+		};
+
+		gem1: ethernet@f1a70000 {
+			compatible = "xlnx,versal-gem", "cdns,gem";
+			status = "disabled";
+			reg = <0 0xf1a70000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 41 4>, <0 41 4>;
+			clock-names = "pclk", "hclk", "tx_clk", "rx_clk",
+				      "tsu_clk";
+		};
+
+		mmi_10gbe: ethernet@ed920000 {
+			compatible = "amd,versal2-10gbe", "cdns,gem";
+			status = "disabled";
+			reg = <0 0xed920000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 164 4>, <0 164 4>, <0 164 4>, <0 164 4>;
+			clock-names = "pclk", "hclk", "tx_clk", "tsu_clk";
+		};
+
+		gpio0: gpio@f1a50000 {
+			compatible = "xlnx,versal-gpio-1.0";
+			status = "disabled";
+			reg = <0 0xf1a50000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 20 4>;
+			#gpio-cells = <2>;
+			gpio-controller;
+			#interrupt-cells = <2>;
+			interrupt-controller;
+		};
+
+		gpio1: gpio@f1020000 {
+			compatible = "xlnx,pmc-gpio-1.0";
+			status = "disabled";
+			reg = <0 0xf1020000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 202 4>; /* FIXME */
+			#gpio-cells = <2>;
+			gpio-controller;
+			#interrupt-cells = <2>;
+			interrupt-controller;
+		};
+
+		i2c0: i2c@f1940000 {
+			compatible = "cdns,i2c-r1p14";
+			status = "disabled";
+			reg = <0 0xf1940000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 21 4>;
+		};
+
+		i2c1: i2c@f1950000 {
+			compatible = "cdns,i2c-r1p14";
+			status = "disabled";
+			reg = <0 0xf1950000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 22 4>;
+		};
+
+		i2c2: i2c@f1960000 {
+			compatible = "cdns,i2c-r1p14";
+			status = "disabled";
+			reg = <0 0xf1960000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 11 4>;
+		};
+
+		i2c3: i2c@f1970000 {
+			compatible = "cdns,i2c-r1p14";
+			status = "disabled";
+			reg = <0 0xf1970000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 12 4>;
+		};
+
+		i2c4: i2c@f1980000 {
+			compatible = "cdns,i2c-r1p14";
+			status = "disabled";
+			reg = <0 0xf1980000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 13 4>;
+		};
+
+		i2c5: i2c@f1990000 {
+			compatible = "cdns,i2c-r1p14";
+			status = "disabled";
+			reg = <0 0xf1990000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 100 4>;
+		};
+
+		i2c6: i2c@f19a0000 {
+			compatible = "cdns,i2c-r1p14";
+			status = "disabled";
+			reg = <0 0xf19a0000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 101 4>;
+		};
+
+		i2c7: i2c@f19b0000 {
+			compatible = "cdns,i2c-r1p14";
+			status = "disabled";
+			reg = <0 0xf19b0000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 102 0x04>;
+		};
+
+		i2c8: i2c@f1000000 {
+			compatible = "cdns,i2c-r1p14";
+			status = "disabled";
+			reg = <0 0xf1000000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 203 4>;
+		};
+
+		i3c0: i3c@f1948000 {
+			compatible = "snps,dw-i3c-master-1.00a";
+			status = "disabled";
+			#address-cells = <3>;
+			#size-cells = <0>;
+			reg = <0 0xf1948000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 21 4>;
+		};
+
+		i3c1: i3c@f1958000 {
+			compatible = "snps,dw-i3c-master-1.00a";
+			status = "disabled";
+			#address-cells = <3>;
+			#size-cells = <0>;
+			reg = <0 0xf1958000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 22 4>;
+		};
+
+		i3c2: i3c@f1968000 {
+			compatible = "snps,dw-i3c-master-1.00a";
+			status = "disabled";
+			#address-cells = <3>;
+			#size-cells = <0>;
+			reg = <0 0xf1968000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 11 4>;
+		};
+
+		i3c3: i3c@f1978000 {
+			compatible = "snps,dw-i3c-master-1.00a";
+			status = "disabled";
+			#address-cells = <3>;
+			#size-cells = <0>;
+			reg = <0 0xf1978000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 12 4>;
+		};
+
+		i3c4: i3c@f1988000 {
+			compatible = "snps,dw-i3c-master-1.00a";
+			status = "disabled";
+			#address-cells = <3>;
+			#size-cells = <0>;
+			reg = <0 0xf1988000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 13 4>;
+		};
+
+		i3c5: i3c@f1998000 {
+			compatible = "snps,dw-i3c-master-1.00a";
+			status = "disabled";
+			#address-cells = <3>;
+			#size-cells = <0>;
+			reg = <0 0xf1998000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 100 4>;
+		};
+
+		i3c6: i3c@f19a8000 {
+			compatible = "snps,dw-i3c-master-1.00a";
+			status = "disabled";
+			#address-cells = <3>;
+			#size-cells = <0>;
+			reg = <0 0xf19a8000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 101 4>;
+		};
+
+		i3c7: i3c@f19b8000 {
+			compatible = "snps,dw-i3c-master-1.00a";
+			status = "disabled";
+			#address-cells = <3>;
+			#size-cells = <0>;
+			reg = <0 0xf19b8000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 102 4>;
+		};
+
+		i3c8: i3c@f1008000 {
+			compatible = "snps,dw-i3c-master-1.00a";
+			status = "disabled";
+			#address-cells = <3>;
+			#size-cells = <0>;
+			reg = <0 0xf1008000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 203 4>;
+		};
+
+		iomodule0: iomodule@f0300000 {
+			status = "disabled";
+			compatible = "xlnx,iomodule-3.1";
+			reg = <0x0 0xf0300000 0x0 0x1000>, <0xFFFFFFFF 0xFFFFFFFF 0x0 0xE0000>;
+		};
+
+		asu_iomodule0: iomodule@ebe80000 {
+			status = "disabled";
+			compatible = "xlnx,iomodule-3.1";
+			reg = <0x0 0xebe80000 0x0 0x1000>, <0xFFFFFFFF 0xFFFFFFFF 0x0 0xE0000>;
+		};
+
+		ospi: spi@f1010000 {
+			compatible = "amd,versal2-ospi", "cdns,qspi-nor";
+			status = "disabled";
+			reg = <0 0xf1010000 0 0x10000>,
+			      <0 0xc0000000 0 0x20000000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 216 4>;
+			cdns,fifo-depth = <256>;
+			cdns,fifo-width = <4>;
+			cdns,is-dma = <1>; /* u-boot specific */
+			cdns,trigger-address = <0xc0000000>;
+			clock-names = "ref";
+			reset-names = "qspi", "qspi-ocp";
+		};
+
+		pmc_wwdt: watchdog@f03f0000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xf03f0000 0 0x10000>;
+			interrupt-names = "wdt", "wwdt_reset_pending", "gwdt", "gwdt_reset_pending";
+			interrupts = <0 236 1>, <0 237 1>, <0 238 1>, <0 239 1>;
+			interrupt-parent = <&imux>;
+			timeout-sec = <30>;
+		};
+
+		pmc_trng: pmc_trng@f1230000 {
+			compatible = "xlnx,pmc-trng-11.0";
+			status = "disabled";
+			reg = <0x0 0xf1230000 0x0 0x10000>;
+		};
+
+		pmc_cfi_cframe_0: cframe@f12d0000 {
+			compatible = "xlnx,pmc-cfi-cframe-11.0";
+			status = "disabled";
+			reg = <0x0 0xf12d0000 0x0 0x1000>;
+		};
+
+		pmc_cfu_apb_0: cfu_apb@f12b0000 {
+			compatible = "xlnx,pmc-cfu-apb-11.0";
+			status = "disabled";
+			reg = <0x0 0xf12b0000 0x0 0x10000>;
+		};
+
+		pmc_ppu1_mdm_0: ppu1_mdm@f0310000 {
+			compatible = "xlnx,pmc-ppu1-mdm-11.0";
+			status = "disabled";
+			reg = <0x0 0xf0310000 0x0 0x8000>;
+		};
+
+		qspi: spi@f1030000 {
+			compatible = "xlnx,versal-qspi-1.0";
+			status = "disabled";
+			reg = <0 0xf1030000 0 0x1000>; /* missing one more reg range - checking with Sai */
+			interrupt-parent = <&imux>;
+			interrupts = <0 217 4>;
+			clock-names = "ref_clk", "pclk";
+		};
+
+		rtc: rtc@f12a0000 {
+			compatible = "xlnx,zynqmp-rtc";
+			status = "disabled";
+			reg = <0 0xf12a0000 0 0x100>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 200 4>, <0 201 4>;
+			interrupt-names = "alarm", "sec";
+			calibration = <0x7FFF>;
+		};
+
+		sdhci0: mmc@f1040000 {
+			compatible = "xlnx,versal-8.9a", "arasan,sdhci-8.9a";
+			status = "disabled";
+			reg = <0 0xf1040000 0 0x10000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 218 4>;
+			clock-names = "clk_xin", "clk_ahb", "gate";
+			#clock-cells = <1>;
+			clock-output-names = "clk_out_sd0", "clk_in_sd0";
+		};
+
+		sdhci1: mmc@f1050000 {
+			compatible = "xlnx,versal-net-emmc";
+			status = "disabled";
+			reg = <0 0xf1050000 0 0x10000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 220 4>;
+			clock-names = "clk_xin", "clk_ahb", "gate";
+			#clock-cells = <1>;
+			clock-output-names = "clk_out_sd1", "clk_in_sd1";
+		};
+
+		serial0: serial@f1920000 {
+			bootph-all;
+			compatible = "arm,pl011", "arm,primecell";
+			status = "disabled";
+			reg = <0 0xf1920000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 25 4>;
+			reg-io-width = <4>;
+			clock-names = "uartclk", "apb_pclk";
+		};
+
+		serial1: serial@f1930000 {
+			bootph-all;
+			compatible = "arm,pl011", "arm,primecell";
+			status = "disabled";
+			reg = <0 0xf1930000 0 0x1000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 26 4>;
+			reg-io-width = <4>;
+			clock-names = "uartclk", "apb_pclk";
+		};
+
+		smmu: iommu@ec000000 {
+			compatible = "arm,smmu-v3";
+			status = "disabled";
+			reg = <0 0xec000000 0 0x40000>;
+			#iommu-cells = <1>;
+			interrupt-names = "combined";
+			interrupt-parent = <&imux>;
+			interrupts = <0 169 4>;
+			dma-coherent;
+		};
+
+		spi0: spi@f19c0000 {
+			compatible = "cdns,spi-r1p6";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 23 4>;
+			reg = <0 0xf19c0000 0 0x1000>;
+			clock-names = "ref_clk", "pclk";
+		};
+
+		spi1: spi@f19d0000 {
+			compatible = "cdns,spi-r1p6";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 24 4>;
+			reg = <0 0xf19d0000 0 0x1000>;
+			clock-names = "ref_clk", "pclk";
+		};
+
+		sysmon0: sysmon@f1270000 {
+			compatible = "xlnx,versal-sysmon";
+			status = "disabled";
+			reg = <0x0 0xf1270000 0x0 0x4000>;
+			interrupt-parent = <&imux>;
+			interrupts = <0 202 4>;
+			xlnx,numchannels = /bits/8 <0>;
+		};
+
+		ttc0: timer@f1e60000 {
+			compatible = "cdns,ttc";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 43 4>, <0 43 4>, <0 43 4>;
+			timer-width = <32>;
+			reg = <0 0xf1e60000 0x0 0x1000>;
+		};
+
+		ttc1: timer@f1e70000 {
+			compatible = "cdns,ttc";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 44 4>, <0 44 4>, <0 44 4>;
+			timer-width = <32>;
+			reg = <0 0xf1e70000 0 0x1000>;
+		};
+
+		ttc2: timer@f1e80000 {
+			compatible = "cdns,ttc";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 45 4>, <0 45 4>, <0 45 4>;
+			timer-width = <32>;
+			reg = <0 0xf1e80000 0 0x1000>;
+		};
+
+		ttc3: timer@f1e90000 {
+			compatible = "cdns,ttc";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 46 4>, <0 46 4>, <0 46 4>;
+			timer-width = <32>;
+			reg = <0 0xf1e90000 0 0x1000>;
+		};
+
+		ttc4: timer@f1ea0000 {
+			compatible = "cdns,ttc";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 47 4>, <0 47 4>, <0 47 4>;
+			timer-width = <32>;
+			reg = <0 0xf1ea0000 0 0x1000>;
+		};
+
+		ttc5: timer@f1eb0000 {
+			compatible = "cdns,ttc";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 48 4>, <0 48 4>, <0 48 4>;
+			timer-width = <32>;
+			reg = <0 0xf1eb0000 0 0x1000>;
+		};
+
+		ttc6: timer@f1ec0000 {
+			compatible = "cdns,ttc";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 49 4>, <0 49 4>, <0 49 4>;
+			timer-width = <32>;
+			reg = <0 0xf1ec0000 0 0x1000>;
+		};
+
+		ttc7: timer@f1ed0000 {
+			compatible = "cdns,ttc";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 50 4>, <0 50 4>, <0 50 4>;
+			timer-width = <32>;
+			reg = <0 0xf1ed0000 0 0x1000>;
+		};
+
+		ufshc: ufs@f10b0000 {
+			compatible = "amd,versal2-ufs";
+			status = "disabled";
+			interrupt-parent = <&imux>;
+			interrupts = <0 234 4>;
+			reg = <0 0xf10b0000 0 0x100>;
+			freq-table-hz = <0 0>;
+			clock-names = "core_clk";
+			reset-names = "ufshc-rst", "ufsphy-rst";
+		};
+
+		usb0: usb@f1ee0000 {
+			compatible = "xlnx,versal-dwc3";
+			status = "disabled";
+			reg = <0 0xf1ee0000 0 0x100>;
+			clock-names = "bus_clk", "ref_clk";
+			reset-names = "usb_crst";
+			ranges;
+			#address-cells = <2>;
+			#size-cells = <2>;
+
+			dwc3_0: usb@f1b00000  {
+				compatible = "snps,dwc3";
+				status = "disabled";
+				reg = <0 0xf1b00000 0 0x10000>;
+				interrupt-names = "host", "peripheral", "otg", "wakeup";
+				interrupts = <0 29 4>, <0 29 4>, <0 33 4>, <0 98 4>;
+				interrupt-parent = <&imux>;
+				snps,dis_u2_susphy_quirk;
+				snps,dis_u3_susphy_quirk;
+				snps,quirk-frame-length-adjustment = <0x20>;
+				snps,usb3_lpm_capable;
+				clock-names = "ref";
+			};
+		};
+
+		usb1: usb@f1ef0000 {
+			compatible = "xlnx,versal-dwc3";
+			status = "disabled";
+			reg = <0x0 0xf1ef0000 0x0 0x100>;
+			clock-names = "bus_clk", "ref_clk";
+			reset-names = "usb_crst";
+			ranges;
+			#address-cells = <2>;
+			#size-cells = <2>;
+
+			dwc3_1: usb@f1c00000  {
+				compatible = "snps,dwc3";
+				status = "disabled";
+				reg = <0x0 0xf1c00000 0x0 0x10000>;
+				interrupt-names = "host", "peripheral", "otg", "wakeup";
+				interrupts = <0 34 4>, <0 34 4>, <0 38 4>, <0 99 4>;
+				interrupt-parent = <&imux>;
+				snps,dis_u2_susphy_quirk;
+				snps,dis_u3_susphy_quirk;
+				snps,quirk-frame-length-adjustment = <0x20>;
+				snps,usb3_lpm_capable;
+				clock-names = "ref";
+			};
+		};
+
+		usb_mmi: mmi-usb {
+			compatible = "xlnx,versal2-mmi-dwc3";
+			status = "disabled";
+			clock-names = "bus_clk", "ref_clk";
+			ranges;
+			#address-cells = <2>;
+			#size-cells = <2>;
+
+			mmi_dwc3: usb@edec0000  {
+				compatible = "snps,dwc3";
+				status = "disabled";
+				reg = <0x0 0xedec0000 0x0 0x10000>;
+				interrupt-names = "host", "peripheral";
+				interrupts = <0 191 4>, <0 191 4>;
+				interrupt-parent = <&imux>;
+				snps,dis_u2_susphy_quirk;
+				snps,dis_u3_susphy_quirk;
+				snps,quirk-frame-length-adjustment = <0x20>;
+				snps,usb3_lpm_capable;
+				dr_mode = "host";
+				clock-names = "ref";
+			};
+		};
+
+		mdb_pcie0: pcie@ed931000 {
+				compatible = "amd,versal2-mdb-host";
+				status = "disabled";
+				reg = <0x0 0xed931000 0x0 0x2000>,
+				      <0x1000 0x100000 0x0 0xff00000>,
+				      <0x1000 0x0 0x0 0x100000>,
+				      <0x0 0xed860000 0x0 0x2000>;
+				reg-names = "slcr", "config", "dbi", "atu";
+				ranges = <0x2000000 0x00 0xa0000000 0x00 0xa0000000 0x00 0x8000000>,
+					 <0x43000000 0x1100 0x00 0x1100 0x00 0x100 0x00>;
+				interrupts = <0 165 4>;
+				interrupt-parent = <&imux>;
+				interrupt-map-mask = <0 0 0 7>;
+				interrupt-map = <0 0 0 1 &mdb_intc_0 0>,
+						<0 0 0 2 &mdb_intc_0 1>,
+						<0 0 0 3 &mdb_intc_0 2>,
+						<0 0 0 4 &mdb_intc_0 3>;
+				msi-map = <0x0 &its 0x00 0x10000>;
+				xlnx,num-of-bars = <0x2>;
+				xlnx,port-type = <0x1>;
+				xlnx,csr-slcr = <0x1000 0x0 0x0>;
+				xlnx,iatu-address = <0xed860000>;
+				#address-cells = <3>;
+				#size-cells = <2>;
+				#interrupt-cells = <1>;
+				device_type = "pci";
+				mdb_intc_0: interrupt-controller {
+						#address-cells = <0>;
+						#interrupt-cells = <1>;
+						interrupt-controller;
+				};
+		};
+
+		mdb_pcie1: pcie@ed939000 {
+				compatible = "amd,versal2-mdb-host";
+				status = "disabled";
+				reg = <0x0 0xed939000 0x0 0x2000>,
+				      <0x1400 0x100000 0x0 0xff00000>,
+				      <0x1400 0x0 0x0 0x100000>,
+				      <0x0 0xed8e0000 0x0 0x2000>;
+				reg-names = "slcr", "config", "dbi", "atu";
+				ranges = <0x2000000 0x00 0xa8000000 0x00 0xa8000000 0x00 0x8000000>,
+					 <0x43000000 0x1500 0x00 0x1500 0x00 0x100 0x00>;
+				interrupts = <0 166 4>;
+				interrupt-parent = <&imux>;
+				interrupt-map-mask = <0 0 0 7>;
+				interrupt-map = <0 0 0 1 &mdb_intc_1 0>,
+						<0 0 0 2 &mdb_intc_1 1>,
+						<0 0 0 3 &mdb_intc_1 2>,
+						<0 0 0 4 &mdb_intc_1 3>;
+				msi-map = <0x0 &its 0x10000 0x10000>;
+				xlnx,num-of-bars = <0x2>;
+				xlnx,port-type = <0x1>;
+				xlnx,csr-slcr = <0x1400 0x0 0x0>;
+				xlnx,iatu-address = <0xed8e0000>;
+				#address-cells = <3>;
+				#size-cells = <2>;
+				#interrupt-cells = <1>;
+				device_type = "pci";
+				mdb_intc_1: interrupt-controller {
+						#address-cells = <0>;
+						#interrupt-cells = <1>;
+						interrupt-controller;
+				};
+		};
+
+		wwdt0: watchdog@ecc10000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xecc10000 0 0x10000>;
+			interrupt-names = "wdt", "wwdt_reset_pending", "gwdt", "gwdt_reset_pending";
+			interrupt-parent = <&imux>;
+			interrupts = <0 236 1>, <0 237 1>, <0 238 1>, <0 239 1>;
+			timeout-sec = <30>;
+		};
+
+		wwdt1: watchdog@ecd10000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xecd10000 0 0x10000>;
+			interrupt-names = "wdt", "wwdt_reset_pending", "gwdt", "gwdt_reset_pending";
+			interrupt-parent = <&imux>;
+			interrupts = <0 240 1>, <0 241 1>, <0 242 1>, <0 243 1>;
+			timeout-sec = <30>;
+		};
+
+		wwdt2: watchdog@ece10000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xece10000 0 0x10000>;
+			interrupt-names = "wdt", "wwdt_reset_pending", "gwdt", "gwdt_reset_pending";
+			interrupt-parent = <&imux>;
+			interrupts = <0 244 1>,  <0 245 1>,  <0 246 1>,  <0 247 1>;
+			timeout-sec = <30>;
+		};
+
+		wwdt3: watchdog@ecf10000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xecf10000 0 0x10000>;
+			interrupt-names = "wdt", "wwdt_reset_pending", "gwdt", "gwdt_reset_pending";
+			interrupt-parent = <&imux>;
+			interrupts = <0 248 1>, <0 249 1>,  <0 250 1>,  <0 251 1>;
+			timeout-sec = <30>;
+		};
+
+		lpd_wwdt0: watchdog@eb000000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xeb000000 0 0x10000>;
+			interrupt-names = "wdt", "wwdt_reset_pending", "gwdt", "gwdt_reset_pending";
+			interrupts = <0 236 1>, <0 237 1>, <0 238 1>, <0 239 1>;
+			interrupt-parent = <&imux>;
+			timeout-sec = <30>;
+		};
+
+		lpd_wwdt1: watchdog@eb010000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xeb010000 0 0x10000>;
+			interrupt-names = "wdt", "wwdt_reset_pending", "gwdt", "gwdt_reset_pending";
+			interrupts = <0 240 1>, <0 241 1>, <0 242 1>, <0 243 1>;
+			interrupt-parent = <&imux>;
+			timeout-sec = <30>;
+		};
+
+		lpd_wwdt2: watchdog@eb020000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xeb020000 0 0x10000>;
+			interrupt-names = "wdt", "wwdt_reset_pending", "gwdt", "gwdt_reset_pending";
+			interrupts = <0 244 1>, <0 245 1>, <0 246 1>, <0 247 1>;
+			interrupt-parent = <&imux>;
+			timeout-sec = <30>;
+		};
+
+		lpd_wwdt3: watchdog@eb030000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xeb030000 0 0x10000>;
+			interrupt-names = "wdt", "wwdt_reset_pending", "gwdt", "gwdt_reset_pending";
+			interrupts = <0 248 1>, <0 249 1>, <0 250 1>, <0 251 1>;
+			interrupt-parent = <&imux>;
+			timeout-sec = <30>;
+		};
+
+		lpd_wwdt4: watchdog@eb040000 {
+			compatible = "xlnx,versal-wwdt";
+			status = "disabled";
+			reg = <0 0xeb040000 0 0x10000>;
+			interrupt-names = "wdt", "wwdt_reset_pending", "gwdt", "gwdt_reset_pending";
+			interrupts = <0 252 1>, <0 253 1>, <0 254 1>, <0 255 1>;
+			interrupt-parent = <&imux>;
+			timeout-sec = <30>;
+		};
+
+
+		coresight: coresight@f0800000 {
+		    compatible = "xlnx,coresight-1.0";
+		    status = "disabled";
+		    reg = <0x0 0xf0800000 0x0 0x4000>;
+		};
+
+		ipi0: mailbox@eb330000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 57 4>;
+			reg = <0x0 0xEB330000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x4>;
+			xlnx,ipi-id = <2>;
+			xlnx,ipi-buf-index = <0x2>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi1: mailbox@eb340000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 58 4>;
+			reg = <0x0 0xEB340000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x8>;
+			xlnx,ipi-id = <3>;
+			xlnx,ipi-buf-index = <0x3>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi2: mailbox@eb350000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 59 4>;
+			reg = <0x0 0xEB350000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x10>;
+			xlnx,ipi-id = <4>;
+			xlnx,ipi-buf-index = <0x4>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi3: mailbox@eb360000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 60 4>;
+			reg = <0x0 0xEB360000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x20>;
+			xlnx,ipi-id = <5>;
+			xlnx,ipi-buf-index = <0x5>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+
+		ipi4: mailbox@eb370000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 61 4>;
+			reg = <0x0 0xEB370000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x40>;
+			xlnx,ipi-id = <6>;
+			xlnx,ipi-buf-index = <0x6>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi5: mailbox@eb380000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 62 4>;
+			reg = <0x0 0xEB380000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x80>;
+			xlnx,ipi-id = <7>;
+			xlnx,ipi-buf-index = <0x7>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+
+		ipi6: mailbox@eb3a0000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 63 4>;
+			reg = <0x0 0xEB3a0000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x200>;
+			xlnx,ipi-id = <9>;
+			xlnx,ipi-buf-index = <0xffff>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi_nobuf1: mailbox@eb3b0000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 64 4>;
+			reg = <0x0 0xEB3B0000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x400>;
+			xlnx,ipi-id = <10>;
+			xlnx,ipi-buf-index = <0xffff>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi_nobuf2: mailbox@eb3b1000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 65 4>;
+			reg = <0x0 0xEB3B1000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x800>;
+			xlnx,ipi-id = <11>;
+			xlnx,ipi-buf-index = <0xffff>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi_nobuf3: mailbox@eb3b2000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 66 4>;
+			reg = <0x0 0xEB3B2000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x1000>;
+			xlnx,ipi-id = <12>;
+			xlnx,ipi-buf-index = <0xffff>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi_nobuf4: mailbox@eb3b3000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 67 4>;
+			reg = <0x0 0xEB3B3000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x2000>;
+			xlnx,ipi-id = <13>;
+			xlnx,ipi-buf-index = <0xffff>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi_nobuf5: mailbox@eb3b4000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 68 4>;
+			reg = <0x0 0xEB3B4000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x4000>;
+			xlnx,ipi-id = <14>;
+			xlnx,ipi-buf-index = <0xffff>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi_nobuf6: mailbox@eb3b5000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 69 4>;
+			reg = <0x0 0xEB3B5000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x8000>;
+			xlnx,ipi-id = <15>;
+			xlnx,ipi-buf-index = <0xffff>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi_asu: mailbox@eb310000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 61 4>;
+			reg = <0x0 0xEB310000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x1>;
+			xlnx,ipi-id = <0>;
+			xlnx,ipi-buf-index = <0x0>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi_pmc: mailbox@eb320000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 59 4>;
+			reg = <0x0 0xEB320000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x2>;
+			xlnx,ipi-id = <1>;
+			xlnx,ipi-buf-index = <0x1>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		ipi_pmc_nobuf: mailbox@eb390000 {
+			status = "disabled";
+			compatible = "xlnx,versal-ipi-mailbox";
+			interrupt-parent = <&imux>;
+			interrupts = <0 60 4>;
+			reg = <0x0 0xEB390000U 0x0 0x20>;
+			xlnx,ipi-bitmask = <0x100>;
+			xlnx,ipi-id = <8>;
+			xlnx,ipi-buf-index = <0xffff>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+		};
+
+		r52_0a_atcm_global: r52_0a_atcm_global@eba00000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBA00000 0x0 0x10000>;
+		};
+		r52_0a_btcm_global: r52_0a_btcm_global@eba10000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBA10000 0x0 0x8000>;
+		};
+		r52_0a_ctcm_global: r52_0a_ctcm_global@eba20000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBA20000 0x0 0x8000>;
+		};
+		r52_0b_atcm_global: r52_0b_atcm_global@eba80000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBA80000 0x0 0x10000>;
+		};
+		r52_0b_btcm_global: r52_0b_btcm_global@eba90000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBA90000 0x0 0x8000>;
+		};
+		r52_0b_ctcm_global: r52_0b_ctcm_global@ebaa0000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBAA0000 0x0 0x8000>;
+		};
+		r52_0c_atcm_global: r52_0c_atcm_global@ebb00000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBB00000 0x0 0x10000>;
+		};
+		r52_0c_btcm_global: r52_0c_btcm_global@ebb10000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBB10000 0x0 0x8000>;
+		};
+		r52_0c_ctcm_global: r52_0c_ctcm_global@ebb20000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBB20000 0x0 0x8000>;
+		};
+		r52_0d_atcm_global: r52_0d_atcm_global@ebb80000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBB80000 0x0 0x10000>;
+		};
+		r52_0d_btcm_global: r52_0d_btcm_global@ebb90000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBB90000 0x0 0x8000>;
+		};
+		r52_0d_ctcm_global: r52_0d_ctcm_global@ebba0000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBBA0000 0x0 0x8000>;
+		};
+		r52_0e_atcm_global: r52_0e_atcm_global@ebc00000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBC00000 0x0 0x10000>;
+		};
+		r52_0e_btcm_global: r52_0e_btcm_global@ebc10000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBC10000 0x0 0x8000>;
+		};
+		r52_0e_ctcm_global: r52_0e_ctcm_global@ebc20000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBC20000 0x0 0x8000>;
+		};
+		r52_1a_atcm_global: r52_1a_atcm_global@eba40000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBA40000 0x0 0x10000>;
+		};
+		r52_1a_btcm_global: r52_1a_btcm_global@eba50000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBA50000 0x0 0x8000>;
+		};
+		r52_1a_ctcm_global: r52_1a_ctcm_global@eba60000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBA60000 0x0 0x8000>;
+		};
+		r52_1b_atcm_global: r52_1b_atcm_global@ebac0000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBAC0000 0x0 0x10000>;
+		};
+		r52_1b_btcm_global: r52_1b_btcm_global@ebad0000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBAD0000 0x0 0x8000>;
+		};
+		r52_1b_ctcm_global: r52_1b_ctcm_global@ebae0000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBAE0000 0x0 0x8000>;
+		};
+		r52_1c_atcm_global: r52_1c_atcm_global@ebb40000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBB40000 0x0 0x10000>;
+		};
+		r52_1c_btcm_global: r52_1c_btcm_global@ebb50000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBB50000 0x0 0x8000>;
+		};
+		r52_1c_ctcm_global: r52_1c_ctcm_global@ebb60000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBB60000 0x0 0x8000>;
+		};
+		r52_1d_atcm_global: r52_1d_atcm_global@ebbc0000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBBC0000 0x0 0x10000>;
+		};
+		r52_1d_btcm_global: r52_1d_btcm_global@ebbd0000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBBD0000 0x0 0x8000>;
+		};
+		r52_1d_ctcm_global: r52_1d_ctcm_global@ebbe0000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBBE0000 0x0 0x8000>;
+		};
+		r52_1e_atcm_global: r52_1e_atcm_global@ebc40000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBC40000 0x0 0x10000>;
+		};
+		r52_1e_btcm_global: r52_1e_btcm_global@ebc50000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBC50000 0x0 0x8000>;
+		};
+		r52_1e_ctcm_global: r52_1e_ctcm_global@ebc60000 {
+			status = "disabled";
+			compatible = "xlnx,tcm";
+			reg = <0x0 0xEBC60000 0x0 0x8000>;
+		};
+	};
+};
