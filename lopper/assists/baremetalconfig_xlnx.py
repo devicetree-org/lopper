@@ -181,7 +181,7 @@ def get_phandle_regprop(sdt, prop, value):
     reg, size = scan_reg_size(parent_node[0], parent_node[0]['reg'].value, 0)
     # Special handling for Soft Ethernet(1/2.5G, and 10G/25G MAC) axistream-connected property
     if prop == "axistream-connected":
-        compat = parent_node[0]['compatible'].value
+        compat = parent_node[0].propval('compatible')
         axi_fifo = [item for item in compat if "xlnx,axi-fifo" in item]
         axi_dma = [item for item in compat if "xlnx,eth-dma" in item]
         axi_mcdma = [item for item in compat if "xlnx,eth-mcdma" in item]
@@ -202,7 +202,7 @@ def get_intrerrupt_parent(sdt, value):
         bits[0]    Interrupt parent type (0: GIC, 1: AXI INTC)
         bits[31:1] Base Address of the interrupt parent
     """
-    compat = intr_node[0]['compatible'].value
+    compat = intr_node[0].propval('compatible')
     axi_intc = [item for item in compat if "xlnx,xps-intc-1.00.a" in item]
     if axi_intc:
         reg += 1
@@ -720,11 +720,15 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     driver_nodes = []
     for node in node_list:
         for compat in driver_compatlist:
-           compat_string = node['compatible'].value
-           for compa in compat_string:
-               if compat in compa:
-                   if not node in driver_nodes:
-                       driver_nodes.append(node)
+            try:
+                compat_string = node['compatible'].value
+                for compa in compat_string:
+                    if compat in compa:
+                        if not node in driver_nodes:
+                            driver_nodes.append(node)
+            except KeyError:
+                _warning(f"Node {node.name} does not have 'compatible' property")
+                pass
 
     if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
         driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
