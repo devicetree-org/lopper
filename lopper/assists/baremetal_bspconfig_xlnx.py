@@ -90,7 +90,7 @@ def xlnx_generate_bm_bspconfig(tgt_node, sdt, options):
             prop_list = schema['required']
             if not prop_list:
                 _debug(f"No required properties found in schema {yamlfile}.")
-            match = [compat for compat in compatlist if compat in match_cpunode['compatible'].value]
+            match = [compat for compat in compatlist if compat in match_cpunode.propval('compatible')]
             if match:
                config_struct = schema['config'][0]
                outfile = os.path.join(sdt.outdir, f"x{name.lower()}_g.c")

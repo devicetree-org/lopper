@@ -160,7 +160,7 @@ def get_memranges(tgt_node, sdt, options):
         total_nodes = int(len(val)/(nac+nsc))
         name_list = [name.replace("_", "-") for name in list(xlnx_memipname.keys())]
         try:
-            compat = node['compatible'].value[0]
+            compat = node.propval('compatible')[0]
             match = [mem for mem in name_list if mem in compat]
             for i in range(total_nodes):
                 reg, size = scan_reg_size(node, val, i)
