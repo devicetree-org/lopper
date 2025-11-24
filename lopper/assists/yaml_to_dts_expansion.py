@@ -1461,7 +1461,7 @@ def resolve_host_remote( tree, subnode, verbose = 0 ):
         # find each matching domain node in tree for the role
         relevant_node = tree["/domains"].subnodes(children_only=True,name=roles_dict[role][0]+"$")
         if relevant_node == []:
-            print("WARNING: could not find relevant node for ", prop_val)
+            print("WARNING: could not find relevant node for ", role, roles_dict[role])
             return False
 
         relevant_node = relevant_node[0]
