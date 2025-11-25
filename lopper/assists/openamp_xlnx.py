@@ -273,7 +273,7 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
                 return False
 
             elfload_nodes = [ sdt.tree.pnode(i) for i in rel.propval("elfload") ]
-            relevant_elfload_nodes = [ i for i in elfload_nodes if i != None ]
+            relevant_elfload_nodes = [ i for i in elfload_nodes if i != None and 'mmio-sram' not in i.propval('compatible')]
             if relevant_elfload_nodes == []:
                 print("OPENAMP: XLNX: ERROR: expected at least one ELFLOAD node for case of generating openamp linker script using DDR.")
                 return False
