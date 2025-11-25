@@ -309,16 +309,19 @@ def get_pci_ranges(node, value, pad):
 
 class DtbtoCStruct(object):
     def __init__(self, out_file):
-        self._outfile = open(out_file, 'w')
+        self._outfile_path = out_file
         self._lines = []
+        # Clear the file initially
+        open(self._outfile_path, "w").close()
 
     def out(self, line):
-        """Output a string to the output file
+        """Output a string to the output file using append mode
 
         Args:
             line: String to output
         """
-        self._outfile.write(line)
+        with open(self._outfile_path, "a") as f:
+            f.write(line)
 
     def buf(self, line):
         """Buffer up a string to send later
@@ -338,10 +341,6 @@ class DtbtoCStruct(object):
         self._lines = []
         return lines
 
-    def close(self):
-        """Close the output file to ensure all content is flushed and written"""
-        if self._outfile and not self._outfile.closed:
-            self._outfile.close()
 
 def is_compat(node, compat_string_to_test):
     if re.search( "module,baremetalconfig_xlnx", compat_string_to_test):
@@ -798,6 +797,5 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
            fd.write("set(DRIVER_OPTPROP_%s_LIST %s)\n" % (index, utils.to_cmakelist(drvoptprop_list)))
            fd.write("list(APPEND TOTAL_DRIVER_PROP_LIST DRIVER_PROP_%s_LIST)\n" % index)
     plat.out(''.join(plat.get_buf()))
-    plat.close()
 
     return True
