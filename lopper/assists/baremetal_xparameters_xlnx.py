@@ -430,11 +430,16 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             pass
 
     for node in sdt.tree['/'].subnodes():
-        if node.propval('xlnx,ip-name') == ['v_hdmi_rxss1'] and node.propval('xlnx,hdmi-mode') != ['']:
+        ip_name = node.propval('xlnx,ip-name')
+        hdmi_mode_prop = node.propval('xlnx,hdmi-mode')
+
+        if hdmi_mode_prop != ['']:
             hdmi_mode = int(str(node.propval('xlnx,hdmi-mode', list)[0]) or "0", 0)
             if hdmi_mode > 0:
-                plat.buf("\n#define XPAR_XV_HDMI_RX_FRL_ENABLE \n")
-                break
+                if ip_name == ['v_hdmi_rxss1']:
+                    plat.buf("\n#define XPAR_XV_HDMI_RX_FRL_ENABLE \n")
+                elif ip_name == ['v_hdmi_txss1']:
+                    plat.buf("\n#define XPAR_XV_HDMI_TX_FRL_ENABLE \n")
 
     # Define for Board
     if sdt.tree[tgt_node].propval('board') != ['']:
