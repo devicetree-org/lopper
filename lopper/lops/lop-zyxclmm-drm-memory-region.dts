@@ -1,0 +1,20 @@
+/*
+ * Copyright (c) 2025 Advanced Micro Devices, Inc.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1,lop";
+        lops {
+                compatible = "system-device-tree-v1,lop";
+
+                lop_0 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        flags = "strict";  /* fail if the target node is absent */
+                        modify = "/amba_pl/zyxclmm_drm:memory-region:&ps_wizard_0_ps11_0_ocm_ram_0_memory";
+                };
+        };
+};
