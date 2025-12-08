@@ -26,10 +26,12 @@ import yaml
 import glob
 from collections import OrderedDict
 from lopper.tree import LopperTree, LopperNode
-from __init__ import LopperSDT
+from lopper import LopperSDT
 import copy
+from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
 
 sys.path.append(os.path.dirname(__file__))
+_init(__name__)
 from baremetalconfig_xlnx import *
 
 def is_compat( node, compat_string_to_test ):
@@ -129,7 +131,7 @@ def infer_platform_from_sdt(sdt):
                 return 'cortexa78'
 
     except Exception as e:
-        print(f"Warning: Failed to infer platform from system device tree: {e}")
+        _error(f"Failed to infer platform from system device tree: {e}")
 
     return None
 
@@ -186,32 +188,32 @@ def validate_and_parse_options(options, sdt):
             # Auto-infer platform
             platform = infer_platform_from_sdt(sdt)
             if platform is None:
-                print("Error: Unable to automatically infer platform from system device tree.")
-                print("Please provide the machine argument explicitly.")
+                _error(f"Unable to automatically infer platform from system device tree.")
+                _error(f"Please provide the machine argument explicitly.")
                 usage()
                 sys.exit(1)
 
         else:
-            print(f"Error: Invalid number of arguments. Expected 1 or 2, got {num_args}")
+            _error(f"Invalid number of arguments. Expected 1 or 2, got {num_args}")
             usage()
             sys.exit(1)
 
     except (KeyError, IndexError) as e:
-        print(f"Error: Failed to parse arguments: {e}")
+        _error(f"Failed to parse arguments: {e}")
         usage()
         sys.exit(1)
 
     # Validate config argument
     if config not in valid_configs:
-        print(f"Error: Invalid configuration '{config}'.")
-        print(f"Supported configurations: {', '.join(valid_configs)}")
+        _error(f"Invalid configuration '{config}'.")
+        _error(f"Supported configurations: {', '.join(valid_configs)}")
         usage()
         sys.exit(1)
 
     # Validate platform argument
     if platform not in valid_platforms:
-        print(f"Error: Invalid platform '{platform}'.")
-        print(f"Supported platforms: {', '.join(valid_platforms)}")
+        _error(f"Invalid platform '{platform}'.")
+        _error(f"Supported platforms: {', '.join(valid_platforms)}")
         usage()
         sys.exit(1)
 
@@ -234,7 +236,7 @@ def validate_amba_pl_node(amba_node):
             break
 
     if not has_valid_pl:
-        print("[WARNING]: No valid PL nodes found in amba_pl (no nodes with reg properties)")
+        _error(f"No valid PL nodes found in amba_pl (no nodes with reg properties)")
 
     return has_valid_pl
 
@@ -272,12 +274,12 @@ def prepare_amba_node(amba_node, sdt, tgt_node):
     try:
         remove_node_ref(sdt, tgt_node, sdt.tree['/__symbols__'])
     except KeyError:
-        print("[INFO]: No __symbols__ node found in device tree")
+        _warning(f"No __symbols__ node found in device tree")
 
     try:
         remove_node_ref(sdt, tgt_node, sdt.tree['/aliases'])
     except KeyError:
-        print("[INFO]: No aliases node found in device tree")
+        _warning(f"No aliases node found in device tree")
 
     # Rename the new node in the overlay
     new_amba_node.name = "&amba"
@@ -331,12 +333,12 @@ def create_fpga_node(platform, config, firmware_name, zynq_platforms, versal_pla
             # Versal/VersalNet uses external-fpga-config for DFX
             fpga_node["external-fpga-config"] = None
         else:
-            print(f'Unsupported platform for DFX: {platform}')
+            _error(f'Unsupported platform for DFX: {platform}')
             sys.exit(1)
     elif config == "external-fpga-config":
         fpga_node["external-fpga-config"] = None
     else:
-        print(f'Invalid configuration: {config}')
+        _error(f'Invalid configuration: {config}')
         sys.exit(1)
 
     return fpga_node, fpga_node_name
@@ -465,8 +467,8 @@ def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree):
     try:
         overlay_tree['/'].reorder_child("/&amba", "/" + fpga_node_name, after=True, debug=True)
     except Exception as e:
-        print(f"ERROR: reordering nodes: {e}")
-        os._exit(1)
+        _error(f"Reordering nodes: {e}")
+        sys.exit(1)
 
     # Resolve all phandle references and finalize tree structure
     overlay_tree.resolve()
@@ -560,6 +562,7 @@ Output:
     - sdt.dts: Modified system device tree with /amba_pl node removed
 """
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
+    _level(utils.log_setup(options), __name__)
     # Parse and validate options
     platform, config, zynq_platforms, versal_platforms = validate_and_parse_options(options, sdt)
 
@@ -608,7 +611,7 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     sdt_file = f"{sdt.outdir}/sdt.dts"
     dtso_file = f"{sdt.outdir}/pl.dtso"
 
-    print( f"[INFO]: pl: {pl_file} sdt: {sdt_file} dtso: {dtso_file}" )
+    print( f"pl: {pl_file} sdt: {sdt_file} dtso: {dtso_file}" )
 
     # Write output files and perform post-processing
     write_output_files(overlay_tree, sdt, pl_file, sdt_file, dtso_file)
