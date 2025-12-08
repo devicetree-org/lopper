@@ -9,30 +9,31 @@
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
 
+import copy
+import getopt
+import glob
+import os
+import re
 import struct
+import subprocess
 import sys
 import types
-import os
-import getopt
-import re
-import subprocess
-from pathlib import Path
-from pathlib import PurePath
-from lopper import Lopper
-from lopper import LopperFmt
-import lopper
-from re import *
-import yaml
-import glob
 from collections import OrderedDict
-from lopper.tree import LopperTree, LopperNode
-from lopper import LopperSDT
-import copy
-from lopper.log import _init, _warning, _info, _error, _debug, _level, __logger__
+from pathlib import Path, PurePath
+from re import *
+
+import yaml
+
+import lopper
+from lopper import Lopper, LopperFmt, LopperSDT
+from lopper.log import (__logger__, _debug, _error, _info, _init, _level,
+                        _warning)
+from lopper.tree import LopperNode, LopperTree
 
 sys.path.append(os.path.dirname(__file__))
 _init(__name__)
 from baremetalconfig_xlnx import *
+
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,xlnx_overlay_dt", compat_string_to_test):
