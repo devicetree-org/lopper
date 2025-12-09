@@ -568,6 +568,9 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
         if node.propval("compatible") != ['']:
             if node.propval("compatible") == "indirect-bus":
                 sdt.tree.delete(node)
+        if node.name == 'reserved-memory' and 'r52' in machine:
+            node.delete('ranges')
+            node + LopperProp(name='ranges')
 
     return True
 
