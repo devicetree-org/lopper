@@ -290,13 +290,14 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
     return False
 
 # Inputs: openamp-processed SDT, target processor, ipi, ipc node
-def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, ipc_nodes):
+def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_nodes):
     """Tailor the device tree for Zephyr RPMsg communication.
 
     Args:
         machine (str): Remote machine identifier (unused, present for symmetry).
         tree (LopperTree): Device tree being updated.
         ipi_node (LopperNode): IPI node used for mailbox signaling.
+        domain_node (LopperNode): Domain node. It may contain ddr boot field.
         ipc_nodes (list[LopperNode]): IPC shared-memory nodes tied to RPMsg.
 
     Returns:
@@ -313,6 +314,12 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, ipc_nodes):
         return False
 
     tree['/chosen']['zephyr,ipc_shm'] = ipc_nodes[0].abs_path
+
+    if domain_node.propval("xlnx,ddr-boot") != []:
+        elfload_nodes = [ tree.pnode(x) for x in domain_node.propval("reserved-memory") ]
+        valid_elfload_node = [ node for node in elfload_nodes if node.propval("device_type") == ['memory'] ]
+        if len(valid_elfload_node) > 0:
+            tree['/chosen']['zephyr,sram'] = valid_elfload_node[0].abs_path
 
     mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
     mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1], "mbox-names" : ['tx', 'rx'] }
@@ -457,7 +464,7 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
         # validate later
         carveout_validation_arr.extend(rpmsg_carveouts)
 
-        if os == "zephyr_dt" and not xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, rpmsg_carveouts):
+        if os == "zephyr_dt" and not xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, node.parent.parent.parent, rpmsg_carveouts):
             return False
         if os == "linux_dt"  and not xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveouts, verbose):
             return False
@@ -685,7 +692,7 @@ def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, power_domains, core_
     core_names = { SOC_TYPE.VERSAL_NET: "r52f", SOC_TYPE.VERSAL: "r5f", SOC_TYPE.ZYNQMP: "r5f" }
     core_names[SOC_TYPE.VERSAL2] = core_names[SOC_TYPE.VERSAL_NET]
 
-    core_node = LopperNode(-1, "{}/{}@{}".format( cluster_node_path, core_names[platform], int(openamp_channel_info["rpu_core"]) % 2))
+    core_node = LopperNode(-1, "{}/{}@{}".format( cluster_node_path, core_names[platform], int(openamp_channel_info["rpu_core"])))
 
     core_node_props = {
       "compatible" : compatible_strs[platform],
@@ -1027,8 +1034,7 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
 
     Algorithm:
         Parses assist arguments, checks for OpenAMP-compatible domains, delegates
-        relation handling when appropriate, and prunes conflicting TTC nodes for the
-        Linux device tree case.
+        relation handling when appropriate.
     """
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
@@ -1048,8 +1054,12 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
         if not xlnx_handle_relations(sdt, machine, False, openamp_args["dt_type"], openamp_args["openamp_output_filename"]):
             return False
 
-        # remove TTC so they do not conflict with RPU - linux only case
-        [ tree.delete(node) for node in tree["/"].subnodes() if "cdns,ttc" in node.propval('compatible') and openamp_args["dt_type"] == "linux_dt"]
+        labels_to_keep = [ 'ttc0', 'ttc1' ]
+        if openamp_args["dt_type"] == "linux_dt" and get_platform(sdt.tree, verbose) != SOC_TYPE.VERSAL2:
+            for node in tree["/"].subnodes(children_only=True, name="timer@*"):
+                # for all boards that are NOT VEK385 - keep ttc0 and ttc1 in linux case.
+                if "cdns,ttc" in node.propval('compatible') and node.label not in labels_to_keep:
+                    sdt.tree.delete(node)
     else:
         print("OPENAMP: XLNX: WARNING: not doing any processing given inputs", options)
 
