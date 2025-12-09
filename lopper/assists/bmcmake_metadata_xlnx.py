@@ -55,7 +55,7 @@ def generate_drvcmake_metadata(sdt, node_list, src_dir, options):
     driver_nodes = []
     for compat in driver_compatlist:
         for node in node_list:
-           compatlist = node['compatible'].value
+           compatlist = node.propval('compatible')
            for compat_string in compatlist:
                if compat in compat_string:
                    driver_nodes.append(node)
@@ -173,7 +173,7 @@ def getmatch_nodes(sdt, node_list, yaml_file, options):
     driver_compatlist = bm_config.compat_list(schema)
     for compat in driver_compatlist:
         for node in node_list:
-           compat_string = node['compatible'].value
+           compat_string = node.propval('compatible')
            if compat in compat_string:
                if not node in driver_nodes:
                    driver_nodes.append(node)

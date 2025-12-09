@@ -60,7 +60,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                 symbol_node = node
             status = node["status"].value
             if "okay" in status:
-                if "cdns,ttc" in node["compatible"].value and node.props('lop-dynamic-ttc-node'):
+                if "cdns,ttc" in node.propval('compatible') and node.props('lop-dynamic-ttc-node'):
                     continue
                 # Check if xlnx,is-hierarchy property exists and skip if present
                 if node.props('xlnx,is-hierarchy'):
@@ -72,9 +72,9 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
     if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
         node_list = get_mapped_nodes(sdt, node_list, options)
     for node in node_list:
-        if "cdns,ttc" in node["compatible"].value:
+        if "cdns,ttc" in node.propval('compatible'):
             ttc_node_list += [node]
-        compatible_dict.update({node: node["compatible"].value})
+        compatible_dict.update({node: node.propval('compatible')})
         if stdin:
             if node.propval('xlnx,name') != ['']:
                 node_name = node.propval('xlnx,name', list)[0]
@@ -147,12 +147,12 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
 
         if drv_config_name == 'XAxiEthernet' and 'tapp' in schema:
            for node in node_list:
-               if "xlnx,eth-dma" in node["compatible"].value:
+               if "xlnx,eth-dma" in node.propval('compatible'):
                    dma_node_list.append(node)
                    dma_label = get_label(sdt, symbol_node, node)
                    testapp_name.update({dma_label: 'XAxiDma'})
                    dma_header = True
-               if "xlnx,eth-mcdma" in node["compatible"].value:
+               if "xlnx,eth-mcdma" in node.propval('compatible'):
                    dma_node_list.append(node)
                    dma_label = get_label(sdt, symbol_node, node)
                    testapp_name.update({dma_label: 'XMcdma'})
@@ -196,13 +196,13 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
 
             for compat in driver_compatlist:
                 for node in node_list:
-                    if "xlnx,tmr-sem-1.0" in node["compatible"].value:
+                    if "xlnx,tmr-sem-1.0" in node.propval('compatible'):
                         continue
                     if sdt.tree[node].propval('reg') != ['']:
                         val, size = scan_reg_size(node, node['reg'].value, 0)
                         if stdin_addr == val:
                             continue
-                    compat_string = node['compatible'].value
+                    compat_string = node.propval('compatible')
                     label_name = get_label(sdt, symbol_node, node)
                     drvconfig_name = None
                     if compat in compat_string:
@@ -235,7 +235,7 @@ def xlnx_generate_testapp(tgt_node, sdt, options):
                                         # Ideally, the processor IP and the intr-parent combination should be checked for this case.
                                         # But, that is a cumbersome process and this condition also works given the way gen-domain-dts
                                         # behaves.
-                                        if intr_parent_node and intr_parent_node[0]["compatible"].value[0] != "interrupt-multiplex":
+                                        if intr_parent_node and intr_parent_node[0].propval('compatible')[0] != "interrupt-multiplex":
                                             match_list.append(True)
                                         else:
                                             match_list.append(False)

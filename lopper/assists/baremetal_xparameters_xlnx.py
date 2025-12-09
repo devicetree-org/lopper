@@ -69,7 +69,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             status = node["status"].value
             if "okay" in status:
                 node_list.append(node)
-                compat = node['compatible'].value
+                compat = node.propval('compatible')
                 node_dict.update({node.abs_path:compat})
         except:
            pass
@@ -430,11 +430,16 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             pass
 
     for node in sdt.tree['/'].subnodes():
-        if node.propval('xlnx,ip-name') == ['v_hdmi_rxss1'] and node.propval('xlnx,hdmi-mode') != ['']:
+        ip_name = node.propval('xlnx,ip-name')
+        hdmi_mode_prop = node.propval('xlnx,hdmi-mode')
+
+        if hdmi_mode_prop != ['']:
             hdmi_mode = int(str(node.propval('xlnx,hdmi-mode', list)[0]) or "0", 0)
             if hdmi_mode > 0:
-                plat.buf("\n#define XPAR_XV_HDMI_RX_FRL_ENABLE \n")
-                break
+                if ip_name == ['v_hdmi_rxss1']:
+                    plat.buf("\n#define XPAR_XV_HDMI_RX_FRL_ENABLE \n")
+                elif ip_name == ['v_hdmi_txss1']:
+                    plat.buf("\n#define XPAR_XV_HDMI_TX_FRL_ENABLE \n")
 
     # Define for Board
     if sdt.tree[tgt_node].propval('board') != ['']:
@@ -466,13 +471,13 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         srcdir = os.path.join(repo_path_data, "lib", "bsp", "standalone")
     datadir = os.path.join(srcdir, "data")
     yaml_paths = glob.glob(f"{datadir}/*/*.yaml")
-    if re.search("microblaze", match_cpunode['compatible'].value[0]):
+    if re.search("microblaze", match_cpunode.propval('compatible')[0]):
         for yamlfile in yaml_paths:
             name = os.path.basename(os.path.dirname(yamlfile))
             schema = utils.load_yaml(yamlfile)
             compatlist = bm_config.compat_list(schema)
             prop_list = schema['required']
-            match = [compat for compat in compatlist if compat in match_cpunode['compatible'].value]
+            match = [compat for compat in compatlist if compat in match_cpunode.propval('compatible')]
             if match:
                 plat.buf(f"\n\n/*  CPU parameters definition */\n")
                 if match_cpunode.propval('xlnx,ip-name') != ['']:
@@ -486,7 +491,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         prop = prop.replace("xlnx,", "")
                         plat.buf(f'#define XPAR_{ip_name.upper()}_{prop.upper()} {prop_val}\n')
 
-    if re.search("microblaze-riscv", match_cpunode['compatible'].value[0]):
+    if re.search("microblaze-riscv", match_cpunode.propval('compatible')[0]):
         cpu_parameters={
         'xlnx,freq':"XPAR_CPU_CORE_CLOCK_FREQ_HZ",
         'xlnx,use-dcache':'XPAR_MICROBLAZE_RISCV_USE_DCACHE',
@@ -507,7 +512,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 'xlnx,icache-byte-size','xlnx,use-fpu',]
         add_multi_buf(plat,match_cpunode,cpu_parameters,ignore_else_part_lis)
 
-    elif re.search("microblaze", match_cpunode['compatible'].value[0]):
+    elif re.search("microblaze", match_cpunode.propval('compatible')[0]):
         mic_cpu = {'xlnx,freq':'XPAR_CPU_CORE_CLOCK_FREQ_HZ',
                    'xlnx,ddr-reserve-sa':'XPAR_MICROBLAZE_DDR_RESERVE_SA',
                    'xlnx,addr-size':'XPAR_MICROBLAZE_ADDR_SIZE'}

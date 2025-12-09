@@ -181,7 +181,7 @@ def get_phandle_regprop(sdt, prop, value):
     reg, size = scan_reg_size(parent_node[0], parent_node[0]['reg'].value, 0)
     # Special handling for Soft Ethernet(1/2.5G, and 10G/25G MAC) axistream-connected property
     if prop == "axistream-connected":
-        compat = parent_node[0]['compatible'].value
+        compat = parent_node[0].propval('compatible')
         axi_fifo = [item for item in compat if "xlnx,axi-fifo" in item]
         axi_dma = [item for item in compat if "xlnx,eth-dma" in item]
         axi_mcdma = [item for item in compat if "xlnx,eth-mcdma" in item]
@@ -202,7 +202,7 @@ def get_intrerrupt_parent(sdt, value):
         bits[0]    Interrupt parent type (0: GIC, 1: AXI INTC)
         bits[31:1] Base Address of the interrupt parent
     """
-    compat = intr_node[0]['compatible'].value
+    compat = intr_node[0].propval('compatible')
     axi_intc = [item for item in compat if "xlnx,xps-intc-1.00.a" in item]
     if axi_intc:
         reg += 1
@@ -309,16 +309,19 @@ def get_pci_ranges(node, value, pad):
 
 class DtbtoCStruct(object):
     def __init__(self, out_file):
-        self._outfile = open(out_file, 'w')
+        self._outfile_path = out_file
         self._lines = []
+        # Clear the file initially
+        open(self._outfile_path, "w").close()
 
     def out(self, line):
-        """Output a string to the output file
+        """Output a string to the output file using append mode
 
         Args:
             line: String to output
         """
-        self._outfile.write(line)
+        with open(self._outfile_path, "a") as f:
+            f.write(line)
 
     def buf(self, line):
         """Buffer up a string to send later
@@ -338,10 +341,6 @@ class DtbtoCStruct(object):
         self._lines = []
         return lines
 
-    def close(self):
-        """Close the output file to ensure all content is flushed and written"""
-        if self._outfile and not self._outfile.closed:
-            self._outfile.close()
 
 def is_compat(node, compat_string_to_test):
     if re.search( "module,baremetalconfig_xlnx", compat_string_to_test):
@@ -720,11 +719,15 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     driver_nodes = []
     for node in node_list:
         for compat in driver_compatlist:
-           compat_string = node['compatible'].value
-           for compa in compat_string:
-               if compat in compa:
-                   if not node in driver_nodes:
-                       driver_nodes.append(node)
+            try:
+                compat_string = node['compatible'].value
+                for compa in compat_string:
+                    if compat in compa:
+                        if not node in driver_nodes:
+                            driver_nodes.append(node)
+            except KeyError:
+                _warning(f"Node {node.name} does not have 'compatible' property")
+                pass
 
     if sdt.tree[tgt_node].propval('pruned-sdt') == ['']:
         driver_nodes = get_mapped_nodes(sdt, driver_nodes, options)
@@ -794,6 +797,5 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
            fd.write("set(DRIVER_OPTPROP_%s_LIST %s)\n" % (index, utils.to_cmakelist(drvoptprop_list)))
            fd.write("list(APPEND TOTAL_DRIVER_PROP_LIST DRIVER_PROP_%s_LIST)\n" % index)
     plat.out(''.join(plat.get_buf()))
-    plat.close()
 
     return True
