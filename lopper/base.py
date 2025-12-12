@@ -634,6 +634,7 @@ class lopper_base:
                     "next-level-cache" : [ 'phandle' ],
                     "interrupt-affinity" : [ 'phandle' ],
                     "fpga-mgr" : [ 'phandle' ],
+                    "memory-region" : [ 'phandle' ],
                     "__phandle_exclude__" : [ '.*lop.*', '/__symbols__', '/aliases' ],
                 }
         except:
