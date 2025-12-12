@@ -14,6 +14,7 @@ import json
 import sys
 import copy
 import os
+import re
 from packaging import version
 
 from collections import OrderedDict
@@ -719,6 +720,11 @@ class LopperJSON():
                             lp.resolve()
                             # add the property to the node
                             ln + lp
+
+                            # if this is a label property, bubble it up to the node
+                            # Supports both lopper-label-* (generated) and simpler 'label:' syntax
+                            if re.search(r'lopper-label.*', p) or p == 'label':
+                                ln.label_set(lp.value[0] if isinstance(lp.value, list) else lp.value)
                 else:
                     if type(props[p]) == list:
                         # we need to check if there are embedded dictionaries, and if so, expand them.
