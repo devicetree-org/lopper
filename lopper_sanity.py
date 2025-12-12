@@ -2778,6 +2778,12 @@ if __name__ == "__main__":
         device_tree.dts = "./lopper/selftest/system-top-embedded-lop.dts"
         assists_sanity_test( device_tree, None, verbose, "phandle_meta_test_2" )
 
+        # phandle reference resolution test (label_to_phandle)
+        device_tree.autorun = True
+        device_tree.dts = "./lopper/selftest/system-top.dts"
+        input_files = [ "./lopper/selftest/domains/phandle-ref-test.yaml" ]
+        assists_sanity_test( device_tree, None, verbose, "phandle_ref_test", input_files )
+
         # multi-yaml + parent + glob testing
         device_tree.autorun = True
         device_tree.dts = "./lopper/selftest/system-top.dts"

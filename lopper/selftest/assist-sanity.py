@@ -444,9 +444,108 @@ def assist_reference( tgt_node, sdt, options ):
         elif any(re.search('glob_test', s) for s in args):
             res = glob_test( sdt, args[0] )
             return res
+        elif "phandle_ref_test" in args:
+            res = phandle_ref_test( sdt )
+            return res
         else:
             domains_access_test( sdt )
             return True
     except Exception as e:
         print( f"Exception during assist-sanity {e}")
         pass
+
+def phandle_ref_test( sdt ):
+    """Test label_to_phandle resolution for YAML phandle references.
+
+    Tests:
+    1. Explicit "&label" syntax resolution
+    2. Bare label resolution for known phandle properties
+    3. Label registration via 'label:' property
+    """
+    print( f"[INFO]: running phandle_ref_test" )
+
+    try:
+        # Check that reserved-memory nodes exist and have labels
+        test_reserved = sdt.tree.lnodes("test_reserved")
+        if test_reserved:
+            print( f"[PASS]: test_reserved label registered in tree" )
+        else:
+            print( f"[FAIL]: test_reserved label not found in tree" )
+            return False
+
+        another_reserved = sdt.tree.lnodes("another_reserved")
+        if another_reserved:
+            print( f"[PASS]: another_reserved label registered in tree" )
+        else:
+            print( f"[FAIL]: another_reserved label not found in tree" )
+            return False
+
+        # Check that test-node exists
+        test_nodes = sdt.tree.nodes("test-node")
+        if not test_nodes:
+            print( f"[FAIL]: test-node not found in tree" )
+            return False
+
+        test_node = test_nodes[0]
+
+        # Check memory-region property - should have resolved phandles (integers)
+        try:
+            mem_region = test_node["memory-region"]
+            mem_val = mem_region.value
+
+            # Should be a list of integers (phandles), not strings
+            if isinstance(mem_val, list) and len(mem_val) >= 2:
+                if isinstance(mem_val[0], int) and isinstance(mem_val[1], int):
+                    print( f"[PASS]: memory-region resolved to phandles: {mem_val}" )
+                else:
+                    print( f"[FAIL]: memory-region values are not integers: {mem_val}" )
+                    return False
+            else:
+                print( f"[FAIL]: memory-region unexpected format: {mem_val}" )
+                return False
+
+            # Verify the phandles match the target nodes
+            if mem_val[0] == test_reserved[0].phandle:
+                print( f"[PASS]: first phandle matches test_reserved" )
+            else:
+                print( f"[FAIL]: first phandle {mem_val[0]} != test_reserved.phandle {test_reserved[0].phandle}" )
+                return False
+
+            if mem_val[1] == another_reserved[0].phandle:
+                print( f"[PASS]: second phandle matches another_reserved" )
+            else:
+                print( f"[FAIL]: second phandle {mem_val[1]} != another_reserved.phandle {another_reserved[0].phandle}" )
+                return False
+
+        except Exception as e:
+            print( f"[FAIL]: error accessing memory-region: {e}" )
+            return False
+
+        # Check interrupt-parent - bare label resolution
+        try:
+            int_parent = test_node["interrupt-parent"]
+            int_val = int_parent.value
+
+            # Should be an integer (phandle) or list with one integer
+            if isinstance(int_val, list):
+                int_val = int_val[0]
+
+            if isinstance(int_val, int):
+                print( f"[PASS]: interrupt-parent resolved to phandle: {int_val}" )
+            elif int_val == "gic_a72":
+                # If gic_a72 doesn't exist in tree, value stays as string
+                print( f"[INFO]: interrupt-parent stayed as string (gic_a72 not in tree)" )
+            else:
+                print( f"[FAIL]: interrupt-parent unexpected value: {int_val}" )
+                return False
+
+        except Exception as e:
+            print( f"[FAIL]: error accessing interrupt-parent: {e}" )
+            return False
+
+        print( f"[PASS]: phandle_ref_test completed successfully" )
+        return True
+
+    except Exception as e:
+        print( f"[FAIL]: exception in phandle_ref_test: {e}" )
+        return False

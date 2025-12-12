@@ -1,0 +1,37 @@
+# Test file for label_to_phandle resolution
+# Tests both explicit "&label" syntax and bare label for known phandle properties
+
+compatible: openamp,domain-v1
+
+reserved-memory:
+  "#address-cells": 2
+  "#size-cells": 2
+  ranges: true
+  
+  test_reserved@10000000:
+    label: test_reserved
+    compatible: shared-dma-pool
+    no-map: true
+    reg:
+      - start: 0x10000000
+        size: 0x1000000
+
+  another_reserved@20000000:
+    label: another_reserved  
+    compatible: shared-dma-pool
+    no-map: true
+    reg:
+      - start: 0x20000000
+        size: 0x2000000
+
+test-node:
+  compatible: test,phandle-resolution
+  
+  # Explicit ampersand syntax (quoted)
+  memory-region:
+    - "&test_reserved"
+    - "&another_reserved"
+  
+  # Bare label for known phandle property (per simplified YAML spec)
+  # interrupt-parent is in phandle_possible_properties
+  interrupt-parent: gic_a72
