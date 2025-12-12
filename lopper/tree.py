@@ -1180,7 +1180,9 @@ class LopperProp():
         # future .. convert to hex.
         prop_val = []
         for f in self.value:
-            if type(f) == str:
+            if f is None:
+                prop_val.append( "0x0" )
+            elif type(f) == str:
                 prop_val.append( f )
             else:
                 prop_val.append( hex(f) )
