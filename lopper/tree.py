@@ -298,8 +298,13 @@ class LopperProp():
         """
         if type(key) == int:
             if self.pclass == 'json' and self.value:
-                loaded_j = json.loads( self.value )
-                return loaded_j[key]
+                if isinstance(self.value, str):
+                    loaded_j = json.loads( self.value )
+                    return loaded_j[key]
+                elif isinstance(self.value, list):
+                    return self.value[key]
+                else:
+                    return self.value
             else:
                 if type(self.value) == list:
                     return self.value[key]
@@ -332,8 +337,13 @@ class LopperProp():
 
         """
         if self.pclass == 'json' and self.value:
-            loaded_j = json.loads( self.value )
-            return len(loaded_j)
+            if isinstance(self.value, str):
+                loaded_j = json.loads( self.value )
+                return len(loaded_j)
+            elif isinstance(self.value, list):
+                return len(self.value)
+            else:
+                return 1
         else:
             if type(self.value) == list:
                 return len(self.value)
@@ -361,10 +371,15 @@ class LopperProp():
            iterator for use in dict()
         """
         if self.pclass == 'json':
-            loaded_j = json.loads( self.value )
-            for chunk in loaded_j:
-                yield chunk
-            #yield 'value', loaded_j
+            if isinstance(self.value, str):
+                loaded_j = json.loads( self.value )
+                for chunk in loaded_j:
+                    yield chunk
+            elif isinstance(self.value, list):
+                for chunk in self.value:
+                    yield chunk
+            else:
+                yield self.value
         else:
             if type( self.value ) == list:
                 yield 'value', self.value
@@ -3076,6 +3091,60 @@ class LopperNode(object):
         # node operation
         self.load( o_export, clear_children = False, update_props = True )
 
+        # If the source node came from YAML, resolve any phandle references
+        # (e.g., "&label" strings) now that we have access to the full tree.
+        if other_node._source == "yaml" and self.tree:
+            self._label_to_phandles()
+
+    def _label_to_phandles(self):
+        """Resolve phandle references in this node's properties.
+
+        Walks through properties looking for phandle references and resolves
+        them by looking up the label/node in the tree.
+
+        This enables YAML input to use phandle references in two styles:
+
+        1. Quoted ampersand syntax (explicit):
+             memory-region:
+               - "&ethernet_reserved"
+
+        2. Bare label for known phandle properties (per simplified YAML spec):
+             interrupt-parent: interrupt-controller
+
+        The second form only applies to properties listed in phandle_possible_properties().
+        """
+        if not self.tree:
+            return
+
+        # Get known phandle properties for bare-label resolution
+        import lopper.base
+        phandle_props = lopper.base.lopper_base.phandle_possible_properties()
+
+        for prop_name, prop in self.__props__.items():
+            if prop.value is None:
+                continue
+
+            # Skip JSON-encoded properties - they have complex structures
+            # that shouldn't be processed for simple phandle resolution
+            if prop.pclass == "json":
+                continue
+
+            # Check for explicit "&label" syntax first
+            resolved = self.tree.label_to_phandle(prop.value)
+
+            # If no resolution happened and this is a known phandle property,
+            # try bare label lookup (per simplified YAML spec)
+            if resolved == prop.value and prop_name in phandle_props:
+                resolved = self.tree.label_to_phandle(prop.value, bare_label=True)
+
+            if resolved != prop.value:
+                lopper.log._debug(f"resolved phandle ref in {self.abs_path}:{prop_name}: {prop.value} -> {resolved}")
+                prop.__dict__["value"] = resolved
+                prop.__modified__ = True
+                # Clear json pclass since value is no longer a JSON string
+                if prop.pclass == "json":
+                    prop.pclass = None
+
     def load( self, dct, parent_path = None, clear_children = True, update_props = False):
         """load (calculate) node details against a property dictionary
 
@@ -4747,6 +4816,10 @@ class LopperTree:
                 p.__pstate__ = "init"
                 p.__modified__ = True
 
+            # If this is a new node from YAML, resolve phandle references
+            if node._source == "yaml":
+                node._label_to_phandles()
+
             lopper.log._debug( f"node added: [{[node]}] {node.abs_path} ({node.label})" )
             if self.__dbg__ > 2:
                 for p in node:
@@ -4948,6 +5021,82 @@ class LopperTree:
             return nodes
 
         return nodes
+
+    def label_to_phandle(self, value, strict=False, fallback_tree=None, bare_label=False):
+        """Resolve a phandle reference string to a numeric phandle.
+
+        This handles values like "&ethernet_reserved" or bare labels like
+        "interrupt-controller" by looking up the label in the tree (via lnodes
+        or nodes) and returning/generating the phandle.
+
+        This method consolidates the phandle resolution logic used in both
+        YAML input processing and lop file processing.
+
+        Args:
+            value: The value to check/resolve (string, list, or other)
+            strict (bool): If True, use strict node matching
+            fallback_tree (LopperTree, optional): Secondary tree to search
+                (e.g., lop tree) if not found in this tree
+            bare_label (bool): If True, treat value as a bare label reference
+                (no & prefix required). Used for simplified YAML spec compliance.
+
+        Returns:
+            The resolved value - phandle integer if resolved, original value otherwise.
+            For lists, returns a new list with resolved elements.
+        """
+        if value is None:
+            return value
+
+        if isinstance(value, str):
+            # Check for &label syntax (phandle reference) or bare_label mode
+            if value.startswith('&'):
+                ref_str = value[1:]  # Strip leading &
+            elif bare_label:
+                ref_str = value
+            else:
+                return value
+
+            # Handle optional property dereference syntax: &label#property
+            node_part = ref_str.split('#')[0]
+            prop_part = ref_str.split('#')[1] if '#' in ref_str else None
+
+            # Search order: lnodes (label), nodes (name), then fallback tree
+            target_nodes = self.lnodes(node_part)
+            if not target_nodes:
+                target_nodes = self.nodes(node_part, strict)
+            if not target_nodes and fallback_tree:
+                target_nodes = fallback_tree.lnodes(node_part)
+                if not target_nodes:
+                    target_nodes = fallback_tree.nodes(node_part, strict)
+
+            if target_nodes:
+                target_node = target_nodes[0]
+
+                if prop_part:
+                    # Dereference a property within the target node
+                    try:
+                        return target_node[prop_part].value
+                    except:
+                        lopper.log._warning(f"phandle ref {value}: property '{prop_part}' not found")
+                        return target_node.phandle if target_node.phandle else 0
+                else:
+                    # Return/generate phandle
+                    if target_node.phandle == 0:
+                        target_node.phandle = self.phandle_gen()
+                    return target_node.phandle
+            else:
+                lopper.log._warning(f"phandle reference '{value}' could not be resolved")
+                return value
+
+        elif isinstance(value, list):
+            # Recursively resolve list elements
+            resolved = []
+            for item in value:
+                resolved.append(self.label_to_phandle(item, strict, fallback_tree, bare_label))
+            return resolved
+
+        else:
+            return value
 
     def cnodes( self, compatible_string ):
         """Returns the nodes in a tree that are compatible with the passed type
