@@ -309,11 +309,26 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
         and clears flash/OCM choices that would clash with RPMsg shared memory.
     """
 
-    if len(ipc_nodes) != 1:
-        print("ERROR: zephyr: rpmsg: only length of 1 ipc node allowed. got: ", ipc_nodes)
+    if len(ipc_nodes) != 3:
+        print("ERROR: zephyr: rpmsg: only length of 3 ipc node allowed. got: ", ipc_nodes)
         return False
 
-    tree['/chosen']['zephyr,ipc_shm'] = ipc_nodes[0].abs_path
+    # have to now combine the 3 IPC nodes into one.
+    base = 0xFFFFFFFF
+    size = 0
+    for i in ipc_nodes:
+        reg = i['reg']
+        size += reg[3]
+        if reg[1] < base:
+            base = reg[1]
+
+    # remove current IPC nodes. Create combined one below.
+    [ tree - node for node in ipc_nodes ]
+
+    new_ipc_node = LopperNode(-1, "/reserved-memory/ipc@%s" % hex(base)[2:])
+    new_ipc_node + LopperProp(name="reg", value=[0, base, 0, size])
+    tree + new_ipc_node
+    tree['/chosen']['zephyr,ipc_shm'] = new_ipc_node.abs_path
 
     if domain_node.propval("xlnx,ddr-boot") != []:
         elfload_nodes = [ tree.pnode(x) for x in domain_node.propval("reserved-memory") ]
