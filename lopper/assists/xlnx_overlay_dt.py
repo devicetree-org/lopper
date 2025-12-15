@@ -241,18 +241,6 @@ def validate_amba_pl_node(amba_node):
 
     return has_valid_pl
 
-def setup_phandle_properties():
-    """
-    Configure phandle possible properties for Lopper.
-
-    Sets up the dictionary of properties that can contain phandle references,
-    including custom properties for Xilinx IP connections.
-    """
-    Lopper.phandle_possible_prop_dict = Lopper.phandle_possible_properties()
-    Lopper.phandle_possible_prop_dict["axistream-connected"] = ["phandle"]
-    Lopper.phandle_possible_prop_dict["pcs-handle"] = ["phandle"]
-    Lopper.phandle_possible_prop_dict["remote_endpoint"] = ["phandle"]
-
 def prepare_amba_node(amba_node, sdt, tgt_node):
     """
     Prepare amba node for overlay by cloning, removing from source tree, and cleaning up.
@@ -577,9 +565,6 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     # Validate that amba_pl has valid PL nodes with register properties
     if not validate_amba_pl_node(amba_node):
         return True
-
-    # Setup phandle configuration
-    setup_phandle_properties()
 
     # Prepare amba node for overlay
     new_amba_node = prepare_amba_node(amba_node, sdt, tgt_node)
