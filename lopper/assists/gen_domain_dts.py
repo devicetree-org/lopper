@@ -789,7 +789,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                         valid_alias_proplist.append(node.name)
                         # Create fixed clock nodes
                         if 'clocks' in required_prop:
-                            if any(clock_prop == (re.search(r'xlnx,.*-clk-freq-hz$', prop)) for prop in prop_list):
+                            if any(clock_prop := (re.search(r'xlnx,.*-clk-freq-hz$', prop)) for prop in prop_list):
                                 clk_freq = node[clock_prop.group()].value
                             else:
                                 # If there is no clk-freq property use 0MHZ as default this prevent
