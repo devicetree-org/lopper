@@ -374,3 +374,14 @@ mmio-sram:
   required:
     - compatible
     - reg
+
+xlnx,zynqmp-rtc:
+  required:
+    - compatible
+    - reg
+    - status
+    - clock-frequency
+    - interrupts
+    - interrupt-parent
+    - interrupt-names
+    - alarms-count
