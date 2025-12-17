@@ -499,6 +499,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
     root_sub_nodes = root_node.subnodes()
     wwdt_nodes = []
     ufs_nodes = []
+    rtc_nodes = []
 
     if "amd,versal2" in root_node['compatible'].value:
         root_node["model"] = "AMD Versal Gen 2"
@@ -539,6 +540,15 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
             if compatible == "arm,armv8-timer":
                 node["interrupts"].value = [0x1, 0xd, 0x4, 0xa4, 0x1, 0xe, 0x4, 0xa4, 0x1, 0xb, 0x4, 0xa4, 0x1, 0xa, 0x4, 0xa4]
 
+            elif compatible == "xlnx,zynqmp-rtc":
+                # RTC: Convert 3-cell interrupts to 4-cell GICv3 format by adding 0xa0 priority
+                intr_list = node["interrupts"].value
+                node["interrupts"].value = [cell for i in range(0, len(intr_list), 3)
+                                for cell in intr_list[i:i+3] + [0xa0]]
+                # Set clock frequency for RTC
+                # Revert this snippet once the clock support is added in sdtgen
+                if node.propval('clock-frequency') == ['']:
+                    node["clock-frequency"] = 32767
             elif node.propval('interrupts') != ['']:
                 intr_list = node["interrupts"].value
                 intr_list.append("0xa0")            
@@ -551,6 +561,8 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
                 wwdt_nodes.append(node)
             if "amd,versal2-ufs" in node["compatible"].value:
                 ufs_nodes.append(node)
+            if "xlnx,zynqmp-rtc" in node["compatible"].value:
+                rtc_nodes.append(node)
 
     xlnx_remove_unsupported_nodes(tgt_node, sdt)
 
@@ -563,6 +575,9 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
     if ufs_nodes:
         ufs_node = sdt.tree.pnode(ufs_nodes[0].phandle)
         sdt.tree['/aliases'] + LopperProp(name="ufs0", value = ufs_node.abs_path)
+    if rtc_nodes:
+        rtc_node = sdt.tree.pnode(rtc_nodes[0].phandle)
+        sdt.tree['/aliases'] + LopperProp(name="rtc", value = rtc_node.abs_path)
 
     for node in root_sub_nodes:
         if node.propval("compatible") != ['']:
