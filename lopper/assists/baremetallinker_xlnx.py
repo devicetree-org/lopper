@@ -42,7 +42,7 @@ def get_memranges(tgt_node, sdt, options):
         "axi_bram": 0, "ps7_ddr": 0, "psu_ddr": 0,
         "psv_ddr": 0, "mig": 0, "lmb_bram": 0,
         "axi_noc2": 0, "axi_noc": 0,"psu_ocm": 0,
-        "psv_ocm": 0, "psx_ocm": 0, "ocm_ram": 0, "ddr4": 0,
+        "psv_ocm": 0, "psx_ocm": 0, "ocm": 0, "ddr4": 0,
         "ddr5": 0, "mig_7series": 0, "ps7_ram": 0,
         "axi_emc": 0, "psu_qspi_linear": 0, "ps7_qspi_linear": 0, "pmc_ram": 0,
         "ddr3": 0, "lpddr": 0
