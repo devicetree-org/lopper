@@ -60,6 +60,33 @@ def is_compat( node, compat_string_to_test ):
         return xlnx_openamp_rpu
     return ""
 
+def xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, tree):
+    """Report whether a node shode stay for OpenAMP Use cases.
+
+    Args:
+        linux_dt (bool): True if for Linux domain. Else False.
+        zephyr_dt (bool): True if for Zephyr domain. Else False.
+        node (LopperNode): Node to check
+        tree (LopperTree): Tree for lopper nodes.
+    Returns:
+        True if Node should remain. Else False.
+
+    Algorithm:
+        Try each condition for the given node.
+    """
+    if not isinstance(node, LopperNode):
+        print("OPENAMP: XLNX: ERROR: expected node ref in xlnx_openamp_keep_node")
+        return False
+
+    conditions = [
+        linux_dt and "uio" in node.propval('compatible', list),
+        "vnd,mbox-consumer" in node.propval('compatible', list),
+        "zephyr,mbox-ipm" in node.propval('compatible', list),
+    ]
+
+    return any(c for c in conditions if c)
+
+
 def xlnx_handle_relations(sdt, machine, find_only = True, os = None, out_file_name = None):
     """Process OpenAMP relation domains for a given machine.
 

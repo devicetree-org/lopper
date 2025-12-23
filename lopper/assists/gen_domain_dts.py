@@ -23,6 +23,7 @@ from common_utils import to_cmakelist
 import common_utils as utils
 from domain_access import update_mem_node
 from zephyr_board_dt import process_overlay_with_lopper_api
+from openamp_xlnx import xlnx_openamp_keep_node
 
 def delete_unused_props( node, driver_proplist , delete_child_nodes):
     if delete_child_nodes:
@@ -395,6 +396,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 elif linux_dt and "xlnx,versal-ddrmc" in node.propval('compatible', list):
                     # ddr controller is not mapped to APU and there is a special handling in SDT to make its status okay.
                     continue
+                elif xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, sdt.tree):
+                    continue
                 else:
                     sdt.tree.delete(node)
         elif node.propval('compatible') != [''] and linux_dt:
@@ -507,7 +510,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
 
     for node in root_sub_nodes:
         if node.depth == 1:
-            if "cpus" not in node.name and "amba" not in node.name and "memory" not in node.name and "chosen" not in node.name and "bus" not in node.name and "axi" not in node.name and "timer" not in node.name and "alias" not in node.name and "consumer" not in node.name:
+            if "cpus" not in node.name and "amba" not in node.name and "memory" not in node.name and "chosen" not in node.name and "bus" not in node.name and "axi" not in node.name and "timer" not in node.name and "alias" not in node.name and not xlnx_openamp_keep_node(False, True, node, sdt.tree):
                 sdt.tree.delete(node)
         elif node.name == "cpu-map" or node.name == "idle-states":
             sdt.tree.delete(node)
@@ -845,7 +848,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             if prop not in required_prop:
                                 node.delete(prop)
                     else:
-                        if node.name not in ("axi", "soc") and node not in memnode_list:
+                        if node.name not in ("axi", "soc") and node not in memnode_list and not xlnx_openamp_keep_node(False, True, node, sdt.tree):
                             sdt.tree.delete(node)
 
     alias_node = sdt.tree['/aliases']
