@@ -33,6 +33,7 @@ import lopper
 import json
 
 from .lopper_lib import check_bit_set, clear_bit, chunks, property_set, set_bit, expand_start_size_to_reg
+from lopper.log import _init, _warning, _info, _error, _debug
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -1392,6 +1393,26 @@ def resolve_carveouts( tree, subnode, carveout_prop_name, verbose = 0 ):
 
             new_prop_val.append(current_node.phandle)
 
+            # here handle nodes for OpenAMP/Libmetal that dont already have reg
+            if current_node.propval("reg") == ['']:
+                raw_start = current_node.propval("start")
+                raw_size = current_node.propval("size")
+                if raw_start == [''] or raw_start is None or raw_size == [''] or raw_size is None:
+                    lopper.log._error("resolve carveout:", current_node, "missing start or size. erroring out")
+                    return False
+
+                # expand_start_size_to_reg will translate the 'size'/'start' tuple in a YAML entry to a reg property. The defaults are there as
+                # guard / requirement for the routine call. address/size_cells is used to format the register / output value
+                reg_cells, _, _ = expand_start_size_to_reg(
+                    {"start": raw_start, "size": raw_size},
+                    address_cells=2,
+                    size_cells=2,
+                    default_start=0xbeef,
+                    default_size=0xbeef
+                )
+                current_node + LopperProp(name="reg", value=reg_cells)
+                [ current_node.delete(prop) for prop in [ "start", "size" ] ]
+
         relation + LopperProp(name=carveout_prop_name, value = new_prop_val)
 
     return True
@@ -1564,6 +1585,7 @@ def openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
 
 openamp_d_to_d_compat_strings = {
     "openamp,rpmsg-v1" : openamp_rpmsg_expand,
+    "libmetal,ipc-v1" : openamp_rpmsg_expand,
     "openamp,remoteproc-v2" : openamp_remoteproc_expand,
 }
 
