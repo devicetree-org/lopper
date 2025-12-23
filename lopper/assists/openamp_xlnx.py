@@ -368,6 +368,11 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
     [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
     tree.add(mbox_consumer_node)
 
+    mbox_ipm_node = LopperNode(-1, "/mbox_ipi_%s_%s" % (ipi_node.name.replace("@",""), ipi_node.parent.name.replace("@","")))
+    mbox_ipm_props = { "compatible" : "zephyr,mbox-ipm", "mbox-names" : ['tx', 'rx'], "status": "okay", "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1] }
+    [mbox_ipm_node +  LopperProp(name=n, value=mbox_ipm_props[n]) for n in mbox_ipm_props.keys()]
+    tree.add(mbox_ipm_node)
+
     if tree['/chosen'].propval('zephyr,flash') != ['']:
         tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,flash'])
     if tree['/chosen'].propval('zephyr,ocm') != ['']:
