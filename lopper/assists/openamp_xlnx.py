@@ -87,7 +87,7 @@ def xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, tree):
     return any(c for c in conditions if c)
 
 
-def xlnx_handle_relations(sdt, machine, find_only = True, os = None, out_file_name = None):
+def xlnx_handle_relations(sdt, machine, find_only = True, os = None):
     """Process OpenAMP relation domains for a given machine.
 
     Args:
@@ -96,7 +96,6 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None, out_file_na
         find_only (bool): When True, return the first matching domain without
             modifying the tree.
         os (str | None): Operating-system context (for example ``linux_dt``).
-        out_file_name (str | None): Optional path used for generated header output.
 
     Returns:
         LopperNode | bool | None: Matching domain when ``find_only`` is True, True
@@ -158,7 +157,7 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None, out_file_na
         remoteproc_core_mapping_to_rpmsg_relation.update(ret)
 
     for rel in rpmsg_relations:
-        if not xlnx_rpmsg_parse(tree, rel, machine, carveout_validation_arr, remoteproc_core_mapping_to_rpmsg_relation, os, out_file_name, 1):
+        if not xlnx_rpmsg_parse(tree, rel, machine, carveout_validation_arr, remoteproc_core_mapping_to_rpmsg_relation, os, 1):
             return False
 
     # check if conflicts in ELFLOAD and IPC carveouts
@@ -446,7 +445,7 @@ def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_node
 
     return True
 
-def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr, channel_to_core_dict = None, os = None, out_file_name = None, verbose = 0 ):
+def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr, channel_to_core_dict = None, os = None, verbose = 0 ):
     """Parse RPMsg relations and update the device tree accordingly.
 
     Args:
@@ -458,7 +457,6 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
         channel_to_core_dict (dict[str, LopperNode] | None): Mapping of remote names
             to remoteproc core nodes.
         os (str | None): Operating-system context (``linux_dt`` or ``zephyr_dt``).
-        out_file_name (str | None): Optional header generation target path.
         verbose (int): Verbosity flag for diagnostic messages.
 
     Returns:
@@ -519,8 +517,6 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
             return False
         if os == "linux_dt"  and not xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveouts, verbose):
             return False
-        if out_file_name != None:
-            return xlnx_openamp_gen_outputs_only(tree, machine, out_file_name, rpmsg_carveouts, ipi_node, verbose)
 
     return True
 
@@ -951,6 +947,85 @@ def get_platform(tree, verbose = 0):
 
     return platform
 
+def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose = 0 ):
+    """Derive the platform enum from the root node's model/compatible strings.
+       This handler is called where outputs can be derived from the existing tree.
+       typically just YAML -> DTS translation
+       currently handles:
+            1.  BM / freertos RPU openamp header
+    Args:
+        sdt (LopperSDT): Lopper system device tree with tree object stored.
+        output_file_name (str): output file name
+        openamp_args (Dict): dictionary of relevant arguments.
+        verbose (int): Verbosity flag controlling banner output.
+
+    Returns:
+        True or False.
+
+    Algorithm:
+        Gather relation's ipi node and carveouts. Then determine the use case. Based on this
+        call the output-file routine. That output-file routine shall return True or False.
+    """
+
+    platform = get_platform(sdt.tree, verbose)
+    if platform == None:
+        return False
+
+    # get_cpu_node expects dictionary where first arg first element is machine
+    machine = openamp_args['machine']
+    match_cpunode = get_cpu_node(sdt, {'args':[machine]})
+    if not match_cpunode:
+        print("openamp_nontree_outputs_handler: unable to find machine: ", machine)
+        return False
+
+    # loop in domains to find relevant relation parent node
+    domains = sdt.tree['/domains']
+    relation_node = None
+    for n in domains.subnodes():
+        if n.parent == None or n.parent.parent == None:
+            continue
+
+        if n.parent.parent.propval("cpus") == ['']:
+            continue
+
+        # ensure target domain matches
+        if match_cpunode.parent != sdt.tree.pnode(n.parent.parent.propval("cpus")[0]):
+            continue
+
+        relation_node = n
+        break
+
+    # for now assume the first relation child is the one used. In the future, further filtering will be added.
+    os = openamp_args["dt_type"]
+    carveouts = None
+    ipi_node = None
+    for node in relation_node.subnodes(children_only=True):
+        pname = "remote" if os == "linux_dt" else "host"
+        # check for remote property
+        if node.props(pname) == []:
+            print("ERROR: ", node, "is missing ", pname, " property")
+            return False
+
+        # first find host to remote IPI
+        mbox_pval = node.propval("mbox")
+        if mbox_pval == ['']:
+            print("ERROR: ", node, " is missing mbox property")
+            return False
+
+        ipi_node = sdt.tree.pnode(mbox_pval[0])
+        if ipi_node == None:
+            print("ERROR: Unable to find ipi")
+            return False
+
+        carveout_prop = node.propval("carveouts")
+        if carveout_prop == ['']:
+            print("ERROR: ", node, " is missing carveouts property")
+            return False
+
+        carveouts = [ sdt.tree.pnode(phandle) for phandle in carveout_prop ]
+
+        return xlnx_openamp_gen_outputs_only(sdt.tree, machine, output_file_name, carveouts, ipi_node, verbose)
+
 def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_arr, verbose = 0 ):
     """Parse remoteproc relations and construct core nodes.
 
@@ -1100,9 +1175,11 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
             print("OPENAMP: XLNX: WARNING: no openamp domains found")
         return True
 
-    if openamp_args["dt_type"] in ["zephyr_dt", "linux_dt"] or openamp_args["openamp_output_filename"]:
+    if openamp_args["openamp_output_filename"]:
+        return openamp_nontree_outputs_handler(sdt, openamp_args["openamp_output_filename"], openamp_args, 1 )
+    elif openamp_args["dt_type"] in ["zephyr_dt", "linux_dt"] or openamp_args["openamp_output_filename"]:
         # if find_only is False, then processing will also occur.
-        if not xlnx_handle_relations(sdt, machine, False, openamp_args["dt_type"], openamp_args["openamp_output_filename"]):
+        if not xlnx_handle_relations(sdt, machine, False, openamp_args["dt_type"]):
             return False
 
         labels_to_keep = [ 'ttc0', 'ttc1' ]
