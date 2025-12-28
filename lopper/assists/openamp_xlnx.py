@@ -354,19 +354,26 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
 
     new_ipc_node = LopperNode(-1, "/reserved-memory/ipc@%s" % hex(base)[2:])
     new_ipc_node + LopperProp(name="reg", value=[0, base, 0, size])
+    new_ipc_node + LopperProp(name="compatible", value="mmio-sram")
+
     tree + new_ipc_node
     tree['/chosen']['zephyr,ipc_shm'] = new_ipc_node.abs_path
 
     if domain_node.propval("xlnx,ddr-boot") != []:
         elfload_nodes = [ tree.pnode(x) for x in domain_node.propval("reserved-memory") ]
-        valid_elfload_node = [ node for node in elfload_nodes if node.propval("device_type") == ['memory'] ]
+        valid_elfload_node = [ node for node in elfload_nodes if node and node.propval("device_type") == ['memory'] ]
         if len(valid_elfload_node) > 0:
             tree['/chosen']['zephyr,sram'] = valid_elfload_node[0].abs_path
 
-    mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
-    mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1], "mbox-names" : ['tx', 'rx'] }
-    [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
-    tree.add(mbox_consumer_node)
+    # only create a node for this the first time. in the future this will go away as upstream wants use of ipm mbox node. this is here for bkwd compatibility
+    try:
+        # if here then mbox_consumer_node was already created.
+        mbox_consumer_node = tree['/mbox-consumer']
+    except KeyError:
+        mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
+        mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1], "mbox-names" : ['tx', 'rx'] }
+        [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
+        tree.add(mbox_consumer_node)
 
     mbox_ipm_node = LopperNode(-1, "/mbox_ipi_%s_%s" % (ipi_node.name.replace("@",""), ipi_node.parent.name.replace("@","")))
     mbox_ipm_props = { "compatible" : "zephyr,mbox-ipm", "mbox-names" : ['tx', 'rx'], "status": "okay", "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1] }
