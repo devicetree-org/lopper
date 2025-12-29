@@ -39,6 +39,7 @@ RPU_PATH = "/rpu@ff9a0000"
 REMOTEPROC_D_TO_D = "openamp,remoteproc-v1"
 REMOTEPROC_D_TO_D_v2 = "openamp,remoteproc-v2"
 RPMSG_D_TO_D = "openamp,rpmsg-v1"
+LIBMETAL_D_TO_D = "libmetal,ipc-v1"
 
 def is_compat( node, compat_string_to_test ):
     """Identify whether this plugin handles the provided compatibility string.
@@ -117,7 +118,7 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None):
         print("xlnx_handle_relations: unable to find machine: ", machine)
         return False
 
-    parse_routines = { REMOTEPROC_D_TO_D_v2: xlnx_remoteproc_parse, RPMSG_D_TO_D: xlnx_rpmsg_parse }
+    parse_routines = { REMOTEPROC_D_TO_D_v2: xlnx_remoteproc_parse, RPMSG_D_TO_D: xlnx_rpmsg_parse, LIBMETAL_D_TO_D : xlnx_rpmsg_parse }
 
     # first collect all relevant openamp domains
     remoteproc_relations = []
@@ -138,6 +139,11 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None):
             else: # do processing on found ndoes
                 if node_compat in parse_routines.keys():
                     arr = remoteproc_relations if node_compat == REMOTEPROC_D_TO_D_v2 else rpmsg_relations
+
+                    # skip libmetal relations for Linux
+                    if os == "linux_dt" and node_compat == LIBMETAL_D_TO_D:
+                        continue
+
                     arr.append(n)
 
     # As the RPMsg relation will be appending nodes to a remoteproc node, link the rpmsg
@@ -316,7 +322,7 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
     return False
 
 # Inputs: openamp-processed SDT, target processor, ipi, ipc node
-def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_nodes):
+def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_nodes, relation_compat):
     """Tailor the device tree for Zephyr RPMsg communication.
 
     Args:
@@ -325,6 +331,7 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
         ipi_node (LopperNode): IPI node used for mailbox signaling.
         domain_node (LopperNode): Domain node. It may contain ddr boot field.
         ipc_nodes (list[LopperNode]): IPC shared-memory nodes tied to RPMsg.
+        relation_compat (str): relation compatible string
 
     Returns:
         bool: True when Zephyr-specific updates succeed, False on validation failure.
@@ -374,15 +381,70 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
         [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
         tree.add(mbox_consumer_node)
 
-    mbox_ipm_node = LopperNode(-1, "/mbox_ipi_%s_%s" % (ipi_node.name.replace("@",""), ipi_node.parent.name.replace("@","")))
+    mbox_ipm_node = LopperNode(-1, "/mbox_ipi_%s_%s" % (hex(ipi_node['reg'][1])[2:], hex(ipi_node.parent['reg'][1])[2:]))
     mbox_ipm_props = { "compatible" : "zephyr,mbox-ipm", "mbox-names" : ['tx', 'rx'], "status": "okay", "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1] }
     [mbox_ipm_node +  LopperProp(name=n, value=mbox_ipm_props[n]) for n in mbox_ipm_props.keys()]
     tree.add(mbox_ipm_node)
+
+    # do this for upstream compatibility for now
+    if RPMSG_D_TO_D == relation_compat:
+        tree['/chosen']['zephyr,ipc'] = mbox_ipm_node.abs_path
 
     if tree['/chosen'].propval('zephyr,flash') != ['']:
         tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,flash'])
     if tree['/chosen'].propval('zephyr,ocm') != ['']:
         tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,ocm'])
+
+    return True
+
+def xlnx_openamp_gen_outputs_ipi_mapping(tree, output_file, ipi_node, os, verbose = 0 ):
+    """Generate .cmake file for Libmetal IPI usage
+
+    Args:
+        tree (LopperTree): Device tree being inspected for metadata.
+        ipi_node (LopperNode): IPI node used
+        os (str): os value
+        verbose (int): Verbosity flag for diagnostic printing.
+
+    Returns:
+        bool: True on successful file generation, False on failure.
+    """
+    platform = get_platform(tree, verbose)
+    if platform == None:
+        return False
+
+    cmake_file_template = "add_definitions(-DLIBMETAL_CFG_PROVIDED)\n"
+    cmake_file_entry = None
+    cmake_file_dict = {}
+
+    if os == "linux_dt":
+        suffix = "ipi" if platform == SOC_TYPE.ZYNQMP else "mailbox"
+        cmake_file_template += "set (LIBMETAL_DEMO_IPI \"$parent_ipi_node\") # this is linux platform bus name of the relevant node.\n"
+        cmake_file_template += "#the node used is $parent_ipi_node_path\n"
+        cmake_file_template += "set (LIBMETAL_DEMO_IPI_BITMASK $bitmask)\n"
+        cmake_file_template += "# this is bitmask to kick remote using node $ipi_node_path"
+
+        cmake_file_dict["bitmask"] = hex(ipi_node['xlnx,ipi-bitmask'].value[0])
+        cmake_file_dict["ipi_node_path"] = ipi_node.abs_path
+        cmake_file_dict["parent_ipi_node_path"] = ipi_node.parent.abs_path
+        cmake_file_dict["parent_ipi_node"] = "%s.%s" % (hex(ipi_node.parent['reg'][1])[2:], suffix)
+    elif os == "zephyr_dt":
+        cmake_file_template += "set (LIBMETAL_DEMO_IPI $ipm_mbox_node)\n"
+        cmake_file_template += "# this is path to the IPI node in Zephyr RPU DT\n"
+        cmake_file_template += "# IPI used is $ipi_node_path"
+        cmake_file_entry = "mbox_ipi_%s_%s" % ((hex(ipi_node['reg'][1])[2:]), hex(ipi_node.parent['reg'][1])[2:])
+        cmake_file_dict = {"ipm_mbox_node": cmake_file_entry, "ipi_node_path": ipi_node.abs_path}
+    else:
+        print("unsupported os:", os)
+        return False
+
+    try:
+        with open(output_file, "w") as f:
+            output = Template(cmake_file_template)
+            f.write(output.substitute(cmake_file_dict))
+    except Exception as e:
+        print("OPENAMP: XLNX: ERROR: xlnx_openamp_gen_outputs_ipi_mapping: Error in generating template for RPU header.", e)
+        return False
 
     return True
 
@@ -524,8 +586,7 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
             print("ERROR: carveouts should be in reserved memory.")
             return False
 
-
-        if os == "zephyr_dt" and not xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, node.parent.parent.parent, rpmsg_carveouts):
+        if os == "zephyr_dt" and not xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, node.parent.parent.parent, rpmsg_carveouts, rpmsg_relation_node.propval("compatible")[0]):
             return False
         if os == "linux_dt"  and not xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveouts, verbose):
             return False
@@ -965,6 +1026,7 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
        typically just YAML -> DTS translation
        currently handles:
             1.  BM / freertos RPU openamp header
+            2. zephyr / linux libmetal ipc .cmake output file
     Args:
         sdt (LopperSDT): Lopper system device tree with tree object stored.
         output_file_name (str): output file name
@@ -990,9 +1052,10 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
         print("openamp_nontree_outputs_handler: unable to find machine: ", machine)
         return False
 
-    # loop in domains to find relevant relation parent node
     domains = sdt.tree['/domains']
     relation_node = None
+    relation_parent_search = True if openamp_args['relation_parent'] != None else False
+    compatible_string_search = True if openamp_args['compatible_string'] != None else False
     for n in domains.subnodes():
         if n.parent == None or n.parent.parent == None:
             continue
@@ -1004,14 +1067,25 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
         if match_cpunode.parent != sdt.tree.pnode(n.parent.parent.propval("cpus")[0]):
             continue
 
+        # search based on compatible string of relation
+        if compatible_string_search and n.propval("compatible") != [openamp_args['compatible_string']]:
+            continue
+
+        # filter based on name
+        if relation_parent_search and openamp_args['relation_parent'] != n.name:
+            continue
+
         relation_node = n
         break
 
-    # for now assume the first relation child is the one used. In the future, further filtering will be added.
     os = openamp_args["dt_type"]
     carveouts = None
     ipi_node = None
+    relation_node_search = True if openamp_args['relation'] != None else False
     for node in relation_node.subnodes(children_only=True):
+        if relation_node_search and openamp_args['relation'] != node.name:
+            continue
+
         pname = "remote" if os == "linux_dt" else "host"
         # check for remote property
         if node.props(pname) == []:
@@ -1036,7 +1110,13 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
 
         carveouts = [ sdt.tree.pnode(phandle) for phandle in carveout_prop ]
 
+    if not openamp_args['ipi_mapping']:
         return xlnx_openamp_gen_outputs_only(sdt.tree, machine, output_file_name, carveouts, ipi_node, verbose)
+
+    if [openamp_args['compatible_string']] == relation_node.propval("compatible"):
+        return xlnx_openamp_gen_outputs_ipi_mapping(sdt.tree, output_file_name, ipi_node, os, verbose)
+
+    return False
 
 def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_arr, verbose = 0 ):
     """Parse remoteproc relations and construct core nodes.
@@ -1118,7 +1198,7 @@ def xlnx_openamp_find_compat_domains(tree, delete_nodes = False):
         node_compat = n.propval("compatible")
         if node_compat == ['']:
             continue
-        if node_compat[0] in [ REMOTEPROC_D_TO_D_v2, RPMSG_D_TO_D ]:
+        if node_compat[0] in [ REMOTEPROC_D_TO_D_v2, RPMSG_D_TO_D, LIBMETAL_D_TO_D ]:
             if delete_nodes:
                 tree - n
             else:
@@ -1144,18 +1224,46 @@ def parse_openamp_args(arg_inputs):
     parser = argparse.ArgumentParser(description="OpenAMP argument parser")
     parser.add_argument("--openamp_output_filename", type=str, help="Output header file name")
     parser.add_argument("--openamp_remote", type=str, help="OpenAMP remote machine name")
-    argv = [ arg for arg in arg_inputs if "--openamp_output_filename" in arg or "--openamp_remote" in arg ]
-    args = parser.parse_args(argv)
-    config = vars(args)
+    parser.add_argument("--openamp_header_only", action='store_true', help="OpenAMP flag to denote to only generate RPU app header. Only relevant for FreeRTOS / BM cases.")
 
-    # Check if zephyr_dt or linux_dt exist in the original input
-    config["dt_type"] = "zephyr_dt" if "zephyr_dt" in arg_inputs else "linux_dt" if "linux_dt" in arg_inputs else None
+    # This can be used for host or remote. Which means --openamp_remote is equivalent to --processor for remote case
+    parser.add_argument("--processor", type=str, help="OpenAMP target processor machine name")
 
-    # set machine based on openamp plugin inputs or gen-domain plugin inputs
-    config["machine"] = arg_inputs[0] if config["dt_type"] else config["openamp_remote"]
+    parser.add_argument("--ipi_mapping", action='store_true', help="If present - then attempt to decipher relevant IPI for the specified OpenAMP or Libmetal relation. This will also require --compatible-string and --processor. Optionally --relation-parent and --relation are used to specify non-default (e.g. first found) relation.")
+    parser.add_argument("--compatible-string", type=str, help="compatible string for relation. expecting either \"libmetal,ipc-v1\" or \"openamp,rpmsg-v1\"")
+    parser.add_argument("--os", type=str, help="OS arg")
+    parser.add_argument("--relation-parent", type=str, help="parent of relation")
+    parser.add_argument("--relation", type=str, help="target relation")
 
-    # remove now unused record
-    del config["openamp_remote"]
+    config = {}
+    if len(arg_inputs) == 2 and arg_inputs[1] in ["linux_dt", "zephyr_dt"]:
+        config["dt_type"] = "zephyr_dt" if "zephyr_dt" in arg_inputs else "linux_dt"
+        config["machine"] = arg_inputs[0]
+        for i in ["processor", "os", "ipi_mapping", "openamp_remote", "openamp_output_filename"]:
+            config[i] = None
+    else:
+        args = parser.parse_args(arg_inputs)
+        config = vars(args)
+        config["dt_type"] = config["os"]
+        config["machine"] = False
+
+        if config["processor"] and not config["machine"]:
+            config["machine"] = config["processor"]
+        elif config["openamp_remote"] and config["openamp_header_only"] and not config["machine"]:
+            config["machine"] = config["openamp_remote"]
+        elif not config["machine"]:
+            print("INFO: OpenAMP plugin: missing processor or openamp_remote being passed in. exiting now")
+            return False
+
+        # handling for ipi mapping workflow
+        if config["ipi_mapping"] and not config["compatible_string"]:
+            print("requires compatible_string to be set for ipi_mapping case")
+            return False
+
+        # provide default output file for IPI mapping use case if none provided
+        if config["ipi_mapping"] and not config["openamp_output_filename"]:
+            print("INFO: OpenAMP plugin: ipi_mapping route is taken. output file is not specified so default is used (ipi_mapping.cmake)")
+            config["openamp_output_filename"] = "ipi_mapping.cmake"
 
     return config
 
@@ -1178,6 +1286,9 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
     # information and generate Device Tree information.
     print(" -> xlnx_openamp_parse")
     openamp_args = parse_openamp_args(options['args'])
+    if not openamp_args:
+        return False
+
     tree = sdt.tree
     ret = -1
     machine = openamp_args["machine"]
@@ -1189,7 +1300,8 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
 
     if openamp_args["openamp_output_filename"]:
         return openamp_nontree_outputs_handler(sdt, openamp_args["openamp_output_filename"], openamp_args, 1 )
-    elif openamp_args["dt_type"] in ["zephyr_dt", "linux_dt"] or openamp_args["openamp_output_filename"]:
+
+    if openamp_args["dt_type"] in ["zephyr_dt", "linux_dt"] or openamp_args["openamp_output_filename"]:
         # if find_only is False, then processing will also occur.
         if not xlnx_handle_relations(sdt, machine, False, openamp_args["dt_type"]):
             return False
