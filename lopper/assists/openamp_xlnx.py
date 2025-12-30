@@ -395,6 +395,13 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
     if tree['/chosen'].propval('zephyr,ocm') != ['']:
         tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,ocm'])
 
+    if get_platform(tree, 0) == SOC_TYPE.VERSAL2:
+        try:
+             serial1_node = tree['/axi/serial@f1930000']
+             tree - serial1_node
+        except:
+            pass
+
     return True
 
 def xlnx_openamp_gen_outputs_ipi_mapping(tree, output_file, ipi_node, os, verbose = 0 ):
