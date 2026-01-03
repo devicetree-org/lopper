@@ -1126,6 +1126,7 @@ def setup_schema_types_tree( outdir ):
                         flag-prop;
                         cells-prop = <0x1 0x2 0x3>;
                         range64 = /bits/ 64 <0x0 0x1>;
+                        bootscr-address = /bits/ 64 <0x78000000>;
                         width16 = /bits/ 16 <0x0 0x1234>;
                         mac-bytes = [00 11 22 33 44 55];
                         single-u8 = /bits/ 8 <0x7f>;
@@ -2393,6 +2394,7 @@ def schema_type_sanity_test( outdir, verbose ):
         "flag property preserved": r"flag-prop;",
         "multi-string preserved": r"names-list = \"alpha\", \"beta\"",
         "64-bit literal preserved": r"range64 = /bits/ 64",
+        "64-bit single value preserved": r"bootscr-address = /bits/ 64 <0x78000000>",
         "16-bit literal preserved": r"width16 = /bits/ 16",
         "phandle reference preserved": r"phandle-list = <&refnode",
     }
