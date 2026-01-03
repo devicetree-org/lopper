@@ -1656,7 +1656,24 @@ class LopperProp():
                             # we have to open with a '<', if this is a list of numbers
                             formatted_records.append( "<" )
 
-                    for n,i in enumerate(prop_val):
+                    # For /bits/ 64 format, combine pairs of 32-bit values into 64-bit
+                    if resolver_type == LopperFmt.UINT64 and is_bits and list_of_nums:
+                        # Combine consecutive pairs of 32-bit values into 64-bit values
+                        combined_vals = []
+                        for idx in range(0, len(prop_val), 2):
+                            if idx + 1 < len(prop_val):
+                                high = prop_val[idx]
+                                low = prop_val[idx + 1]
+                                combined_vals.append((high << 32) | low)
+                            else:
+                                # Odd number of values - keep last one as-is
+                                combined_vals.append(prop_val[idx])
+                        prop_val_to_iterate = combined_vals
+                    else:
+                        prop_val_to_iterate = prop_val
+
+
+                    for n,i in enumerate(prop_val_to_iterate):
                         if n == 0:
                             # first item, we don't want a leading anything
                             pass
