@@ -479,6 +479,18 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
         # validate later
         carveout_validation_arr.extend(rpmsg_carveouts)
 
+        # until domain access is in place - need to manually prune some nodes
+        try:
+            res_mem_node = tree["/reserved-memory"]
+            [ tree.delete(i) for i in res_mem_node.subnodes() if i.propval("compatible") == ['mmio-sram'] and os == "linux_dt" ]
+            if res_mem_node.propval("ranges") == [1]:
+                res_mem_node.delete("ranges")
+                res_mem_node + LopperProp(name="ranges")
+        except KeyError:
+            print("ERROR: carveouts should be in reserved memory.")
+            return False
+
+
         if os == "zephyr_dt" and not xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, node.parent.parent.parent, rpmsg_carveouts):
             return False
         if os == "linux_dt"  and not xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveouts, verbose):
