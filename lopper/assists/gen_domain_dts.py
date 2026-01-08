@@ -758,6 +758,16 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             node["#size-cells"] = LopperProp("#size-cells")
                             node["#size-cells"].value = 0
                             node.add(node["#size-cells"])
+                        num_cs_value = node.propval('num-cs')
+                        num_cs_value = num_cs_value[0] if (num_cs_value and num_cs_value != ['']) else 1
+                        node["cdns,num-ss-bits"] = LopperProp("cdns,num-ss-bits")
+                        node["cdns,num-ss-bits"].value = num_cs_value
+                        node.add(node["cdns,num-ss-bits"])
+                        decoded_cs = node.propval('is-decoded-cs')
+                        decoded_cs = decoded_cs[0] if (decoded_cs and decoded_cs != ['']) else 0
+                        node["is-decoded-cs"] = LopperProp("is-decoded-cs")
+                        node["is-decoded-cs"].value = decoded_cs
+                        node.add(node["is-decoded-cs"])
                     #ADMA
                     if any(version in node["compatible"].value for version in ("xlnx,zynqmp-dma-1.0", "amd,versal2-dma-1.0")):
                         if node.props("clocks") != [] and node.propval("clocks") != []:
