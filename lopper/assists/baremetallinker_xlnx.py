@@ -288,11 +288,11 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     memip_list = [lable_names[i] for i in memip_list]
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
 
-    generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names)
+    generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names,mb_reset_addr)
 
     return True
 
-def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names):
+def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names,mb_reset_addr):
     """
     To get generate the linker script
     Parameters:
@@ -397,6 +397,10 @@ def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,
                 heap_size = 0x400
         elif cpu_ip_name == "microblaze" and "lmb_bram" in key :
             start += 80
+            size -= 80
+        # Handle case where memory starts at vector base address
+        elif cpu_ip_name == "microblaze" and mb_reset_addr and start == mb_reset_addr:
+            start += 80  # Reserve space for vectors
             size -= 80
 
         """
