@@ -813,37 +813,27 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                                 # If there is no clk-freq property use 0MHZ as default this prevent
                                 # build failure if any of the ip does not have this property.
                                 clk_freq = 0
-                            new_ref_clk = True
-                            # Check clock node with requested clk-freq is already available or not,
-                            # if yes use the existing clk node else create new ref clock node.
-                            for clk_node in sdt.tree.nodes(r'.*ref_clock$'):
-                                if clk_freq == clk_node['clock-frequency'].value:
-                                    if node.props('clocks') != []:
-                                        node.delete('clocks')
-                                    clock_prop = f"clocks = <&{clk_node.name}>"
-                                    node + LopperProp(clock_prop)
-                                    new_ref_clk = False
-                            if new_ref_clk:
-                                new_node = LopperNode()
-                                new_node.abs_path = "/clocks"
-                                if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
-                                    new_node.name = "adma_ref_clk"
-                                else:
-                                    new_node.name = node.label + "_ref_clock"
-                                new_node['compatible'] = ["fixed-clock"]
-                                new_node['#clock-cells'] = 0
-                                if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
-                                    clk_freq = 450000000
-                                new_node['clock-frequency'] = clk_freq
-                                new_node.label_set(new_node.name)
-                                sdt.tree.add(new_node)
-                                if node.props('clocks') != []:
-                                    node.delete('clocks')
-                                if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
-                                    clock_prop = f"clocks = <&{new_node.name}>, <&{new_node.name}>"
-                                else:
-                                    clock_prop = f"clocks = <&{new_node.name}>"
-                                node + LopperProp(clock_prop)
+                            # Always create individual clock node for each peripheral
+                            new_node = LopperNode()
+                            new_node.abs_path = "/clocks"
+                            if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
+                                new_node.name = "adma_ref_clk"
+                            else:
+                                new_node.name = node.label + "_ref_clock"
+                            new_node['compatible'] = ["fixed-clock"]
+                            new_node['#clock-cells'] = 0
+                            if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
+                                clk_freq = 450000000
+                            new_node['clock-frequency'] = clk_freq
+                            new_node.label_set(new_node.name)
+                            sdt.tree.add(new_node)
+                            if node.props('clocks') != []:
+                                node.delete('clocks')
+                            if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
+                                clock_prop = f"clocks = <&{new_node.name}>, <&{new_node.name}>"
+                            else:
+                                clock_prop = f"clocks = <&{new_node.name}>"
+                            node + LopperProp(clock_prop)
                         for prop in prop_list:
                             if prop not in required_prop:
                                 node.delete(prop)
