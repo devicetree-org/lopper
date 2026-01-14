@@ -1441,11 +1441,14 @@ def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
         mbox = relation.propval("mbox")
 
         # if the node name or label matches then save it
-        new_prop_val = [ n.phandle for n in subnode.tree["/axi"].subnodes(children_only=True) if n.name == mbox or n.label == mbox ]
-        if new_prop_val == []:
+        node = [ n for n in subnode.tree["/axi"].subnodes(children_only=True) if n.name == mbox or n.label == mbox ]
+        if node == []:
             print("WARNING: could not find ", mbox)
 
-        relation.props("mbox")[0].value = new_prop_val[0]
+        if node[0].phandle == 0:
+            node[0].phandle_or_create()
+
+        relation.props("mbox")[0].value = node[0].phandle
 
     return True
 
@@ -1497,6 +1500,49 @@ def resolve_host_remote( tree, subnode, verbose = 0 ):
         relation[role] = relevant_node.phandle
 
     return True
+
+
+def xlnx_libmetal_expand(tree, subnode, verbose = 0 ):
+    """Expand Libmetal YAML specialization into full device tree references.
+
+    Args:
+        tree (LopperTree): Device tree to update.
+        subnode (LopperNode): YAML subnode being expanded.
+        verbose (int): Verbosity flag for diagnostics.
+
+    Returns:
+        bool: True when all references are resolved successfully.
+
+    Algorithm:
+        Resolves host/remote phandles, hydrates carveout references, and assigns
+        mailbox definitions using shared helper functions.
+    """
+    if not resolve_host_remote( tree, subnode, verbose):
+        return False
+    if not resolve_carveouts(tree, subnode, "carveouts", verbose):
+        return False
+    for relation in subnode.subnodes(children_only=True):
+        timer_pval = relation.propval("timer")
+        if timer_pval == ['']:
+            lopper.log._error("ERROR: xlnx_libmetal_expand requires timer label reference")
+            return False
+        timer_node = [ n for n in tree["/axi"].subnodes(children_only=True, name="timer@*") if n.label == timer_pval ]
+        if timer_node == []:
+            lopper.log._error("ERROR: xlnx_libmetal_expand requires timer label reference")
+            return False
+
+        if timer_node[0].phandle == 0:
+            timer_node[0].phandle_or_create()
+
+        relation["timer"].value = timer_node[0].phandle
+
+    # elfload is optional
+    call_resolve_carveouts = [ n for n in subnode.subnodes(children_only=True) if n.propval("elfload") != [''] ]
+    call_resolve_carveouts = True if len(call_resolve_carveouts) > 1 else False
+    if call_resolve_carveouts:
+        resolve_carveouts(tree, subnode, "elfload", verbose)
+
+    return resolve_rpmsg_mbox( tree, subnode, verbose)
 
 
 def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
@@ -1585,7 +1631,7 @@ def openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
 
 openamp_d_to_d_compat_strings = {
     "openamp,rpmsg-v1" : openamp_rpmsg_expand,
-    "libmetal,ipc-v1" : openamp_rpmsg_expand,
+    "libmetal,ipc-v1" : xlnx_libmetal_expand,
     "openamp,remoteproc-v2" : openamp_remoteproc_expand,
 }
 
