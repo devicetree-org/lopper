@@ -404,12 +404,15 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
 
     return True
 
-def xlnx_openamp_gen_outputs_ipi_mapping(tree, output_file, ipi_node, os, verbose = 0 ):
+def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_node, os, verbose = 0 ):
     """Generate .cmake file for Libmetal IPI usage
 
     Args:
         tree (LopperTree): Device tree being inspected for metadata.
+        output_file (str): name of output file
+        carveouts (list[LopperNode]): Carveouts associated with libmetal
         ipi_node (LopperNode): IPI node used
+        timer_node (LopperNode): Timer node used
         os (str): os value
         verbose (int): Verbosity flag for diagnostic printing.
 
@@ -419,38 +422,43 @@ def xlnx_openamp_gen_outputs_ipi_mapping(tree, output_file, ipi_node, os, verbos
     platform = get_platform(tree, verbose)
     if platform == None:
         return False
+    desc0 = carveouts[0]
+    desc1 = carveouts[1]
+    data = carveouts[2]
 
-    cmake_file_template = "add_definitions(-DLIBMETAL_CFG_PROVIDED)\n"
-    cmake_file_entry = None
-    cmake_file_dict = {}
+    suffix = "ipi" if platform == SOC_TYPE.ZYNQMP else "mailbox"
 
-    if os == "linux_dt":
-        suffix = "ipi" if platform == SOC_TYPE.ZYNQMP else "mailbox"
-        cmake_file_template += "set (LIBMETAL_DEMO_IPI \"$parent_ipi_node\") # this is linux platform bus name of the relevant node.\n"
-        cmake_file_template += "#the node used is $parent_ipi_node_path\n"
-        cmake_file_template += "set (LIBMETAL_DEMO_IPI_BITMASK $bitmask)\n"
-        cmake_file_template += "# this is bitmask to kick remote using node $ipi_node_path"
+    parent_ipis = tree["/axi"].subnodes(children_only=True, name="%s@*" % suffix)
+    relevant_remote_ipi = [n for n in parent_ipis if n.propval("xlnx,ipi-bitmask")[0] == ipi_node.propval("xlnx,ipi-bitmask")[0] ]
+    values = {  "SHM_IMAGE_BASE": hex(data["reg"][1]), "SHM_IMAGE_SIZE": hex(data["reg"][3]) }
+    values.update({
+                "SHM_PAYLOAD_BASE": values["SHM_IMAGE_BASE"], "SHM_PAYLOAD_SIZE": values["SHM_IMAGE_SIZE"],
+                "SHM_PAYLOAD_HALF_SIZE": hex(data["reg"][3]//2),
+                "SHM_PAYLOAD_RX_OFFSET": "0x0",
+                "SHM_BASE_ADDR": values["SHM_IMAGE_BASE"], "SHM_SIZE": values["SHM_IMAGE_SIZE"],
+                "SHM0_DESC_BASE": hex(desc0["reg"][1]), "SHM0_DESC_SIZE": hex(desc0["reg"][3]),
+                "SHM1_DESC_BASE": hex(desc1["reg"][1]), "SHM1_DESC_SIZE": hex(desc1["reg"][3]),
+                "TTC_DEV_NAME": "%s.timer" % hex(timer_node["reg"][1])[2:], "TTC_NODEID": hex(timer_node.propval("power-domains")[1]),
+                "TTC_BASE_ADDR": hex(timer_node["reg"][1]),
+                "IPI_DEV_NAME": "%s.%s" % (hex(ipi_node.parent["reg"][1])[2:], suffix), "IPI_BASE_ADDR": hex(ipi_node.parent["reg"][1]),
+                "IPI_MASK": hex(ipi_node['xlnx,ipi-bitmask'].value[0]),
+                "IPI_IRQ_VECT_ID": 0 if os == "linux_dt" else relevant_remote_ipi[0].propval("xlnx,int-id")[0],
+                "BUS_NAME": "platform" if os == "linux_dt" else "generic" })
+    values.update({"SHM_PAYLOAD_TX_OFFSET": values["SHM_PAYLOAD_HALF_SIZE"]})
+    values.update({"SHM_DEV_NAME": "%s.%s" % (data.name.split("@")[1].lower(), data.name.split("@")[0].lower())})
+    values.update({"SHM0_DESC_DEV_NAME": "%s.%s" % (desc0.name.split("@")[1].lower(), desc0.name.split("@")[0].lower())})
+    values.update({"SHM1_DESC_DEV_NAME": "%s.%s" % (desc1.name.split("@")[1].lower(), desc1.name.split("@")[0].lower())})
 
-        cmake_file_dict["bitmask"] = hex(ipi_node['xlnx,ipi-bitmask'].value[0])
-        cmake_file_dict["ipi_node_path"] = ipi_node.abs_path
-        cmake_file_dict["parent_ipi_node_path"] = ipi_node.parent.abs_path
-        cmake_file_dict["parent_ipi_node"] = "%s.%s" % (hex(ipi_node.parent['reg'][1])[2:], suffix)
-    elif os == "zephyr_dt":
-        cmake_file_template += "set (LIBMETAL_DEMO_IPI $ipm_mbox_node)\n"
-        cmake_file_template += "# this is path to the IPI node in Zephyr RPU DT\n"
-        cmake_file_template += "# IPI used is $ipi_node_path"
-        cmake_file_entry = "mbox_ipi_%s_%s" % ((hex(ipi_node['reg'][1])[2:]), hex(ipi_node.parent['reg'][1])[2:])
-        cmake_file_dict = {"ipm_mbox_node": cmake_file_entry, "ipi_node_path": ipi_node.abs_path}
-    else:
+    if os not in [ "linux_dt", "baremetal_dt" ]:
         print("unsupported os:", os)
         return False
 
     try:
         with open(output_file, "w") as f:
-            output = Template(cmake_file_template)
-            f.write(output.substitute(cmake_file_dict))
+            output = Template(libmetal_cmake_template)
+            f.write(output.substitute(values))
     except Exception as e:
-        print("OPENAMP: XLNX: ERROR: xlnx_openamp_gen_outputs_ipi_mapping: Error in generating template for RPU header.", e)
+        print("OPENAMP: XLNX: ERROR: xlnx_libmetal_gen_output_file: Error in generating template for RPU header.", e)
         return False
 
     return True
@@ -1032,8 +1040,8 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
        This handler is called where outputs can be derived from the existing tree.
        typically just YAML -> DTS translation
        currently handles:
-            1.  BM / freertos RPU openamp header
-            2. zephyr / linux libmetal ipc .cmake output file
+            1. BM / freertos RPU openamp header
+            2. libmetal ipc .cmake output file
     Args:
         sdt (LopperSDT): Lopper system device tree with tree object stored.
         output_file_name (str): output file name
@@ -1047,7 +1055,7 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
         Gather relation's ipi node and carveouts. Then determine the use case. Based on this
         call the output-file routine. That output-file routine shall return True or False.
     """
-
+    print(" --> openamp_nontree_outputs_handler")
     platform = get_platform(sdt.tree, verbose)
     if platform == None:
         return False
@@ -1117,11 +1125,18 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
 
         carveouts = [ sdt.tree.pnode(phandle) for phandle in carveout_prop ]
 
-    if not openamp_args['ipi_mapping']:
-        return xlnx_openamp_gen_outputs_only(sdt.tree, machine, output_file_name, carveouts, ipi_node, verbose)
+        if not openamp_args['libmetal_output_file']:
+            return xlnx_openamp_gen_outputs_only(sdt.tree, machine, output_file_name, carveouts, ipi_node, verbose)
 
-    if [openamp_args['compatible_string']] == relation_node.propval("compatible"):
-        return xlnx_openamp_gen_outputs_ipi_mapping(sdt.tree, output_file_name, ipi_node, os, verbose)
+        if [openamp_args['compatible_string']] == relation_node.propval("compatible"):
+            timer_pval = node.propval("timer")
+            if timer_pval == ['']:
+                print("ERROR: ", node, " is missing timer property")
+                return False
+
+            timer_node = sdt.tree.pnode(node.propval("timer")[0])
+
+            return xlnx_libmetal_gen_output_file(sdt.tree, output_file_name, carveouts, ipi_node, timer_node, os, verbose)
 
     return False
 
@@ -1236,7 +1251,7 @@ def parse_openamp_args(arg_inputs):
     # This can be used for host or remote. Which means --openamp_remote is equivalent to --processor for remote case
     parser.add_argument("--processor", type=str, help="OpenAMP target processor machine name")
 
-    parser.add_argument("--ipi_mapping", action='store_true', help="If present - then attempt to decipher relevant IPI for the specified OpenAMP or Libmetal relation. This will also require --compatible-string and --processor. Optionally --relation-parent and --relation are used to specify non-default (e.g. first found) relation.")
+    parser.add_argument("--libmetal_output_file", action='store_true', help="If present - then attempt to decipher relevant IPI for the specified OpenAMP or Libmetal relation. This will also require --compatible-string and --processor. Optionally --relation-parent and --relation are used to specify non-default (e.g. first found) relation.")
     parser.add_argument("--compatible-string", type=str, help="compatible string for relation. expecting either \"libmetal,ipc-v1\" or \"openamp,rpmsg-v1\"")
     parser.add_argument("--os", type=str, help="OS arg")
     parser.add_argument("--relation-parent", type=str, help="parent of relation")
@@ -1245,6 +1260,11 @@ def parse_openamp_args(arg_inputs):
     config = {}
     if len(arg_inputs) == 2 and arg_inputs[1] in ["linux_dt", "zephyr_dt"]:
         config["dt_type"] = "zephyr_dt" if "zephyr_dt" in arg_inputs else "linux_dt"
+        config["machine"] = arg_inputs[0]
+        for i in ["processor", "os", "libmetal_output_file", "openamp_remote", "openamp_output_filename"]:
+            config[i] = None
+    elif len(arg_inputs) == 1:
+        config["dt_type"] = "baremetal_dt"
         config["machine"] = arg_inputs[0]
         for i in ["processor", "os", "ipi_mapping", "openamp_remote", "openamp_output_filename"]:
             config[i] = None
@@ -1263,14 +1283,14 @@ def parse_openamp_args(arg_inputs):
             return False
 
         # handling for ipi mapping workflow
-        if config["ipi_mapping"] and not config["compatible_string"]:
-            print("requires compatible_string to be set for ipi_mapping case")
+        if config["libmetal_output_file"] and not config["compatible_string"]:
+            print("requires compatible_string to be set for libmetal_output_file case")
             return False
 
         # provide default output file for IPI mapping use case if none provided
-        if config["ipi_mapping"] and not config["openamp_output_filename"]:
-            print("INFO: OpenAMP plugin: ipi_mapping route is taken. output file is not specified so default is used (ipi_mapping.cmake)")
-            config["openamp_output_filename"] = "ipi_mapping.cmake"
+        if config["libmetal_output_file"] and not config["openamp_output_filename"]:
+            print("INFO: OpenAMP plugin: libmetal_output_file route is taken. output file is not specified so default is used (libmetal_output_file.cmake)")
+            config["openamp_output_filename"] = "libmetal_output_file.cmake"
 
     return config
 
