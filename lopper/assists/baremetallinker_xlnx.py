@@ -256,11 +256,13 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
 
     openamp_elfload_start = False
     openamp_elfload_sz = False
+    openamp_entry_name = False
     if openamp_config:
         elfload_tuple = xlnx_openamp_get_ddr_elf_load(machine, sdt)
         if elfload_tuple != None:
             openamp_elfload_start = elfload_tuple[0]
             openamp_elfload_sz = elfload_tuple[1]
+            openamp_entry_name = elfload_tuple[2]
 
     memip_list = []
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
@@ -288,11 +290,11 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     memip_list = [lable_names[i] for i in memip_list]
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
 
-    generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names,mb_reset_addr)
+    generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr)
 
     return True
 
-def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,traverse,lable_names,mb_reset_addr):
+def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr):
     """
     To get generate the linker script
     Parameters:
@@ -305,6 +307,7 @@ def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,
         openamp_config(bool)       : True or False
         openamp_elfload_sz(int)    : Openamp elf load size
         openamp_elfload_start(int) : Openamp elf start
+        openamp_entry_name(str)    : OpenAMP elf entry name
         traverse(bool)             : True or False
         lable_names(list)          : Lable names
     Return:
@@ -417,7 +420,7 @@ def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,
         if openamp_elfload_sz and ("psu_ddr" in key or "axi_noc" in key):
                 start = openamp_elfload_start
                 size = openamp_elfload_sz
-                cfd.write("set(RSC_TABLE %s)\n" % hex(openamp_elfload_start))
+                cfd.write("set(%s %s)\n" % (openamp_entry_name, hex(openamp_elfload_start)))
 
         mem_sec += f'\n\t{lable_names[key]} : ORIGIN = {hex(start)}, LENGTH = {hex(size)}'
 
