@@ -291,6 +291,17 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
         print("OPENAMP: XLNX: ERROR: expected host node ref in host prop for", rpmsg_rel)
         return False
 
+    if target_node.propval('compatible') == ["libmetal,ipc-v1"]:
+        for rel in target_node.subnodes(children_only=True):
+            elfload = rel.propval("elfload")
+            if elfload == ['']:
+                print("OPENAMP: XLNX: ERROR: libmetal remote domain needs elfload property.")
+            elfload_node = sdt.tree.pnode(elfload[0])
+            reg_val = elfload_node.propval("reg")
+            return (reg_val[1], reg_val[3], "LIBMETAL_DDR")
+        print("OPENAMP: XLNX: ERROR: libmetal invalid domain setup.")
+        return False
+
     # look through host for matching remoteproc relation. If found then return the relation's elfload property reg value
     for rel in host_node.subnodes(children_only=True):
         if rel.propval("remote") != [''] and ['openamp,remoteproc-v2'] == rel.parent.propval("compatible"):
@@ -316,7 +327,7 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
                 print("OPENAMP: XLNX: ERROR: expected 'reg' property for elfload entry", relevant_elfload_nodes[0])
                 return False
 
-            return (reg_val[1], reg_val[3])
+            return (reg_val[1], reg_val[3], "RSC_TABLE")
 
     print("OPENAMP: XLNX: ERROR: unable to find elf load carveout")
     return False
