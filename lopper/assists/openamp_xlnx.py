@@ -755,11 +755,9 @@ def xlnx_validate_carveouts(tree, carveouts):
 
             base2 = cells_to_int(reg2[:addr_cells])
             size2 = cells_to_int(reg2[addr_cells:addr_cells + size_cells])
-            print("validating... a", hex(base1), hex(size1), hex(base2), hex(size2))
             # Only validate relevant carveouts
             if [base1, size1] not in carveout_pairs:
                 continue
-            print("validating... b", hex(base1), hex(size1), hex(base2), hex(size2))
             # Overlap check
             if base1 < base2 + size2 and base2 < base1 + size1:
                 print(
