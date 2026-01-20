@@ -687,6 +687,14 @@ def determinte_rpu_core(tree, cpu_config, remote_node):
     core_index = int(remote_node.propval("core_num")[0])
     return RPU_CORE(core_index)
 
+
+def cells_to_int(cells):
+    val = 0
+    for c in cells:
+        val = (val << 32) | c
+    return val
+
+
 def xlnx_validate_carveouts(tree, carveouts):
     """Verify that carveout regions do not overlap within reserved memory.
 
@@ -715,19 +723,49 @@ def xlnx_validate_carveouts(tree, carveouts):
         res_mem_node + LopperProp(name="ranges",value=[])
         tree.add(res_mem_node)
 
+    if res_mem_node.propval('#size-cells') == [''] or res_mem_node.propval('#address-cells') == ['']:
+        print("ERROR: malformed reserved memory - expected #size-cells and #address-cells")
+        return False
+
+    addr_cells = res_mem_node.propval('#address-cells')[0]
+    size_cells = res_mem_node.propval('#size-cells')[0]
+
+
     carveout_pairs = [ [ carveout.propval("reg")[1], carveout.propval("reg")[3] ] for carveout in carveouts ]
 
     # validate no overlaps or conflicts by generating 2d array of reg values from each reserved memory
     # this array contains reg values for such validation
     res_mem_regs = [ n.propval("reg") for n in res_mem_node.subnodes(children_only=True) if n.propval("reg") != [''] ]
+
     for i in range(len(res_mem_regs)):
-        base1, size1 = res_mem_regs[i][1], res_mem_regs[i][3]
+        reg1 = res_mem_regs[i]
+
+        # Defensive check
+        if len(reg1) < addr_cells + size_cells:
+            continue
+
+        base1 = cells_to_int(reg1[:addr_cells])
+        size1 = cells_to_int(reg1[addr_cells:addr_cells + size_cells])
+
         for j in range(i + 1, len(res_mem_regs)):
-            base2, size2 = res_mem_regs[j][1], res_mem_regs[j][3]
-            if [ base1, size1 ] not in carveout_pairs: # only validate relevant carveouts
+            reg2 = res_mem_regs[j]
+
+            if len(reg2) < addr_cells + size_cells:
                 continue
+
+            base2 = cells_to_int(reg2[:addr_cells])
+            size2 = cells_to_int(reg2[addr_cells:addr_cells + size_cells])
+            print("validating... a", hex(base1), hex(size1), hex(base2), hex(size2))
+            # Only validate relevant carveouts
+            if [base1, size1] not in carveout_pairs:
+                continue
+            print("validating... b", hex(base1), hex(size1), hex(base2), hex(size2))
+            # Overlap check
             if base1 < base2 + size2 and base2 < base1 + size1:
-                print("ERROR: conflict between reserved memory nodes reg values: ", [ hex(i) for i in [ base1, size1, base2, size2 ] ])
+                print(
+                    "ERROR: conflict between reserved memory nodes reg values:",
+                    [hex(x) for x in (base1, size1, base2, size2)]
+                )
                 return False
 
     return True
