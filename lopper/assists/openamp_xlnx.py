@@ -407,6 +407,10 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
         tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,ocm'])
 
     if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ]:
+        if tree['/chosen'].propval('stdout-path') != [''] and 'serial1' in tree['/chosen']['stdout-path'].value[0]:
+            tree['/chosen']['stdout-path'].value[0] = tree['/chosen']['stdout-path'].value[0].replace('serial1', 'serial0')
+
+    if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ]:
         try:
              serial1_node = tree['/axi/serial@f1930000']
              tree - serial1_node
