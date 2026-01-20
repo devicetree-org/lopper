@@ -1248,6 +1248,11 @@ def parse_openamp_args(arg_inputs):
         config["machine"] = arg_inputs[0]
         for i in ["processor", "os", "ipi_mapping", "openamp_remote", "openamp_output_filename"]:
             config[i] = None
+    elif len(arg_inputs) == 1:
+        config["dt_type"] = "baremetal_dt"
+        config["machine"] = arg_inputs[0]
+        for i in ["processor", "os", "ipi_mapping", "openamp_remote", "openamp_output_filename"]:
+            config[i] = None
     else:
         args = parser.parse_args(arg_inputs)
         config = vars(args)
