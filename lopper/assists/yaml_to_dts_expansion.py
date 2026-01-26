@@ -1538,7 +1538,7 @@ def xlnx_libmetal_expand(tree, subnode, verbose = 0 ):
 
     # elfload is optional
     call_resolve_carveouts = [ n for n in subnode.subnodes(children_only=True) if n.propval("elfload") != [''] ]
-    call_resolve_carveouts = True if len(call_resolve_carveouts) > 1 else False
+    call_resolve_carveouts = True if len(call_resolve_carveouts) >= 1 else False
     if call_resolve_carveouts:
         resolve_carveouts(tree, subnode, "elfload", verbose)
 
