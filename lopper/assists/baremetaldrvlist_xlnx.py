@@ -128,13 +128,13 @@ def xlnx_generate_bm_drvlist(tgt_node, sdt, options):
 PACKAGECONFIG[{yocto_drv_name}] = "${{RECIPE_SYSROOT}}/usr/lib/lib{drv}.a,,{yocto_drv_name},,"'''
 
     with open(os.path.join(sdt.outdir, 'distro.conf'), 'w') as fd:
-        fd.write(f'DISTRO_FEATURES = "{" ".join(driver_list_for_yocto)}"')
+        fd.write(f'DISTRO_FEATURES = "{" ".join(driver_list_for_yocto)}"\n')
 
     with open(os.path.join(sdt.outdir, 'ip_drv_map.yaml'), 'w') as fd:
         yaml.dump(ip_sorted_dict, fd, default_flow_style=False, sort_keys=False)
 
     with open(os.path.join(sdt.outdir, 'libxil.conf'), 'w') as fd:
-        fd.write(yocto_pkg_config_entries)
+        fd.write(f'{yocto_pkg_config_entries}\n')
 
     with open(os.path.join(sdt.outdir, 'DRVLISTConfig.cmake'), 'w') as cfd:
         cfd.write(f'set(DRIVER_LIST {";".join(driver_list)})\n')
