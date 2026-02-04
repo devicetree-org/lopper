@@ -1,5 +1,5 @@
 #/*
-# * Copyright (c) 2020 - 2025 Xilinx Inc. All rights reserved.
+# * Copyright (c) 2020 - 2026 Xilinx Inc. All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
@@ -446,13 +446,13 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
 def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, options):
     nosub = 0
     if prop == "reg":
-        val, size = scan_reg_size(node, node[prop].value, 0)
+        val, size = get_cpu_mapped_address(node, sdt, options, 0)
         drvprop_list.append(hex(val))
         plat.buf('\n\t\t%s' % hex(val))
         if pad:
             for j in range(1, pad):
                 try:
-                    val, size = scan_reg_size(node, node[prop].value, j)
+                    val, size = get_cpu_mapped_address(node, sdt, options, j)
                     drvprop_list.append(hex(val))
                     plat.buf(',\n\t\t%s' % hex(val))
                 except IndexError:
@@ -799,3 +799,60 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
     plat.out(''.join(plat.get_buf()))
 
     return True
+
+def get_cpu_mapped_address(node, sdt, options, reg_index=0):
+    """Get CPU cluster mapped address for a node
+
+    Args:
+        node: Device tree node
+        sdt: System device tree
+        options: Configuration options
+        reg_index: Index of register entry to map
+
+    Returns:
+        tuple: (address, size) - mapped or original values
+    """
+    try:
+        # Get current CPU cluster
+        cpu_node = get_cpu_node(sdt, options)
+        if not cpu_node or not hasattr(cpu_node, 'parent'):
+            return scan_reg_size(node, node['reg'].value, reg_index)
+
+        # Extract address mapping information
+        addr_map = cpu_node.parent["address-map"].value
+        size_cells = cpu_node.parent["#ranges-size-cells"].value[0]
+        addr_cells = cpu_node.parent["#ranges-address-cells"].value[0]
+        cell_count = addr_cells + size_cells
+
+        # Build handle to index mapping
+        handle_map = {}
+        current_pos = addr_cells
+        while current_pos < len(addr_map):
+            handle_map[current_pos] = addr_map[current_pos]
+            current_pos += cell_count + addr_cells + 1
+
+        # Find matching handles for this node
+        matching_indices = [idx for idx, handle in handle_map.items() if handle == node.phandle]
+
+        if matching_indices and reg_index < len(matching_indices):
+            # Extract mapped address
+            map_index = matching_indices[reg_index]
+            addr_components = [addr_map[map_index + i + 1] for i in range(addr_cells)]
+
+            # Calculate final address based on cell configuration
+            if addr_cells == 2 and addr_components[0] != 0:
+                final_addr = int(f"{hex(addr_components[0])}{addr_components[1]:08x}", base=16)
+            elif addr_cells == 2:
+                final_addr = addr_components[1]
+            else:
+                final_addr = addr_components[0]
+
+            # Get size from original reg property
+            _, original_size = scan_reg_size(node, node['reg'].value, 0)
+            return final_addr, original_size
+
+        # Fallback to standard parsing
+        return scan_reg_size(node, node['reg'].value, reg_index)
+
+    except (KeyError, IndexError, AttributeError):
+        return scan_reg_size(node, node['reg'].value, reg_index)
