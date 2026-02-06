@@ -1,6 +1,6 @@
 #/*
 # * Copyright (c) 2020 Xilinx Inc. All rights reserved.
-# * Copyright (c) 2024 - 2025 Advanced Micro Devices, Inc.  All rights reserved.
+# * Copyright (c) 2024 - 2026 Advanced Micro Devices, Inc.  All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
@@ -175,7 +175,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
 
                     if prop == "reg":
                         try:
-                            val, size = bm_config.scan_reg_size(node, node[prop].value, 0)
+                            val, size = bm_config.get_cpu_mapped_address(node, sdt, options)
                             plat.buf(f'\n#define XPAR_{label_name}_BASEADDR {hex(val)}')
                             plat.buf(f'\n#define XPAR_{label_name}_HIGHADDR {hex(val + size -1)}')
                             canondef_dict.update({"BASEADDR":hex(val)})
@@ -190,10 +190,15 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             if num_of_addr > 1:
                                 for j in range(1, num_of_addr):
                                     try:
-                                        val, size = bm_config.scan_reg_size(node, node[prop].value, j)
-                                        plat.buf(f'\n#define XPAR_{label_name}_BASEADDR_{j} {hex(val)}')
-                                    except IndexError:
-                                        pass
+                                        mapped_val, mapped_size = bm_config.get_cpu_mapped_address(node, sdt, options, j)
+                                        plat.buf(f'\n#define XPAR_{label_name}_BASEADDR_{j} {hex(mapped_val)}')
+                                    except (IndexError, KeyError):
+                                        # Fallback to original scan_reg_size if mapping fails
+                                        try:
+                                            val, size = bm_config.scan_reg_size(node, node[prop].value, j)
+                                            plat.buf(f'\n#define XPAR_{label_name}_BASEADDR_{j} {hex(val)}')
+                                        except IndexError:
+                                            pass
                         except KeyError:
                             pass
                     elif prop == "compatible":
