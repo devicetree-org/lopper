@@ -137,12 +137,13 @@ def infer_platform_from_sdt(sdt):
     return None
 
 def usage():
-    print('Usage: ./lopper.py <system device tree> -- xlnx_overlay_pl_dt <machine name> <configuration>')
+    print('Usage: ./lopper.py <system device tree> -- xlnx_overlay_pl_dt [<machine>] <configuration> [--firmware-name=<name>]')
     print('  system device tree:   Path to the input system device tree file (.dts)')
     print('  machine name:         (Optional) cortexa9-zynq | cortexa53-zynqmp | cortexa72-versal | cortexa78-versalnet')
     print('                        (or short forms: cortexa9 | cortexa53 | cortexa72 | cortexa78)')
     print('                        If not provided, the platform will be inferred from the system device tree.')
     print('  configuration:        full | segmented | dfx | external-fpga-config')
+    print('  --firmware-name=<name> - (Optional) Override the default firmware-name in the output')
 
 def validate_and_parse_options(options, sdt):
     """
@@ -150,13 +151,14 @@ def validate_and_parse_options(options, sdt):
     Supports two invocation modes:
     - Mode 1 (2 args): <machine> <config>
     - Mode 2 (1 arg):  <config> (machine auto-inferred)
+    - Optional: --firmware-name=<name> to override firmware name
 
     Args:
         options: Dictionary containing 'args' list with platform and config parameters
         sdt: System device tree object for auto-inference
 
     Returns:
-        tuple: (platform, config, zynq_platforms, versal_platforms)
+        tuple: (platform, config, zynq_platforms, versal_platforms, firmware_override)
 
     Raises:
         SystemExit: If validation fails for platform or config
@@ -173,18 +175,34 @@ def validate_and_parse_options(options, sdt):
     versal_platforms = ["cortexa72-versal", "cortexa72", "cortexa78-versalnet", "cortexa78",
                         "psv_cortexa72_0", "cortexa72_0", "psx_cortexa78_0", "cortexa78_0"]
 
+    # Separate positional arguments from optional arguments
+    positional_args = []
+    optional_args = []
+
+    for arg in options['args']:
+        if arg.startswith("--"):
+            optional_args.append(arg)
+        else:
+            positional_args.append(arg)
+
+    # Process optional arguments
+    firmware_override = None
+    for arg in optional_args:
+        if arg.startswith("--firmware-name="):
+            firmware_override = arg.split("=", 1)[1]
+
     # Parse arguments based on count
     try:
-        num_args = len(options['args'])
+        num_args = len(positional_args)
 
         if num_args == 2:
             # Mode 1: <machine> <config>
-            platform = options['args'][0]
-            config = options['args'][1]
+            platform = positional_args[0]
+            config = positional_args[1]
 
         elif num_args == 1:
             # Mode 2: <config> only (auto-infer machine)
-            config = options['args'][0]
+            config = positional_args[0]
 
             # Auto-infer platform
             platform = infer_platform_from_sdt(sdt)
@@ -218,7 +236,7 @@ def validate_and_parse_options(options, sdt):
         usage()
         sys.exit(1)
 
-    return platform, config, zynq_platforms, versal_platforms
+    return platform, config, zynq_platforms, versal_platforms, firmware_override
 
 def validate_amba_pl_node(amba_node):
     """
@@ -553,7 +571,7 @@ Output:
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
     # Parse and validate options
-    platform, config, zynq_platforms, versal_platforms = validate_and_parse_options(options, sdt)
+    platform, config, zynq_platforms, versal_platforms, firmware_override = validate_and_parse_options(options, sdt)
 
     overlay_tree = LopperTree()
 
@@ -572,6 +590,10 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     # Extract firmware-name property from amba node and remove it from amba node
     firmware_name = new_amba_node["firmware-name"]
     new_amba_node = new_amba_node - firmware_name
+
+    # Override firmware name if provided via command line
+    if firmware_override:
+        firmware_name.value = [firmware_override]
 
     # Create and configure FPGA node
     fpga_node, fpga_node_name = create_fpga_node(
