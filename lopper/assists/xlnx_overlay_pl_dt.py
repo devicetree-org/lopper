@@ -137,21 +137,28 @@ def infer_platform_from_sdt(sdt):
     return None
 
 def usage():
-    print('Usage: ./lopper.py <system device tree> -- xlnx_overlay_pl_dt [<machine>] <configuration> [--firmware-name=<name>]')
+    print('Usage: ./lopper.py <system device tree> -- xlnx_overlay_pl_dt [<machine>] <configuration> [<pl.dtsi>] [--firmware-name=<name>]')
+    print('')
+    print('Arguments:')
     print('  system device tree:   Path to the input system device tree file (.dts)')
     print('  machine name:         (Optional) cortexa9-zynq | cortexa53-zynqmp | cortexa72-versal | cortexa78-versalnet')
     print('                        (or short forms: cortexa9 | cortexa53 | cortexa72 | cortexa78)')
     print('                        If not provided, the platform will be inferred from the system device tree.')
     print('  configuration:        full | segmented | dfx | external-fpga-config')
+    print('  pl.dtsi:              (Optional, for backward compatibility only) pl.dtsi file path - IGNORED')
+    print('                        This argument is accepted but not used. The assist reads /amba_pl node from system device tree.')
     print('  --firmware-name=<name> - (Optional) Override the default firmware-name in the output')
 
 def validate_and_parse_options(options, sdt):
     """
     Parse and validate platform and configuration options.
-    Supports two invocation modes:
-    - Mode 1 (2 args): <machine> <config>
-    - Mode 2 (1 arg):  <config> (machine auto-inferred)
+    Supports multiple invocation modes:
+    - Mode 1 (1 arg):  <config> (machine auto-inferred)
+    - Mode 2 (2 args): <machine> <config> OR <config> <pl.dtsi> (backward compatibility)
+    - Mode 3 (3 args): <machine> <config> <pl.dtsi> (backward compatibility)
     - Optional: --firmware-name=<name> to override firmware name
+
+    Note: pl.dtsi argument is accepted for backward compatibility but ignored with warning.
 
     Args:
         options: Dictionary containing 'args' list with platform and config parameters
@@ -195,13 +202,36 @@ def validate_and_parse_options(options, sdt):
     try:
         num_args = len(positional_args)
 
-        if num_args == 2:
-            # Mode 1: <machine> <config>
+        if num_args == 3:
+            # Mode 1 (backward compatibility): <machine> <config> <pl.dtsi>
             platform = positional_args[0]
             config = positional_args[1]
+            _warning(f"pl.dtsi argument '{positional_args[2]}' is provided for backward compatibility but will be ignored.")
+            _warning(f"The assist reads /amba_pl node from the system device tree instead.")
+
+        elif num_args == 2:
+            # Mode 2: Could be <machine> <config> OR <config> <pl.dtsi> (backward compatibility)
+            # Detect by checking if second arg is a valid config or looks like a file path
+            if positional_args[1] in valid_configs:
+                # <machine> <config>
+                platform = positional_args[0]
+                config = positional_args[1]
+            else:
+                # <config> <pl.dtsi> (backward compatibility)
+                config = positional_args[0]
+                _warning(f"pl.dtsi argument '{positional_args[1]}' is provided for backward compatibility but will be ignored.")
+                _warning(f"The assist reads /amba_pl node from the system device tree instead.")
+
+                # Auto-infer platform
+                platform = infer_platform_from_sdt(sdt)
+                if platform is None:
+                    _error(f"Unable to automatically infer platform from system device tree.")
+                    _error(f"Please provide the machine argument explicitly.")
+                    usage()
+                    sys.exit(1)
 
         elif num_args == 1:
-            # Mode 2: <config> only (auto-infer machine)
+            # Mode 3: <config> only (auto-infer machine)
             config = positional_args[0]
 
             # Auto-infer platform
@@ -213,7 +243,7 @@ def validate_and_parse_options(options, sdt):
                 sys.exit(1)
 
         else:
-            _error(f"Invalid number of arguments. Expected 1 or 2, got {num_args}")
+            _error(f"Invalid number of arguments. Expected 1, 2, or 3 positional arguments, got {num_args}")
             usage()
             sys.exit(1)
 
