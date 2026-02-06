@@ -137,16 +137,24 @@ def infer_platform_from_sdt(sdt):
     return None
 
 def usage():
-    print('Usage: ./lopper.py <system device tree> -- xlnx_overlay_pl_dt [<machine>] <configuration> [<pl.dtsi>] [--firmware-name=<name>]')
+    print('Usage: lopper -O <output_dir> -f --enhanced <system-top.dts> [<lopper-gen DT>] -- xlnx_overlay_pl_dt [<machine>] <configuration> [<pl.dtsi>] [--firmware-name=<name>]')
+    print('\nArguments:')
+    print('  <output_dir>      - Directory where the lopper generated overlay `pl.dtsi` file will be stored')
+    print('  <system-top.dts>  - Full system device tree source')
+    print('  <lopper-gen DT>   - Lopper-generated system device tree file (excluding PL node)')
+    print('  <machine>         - (Optional) Target architecture: cortexa9 | cortexa53 | cortexa72 | cortexa78')
+    print('                      (or long forms: cortexa9-zynq | cortexa53-zynqmp | cortexa72-versal | cortexa78-versalnet)')
+    print('                      If not provided, will be automatically inferred from system device tree')
+    print('  <configuration>   - Configuration type: full | segmented | dfx | external-fpga-config')
+    print('  <pl.dtsi>         - (Optional, for backward compatibility only) pl.dtsi file path - IGNORED')
+    print('                      This argument is accepted but not used. The assist reads pl.dtsi from system device tree.')
+    print('  --firmware-name=<name> - (Optional) Override the default firmware-name in the output')
+    print('\nExamples:')
+    print(' With machine argument:')
+    print(' lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi')
     print('')
-    print('Arguments:')
-    print('  system device tree:   Path to the input system device tree file (.dts)')
-    print('  machine name:         (Optional) cortexa9-zynq | cortexa53-zynqmp | cortexa72-versal | cortexa78-versalnet')
-    print('                        (or short forms: cortexa9 | cortexa53 | cortexa72 | cortexa78)')
-    print('                        If not provided, the platform will be inferred from the system device tree.')
-    print('  configuration:        full | segmented | dfx | external-fpga-config')
-    print('  pl.dtsi:              (Optional, for backward compatibility only) pl.dtsi file path - IGNORED')
-    print('                        This argument is accepted but not used. The assist reads /amba_pl node from system device tree.')
+    print(' With automatic platform inference:')
+    print(' lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <config> <path_to_pl_dtsi>/pl.dtsi')
     print('  --firmware-name=<name> - (Optional) Override the default firmware-name in the output')
 
 def validate_and_parse_options(options, sdt):
@@ -544,24 +552,22 @@ def clean_overlay_properties(overlay_tree):
         except:
             pass
 
-def write_output_files(overlay_tree, sdt, pl_file, sdt_file, dtso_file):
+def write_output_files(overlay_tree, sdt, pl_file, dtso_file):
     """
     Write output files and perform post-processing.
 
-    Writes overlay tree to pl.dtsi, system device tree to sdt.dts, performs
-    post-processing (interrupt-parent replacement, status disabled for video IPs),
+    Writes overlay tree to pl.dtsi, performs post-processing
+    (interrupt-parent replacement, status disabled for video IPs),
     and copies pl.dtsi to pl.dtso.
 
     Args:
         overlay_tree: The overlay tree to write
         sdt: The system device tree object
         pl_file: Path to output pl.dtsi file
-        sdt_file: Path to output sdt.dts file
         dtso_file: Path to output pl.dtso file
     """
-    # Write overlay tree and system device tree
+    # Write overlay tree
     LopperSDT(None).write(overlay_tree, pl_file, True, True)
-    sdt.write(sdt.tree, sdt_file)
 
     # Post-process the generated pl.dtsi file to replace interrupt-parent references
     with open(pl_file, "r") as f:
@@ -596,7 +602,7 @@ Args:
 Output:
     - pl.dtsi: Device tree overlay file with &amba and &fpga nodes
     - pl.dtso: Copy of pl.dtsi with .dtso extension
-    - sdt.dts: Modified system device tree with /amba_pl node removed
+    Note: Modified system device tree (with /amba_pl node removed) is written by lopper itself
 """
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
@@ -646,13 +652,12 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     clean_overlay_properties(overlay_tree)
 
     pl_file = f"{sdt.outdir}/pl.dtsi"
-    sdt_file = f"{sdt.outdir}/sdt.dts"
     dtso_file = f"{sdt.outdir}/pl.dtso"
 
-    print( f"pl: {pl_file} sdt: {sdt_file} dtso: {dtso_file}" )
+    print( f"pl: {pl_file} dtso: {dtso_file}" )
 
     # Write output files and perform post-processing
-    write_output_files(overlay_tree, sdt, pl_file, sdt_file, dtso_file)
+    write_output_files(overlay_tree, sdt, pl_file, dtso_file)
 
     print("Overlay generation completed successfully!")
     return True
