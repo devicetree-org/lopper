@@ -195,7 +195,12 @@ def _get_schema_hash(schema_dict):
     import json
     # Convert schema to a stable string representation
     schema_str = json.dumps(schema_dict, sort_keys=True)
-    return hashlib.md5(schema_str.encode()).hexdigest()
+    
+    # Try SHA-256 first (FIPS compliant), fallback to MD5 for legacy systems
+    try:
+        return hashlib.sha256(schema_str.encode()).hexdigest()
+    except Exception:
+        return hashlib.md5(schema_str.encode()).hexdigest()
 
 class SchemaManager:
     """Singleton manager for schema and related tools"""
