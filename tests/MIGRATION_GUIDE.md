@@ -32,8 +32,18 @@ This document describes the ongoing migration from `lopper_sanity.py` to pytest-
     - `TestSDTToYAML` - Device tree to YAML conversion
     - `TestComplexPropertyAccess` - Complex nested property access from YAML
 
+- **FDT tests** (`tests/test_fdt.py`) - **15 tests migrated** (100% complete)
+  - Complete 1:1 migration of `fdt_sanity_test()` from lopper_sanity.py (lines 2412-2533)
+  - All test classes migrated:
+    - `TestFDTExport` - FDT export to dictionary
+    - `TestTreeLoadFromFDT` - Loading tree from exported FDT
+    - `TestTreeSync` - Syncing tree changes back to FDT
+    - `TestNodeDeletion` - Node and property deletion
+    - `TestNodeAddition` - Adding nodes and properties
+    - `TestNodeIteration` - Tree and subnode iteration
+    - `TestStringTypeDetection` - String decoding in node printing
+
 ### 📋 TODO - High Priority
-- **FDT tests** - Migrate `fdt_sanity_test()`
 - **Schema tests** - Migrate `schema_type_sanity_test()`
 
 ### 📋 TODO - Medium Priority

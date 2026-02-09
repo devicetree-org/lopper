@@ -7,7 +7,7 @@ import tempfile
 import shutil
 from pathlib import Path
 
-from lopper import Lopper
+from lopper import Lopper, LopperSDT
 from lopper.tree import LopperTree
 
 # Import the device tree setup function from lopper_sanity
@@ -96,3 +96,36 @@ def yaml_test_file(test_outdir):
     """
     yaml_path = lopper_sanity.setup_yaml(test_outdir)
     return yaml_path
+
+
+@pytest.fixture
+def lopper_sdt(system_device_tree, test_outdir):
+    """
+    Create a LopperSDT instance for FDT testing.
+
+    This is a function-scoped fixture, so each test gets a fresh LopperSDT.
+    Configured the same way as in lopper_sanity.py's fdt_sanity_test.
+    """
+    # Check if libfdt is available
+    libfdt_available = False
+    try:
+        import libfdt
+        libfdt_available = True
+    except ImportError:
+        pass
+
+    sdt = LopperSDT(system_device_tree)
+    sdt.dryrun = False
+    sdt.verbose = 0
+    sdt.werror = False
+    sdt.output_file = test_outdir + "/fdt-output.dts"
+    sdt.cleanup_flag = True
+    sdt.save_temps = False
+    sdt.enhanced = True
+    sdt.outdir = test_outdir
+    sdt.libfdt = libfdt_available
+
+    # Setup the device tree
+    sdt.setup(system_device_tree, [], "", True, libfdt=libfdt_available)
+
+    return sdt
