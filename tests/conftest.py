@@ -2,10 +2,12 @@
 Pytest configuration and shared fixtures for Lopper tests.
 """
 
+import sys
 import pytest
 import tempfile
 import shutil
 from pathlib import Path
+from io import StringIO
 
 from lopper import Lopper, LopperSDT
 from lopper.tree import LopperTree
@@ -13,6 +15,20 @@ from lopper.tree import LopperTree
 # Import the device tree setup function from lopper_sanity
 # This ensures we use the exact same test data
 import lopper_sanity
+
+
+class Capturing(list):
+    """Context manager to capture stdout."""
+    def __enter__(self):
+        self._stdout = sys.stdout
+        sys.stdout = self._stringio = StringIO()
+        return self
+    def __exit__(self, *args):
+        self.extend(self._stringio.getvalue().splitlines())
+        sys.stdout = self._stdout
+    def reset(self):
+        del self._stringio
+        sys.stdout = self._stdout
 
 
 @pytest.fixture(scope="session")
@@ -256,3 +272,47 @@ def lops_device_tree(test_outdir):
     sdt.write(enhanced=True)
 
     return sdt
+
+
+@pytest.fixture
+def lops_code_output(test_outdir):
+    """
+    Create output from lops_code_test for testing.
+
+    Uses the same device tree and lops from lopper_sanity.py's lops_code_test().
+    Captures stdout during lop execution for verification.
+    """
+    # Check if libfdt is available
+    libfdt_available = False
+    try:
+        import libfdt
+        libfdt_available = True
+    except ImportError:
+        pass
+
+    # Setup system device tree
+    dt = lopper_sanity.setup_system_device_tree(test_outdir)
+
+    # Setup the code lops file
+    lop_file = lopper_sanity.setup_code_lops(test_outdir)
+
+    sdt = LopperSDT(dt)
+    sdt.dryrun = False
+    sdt.verbose = 0
+    sdt.werror = False
+    sdt.output_file = test_outdir + "/lops-code-output.dts"
+    sdt.cleanup_flag = True
+    sdt.save_temps = False
+    sdt.enhanced = True
+    sdt.outdir = test_outdir
+    sdt.use_libfdt = libfdt_available
+
+    # Setup with lop file
+    sdt.setup(dt, [lop_file], "", True, libfdt=libfdt_available)
+
+    # Capture stdout during lop execution
+    with Capturing() as output:
+        sdt.perform_lops()
+
+    # Return the captured output as a string
+    return output._stringio.getvalue()
