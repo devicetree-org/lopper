@@ -54,11 +54,21 @@ This document describes the ongoing migration from `lopper_sanity.py` to pytest-
   - Test class migrated:
     - `TestDTSWrite` - DTS writing with enhanced mode
 
-### 📋 TODO - High Priority
+- **Lops tests** (`tests/test_lops.py`) - **18 tests migrated** (100% complete)
+  - Complete 1:1 migration of `lops_sanity_test()` from lopper_sanity.py (lines 2172-2305)
+  - All test classes migrated:
+    - `TestLopsNodeDeletion` - Node deletion via lops (1 test)
+    - `TestLopsNodeRename` - Node renaming via lops (1 test)
+    - `TestLopsPropertyRemoval` - Property removal via lops (2 tests)
+    - `TestLopsNodeAddition` - Node addition via lops (1 test)
+    - `TestLopsPropertyModification` - Property modification via lops (2 tests)
+    - `TestLopsSelectiveOutput` - Selective node output (2 tests)
+    - `TestLopsPropertyAddition` - Property addition via lops (2 tests)
+    - `TestLopsSubtrees` - Subtree operations (3 tests)
+    - `TestLopsListModification` - List property modifications (4 tests)
 
 ### 📋 TODO - Medium Priority
-- **Lops tests** - Migrate `lops_sanity_test()` and `lops_code_test()`
-- **Format tests** - Migrate `format_sanity_test()`
+- **Lops code tests** - Migrate `lops_code_test()`
 
 ### 📋 TODO - Lower Priority
 - **Assists tests** - Migrate `assists_sanity_test()`

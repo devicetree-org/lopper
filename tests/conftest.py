@@ -208,3 +208,51 @@ def schema_lopper_sdt(test_outdir):
         sdt.write(enhanced=True)
 
     return sdt
+
+
+@pytest.fixture
+def lops_device_tree(test_outdir):
+    """
+    Create a LopperSDT instance for lops testing.
+
+    Uses the same device tree and lops file from lopper_sanity.py's lops_sanity_test().
+    Configured the same way as in lops_sanity_test().
+    """
+    # Check if libfdt is available
+    libfdt_available = False
+    try:
+        import libfdt
+        libfdt_available = True
+    except ImportError:
+        # lops_sanity_test returns early if libfdt not available
+        pytest.skip("libfdt not available, lops tests require libfdt")
+
+    # Setup the system device tree (not the simple one)
+    dt = lopper_sanity.setup_system_device_tree(test_outdir)
+
+    # Setup the lops file
+    lop_file = lopper_sanity.setup_lops(test_outdir)
+
+    sdt = LopperSDT(dt)
+    sdt.dryrun = False
+    sdt.verbose = 5
+    sdt.werror = False
+    sdt.output_file = test_outdir + "/sdt-output.dts"
+    sdt.cleanup_flag = True
+    sdt.save_temps = False
+    sdt.enhanced = True
+    sdt.outdir = test_outdir
+    sdt.use_libfdt = libfdt_available
+
+    # Setup with lop file
+    sdt.setup(dt, [lop_file], "", True, libfdt=libfdt_available)
+
+    # Perform the lops
+    sdt.perform_lops()
+
+    # Sync and write output
+    from lopper import Lopper
+    Lopper.sync(sdt.FDT, sdt.tree.export())
+    sdt.write(enhanced=True)
+
+    return sdt

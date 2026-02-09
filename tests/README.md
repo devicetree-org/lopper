@@ -43,6 +43,7 @@ pytest --cov=lopper --cov-report=html tests/
 - `test_fdt.py` - FDT abstraction layer tests (migrated from `fdt_sanity_test`)
 - `test_schema.py` - Schema type detection tests (migrated from `schema_type_sanity_test`)
 - `test_format.py` - DTS format/output tests (migrated from `format_sanity_test`)
+- `test_lops.py` - Lopper operations (lops) transformation tests (migrated from `lops_sanity_test`)
 - More test files will be added as migration continues...
 
 ## Fixtures
@@ -56,6 +57,7 @@ Common fixtures available to all tests:
 - `lopper_sdt` - Fresh LopperSDT instance for FDT tests (function-scoped)
 - `format_lopper_sdt` - Fresh LopperSDT instance for format tests (function-scoped)
 - `schema_lopper_sdt` - Fresh LopperSDT instance for schema tests (function-scoped)
+- `lops_device_tree` - Fresh LopperSDT instance with lops for transformation tests (function-scoped)
 - `yaml_test_file` - Path to YAML test file (session-scoped)
 
 ## Migration Status
@@ -98,6 +100,13 @@ Common fixtures available to all tests:
 
 - **Format tests** (`test_format.py`) - **1 test** covering complete `format_sanity_test()` from lopper_sanity.py
   - DTS file writing with enhanced mode
+
+- **Lops tests** (`test_lops.py`) - **18 tests** covering complete `lops_sanity_test()` from lopper_sanity.py
+  - Node deletion, renaming, and addition via lops
+  - Property removal, modification, and addition via lops
+  - Selective and regex-based node output
+  - Subtree operations (write, modify, move)
+  - List property modifications (listval, liststring, singleval, singlestring)
 
 ### 📋 TODO
 - Lops tests (`test_lops.py`) - Migrate `lops_sanity_test()` and `lops_code_test()`
