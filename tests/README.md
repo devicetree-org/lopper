@@ -39,6 +39,7 @@ pytest --cov=lopper --cov-report=html tests/
 
 - `conftest.py` - Shared fixtures and test configuration
 - `test_tree.py` - Tree walking and manipulation tests (migrated from `tree_sanity_test`)
+- `test_yaml.py` - YAML input/output and conversion tests (migrated from `yaml_sanity_test`)
 - More test files will be added as migration continues...
 
 ## Fixtures
@@ -49,6 +50,7 @@ Common fixtures available to all tests:
 - `system_device_tree` - Path to compiled test device tree (session-scoped)
 - `compiled_fdt` - Compiled FDT object ready for testing (session-scoped)
 - `lopper_tree` - Fresh LopperTree instance (function-scoped, one per test)
+- `yaml_test_file` - Path to YAML test file (session-scoped)
 
 ## Migration Status
 
@@ -68,8 +70,14 @@ Common fixtures available to all tests:
   - Property manipulation and access
   - Alias lookups
 
+- **YAML tests** (`test_yaml.py`) - **6 tests** covering complete `yaml_sanity_test()` from lopper_sanity.py
+  - YAML load and write operations
+  - YAML to tree conversion
+  - Tree to DTS writing from YAML
+  - Device tree to YAML conversion
+  - Complex nested property access
+
 ### 📋 TODO
-- YAML tests (`test_yaml.py`) - Migrate `yaml_sanity_test()`
 - FDT tests (`test_fdt.py`) - Migrate `fdt_sanity_test()`
 - Schema tests (`test_schema.py`) - Migrate `schema_type_sanity_test()`
 - Lops tests (`test_lops.py`) - Migrate `lops_sanity_test()` and `lops_code_test()`

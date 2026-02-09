@@ -24,8 +24,15 @@ This document describes the ongoing migration from `lopper_sanity.py` to pytest-
     - `TestPropertyAccess` - Property index and dict access
     - `TestAliases` - Alias lookups
 
+- **YAML tests** (`tests/test_yaml.py`) - **6 tests migrated** (100% complete)
+  - Complete 1:1 migration of `yaml_sanity_test()` from lopper_sanity.py (lines 2534-2569)
+  - All test classes migrated:
+    - `TestYAMLReadWrite` - YAML load and write operations
+    - `TestYAMLToTree` - YAML to tree conversion and DTS writing
+    - `TestSDTToYAML` - Device tree to YAML conversion
+    - `TestComplexPropertyAccess` - Complex nested property access from YAML
+
 ### 📋 TODO - High Priority
-- **YAML tests** - Migrate `yaml_sanity_test()` from lopper_sanity.py
 - **FDT tests** - Migrate `fdt_sanity_test()`
 - **Schema tests** - Migrate `schema_type_sanity_test()`
 

@@ -84,3 +84,15 @@ def lopper_tree(compiled_fdt):
     tree = LopperTree()
     tree.load(Lopper.export(compiled_fdt))
     return tree
+
+
+@pytest.fixture(scope="session")
+def yaml_test_file(test_outdir):
+    """
+    Setup a YAML test file for testing.
+
+    Uses the same YAML content from lopper_sanity.py's setup_yaml()
+    to ensure consistency with existing tests.
+    """
+    yaml_path = lopper_sanity.setup_yaml(test_outdir)
+    return yaml_path
