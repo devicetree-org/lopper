@@ -43,8 +43,18 @@ This document describes the ongoing migration from `lopper_sanity.py` to pytest-
     - `TestNodeIteration` - Tree and subnode iteration
     - `TestStringTypeDetection` - String decoding in node printing
 
+- **Schema tests** (`tests/test_schema.py`) - **14 tests migrated** (100% complete)
+  - Complete 1:1 migration of `schema_type_sanity_test()` from lopper_sanity.py (lines 2335-2411)
+  - All test classes migrated:
+    - `TestSchemaTypeDetection` - Schema-based property type detection (8 tests)
+    - `TestPropertyFormatPreservation` - Format preservation in output (6 tests)
+
+- **Format tests** (`tests/test_format.py`) - **1 test migrated** (100% complete)
+  - Complete 1:1 migration of `format_sanity_test()` from lopper_sanity.py (lines 2328-2333)
+  - Test class migrated:
+    - `TestDTSWrite` - DTS writing with enhanced mode
+
 ### 📋 TODO - High Priority
-- **Schema tests** - Migrate `schema_type_sanity_test()`
 
 ### 📋 TODO - Medium Priority
 - **Lops tests** - Migrate `lops_sanity_test()` and `lops_code_test()`

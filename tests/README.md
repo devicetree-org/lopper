@@ -41,6 +41,8 @@ pytest --cov=lopper --cov-report=html tests/
 - `test_tree.py` - Tree walking and manipulation tests (migrated from `tree_sanity_test`)
 - `test_yaml.py` - YAML input/output and conversion tests (migrated from `yaml_sanity_test`)
 - `test_fdt.py` - FDT abstraction layer tests (migrated from `fdt_sanity_test`)
+- `test_schema.py` - Schema type detection tests (migrated from `schema_type_sanity_test`)
+- `test_format.py` - DTS format/output tests (migrated from `format_sanity_test`)
 - More test files will be added as migration continues...
 
 ## Fixtures
@@ -51,7 +53,9 @@ Common fixtures available to all tests:
 - `system_device_tree` - Path to compiled test device tree (session-scoped)
 - `compiled_fdt` - Compiled FDT object ready for testing (session-scoped)
 - `lopper_tree` - Fresh LopperTree instance (function-scoped, one per test)
-- `lopper_sdt` - Fresh LopperSDT instance (function-scoped, one per test)
+- `lopper_sdt` - Fresh LopperSDT instance for FDT tests (function-scoped)
+- `format_lopper_sdt` - Fresh LopperSDT instance for format tests (function-scoped)
+- `schema_lopper_sdt` - Fresh LopperSDT instance for schema tests (function-scoped)
 - `yaml_test_file` - Path to YAML test file (session-scoped)
 
 ## Migration Status
@@ -88,8 +92,14 @@ Common fixtures available to all tests:
   - Tree and subnode iteration
   - String type detection in node printing
 
+- **Schema tests** (`test_schema.py`) - **14 tests** covering complete `schema_type_sanity_test()` from lopper_sanity.py
+  - Schema-based property type detection (8 types tested)
+  - Property format preservation in output (6 patterns tested)
+
+- **Format tests** (`test_format.py`) - **1 test** covering complete `format_sanity_test()` from lopper_sanity.py
+  - DTS file writing with enhanced mode
+
 ### 📋 TODO
-- Schema tests (`test_schema.py`) - Migrate `schema_type_sanity_test()`
 - Lops tests (`test_lops.py`) - Migrate `lops_sanity_test()` and `lops_code_test()`
 - Assists tests (`test_assists.py`) - Migrate `assists_sanity_test()`
 - OpenAMP tests (`test_openamp.py`) - Migrate `openamp_sanity_test()`

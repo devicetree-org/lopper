@@ -129,3 +129,82 @@ def lopper_sdt(system_device_tree, test_outdir):
     sdt.setup(system_device_tree, [], "", True, libfdt=libfdt_available)
 
     return sdt
+
+
+@pytest.fixture
+def format_lopper_sdt(test_outdir):
+    """
+    Create a LopperSDT instance for format testing.
+
+    Uses the format test device tree from lopper_sanity.py's setup_format_tree().
+    """
+    # Check if libfdt is available
+    libfdt_available = False
+    try:
+        import libfdt
+        libfdt_available = True
+    except ImportError:
+        pass
+
+    # Setup the format test tree
+    format_tree = lopper_sanity.setup_format_tree(test_outdir)
+
+    sdt = LopperSDT(format_tree)
+    sdt.dryrun = False
+    sdt.verbose = 0
+    sdt.werror = False
+    sdt.output_file = test_outdir + "/format-output.dts"
+    sdt.cleanup_flag = True
+    sdt.save_temps = False
+    sdt.enhanced = True
+    sdt.outdir = test_outdir
+    sdt.use_libfdt = libfdt_available
+
+    # Setup the device tree
+    sdt.setup(format_tree, [], "", True, libfdt=libfdt_available)
+
+    return sdt
+
+
+@pytest.fixture
+def schema_lopper_sdt(test_outdir):
+    """
+    Create a LopperSDT instance for schema type testing.
+
+    Uses the schema test device tree from lopper_sanity.py's setup_schema_types_tree().
+    Configured the same way as in schema_type_sanity_test().
+    """
+    # Check if libfdt is available
+    libfdt_available = False
+    try:
+        import libfdt
+        libfdt_available = True
+    except ImportError:
+        pass
+
+    # Setup the schema types test tree
+    schema_tree = lopper_sanity.setup_schema_types_tree(test_outdir)
+
+    sdt = LopperSDT(schema_tree)
+    sdt.dryrun = False
+    sdt.verbose = 0
+    sdt.werror = False
+    sdt.output_file = test_outdir + "/schema-types-output.dts"
+    sdt.cleanup_flag = True
+    sdt.save_temps = False
+    sdt.enhanced = True
+    sdt.outdir = test_outdir
+    sdt.use_libfdt = libfdt_available
+    sdt.schema = ("learn_dump", test_outdir + "/schema-types-schema.yaml")
+
+    # Setup the device tree
+    sdt.setup(schema_tree, [], "", True, libfdt=libfdt_available)
+
+    # Perform lops (needed for schema learning)
+    sdt.perform_lops()
+
+    # Write output file (needed for pattern checks)
+    if sdt.output_file:
+        sdt.write(enhanced=True)
+
+    return sdt
