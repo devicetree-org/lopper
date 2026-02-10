@@ -136,7 +136,8 @@ class TestLopsSelectiveOutput:
 
     def test_node_selective_output(self, lops_device_tree):
         """Test that lop can output specific nodes to a file."""
-        output_file = "/tmp/openamp-test.dts"
+        # Output files are written to outdir, not /tmp/
+        output_file = os.path.join(lops_device_tree.outdir, "openamp-test.dts")
 
         with open(output_file) as f:
             content = f.read()
@@ -146,7 +147,8 @@ class TestLopsSelectiveOutput:
 
     def test_node_regex_output(self, lops_device_tree):
         """Test that lop can output nodes matching regex pattern."""
-        output_file = "/tmp/linux-amba.dts"
+        # Output files are written to outdir, not /tmp/
+        output_file = os.path.join(lops_device_tree.outdir, "linux-amba.dts")
 
         with open(output_file) as f:
             content = f.read()
@@ -194,14 +196,15 @@ class TestLopsSubtrees:
             "Subtree 'openamp-test' should exist"
 
         sub_tree = lops_device_tree.subtrees["openamp-test"]
-        sub_tree_output = Path("/tmp/openamp-test2.dts")
-        sub_tree_file = sub_tree_output.resolve()
+        # Subtree files are written to outdir
+        sub_tree_file = os.path.join(lops_device_tree.outdir, "openamp-test2.dts")
 
-        assert sub_tree_file.exists(), f"Subtree file should exist: {sub_tree_file}"
+        assert os.path.exists(sub_tree_file), f"Subtree file should exist: {sub_tree_file}"
 
     def test_subtree_property_modify(self, lops_device_tree):
         """Test modifying properties in a subtree."""
-        sub_tree_file = "/tmp/openamp-test2.dts"
+        # Subtree files are written to outdir
+        sub_tree_file = os.path.join(lops_device_tree.outdir, "openamp-test2.dts")
 
         with open(sub_tree_file) as f:
             content = f.read()
@@ -211,7 +214,8 @@ class TestLopsSubtrees:
 
     def test_subtree_node_move(self, lops_device_tree):
         """Test moving nodes within a subtree."""
-        sub_tree_file = "/tmp/openamp-test2.dts"
+        # Subtree files are written to outdir
+        sub_tree_file = os.path.join(lops_device_tree.outdir, "openamp-test2.dts")
 
         with open(sub_tree_file) as f:
             content = f.read()
