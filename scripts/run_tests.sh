@@ -41,8 +41,10 @@ echo "Legacy tests passed: $PASSED"
 echo "Legacy tests failed: $FAILED"
 
 # Parse pytest results
-PYTEST_PASSED=$(grep -c "PASSED" pytest_output.txt || true)
-PYTEST_FAILED_COUNT=$(grep -c "FAILED" pytest_output.txt || true)
+# Count PASSED in test lines (e.g., "tests/test_tree.py::TestFoo::test_bar PASSED")
+PYTEST_PASSED=$(grep -E "^tests/.*PASSED" pytest_output.txt | wc -l || true)
+# Count FAILED in test lines only (not in summary)
+PYTEST_FAILED_COUNT=$(grep -E "^tests/.*FAILED" pytest_output.txt | wc -l || true)
 
 echo "Pytest tests passed: $PYTEST_PASSED"
 echo "Pytest tests failed: $PYTEST_FAILED_COUNT"
