@@ -9,6 +9,7 @@ echo "========================================="
 echo "Running pytest test suite..."
 echo "========================================="
 
+PYTEST_FAILED=0
 if pytest -v tests/ --tb=short --junitxml=pytest-results.xml 2>&1 | tee pytest_output.txt; then
     echo "✅ Pytest tests passed!"
 else
@@ -22,6 +23,7 @@ echo "Running lopper_sanity.py legacy test suite..."
 echo "========================================="
 
 # Run tests and capture output
+LEGACY_FAILED=0
 python3 lopper_sanity.py --all 2>&1 | tee test_output.txt
 TEST_EXIT_CODE=${PIPESTATUS[0]}
 
