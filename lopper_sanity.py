@@ -554,7 +554,7 @@ def setup_code_lops( outdir ):
 };
             """)
 
-    return "/tmp/lops-code.dts"
+    return outdir + "/lops-code.dts"
 
 def setup_assist_lops( outdir ):
     with open( outdir + "/lops-assists.dts", "w") as w:
