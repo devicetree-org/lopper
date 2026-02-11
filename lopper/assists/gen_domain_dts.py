@@ -728,9 +728,11 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             new_node.name = "mmc"
                             new_node['compatible'] = "zephyr,mmc-disk"
                             new_node['bus-width'] = node["xlnx,bus-width"].value
+                            new_node['disk-name'] = "EMMC"
                         else:
                             new_node.name = "sdmmc"
                             new_node['compatible'] = "zephyr,sdmmc-disk"
+                            new_node['disk-name'] = "SD"
                             node['power-delay-ms'] = 10
                         node.add(new_node)
                         node["compatible"] = "xlnx,versal-8.9a"
