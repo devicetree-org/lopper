@@ -1113,8 +1113,12 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
 
     # get_cpu_node expects dictionary where first arg first element is machine
     machine = openamp_args['machine']
-    match_cpunode = get_cpu_node(sdt, {'args':[machine]})
-    if not match_cpunode:
+
+    # OS is used to determine if (a) machine should be used and (b) map to domain
+    os = openamp_args["dt_type"]
+
+    match_cpunode = get_cpu_node(sdt, {'args':[machine]}) if os != "linux_dt" else None
+    if not match_cpunode and os != "linux_dt":
         print("openamp_nontree_outputs_handler: unable to find machine: ", machine)
         return False
 
@@ -1130,7 +1134,7 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
             continue
 
         # ensure target domain matches
-        if match_cpunode.parent != sdt.tree.pnode(n.parent.parent.propval("cpus")[0]):
+        if os != "linux_dt" and match_cpunode.parent != sdt.tree.pnode(n.parent.parent.propval("cpus")[0]):
             continue
 
         # search based on compatible string of relation
@@ -1144,7 +1148,6 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
         relation_node = n
         break
 
-    os = openamp_args["dt_type"]
     carveouts = None
     ipi_node = None
     relation_node_search = True if openamp_args['relation'] != None else False
