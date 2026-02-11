@@ -750,6 +750,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             node.add(node["#size-cells"])
                     # SPIPS
                     if "cdns,spi-r1p6" in node["compatible"].value:
+                        node["compatible"] = "cdns,spi"
                         if node.propval('#address-cells') != [1]:
                             node["#address-cells"] = LopperProp("#address-cells")
                             node["#address-cells"].value = 1
@@ -758,16 +759,19 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             node["#size-cells"] = LopperProp("#size-cells")
                             node["#size-cells"].value = 0
                             node.add(node["#size-cells"])
-                        num_cs_value = node.propval('num-cs')
-                        num_cs_value = num_cs_value[0] if (num_cs_value and num_cs_value != ['']) else 1
-                        node["cdns,num-ss-bits"] = LopperProp("cdns,num-ss-bits")
-                        node["cdns,num-ss-bits"].value = num_cs_value
-                        node.add(node["cdns,num-ss-bits"])
-                        decoded_cs = node.propval('is-decoded-cs')
-                        decoded_cs = decoded_cs[0] if (decoded_cs and decoded_cs != ['']) else 0
-                        node["is-decoded-cs"] = LopperProp("is-decoded-cs")
-                        node["is-decoded-cs"].value = decoded_cs
-                        node.add(node["is-decoded-cs"])
+                        clk_freq = node.propval('xlnx,spi-clk-freq-hz')
+                        node["clock-frequency"] = LopperProp("clock-frequency")
+                        node["clock-frequency"].value = clk_freq
+                        node.add(node["clock-frequency"])
+                        node["tx-fifo-depth"] = LopperProp("tx-fifo-depth")
+                        node["tx-fifo-depth"].value = 128
+                        node.add(node["tx-fifo-depth"])
+                        node["rx-fifo-depth"] = LopperProp("rx-fifo-depth")
+                        node["rx-fifo-depth"].value = 128
+                        node.add(node["rx-fifo-depth"])
+                        node["fifo-width"] = LopperProp("fifo-width")
+                        node["fifo-width"].value = 8
+                        node.add(node["fifo-width"])
                     #ADMA
                     if any(version in node["compatible"].value for version in ("xlnx,zynqmp-dma-1.0", "amd,versal2-dma-1.0")):
                         if node.props("clocks") != [] and node.propval("clocks") != []:

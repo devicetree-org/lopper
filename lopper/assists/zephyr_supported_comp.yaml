@@ -332,8 +332,9 @@ cdns,spi-r1p6:
     - reg
     - interrupts
     - interrupt-parent
-    - cdns,num-ss-bits
-    - is-decoded-cs
+    - tx-fifo-depth
+    - rx-fifo-depth
+    - fifo-width
     - clock-frequency
     - clocks
     - '#address-cells'
