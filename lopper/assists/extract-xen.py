@@ -13,6 +13,7 @@ import os
 import getopt
 import re
 import copy
+import logging
 from pathlib import Path
 from pathlib import PurePath
 from lopper import Lopper
@@ -22,6 +23,9 @@ from lopper.tree import LopperTree
 from lopper.tree import LopperNode
 from lopper.tree import LopperProp
 import lopper
+import lopper.log
+
+lopper.log._init(__name__)
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,extract-xen", compat_string_to_test):
@@ -54,7 +58,7 @@ def extract_xen( tgt_node, sdt, options ):
     try:
         xen_tree = sdt.subtrees["extracted"]
     except:
-        print( "[ERROR][extract-xen]: no extracted tree detcted, returning" )
+        lopper.log._error( "no extracted tree detected, returning" )
         return False
 
     opts,args2 = getopt.getopt( args, "vpt:o:", [ "verbose", "permissive" ] )
@@ -93,7 +97,7 @@ def extract_xen( tgt_node, sdt, options ):
     try:
         extracted_node = xen_tree["/extracted"]
     except:
-        print( "[ERROR][xen-extract]: no extracted node detected" )
+        lopper.log._error( "no extracted node detected" )
         return False
 
     # rename the containing node from /extracted to /passthrough
@@ -124,8 +128,7 @@ def extract_xen( tgt_node, sdt, options ):
         try:
             ip = n["interrupt-parent"]
             n["interrupt-parent"].value = "0xfde8"
-            if verbose:
-                print( f"[INFO][extract-xen]: {n.name} interrupt parent found, updating"  )
+            lopper.log._info( f"{n.name} interrupt parent found, updating" )
 
             # this is a known non-existent phandle, we need to inhibit
             # phandle resolution and just have the number used
@@ -167,7 +170,7 @@ def extract_xen( tgt_node, sdt, options ):
                 # reach into the SDT and add "xen,passthrough" to the device
                 sdt_device_path = n["extracted,path"].value
                 if sdt_device_path:
-                    print( "[INFO][extract-xen]: updating sdt with passthrough property" )
+                    lopper.log._info( "updating sdt with passthrough property" )
                     x_pass = LopperProp( "xen,passthrough" )
                     x_pass.value = ""
                     sdt.tree[sdt_device_path] + x_pass
@@ -175,8 +178,7 @@ def extract_xen( tgt_node, sdt, options ):
                 # check for the reg property
                 try:
                     reg = n["reg"]
-                    if verbose:
-                        print( f"[INFO][extract-xen]: reg found: {reg} copying and extending to xen,reg" )
+                    lopper.log._info( f"reg found: {reg} copying and extending to xen,reg" )
                     # make a xen,reg from it
                     xen_reg = LopperProp( "xen,reg" )
 
@@ -201,13 +203,11 @@ def extract_xen( tgt_node, sdt, options ):
 
                     n = n + xen_reg
                 except Exception as e:
-                    if verbose > 3:
-                        print( f"[ERROR]]extract-xen]: {e}" )
+                    lopper.log._debug( f"{e}", level=lopper.log.TRACE2 )
 
         if nodes_to_delete:
             for n in nodes_to_delete:
-                if verbose:
-                    print( f"[INFO][extract-xen]: deleting node (referencing node was removed): {n.abs_path}" )
+                lopper.log._info( f"deleting node (referencing node was removed): {n.abs_path}" )
                 xen_tree - n
 
     # resolve() isn't strictly required, but better to be safe
@@ -216,9 +216,8 @@ def extract_xen( tgt_node, sdt, options ):
 
     if output:
         sdt.write( xen_tree, output, True, True )
-    else:
-        if verbose:
-            xen_tree.output = None
-            xen_tree.print( sys.stdout )
+    elif lopper.log._is_enabled(logging.INFO):
+        xen_tree.output = None
+        xen_tree.print( sys.stdout )
 
     return True

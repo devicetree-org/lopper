@@ -31,6 +31,9 @@ import lopper_lib
 from lopper.log import _init, _warning, _info, _error, _debug
 import logging
 
+_init(__name__)
+_init("domain_access.py")
+
 def is_compat( node, compat_string_to_test ):
     if re.search( "access-domain,domain-v1", compat_string_to_test):
         return core_domain_access
@@ -160,9 +163,6 @@ def core_domain_access( tgt_node, sdt, options ):
         args = options['args']
     except:
         args = []
-
-    lopper.log._init( __name__ )
-    lopper.log._init( "domain_access.py" )
 
     # --permissive means that non-SMID devices/memory will be consulted
     opts,args2 = getopt.getopt( args, "vt:p", [ "verbose", "target=", "permissive" ] )
