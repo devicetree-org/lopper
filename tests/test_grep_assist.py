@@ -13,9 +13,11 @@ Author:
     Bruce Ashfield <bruce.ashfield@amd.com>
 """
 
+import os
 import pytest
 import sys
 from io import StringIO
+from lopper import LopperSDT
 from lopper.assists import grep
 
 
@@ -102,3 +104,84 @@ class TestGrepAssist:
         # User-facing output should still be in stdout
         captured = capsys.readouterr()
         assert len(captured.out) > 0, "grep should produce user-facing output"
+
+
+class TestGrepIntegration:
+    """Integration tests using real device tree files.
+
+    Based on real-world usage:
+    ./lopper.py -f --enhanced device-trees/system-device-tree.dts -- grep compatible "/.*bus.*"
+    """
+
+    def test_grep_compatible_in_bus_nodes(self, capsys):
+        """Test grep searching for 'compatible' in nodes matching /.*bus.* pattern."""
+        # Check if the device tree file exists
+        dt_file = "device-trees/system-device-tree.dts"
+        if not os.path.exists(dt_file):
+            pytest.skip(f"Device tree file not found: {dt_file}")
+
+        # Check if libfdt is available
+        libfdt_available = False
+        try:
+            import libfdt
+            libfdt_available = True
+        except ImportError:
+            pytest.skip("libfdt not available")
+
+        # Load the device tree
+        sdt = LopperSDT(dt_file)
+        sdt.setup(dt_file, [], "", True, libfdt=libfdt_available)
+
+        # Run grep: search for 'compatible' property in nodes matching /.*bus.*/
+        options = {
+            'verbose': 0,
+            'args': ['compatible', '/.*bus.*']
+        }
+
+        result = grep.grep(None, sdt, options)
+
+        assert result is True, "grep should return True"
+
+        # Capture output
+        captured = capsys.readouterr()
+
+        # Verify expected output format (should have bus nodes with compatible properties)
+        assert len(captured.out) > 0, "grep should produce output"
+
+        # Check for expected patterns from the sample output
+        # Should find bus nodes with compatible properties
+        assert "compatible =" in captured.out, "Output should contain 'compatible ='"
+
+        # Should find at least one bus node
+        assert "bus" in captured.out.lower(), "Output should contain bus nodes"
+
+    def test_grep_on_nonexistent_nodes(self, capsys):
+        """Test grep on nodes that don't exist."""
+        dt_file = "device-trees/system-device-tree.dts"
+        if not os.path.exists(dt_file):
+            pytest.skip(f"Device tree file not found: {dt_file}")
+
+        libfdt_available = False
+        try:
+            import libfdt
+            libfdt_available = True
+        except ImportError:
+            pytest.skip("libfdt not available")
+
+        sdt = LopperSDT(dt_file)
+        sdt.setup(dt_file, [], "", True, libfdt=libfdt_available)
+
+        # Search for property in nodes that don't exist
+        options = {
+            'verbose': 0,
+            'args': ['compatible', '/nonexistent-node.*']
+        }
+
+        result = grep.grep(None, sdt, options)
+
+        assert result is True, "grep should return True even with no matches"
+
+        captured = capsys.readouterr()
+
+        # Should indicate not found
+        assert "not found" in captured.out, "Should indicate property not found"
