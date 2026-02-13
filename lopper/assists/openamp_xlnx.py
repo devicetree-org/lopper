@@ -61,6 +61,7 @@ def is_compat( node, compat_string_to_test ):
         return xlnx_openamp_rpu
     return ""
 
+
 def xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, tree):
     """Report whether a node shode stay for OpenAMP Use cases.
 
@@ -86,6 +87,61 @@ def xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, tree):
     ]
 
     return any(c for c in conditions if c)
+
+
+def xlnx_openamp_trim_timers(sdt, target_os, machine):
+    """Trim tree of timers based on OS.
+
+    Args:
+        sdt(LopperTree): Tree for lopper nodes.
+        target_os (str): OS for this lopper run
+        machine (str): machien coresponding to the domain.
+    Returns:
+        True if success. Else False.
+
+    Algorithm:
+        Find domains matching target OS.
+        For each relation, look for timer property.
+        Based on timer property trim irrelevant timers.
+    """
+    tree = sdt.tree
+
+    if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ]:
+        return False
+
+    # first filter by linux domain
+    if target_os == "linux_dt":
+        domains = [ n for n in tree["/domains"].subnodes(children_only=True) if n.propval("os,type") == [target_os.replace("_dt","")] ]
+    else:
+        # otherwise filter by machine
+        match_cpunode = get_cpu_node(sdt, {'args':[machine]})
+        domains = [ n for n in tree["/domains"].subnodes(children_only=True) if match_cpunode.parent == sdt.tree.pnode(n.parent.parent.propval("cpus")[0]) ]
+
+
+    timer_pvals = [ n.propval("timer") for n in domains[0].subnodes(children_only=True) if n.propval("timer") != [''] ]
+
+    # only do trim if timer prop is provided
+    if timer_pvals == []:
+        return False
+
+    flattend_timer_pvals = [item for sublist in timer_pvals for item in sublist]
+    relevant_timer_nodes = [ tree.pnode(phandle) for phandle in flattend_timer_pvals ]
+
+    # enable UIO timers
+    for i in relevant_timer_nodes:
+        if "uio" in i.propval("compatible"):
+            i['status'] = 'okay'
+
+    all_timer_nodes = [ n for n in tree["/axi"].subnodes(children_only=True, name="timer@*") if n.propval("compatible") == ["cdns,ttc"] ]
+
+    # remove UIO timers from stripping
+    if os == "linux_dt":
+        [ all_timer_nodes.remove(timer_node) for timer_node in all_timer_nodes if "uio" in timer_node.propval("compatible") ]
+
+    # delete irrelevant timer nodes
+    [ tree.delete(timer_node) for timer_node in all_timer_nodes if timer_node not in relevant_timer_nodes ]
+
+    return True
 
 
 def xlnx_handle_relations(sdt, machine, find_only = True, os = None):
@@ -1313,14 +1369,9 @@ def parse_openamp_args(arg_inputs):
 
     config = {}
     if len(arg_inputs) == 2 and arg_inputs[1] in ["linux_dt", "zephyr_dt"]:
-        config["dt_type"] = "zephyr_dt" if "zephyr_dt" in arg_inputs else "linux_dt"
+        config["dt_type"] = arg_inputs[1]
         config["machine"] = arg_inputs[0]
         for i in ["processor", "os", "libmetal_output_file", "openamp_remote", "openamp_output_filename"]:
-            config[i] = None
-    elif len(arg_inputs) == 1:
-        config["dt_type"] = "baremetal_dt"
-        config["machine"] = arg_inputs[0]
-        for i in ["processor", "os", "ipi_mapping", "openamp_remote", "openamp_output_filename"]:
             config[i] = None
     elif len(arg_inputs) == 1:
         config["dt_type"] = "baremetal_dt"
@@ -1387,19 +1438,12 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
     if openamp_args["openamp_output_filename"]:
         return openamp_nontree_outputs_handler(sdt, openamp_args["openamp_output_filename"], openamp_args, 1 )
 
+    xlnx_openamp_trim_timers(sdt, openamp_args["dt_type"], machine)
+
     if openamp_args["dt_type"] in ["zephyr_dt", "linux_dt"] or openamp_args["openamp_output_filename"]:
         # if find_only is False, then processing will also occur.
         if not xlnx_handle_relations(sdt, machine, False, openamp_args["dt_type"]):
             return False
-
-        labels_to_keep = [ 'ttc0', 'ttc1' ]
-        if openamp_args["dt_type"] == "linux_dt" and get_platform(sdt.tree, verbose) != SOC_TYPE.VERSAL2:
-            for node in tree["/"].subnodes(children_only=True, name="timer@*"):
-                # for all boards that are NOT VEK385 - keep ttc0 and ttc1 in linux case.
-                if "cdns,ttc" in node.propval('compatible') and node.label not in labels_to_keep:
-                    sdt.tree.delete(node)
-    else:
-        print("OPENAMP: XLNX: WARNING: not doing any processing given inputs", options)
 
     return True
 
