@@ -81,7 +81,7 @@ def xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, tree):
         return False
 
     conditions = [
-        "uio" in node.propval('compatible', list),
+        "uio" in node.propval('compatible', list) and not zephyr_dt,
         "vnd,mbox-consumer" in node.propval('compatible', list),
         "zephyr,mbox-ipm" in node.propval('compatible', list),
     ]
