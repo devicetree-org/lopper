@@ -473,6 +473,14 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
         except:
             pass
 
+    # if user passes in xlnx,zephyr,mems - then update device_type for those referenced nodes.
+    xlnx_zeph_mems = domain_node.propval("xlnx,zephyr,mems")
+    if xlnx_zeph_mems != [''] and isinstance(xlnx_zeph_mems, list):
+        for i in domain_node.propval("xlnx,zephyr,mems"):
+            xlnx_zeph_mem_node = tree['/'].subnodes(children_only=True, name=domain_node.propval("xlnx,zephyr,mems")[0])
+            if xlnx_zeph_mem_node != []:
+                xlnx_zeph_mem_node[0]['device_type'] = "memory"
+
     return True
 
 def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_node, os, verbose = 0 ):
