@@ -182,6 +182,7 @@ arm,armv8-timer:
   required:
     - compatible
     - interrupts
+    - interrupt-parent
 
 xlnx,axi-noc2-1.0:
   required:
@@ -386,3 +387,35 @@ xlnx,zynqmp-rtc:
     - interrupt-parent
     - interrupt-names
     - alarms-count
+
+arm,cortex-a72:
+  required:
+    - compatible
+    - device_type
+    - reg
+    - clock-frequency
+    - enable-method
+
+arm,cortex-r5:
+  required:
+    - compatible
+    - device_type
+    - reg
+    - clock-frequency
+
+arm,gic-v1:
+  required:
+    - compatible
+    - reg
+    - status
+    - interrupt-controller
+    - '#interrupt-cells'
+
+cdns,ttc:
+  required:
+    - compatible
+    - reg
+    - status
+    - interrupts
+    - interrupt-names
+    - clock-frequency

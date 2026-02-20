@@ -471,9 +471,9 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             delete_unused_props( sdt.tree[match_cpunode] , driver_proplist, False)
 
     if zephyr_dt:
-        if "r52" in machine or "a78" in machine:
+        if "r52" in machine or "a78" in machine or "a72" in machine or "r5" in machine:
             xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine)
-            if "a78" in machine:
+            if "a78" in machine or "a72" in machine:
                 new_dst_node = LopperNode()
                 new_dst_node['compatible'] = "arm,psci-1.1"
                 new_dst_node['method'] = "smc"
@@ -550,10 +550,35 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
                     new_dst_node['compatible'].value = ["arm,gic-v3", "arm,gic"]
                     sdt.tree + new_dst_node
                     sdt.tree.sync()
+                elif "a72" in machine and (val == "psv_acpu_gic"):
+                    name  = node.name
+                    sdt.tree.delete(node)
+                    new_dst_node = node()
+                    new_dst_node['#interrupt-cells'] = 4
+                    new_dst_node.abs_path = "/axi/interrupt-controller@f9000000 "
+                    new_dst_node.name = "interrupt-controller@f9000000"
+                    new_dst_node['compatible'].value = ["arm,gic-v3", "arm,gic"]
+                    sdt.tree + new_dst_node
+                    sdt.tree.sync()
+                elif "r5" in machine and (val == "psv_rcpu_gic"):
+                    name  = node.name
+                    sdt.tree.delete(node)
+                    sdt.tree.delete(node.parent)
+                    new_dst_node = node()
+                    new_dst_node['#interrupt-cells'] = 4
+                    new_dst_node.abs_path = "/axi/interrupt-controller@f9000000 "
+                    new_dst_node.name = "interrupt-controller@f9000000 "
+                    new_dst_node['compatible'].value = ["arm,gic-v1", "arm,gic"]
+                    sdt.tree + new_dst_node
+                    sdt.tree.sync()
 
             compatible = node.propval('compatible', list)[0]
             if compatible == "arm,armv8-timer":
-                node["interrupts"].value = [0x1, 0xd, 0x4, 0xa4, 0x1, 0xe, 0x4, 0xa4, 0x1, 0xb, 0x4, 0xa4, 0x1, 0xa, 0x4, 0xa4]
+                if "a72" in machine:
+                    node["interrupts"].value = [0x1, 0xd, 0x2, 0xa0, 0x1, 0xe, 0x2, 0xa0, 0x1, 0xb, 0x2, 0xa0, 0x1, 0xa, 0x2, 0xa0]
+                else:
+                    node["interrupts"].value = [0x1, 0xd, 0x4, 0xa4, 0x1, 0xe, 0x4, 0xa4, 0x1, 0xb, 0x4, 0xa4, 0x1, 0xa, 0x4, 0xa4]
+
 
             elif compatible == "xlnx,zynqmp-rtc":
                 # RTC: Convert 3-cell interrupts to 4-cell GICv3 format by adding 0xa0 priority
@@ -564,6 +589,11 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
                 # Revert this snippet once the clock support is added in sdtgen
                 if node.propval('clock-frequency') == ['']:
                     node["clock-frequency"] = 32767
+            elif compatible == "cdns,ttc":
+                # TTC: Convert 3-cell interrupts to 4-cell GIC format by adding 0xa0 priority
+                intr_list = node["interrupts"].value
+                node["interrupts"].value = [cell for i in range(0, len(intr_list), 3)
+                                for cell in intr_list[i:i+3] + [0xa0]]
             elif node.propval('interrupts') != ['']:
                 intr_list = node["interrupts"].value
                 intr_list.append("0xa0")            
@@ -597,6 +627,11 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
     for node in root_sub_nodes:
         if node.propval("compatible") != ['']:
             if node.propval("compatible") == "indirect-bus":
+                sdt.tree.delete(node)
+            compatible = node.propval('compatible', list)[0]
+            if compatible == "arm,armv8-timer" and 'psv_cortexr5' in machine:
+                sdt.tree.delete(node)
+            if compatible == "xlnx,ttcps" and 'psv_cortexr5' not in machine:
                 sdt.tree.delete(node)
         if node.name == 'reserved-memory' and 'r52' in machine:
             node.delete('ranges')
@@ -748,6 +783,20 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             node['power-delay-ms'] = 10
                         node.add(new_node)
                         node["compatible"] = "xlnx,versal-8.9a"
+                    # TTCPS
+                    if "cdns,ttc" in node["compatible"].value:
+                        node["compatible"] = "xlnx,ttcps"
+                        if node.propval('interrupt-names') == ['']:
+                            ttc_irq_names = ["irq_0", "irq_1", "irq_2"]
+                            node["interrupt-names"] = LopperProp("interrupt-names")
+                            node["interrupt-names"].value = ttc_irq_names
+                            node.add(node["interrupt-names"])
+                        clk_freq = node.propval('xlnx,clock-freq')
+                        # Round to nearest MHz (optional but clean)
+                        rounded_clk = int(round(clk_freq[0] / 1000000.0)) * 1000000
+                        node["clock-frequency"] = LopperProp("clock-frequency")
+                        node["clock-frequency"].value = rounded_clk
+                        node.add(node["clock-frequency"])
                     # CANFD
                     if "xlnx,canfd-2.0" in node["compatible"].value:
                         node["compatible"] = "xlnx,canfd-2.0"
