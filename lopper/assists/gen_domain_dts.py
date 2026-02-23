@@ -208,6 +208,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             if (is_microblaze and 'lmb_bram' in node.propval('xlnx,ip-name', list)[0]
                     and node.propval('device_type',list)[0] == "memory"):
                         node.name = node.name.replace("memory","sram")
+                        node.delete('device_type')
             if node.name == "memory@fffc0000" or node.name == "memory@bbf00000":
                 sdt.tree.delete(node)
             if node.propval('memory_type', list) == ['linear_flash']:
@@ -457,6 +458,16 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         sdt.tree.sync()
         if sdt.tree['/cpus'].propval('address-map') != ['']:
             sdt.tree['/cpus'].delete('address-map')
+
+        # Move timebase-frequency from cpu@0 node to cpus node for riscv designs
+        if match_cpunode.propval('xlnx,ip-name', list)[0] == 'microblaze_riscv':
+            try:
+                cpu_prop = match_cpunode.propval('timebase-frequency')
+                if cpu_prop != ['']:
+                    sdt.tree[match_cpunode.parent]['timebase-frequency'] = cpu_prop
+                    sdt.tree[match_cpunode].delete('timebase-frequency')
+            except KeyError:
+                pass
 
     if zephyr_dt:
         if "r52" in machine or "a78" in machine:
