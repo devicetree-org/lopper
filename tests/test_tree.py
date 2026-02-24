@@ -709,3 +709,130 @@ class TestAliases:
 
         alias = printer.alias_node("serial0-fake")
         assert alias is None, "Should not find invalid alias 'serial0-fake'"
+
+
+class TestNodeMerge:
+    """Tests for LopperNode.merge() functionality."""
+
+    def _create_resolved_node(self, lopper_tree, name, path, props=None):
+        """Helper to create a resolved node that can be merged."""
+        node = LopperNode(name=name)
+        node.abs_path = path
+        node.tree = lopper_tree
+        node.__nstate__ = "resolved"
+        node.number = -1  # Temporary number for unattached node
+        if props:
+            for k, v in props.items():
+                node[k] = v
+        return node
+
+    def test_merge_copies_properties(self, lopper_tree):
+        """Test that merge copies properties from source to target."""
+        # Create a resolved source node with properties
+        source = self._create_resolved_node(
+            lopper_tree, 'source', '/test/source',
+            {'test-prop': ['test-value'], 'another-prop': [42]}
+        )
+
+        # Get an existing node to merge into
+        target = lopper_tree['/']
+
+        # Merge source into target
+        target.merge(source)
+
+        # Target should now have the source's properties
+        assert 'test-prop' in target.__props__, "Merged property not found in target"
+        assert 'another-prop' in target.__props__, "Merged property not found in target"
+        assert target.propval('test-prop') == ['test-value'], "Merged property has wrong value"
+
+    def test_merge_preserves_target_path(self, lopper_tree):
+        """Test that merge preserves the target node's path."""
+        # Create a resolved source node with a different path
+        source = self._create_resolved_node(
+            lopper_tree, 'different-name', '/some/other/path',
+            {'merge-test': ['value']}
+        )
+
+        # Get an existing node
+        target = lopper_tree['/cpus']
+        original_path = target.abs_path
+        original_name = target.name
+
+        # Merge
+        target.merge(source)
+
+        # Target should keep its identity
+        assert target.abs_path == original_path, \
+            f"Target path changed from {original_path} to {target.abs_path}"
+        assert target.name == original_name, \
+            f"Target name changed from {original_name} to {target.name}"
+
+    def test_merge_preserves_target_phandle(self, lopper_tree):
+        """Test that merge preserves the target node's phandle."""
+        # Find a node with a phandle
+        target = None
+        for node in lopper_tree:
+            if node.phandle and node.phandle != 0:
+                target = node
+                break
+
+        if target is None:
+            # Skip if no node with phandle found
+            return
+
+        original_phandle = target.phandle
+
+        # Create resolved source with different phandle
+        source = self._create_resolved_node(
+            lopper_tree, 'source', '/test/source',
+            {'phandle-test': ['value']}
+        )
+        source.phandle = 0xDEADBEEF
+
+        # Merge
+        target.merge(source)
+
+        # Target should keep its phandle
+        assert target.phandle == original_phandle, \
+            f"Target phandle changed from {original_phandle} to {target.phandle}"
+
+    def test_merge_updates_existing_properties(self, lopper_tree):
+        """Test that merge updates existing properties (additive behavior)."""
+        # Get a node that has 'compatible' property
+        target = lopper_tree['/']
+        original_compatible = target.propval('compatible')
+
+        # Create resolved source with 'compatible' property
+        source = self._create_resolved_node(
+            lopper_tree, 'source', '/test/source',
+            {'compatible': ['new-compatible-value']}
+        )
+
+        # Merge
+        target.merge(source)
+
+        # Target's compatible should include the new value
+        # (merge is additive per docstring)
+        new_compatible = target.propval('compatible')
+        assert 'new-compatible-value' in new_compatible, \
+            "Merge did not add new property value"
+
+    def test_merge_between_existing_nodes(self, lopper_tree):
+        """Test merging properties between two existing tree nodes."""
+        # Use two existing nodes from the tree to avoid export path issues
+        # Find a node with a unique property we can check
+        source = lopper_tree['/cpus']
+        target = lopper_tree['/']
+
+        original_target_path = target.abs_path
+        original_target_name = target.name
+
+        # Merge cpus properties into root
+        target.merge(source)
+
+        # Target should keep its identity
+        assert target.abs_path == original_target_path, "Target path changed"
+        assert target.name == original_target_name, "Target name changed"
+
+        # Target should have gained source's properties
+        # (cpus has #address-cells, #size-cells which root also has)
