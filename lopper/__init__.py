@@ -213,6 +213,8 @@ class LopperSDT:
                         if lstripped.startswith('incompatible ='):
                             # Get everything after '='
                             rhs = lstripped.split('=', 1)[1].strip()
+                            # Remove trailing semicolon (DTS syntax)
+                            rhs = rhs.rstrip(';').strip()
                             other_names = [name.strip().strip('"') for name in rhs.split(',')]
                             for other_name in other_names:
                                 if other_name in basenames:
@@ -923,11 +925,24 @@ class LopperSDT:
                 # Exact match
                 if assist_fname == base:
                     found.add(assist_path)
-                # Wildcard match: BitBake style
+                # Wildcard match: BitBake style with prefix and suffix support
+                # Examples:
+                #   domain%.lop      -> matches files starting with "domain"
+                #   %.yaml.lop       -> matches files ending with ".yaml"
+                #   domain%.yaml.lop -> matches files starting with "domain" AND ending with ".yaml"
                 elif '%' in assist_fname:
                     idx = assist_fname.index('%')
                     prefix = assist_fname[:idx]
-                    if base.startswith(prefix):
+
+                    # Remove .lop or .dts extension to get the suffix pattern
+                    assist_base, _ = os.path.splitext(assist_fname)  # e.g., "domain%.yaml" or "%.yaml"
+                    suffix = assist_base[idx+1:]  # Everything after % (e.g., ".yaml" or "")
+
+                    # Check prefix and suffix
+                    matches_prefix = base.startswith(prefix) if prefix else True
+                    matches_suffix = base.endswith(suffix) if suffix else True
+
+                    if matches_prefix and matches_suffix:
                         found.add(assist_path)
 
         return sorted(found)  # sorted for determinism
