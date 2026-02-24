@@ -2162,6 +2162,10 @@ class LopperSDT:
             except:
                 options['outdir'] = self.outdir
 
+            # make target_domain available to code lops
+            if self.target_domain:
+                options['target_domain'] = self.target_domain
+
             try:
                 start_node = options['start_node']
             except:
@@ -2535,7 +2539,12 @@ class LopperSDT:
 
                     lopper.log._info( f"------> processing lop: {f.abs_path} {f.name}" )
 
-                    result = self.exec_lop( f, fdt_tree )
+                    # Pass target_domain to lop processing via options
+                    lop_options = None
+                    if self.target_domain:
+                        lop_options = {'target_domain': self.target_domain}
+
+                    result = self.exec_lop( f, fdt_tree, lop_options )
                     lop_results[f.name] = result
 
                     lopper.log._info( f"------> logged result {result} for lop {f.name}" )
