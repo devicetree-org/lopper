@@ -881,7 +881,7 @@ class LopperSDT:
                     lopper.log._error( f"werror is enabled, and no compatible output assist found, exiting" )
                     sys.exit(2)
 
-    def find_any_matching_assists(self, input_files, local_search_paths=[]):
+    def find_any_matching_assists(self, input_files, local_search_paths=[], xlate_fallback=False):
         """Locates assist files that match any of the given input files (BitBake-style)
 
         This routine searches both system directories (lopper_directory, lopper_directory +
@@ -895,6 +895,9 @@ class LopperSDT:
            input_files (list of strings): input file names (can include paths)
            local_search_paths (list of strings, optional): list of directories to search
                                                            in addition to system dirs
+           xlate_fallback (bool, optional): if True, fall back to legacy lop-xlate-{ext}.dts
+                                            pattern when no BitBake match is found. This
+                                            maintains backward compatibility with -x/--xlate.
 
         Returns:
            list of strings: Sorted list of unique absolute paths to assist files
@@ -920,11 +923,13 @@ class LopperSDT:
         found = set()
         for file_path in input_files:
             base = os.path.basename(file_path)
+            file_matched = False
             for assist_path in assists:
                 assist_fname = os.path.basename(assist_path)
                 # Exact match
                 if assist_fname == base:
                     found.add(assist_path)
+                    file_matched = True
                 # Wildcard match: BitBake style with prefix and suffix support
                 # Examples:
                 #   domain%.lop      -> matches files starting with "domain"
@@ -944,6 +949,18 @@ class LopperSDT:
 
                     if matches_prefix and matches_suffix:
                         found.add(assist_path)
+                        file_matched = True
+
+            # Fallback: check for legacy lop-xlate-{extension}.dts pattern
+            # This maintains backward compatibility with -x/--xlate usage
+            if xlate_fallback and not file_matched:
+                _, ext = os.path.splitext(base)
+                if ext:
+                    ext_name = ext.lstrip('.')  # ".yaml" -> "yaml"
+                    legacy_lop = f"lop-xlate-{ext_name}.dts"
+                    for assist_path in assists:
+                        if os.path.basename(assist_path) == legacy_lop:
+                            found.add(assist_path)
 
         return sorted(found)  # sorted for determinism
 
