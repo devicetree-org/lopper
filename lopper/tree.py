@@ -3089,6 +3089,13 @@ class LopperNode(object):
         # export the dictionary (properties)
         o_export = other_node.export()
 
+        # Preserve the target node's identity - we only want to merge properties,
+        # not change the path/name/phandle of the target node
+        o_export['__path__'] = self.abs_path
+        o_export['__fdt_name__'] = self.name
+        o_export['__fdt_number__'] = self.number
+        o_export['__fdt_phandle__'] = self.phandle
+
         # load them into the node, keep children intact, this is a single
         # node operation
         self.load( o_export, clear_children = False, update_props = True )
