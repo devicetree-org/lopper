@@ -83,6 +83,34 @@ def domain_parent( domain ):
     except Exception as e:
         return None
 
+def infer_parent_domain( tree, domain ):
+    """Walk up tree looking for nearest ancestor with 'access' property.
+
+    When a domain has a glob pattern in its access list but no explicit
+    'parent:' property, this function attempts to find a suitable parent
+    domain by walking up the tree hierarchy.
+
+    Args:
+        tree (LopperTree): Device tree containing the domain hierarchy.
+        domain (LopperNode): Domain node to find parent for.
+
+    Returns:
+        LopperNode | None: Parent domain node with devices, or None if not found.
+    """
+    candidate = domain.parent
+    while candidate:
+        # Stop at container nodes that aren't domains
+        if candidate.abs_path == "/domains" or candidate.abs_path == "/":
+            return None
+        try:
+            access = domain_access(candidate)
+            if access:  # Has devices
+                return candidate
+        except:
+            pass
+        candidate = candidate.parent
+    return None
+
 def domain_access(node, new_access=None):
     """Get or set the JSON-encoded access property for a domain node.
 
@@ -205,11 +233,8 @@ def wildcard_devices( tree, domains_node ):
     Returns:
         None
     """
-    verbose = True
-
     for domain in domains_node.subnodes():
-        if verbose:
-            print( f"[DBG]: wildcard device expansion: processing {domain.abs_path}" )
+        _debug( f"wildcard device expansion: processing {domain.abs_path}" )
 
         try:
             access_chunks = domain_access( domain )
@@ -217,8 +242,7 @@ def wildcard_devices( tree, domains_node ):
             access_list_new = []
             for a in access_chunks:
                 # display the access element
-                if verbose:
-                    print( f"[DBG]: wildcard: processing: {a}" )
+                _debug( f"wildcard: processing: {a}" )
 
                 try:
                     dev = a["dev"]
@@ -227,62 +251,54 @@ def wildcard_devices( tree, domains_node ):
                         # The yaml input validation should have found any misses, but
                         # dts inputs are also possible, so we double check here
                         d_parent = domain_parent( domain )
-                        d_parent_name = d_parent.value.split('/')[-1]
-                        d_parent_path = d_parent.value
+                        parent_domain = None
 
-                        if d_parent_path.startswith('/'):
-                            # if the path isn't valid, an exception will be raised, which
-                            # we catch and indicate the parent cannot be found
+                        if d_parent:
+                            # Explicit parent: property
+                            d_parent_path = d_parent.value
                             try:
-                                parent_domain = tree[d_parent_path]
-                            except:
-                                parent_domain = None
-                        else:
-                            try:
-                                parent_domain = tree.nodes( d_parent_path + "$" )
-                                parent_domain = parent_domain[0]
-                            except:
-                                parent_domain = None
-
-                        if parent_domain:
-                            ## We need to get the access devices from
-                            ## the parent and copy them into our
-                            ## domain
-                            try:
-                                parent_access = domain_access( parent_domain )
+                                if d_parent_path.startswith('/'):
+                                    parent_domain = tree[d_parent_path]
+                                else:
+                                    nodes = tree.nodes( d_parent_path + "$" )
+                                    parent_domain = nodes[0] if nodes else None
                             except Exception as e:
-                                print( f"[WARNING]: parent domain ({parent_domain.abs_path}) has no devices")
-
-                            # the spec says globs, but if we convert to a regex, the access
-                            # search is easy
-                            regex = glob_to_regex( dev )
-                            devs = domain_devices( parent_access, regex, Action.GET )
-                            remaining_devs = domain_devices( parent_access, devs, Action.REMOVE )
-
-                            # update the parent, since we aren't iterating it, we are ok doing this
-                            # immediately.
-                            if verbose:
-                                print( f"[DEBUG]: after access: remaining devs: {remaining_devs}" )
-
-                            domain_access( parent_domain, remaining_devs )
-
-                            if verbose:
-                                print( f"[INFO]: parent domain ({parent_domain.abs_path}) matched devices: {devs}" )
-
-                            # we can't modify the chunks while iterating, so we
-                            # queue the glob (what got is in here) to be deleted
-                            remove_list.append( a )
-                            # And the parent domain devices (what the glob matched) to be added
-                            access_list_new.extend( devs )
+                                _error( f"glob in {domain.abs_path}: explicit parent '{d_parent_path}' not found: {e}", True )
                         else:
-                            # no parent domain, exit
-                            print( f"[ERROR]: glob detected, but no parent domain was found" )
-                            os._exit(1)
+                            # No explicit parent: property, try to infer by walking up tree
+                            parent_domain = infer_parent_domain( tree, domain )
+
+                        if not parent_domain:
+                            _error( f"glob in {domain.abs_path}: no parent domain with devices found (explicit or inferred)", True )
+
+                        # Get parent's access list and verify it has devices
+                        parent_access = domain_access( parent_domain )
+                        if not parent_access:
+                            _error( f"glob in {domain.abs_path}: parent domain ({parent_domain.abs_path}) has no devices to match", True )
+
+                        # the spec says globs, but if we convert to a regex, the access
+                        # search is easy
+                        regex = glob_to_regex( dev )
+                        devs = domain_devices( parent_access, regex, Action.GET )
+                        remaining_devs = domain_devices( parent_access, devs, Action.REMOVE )
+
+                        # update the parent, since we aren't iterating it, we are ok doing this
+                        # immediately.
+                        _debug( f"after access: remaining devs: {remaining_devs}" )
+
+                        domain_access( parent_domain, remaining_devs )
+
+                        _info( f"parent domain ({parent_domain.abs_path}) matched devices: {devs}" )
+
+                        # we can't modify the chunks while iterating, so we
+                        # queue the glob (what got is in here) to be deleted
+                        remove_list.append( a )
+                        # And the parent domain devices (what the glob matched) to be added
+                        access_list_new.extend( devs )
                     else:
                         # Non-glob device, just copy it or inspect it.
                         # Currently We aren't doing any checking.
-                        if verbose:
-                           print( f"[INFO]: non wildcard access, copying: {dev}")
+                        _debug( f"non wildcard access, copying: {dev}" )
                         access_list_new.append( a )
 
                 except Exception as e:
@@ -294,8 +310,7 @@ def wildcard_devices( tree, domains_node ):
             if remove_list:
                 # remove the collected devices from the access json dictionary, these
                 # are currently only the wildcard dev: that was found
-                if verbose:
-                    print( f"[INFO]: domain (domain.abs_path): removing: {remove_list}" )
+                _debug( f"domain ({domain.abs_path}): removing: {remove_list}" )
 
                 remaining_access = domain_devices( access_chunks, remove_list, Action.REMOVE )
                 # and then store the updated list into the domain
@@ -323,14 +338,12 @@ def wildcard_devices( tree, domains_node ):
                     # need to store it
                     # We could probably just collect the new devices that we brought in from
                     # the glob an extend the list
-                    if verbose:
-                        print( f"[INFO]: domain ({domain.abs_path}): updating: {access_list_new}" )
+                    _debug( f"domain ({domain.abs_path}): updating: {access_list_new}" )
 
                     domain_access( domain, access_list_new )
 
         except Exception as e:
-            print( f"[ERROR]: Exception: {e}")
-            os._exit(1)
+            _error( f"Exception during wildcard expansion: {e}", True )
 
 def firewall_expand( tree, subnode, verbose = 0 ):
     """Expand firewall helper nodes into generated firewall properties.
