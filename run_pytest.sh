@@ -36,6 +36,7 @@ Pytest Wrapper - Common Commands:
   ./run_pytest.sh              Run all tests (verbose)
   ./run_pytest.sh quick        Run all tests (quiet, fast)
   ./run_pytest.sh tree         Run tree tests only
+  ./run_pytest.sh yaml         Run YAML/domain tests (glob, assist matching)
   ./run_pytest.sh failed       Re-run only failed tests
   ./run_pytest.sh coverage     Run with coverage report
   ./run_pytest.sh parallel     Run tests in parallel (fast)
@@ -60,6 +61,11 @@ EOF
     tree)
         echo "Running tree tests only..."
         pytest tests/test_tree.py -v
+        ;;
+
+    yaml)
+        echo "Running YAML/domain tests..."
+        pytest tests/test_glob_access.py tests/test_assist_matching.py -v
         ;;
 
     failed)
