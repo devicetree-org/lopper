@@ -1,5 +1,5 @@
 #/*
-# * Copyright (c) 2019,2020 Xilinx Inc. All rights reserved.
+# * Copyright (c) 2019,2026 Xilinx Inc. All rights reserved.
 # *
 # * Author:
 # *       Bruce Ashfield <bruce.ashfield@xilinx.com>
@@ -1904,6 +1904,10 @@ class LopperFDT(lopper.base.lopper_base):
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
         if result.returncode != 0:
+            lopper.log._warning(
+                f"{('\n' + textwrap.indent(result.stderr.decode(errors='replace'), '         ')) if result.stderr else ''}"
+                f"dt_compile: initial dtc compile failed (rc={result.returncode}); retrying with -f")
+
             # force the dtb, we need to do processing
             dtcargs += [ "-f" ]
             lopper.log._info( f"dt_compile: forcing dtb generation with args {dtcargs}" )
