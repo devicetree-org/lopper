@@ -106,6 +106,11 @@ PROPERTY_NAME_HEURISTICS = {
         'okay': LopperFmt.EMPTY,
         'fail': LopperFmt.EMPTY,
         'fail-sss': LopperFmt.EMPTY,
+
+        # Reserved-memory boolean properties
+        'reusable': LopperFmt.EMPTY,
+        'linux,cma-default': LopperFmt.EMPTY,
+        'linux,dma-default': LopperFmt.EMPTY,
     },
 
     # Regex patterns (more complex than suffix/prefix)
@@ -186,6 +191,10 @@ PROPERTY_TYPE_HINTS = {
         'cts-override',
         'dis-u2-susphy-quirk',
         'dis-u3-susphy-quirk',
+        # Reserved-memory boolean properties
+        'reusable',
+        'linux,cma-default',
+        'linux,dma-default',
     ],
 }
 

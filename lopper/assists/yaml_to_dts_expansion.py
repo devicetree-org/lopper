@@ -778,13 +778,24 @@ def reserved_memory_expand( tree, reserved_memory_node ):
     # save phandles in domain
     resmem_list[0].value = new_res_mem_pval
 
-     # read start and size. then form 'reg' property for the node.
-     # then remove start and size
+    # DT-spec reserved-memory boolean properties that need expansion
+    # from YAML true/1 to empty DTS property
+    RESERVED_MEMORY_BOOLEAN_PROPS = [
+        'no-map',
+        'reusable',
+        'linux,cma-default',
+        'linux,dma-default',
+    ]
+
+    # read start and size. then form 'reg' property for the node.
+    # then remove start and size
     for n in pre_existing_res_mem_nodes:
-        # handle no map
-        if n.propval("no-map") == 1:
-            n.delete("no-map")
-            n + LopperProp(name="no-map")
+        # Handle all boolean properties - convert value=1/True to empty property
+        for bool_prop in RESERVED_MEMORY_BOOLEAN_PROPS:
+            prop_val = n.propval(bool_prop)
+            if prop_val in (1, True, [1], [True]):
+                n.delete(bool_prop)
+                n + LopperProp(name=bool_prop)
 
         if n.propval("reg") != ['']:
             continue
