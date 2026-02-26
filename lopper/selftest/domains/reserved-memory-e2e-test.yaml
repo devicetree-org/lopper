@@ -1,0 +1,61 @@
+# End-to-end test YAML for reserved-memory handling
+#
+# This YAML defines:
+# - Reserved-memory nodes with various properties
+# - A domain that references some (but not all) reserved-memory regions
+# - Used to test filtering/pruning of unreferenced reserved-memory nodes
+
+compatible: openamp,domain-v1
+
+reserved-memory:
+  "#address-cells": 2
+  "#size-cells": 2
+  ranges: true
+
+  # This will be referenced - should survive
+  referenced@10000000:
+    label: referenced_region
+    compatible: shared-dma-pool
+    reusable: true
+    start: 0x10000000
+    size: 0x1000000
+
+  # This will also be referenced - should survive
+  another@20000000:
+    label: another_referenced
+    compatible: shared-dma-pool
+    no-map: true
+    start: 0x20000000
+    size: 0x1000000
+
+  # This will NOT be referenced - should be pruned
+  unused@30000000:
+    label: unreferenced_region
+    compatible: shared-dma-pool
+    start: 0x30000000
+    size: 0x1000000
+
+# Device nodes that reference reserved-memory (keeps them alive)
+test-devices:
+  device0:
+    compatible: test,device
+    memory-region:
+      - "&referenced_region"
+
+  device1:
+    compatible: test,device
+    memory-region:
+      - "&another_referenced"
+
+domains:
+  test_domain:
+    compatible: access-domain,domain-v1
+    memory:
+      - start: 0x0
+        size: 0x40000000
+
+    # This lists reserved-memory for the domain, but doesn't by itself
+    # keep nodes alive - they need external memory-region references
+    reserved-memory:
+      - referenced@10000000
+      - another@20000000

@@ -1,0 +1,98 @@
+/dts-v1/;
+
+/*
+ * Test system device tree for reserved-memory handling
+ * Used to test:
+ * 1. Reserved-memory nodes referenced by devices (via memory-region) survive filtering
+ * 2. Unreferenced reserved-memory nodes are pruned
+ * 3. Boolean property expansion (reusable, linux,cma-default, etc.)
+ * 4. Semantic validation of reserved-memory within domain memory
+ *
+ * NOTE: Reserved-memory nodes survive filtering only if referenced by something
+ * OUTSIDE of /domains/ (e.g., via memory-region property on a device node).
+ * The domain's reserved-memory property is just metadata and does not by itself
+ * keep nodes around.
+ */
+
+/ {
+	compatible = "xlnx,zynqmp";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	model = "Test SDT for reserved-memory";
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpus_a72: cpus-a72@0 {
+			compatible = "cpus,cluster";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			cpu@0 {
+				compatible = "arm,cortex-a72";
+				device_type = "cpu";
+				reg = <0>;
+			};
+
+			cpu@1 {
+				compatible = "arm,cortex-a72";
+				device_type = "cpu";
+				reg = <1>;
+			};
+		};
+	};
+
+	memory@0 {
+		device_type = "memory";
+		/* 2GB of memory: 0x0 - 0x80000000 */
+		reg = <0x0 0x0 0x0 0x80000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/* Referenced by ethernet0 via memory-region - should survive */
+		referenced_cma: cma_pool@10000000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x10000000 0x0 0x10000000>;
+		};
+
+		/* Referenced by serial0 via memory-region - should survive */
+		referenced_nomap: nomap_region@30000000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x30000000 0x0 0x10000000>;
+			no-map;
+		};
+
+		/* NOT referenced by any device - should be pruned */
+		unreferenced_region: unused@50000000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x50000000 0x0 0x10000000>;
+			no-map;
+		};
+	};
+
+	axi: axi {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		serial0: serial@ff000000 {
+			compatible = "xlnx,zynqmp-uart";
+			reg = <0x0 0xff000000 0x0 0x1000>;
+			/* Reference to reserved-memory - this keeps nomap_region alive */
+			memory-region = <&referenced_nomap>;
+		};
+
+		ethernet0: ethernet@ff0c0000 {
+			compatible = "cdns,gem";
+			reg = <0x0 0xff0c0000 0x0 0x1000>;
+			/* Reference to reserved-memory - this keeps cma_pool alive */
+			memory-region = <&referenced_cma>;
+		};
+	};
+};

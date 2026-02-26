@@ -1,0 +1,67 @@
+# Domain YAML for end-to-end reserved-memory testing
+#
+# This domain tests reserved-memory handling:
+# - referenced_cma: survives (ethernet0 has memory-region = <&referenced_cma>)
+# - referenced_nomap: survives (serial0 has memory-region = <&referenced_nomap>)
+# - yaml_cma: survives (serial0 also gets memory-region referencing it via YAML)
+# - unreferenced_region: pruned (nothing references it)
+#
+# NOTE: Reserved-memory nodes survive only if something OUTSIDE /domains/
+# references them (via memory-region property). The domain's reserved-memory
+# property is just metadata.
+
+compatible: openamp,domain-v1
+
+# Add new reserved-memory nodes via YAML with boolean properties
+reserved-memory:
+  "#address-cells": 2
+  "#size-cells": 2
+  ranges: true
+
+  # New CMA region with reusable flag - needs to be referenced by a device to survive
+  yaml_cma@60000000:
+    label: yaml_cma
+    compatible: shared-dma-pool
+    reusable: true
+    linux,cma-default: true
+    start: 0x60000000
+    size: 0x10000000
+
+# Add memory-region references so reserved-memory nodes survive pruning
+# These nodes merge with existing nodes in the SDT
+# NOTE: This replaces the memory-region from the SDT, so we need to include
+# both the original reference and the new one
+axi:
+  serial@ff000000:
+    # Include both nomap_region (from original SDT) and yaml_cma (new)
+    memory-region:
+      - "&referenced_nomap"
+      - "&yaml_cma"
+
+domains:
+  APU_Linux:
+    compatible: access-domain,domain-v1
+
+    # Domain memory: 0x0 - 0x80000000 (2GB)
+    memory:
+      - start: 0x0
+        size: 0x80000000
+
+    # Reference some reserved-memory regions (by node name)
+    # This is domain metadata - doesn't by itself keep nodes alive
+    reserved-memory:
+      - cma_pool@10000000
+      - nomap_region@30000000
+      - yaml_cma@60000000
+
+    cpus:
+      - cluster: cpus_a72
+        cpumask: 0x3
+        mode:
+          secure: false
+
+    access:
+      - dev: serial@ff000000
+        label: serial0
+      - dev: ethernet@ff0c0000
+        label: gem0

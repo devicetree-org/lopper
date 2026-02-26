@@ -1,0 +1,66 @@
+# Test YAML for reserved-memory boolean property expansion
+#
+# Tests all DT-spec boolean properties:
+# - no-map
+# - reusable
+# - linux,cma-default
+# - linux,dma-default
+#
+# When these are specified as "true" in YAML, they should be converted
+# to empty properties in the output DTS.
+
+compatible: openamp,domain-v1
+
+reserved-memory:
+  "#address-cells": 2
+  "#size-cells": 2
+  ranges: true
+
+  # Test no-map boolean
+  nomap@10000000:
+    label: nomap_region
+    compatible: shared-dma-pool
+    no-map: true
+    start: 0x10000000
+    size: 0x1000000
+
+  # Test reusable boolean
+  cma@20000000:
+    label: cma_pool
+    compatible: shared-dma-pool
+    reusable: true
+    start: 0x20000000
+    size: 0x2000000
+
+  # Test linux,cma-default boolean
+  cma_default@30000000:
+    label: cma_default_region
+    compatible: shared-dma-pool
+    reusable: true
+    linux,cma-default: true
+    start: 0x30000000
+    size: 0x1000000
+
+  # Test linux,dma-default boolean
+  dma_default@40000000:
+    label: dma_default_region
+    compatible: shared-dma-pool
+    linux,dma-default: true
+    start: 0x40000000
+    size: 0x1000000
+
+  # Test multiple boolean flags
+  multi_flags@50000000:
+    label: multi_flags_region
+    compatible: shared-dma-pool
+    reusable: true
+    linux,cma-default: true
+    start: 0x50000000
+    size: 0x1000000
+
+# Test device with memory-region reference
+test-device:
+  compatible: test,device
+  memory-region:
+    - "&cma_pool"
+    - "&cma_default_region"

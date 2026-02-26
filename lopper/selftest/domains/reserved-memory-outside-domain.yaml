@@ -1,0 +1,37 @@
+# Test YAML for semantic validation of reserved-memory outside domain memory
+#
+# This tests that validate_reserved_memory_in_memory_ranges() correctly
+# identifies when a reserved-memory region falls outside the domain's
+# allocated memory ranges.
+#
+# Domain memory: 0x0 - 0x40000000 (1GB)
+# Reserved-memory: 0x80000000 - 0x90000000 (outside domain)
+#
+# This should trigger a validation error.
+
+compatible: openamp,domain-v1
+
+reserved-memory:
+  "#address-cells": 2
+  "#size-cells": 2
+  ranges: true
+
+  # This region is OUTSIDE domain memory - should trigger validation error
+  outside_region@80000000:
+    label: outside_region
+    compatible: shared-dma-pool
+    start: 0x80000000
+    size: 0x10000000
+
+domains:
+  test_domain:
+    compatible: access-domain,domain-v1
+
+    # Domain memory is only 1GB
+    memory:
+      - start: 0x0
+        size: 0x40000000
+
+    # Reference the reserved-memory that's outside domain memory
+    reserved-memory:
+      - outside_region@80000000
