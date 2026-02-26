@@ -721,6 +721,25 @@ def reserved_memory_expand( tree, reserved_memory_node ):
         res_mem_node = LopperNode(-1, "/reserved-memory")
         tree.add(res_mem_node)
 
+    # Get address-cells and size-cells from /reserved-memory node
+    # (which should match root node per DT spec)
+    try:
+        resmem_ac = res_mem_node['#address-cells'][0]
+    except:
+        # Fall back to root node
+        try:
+            resmem_ac = tree['/']['#address-cells'][0]
+        except:
+            resmem_ac = 2  # default per DT spec
+    try:
+        resmem_sc = res_mem_node['#size-cells'][0]
+    except:
+        # Fall back to root node
+        try:
+            resmem_sc = tree['/']['#size-cells'][0]
+        except:
+            resmem_sc = 1  # default per DT spec
+
     new_res_mem_nodes = reserved_memory_node.subnodes(children_only=True)
 
     resmem_list = reserved_memory_node.props( "reserved-memory" )
@@ -780,8 +799,8 @@ def reserved_memory_expand( tree, reserved_memory_node ):
 
         reg_cells, _, _ = expand_start_size_to_reg(
             {"start": raw_start, "size": raw_size},
-            address_cells=2,
-            size_cells=2,
+            address_cells=resmem_ac,
+            size_cells=resmem_sc,
             default_start=0xbeef,
             default_size=0xbeef
         )
@@ -817,7 +836,24 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
     # *
     # * It is in the form:
     # * memory = <address size address size ...>
+    # *
+    # * The number of cells for address and size is determined by the
+    # * root node's #address-cells and #size-cells properties.
     # */
+
+    # Get address-cells and size-cells from root node (standard DT inheritance)
+    try:
+        root_ac = tree['/']['#address-cells'][0]
+    except:
+        root_ac = 2  # default per DT spec
+    try:
+        root_sc = tree['/']['#size-cells'][0]
+    except:
+        root_sc = 1  # default per DT spec
+
+    if verbose:
+        print(f"memory_expand: using #address-cells={root_ac}, #size-cells={root_sc}")
+
     try:
         mem = []
         prop = subnode[prop_name]
@@ -844,8 +880,8 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
 
             reg_cells, start_val, size_val = expand_start_size_to_reg(
                 m,
-                address_cells=1,
-                size_cells=1,
+                address_cells=root_ac,
+                size_cells=root_sc,
                 default_start=memory_start,
                 default_size=0xbeef
             )
@@ -1414,12 +1450,28 @@ def resolve_carveouts( tree, subnode, carveout_prop_name, verbose = 0 ):
                     lopper.log._error("resolve carveout:", current_node, "missing start or size. erroring out")
                     return False
 
+                # Get address-cells and size-cells from parent node (or root as fallback)
+                try:
+                    carveout_ac = current_node.parent['#address-cells'][0]
+                except:
+                    try:
+                        carveout_ac = tree['/']['#address-cells'][0]
+                    except:
+                        carveout_ac = 2  # default per DT spec
+                try:
+                    carveout_sc = current_node.parent['#size-cells'][0]
+                except:
+                    try:
+                        carveout_sc = tree['/']['#size-cells'][0]
+                    except:
+                        carveout_sc = 1  # default per DT spec
+
                 # expand_start_size_to_reg will translate the 'size'/'start' tuple in a YAML entry to a reg property. The defaults are there as
                 # guard / requirement for the routine call. address/size_cells is used to format the register / output value
                 reg_cells, _, _ = expand_start_size_to_reg(
                     {"start": raw_start, "size": raw_size},
-                    address_cells=2,
-                    size_cells=2,
+                    address_cells=carveout_ac,
+                    size_cells=carveout_sc,
                     default_start=0xbeef,
                     default_size=0xbeef
                 )

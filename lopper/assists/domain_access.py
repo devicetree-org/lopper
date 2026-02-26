@@ -28,6 +28,7 @@ from lopper import LopperFmt
 from lopper.tree import LopperAction
 import lopper
 import lopper_lib
+from lopper_lib import chunks
 from lopper.log import _init, _warning, _info, _error, _debug
 import logging
 
@@ -396,13 +397,16 @@ def core_domain_access( tgt_node, sdt, options ):
     # required size adjustments
     memory_nodes = sdt.tree.nodes("/memory@.*")
 
-    # The memory chunks are what we've built up from the yaml and .iss
-    # file Check them against the memory nodes in the tree to see if
-    # anything needs to be adjusted. They are in pairs: start, size
+    # Get address-cells and size-cells from root node (standard DT inheritance)
+    # These must match what memory_expand() used when creating the property
     try:
-        domain_memory_chunks = chunks( domain_node['memory'].value, 2 )
+        root_ac = sdt.tree['/']['#address-cells'][0]
     except:
-        domain_memory_chunks = []
+        root_ac = 2  # default per DT spec
+    try:
+        root_sc = sdt.tree['/']['#size-cells'][0]
+    except:
+        root_sc = 1  # default per DT spec
 
     # Build a list of memory node information. We do this so we can
     # update the reg, but also keep the original value around. Otherwise
@@ -422,6 +426,16 @@ def core_domain_access( tgt_node, sdt, options ):
     except Exception as e:
         _error( f"domain_access: cannot collect memory nodes: {e}" )
 
+    # The memory chunks are what we've built up from the yaml and .iss
+    # file. Check them against the memory nodes in the tree to see if
+    # anything needs to be adjusted. They are in (address, size) tuples
+    # where each component uses the appropriate number of cells (root_ac
+    # for address, root_sc for size).
+    try:
+        domain_memory_chunks = list(chunks( domain_node['memory'].value, root_ac + root_sc ))
+    except:
+        domain_memory_chunks = []
+
     modified_memory_nodes = []
     for domain_memory_entry in domain_memory_chunks:
         # NOTE: if the domain either does not have a memory field described OR the
@@ -429,8 +443,11 @@ def core_domain_access( tgt_node, sdt, options ):
         if domain_memory_entry == ['']:
             continue
 
-        domain_memory_start_addr = domain_memory_entry[0]
-        domain_memory_size = domain_memory_entry[1]
+        # Extract start address and size using proper cell sizes
+        # The domain memory entry is encoded with root_ac cells for address
+        # and root_sc cells for size
+        domain_memory_start_addr, _ = lopper_lib.cell_value_get( domain_memory_entry, root_ac )
+        domain_memory_size, _ = lopper_lib.cell_value_get( domain_memory_entry, root_sc, root_ac )
 
         _info("domain_access: processing domain memory entry: start: %s, size: %s" %
               (hex(domain_memory_start_addr),hex(domain_memory_size) ) )
