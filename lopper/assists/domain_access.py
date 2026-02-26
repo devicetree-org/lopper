@@ -155,110 +155,25 @@ def usage():
 def validate_reserved_memory_in_memory_ranges(sdt, domain_node, verbose=0):
     """Validate that all domain reserved-memory regions fall within domain memory.
 
+    This is a compatibility wrapper that delegates to lopper.audit.
+
     Raises RuntimeError (via _error) if any reserved-memory region is outside
     the domain's memory ranges.
 
     Args:
         sdt: The system device tree (LopperSDT)
         domain_node: The domain node being processed
-        verbose: Verbosity level
+        verbose: Verbosity level (unused, kept for API compatibility)
 
     Returns:
         None. Raises error if validation fails.
     """
-    # Get domain memory ranges
-    try:
-        mem_prop = domain_node['memory'].value
-        if not mem_prop or mem_prop == ['']:
-            _debug("validate_reserved_memory: no memory property, skipping validation")
-            return
-    except:
-        _debug("validate_reserved_memory: no memory property, skipping validation")
-        return
-
-    # Get reserved-memory phandles
-    try:
-        resmem_prop = domain_node['reserved-memory'].value
-        if not resmem_prop or resmem_prop == ['']:
-            _debug("validate_reserved_memory: no reserved-memory property, skipping validation")
-            return
-    except:
-        _debug("validate_reserved_memory: no reserved-memory property, skipping validation")
-        return
-
-    # Get cell sizes from root
-    try:
-        root_ac = sdt.tree['/']['#address-cells'][0]
-    except:
-        root_ac = 2
-    try:
-        root_sc = sdt.tree['/']['#size-cells'][0]
-    except:
-        root_sc = 2
-
-    # Parse domain memory ranges
-    memory_ranges = []
-    cell_size = root_ac + root_sc
-    for i in range(0, len(mem_prop), cell_size):
-        chunk = mem_prop[i:i+cell_size]
-        if len(chunk) < cell_size:
-            break
-        mem_start, _ = lopper_lib.cell_value_get(chunk, root_ac)
-        mem_size, _ = lopper_lib.cell_value_get(chunk, root_sc, root_ac)
-        mem_end = mem_start + mem_size
-        memory_ranges.append((mem_start, mem_end))
-        _debug(f"validate_reserved_memory: domain memory range: {hex(mem_start)}-{hex(mem_end)}")
-
-    if not memory_ranges:
-        _debug("validate_reserved_memory: no memory ranges found, skipping validation")
-        return
-
-    # Check each reserved-memory region
-    for ph in resmem_prop:
-        if not isinstance(ph, int):
-            continue
-
-        resmem_node = sdt.tree.pnode(ph)
-        if not resmem_node:
-            _warning(f"validate_reserved_memory: could not find node for phandle {ph}")
-            continue
-
-        # Get reg property
-        try:
-            reg_val = resmem_node['reg'].value
-            if not reg_val or reg_val == ['']:
-                continue
-        except:
-            continue
-
-        # Get cell sizes for reserved-memory
-        try:
-            resmem_ac = resmem_node.parent['#address-cells'][0]
-        except:
-            resmem_ac = root_ac
-        try:
-            resmem_sc = resmem_node.parent['#size-cells'][0]
-        except:
-            resmem_sc = root_sc
-
-        # Parse reserved-memory region
-        res_start, _ = lopper_lib.cell_value_get(reg_val, resmem_ac)
-        res_size, _ = lopper_lib.cell_value_get(reg_val, resmem_sc, resmem_ac)
-        res_end = res_start + res_size
-
-        _debug(f"validate_reserved_memory: checking {resmem_node.abs_path}: {hex(res_start)}-{hex(res_end)}")
-
-        # Check if reserved-memory falls within any domain memory range
-        found_valid_range = False
-        for mem_start, mem_end in memory_ranges:
-            if res_start >= mem_start and res_end <= mem_end:
-                found_valid_range = True
-                _debug(f"validate_reserved_memory: {resmem_node.abs_path} is within memory range {hex(mem_start)}-{hex(mem_end)}")
-                break
-
-        if not found_valid_range:
-            _error(f"reserved-memory region {resmem_node.abs_path} "
-                   f"({hex(res_start)}-{hex(res_end)}) is outside domain memory ranges", True)
+    import lopper.audit
+    # The audit version uses werror=True to match the original behavior
+    # of calling _error(..., True) which exits on error
+    lopper.audit.validate_reserved_memory_in_memory_ranges(
+        sdt.tree, domain_node, werror=True
+    )
 
 
 # tgt_node: is the domain node number
