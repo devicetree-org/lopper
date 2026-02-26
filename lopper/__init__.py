@@ -545,7 +545,12 @@ class LopperSDT:
             else:
                 self.FDT = None
             self.tree = lt
+            self.tree.warnings = self.warnings
+            self.tree.werror = self.werror
             self.tree.strict = not self.permissive
+
+            # Do a check for common sanity issues here, invalid phandles, etc.
+            self.tree.resolve( check=True )
 
             fpp.close()
             self.tmpfiles.append( fpp.name )
@@ -559,8 +564,13 @@ class LopperSDT:
                     sys.exit(1)
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
                 self.tree = LopperTree()
-                self.tree.load( Lopper.export( self.FDT ) )
+                self.tree.warnings = self.warnings
+                self.tree.werror = self.werror
                 self.tree.strict = not self.permissive
+                self.tree.load( Lopper.export( self.FDT ) )
+
+                # Do a check for common sanity issues here, invalid phandles, etc.
+                self.tree.resolve( check=True )
 
         try:
             lops = self.tree["/lops"]
