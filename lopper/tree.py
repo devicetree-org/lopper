@@ -34,6 +34,7 @@ import lopper.log
 import logging
 
 import lopper.schema
+import lopper.audit
 
 lopper.log._init( __name__ )
 lopper.log._init( "tree.py" )
@@ -4125,8 +4126,6 @@ class LopperTree:
                                 node_string="node:" + node_string
                                 lopper.log._warning( node_string )
 
-
-
     def overlay_of( self, parent_tree ):
         # we are becoming an overlay_of the passed tree
         self._type = "dts_overlay"
@@ -4400,6 +4399,11 @@ class LopperTree:
             # some extensive testing
             for p in n:
                 p.resolve()
+
+        # Check for invalid phandle references if warning is enabled
+        # This fires regardless of --permissive since user explicitly requested it
+        if "invalid_phandle" in self.warnings or "all" in self.warnings:
+            lopper.audit.report_invalid_phandles(self, werror=self.werror)
 
         self.__check__ = False
 
