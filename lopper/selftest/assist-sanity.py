@@ -447,6 +447,9 @@ def assist_reference( tgt_node, sdt, options ):
         elif "phandle_ref_test" in args:
             res = phandle_ref_test( sdt )
             return res
+        elif "reserved_memory_e2e_test" in args:
+            res = reserved_memory_e2e_test( sdt )
+            return res
         else:
             domains_access_test( sdt )
             return True
@@ -548,4 +551,103 @@ def phandle_ref_test( sdt ):
 
     except Exception as e:
         print( f"[FAIL]: exception in phandle_ref_test: {e}" )
+        return False
+
+
+def reserved_memory_e2e_test( sdt ):
+    """End-to-end test for reserved-memory handling.
+
+    Tests:
+    1. Boolean property expansion (reusable, linux,cma-default -> empty props)
+    2. start/size to reg conversion
+    3. Reserved-memory nodes referenced by devices (via memory-region) survive filtering
+    4. Unreferenced reserved-memory nodes are pruned
+    5. pnode() lookups work correctly after phandle_or_create()
+
+    NOTE: Reserved-memory nodes survive only if something OUTSIDE /domains/
+    references them (e.g., a device with memory-region = <&node>). The domain's
+    reserved-memory property is metadata and does not keep nodes alive.
+    """
+    print( f"[INFO]: running reserved_memory_e2e_test" )
+
+    try:
+        # Check that /reserved-memory exists
+        try:
+            resmem = sdt.tree['/reserved-memory']
+        except:
+            print( f"[FAIL]: /reserved-memory node not found" )
+            return False
+
+        print( f"[PASS]: /reserved-memory node exists" )
+
+        # Check that referenced nodes exist
+        referenced_nodes = ['cma_pool@10000000', 'nomap_region@30000000', 'yaml_cma@60000000']
+        for node_name in referenced_nodes:
+            found = False
+            for child in resmem.subnodes(children_only=True):
+                if child.name == node_name:
+                    found = True
+                    # Verify phandle is set and in __pnodes__
+                    if child.phandle > 0:
+                        pnode_lookup = sdt.tree.pnode(child.phandle)
+                        if pnode_lookup == child:
+                            print( f"[PASS]: {node_name} phandle {child.phandle} correctly indexed in __pnodes__" )
+                        else:
+                            print( f"[FAIL]: {node_name} phandle {child.phandle} not found via pnode() lookup" )
+                            return False
+                    break
+            if not found:
+                print( f"[FAIL]: referenced node {node_name} not found (should survive filtering)" )
+                return False
+            print( f"[PASS]: referenced node {node_name} found" )
+
+        # Check that unreferenced node was pruned
+        for child in resmem.subnodes(children_only=True):
+            if child.name == 'unused@50000000' or 'unreferenced' in child.name:
+                print( f"[FAIL]: unreferenced node {child.name} should have been pruned" )
+                return False
+        print( f"[PASS]: unreferenced nodes correctly pruned" )
+
+        # Check boolean property expansion on yaml_cma
+        yaml_cma = None
+        for child in resmem.subnodes(children_only=True):
+            if 'yaml_cma' in child.name:
+                yaml_cma = child
+                break
+
+        if yaml_cma:
+            # Check reusable property exists and is empty (boolean)
+            reusable = yaml_cma.props('reusable')
+            if reusable:
+                print( f"[PASS]: reusable property exists on yaml_cma" )
+            else:
+                print( f"[FAIL]: reusable property not found on yaml_cma" )
+                return False
+
+            # Check linux,cma-default property exists
+            cma_default = yaml_cma.props('linux,cma-default')
+            if cma_default:
+                print( f"[PASS]: linux,cma-default property exists on yaml_cma" )
+            else:
+                print( f"[FAIL]: linux,cma-default property not found on yaml_cma" )
+                return False
+
+            # Check reg property exists (start/size conversion)
+            reg = yaml_cma.propval('reg')
+            if reg and reg != ['']:
+                print( f"[PASS]: reg property exists on yaml_cma (start/size converted)" )
+            else:
+                print( f"[FAIL]: reg property not found on yaml_cma" )
+                return False
+        else:
+            print( f"[FAIL]: yaml_cma node not found" )
+            return False
+
+        print( f"[PASS]: reserved_memory_e2e_test completed successfully" )
+        return True
+
+    except Exception as e:
+        print( f"[FAIL]: exception in reserved_memory_e2e_test: {e}" )
+        import traceback
+        traceback.print_exc()
         return False
