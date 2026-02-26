@@ -38,7 +38,7 @@ _init("domain_access.py")
 def is_compat( node, compat_string_to_test ):
     if re.search( "access-domain,domain-v1", compat_string_to_test):
         return core_domain_access
-    if re.search( "module,domain_access", compat_string_to_test):
+    if re.search( "module,.*domain_access", compat_string_to_test):
         return core_domain_access
     return ""
 
@@ -150,6 +150,115 @@ def usage():
       -v       enable verbose debug/processing
 
     """)
+
+
+def validate_reserved_memory_in_memory_ranges(sdt, domain_node, verbose=0):
+    """Validate that all domain reserved-memory regions fall within domain memory.
+
+    Raises RuntimeError (via _error) if any reserved-memory region is outside
+    the domain's memory ranges.
+
+    Args:
+        sdt: The system device tree (LopperSDT)
+        domain_node: The domain node being processed
+        verbose: Verbosity level
+
+    Returns:
+        None. Raises error if validation fails.
+    """
+    # Get domain memory ranges
+    try:
+        mem_prop = domain_node['memory'].value
+        if not mem_prop or mem_prop == ['']:
+            _debug("validate_reserved_memory: no memory property, skipping validation")
+            return
+    except:
+        _debug("validate_reserved_memory: no memory property, skipping validation")
+        return
+
+    # Get reserved-memory phandles
+    try:
+        resmem_prop = domain_node['reserved-memory'].value
+        if not resmem_prop or resmem_prop == ['']:
+            _debug("validate_reserved_memory: no reserved-memory property, skipping validation")
+            return
+    except:
+        _debug("validate_reserved_memory: no reserved-memory property, skipping validation")
+        return
+
+    # Get cell sizes from root
+    try:
+        root_ac = sdt.tree['/']['#address-cells'][0]
+    except:
+        root_ac = 2
+    try:
+        root_sc = sdt.tree['/']['#size-cells'][0]
+    except:
+        root_sc = 2
+
+    # Parse domain memory ranges
+    memory_ranges = []
+    cell_size = root_ac + root_sc
+    for i in range(0, len(mem_prop), cell_size):
+        chunk = mem_prop[i:i+cell_size]
+        if len(chunk) < cell_size:
+            break
+        mem_start, _ = lopper_lib.cell_value_get(chunk, root_ac)
+        mem_size, _ = lopper_lib.cell_value_get(chunk, root_sc, root_ac)
+        mem_end = mem_start + mem_size
+        memory_ranges.append((mem_start, mem_end))
+        _debug(f"validate_reserved_memory: domain memory range: {hex(mem_start)}-{hex(mem_end)}")
+
+    if not memory_ranges:
+        _debug("validate_reserved_memory: no memory ranges found, skipping validation")
+        return
+
+    # Check each reserved-memory region
+    for ph in resmem_prop:
+        if not isinstance(ph, int):
+            continue
+
+        resmem_node = sdt.tree.pnode(ph)
+        if not resmem_node:
+            _warning(f"validate_reserved_memory: could not find node for phandle {ph}")
+            continue
+
+        # Get reg property
+        try:
+            reg_val = resmem_node['reg'].value
+            if not reg_val or reg_val == ['']:
+                continue
+        except:
+            continue
+
+        # Get cell sizes for reserved-memory
+        try:
+            resmem_ac = resmem_node.parent['#address-cells'][0]
+        except:
+            resmem_ac = root_ac
+        try:
+            resmem_sc = resmem_node.parent['#size-cells'][0]
+        except:
+            resmem_sc = root_sc
+
+        # Parse reserved-memory region
+        res_start, _ = lopper_lib.cell_value_get(reg_val, resmem_ac)
+        res_size, _ = lopper_lib.cell_value_get(reg_val, resmem_sc, resmem_ac)
+        res_end = res_start + res_size
+
+        _debug(f"validate_reserved_memory: checking {resmem_node.abs_path}: {hex(res_start)}-{hex(res_end)}")
+
+        # Check if reserved-memory falls within any domain memory range
+        found_valid_range = False
+        for mem_start, mem_end in memory_ranges:
+            if res_start >= mem_start and res_end <= mem_end:
+                found_valid_range = True
+                _debug(f"validate_reserved_memory: {resmem_node.abs_path} is within memory range {hex(mem_start)}-{hex(mem_end)}")
+                break
+
+        if not found_valid_range:
+            _error(f"reserved-memory region {resmem_node.abs_path} "
+                   f"({hex(res_start)}-{hex(res_end)}) is outside domain memory ranges", True)
 
 
 # tgt_node: is the domain node number
@@ -277,6 +386,46 @@ def core_domain_access( tgt_node, sdt, options ):
                 sdt.tree.ref_all( anode, True )
                 direct_node_refs.append( anode )
 
+    # 2b) reserved-memory node references
+    #
+    # NOTE: The code below is currently disabled. It would keep reserved-memory
+    # nodes around simply because they are listed in the domain's reserved-memory
+    # property. However, the correct semantic is that reserved-memory nodes should
+    # only survive if something OUTSIDE of /domains/ actually references them
+    # (e.g., a device node with memory-region = <&cma_pool>).
+    #
+    # The domain's reserved-memory property is metadata declaring which regions
+    # are assigned to the domain, but that alone is not sufficient to keep them -
+    # there must be an actual consumer in the output tree.
+    #
+    # Set this to True if ALL reserved-memory nodes listed in a domain's
+    # reserved-memory property should be kept, regardless of external references.
+    keep_all_domain_reserved_memory = False
+
+    if keep_all_domain_reserved_memory:
+        try:
+            resmem_prop = domain_node['reserved-memory'].value
+            if resmem_prop and resmem_prop != ['']:
+                # Also refcount the /reserved-memory parent node itself
+                try:
+                    resmem_parent = sdt.tree['/reserved-memory']
+                    if resmem_parent:
+                        resmem_parent.ref = 1
+                        _info(f"domain_access: refcounting reserved-memory parent: {resmem_parent.abs_path}")
+                except Exception as e:
+                    _warning(f"domain_access: could not find /reserved-memory node: {e}")
+
+                for ph in resmem_prop:
+                    if isinstance(ph, int):
+                        resmem_node = sdt.tree.pnode(ph)
+                        if resmem_node:
+                            resmem_node.ref = 1
+                            _info(f"domain_access: refcounting reserved-memory: {resmem_node.abs_path}")
+                        else:
+                            _warning(f"domain_access: could not find reserved-memory node for phandle {ph}")
+        except Exception as e:
+            _warning(f"domain_access: exception in reserved-memory refcounting: {e}")
+
     # 3) cpus access
     try:
         cpu_prop = domain_node['cpus']
@@ -335,6 +484,21 @@ def core_domain_access( tgt_node, sdt, options ):
         if reserved_memory:
             _info( f"core_domain_access: reserved memory processing for: {anode.name}" )
             nodes_to_filter.append( anode.parent )
+
+    # 4b) Add /reserved-memory to filter list if domain references reserved-memory
+    # This enables pruning of unreferenced reserved-memory children
+    try:
+        resmem_prop = domain_node['reserved-memory'].value
+        if resmem_prop and resmem_prop != ['']:
+            try:
+                resmem_parent = sdt.tree['/reserved-memory']
+                if resmem_parent and resmem_parent not in nodes_to_filter:
+                    nodes_to_filter.append(resmem_parent)
+                    _info(f"core_domain_access: adding /reserved-memory to filter list for pruning")
+            except:
+                pass
+    except:
+        pass
 
     # 5) filter nodes that don't have refcounts
     #
