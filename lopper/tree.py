@@ -2326,7 +2326,26 @@ class LopperNode(object):
         except:
             True
 
-        # TOOD: consider if we should update the tree, if we are assigned to one ?
+        # Update the tree's phandle index if we are assigned to a tree
+        if self.tree and value > 0:
+            # Remove old phandle from index if it existed
+            if old_phandle > 0:
+                try:
+                    del self.tree.__pnodes__[old_phandle]
+                except:
+                    pass
+                # WARNING: Changing a node's phandle from one non-zero value to another
+                # can orphan references. Other nodes may have properties that reference
+                # this node by its numeric phandle (not by symbol/label). Those properties
+                # will now point to an invalid phandle. We don't currently maintain a
+                # reverse lookup of "all properties referencing a given phandle", so we
+                # cannot automatically update those references. A tree walk would be
+                # required to find and fix them, which is expensive.
+                # TODO: Consider maintaining a reverse lookup map for phandle references.
+                _warning(f"phandle_set: changing phandle from {old_phandle} to {value} "
+                         f"for node {self.abs_path} - this may orphan numeric references")
+            # Add new phandle to index
+            self.tree.__pnodes__[value] = self
 
     def label_set(self,value):
         # someone is labelling a node, the tree's lnodes need to be
@@ -2678,6 +2697,9 @@ class LopperNode(object):
 
         new_ph = self.tree.phandle_gen()
         self.phandle = new_ph
+
+        # Update the tree's phandle index so pnode() lookups work
+        self.tree.__pnodes__[new_ph] = self
 
         _debug( "phandle {self.phandle} created for node {self.abs_path}" )
 
