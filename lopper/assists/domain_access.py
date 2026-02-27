@@ -341,6 +341,29 @@ def core_domain_access( tgt_node, sdt, options ):
         except Exception as e:
             _warning(f"domain_access: exception in reserved-memory refcounting: {e}")
 
+    # 2c) domain subnode phandle references
+    #
+    # Scan all properties in ALL subnodes of the domain for phandle references.
+    # Any integer value that resolves to an existing node via pnode() is a valid
+    # phandle reference and should be refcounted. This keeps carveouts, elfload,
+    # mbox, and other phandle-referenced nodes alive for later processing by
+    # assists like openamp. This is intentionally broad to catch any nested
+    # structure (domain-to-domain, resource groups, etc.) that references
+    # external nodes.
+    try:
+        for subnode in domain_node.subnodes():
+            for prop in subnode:
+                prop_val = prop.value
+                if prop_val and prop_val != ['']:
+                    for val in prop_val:
+                        if isinstance(val, int) and val > 0:
+                            ref_node = sdt.tree.pnode(val)
+                            if ref_node:
+                                sdt.tree.ref_all(ref_node, True)
+                                _info(f"domain_access: refcounting domain subnode phandle: {ref_node.abs_path}")
+    except Exception as e:
+        _warning(f"domain_access: exception in domain subnode refcounting: {e}")
+
     # 3) cpus access
     try:
         cpu_prop = domain_node['cpus']
