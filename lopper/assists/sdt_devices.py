@@ -278,31 +278,12 @@ class SDTDevices:
                 start = reg[0] if isinstance(reg[0], int) else 0
                 size = reg[1] if isinstance(reg[1], int) else 0
 
-            return hex(start), self._format_size(size)
+            # Return hex strings for YAML output
+            start_hex = hex(start) if start else None
+            size_hex = hex(size) if size else None
+            return start_hex, size_hex
         except:
             return None, None
-
-    def _format_size(self, size_bytes):
-        """Format size in human-readable form.
-
-        Args:
-            size_bytes: Size in bytes
-
-        Returns:
-            str: Formatted size (e.g., "64K", "2G", "0x1000")
-        """
-        if not isinstance(size_bytes, int) or size_bytes == 0:
-            return None
-
-        # Check for standard sizes
-        if size_bytes >= 1024 * 1024 * 1024 and size_bytes % (1024 * 1024 * 1024) == 0:
-            return f"{size_bytes // (1024 * 1024 * 1024)}G"
-        elif size_bytes >= 1024 * 1024 and size_bytes % (1024 * 1024) == 0:
-            return f"{size_bytes // (1024 * 1024)}M"
-        elif size_bytes >= 1024 and size_bytes % 1024 == 0:
-            return f"{size_bytes // 1024}K"
-        else:
-            return hex(size_bytes)
 
     def _is_actual_device(self, node):
         """Check if node represents an actual device (vs structural/infrastructure node).
@@ -430,6 +411,13 @@ class SDTDevices:
                     if node.label:
                         entry['label'] = node.label
 
+                    # Add status if not "okay" (disabled devices)
+                    status = node.propval("status")
+                    if status and len(status) > 0 and status[0]:
+                        status_str = str(status[0]).strip()
+                        if status_str and status_str != "okay":
+                            entry['status'] = status_str
+
                     devices.append(entry)
                     lopper.log._debug(f"  Found bus device: {node.name}")
 
@@ -440,38 +428,61 @@ class SDTDevices:
         """Find all CPU clusters and CPUs in SDT.
 
         Discovers CPU nodes by looking for nodes with device_type="cpu"
-        and their parent clusters.
+        and their parent clusters. Builds cpumask from cpu@N numbering.
 
         Returns:
-            list: List of CPU entry dictionaries with cluster info
+            list: List of CPU entry dictionaries with cluster info including:
+                - dev: cluster name/label
+                - cluster: cluster label (if present)
+                - compatible: CPU compatible string
+                - cpumask: hex bitmap of available CPUs (e.g., "0x3" for cpu@0,cpu@1)
+                - cpus: list of individual CPU info
         """
         cpus = []
-        seen_clusters = set()
+        cluster_info = {}  # cluster_path -> {cluster, compat, cpu_nodes}
 
-        # Find all nodes with device_type = "cpu"
+        # First pass: collect all CPU nodes grouped by cluster
         for node in self.sdt.tree:
             device_type = node.propval("device_type")
             if device_type and "cpu" in device_type:
-                # Get the cluster (parent node)
                 cluster = node.parent
                 if cluster and cluster.abs_path != "/":
-                    cluster_name = cluster.label if cluster.label else cluster.name
-
-                    # Add cluster entry if not seen
-                    if cluster.abs_path not in seen_clusters:
-                        seen_clusters.add(cluster.abs_path)
-
-                        entry = {'dev': cluster_name}
-                        if cluster.label:
-                            entry['cluster'] = cluster.label
-
-                        # Try to get compatible string for CPU type
+                    if cluster.abs_path not in cluster_info:
+                        cluster_info[cluster.abs_path] = {
+                            'cluster': cluster,
+                            'compat': None,
+                            'cpu_nodes': []
+                        }
+                    cluster_info[cluster.abs_path]['cpu_nodes'].append(node)
+                    # Get compatible from first CPU
+                    if not cluster_info[cluster.abs_path]['compat']:
                         compat = node.propval("compatible")
                         if compat and len(compat) > 0:
-                            entry['compatible'] = compat[0]
+                            cluster_info[cluster.abs_path]['compat'] = compat[0]
 
-                        cpus.append(entry)
-                        lopper.log._debug(f"  Found CPU cluster: {cluster_name}")
+        # Second pass: build one entry per CPU (matching reference format)
+        for cluster_path, info in cluster_info.items():
+            cluster = info['cluster']
+            cluster_name = cluster.label if cluster.label else cluster.name
+
+            # Enumerate CPUs sequentially within cluster (0, 1, 2, ...)
+            # Don't use unit address as bit position - it may be MPIDR-based
+            for cpu_idx, cpu_node in enumerate(info['cpu_nodes']):
+                entry = {'dev': cluster_name}
+                entry['cluster'] = cluster_name
+
+                # Individual CPU identifier
+                cpu_label = cpu_node.label if cpu_node.label else cpu_node.name
+                entry['cluster_cpu'] = cpu_label
+
+                # cpumask: single bit for this CPU's position in cluster
+                entry['cpumask'] = hex(1 << cpu_idx)
+
+                if info['compat']:
+                    entry['compatible'] = info['compat']
+
+                cpus.append(entry)
+                lopper.log._debug(f"  Found CPU: {cpu_label} in cluster {cluster_name}")
 
         lopper.log._info(f"Discovered {len(cpus)} CPU clusters")
         return cpus
@@ -529,6 +540,17 @@ class SDTDevices:
                     entry['start'] = start
                 if size:
                     entry['size'] = size
+
+                # Add reserved-memory flags if present
+                if node.propval("no-map") is not None:
+                    # no-map is a boolean property (presence = true)
+                    no_map = node.propval("no-map")
+                    if no_map != ['']:
+                        entry['no-map'] = True
+                if node.propval("reusable") is not None:
+                    reusable = node.propval("reusable")
+                    if reusable != ['']:
+                        entry['reusable'] = True
 
                 mem_type = self._classify_memory_type(node.name)
                 memory_devices[mem_type].append(entry)
