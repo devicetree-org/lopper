@@ -1,0 +1,31 @@
+/*
+ * Copyright (c) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
+ *
+ * Author:
+ *       Bruce Ashfield <bruce.ashfield@amd.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * This lop file invokes the sdt_devices assist to generate a YAML domain
+ * containing all devices from the System Device Tree. The generated YAML
+ * can be used as a parent domain for glob-based device matching.
+ *
+ * Usage:
+ *   lopper -i lop-sdt-devices.dts system-top.dts output.yaml
+ *
+ * The assist will scan all simple-bus compatible nodes and generate
+ * a domain with all addressable devices in its access list.
+ */
+
+/dts-v1/;
+
+/ {
+	compatible = "system-device-tree-v1,lop";
+	lops {
+		lop_sdt_devices {
+			compatible = "system-device-tree-v1,lop,assist-v1";
+			node = "/";
+			id = "module,sdt_devices";
+		};
+	};
+};
