@@ -28,6 +28,7 @@ Options:
     --exclude-categories    Comma-separated categories to exclude
     --include-pattern       Regex pattern for node names to include
     --exclude-pattern       Regex pattern for node names to exclude
+    --include-clocks        Include clock nodes in device list (default: excluded)
 
 Example:
     # Generate SDT devices YAML (use '-' to skip main output, -o for assist output)
@@ -131,6 +132,7 @@ def usage():
       --exclude-categories    Comma-separated categories to exclude
       --include-pattern       Regex pattern for node names to include
       --exclude-pattern       Regex pattern for node names to exclude
+      --include-clocks        Include clock nodes in device list (default: excluded)
 
    Generate YAML domain containing devices from the System Device Tree.
    The generated YAML can be used as a parent domain for glob-based device matching.
@@ -166,10 +168,6 @@ class SDTDevices:
     # These should be excluded from the device list since they can't be
     # independently assigned to domains or protected by XPPU/XMPU
     INFRASTRUCTURE_COMPAT_PATTERNS = [
-        r'fixed-clock',           # Clock providers
-        r'fixed-factor-clock',    # Clock dividers
-        r'-clk$',                 # Clock nodes
-        r'clock-controller',      # Clock controllers
         r'interrupt-controller',  # Interrupt controllers (can't split)
         r'arm,gic',               # GIC (can't split)
         r'simple-bus',            # Bus nodes
@@ -189,13 +187,28 @@ class SDTDevices:
         r'memory$',               # Memory node (handled separately)
     ]
 
-    def __init__(self, sdt):
+    # Clock-related compatible patterns - separated so they can be optionally included
+    # NOTE: Clock domain assignment is not currently implemented. When included,
+    # clocks appear in the device list but no special handling is performed.
+    # Future work could add exclusive clock assignment to prevent multiple domains
+    # from controlling the same clock frequency.
+    CLOCK_COMPAT_PATTERNS = [
+        r'fixed-clock',           # Clock providers
+        r'fixed-factor-clock',    # Clock dividers
+        r'-clk$',                 # Clock nodes
+        r'clock-controller',      # Clock controllers
+    ]
+
+    def __init__(self, sdt, include_clocks=False):
         """Initialize the SDT devices generator.
 
         Args:
             sdt (LopperSDT): The system device tree instance
+            include_clocks (bool): If True, include clock nodes in device list.
+                                   Default is False (clocks excluded).
         """
         self.sdt = sdt
+        self.include_clocks = include_clocks
         self.tree = LopperTree()
         self.tree.phandle_resolution = False
 
@@ -324,6 +337,13 @@ class SDTDevices:
                 if re.search(pattern, compat_str, re.IGNORECASE):
                     lopper.log._debug(f"  Skipping infrastructure device: {node.name} ({compat_str})")
                     return False
+
+            # Check clock patterns (excluded by default, can be included with --include-clocks)
+            if not self.include_clocks:
+                for pattern in self.CLOCK_COMPAT_PATTERNS:
+                    if re.search(pattern, compat_str, re.IGNORECASE):
+                        lopper.log._debug(f"  Skipping clock device: {node.name} ({compat_str})")
+                        return False
 
         return True
 
@@ -856,7 +876,8 @@ def sdt_devices(tgt_node, sdt, options):
             "hvb:n:o:c:",
             ["help", "verbose", "bus-types=", "domain-name=",
              "categories=", "exclude-categories=",
-             "include-pattern=", "exclude-pattern="]
+             "include-pattern=", "exclude-pattern=",
+             "include-clocks"]
         )
     except getopt.GetoptError as e:
         lopper.log._error(f"Invalid option: {e}")
@@ -871,6 +892,7 @@ def sdt_devices(tgt_node, sdt, options):
     exclude_categories = []
     include_pattern = None
     exclude_pattern = None
+    include_clocks = False
 
     for o, a in opts:
         if o in ('-h', '--help'):
@@ -892,6 +914,8 @@ def sdt_devices(tgt_node, sdt, options):
             include_pattern = a
         elif o in ('--exclude-pattern',):
             exclude_pattern = a
+        elif o in ('--include-clocks',):
+            include_clocks = True
 
     # Handle category exclusions
     if categories is None:
@@ -922,9 +946,11 @@ def sdt_devices(tgt_node, sdt, options):
         lopper.log._info(f"sdt_devices: include pattern: {include_pattern}")
     if exclude_pattern:
         lopper.log._info(f"sdt_devices: exclude pattern: {exclude_pattern}")
+    if include_clocks:
+        lopper.log._info(f"sdt_devices: including clock nodes")
 
     # Create the generator and build the domain tree
-    generator = SDTDevices(sdt)
+    generator = SDTDevices(sdt, include_clocks=include_clocks)
     tree = generator.generate_domain( domain_name=domain_name,
                                       categories=categories,
                                       bus_types=bus_types,
