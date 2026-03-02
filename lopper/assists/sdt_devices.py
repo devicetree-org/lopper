@@ -188,6 +188,29 @@ class SDTDevices:
                     return mem_type
         return 'memory'
 
+    def _is_actual_device(self, node):
+        """Check if node represents an actual device (vs structural/internal node).
+
+        In device tree, actual devices have a 'compatible' property that identifies
+        the device type/driver. Structural nodes like port@*, endpoint@*, channel@*
+        typically don't have compatible properties - they're internal organization
+        nodes within a device.
+
+        Args:
+            node: LopperNode to check
+
+        Returns:
+            bool: True if node appears to be an actual device
+        """
+        compat = node.propval("compatible")
+        # Check for valid compatible - propval may return [''] for missing properties
+        if compat and len(compat) > 0:
+            # Filter out empty strings
+            valid_compat = [c for c in compat if c and str(c).strip()]
+            if valid_compat:
+                return True
+        return False
+
     def _apply_pattern_filter(self, devices, include_pattern=None, exclude_pattern=None):
         """Apply include/exclude pattern filters to device list.
 
@@ -252,9 +275,17 @@ class SDTDevices:
         for bus in bus_nodes:
             lopper.log._debug(f"Scanning bus node: {bus.abs_path}")
 
-            for node in bus.subnodes(children_only=True):
+            # Use child_nodes.values() to get only direct children
+            # (subnodes with children_only=True still returns all descendants)
+            for node in bus.child_nodes.values():
                 # Only include addressable devices (have @ in name)
                 if '@' in node.name:
+                    # Only include actual devices (must have compatible property)
+                    # This filters out structural nodes like port@*, endpoint@*, etc.
+                    if not self._is_actual_device(node):
+                        lopper.log._debug(f"  Skipping node without compatible: {node.name}")
+                        continue
+
                     if node.abs_path in seen_devices:
                         continue
                     seen_devices.add(node.abs_path)
@@ -346,7 +377,7 @@ class SDTDevices:
         # Find reserved-memory children
         try:
             reserved_mem = self.sdt.tree["/reserved-memory"]
-            for node in reserved_mem.subnodes(children_only=True):
+            for node in reserved_mem.child_nodes.values():
                 if node.abs_path in seen:
                     continue
                 seen.add(node.abs_path)
@@ -393,12 +424,13 @@ class SDTDevices:
         firmware_devices = []
         seen = set()
 
-        # Find /firmware children
+        # Find /firmware children (direct children only, not all descendants)
         try:
             firmware_node = self.sdt.tree["/firmware"]
-            for node in firmware_node.subnodes():
+            for node in firmware_node.child_nodes.values():
                 if node.abs_path in seen:
                     continue
+
                 seen.add(node.abs_path)
 
                 # Use label or name
@@ -459,7 +491,7 @@ class SDTDevices:
 
         try:
             root = self.sdt.tree["/"]
-            for node in root.subnodes(children_only=True):
+            for node in root.child_nodes.values():
                 # Skip special nodes
                 skip = False
                 for pattern in skip_patterns:
@@ -595,12 +627,10 @@ class SDTDevices:
         domains + domain
 
         # Discover all devices based on categories
-        devices = self.discover_all(
-            categories=categories,
-            bus_types=bus_types,
-            include_pattern=include_pattern,
-            exclude_pattern=exclude_pattern
-        )
+        devices = self.discover_all( categories=categories,
+                                     bus_types=bus_types,
+                                     include_pattern=include_pattern,
+                                     exclude_pattern=exclude_pattern )
 
         # Add cpus property if we have CPUs
         if devices['cpus']:
@@ -744,13 +774,11 @@ def sdt_devices(tgt_node, sdt, options):
 
     # Create the generator and build the domain tree
     generator = SDTDevices(sdt)
-    tree = generator.generate_domain(
-        domain_name=domain_name,
-        categories=categories,
-        bus_types=bus_types,
-        include_pattern=include_pattern,
-        exclude_pattern=exclude_pattern
-    )
+    tree = generator.generate_domain( domain_name=domain_name,
+                                      categories=categories,
+                                      bus_types=bus_types,
+                                      include_pattern=include_pattern,
+                                      exclude_pattern=exclude_pattern )
 
     # Determine output file
     if not output_file:
