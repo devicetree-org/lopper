@@ -162,6 +162,33 @@ class SDTDevices:
         'memory': [r'memory@', r'ddr'],
     }
 
+    # Compatible strings that indicate infrastructure/non-splittable devices
+    # These should be excluded from the device list since they can't be
+    # independently assigned to domains or protected by XPPU/XMPU
+    INFRASTRUCTURE_COMPAT_PATTERNS = [
+        r'fixed-clock',           # Clock providers
+        r'fixed-factor-clock',    # Clock dividers
+        r'-clk$',                 # Clock nodes
+        r'clock-controller',      # Clock controllers
+        r'interrupt-controller',  # Interrupt controllers (can't split)
+        r'arm,gic',               # GIC (can't split)
+        r'simple-bus',            # Bus nodes
+        r'xlnx,zynqmp-ipi-mailbox',  # IPI mailbox infrastructure
+        r'xlnx,versal-ipi-dest-mailbox',  # IPI destination (child nodes)
+        r'arm,smmu',              # SMMU (system infrastructure)
+        r'iommu',                 # IOMMU
+        r'arm,idle-state',        # CPU idle states
+        r'arm,psci',              # PSCI
+        r'syscon',                # System controller (infrastructure)
+        r'xlnx,zynqmp-power',     # Power management
+        r'phy-provider',          # PHY providers (not standalone devices)
+        r'reset-controller',      # Reset controllers
+        r'pinctrl',               # Pin control
+        r'gpio-keys',             # GPIO key abstraction (not hardware)
+        r'chosen$',               # Chosen node
+        r'memory$',               # Memory node (handled separately)
+    ]
+
     def __init__(self, sdt):
         """Initialize the SDT devices generator.
 
@@ -188,28 +215,117 @@ class SDTDevices:
                     return mem_type
         return 'memory'
 
-    def _is_actual_device(self, node):
-        """Check if node represents an actual device (vs structural/internal node).
+    def _parse_reg_property(self, node):
+        """Parse reg property to extract start address and size.
 
-        In device tree, actual devices have a 'compatible' property that identifies
-        the device type/driver. Structural nodes like port@*, endpoint@*, channel@*
-        typically don't have compatible properties - they're internal organization
-        nodes within a device.
+        The reg property format depends on parent's #address-cells and #size-cells.
+        Common formats:
+        - 4 cells: <addr_hi addr_lo size_hi size_lo>
+        - 2 cells: <addr size>
+
+        Args:
+            node: LopperNode with reg property
+
+        Returns:
+            tuple: (start_hex, size_hex) or (None, None) if not parseable
+        """
+        reg = node.propval("reg")
+        if not reg or len(reg) < 2:
+            return None, None
+
+        # Try to get #address-cells and #size-cells from parent
+        parent = node.parent
+        addr_cells = 2  # default
+        size_cells = 2  # default
+
+        if parent:
+            ac = parent.propval("#address-cells")
+            if ac and len(ac) > 0 and isinstance(ac[0], int):
+                addr_cells = ac[0]
+            sc = parent.propval("#size-cells")
+            if sc and len(sc) > 0 and isinstance(sc[0], int):
+                size_cells = sc[0]
+
+        try:
+            # Parse based on cells
+            if addr_cells == 2 and size_cells == 2 and len(reg) >= 4:
+                # 64-bit address and size
+                start = (reg[0] << 32) | reg[1] if isinstance(reg[0], int) else 0
+                size = (reg[2] << 32) | reg[3] if isinstance(reg[2], int) else 0
+            elif addr_cells == 1 and size_cells == 1 and len(reg) >= 2:
+                # 32-bit address and size
+                start = reg[0] if isinstance(reg[0], int) else 0
+                size = reg[1] if isinstance(reg[1], int) else 0
+            elif addr_cells == 2 and size_cells == 1 and len(reg) >= 3:
+                # 64-bit address, 32-bit size
+                start = (reg[0] << 32) | reg[1] if isinstance(reg[0], int) else 0
+                size = reg[2] if isinstance(reg[2], int) else 0
+            else:
+                # Fallback: assume first value is address, second is size
+                start = reg[0] if isinstance(reg[0], int) else 0
+                size = reg[1] if isinstance(reg[1], int) else 0
+
+            return hex(start), self._format_size(size)
+        except:
+            return None, None
+
+    def _format_size(self, size_bytes):
+        """Format size in human-readable form.
+
+        Args:
+            size_bytes: Size in bytes
+
+        Returns:
+            str: Formatted size (e.g., "64K", "2G", "0x1000")
+        """
+        if not isinstance(size_bytes, int) or size_bytes == 0:
+            return None
+
+        # Check for standard sizes
+        if size_bytes >= 1024 * 1024 * 1024 and size_bytes % (1024 * 1024 * 1024) == 0:
+            return f"{size_bytes // (1024 * 1024 * 1024)}G"
+        elif size_bytes >= 1024 * 1024 and size_bytes % (1024 * 1024) == 0:
+            return f"{size_bytes // (1024 * 1024)}M"
+        elif size_bytes >= 1024 and size_bytes % 1024 == 0:
+            return f"{size_bytes // 1024}K"
+        else:
+            return hex(size_bytes)
+
+    def _is_actual_device(self, node):
+        """Check if node represents an actual device (vs structural/infrastructure node).
+
+        Actual devices that can be assigned to domains have:
+        1. A 'compatible' property identifying the device type
+        2. A compatible string that's NOT infrastructure (clocks, interrupt controllers, etc.)
+
+        Structural nodes (port@*, endpoint@*) don't have compatible properties.
+        Infrastructure nodes (clocks, GIC, SMMU) have compatible but can't be split.
 
         Args:
             node: LopperNode to check
 
         Returns:
-            bool: True if node appears to be an actual device
+            bool: True if node appears to be an assignable device
         """
         compat = node.propval("compatible")
         # Check for valid compatible - propval may return [''] for missing properties
-        if compat and len(compat) > 0:
-            # Filter out empty strings
-            valid_compat = [c for c in compat if c and str(c).strip()]
-            if valid_compat:
-                return True
-        return False
+        if not compat or len(compat) == 0:
+            return False
+
+        # Filter out empty strings
+        valid_compat = [c for c in compat if c and str(c).strip()]
+        if not valid_compat:
+            return False
+
+        # Check if any compatible string matches infrastructure patterns
+        for compat_str in valid_compat:
+            compat_str = str(compat_str)
+            for pattern in self.INFRASTRUCTURE_COMPAT_PATTERNS:
+                if re.search(pattern, compat_str, re.IGNORECASE):
+                    lopper.log._debug(f"  Skipping infrastructure device: {node.name} ({compat_str})")
+                    return False
+
+        return True
 
     def _apply_pattern_filter(self, devices, include_pattern=None, exclude_pattern=None):
         """Apply include/exclude pattern filters to device list.
@@ -365,11 +481,12 @@ class SDTDevices:
                 if node.label:
                     entry['label'] = node.label
 
-                # Try to extract size/start from reg property
-                reg = node.propval("reg")
-                if reg and len(reg) >= 2:
-                    # Simplified - actual parsing depends on #address-cells/#size-cells
-                    entry['start'] = hex(reg[0]) if isinstance(reg[0], int) else str(reg[0])
+                # Extract start address and size from reg property
+                start, size = self._parse_reg_property(node)
+                if start:
+                    entry['start'] = start
+                if size:
+                    entry['size'] = size
 
                 memory_devices['memory'].append(entry)
                 lopper.log._debug(f"  Found memory: {node.name}")
@@ -385,6 +502,13 @@ class SDTDevices:
                 entry = {'dev': node.name}
                 if node.label:
                     entry['label'] = node.label
+
+                # Extract start address and size from reg property
+                start, size = self._parse_reg_property(node)
+                if start:
+                    entry['start'] = start
+                if size:
+                    entry['size'] = size
 
                 mem_type = self._classify_memory_type(node.name)
                 memory_devices[mem_type].append(entry)
@@ -402,6 +526,13 @@ class SDTDevices:
                     entry = {'dev': node.name}
                     if node.label:
                         entry['label'] = node.label
+
+                    # Extract start address and size from reg property
+                    start, size = self._parse_reg_property(node)
+                    if start:
+                        entry['start'] = start
+                    if size:
+                        entry['size'] = size
 
                     memory_devices['sram'].append(entry)
                     lopper.log._debug(f"  Found SRAM: {node.name}")
@@ -431,6 +562,11 @@ class SDTDevices:
                 if node.abs_path in seen:
                     continue
 
+                # Skip infrastructure nodes
+                if not self._is_actual_device(node):
+                    lopper.log._debug(f"  Skipping infrastructure firmware: {node.name}")
+                    continue
+
                 seen.add(node.abs_path)
 
                 # Use label or name
@@ -444,12 +580,22 @@ class SDTDevices:
         except:
             pass
 
-        # Find IPI nodes
+        # Find IPI controller nodes (but not mailbox children)
+        # We only want addressable IPI controllers, not destination mailboxes
         for node in self.sdt.tree:
+            # Skip non-addressable nodes
+            if '@' not in node.name:
+                continue
+
+            # Skip if not an actual device (filters out dest-mailbox children)
+            if not self._is_actual_device(node):
+                continue
+
             compat = node.propval("compatible")
             if compat:
                 compat_str = ' '.join(str(c) for c in compat)
-                if 'ipi' in compat_str.lower() or 'mailbox' in compat_str.lower():
+                # Only include IPI controllers, not mailbox destinations
+                if 'ipi' in compat_str.lower() and 'dest' not in compat_str.lower():
                     if node.abs_path not in seen:
                         seen.add(node.abs_path)
 
@@ -459,7 +605,7 @@ class SDTDevices:
                             entry['label'] = node.label
 
                         firmware_devices.append(entry)
-                        lopper.log._debug(f"  Found IPI/mailbox: {dev_name}")
+                        lopper.log._debug(f"  Found IPI controller: {dev_name}")
 
         lopper.log._info(f"Discovered {len(firmware_devices)} firmware nodes")
         return firmware_devices
@@ -508,6 +654,11 @@ class SDTDevices:
                     compat_str = ' '.join(str(c) for c in compat)
                     if 'simple-bus' in compat_str:
                         continue
+
+                # Skip infrastructure nodes (clocks, etc.)
+                if not self._is_actual_device(node):
+                    lopper.log._debug(f"  Skipping infrastructure toplevel: {node.name}")
+                    continue
 
                 if node.abs_path in seen:
                     continue
