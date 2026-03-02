@@ -657,7 +657,7 @@ class TestSDTDevicesIntegration:
 
         # No access entries should be serial
         for entry in access:
-            if entry and 'dev' in entry:
+            if isinstance(entry, dict) and 'dev' in entry:
                 assert 'serial' not in entry['dev'].lower()
 
 
