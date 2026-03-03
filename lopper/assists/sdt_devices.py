@@ -63,6 +63,7 @@ from lopper.tree import LopperTree
 from lopper.tree import LopperNode
 from lopper.tree import LopperProp
 from lopper.yaml import LopperYAML
+from ruamel.yaml.scalarint import HexInt
 import lopper
 import lopper.log
 
@@ -278,9 +279,9 @@ class SDTDevices:
                 start = reg[0] if isinstance(reg[0], int) else 0
                 size = reg[1] if isinstance(reg[1], int) else 0
 
-            # Return hex strings for YAML output
-            start_hex = hex(start) if start else None
-            size_hex = hex(size) if size else None
+            # Return HexInt for proper YAML hex integer output
+            start_hex = HexInt(start) if start else None
+            size_hex = HexInt(size) if size else None
             return start_hex, size_hex
         except:
             return None, None
@@ -476,7 +477,7 @@ class SDTDevices:
                 entry['cluster_cpu'] = cpu_label
 
                 # cpumask: single bit for this CPU's position in cluster
-                entry['cpumask'] = hex(1 << cpu_idx)
+                entry['cpumask'] = HexInt(1 << cpu_idx)
 
                 if info['compat']:
                     entry['compatible'] = info['compat']

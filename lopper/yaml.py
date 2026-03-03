@@ -9,6 +9,7 @@
 
 import ruamel
 from ruamel.yaml import YAML
+from ruamel.yaml.scalarint import HexInt
 
 import json
 import sys
@@ -1336,6 +1337,30 @@ class LopperJSON():
         importer.boolean_as_int = self.boolean_as_int
         self.anytree = importer.import_(in_tree["/"])
 
+
+def _convert_ordered_dict(obj):
+    """Recursively convert OrderedDicts to regular dicts while preserving HexInt values.
+
+    This is an alternative to json.loads(json.dumps(obj)) that preserves
+    ruamel.yaml scalar types like HexInt for proper hex formatting in YAML output.
+
+    Args:
+        obj: The object to convert (dict, list, or scalar)
+
+    Returns:
+        The converted object with OrderedDicts replaced by regular dicts
+    """
+    if isinstance(obj, OrderedDict):
+        return {k: _convert_ordered_dict(v) for k, v in obj.items()}
+    elif isinstance(obj, dict):
+        return {k: _convert_ordered_dict(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_ordered_dict(item) for item in obj]
+    else:
+        # Preserve HexInt and other scalar types
+        return obj
+
+
 class LopperYAML(LopperJSON):
     """YAML read/writer for Lopper
 
@@ -1426,11 +1451,10 @@ class LopperYAML(LopperJSON):
             update_custom_parent(start_node)  # Update the custom attributes first
 
             dct = LopperDictExporter(dictcls=dcttype,attriter=sorted).export(start_node)
-            # This converts the ordered dicts to regular dicts at the last moment
-            # As a result, the order is preserved AND we don't get YAML that is all
-            # list based, which is what you get from OrderedDicts when they are dumped
-            # to yaml.
-            dct = json.loads(json.dumps(dct))
+            # Convert OrderedDicts to regular dicts while preserving HexInt values
+            # for proper hex formatting in YAML output. This replaces the previous
+            # json.loads(json.dumps(dct)) approach which lost HexInt type info.
+            dct = _convert_ordered_dict(dct)
 
             lopper.log._debug("to_yaml: dumping export dictionary", level=lopper.log.TRACE)
             lopper.log._debug(pprint.pformat(dct), level=lopper.log.TRACE)
@@ -1439,7 +1463,8 @@ class LopperYAML(LopperJSON):
                 yaml = ruamel.yaml
                 yaml_obj = None
             else:
-                yaml_obj = YAML(typ='safe')
+                # Use 'rt' (round-trip) type to support HexInt and other scalar types
+                yaml_obj = YAML(typ='rt')
                 yaml_obj.default_flow_style = False
                 yaml_obj.canonical = False
                 yaml_obj.default_style = None
