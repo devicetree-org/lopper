@@ -255,9 +255,11 @@ The valid lop types are described below. Note that the lop type can have an
 optional "-v<version>" appended (i.e. -v1) and will be accepted. The version
 specification is optional at the moment, since only -v1 operations exist.
 
-A lop can be specified, and have execution inhibited via the 'noexec;' property
-in that lop (child lops also need this to be specified). This allows for lopper
-operations to be carried, but only enabled for debug, etc.
+A lop can be specified, and have execution inhibited via the 'noexec' property
+in that lop (child lops also need this to be specified). noexec can be used
+unconditionally (noexec;) or with an expression (noexec = "not __selected__";)
+to conditionally skip execution. See the "conditional execution" section for
+details.
 
 NOTE/TODO: bindings will be written for the lopper operations.
 
@@ -960,7 +962,13 @@ lop.
   - "noexec"
   - "cond"
 
-"noexec" takes no values and when present, the lop will not be exected:
+"noexec" can be used in several ways:
+
+  - noexec;           - unconditionally skip this lop (equivalent to noexec = 1)
+  - noexec = 0;       - do not skip (run the lop)
+  - noexec = "expr";  - evaluate expr as Python expression, skip if True
+
+When noexec takes no value (or value 1), the lop will not be executed:
 
         lop_2 {
                   compatible = "system-device-tree-v1,lop,select-v1";
@@ -970,6 +978,32 @@ lop.
                   select_1;
                   select_2 = "/:compatible:.*xlnx,zynq-zc702.*";
             };
+
+When noexec takes a string value, it is evaluated as a Python expression.
+The expression has access to __selected__ (the currently selected nodes),
+tree (the system device tree), and Python builtins True, False, and len.
+If the expression evaluates to True, the lop is skipped.
+
+This is useful for conditionally skipping a lop based on whether nodes
+were selected by a previous select lop:
+
+        lop_6 {
+              compatible = "system-device-tree-v1,lop,select-v1";
+              select_1;
+              select_2 = "/.*:interrupt-parent:.*";
+        };
+
+        lop_7 {
+              compatible = "system-device-tree-v1,lop,modify";
+              // skip this lop if no nodes were selected
+              noexec = "not __selected__";
+              flags = "strict";
+              modify = ":interrupt-parent:&gic";
+        };
+
+Other expression examples:
+  - noexec = "__selected__";           - skip if nodes ARE selected
+  - noexec = "len(__selected__) < 2";  - skip if fewer than 2 nodes selected
 
 "cond" specifies a target lop phandle. If the result of that lop
 is "True", then the specifying lop will be executed. If the result

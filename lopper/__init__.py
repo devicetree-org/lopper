@@ -2527,7 +2527,36 @@ class LopperSDT:
                         skip_list.remove( f )
 
                     try:
-                        noexec = f['noexec']
+                        noexec_prop = f['noexec']
+                        noexec_val = noexec_prop.value
+                        # noexec; or noexec = 1; means skip unconditionally
+                        # noexec = 0; means run it (don't skip)
+                        # noexec = "expression"; evaluated as Python expression
+                        #   - "not __selected__" : skip if nothing is selected
+                        #   - "__selected__" : skip if something is selected
+                        if noexec_val == [''] or noexec_val == [1] or noexec_val == 1:
+                            noexec = True
+                        elif noexec_val == [0] or noexec_val == 0:
+                            noexec = False
+                        elif isinstance(noexec_val, list) and len(noexec_val) == 1 and isinstance(noexec_val[0], str):
+                            # Expression evaluation - provide context similar to code-v1 lops
+                            expr = noexec_val[0]
+                            eval_context = {
+                                '__selected__': self.tree.__selected__,
+                                'tree': self.tree,
+                                'True': True,
+                                'False': False,
+                                'len': len,
+                            }
+                            try:
+                                noexec = bool(eval(expr, {"__builtins__": {}}, eval_context))
+                                lopper.log._debug( f"noexec expression '{expr}' evaluated to {noexec}" )
+                            except Exception as e:
+                                lopper.log._warning( f"noexec expression '{expr}' failed to evaluate: {e}" )
+                                noexec = False
+                        else:
+                            # Unknown format, treat as truthy (skip)
+                            noexec = bool(noexec_val)
                     except:
                         noexec = False
 
