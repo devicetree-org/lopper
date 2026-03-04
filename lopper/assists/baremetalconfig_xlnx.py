@@ -818,6 +818,9 @@ def get_cpu_mapped_address(node, sdt, options, reg_index=0):
         if not cpu_node or not hasattr(cpu_node, 'parent'):
             return scan_reg_size(node, node['reg'].value, reg_index)
 
+        # First get the address from reg property
+        reg_addr, reg_size = scan_reg_size(node, node['reg'].value, reg_index)
+
         # Extract address mapping information
         addr_map = cpu_node.parent["address-map"].value
         size_cells = cpu_node.parent["#ranges-size-cells"].value[0]
@@ -835,21 +838,27 @@ def get_cpu_mapped_address(node, sdt, options, reg_index=0):
         matching_indices = [idx for idx, handle in handle_map.items() if handle == node.phandle]
 
         if matching_indices and reg_index < len(matching_indices):
-            # Extract mapped address
+            # Extract mapped address from address-map
             map_index = matching_indices[reg_index]
             addr_components = [addr_map[map_index + i + 1] for i in range(addr_cells)]
 
-            # Calculate final address based on cell configuration
+            # Calculate mapped address based on cell configuration
             if addr_cells == 2 and addr_components[0] != 0:
-                final_addr = int(f"{hex(addr_components[0])}{addr_components[1]:08x}", base=16)
+                mapped_addr = int(f"{hex(addr_components[0])}{addr_components[1]:08x}", base=16)
             elif addr_cells == 2:
-                final_addr = addr_components[1]
+                mapped_addr = addr_components[1]
             else:
-                final_addr = addr_components[0]
+                mapped_addr = addr_components[0]
 
-            # Get size from original reg property
-            _, original_size = scan_reg_size(node, node['reg'].value, 0)
-            return final_addr, original_size
+            # Check if reg property has been updated by lops (e.g., for Xen/hypervisor cases)
+            # If reg address differs from mapped address, prefer the reg value as it was
+            # explicitly updated by lops for the target domain
+            if reg_addr != mapped_addr:
+                # Special case: Lops have updated reg property (e.g., GIC for Xen)
+                # Use the reg property value directly
+                return reg_addr, reg_size
+
+            return mapped_addr, reg_size
 
         # Fallback to standard parsing
         return scan_reg_size(node, node['reg'].value, reg_index)
