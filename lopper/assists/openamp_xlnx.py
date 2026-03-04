@@ -480,6 +480,7 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
             xlnx_zeph_mem_node = tree['/'].subnodes(children_only=True, name=domain_node.propval("xlnx,zephyr,mems")[0])
             if xlnx_zeph_mem_node != []:
                 xlnx_zeph_mem_node[0]['device_type'] = "memory"
+                tree['/chosen']['zephyr,sram'] = xlnx_zeph_mem_node[0].abs_path
 
     return True
 
