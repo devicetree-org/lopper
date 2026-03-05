@@ -144,6 +144,12 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     except IndexError:
         pass
 
+    if linux_dt:
+        try:
+            utils.check_reserved_memory_overlaps(sdt.tree)
+        except Exception as e:
+            print(f"[WARNING] Error checking reserved memory overlaps: {e}")
+
     # Delete other CPU Cluster nodes
     cpunode_list = sdt.tree.nodes('/cpu.*@.*', strict=True)
     clustercpu_nodes = []
