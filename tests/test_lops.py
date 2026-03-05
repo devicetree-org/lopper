@@ -270,3 +270,221 @@ class TestLopsListModification:
             count = content.count("singleval = <0x5>")
 
         assert count == 1, f"Modified singleval should exist, found {count}"
+
+
+class TestNoexecConditional:
+    """Test noexec conditional expression support.
+
+    Tests the noexec property with Python expression evaluation for
+    conditional lop execution based on __selected__ state.
+    """
+
+    def test_noexec_skips_when_no_selection(self, test_outdir):
+        """Test that noexec='not __selected__' skips lop when nothing selected."""
+        import tempfile
+        from lopper import LopperSDT
+
+        # Create a minimal test DTS
+        test_dts = """
+/dts-v1/;
+
+/ {
+    compatible = "test";
+    model = "test-device";
+
+    test_node {
+        compatible = "test-node";
+        some-property = <0x1>;
+    };
+};
+"""
+        # Create a lop that selects non-existent property and tries to modify
+        test_lop = """
+/dts-v1/;
+
+/ {
+    compatible = "system-device-tree-v1,lop";
+    lops {
+        compatible = "system-device-tree-v1,lop";
+
+        lop_1 {
+            compatible = "system-device-tree-v1,lop,select-v1";
+            select_1;
+            select_2 = "/.*:nonexistent-property-xyz:.*";
+        };
+
+        lop_2 {
+            compatible = "system-device-tree-v1,lop,modify";
+            noexec = "not __selected__";
+            modify = ":nonexistent-property-xyz:foo";
+        };
+
+        lop_3 {
+            compatible = "system-device-tree-v1,lop,code-v1";
+            code = "node['noexec-test-passed'] = [1]; return True";
+        };
+    };
+};
+"""
+        # Write test files
+        dts_file = os.path.join(test_outdir, "noexec-test.dts")
+        lop_file = os.path.join(test_outdir, "noexec-test-lop.dts")
+        output_file = os.path.join(test_outdir, "noexec-output.dts")
+
+        with open(dts_file, 'w') as f:
+            f.write(test_dts)
+        with open(lop_file, 'w') as f:
+            f.write(test_lop)
+
+        # Run lopper - should not produce warning about "no nodes supplied to modify"
+        sdt = LopperSDT(dts_file)
+        sdt.outdir = test_outdir
+        sdt.output_file = output_file
+        sdt.cleanup_flag = True
+        sdt.dryrun = False
+        sdt.werror = True  # Treat warnings as errors - would fail if noexec didn't work
+
+        sdt.setup(dts_file, [lop_file], "", force=True)
+        sdt.perform_lops()
+        sdt.write()
+
+        # Check that output was generated (lop_3 ran successfully)
+        with open(output_file) as f:
+            content = f.read()
+            assert "noexec-test-passed" in content, \
+                "Code lop should have run and added property"
+
+    def test_noexec_runs_when_selection_exists(self, test_outdir):
+        """Test that noexec='not __selected__' runs lop when nodes are selected."""
+        from lopper import LopperSDT
+
+        # Create a test DTS with a property we'll select
+        test_dts = """
+/dts-v1/;
+
+/ {
+    compatible = "test";
+    model = "test-device";
+
+    test_node {
+        compatible = "test-node";
+        target-property = <0x1>;
+    };
+};
+"""
+        # Create a lop that selects existing property
+        test_lop = """
+/dts-v1/;
+
+/ {
+    compatible = "system-device-tree-v1,lop";
+    lops {
+        compatible = "system-device-tree-v1,lop";
+
+        lop_1 {
+            compatible = "system-device-tree-v1,lop,select-v1";
+            select_1;
+            select_2 = "/.*:target-property:.*";
+        };
+
+        lop_2 {
+            compatible = "system-device-tree-v1,lop,code-v1";
+            noexec = "not __selected__";
+            code = "node['selection-ran'] = [1]; return True";
+        };
+    };
+};
+"""
+        # Write test files
+        dts_file = os.path.join(test_outdir, "noexec-test2.dts")
+        lop_file = os.path.join(test_outdir, "noexec-test2-lop.dts")
+        output_file = os.path.join(test_outdir, "noexec-output2.dts")
+
+        with open(dts_file, 'w') as f:
+            f.write(test_dts)
+        with open(lop_file, 'w') as f:
+            f.write(test_lop)
+
+        sdt = LopperSDT(dts_file)
+        sdt.outdir = test_outdir
+        sdt.output_file = output_file
+        sdt.cleanup_flag = True
+        sdt.dryrun = False
+
+        sdt.setup(dts_file, [lop_file], "", force=True)
+        sdt.perform_lops()
+        sdt.write()
+
+        # Check that the code lop ran (noexec was False because nodes were selected)
+        with open(output_file) as f:
+            content = f.read()
+            assert "selection-ran" in content, \
+                "Code lop should have run when nodes were selected"
+
+    def test_noexec_expression_skip_when_selected(self, test_outdir):
+        """Test that noexec='__selected__' skips lop when nodes ARE selected."""
+        from lopper import LopperSDT
+
+        test_dts = """
+/dts-v1/;
+
+/ {
+    compatible = "test";
+    test_node {
+        compatible = "test-node";
+        has-property = <0x1>;
+    };
+};
+"""
+        test_lop = """
+/dts-v1/;
+
+/ {
+    compatible = "system-device-tree-v1,lop";
+    lops {
+        compatible = "system-device-tree-v1,lop";
+
+        lop_1 {
+            compatible = "system-device-tree-v1,lop,select-v1";
+            select_1;
+            select_2 = "/.*:has-property:.*";
+        };
+
+        lop_2 {
+            compatible = "system-device-tree-v1,lop,code-v1";
+            noexec = "__selected__";
+            code = "node['should-not-run'] = [1]; return True";
+        };
+
+        lop_3 {
+            compatible = "system-device-tree-v1,lop,code-v1";
+            code = "node['final-marker'] = [1]; return True";
+        };
+    };
+};
+"""
+        dts_file = os.path.join(test_outdir, "noexec-test3.dts")
+        lop_file = os.path.join(test_outdir, "noexec-test3-lop.dts")
+        output_file = os.path.join(test_outdir, "noexec-output3.dts")
+
+        with open(dts_file, 'w') as f:
+            f.write(test_dts)
+        with open(lop_file, 'w') as f:
+            f.write(test_lop)
+
+        sdt = LopperSDT(dts_file)
+        sdt.outdir = test_outdir
+        sdt.output_file = output_file
+        sdt.cleanup_flag = True
+        sdt.dryrun = False
+
+        sdt.setup(dts_file, [lop_file], "", force=True)
+        sdt.perform_lops()
+        sdt.write()
+
+        with open(output_file) as f:
+            content = f.read()
+            assert "should-not-run" not in content, \
+                "Lop with noexec='__selected__' should be skipped when nodes selected"
+            assert "final-marker" in content, \
+                "Final lop should have run"
