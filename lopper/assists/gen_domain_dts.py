@@ -468,6 +468,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     sdt.tree[match_cpunode].delete('timebase-frequency')
             except KeyError:
                 pass
+            delete_unused_props( sdt.tree[match_cpunode] , driver_proplist, False)
 
     if zephyr_dt:
         if "r52" in machine or "a78" in machine:
