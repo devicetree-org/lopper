@@ -8,14 +8,18 @@
 # */
 
 import json
+import logging
 import os
 import re
 import sys
 
 from lopper.tree import LopperNode, LopperProp, LopperTree
 from lopper.yaml import LopperYAML
+import lopper.log
 
 from .yaml_to_dts_expansion import subsystem_expand as _yaml_subsystem_expand
+
+lopper.log._init(__name__)
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -32,8 +36,7 @@ def subsystem(tgt_node, sdt, options):
     verbose = options.get("verbose", 0)
     args = options.get("args", [])
 
-    if verbose:
-        print(f"[INFO]: cb: subsystem( {tgt_node}, {sdt}, {verbose}, {args} )")
+    lopper.log._debug(f"cb: subsystem( {tgt_node}, {sdt}, {verbose}, {args} )")
 
     if "generate" in args or "--generate" in args:
         subsystem_generate(tgt_node, sdt, verbose)
@@ -45,8 +48,7 @@ def subsystem(tgt_node, sdt, options):
 
 def subsystem_generate(tgt_node, sdt, verbose=0):
     """Generate a template subsystem description within ``/domains``."""
-    if verbose:
-        print(f"[INFO]: cb: subsystem_generate( {tgt_node}, {sdt} )")
+    lopper.log._debug(f"cb: subsystem_generate( {tgt_node}, {sdt} )")
 
     tree = sdt.tree
     domain_tree = LopperTree()
@@ -109,8 +111,8 @@ def subsystem_generate(tgt_node, sdt, verbose=0):
 
     tree = tree + domain_node
 
-    if verbose > 2:
-        print("[DBG++]: dumping yaml generated default subystem")
+    if lopper.log._is_enabled(lopper.log.TRACE):
+        lopper.log._debug("dumping yaml generated default subystem", level=lopper.log.TRACE)
         yaml = LopperYAML(None, domain_tree)
         yaml.to_yaml()
 

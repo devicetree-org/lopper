@@ -554,7 +554,7 @@ def setup_code_lops( outdir ):
 };
             """)
 
-    return "/tmp/lops-code.dts"
+    return outdir + "/lops-code.dts"
 
 def setup_assist_lops( outdir ):
     with open( outdir + "/lops-assists.dts", "w") as w:
@@ -1126,6 +1126,7 @@ def setup_schema_types_tree( outdir ):
                         flag-prop;
                         cells-prop = <0x1 0x2 0x3>;
                         range64 = /bits/ 64 <0x0 0x1>;
+                        bootscr-address = /bits/ 64 <0x78000000>;
                         width16 = /bits/ 16 <0x0 0x1234>;
                         mac-bytes = [00 11 22 33 44 55];
                         single-u8 = /bits/ 8 <0x7f>;
@@ -2324,6 +2325,46 @@ def assists_sanity_test( device_tree, lop_file, verbose, options = "", input_fil
 
     device_tree.cleanup()
 
+
+def reserved_memory_e2e_sanity_test( device_tree, verbose, input_files=[] ):
+    """End-to-end test for reserved-memory handling.
+
+    This test runs the full pipeline:
+    1. Load SDT with reserved-memory nodes
+    2. Merge domain YAML with reserved-memory references
+    3. Run YAML expansion (boolean props, start/size -> reg)
+    4. Run domain_access to filter unreferenced nodes
+    5. Verify: referenced nodes survive, unreferenced pruned, pnode() works
+    """
+    print( "[TEST]: running reserved_memory_e2e_sanity_test" )
+
+    # Find auto lops (like %.yaml.lop) for the input YAML files
+    auto_assists = device_tree.find_any_matching_assists( input_files )
+    input_files_with_auto = input_files + auto_assists
+
+    # Setup with input files and target domain
+    device_tree.setup( device_tree.dts, input_files_with_auto, "", True, libfdt = libfdt )
+    device_tree.target = "/domains/APU_Linux"
+
+    # Load both assist-sanity.py (for verification) and domain_access.py (for filtering)
+    device_tree.load_paths.append( "lopper/selftest/" )
+    device_tree.assists_setup( [ "assist-sanity.py", "lopper/assists/domain_access.py" ] )
+
+    # Run domain_access first (to filter unreferenced nodes), then run verification test
+    # Note: assist_autorun_setup adds lops in reverse order (insert at 0), so domain_access
+    # needs to be added second to run first
+    device_tree.assist_autorun_setup( "assist-sanity", [ "reserved_memory_e2e_test" ] )
+    device_tree.assist_autorun_setup( "lopper/assists/domain_access", [ "-t", "/domains/APU_Linux" ] )
+
+    print( "[TEST]: running assists against tree" )
+    device_tree.perform_lops()
+
+    if device_tree.output_file:
+        print( f"[TEST]: writing resulting FDT to {device_tree.output_file}" )
+        device_tree.write( enhanced = True )
+
+    device_tree.cleanup()
+
 def format_sanity_test( device_tree, verbose ):
     device_tree.setup( dt, [], "", True, libfdt = libfdt )
 
@@ -2393,6 +2434,7 @@ def schema_type_sanity_test( outdir, verbose ):
         "flag property preserved": r"flag-prop;",
         "multi-string preserved": r"names-list = \"alpha\", \"beta\"",
         "64-bit literal preserved": r"range64 = /bits/ 64",
+        "64-bit single value preserved": r"bootscr-address = /bits/ 64 <0x78000000>",
         "16-bit literal preserved": r"width16 = /bits/ 16",
         "phandle reference preserved": r"phandle-list = <&refnode",
     }
@@ -2775,6 +2817,20 @@ if __name__ == "__main__":
         device_tree.autorun = True
         device_tree.dts = "./lopper/selftest/system-top-embedded-lop.dts"
         assists_sanity_test( device_tree, None, verbose, "phandle_meta_test_2" )
+
+        # phandle reference resolution test (label_to_phandle)
+        device_tree.autorun = True
+        device_tree.dts = "./lopper/selftest/system-top.dts"
+        input_files = [ "./lopper/selftest/domains/phandle-ref-test.yaml" ]
+        assists_sanity_test( device_tree, None, verbose, "phandle_ref_test", input_files )
+
+        # reserved-memory end-to-end test
+        # Tests: boolean expansion, start/size->reg, referenced nodes survive,
+        # unreferenced nodes pruned, pnode() lookup after phandle_or_create()
+        device_tree.autorun = True
+        device_tree.dts = "./lopper/selftest/reserved-memory-test-sdt.dts"
+        input_files = [ "./lopper/selftest/domains/reserved-memory-e2e-domain.yaml" ]
+        reserved_memory_e2e_sanity_test( device_tree, verbose, input_files )
 
         # multi-yaml + parent + glob testing
         device_tree.autorun = True

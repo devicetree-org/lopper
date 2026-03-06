@@ -1,0 +1,91 @@
+/*
+ * Copyright (c) 2025,2026 AMD Inc. All rights reserved.
+ *
+ * Author:
+ *       Bruce Ashfield <bruce.ashfield@amd.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * lop-domain-chosen.dts: Copy chosen node from target domain to /chosen
+ *
+ * Usage:
+ *   lopper -t DOMAIN_LABEL -i lop-domain-chosen.dts ...
+ *
+ * This lop finds chosen subnodes under domains and copies their properties
+ * to the main device tree's /chosen node. If -t is specified, only the
+ * target domain's chosen node is processed. Otherwise, all domain chosen
+ * nodes are processed (last one wins for conflicting properties).
+ *
+ * Properties are copied in overwrite mode - existing properties with the
+ * same name are replaced.
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1,lop";
+        lops {
+                compatible = "system-device-tree-v1,lop";
+
+                /* Select chosen nodes under domains (up to 3 levels deep) */
+                lop_select_chosen {
+                        compatible = "system-device-tree-v1,lop,select-v1";
+                        select_1;
+                        select_2 = "/domains/.*/chosen$";
+                        select_3 = "/domains/.*/.*/chosen$";
+                        select_4 = "/domains/.*/.*/.*/chosen$";
+
+                        /* Code lop fires only when chosen nodes are found */
+                        lop_copy_chosen {
+                                compatible = "system-device-tree-v1,lop,code-v1";
+                                code = "
+                                    import lopper.log
+                                    lopper.log._init('lop-domain-chosen')
+
+                                    if not __selected__:
+                                        lopper.log._debug('lop-domain-chosen: no chosen nodes found under domains')
+                                        return True
+
+                                    lopper.log._info(f'lop-domain-chosen: found {len(__selected__)} chosen node(s)')
+
+                                    # Check if target_domain was specified via -t
+                                    try:
+                                        _td = target_domain
+                                    except NameError:
+                                        _td = None
+
+                                    # Get or create /chosen in main tree
+                                    try:
+                                        root_chosen = tree['/chosen']
+                                    except KeyError:
+                                        lopper.log._info('lop-domain-chosen: creating /chosen node')
+                                        from lopper.tree import LopperNode
+                                        root_chosen = LopperNode(name='chosen')
+                                        root_chosen.abs_path = '/chosen'
+                                        tree.add(root_chosen)
+                                        root_chosen = tree['/chosen']
+
+                                    # Process each selected chosen node
+                                    for domain_chosen in __selected__:
+                                        # If target domain specified, filter to only that domain
+                                        if _td:
+                                            # Check if this chosen node's parent matches target domain
+                                            parent_path = domain_chosen.abs_path.rsplit('/chosen', 1)[0]
+                                            parent_node = tree[parent_path]
+                                            # Match by label or by node name
+                                            if parent_node.label != _td and parent_node.name != _td:
+                                                lopper.log._debug(f'lop-domain-chosen: skipping {domain_chosen.abs_path} (not target domain {_td})')
+                                                continue
+
+                                        lopper.log._info(f'lop-domain-chosen: merging {domain_chosen.abs_path} into /chosen')
+
+                                        # Use lopper's node merge to copy properties (overwrites existing)
+                                        root_chosen.merge(domain_chosen)
+
+                                    lopper.log._info('lop-domain-chosen: done')
+                                    return True
+                                ";
+                        };
+                };
+        };
+};

@@ -113,39 +113,41 @@ For discussion:
 
 # Lopper overview:
 
+```
 lopper.py --help
 
-   Usage: lopper [OPTION] <system device tree> [<output file>]...
-     -v, --verbose       enable verbose/debug processing (specify more than once for more verbosity)
-     -t, --target        indicate the starting domain for processing (i.e. chosen node or domain label)
-       , --dryrun        run all processing, but don't write any output files
-     -d, --dump          dump a dtb as dts source
-     -i, --input         process supplied input device tree description
-     -I, --input-dirs    colon separated list of directories to search for input files (any type)
-                         input directories can also be set by environment variable LOPPER_INPUT_DIRS
-     -a, --assist        load specified python assist (for node or output processing)
-     -A, --assist-paths  colon separated lists of paths to search for assist loading
-       , --enhanced      when writing output files, do enhanced processing (this includes phandle replacement, comments, etc
-       . --auto          automatically run any eligible assists (via -a) or lops (embedded)
-       , --permissive    do not enforce fully validated properties (phandles, etc)
-       , -W              enable a warning: 
-                             invalid_phandle (warn on invalid phandles)
-                             all (enable all warnings)
-       , --symbols       generate (and maintain) the __symbols__ node during processing
-     -o, --output        output file
-       , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes
-     -x. --xlate         run automatic translations on nodes for indicated input types (yaml,dts)
-       , --no-libfdt     don't use dtc/libfdt for parsing/compiling device trees
-     -f, --force         force overwrite output file(s)
-       , --werror        treat warnings as errors
-     -S, --save-temps    don't remove temporary files
-       , --cfgfile       specify a lopper configuration file to use (configparser format) 
-       , --cfgval        specify a configuration value to use (in configparser section format). Can be specified multiple times
-       , --schema        one of: "path to a dts schema", "learn" or "none" 
-     -h, --help          display this help and exit
-     -O, --outdir        directory to use for output files
-       , --server        after processing, start a server for ReST API calls
-       , --version       output the version and exit
+Usage: lopper [OPTION] <system device tree> [<output file>]...
+  -v, --verbose       enable verbose/debug processing (specify more than once for more verbosity)
+  -t, --target        indicate the starting domain for processing (i.e. chosen node or domain label)
+    , --dryrun        run all processing, but don't write any output files
+  -d, --dump          dump a dtb as dts source
+  -i, --input         process supplied input device tree description
+  -I, --input-dirs    colon separated list of directories to search for input files (any type)
+                      input directories can also be set by environment variable LOPPER_INPUT_DIRS
+  -a, --assist        load specified python assist (for node or output processing)
+  -A, --assist-paths  colon separated lists of paths to search for assist loading
+    , --enhanced      when writing output files, do enhanced processing (this includes phandle replacement, comments, etc
+    . --auto          automatically run any eligible assists (via -a) or lops (embedded)
+    , --permissive    do not enforce fully validated properties (phandles, etc)
+    , -W              enable a warning:
+                          invalid_phandle (warn on invalid phandles)
+                          all (enable all warnings)
+    , --symbols       generate (and maintain) the __symbols__ node during processing
+  -o, --output        output file
+    , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes
+  -x. --xlate         run automatic translations on nodes for indicated input types (yaml,dts)
+    , --no-libfdt     don't use dtc/libfdt for parsing/compiling device trees
+  -f, --force         force overwrite output file(s)
+    , --werror        treat warnings as errors
+  -S, --save-temps    don't remove temporary files
+    , --cfgfile       specify a lopper configuration file to use (configparser format)
+    , --cfgval        specify a configuration value to use (in configparser section format). Can be specified multiple times
+    , --schema        one of: "path to a dts schema", "learn" or "none"
+  -h, --help          display this help and exit
+  -O, --outdir        directory to use for output files
+    , --server        after processing, start a server for ReST API calls
+    , --version       output the version and exit
+```
 
 A few command line notes:
 

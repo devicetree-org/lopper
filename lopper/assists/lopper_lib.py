@@ -30,9 +30,12 @@ from lopper.tree import LopperNode
 from lopper.tree import LopperTree
 from lopper.yaml import LopperYAML
 import lopper
+import lopper.log
 import json
 from itertools import chain
 import humanfriendly
+
+lopper.log._init(__name__)
 
 # utility function to return true or false if a number
 # is 32 bit, or not.
@@ -60,9 +63,7 @@ def chunks(l, n):
 
 
 def json_expand( node ):
-    debug = False
-    if debug:
-        print( f"[DBG]: ========> json expanding node: {node.name}" )
+    lopper.log._debug( f"========> json expanding node: {node.name}", level=lopper.log.TRACE )
     for p in node:
         if p.pclass == 'json':
             # save the original json, we may need it again
@@ -74,9 +75,8 @@ def json_expand( node ):
             # p.value = p.value
 
             phandle_index,field_count = p.phandle_params()
-            if debug:
-                print( f'   -- json property: [{[p]}] {p.name} [{p.value}]' )
-                print( f'        phandle info: {phandle_index} {field_count}' )
+            lopper.log._debug( f'   -- json property: [{[p]}] {p.name} [{p.value}]', level=lopper.log.TRACE )
+            lopper.log._debug( f'        phandle info: {phandle_index} {field_count}', level=lopper.log.TRACE )
 
             loaded_j = json.loads( p.value_json )
             p.struct_value = loaded_j
@@ -93,19 +93,19 @@ def json_expand( node ):
                         p.list_value.append(j)
 
             # dump the json elements
-            if debug:
-                print( f"        [{type(loaded_j)}] {loaded_j}" )
+            if lopper.log._is_enabled(lopper.log.TRACE):
+                lopper.log._debug( f"        [{type(loaded_j)}] {loaded_j}", level=lopper.log.TRACE )
                 for j in loaded_j:
                     if type(j) == list:
                         for jj in j:
-                            print(f"        json list element: {jj}" )
+                            lopper.log._debug(f"        json list element: {jj}", level=lopper.log.TRACE )
                     elif type(j) == dict:
                         for jj,kk in j.items():
-                            print(f"        json dict element: key: {jj}: value: {kk}" )
+                            lopper.log._debug(f"        json dict element: key: {jj}: value: {kk}", level=lopper.log.TRACE )
                             if type(kk) == dict:
-                                print( "              nested dict" )
+                                lopper.log._debug( "              nested dict", level=lopper.log.TRACE )
                     else:
-                        print( f"       non-list: {j}" )
+                        lopper.log._debug( f"       non-list: {j}", level=lopper.log.TRACE )
 
 def property_set( property_name, property_val, node, fdt=None ):
     newprop = LopperProp( property_name, -1, None, property_val )
@@ -333,8 +333,7 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
     if not cpu_prop:
         return refd_cpus, refd_cpus
 
-    if verbose:
-        print( f"[DBG]: lopper_lib: cpu_refs: processing {cpu_prop}" )
+    lopper.log._debug( f"cpu_refs: processing {cpu_prop}" )
 
     cpu_prop_list = list( chunks(cpu_prop.value,3) )
     sub_cpus_all = []
@@ -343,15 +342,13 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
     # and their parents, we'll delete anything that isn't used later.
     for cpu_phandle, mask, mode in cpu_prop_list:
         cpu_mask = mask
-        if verbose:
-            print( f"[INFO]: cb cpu mask: {hex(cpu_mask)}")
+        lopper.log._info( f"cb cpu mask: {hex(cpu_mask)}")
 
         try:
             cpu_node = tree.pnode(cpu_phandle)
             if not cpu_node:
-                if verbose:
-                    print( f"[DBG]: lopper_lib, no cpu found at phandle {hex(cpu_phandle)}, skipping")
-                    continue
+                lopper.log._debug( f"no cpu found at phandle {hex(cpu_phandle)}, skipping")
+                continue
         except:
             # couldn't find the node, skip
             continue
@@ -359,10 +356,9 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
         sub_cpus = tree.subnodes( cpu_node, "cpu@.*" )
         sub_cpus_all = sub_cpus + sub_cpus_all
 
-        if verbose:
-            print( f"[INFO]: lopper_lib: cpu prop phandle: {cpu_phandle}" )
-            print( f"[INFO]: lopper_lib: cpu node: {cpu_node}" )
-            print( f"[INFO]: lopper_lib: sub cpus: {sub_cpus}" )
+        lopper.log._info( f"cpu prop phandle: {cpu_phandle}" )
+        lopper.log._info( f"cpu node: {cpu_node}" )
+        lopper.log._info( f"sub cpus: {sub_cpus}" )
 
         # we'll now walk from 0 -> 31. Checking the mask to see if access is
         # allowed. If it is allowed, we'll check to see if there's a sub-cpu at
@@ -385,7 +381,7 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
             try:
                 unrefd_cpus.append( s )
             except Exception as e:
-                print( f"[WARNING]: {e}" )
+                lopper.log._warning( f"{e}" )
 
     # you can globally check for ref'd cpus after calling this routine
     # via:

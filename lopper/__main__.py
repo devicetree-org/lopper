@@ -73,7 +73,8 @@ def usage():
     print('    . --auto          automatically run any eligible assists (via -a) or lops (embedded)' )
     print('    , --permissive    do not enforce fully validated properties (phandles, etc)' )
     print('    , -W              enable a warning: '  )
-    print('                          invalid_phandle (warn on invalid phandles)' )
+    print('                          invalid_phandle (warn on invalid phandle references)' )
+    print('                          duplicate_phandle (warn on duplicate phandle values)' )
     print('                          all (enable all warnings)' )
     print('    , --symbols       generate (and maintain) the __symbols__ node during processing' )
     print('  -o, --output        output file')
@@ -391,32 +392,13 @@ def main():
     else:
         schema = "learn"
 
+    # Track if -x/--xlate was used for legacy fallback
+    xlate_fallback = False
     if xlate:
-        for x in xlate:
-            # *x_lop gets all remaining splits. We don't always have the ":", so
-            # we need that flexibility.
-            x_type, *x_lop = x.split(":")
-
-            x_files = []
-            if x_lop:
-                x_files.append( x_lop[0] )
-            else:
-                # generate the lop name
-                extension = Path(x_type).suffix
-                extension = re.sub( r"\.", "", extension )
-                x_lop_gen = f"lop-xlate-{extension}.dts"
-                x_files.append( x_lop_gen )
-
-        # check that the xlate files exist
-        for x in x_files:
-            inf = Path(x)
-            if not inf.exists():
-                x = f"{lopper_directory}/lops/" + x
-                inf = Path( x )
-                if not inf.exists():
-                    _error(f"input file {x} does not exist", also_exit=1)
-
-            inputfiles.append( x )
+        # -x/--xlate is deprecated in favor of --auto with BitBake-style lop matching
+        # Enable autorun mode so that input files are matched against lops like %.yaml.lop
+        auto_run = True
+        xlate_fallback = True
 
     if dump_dtb:
         lopper.Lopper.dtb_dts_export( sdt, verbose )
@@ -457,7 +439,8 @@ def main():
         # note: this may cause duplicates, since all input files are searched
         #       and they may already be on the list. duplicates will be dealt
         #       with later.
-        auto_assists = device_tree.find_any_matching_assists( inputfiles + [sdt] )
+        auto_assists = device_tree.find_any_matching_assists( inputfiles + [sdt],
+                                                               xlate_fallback=xlate_fallback )
         inputfiles.extend( auto_assists )
 
     device_tree.setup( sdt, inputfiles, "", force, libfdt, config )

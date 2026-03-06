@@ -30,6 +30,8 @@ from lopper.tree import LopperTree
 import lopper
 import lopper.log
 
+lopper.log._init(__name__)
+
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,compare", compat_string_to_test):
         return compare
@@ -61,7 +63,6 @@ def compare( tgt_node, sdt, options ):
     except:
         args = []
 
-    lopper.log._init(__name__)
     if verbose > 3:
         desired_level = lopper.log.TRACE2
     elif verbose > 2:

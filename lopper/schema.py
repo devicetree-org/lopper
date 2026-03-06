@@ -106,6 +106,11 @@ PROPERTY_NAME_HEURISTICS = {
         'okay': LopperFmt.EMPTY,
         'fail': LopperFmt.EMPTY,
         'fail-sss': LopperFmt.EMPTY,
+
+        # Reserved-memory boolean properties
+        'reusable': LopperFmt.EMPTY,
+        'linux,cma-default': LopperFmt.EMPTY,
+        'linux,dma-default': LopperFmt.EMPTY,
     },
 
     # Regex patterns (more complex than suffix/prefix)
@@ -186,6 +191,10 @@ PROPERTY_TYPE_HINTS = {
         'cts-override',
         'dis-u2-susphy-quirk',
         'dis-u3-susphy-quirk',
+        # Reserved-memory boolean properties
+        'reusable',
+        'linux,cma-default',
+        'linux,dma-default',
     ],
 }
 
@@ -195,7 +204,12 @@ def _get_schema_hash(schema_dict):
     import json
     # Convert schema to a stable string representation
     schema_str = json.dumps(schema_dict, sort_keys=True)
-    return hashlib.md5(schema_str.encode()).hexdigest()
+    
+    # Try SHA-256 first (FIPS compliant), fallback to MD5 for legacy systems
+    try:
+        return hashlib.sha256(schema_str.encode()).hexdigest()
+    except Exception:
+        return hashlib.md5(schema_str.encode()).hexdigest()
 
 class SchemaManager:
     """Singleton manager for schema and related tools"""

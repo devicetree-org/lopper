@@ -20,7 +20,7 @@
                         address-map = "#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells";
                         interrupt-parent = "phandle";
                         iommus = "phandle field";
-                        interrupt-map = "#interrupt-cells phandle #interrupt-cells";
+                        interrupt-map = "#address-cells #interrupt-cells phandle:#interrupt-cells";
                         access = "phandle flags";
                         cpus = "phandle mask mode";
                         include = "phandle";
@@ -225,6 +225,8 @@
                                             yaml_to_dts_expansion.memory_expand( tree, n )
                                         if n.propval('sram') != ['']:
                                             yaml_to_dts_expansion.memory_expand( tree, n, prop_name = 'sram' )
+                                        if n.propval('reserved-memory') != ['']:
+                                            yaml_to_dts_expansion.reserved_memory_expand( tree, n )
 
                                         for child_n in n.subnodes():
                                             if child_n.abs_path.endswith('/flags') and child_n.depth == n.depth + 1:

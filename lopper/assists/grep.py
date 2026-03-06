@@ -25,6 +25,9 @@ from lopper import Lopper
 from lopper import LopperFmt
 from lopper.tree import LopperAction
 import lopper
+import lopper.log as log
+
+log._init(__name__)
 
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,grep", compat_string_to_test):
@@ -51,8 +54,7 @@ def grep( tgt_node, sdt, options ):
     except:
         args = []
 
-    if verbose:
-        print( f"[INFO]: cb: grep( {tgt_node}, {sdt}, {verbose}, {args} )")
+    log._debug(f"cb: grep( {tgt_node}, {sdt}, {verbose}, {args} )")
 
     node_regex = ""
     tgt_regex = args[0]
@@ -68,7 +70,7 @@ def grep( tgt_node, sdt, options ):
         lnodes = sdt.tree.lnodes(node_regex)
         nodes = nodes + lnodes
     except:
-        print( f"[ERROR]: grep: nodes {node_regex} not found" )
+        log._error(f"grep: nodes {node_regex} not found")
         sys.exit(1)
 
 

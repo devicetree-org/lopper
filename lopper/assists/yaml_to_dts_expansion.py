@@ -33,6 +33,7 @@ import lopper
 import json
 
 from .lopper_lib import check_bit_set, clear_bit, chunks, property_set, set_bit, expand_start_size_to_reg
+from lopper.log import _init, _warning, _info, _error, _debug
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -81,6 +82,34 @@ def domain_parent( domain ):
         return parent_name
     except Exception as e:
         return None
+
+def infer_parent_domain( tree, domain ):
+    """Walk up tree looking for nearest ancestor with 'access' property.
+
+    When a domain has a glob pattern in its access list but no explicit
+    'parent:' property, this function attempts to find a suitable parent
+    domain by walking up the tree hierarchy.
+
+    Args:
+        tree (LopperTree): Device tree containing the domain hierarchy.
+        domain (LopperNode): Domain node to find parent for.
+
+    Returns:
+        LopperNode | None: Parent domain node with devices, or None if not found.
+    """
+    candidate = domain.parent
+    while candidate:
+        # Stop at container nodes that aren't domains
+        if candidate.abs_path == "/domains" or candidate.abs_path == "/":
+            return None
+        try:
+            access = domain_access(candidate)
+            if access:  # Has devices
+                return candidate
+        except:
+            pass
+        candidate = candidate.parent
+    return None
 
 def domain_access(node, new_access=None):
     """Get or set the JSON-encoded access property for a domain node.
@@ -204,11 +233,8 @@ def wildcard_devices( tree, domains_node ):
     Returns:
         None
     """
-    verbose = True
-
     for domain in domains_node.subnodes():
-        if verbose:
-            print( f"[DBG]: wildcard device expansion: processing {domain.abs_path}" )
+        _debug( f"wildcard device expansion: processing {domain.abs_path}" )
 
         try:
             access_chunks = domain_access( domain )
@@ -216,8 +242,7 @@ def wildcard_devices( tree, domains_node ):
             access_list_new = []
             for a in access_chunks:
                 # display the access element
-                if verbose:
-                    print( f"[DBG]: wildcard: processing: {a}" )
+                _debug( f"wildcard: processing: {a}" )
 
                 try:
                     dev = a["dev"]
@@ -226,62 +251,54 @@ def wildcard_devices( tree, domains_node ):
                         # The yaml input validation should have found any misses, but
                         # dts inputs are also possible, so we double check here
                         d_parent = domain_parent( domain )
-                        d_parent_name = d_parent.value.split('/')[-1]
-                        d_parent_path = d_parent.value
+                        parent_domain = None
 
-                        if d_parent_path.startswith('/'):
-                            # if the path isn't valid, an exception will be raised, which
-                            # we catch and indicate the parent cannot be found
+                        if d_parent:
+                            # Explicit parent: property
+                            d_parent_path = d_parent.value
                             try:
-                                parent_domain = tree[d_parent_path]
-                            except:
-                                parent_domain = None
-                        else:
-                            try:
-                                parent_domain = tree.nodes( d_parent_path + "$" )
-                                parent_domain = parent_domain[0]
-                            except:
-                                parent_domain = None
-
-                        if parent_domain:
-                            ## We need to get the access devices from
-                            ## the parent and copy them into our
-                            ## domain
-                            try:
-                                parent_access = domain_access( parent_domain )
+                                if d_parent_path.startswith('/'):
+                                    parent_domain = tree[d_parent_path]
+                                else:
+                                    nodes = tree.nodes( d_parent_path + "$" )
+                                    parent_domain = nodes[0] if nodes else None
                             except Exception as e:
-                                print( f"[WARNING]: parent domain ({parent_domain.abs_path}) has no devices")
-
-                            # the spec says globs, but if we convert to a regex, the access
-                            # search is easy
-                            regex = glob_to_regex( dev )
-                            devs = domain_devices( parent_access, regex, Action.GET )
-                            remaining_devs = domain_devices( parent_access, devs, Action.REMOVE )
-
-                            # update the parent, since we aren't iterating it, we are ok doing this
-                            # immediately.
-                            if verbose:
-                                print( f"[DEBUG]: after access: remaining devs: {remaining_devs}" )
-
-                            domain_access( parent_domain, remaining_devs )
-
-                            if verbose:
-                                print( f"[INFO]: parent domain ({parent_domain.abs_path}) matched devices: {devs}" )
-
-                            # we can't modify the chunks while iterating, so we
-                            # queue the glob (what got is in here) to be deleted
-                            remove_list.append( a )
-                            # And the parent domain devices (what the glob matched) to be added
-                            access_list_new.extend( devs )
+                                _error( f"glob in {domain.abs_path}: explicit parent '{d_parent_path}' not found: {e}", True )
                         else:
-                            # no parent domain, exit
-                            print( f"[ERROR]: glob detected, but no parent domain was found" )
-                            os._exit(1)
+                            # No explicit parent: property, try to infer by walking up tree
+                            parent_domain = infer_parent_domain( tree, domain )
+
+                        if not parent_domain:
+                            _error( f"glob in {domain.abs_path}: no parent domain with devices found (explicit or inferred)", True )
+
+                        # Get parent's access list and verify it has devices
+                        parent_access = domain_access( parent_domain )
+                        if not parent_access:
+                            _error( f"glob in {domain.abs_path}: parent domain ({parent_domain.abs_path}) has no devices to match", True )
+
+                        # the spec says globs, but if we convert to a regex, the access
+                        # search is easy
+                        regex = glob_to_regex( dev )
+                        devs = domain_devices( parent_access, regex, Action.GET )
+                        remaining_devs = domain_devices( parent_access, devs, Action.REMOVE )
+
+                        # update the parent, since we aren't iterating it, we are ok doing this
+                        # immediately.
+                        _debug( f"after access: remaining devs: {remaining_devs}" )
+
+                        domain_access( parent_domain, remaining_devs )
+
+                        _info( f"parent domain ({parent_domain.abs_path}) matched devices: {devs}" )
+
+                        # we can't modify the chunks while iterating, so we
+                        # queue the glob (what got is in here) to be deleted
+                        remove_list.append( a )
+                        # And the parent domain devices (what the glob matched) to be added
+                        access_list_new.extend( devs )
                     else:
                         # Non-glob device, just copy it or inspect it.
                         # Currently We aren't doing any checking.
-                        if verbose:
-                           print( f"[INFO]: non wildcard access, copying: {dev}")
+                        _debug( f"non wildcard access, copying: {dev}" )
                         access_list_new.append( a )
 
                 except Exception as e:
@@ -293,8 +310,7 @@ def wildcard_devices( tree, domains_node ):
             if remove_list:
                 # remove the collected devices from the access json dictionary, these
                 # are currently only the wildcard dev: that was found
-                if verbose:
-                    print( f"[INFO]: domain (domain.abs_path): removing: {remove_list}" )
+                _debug( f"domain ({domain.abs_path}): removing: {remove_list}" )
 
                 remaining_access = domain_devices( access_chunks, remove_list, Action.REMOVE )
                 # and then store the updated list into the domain
@@ -322,14 +338,12 @@ def wildcard_devices( tree, domains_node ):
                     # need to store it
                     # We could probably just collect the new devices that we brought in from
                     # the glob an extend the list
-                    if verbose:
-                        print( f"[INFO]: domain ({domain.abs_path}): updating: {access_list_new}" )
+                    _debug( f"domain ({domain.abs_path}): updating: {access_list_new}" )
 
                     domain_access( domain, access_list_new )
 
         except Exception as e:
-            print( f"[ERROR]: Exception: {e}")
-            os._exit(1)
+            _error( f"Exception during wildcard expansion: {e}", True )
 
 def firewall_expand( tree, subnode, verbose = 0 ):
     """Expand firewall helper nodes into generated firewall properties.
@@ -707,6 +721,25 @@ def reserved_memory_expand( tree, reserved_memory_node ):
         res_mem_node = LopperNode(-1, "/reserved-memory")
         tree.add(res_mem_node)
 
+    # Get address-cells and size-cells from /reserved-memory node
+    # (which should match root node per DT spec)
+    try:
+        resmem_ac = res_mem_node['#address-cells'][0]
+    except:
+        # Fall back to root node
+        try:
+            resmem_ac = tree['/']['#address-cells'][0]
+        except:
+            resmem_ac = 2  # default per DT spec
+    try:
+        resmem_sc = res_mem_node['#size-cells'][0]
+    except:
+        # Fall back to root node
+        try:
+            resmem_sc = tree['/']['#size-cells'][0]
+        except:
+            resmem_sc = 1  # default per DT spec
+
     new_res_mem_nodes = reserved_memory_node.subnodes(children_only=True)
 
     resmem_list = reserved_memory_node.props( "reserved-memory" )
@@ -745,13 +778,24 @@ def reserved_memory_expand( tree, reserved_memory_node ):
     # save phandles in domain
     resmem_list[0].value = new_res_mem_pval
 
-     # read start and size. then form 'reg' property for the node.
-     # then remove start and size
+    # DT-spec reserved-memory boolean properties that need expansion
+    # from YAML true/1 to empty DTS property
+    RESERVED_MEMORY_BOOLEAN_PROPS = [
+        'no-map',
+        'reusable',
+        'linux,cma-default',
+        'linux,dma-default',
+    ]
+
+    # read start and size. then form 'reg' property for the node.
+    # then remove start and size
     for n in pre_existing_res_mem_nodes:
-        # handle no map
-        if n.propval("no-map") == 1:
-            n.delete("no-map")
-            n + LopperProp(name="no-map")
+        # Handle all boolean properties - convert value=1/True to empty property
+        for bool_prop in RESERVED_MEMORY_BOOLEAN_PROPS:
+            prop_val = n.propval(bool_prop)
+            if prop_val in (1, True, [1], [True]):
+                n.delete(bool_prop)
+                n + LopperProp(name=bool_prop)
 
         if n.propval("reg") != ['']:
             continue
@@ -766,8 +810,8 @@ def reserved_memory_expand( tree, reserved_memory_node ):
 
         reg_cells, _, _ = expand_start_size_to_reg(
             {"start": raw_start, "size": raw_size},
-            address_cells=2,
-            size_cells=2,
+            address_cells=resmem_ac,
+            size_cells=resmem_sc,
             default_start=0xbeef,
             default_size=0xbeef
         )
@@ -803,7 +847,24 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
     # *
     # * It is in the form:
     # * memory = <address size address size ...>
+    # *
+    # * The number of cells for address and size is determined by the
+    # * root node's #address-cells and #size-cells properties.
     # */
+
+    # Get address-cells and size-cells from root node (standard DT inheritance)
+    try:
+        root_ac = tree['/']['#address-cells'][0]
+    except:
+        root_ac = 2  # default per DT spec
+    try:
+        root_sc = tree['/']['#size-cells'][0]
+    except:
+        root_sc = 1  # default per DT spec
+
+    if verbose:
+        print(f"memory_expand: using #address-cells={root_ac}, #size-cells={root_sc}")
+
     try:
         mem = []
         prop = subnode[prop_name]
@@ -830,8 +891,8 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
 
             reg_cells, start_val, size_val = expand_start_size_to_reg(
                 m,
-                address_cells=1,
-                size_cells=1,
+                address_cells=root_ac,
+                size_cells=root_sc,
                 default_start=memory_start,
                 default_size=0xbeef
             )
@@ -1392,6 +1453,42 @@ def resolve_carveouts( tree, subnode, carveout_prop_name, verbose = 0 ):
 
             new_prop_val.append(current_node.phandle)
 
+            # here handle nodes for OpenAMP/Libmetal that dont already have reg
+            if current_node.propval("reg") == ['']:
+                raw_start = current_node.propval("start")
+                raw_size = current_node.propval("size")
+                if raw_start == [''] or raw_start is None or raw_size == [''] or raw_size is None:
+                    lopper.log._error("resolve carveout:", current_node, "missing start or size. erroring out")
+                    return False
+
+                # Get address-cells and size-cells from parent node (or root as fallback)
+                try:
+                    carveout_ac = current_node.parent['#address-cells'][0]
+                except:
+                    try:
+                        carveout_ac = tree['/']['#address-cells'][0]
+                    except:
+                        carveout_ac = 2  # default per DT spec
+                try:
+                    carveout_sc = current_node.parent['#size-cells'][0]
+                except:
+                    try:
+                        carveout_sc = tree['/']['#size-cells'][0]
+                    except:
+                        carveout_sc = 1  # default per DT spec
+
+                # expand_start_size_to_reg will translate the 'size'/'start' tuple in a YAML entry to a reg property. The defaults are there as
+                # guard / requirement for the routine call. address/size_cells is used to format the register / output value
+                reg_cells, _, _ = expand_start_size_to_reg(
+                    {"start": raw_start, "size": raw_size},
+                    address_cells=carveout_ac,
+                    size_cells=carveout_sc,
+                    default_start=0xbeef,
+                    default_size=0xbeef
+                )
+                current_node + LopperProp(name="reg", value=reg_cells)
+                [ current_node.delete(prop) for prop in [ "start", "size" ] ]
+
         relation + LopperProp(name=carveout_prop_name, value = new_prop_val)
 
     return True
@@ -1420,11 +1517,14 @@ def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
         mbox = relation.propval("mbox")
 
         # if the node name or label matches then save it
-        new_prop_val = [ n.phandle for n in subnode.tree["/axi"].subnodes(children_only=True) if n.name == mbox or n.label == mbox ]
-        if new_prop_val == []:
+        node = [ n for n in subnode.tree["/axi"].subnodes(children_only=True) if n.name == mbox or n.label == mbox ]
+        if node == []:
             print("WARNING: could not find ", mbox)
 
-        relation.props("mbox")[0].value = new_prop_val[0]
+        if node[0].phandle == 0:
+            node[0].phandle_or_create()
+
+        relation.props("mbox")[0].value = node[0].phandle
 
     return True
 
@@ -1478,6 +1578,76 @@ def resolve_host_remote( tree, subnode, verbose = 0 ):
     return True
 
 
+def xlnx_timer_expand(tree, subnode, verbose = 0 ):
+    """Expand  YAML label of timer into full device tree reference.
+
+    Args:
+        tree (LopperTree): Device tree to update.
+        subnode (LopperNode): YAML subnode being expanded.
+        verbose (int): Verbosity flag for diagnostics.
+
+    Returns:
+        bool: True when all references are resolved successfully.
+
+    Algorithm:
+        Resolves phandles, and assigns
+        definitions using shared helper functions.
+    """
+    for relation in subnode.subnodes(children_only=True):
+        timer_pval = relation.propval("timer")
+        if timer_pval == ['']:
+            return False
+
+        timer_ref_list = []
+        if isinstance(timer_pval, str):
+            timer_pval = [ timer_pval ]
+        for label in timer_pval:
+            timer_node = [ n for n in tree["/axi"].subnodes(children_only=True, name="timer@*") if n.label == label ]
+            if timer_node == []:
+                lopper.log._error("ERROR: xlnx_timer_expand requires timer label reference")
+                return False
+
+            if timer_node[0].phandle == 0:
+                timer_node[0].phandle_or_create()
+
+            timer_ref_list.append(timer_node[0].phandle)
+
+        relation["timer"].value = timer_ref_list
+
+    return True
+
+
+def xlnx_libmetal_expand(tree, subnode, verbose = 0 ):
+    """Expand Libmetal YAML specialization into full device tree references.
+
+    Args:
+        tree (LopperTree): Device tree to update.
+        subnode (LopperNode): YAML subnode being expanded.
+        verbose (int): Verbosity flag for diagnostics.
+
+    Returns:
+        bool: True when all references are resolved successfully.
+
+    Algorithm:
+        Resolves host/remote phandles, hydrates carveout references, and assigns
+        mailbox definitions using shared helper functions.
+    """
+    if not resolve_host_remote( tree, subnode, verbose):
+        return False
+    if not resolve_carveouts(tree, subnode, "carveouts", verbose):
+        return False
+    if not xlnx_timer_expand(tree, subnode, verbose):
+        return False
+
+    # elfload is optional
+    call_resolve_carveouts = [ n for n in subnode.subnodes(children_only=True) if n.propval("elfload") != [''] ]
+    call_resolve_carveouts = True if len(call_resolve_carveouts) >= 1 else False
+    if call_resolve_carveouts:
+        resolve_carveouts(tree, subnode, "elfload", verbose)
+
+    return resolve_rpmsg_mbox( tree, subnode, verbose)
+
+
 def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
     """Expand RPMsg YAML specialization into full device tree references.
 
@@ -1498,6 +1668,9 @@ def xlnx_openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
         return False
     if not resolve_carveouts(tree, subnode, "carveouts", verbose):
         return False
+
+    # For FreeRTOS - ensure that OpenAMP TTC is found
+    xlnx_timer_expand(tree, subnode, verbose)
 
     return resolve_rpmsg_mbox( tree, subnode, verbose)
 
@@ -1564,6 +1737,7 @@ def openamp_rpmsg_expand(tree, subnode, verbose = 0 ):
 
 openamp_d_to_d_compat_strings = {
     "openamp,rpmsg-v1" : openamp_rpmsg_expand,
+    "libmetal,ipc-v1" : xlnx_libmetal_expand,
     "openamp,remoteproc-v2" : openamp_remoteproc_expand,
 }
 

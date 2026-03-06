@@ -23,6 +23,7 @@ from common_utils import to_cmakelist
 import common_utils as utils
 from domain_access import update_mem_node
 from zephyr_board_dt import process_overlay_with_lopper_api
+from openamp_xlnx import xlnx_openamp_keep_node
 
 def delete_unused_props( node, driver_proplist , delete_child_nodes):
     if delete_child_nodes:
@@ -199,14 +200,22 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     filter_ipi_nodes_for_cpu(sdt, machine)
 
     node_list = []
+    cpu_ip = match_cpunode.propval('xlnx,ip-name', list)
     for node in root_sub_nodes:
         if linux_dt:
+            is_microblaze = cpu_ip[0] in ('microblaze','microblaze_riscv')
+            # Rename memory@ to sram@ for MicroBlaze/MicroBlaze RISC-V if the memory node IP is lmb_bram
+            if (is_microblaze and 'lmb_bram' in node.propval('xlnx,ip-name', list)[0]
+                    and node.propval('device_type',list)[0] == "memory"):
+                        node.name = node.name.replace("memory","sram")
+                        node.delete('device_type')
             if node.name == "memory@fffc0000" or node.name == "memory@bbf00000":
                 sdt.tree.delete(node)
             if node.propval('memory_type', list) == ['linear_flash']:
                 sdt.tree.delete(node)
             for entry in node.propval('compatible', list):
-                pl_memory_compatible_list = ["xlnx,ddr4","xlnx,mig-7series","xlnx,lmb-bram","xlnx,axi-bram"]
+                pl_memory_compatible_list = ["xlnx,axi-bram"] if is_microblaze \
+                                           else ["xlnx,ddr4","xlnx,mig-7series","xlnx,lmb-bram","xlnx,axi-bram"]
                 if any(entry.startswith(compatible_prefix) for compatible_prefix in pl_memory_compatible_list):
                     sdt.tree.delete(node)
                     break
@@ -319,7 +328,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psu_lpd_slcr_secure', 'psu_lpd_xppu_sink', 'psu_mbistjtag', 'psu_message_buffers', 'psu_ocm_xmpu_cfg',
                             'psu_pcie_attrib_0', 'psu_pcie_dma', 'psu_pcie_high1', 'psu_pcie_high2', 'psu_pcie_low',
                             'psu_pmu_global_0', 'psu_qspi_linear_0', 'psu_rpu', 'psu_rsa', 'psu_siou',
-                            'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu', 'psx_fpd_gpv', 'ddr4', 'ps7_ram', 'ps7_afi',
+                            'psx_PSM_PPU', 'psx_ram_instr_cntlr', 'psx_rpu', 'psx_fpd_gpv', 'ps7_ram', 'ps7_afi',
                             'ps7_pmu', 'ps7_ocmc', 'ps7_scuc', 'ps7_iop_bus_config', 'ps7_gpv', 'psu_ocm_ram_0', 'psv_ocm_ram_0',
                             'psx_ocm_ram', 'ocm_ram', 'psx_ocm_ram_0', 'ocm_ram_0', 'gt_quad_base', 'psv_coresight_apu_cti',
                             'psv_coresight_cpm_cti2d', 'psv_coresight_cpm_ela2a', 'psv_coresight_cpm_ela2b',
@@ -336,7 +345,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             'psu_r5_tcm_ram', 'psu_r5_0_btcm', 'psu_r5_0_btcm_global', 'psu_r5_0_atcm_global', 'psu_r5_0_atcm', 'psu_r5_0_atcm_lockstep',
                             'psu_r5_tcm_ram', 'psu_r5_0_btcm', 'psu_r5_0_btcm_global', 'psu_r5_0_atcm_global', 'psu_r5_0_atcm',
                             'xlnx,tcm', 'r52_atcm_global', 'r52_btcm_global', 'r52_ctcm_global',
-                            'psv_r5_tcm', 'psv_tcm_global']
+                            'psv_r5_tcm', 'psv_tcm_global', 'psv_r5_0_atcm_lockstep', 'psv_r5_0_btcm_lockstep']
 
     versal_gen2_linux_ignore_ip_list = ['mmi_udh_pll', 'mmi_common', 'mmi_pipe_gem_slcr',
                             'mmi_udh_pll', 'mmi_udh_slcr', 'mmi_usb2phy', 'mmi_usb3phy_crpara', 'mmi_usb3phy_tca',
@@ -387,6 +396,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                         continue
                 elif linux_dt and "xlnx,versal-ddrmc" in node.propval('compatible', list):
                     # ddr controller is not mapped to APU and there is a special handling in SDT to make its status okay.
+                    continue
+                elif xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, sdt.tree):
                     continue
                 else:
                     sdt.tree.delete(node)
@@ -448,6 +459,16 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
         if sdt.tree['/cpus'].propval('address-map') != ['']:
             sdt.tree['/cpus'].delete('address-map')
 
+        # Move timebase-frequency from cpu@0 node to cpus node for riscv designs
+        if match_cpunode.propval('xlnx,ip-name', list)[0] == 'microblaze_riscv':
+            try:
+                cpu_prop = match_cpunode.propval('timebase-frequency')
+                if cpu_prop != ['']:
+                    sdt.tree[match_cpunode.parent]['timebase-frequency'] = cpu_prop
+                    sdt.tree[match_cpunode].delete('timebase-frequency')
+            except KeyError:
+                pass
+
     if zephyr_dt:
         if "r52" in machine or "a78" in machine:
             xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine)
@@ -492,6 +513,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
     root_sub_nodes = root_node.subnodes()
     wwdt_nodes = []
     ufs_nodes = []
+    rtc_nodes = []
 
     if "amd,versal2" in root_node['compatible'].value:
         root_node["model"] = "AMD Versal Gen 2"
@@ -499,7 +521,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
 
     for node in root_sub_nodes:
         if node.depth == 1:
-            if "cpus" not in node.name and "amba" not in node.name and "memory" not in node.name and "chosen" not in node.name and "bus" not in node.name and "axi" not in node.name and "timer" not in node.name and "alias" not in node.name and "consumer" not in node.name:
+            if "cpus" not in node.name and "amba" not in node.name and "memory" not in node.name and "chosen" not in node.name and "bus" not in node.name and "axi" not in node.name and "timer" not in node.name and "alias" not in node.name and not xlnx_openamp_keep_node(False, True, node, sdt.tree):
                 sdt.tree.delete(node)
         elif node.name == "cpu-map" or node.name == "idle-states":
             sdt.tree.delete(node)
@@ -532,6 +554,15 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
             if compatible == "arm,armv8-timer":
                 node["interrupts"].value = [0x1, 0xd, 0x4, 0xa4, 0x1, 0xe, 0x4, 0xa4, 0x1, 0xb, 0x4, 0xa4, 0x1, 0xa, 0x4, 0xa4]
 
+            elif compatible == "xlnx,zynqmp-rtc":
+                # RTC: Convert 3-cell interrupts to 4-cell GICv3 format by adding 0xa0 priority
+                intr_list = node["interrupts"].value
+                node["interrupts"].value = [cell for i in range(0, len(intr_list), 3)
+                                for cell in intr_list[i:i+3] + [0xa0]]
+                # Set clock frequency for RTC
+                # Revert this snippet once the clock support is added in sdtgen
+                if node.propval('clock-frequency') == ['']:
+                    node["clock-frequency"] = 32767
             elif node.propval('interrupts') != ['']:
                 intr_list = node["interrupts"].value
                 intr_list.append("0xa0")            
@@ -544,6 +575,8 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
                 wwdt_nodes.append(node)
             if "amd,versal2-ufs" in node["compatible"].value:
                 ufs_nodes.append(node)
+            if "xlnx,zynqmp-rtc" in node["compatible"].value:
+                rtc_nodes.append(node)
 
     xlnx_remove_unsupported_nodes(tgt_node, sdt)
 
@@ -556,11 +589,17 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
     if ufs_nodes:
         ufs_node = sdt.tree.pnode(ufs_nodes[0].phandle)
         sdt.tree['/aliases'] + LopperProp(name="ufs0", value = ufs_node.abs_path)
+    if rtc_nodes:
+        rtc_node = sdt.tree.pnode(rtc_nodes[0].phandle)
+        sdt.tree['/aliases'] + LopperProp(name="rtc", value = rtc_node.abs_path)
 
     for node in root_sub_nodes:
         if node.propval("compatible") != ['']:
             if node.propval("compatible") == "indirect-bus":
                 sdt.tree.delete(node)
+        if node.name == 'reserved-memory' and 'r52' in machine:
+            node.delete('ranges')
+            node + LopperProp(name='ranges')
 
     return True
 
@@ -700,9 +739,11 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             new_node.name = "mmc"
                             new_node['compatible'] = "zephyr,mmc-disk"
                             new_node['bus-width'] = node["xlnx,bus-width"].value
+                            new_node['disk-name'] = "EMMC"
                         else:
                             new_node.name = "sdmmc"
                             new_node['compatible'] = "zephyr,sdmmc-disk"
+                            new_node['disk-name'] = "SD"
                             node['power-delay-ms'] = 10
                         node.add(new_node)
                         node["compatible"] = "xlnx,versal-8.9a"
@@ -722,6 +763,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             node.add(node["#size-cells"])
                     # SPIPS
                     if "cdns,spi-r1p6" in node["compatible"].value:
+                        node["compatible"] = "cdns,spi"
                         if node.propval('#address-cells') != [1]:
                             node["#address-cells"] = LopperProp("#address-cells")
                             node["#address-cells"].value = 1
@@ -730,6 +772,19 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                             node["#size-cells"] = LopperProp("#size-cells")
                             node["#size-cells"].value = 0
                             node.add(node["#size-cells"])
+                        clk_freq = node.propval('xlnx,spi-clk-freq-hz')
+                        node["clock-frequency"] = LopperProp("clock-frequency")
+                        node["clock-frequency"].value = clk_freq
+                        node.add(node["clock-frequency"])
+                        node["tx-fifo-depth"] = LopperProp("tx-fifo-depth")
+                        node["tx-fifo-depth"].value = 128
+                        node.add(node["tx-fifo-depth"])
+                        node["rx-fifo-depth"] = LopperProp("rx-fifo-depth")
+                        node["rx-fifo-depth"].value = 128
+                        node.add(node["rx-fifo-depth"])
+                        node["fifo-width"] = LopperProp("fifo-width")
+                        node["fifo-width"].value = 8
+                        node.add(node["fifo-width"])
                     #ADMA
                     if any(version in node["compatible"].value for version in ("xlnx,zynqmp-dma-1.0", "amd,versal2-dma-1.0")):
                         if node.props("clocks") != [] and node.propval("clocks") != []:
@@ -785,42 +840,32 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                                 # If there is no clk-freq property use 0MHZ as default this prevent
                                 # build failure if any of the ip does not have this property.
                                 clk_freq = 0
-                            new_ref_clk = True
-                            # Check clock node with requested clk-freq is already available or not,
-                            # if yes use the existing clk node else create new ref clock node.
-                            for clk_node in sdt.tree.nodes(r'.*ref_clock$'):
-                                if clk_freq == clk_node['clock-frequency'].value:
-                                    if node.props('clocks') != []:
-                                        node.delete('clocks')
-                                    clock_prop = f"clocks = <&{clk_node.name}>"
-                                    node + LopperProp(clock_prop)
-                                    new_ref_clk = False
-                            if new_ref_clk:
-                                new_node = LopperNode()
-                                new_node.abs_path = "/clocks"
-                                if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
-                                    new_node.name = "adma_ref_clk"
-                                else:
-                                    new_node.name = node.label + "_ref_clock"
-                                new_node['compatible'] = ["fixed-clock"]
-                                new_node['#clock-cells'] = 0
-                                if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
-                                    clk_freq = 450000000
-                                new_node['clock-frequency'] = clk_freq
-                                new_node.label_set(new_node.name)
-                                sdt.tree.add(new_node)
-                                if node.props('clocks') != []:
-                                    node.delete('clocks')
-                                if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
-                                    clock_prop = f"clocks = <&{new_node.name}>, <&{new_node.name}>"
-                                else:
-                                    clock_prop = f"clocks = <&{new_node.name}>"
-                                node + LopperProp(clock_prop)
+                            # Always create individual clock node for each peripheral
+                            new_node = LopperNode()
+                            new_node.abs_path = "/clocks"
+                            if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
+                                new_node.name = "adma_ref_clk"
+                            else:
+                                new_node.name = node.label + "_ref_clock"
+                            new_node['compatible'] = ["fixed-clock"]
+                            new_node['#clock-cells'] = 0
+                            if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
+                                clk_freq = 450000000
+                            new_node['clock-frequency'] = clk_freq
+                            new_node.label_set(new_node.name)
+                            sdt.tree.add(new_node)
+                            if node.props('clocks') != []:
+                                node.delete('clocks')
+                            if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
+                                clock_prop = f"clocks = <&{new_node.name}>, <&{new_node.name}>"
+                            else:
+                                clock_prop = f"clocks = <&{new_node.name}>"
+                            node + LopperProp(clock_prop)
                         for prop in prop_list:
                             if prop not in required_prop:
                                 node.delete(prop)
                     else:
-                        if node.name not in ("axi", "soc") and node not in memnode_list:
+                        if node.name not in ("axi", "soc") and node not in memnode_list and not xlnx_openamp_keep_node(False, True, node, sdt.tree):
                             sdt.tree.delete(node)
 
     alias_node = sdt.tree['/aliases']
@@ -1120,6 +1165,10 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                             if node.propval('reg-shift') != ['2']:
                                node["reg-shift"] = LopperProp("reg-shift")
                                node["reg-shift"].value = 2
+                            if node.propval('current-speed') == ['']:
+                               # Using default IP baud-rate of 9600, but change according to uart-setup for prints
+                               node["current-speed"] = LopperProp("current-speed")
+                               node["current-speed"].value = 9600
                         # MDM RISCV DEBUG UARTLITE
                         if "xlnx,mdm-riscv-1.0" in node["compatible"].value:
                             node["compatible"].value = ["xlnx,xps-uartlite-1.00a"]

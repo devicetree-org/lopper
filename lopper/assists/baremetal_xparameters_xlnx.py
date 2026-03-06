@@ -116,7 +116,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
             if has_drivers:
                 has_drivers = os.path.join(utils.get_dir_path(sdt.dts), "drivers")
                 yaml_list = glob.glob(has_drivers + '/**/data/*.yaml', recursive=True)
-                yaml_file_abs = [yaml for yaml in yaml_list if f"{drv}.yaml" in yaml]
+                yaml_file_abs = [yaml for yaml in yaml_list if f"{drv}.yaml" == utils.get_base_name(yaml)]
                 if yaml_file_abs:
                     yaml_file_abs = yaml_file_abs[0]
         else:

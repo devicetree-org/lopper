@@ -444,9 +444,210 @@ def assist_reference( tgt_node, sdt, options ):
         elif any(re.search('glob_test', s) for s in args):
             res = glob_test( sdt, args[0] )
             return res
+        elif "phandle_ref_test" in args:
+            res = phandle_ref_test( sdt )
+            return res
+        elif "reserved_memory_e2e_test" in args:
+            res = reserved_memory_e2e_test( sdt )
+            return res
         else:
             domains_access_test( sdt )
             return True
     except Exception as e:
         print( f"Exception during assist-sanity {e}")
         pass
+
+def phandle_ref_test( sdt ):
+    """Test label_to_phandle resolution for YAML phandle references.
+
+    Tests:
+    1. Explicit "&label" syntax resolution
+    2. Bare label resolution for known phandle properties
+    3. Label registration via 'label:' property
+    """
+    print( f"[INFO]: running phandle_ref_test" )
+
+    try:
+        # Check that reserved-memory nodes exist and have labels
+        test_reserved = sdt.tree.lnodes("test_reserved")
+        if test_reserved:
+            print( f"[PASS]: test_reserved label registered in tree" )
+        else:
+            print( f"[FAIL]: test_reserved label not found in tree" )
+            return False
+
+        another_reserved = sdt.tree.lnodes("another_reserved")
+        if another_reserved:
+            print( f"[PASS]: another_reserved label registered in tree" )
+        else:
+            print( f"[FAIL]: another_reserved label not found in tree" )
+            return False
+
+        # Check that test-node exists
+        test_nodes = sdt.tree.nodes("test-node")
+        if not test_nodes:
+            print( f"[FAIL]: test-node not found in tree" )
+            return False
+
+        test_node = test_nodes[0]
+
+        # Check memory-region property - should have resolved phandles (integers)
+        try:
+            mem_region = test_node["memory-region"]
+            mem_val = mem_region.value
+
+            # Should be a list of integers (phandles), not strings
+            if isinstance(mem_val, list) and len(mem_val) >= 2:
+                if isinstance(mem_val[0], int) and isinstance(mem_val[1], int):
+                    print( f"[PASS]: memory-region resolved to phandles: {mem_val}" )
+                else:
+                    print( f"[FAIL]: memory-region values are not integers: {mem_val}" )
+                    return False
+            else:
+                print( f"[FAIL]: memory-region unexpected format: {mem_val}" )
+                return False
+
+            # Verify the phandles match the target nodes
+            if mem_val[0] == test_reserved[0].phandle:
+                print( f"[PASS]: first phandle matches test_reserved" )
+            else:
+                print( f"[FAIL]: first phandle {mem_val[0]} != test_reserved.phandle {test_reserved[0].phandle}" )
+                return False
+
+            if mem_val[1] == another_reserved[0].phandle:
+                print( f"[PASS]: second phandle matches another_reserved" )
+            else:
+                print( f"[FAIL]: second phandle {mem_val[1]} != another_reserved.phandle {another_reserved[0].phandle}" )
+                return False
+
+        except Exception as e:
+            print( f"[FAIL]: error accessing memory-region: {e}" )
+            return False
+
+        # Check interrupt-parent - bare label resolution
+        try:
+            int_parent = test_node["interrupt-parent"]
+            int_val = int_parent.value
+
+            # Should be an integer (phandle) or list with one integer
+            if isinstance(int_val, list):
+                int_val = int_val[0]
+
+            if isinstance(int_val, int):
+                print( f"[PASS]: interrupt-parent resolved to phandle: {int_val}" )
+            elif int_val == "gic_a72":
+                # If gic_a72 doesn't exist in tree, value stays as string
+                print( f"[INFO]: interrupt-parent stayed as string (gic_a72 not in tree)" )
+            else:
+                print( f"[FAIL]: interrupt-parent unexpected value: {int_val}" )
+                return False
+
+        except Exception as e:
+            print( f"[FAIL]: error accessing interrupt-parent: {e}" )
+            return False
+
+        print( f"[PASS]: phandle_ref_test completed successfully" )
+        return True
+
+    except Exception as e:
+        print( f"[FAIL]: exception in phandle_ref_test: {e}" )
+        return False
+
+
+def reserved_memory_e2e_test( sdt ):
+    """End-to-end test for reserved-memory handling.
+
+    Tests:
+    1. Boolean property expansion (reusable, linux,cma-default -> empty props)
+    2. start/size to reg conversion
+    3. Reserved-memory nodes referenced by devices (via memory-region) survive filtering
+    4. Unreferenced reserved-memory nodes are pruned
+    5. pnode() lookups work correctly after phandle_or_create()
+
+    NOTE: Reserved-memory nodes survive only if something OUTSIDE /domains/
+    references them (e.g., a device with memory-region = <&node>). The domain's
+    reserved-memory property is metadata and does not keep nodes alive.
+    """
+    print( f"[INFO]: running reserved_memory_e2e_test" )
+
+    try:
+        # Check that /reserved-memory exists
+        try:
+            resmem = sdt.tree['/reserved-memory']
+        except:
+            print( f"[FAIL]: /reserved-memory node not found" )
+            return False
+
+        print( f"[PASS]: /reserved-memory node exists" )
+
+        # Check that referenced nodes exist
+        referenced_nodes = ['cma_pool@10000000', 'nomap_region@30000000', 'yaml_cma@60000000']
+        for node_name in referenced_nodes:
+            found = False
+            for child in resmem.subnodes(children_only=True):
+                if child.name == node_name:
+                    found = True
+                    # Verify phandle is set and in __pnodes__
+                    if child.phandle > 0:
+                        pnode_lookup = sdt.tree.pnode(child.phandle)
+                        if pnode_lookup == child:
+                            print( f"[PASS]: {node_name} phandle {child.phandle} correctly indexed in __pnodes__" )
+                        else:
+                            print( f"[FAIL]: {node_name} phandle {child.phandle} not found via pnode() lookup" )
+                            return False
+                    break
+            if not found:
+                print( f"[FAIL]: referenced node {node_name} not found (should survive filtering)" )
+                return False
+            print( f"[PASS]: referenced node {node_name} found" )
+
+        # Check that unreferenced node was pruned
+        for child in resmem.subnodes(children_only=True):
+            if child.name == 'unused@50000000' or 'unreferenced' in child.name:
+                print( f"[FAIL]: unreferenced node {child.name} should have been pruned" )
+                return False
+        print( f"[PASS]: unreferenced nodes correctly pruned" )
+
+        # Check boolean property expansion on yaml_cma
+        yaml_cma = None
+        for child in resmem.subnodes(children_only=True):
+            if 'yaml_cma' in child.name:
+                yaml_cma = child
+                break
+
+        if yaml_cma:
+            # Check reusable property exists and is empty (boolean)
+            reusable = yaml_cma.props('reusable')
+            if reusable:
+                print( f"[PASS]: reusable property exists on yaml_cma" )
+            else:
+                print( f"[FAIL]: reusable property not found on yaml_cma" )
+                return False
+
+            # Check linux,cma-default property exists
+            cma_default = yaml_cma.props('linux,cma-default')
+            if cma_default:
+                print( f"[PASS]: linux,cma-default property exists on yaml_cma" )
+            else:
+                print( f"[FAIL]: linux,cma-default property not found on yaml_cma" )
+                return False
+
+            # Check reg property exists (start/size conversion)
+            reg = yaml_cma.propval('reg')
+            if reg and reg != ['']:
+                print( f"[PASS]: reg property exists on yaml_cma (start/size converted)" )
+            else:
+                print( f"[FAIL]: reg property not found on yaml_cma" )
+                return False
+        else:
+            print( f"[FAIL]: yaml_cma node not found" )
+            return False
+
+        print( f"[PASS]: reserved_memory_e2e_test completed successfully" )
+        return True
+
+    except Exception as e:
+        print( f"[FAIL]: exception in reserved_memory_e2e_test: {e}" )
+        import traceback
+        traceback.print_exc()
+        return False

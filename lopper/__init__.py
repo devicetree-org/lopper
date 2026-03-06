@@ -213,6 +213,8 @@ class LopperSDT:
                         if lstripped.startswith('incompatible ='):
                             # Get everything after '='
                             rhs = lstripped.split('=', 1)[1].strip()
+                            # Remove trailing semicolon (DTS syntax)
+                            rhs = rhs.rstrip(';').strip()
                             other_names = [name.strip().strip('"') for name in rhs.split(',')]
                             for other_name in other_names:
                                 if other_name in basenames:
@@ -543,7 +545,12 @@ class LopperSDT:
             else:
                 self.FDT = None
             self.tree = lt
+            self.tree.warnings = self.warnings
+            self.tree.werror = self.werror
             self.tree.strict = not self.permissive
+
+            # Do a check for common sanity issues here, invalid phandles, etc.
+            self.tree.resolve( check=True )
 
             fpp.close()
             self.tmpfiles.append( fpp.name )
@@ -557,8 +564,13 @@ class LopperSDT:
                     sys.exit(1)
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
                 self.tree = LopperTree()
-                self.tree.load( Lopper.export( self.FDT ) )
+                self.tree.warnings = self.warnings
+                self.tree.werror = self.werror
                 self.tree.strict = not self.permissive
+                self.tree.load( Lopper.export( self.FDT ) )
+
+                # Do a check for common sanity issues here, invalid phandles, etc.
+                self.tree.resolve( check=True )
 
         try:
             lops = self.tree["/lops"]
@@ -879,7 +891,7 @@ class LopperSDT:
                     lopper.log._error( f"werror is enabled, and no compatible output assist found, exiting" )
                     sys.exit(2)
 
-    def find_any_matching_assists(self, input_files, local_search_paths=[]):
+    def find_any_matching_assists(self, input_files, local_search_paths=[], xlate_fallback=False):
         """Locates assist files that match any of the given input files (BitBake-style)
 
         This routine searches both system directories (lopper_directory, lopper_directory +
@@ -893,6 +905,9 @@ class LopperSDT:
            input_files (list of strings): input file names (can include paths)
            local_search_paths (list of strings, optional): list of directories to search
                                                            in addition to system dirs
+           xlate_fallback (bool, optional): if True, fall back to legacy lop-xlate-{ext}.dts
+                                            pattern when no BitBake match is found. This
+                                            maintains backward compatibility with -x/--xlate.
 
         Returns:
            list of strings: Sorted list of unique absolute paths to assist files
@@ -918,17 +933,44 @@ class LopperSDT:
         found = set()
         for file_path in input_files:
             base = os.path.basename(file_path)
+            file_matched = False
             for assist_path in assists:
                 assist_fname = os.path.basename(assist_path)
                 # Exact match
                 if assist_fname == base:
                     found.add(assist_path)
-                # Wildcard match: BitBake style
+                    file_matched = True
+                # Wildcard match: BitBake style with prefix and suffix support
+                # Examples:
+                #   domain%.lop      -> matches files starting with "domain"
+                #   %.yaml.lop       -> matches files ending with ".yaml"
+                #   domain%.yaml.lop -> matches files starting with "domain" AND ending with ".yaml"
                 elif '%' in assist_fname:
                     idx = assist_fname.index('%')
                     prefix = assist_fname[:idx]
-                    if base.startswith(prefix):
+
+                    # Remove .lop or .dts extension to get the suffix pattern
+                    assist_base, _ = os.path.splitext(assist_fname)  # e.g., "domain%.yaml" or "%.yaml"
+                    suffix = assist_base[idx+1:]  # Everything after % (e.g., ".yaml" or "")
+
+                    # Check prefix and suffix
+                    matches_prefix = base.startswith(prefix) if prefix else True
+                    matches_suffix = base.endswith(suffix) if suffix else True
+
+                    if matches_prefix and matches_suffix:
                         found.add(assist_path)
+                        file_matched = True
+
+            # Fallback: check for legacy lop-xlate-{extension}.dts pattern
+            # This maintains backward compatibility with -x/--xlate usage
+            if xlate_fallback and not file_matched:
+                _, ext = os.path.splitext(base)
+                if ext:
+                    ext_name = ext.lstrip('.')  # ".yaml" -> "yaml"
+                    legacy_lop = f"lop-xlate-{ext_name}.dts"
+                    for assist_path in assists:
+                        if os.path.basename(assist_path) == legacy_lop:
+                            found.add(assist_path)
 
         return sorted(found)  # sorted for determinism
 
@@ -2130,6 +2172,10 @@ class LopperSDT:
             except:
                 options['outdir'] = self.outdir
 
+            # make target_domain available to code lops
+            if self.target_domain:
+                options['target_domain'] = self.target_domain
+
             try:
                 start_node = options['start_node']
             except:
@@ -2267,51 +2313,11 @@ class LopperSDT:
                         # if the value has a "&", it is a phandle, and we need
                         # to try and look it up.
                         if re.search( r'&', modify_val ):
-                            node = modify_val.split( '#' )[0]
-                            try:
-                                node_property =  modify_val.split( '#' )[1]
-                            except:
-                                node_property = None
-
-                            phandle_node_name = re.sub( r'&', '', node )
-
                             # check to see if the match should be strict
                             strict = False
                             if "strict" in flags:
                                 strict = True
-
-                            pfnodes = tree.nodes( phandle_node_name, strict )
-                            if not pfnodes:
-                                pfnodes = tree.lnodes( phandle_node_name )
-                                if not pfnodes:
-                                    # was it a local phandle (i.e. in the lop tree?)
-                                    pfnodes = lops_tree.nodes( phandle_node_name )
-                                    if not pfnodes:
-                                        pfnodes = lops_tree.lnodes( phandle_node_name )
-
-                            if node_property:
-                                # there was a node property, that means we actualy need
-                                # to lookup the phandle and find a property within it. That's
-                                # the replacement value
-                                if pfnodes:
-                                    try:
-                                        modify_val = pfnodes[0][node_property].value
-                                    except:
-                                        modify_val = pfnodes[0].phandle
-                                else:
-                                    modify_val = 0
-                            else:
-                                if pfnodes:
-                                    phandle = pfnodes[0].phandle
-                                    if not phandle:
-                                        # this is a reference, generate a phandle
-                                        pfnodes[0].phandle = tree.phandle_gen()
-                                        phandle = pfnodes[0].phandle
-                                else:
-                                    phandle = 0
-
-                                modify_val = phandle
-
+                            modify_val = tree.label_to_phandle( modify_val, strict, lops_tree )
                         else:
                             modify_val = Lopper.property_convert( modify_val )
 
@@ -2521,7 +2527,36 @@ class LopperSDT:
                         skip_list.remove( f )
 
                     try:
-                        noexec = f['noexec']
+                        noexec_prop = f['noexec']
+                        noexec_val = noexec_prop.value
+                        # noexec; or noexec = 1; means skip unconditionally
+                        # noexec = 0; means run it (don't skip)
+                        # noexec = "expression"; evaluated as Python expression
+                        #   - "not __selected__" : skip if nothing is selected
+                        #   - "__selected__" : skip if something is selected
+                        if noexec_val == [''] or noexec_val == [1] or noexec_val == 1:
+                            noexec = True
+                        elif noexec_val == [0] or noexec_val == 0:
+                            noexec = False
+                        elif isinstance(noexec_val, list) and len(noexec_val) == 1 and isinstance(noexec_val[0], str):
+                            # Expression evaluation - provide context similar to code-v1 lops
+                            expr = noexec_val[0]
+                            eval_context = {
+                                '__selected__': self.tree.__selected__,
+                                'tree': self.tree,
+                                'True': True,
+                                'False': False,
+                                'len': len,
+                            }
+                            try:
+                                noexec = bool(eval(expr, {"__builtins__": {}}, eval_context))
+                                lopper.log._debug( f"noexec expression '{expr}' evaluated to {noexec}" )
+                            except Exception as e:
+                                lopper.log._warning( f"noexec expression '{expr}' failed to evaluate: {e}" )
+                                noexec = False
+                        else:
+                            # Unknown format, treat as truthy (skip)
+                            noexec = bool(noexec_val)
                     except:
                         noexec = False
 
@@ -2543,7 +2578,12 @@ class LopperSDT:
 
                     lopper.log._info( f"------> processing lop: {f.abs_path} {f.name}" )
 
-                    result = self.exec_lop( f, fdt_tree )
+                    # Pass target_domain to lop processing via options
+                    lop_options = None
+                    if self.target_domain:
+                        lop_options = {'target_domain': self.target_domain}
+
+                    result = self.exec_lop( f, fdt_tree, lop_options )
                     lop_results[f.name] = result
 
                     lopper.log._info( f"------> logged result {result} for lop {f.name}" )

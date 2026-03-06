@@ -6,3 +6,8 @@ PyYAML
 ruamel.yaml
 ruamel.yaml.clib
 six
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-xdist>=3.3.0  # for parallel test execution
+pytest-timeout>=2.1.0  # for test timeouts

@@ -332,8 +332,9 @@ cdns,spi-r1p6:
     - reg
     - interrupts
     - interrupt-parent
-    - cdns,num-ss-bits
-    - is-decoded-cs
+    - tx-fifo-depth
+    - rx-fifo-depth
+    - fifo-width
     - clock-frequency
     - clocks
     - '#address-cells'
@@ -374,3 +375,14 @@ mmio-sram:
   required:
     - compatible
     - reg
+
+xlnx,zynqmp-rtc:
+  required:
+    - compatible
+    - reg
+    - status
+    - clock-frequency
+    - interrupts
+    - interrupt-parent
+    - interrupt-names
+    - alarms-count
