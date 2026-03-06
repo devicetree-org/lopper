@@ -133,7 +133,12 @@ Usage: lopper [OPTION] <system device tree> [<output file>]...
                           invalid_phandle (warn on invalid phandles)
                           duplicate_phandle (warn on duplicate phandle values)
                           phandle_change (warn when phandle value changes)
+                          memory_cells (validate #address-cells, #size-cells)
+                          memory_reg (validate reg property format)
+                          memory_overlap (detect reserved-memory overlaps)
+                          memory_all (enable all memory checks)
                           all (enable all warnings)
+    , --memmap        output file for memory map visualization (use - for stdout)
     , --symbols       generate (and maintain) the __symbols__ node during processing
   -o, --output        output file
     , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes

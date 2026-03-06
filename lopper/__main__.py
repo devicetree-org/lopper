@@ -76,7 +76,15 @@ def usage():
     print('                          invalid_phandle (warn on invalid phandle references)' )
     print('                          duplicate_phandle (warn on duplicate phandle values)' )
     print('                          phandle_change (warn when phandle value changes)' )
+    print('                          memory_cells (validate #address-cells, #size-cells)' )
+    print('                          memory_reg (validate reg property format)' )
+    print('                          memory_overlap (detect reserved-memory overlaps)' )
+    print('                          reserved_bounds (reserved-memory in domain bounds)' )
+    print('                          domain_overlap (overlaps within a domain)' )
+    print('                          cross_domain_overlap (overlaps between domains)' )
+    print('                          memory_all (enable all memory checks)' )
     print('                          all (enable all warnings)' )
+    print('    , --memmap        output file for memory map visualization (use - for stdout)' )
     print('    , --symbols       generate (and maintain) the __symbols__ node during processing' )
     print('  -o, --output        output file')
     print('    , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes' )
@@ -123,6 +131,7 @@ def main():
     warnings = []
     usage_flag = False
     schema = None
+    memmap_file = None
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "I:W:A:t:dfvdhi:o:a:SO:D:x:",
@@ -130,7 +139,8 @@ def main():
                                      "schema=", "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
                                      "assist=","server", "auto", "permissive", 'symbols', "xlate=",
-                                     "no-libfdt", "overlay", "cfgfile=", "cfgval=", "input-dirs"] )
+                                     "no-libfdt", "overlay", "cfgfile=", "cfgval=", "input-dirs",
+                                     "memmap="] )
     except getopt.GetoptError as err:
         _error(f"{err}")
         usage()
@@ -197,6 +207,8 @@ def main():
         elif o in ('-W'):
             # warning processing
             warnings.append(a)
+        elif o in ('--memmap'):
+            memmap_file = a
         elif o in ('--version'):
             print( f"{LOPPER_VERSION}" )
             sys.exit(0)
@@ -432,6 +444,7 @@ def main():
     device_tree.symbols = symbols
     device_tree.warnings = warnings
     device_tree.schema = schema
+    device_tree.memmap_file = memmap_file
 
     # Backwards compatibility: if lop-xlate-yaml.dts is explicitly passed,
     # remove it from the input list and enable auto-matching so %.yaml.lop
@@ -506,6 +519,29 @@ def main():
         sys.exit(1)
     else:
         device_tree.perform_lops()
+
+    # Run audit validation phases if any warnings are enabled
+    if warnings:
+        from lopper.audit.base import run_audit_phase, ValidationPhase
+        # Run EARLY and POST_YAML phases (POST_PROCESSING runs after domain processing)
+        error_count = run_audit_phase(ValidationPhase.EARLY, device_tree.tree, warnings, werror)
+        error_count += run_audit_phase(ValidationPhase.POST_YAML, device_tree.tree, warnings, werror)
+        # Run POST_PROCESSING phase (final consistency checks)
+        error_count += run_audit_phase(ValidationPhase.POST_PROCESSING, device_tree.tree, warnings, werror)
+        if error_count > 0 and werror:
+            _error(f"audit validation failed with {error_count} error(s)", also_exit=1)
+
+    # Generate memory map visualization if requested
+    if memmap_file:
+        from lopper.audit.memviz import render_memory_map
+        title = target_domain if target_domain else "System"
+        memmap_output = render_memory_map(device_tree.tree, title=title)
+        if memmap_file == "-":
+            print(memmap_output)
+        else:
+            with open(memmap_file, 'w') as f:
+                f.write(memmap_output)
+            _info(f"memory map written to {memmap_file}")
 
     if not dryrun:
         # write any changes to the FDT, before we do our write
