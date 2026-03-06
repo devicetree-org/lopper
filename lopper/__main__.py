@@ -432,6 +432,18 @@ def main():
     device_tree.warnings = warnings
     device_tree.schema = schema
 
+    # Backwards compatibility: if lop-xlate-yaml.dts is explicitly passed,
+    # remove it from the input list and enable auto-matching so %.yaml.lop
+    # handles the actual YAML processing. This avoids incompatibility errors
+    # since %.yaml.lop declares incompatibility with lop-xlate-yaml.dts.
+    legacy_xlate_files = [f for f in inputfiles if os.path.basename(f) == "lop-xlate-yaml.dts"]
+    for f in legacy_xlate_files:
+        inputfiles.remove(f)
+    if legacy_xlate_files and not auto_run:
+        auto_run = True
+        xlate_fallback = True
+        device_tree.autorun = True
+
     if auto_run:
         # look for lops that match the pattern of the input
         # files, if so, queue them to run
