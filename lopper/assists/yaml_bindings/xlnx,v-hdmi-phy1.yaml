@@ -210,6 +210,16 @@ properties:
     description: |
       Reference to the GPIO
 
+  xlnx,dru-refclk2-min-hz:
+    description: Minimum DRU reference clock 2 frequency in Hz.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    default: 399990000
+
+  xlnx,dru-refclk2-max-hz:
+    description: Maximum DRU reference clock 2 frequency in Hz.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    default: 400010000
+
   "#phy-cells":
     const: 0
 
@@ -242,6 +252,8 @@ required:
   - xlnx,hdmi-connector
   - rxch4-sel-gpios
   - xlnx,gt-direction
+  - xlnx,dru-refclk2-min-hz
+  - xlnx,dru-refclk2-max-hz
   - '#phy-cells'
 
 additionalProperties: false
@@ -276,8 +288,12 @@ examples:
            xlnx,tx-max-gt-line-rate = <0xc>;
            xlnx,rx-clk-primitive = <0x0>;
            xlnx,tx-clk-primitive = <0x0>;
+           xlnx,dru-refclk2-min-hz = <399990000>;
+           xlnx,dru-refclk2-max-hz = <400010000>;
            #phy-cells = <0>;
    };
+
+   /* Example node for VCK190/VEK280 board */
    v_hdmi_gt@80050000 {
            clock-names = "axi4lite_aclk", "drpclk";
            clocks =  <&zynqmp_clk 71>, <&zynqmp_clk 71>;
@@ -307,6 +323,42 @@ examples:
            xlnx,tx-max-gt-line-rate = <0xc>;
            xlnx,rx-clk-primitive = <0x0>;
            xlnx,tx-clk-primitive = <0x0>;
+           xlnx,dru-refclk2-min-hz = <399990000>;
+           xlnx,dru-refclk2-max-hz = <400010000>;
            #phy-cells = <0>;
    };
-...
+
+   /* Example node for VEK385 board */
+   v_hdmi_gt@80060000 {
+           clock-names = "axi4lite_aclk", "drpclk";
+           clocks =  <&zynqmp_clk 71>, <&zynqmp_clk 71>;
+           compatible = "xlnx,v-hdmi-gt-controller-1.0";
+           interrupt-parent = <&gic>;
+           interrupts = <0 89 4>;
+           reg = <0x80060000 0x10000>;
+           rxch4-sel-gpios = <&foo_gpio2 18 1>;
+           xlnx,transceiver-type = <5>;
+           xlnx,tx-no-of-channels = <4>;
+           xlnx,rx-no-of-channels = <4>;
+           xlnx,rx-protocol = <2>;
+           xlnx,tx-protocol = <2>;
+           xlnx,tx-refclk-sel = <2>;
+           xlnx,rx-refclk-sel = <0>;
+           xlnx,tx-frl-refclk-sel = <2>;
+           xlnx,rx-frl-refclk-sel = <0>;
+           xlnx,tx-pll-selection = <6>;
+           xlnx,rx-pll-selection = <0>;
+           xlnx,nidru = <1>;
+           xlnx,nidru-refclk-sel = <4>;
+           xlnx,transceiver-width = <4>;
+           xlnx,gt-direction = <3>;
+           xlnx,input-pixels-per-clock = <4>;
+           xlnx,use-gt-ch4-hdmi = <1>;
+           xlnx,rx-max-gt-line-rate = <0xc>;
+           xlnx,tx-max-gt-line-rate = <0xc>;
+           xlnx,rx-clk-primitive = <0x0>;
+           xlnx,tx-clk-primitive = <0x0>;
+           xlnx,dru-refclk2-min-hz = <399970000>;
+           xlnx,dru-refclk2-max-hz = <400050000>;
+           #phy-cells = <0>;
+   };
