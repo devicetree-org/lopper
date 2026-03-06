@@ -836,3 +836,90 @@ class TestNodeMerge:
 
         # Target should have gained source's properties
         # (cpus has #address-cells, #size-cells which root also has)
+
+
+class TestNodeIsCompatible:
+    """Tests for LopperNode.is_compatible() method."""
+
+    def test_is_compatible_substring_match(self, lopper_tree):
+        """Test substring matching (default mode)."""
+        # Find a node with a compatible property
+        root = lopper_tree['/']
+
+        # The root node should have a compatible property
+        if root.type and root.type != [""]:
+            # Test that substring matching works
+            first_compat = root.type[0]
+            # Use a substring of the first compatible
+            if len(first_compat) > 4:
+                substring = first_compat[2:6]
+                assert root.is_compatible(substring), \
+                    f"Substring '{substring}' should match '{first_compat}'"
+
+    def test_is_compatible_exact_match(self, lopper_tree):
+        """Test exact matching mode."""
+        root = lopper_tree['/']
+
+        if root.type and root.type != [""]:
+            first_compat = root.type[0]
+            # Exact match should work
+            assert root.is_compatible(first_compat, match_type="exact"), \
+                f"Exact match for '{first_compat}' failed"
+            # Substring should NOT match in exact mode
+            if len(first_compat) > 4:
+                substring = first_compat[2:6]
+                assert not root.is_compatible(substring, match_type="exact"), \
+                    f"Substring '{substring}' should not exact-match '{first_compat}'"
+
+    def test_is_compatible_regex_match(self, lopper_tree):
+        """Test regex matching mode."""
+        root = lopper_tree['/']
+
+        if root.type and root.type != [""]:
+            first_compat = root.type[0]
+            # Regex with .* should match
+            assert root.is_compatible(r".*", match_type="regex"), \
+                "Regex '.*' should match anything"
+            # More specific regex
+            if "," in first_compat:
+                prefix = first_compat.split(",")[0]
+                pattern = f"^{prefix},.*"
+                assert root.is_compatible(pattern, match_type="regex"), \
+                    f"Regex '{pattern}' should match '{first_compat}'"
+
+    def test_is_compatible_list_input(self, lopper_tree):
+        """Test matching against a list of strings."""
+        root = lopper_tree['/']
+
+        if root.type and root.type != [""]:
+            first_compat = root.type[0]
+            # List with matching entry should return True
+            assert root.is_compatible([first_compat, "nonexistent"]), \
+                "List containing valid compat should match"
+            # List with no matching entries should return False
+            assert not root.is_compatible(["nonexistent1", "nonexistent2"]), \
+                "List with no valid entries should not match"
+
+    def test_is_compatible_no_type(self, lopper_tree):
+        """Test behavior when node has no type."""
+        # Create a node without resolving it (no type populated)
+        node = LopperNode(name="test-node")
+        node.type = []
+
+        assert not node.is_compatible("anything"), \
+            "Node with empty type should return False"
+
+        node.type = [""]
+        assert not node.is_compatible("anything"), \
+            "Node with [''] type should return False"
+
+    def test_is_compatible_type_attribute_populated(self, lopper_tree):
+        """Test that type attribute is properly populated from compatible."""
+        # Find a node that we know has compatible property
+        for node in lopper_tree:
+            compat_prop = node.propval('compatible')
+            if compat_prop != [""]:
+                # Type should match the compatible property value
+                assert node.type == compat_prop, \
+                    f"Node type {node.type} should equal compatible {compat_prop}"
+                break

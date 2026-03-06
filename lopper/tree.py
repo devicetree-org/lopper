@@ -1772,6 +1772,7 @@ class LopperNode(object):
        - resolve(): to update/calculate properties against the tree
        - sync(): sync modified node elements (and properties)
        - deep node copy via LopperNode()
+       - is_compatible(): check node type against compatible strings
 
      Attributes:
        - number: the node number in the backing structure
@@ -1781,7 +1782,9 @@ class LopperNode(object):
        - depth: the nodes depth in the backing structure (0 is root, 1 for first level children)
        - child_nodes: the list of child LopperNodes
        - phandle: the phandle in the backing FDT (optional)
-       - type: the type of the node (based on 'compatible' property)
+       - type: list of compatible strings from the node's 'compatible' property.
+               Populated during node resolution. Use is_compatible() for matching,
+               or check directly: "arm,cortex-a72" in node.type
        - abs_path: the full/absolute path to this node in the backing FDT
        - _ref: the refcount for this node
        - __props__: ordered dictionary of LopperProp
@@ -1789,6 +1792,19 @@ class LopperNode(object):
        - __dbg__: debug level for the node
        - __nstate__: the state of the node ("init", "resolved" )
        - __modified__: flag indicating if the node has been modified
+
+    Example:
+        # Check node compatibility (preferred method)
+        if node.is_compatible("xlnx,axi-noc"):
+            # Handle NOC memory node
+
+        # Direct type access
+        if "arm,cortex-a72" in node.type:
+            # Handle Cortex-A72 CPU
+
+        # Iterate over all compatible strings
+        for compat in node.type:
+            print(compat)
 
     """
     def __init__(self, number = -1, abspath="", tree = None, phandle = -1, name = "", debug=0 ):
@@ -1805,8 +1821,16 @@ class LopperNode(object):
 
         self.label = ""
 
-        # 'type' is roughly equivalent to a compatible property in
-        # the node if it exists.
+        # 'type' contains the node's compatible strings as a list.
+        # This is populated during node resolution from the 'compatible'
+        # property. Use this instead of accessing node['compatible'].value
+        # directly. For compatibility checks, prefer the is_compatible()
+        # method which supports substring and regex matching.
+        #
+        # Examples:
+        #   node.type  ->  ["arm,cortex-a72", "arm,armv8"]
+        #   "arm,cortex-a72" in node.type  ->  True
+        #   node.is_compatible("cortex")  ->  True (substring match)
         self.type = []
 
         if abspath:
@@ -2962,6 +2986,63 @@ class LopperNode(object):
                     return self.__props__[pname].value
             except:
                 return [""]
+
+    def is_compatible(self, compat_string, match_type="substring"):
+        """Check if the node is compatible with the given string(s).
+
+        This method checks the node's type attribute (populated from the
+        'compatible' property) against the provided compatibility string(s).
+        Use this instead of directly accessing node['compatible'].value.
+
+        Args:
+            compat_string: A string or list of strings to match against.
+                          For lists, returns True if ANY string matches.
+            match_type: How to match the strings:
+                       - "substring" (default): compat_string is a substring
+                         of any compatible value (e.g., "noc" matches "xlnx,axi-noc")
+                       - "exact": compat_string exactly equals a compatible value
+                       - "regex": compat_string is a regex pattern
+
+        Returns:
+            bool: True if the node is compatible, False otherwise.
+                  Returns False if the node has no type/compatible.
+
+        Examples:
+            # Substring match (default)
+            node.is_compatible("cortex-a72")  # matches "arm,cortex-a72"
+            node.is_compatible("xlnx,axi-noc")  # matches "xlnx,axi-noc-2.0"
+
+            # Exact match
+            node.is_compatible("arm,cortex-a72", match_type="exact")
+
+            # Regex match
+            node.is_compatible(r"xlnx,axi-noc.*", match_type="regex")
+
+            # Multiple strings (any match)
+            node.is_compatible(["arm,gic-v3", "arm,gic-400"])
+        """
+        if not self.type or self.type == [""]:
+            return False
+
+        # Normalize to list
+        if isinstance(compat_string, str):
+            compat_strings = [compat_string]
+        else:
+            compat_strings = compat_string
+
+        for cs in compat_strings:
+            for node_compat in self.type:
+                if match_type == "exact":
+                    if cs == node_compat:
+                        return True
+                elif match_type == "regex":
+                    if re.search(cs, node_compat):
+                        return True
+                else:  # substring (default)
+                    if cs in node_compat:
+                        return True
+
+        return False
 
     def reset(self):
         """reset the iterator of the node

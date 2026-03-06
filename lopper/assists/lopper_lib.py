@@ -310,21 +310,45 @@ def all_refs( tree, node ):
 
 # returns True if a node is compatible with the passed string
 # (or list of strings)
+#
+# DEPRECATED: Use node.is_compatible() instead for new code.
+# This function is maintained for backwards compatibility.
+#
+# Examples:
+#   is_compat(node, "xlnx,axi-noc")  # substring match
+#   node.is_compatible("xlnx,axi-noc")  # preferred
 def is_compat( node, compat_string ):
-    try:
-        node_compat = node['compatible'].value
-    except:
+    """Check if a node is compatible with the given string(s).
+
+    This function checks the node's type attribute (populated from the
+    'compatible' property) against the provided compatibility string(s).
+
+    Note: For new code, prefer using node.is_compatible() directly.
+
+    Args:
+        node: A LopperNode to check
+        compat_string: A string or list of strings to match (substring match)
+
+    Returns:
+        bool: True if compatible, False if not, None if node has no type
+    """
+    # Use the node's type attribute (populated from compatible property)
+    # instead of accessing node['compatible'].value directly
+    node_compat = node.type
+    if not node_compat or node_compat == [""]:
         return None
 
-    if type(compat_string) == list:
-        x = None
+    if isinstance(compat_string, list):
         for c in compat_string:
-            if not x:
-                x = [item for item in node_compat if c in item]
+            for item in node_compat:
+                if c in item:
+                    return True
     else:
-        x = [item for item in node_compat if compat_string in item]
+        for item in node_compat:
+            if compat_string in item:
+                return True
 
-    return x != []
+    return False
 
 # process cpus, and update their references appropriately
 def cpu_refs( tree, cpu_prop, verbose = 0 ):
