@@ -59,6 +59,7 @@ This step transforms the domain-specific device-tree from Step 1 into a Zephyr-c
 - ``{workspace}``: Output directory for generated files
 - ``system-domain.dts``: Domain-specific device-tree file generated in Step 1
 - ``{proc}``: Processor name (refer to the processor name in the ``pl.dtsi`` file - this varies based on the processor configuration in the Vivado design)
+
 **Optional**: - ``{zephyr_board_dts}``: Zephyr board-specific device-tree configuration. When provided, it will be compared against the domain-specific device-tree and removes unneeded nodes as per design configuration or mapping requirements
 
 **Output**: ``system-zephyr.dts`` - Zephyr-specific device-tree file
@@ -100,8 +101,8 @@ Example Workflow
 For Versal Gen 2 Platform:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Basic Workflow (without board-specific device-tree):
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Gen 2 Basic Workflow (without board-specific device-tree):
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ::
 
@@ -111,8 +112,9 @@ Basic Workflow (without board-specific device-tree):
     # Step 2: Generate Zephyr-specific device-tree
     lopper -f --enhanced -O ./output ./output/system-domain.dts ./output/system-zephyr.dts -- gen_domain_dts cortexa78_0 zephyr_dt
 
-Advanced Workflow (with board-specific device-tree optimization):
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Gen 2 Advanced Workflow (with board-specific device-tree optimization):
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ::
 
