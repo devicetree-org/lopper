@@ -71,13 +71,13 @@ This step transforms the domain-specific device-tree from Step 1 into a Zephyr-c
 Platform-Specific Processor Names
 ---------------------------------
 
-+----------------+--------------------+
-| Platform       | Processor Name     |
-+================+====================+
-| Versal Gen 2   | ``cortexr52_0``    |
-+----------------+--------------------+
++----------------+---------------------+
+| Platform       | Processor Name      |
++================+=====================+
+| Versal Gen 2   | ``cortexr52_0``     |
++----------------+---------------------+
 | Versal Net     | ``psx_cortexr52_0`` |
-+----------------+--------------------+
++----------------+---------------------+
 
 Prerequisites
 -------------
