@@ -29,7 +29,7 @@
                       compatible = "system-device-tree-v1,lop,modify";
                       // this will use the selected nodes above, to add a property
                       modify = ":interrupt-parent:&gic_r5";
-		      noexec = "not __selected__";
+                      noexec = "not __selected__";
                 };
                 lop_3 {
                         compatible = "system-device-tree-v1,lop,modify";
