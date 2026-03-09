@@ -166,14 +166,14 @@ class TestCPUDiscovery:
             assert 'dev' in cpu, "CPU entry must have 'dev' key"
 
     def test_discover_cpus_no_duplicates(self, lopper_sdt):
-        """Test that CPU entries are not duplicated (same cluster_cpu)."""
+        """Test that CPU cluster entries are not duplicated."""
         generator = SDTDevices(lopper_sdt)
         cpus = generator.discover_cpus()
 
-        # Each CPU should have unique cluster + cluster_cpu combination
-        cpu_ids = [(c['cluster'], c['cluster_cpu']) for c in cpus]
-        assert len(cpus) == len(set(cpu_ids)), \
-            "CPU entries should not be duplicated"
+        # Each cluster should appear only once
+        dev_names = [c['dev'] for c in cpus]
+        assert len(cpus) == len(set(dev_names)), \
+            "CPU cluster entries should not be duplicated"
 
 
 class TestMemoryDiscovery:
