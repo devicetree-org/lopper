@@ -7,8 +7,7 @@ Linux Device Tree Generation for AMD SOCs using Lopper and SDT's
 ================================================================
 
 .. toctree::
-   :maxdepth: 3
-   :hidden:
+   :maxdepth: 2
 
    chapter1-introduction.rst
    chapter2-linux_device_tree_generation.rst
