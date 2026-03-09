@@ -1,4 +1,4 @@
-# Overview:
+# Lopper Overview
 
 Fundamentally, lopper takes an input device tree (normally a system device tree),
 applies operations to that tree, and outputs one or more modified/processed trees.
@@ -6,7 +6,7 @@ applies operations to that tree, and outputs one or more modified/processed tree
 See the README-architecture.txt for details on how lopper works. This README file
 has practical information, known limitations and TODO items.
 
-# config/setup:
+## config/setup:
 
 Lopper is in a single repository, and is available via git or pypi:
 
@@ -90,7 +90,7 @@ Now, everytime you'd like to use lopper, just activate and deactivate within any
 
    % export PYTHONPATH=<path to pylibfdt>:$PYTHONPATH
 
-# submitting patches / reporting issues
+## submitting patches / reporting issues
 
 Pull requests or patches are acceptable for sending changes/fixes/features to Lopper,
 chose whichever matches your preferred workflow.
@@ -111,7 +111,7 @@ For discussion:
 
   - Use the mailing list or the github wiki/discussions/issue tracker
 
-# Lopper overview:
+## Lopper overview:
 
 ```
 lopper.py --help

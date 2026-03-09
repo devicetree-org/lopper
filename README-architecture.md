@@ -1,4 +1,6 @@
-# Lopper processing flow:
+# Lopper Architecture
+
+## Lopper processing flow:
 
 Lopper is data driven and only performs operations or invokes assist routines as
 specified by its inputs (command line or operation files). This means that
@@ -85,7 +87,7 @@ The flow of lopper processing is broken into the following broad categories:
     files. An exit and trap handler are part of lopper and will clean up in the
     case or normal or abnormal exit.
 
-# Lopper Classes / Routines:
+## Lopper Classes / Routines:
 
 Lopper contains the following classes for use when manipulating a system device
 tree:
@@ -134,7 +136,7 @@ the latest detailed information on lopper, execute the following:
     % pydoc3 lopper/dt.py
     % pydoc3 lopper/schema.py
 
-# Lopper Inputs / Outputs:
+## Lopper Inputs / Outputs:
 
 Although most inputs and outputs from Lopper are dts files (or dtb in rare cases),
 YAML/JSON is also supported. While not everything can (or should) be expressed in
@@ -149,7 +151,7 @@ To aid decoding and interpretation of properties carried in a LopperTree, if a
 node has been created from yaml, the LopperNode field '_source' is set to "yaml"
 or "json" (otherwise it is "dts").
 
-# Lopper Tree and complex (non-dts) types:
+## Lopper Tree and complex (non-dts) types:
 
 Depending on the input format, complex data types or associated data are
 carried in the Lopper tree.
@@ -196,7 +198,7 @@ assists in the pipeline
 
     Would all match and be queued for execution in the pipeline
 
-# Lopper operations
+## Lopper operations
 
 Lopper operations (in "lop files") are a series of base/core operations that
 are largely self contained and that are be applied to the input device
@@ -263,7 +265,7 @@ details.
 
 NOTE/TODO: bindings will be written for the lopper operations.
 
-# module load: load a lopper assist module
+## module load: load a lopper assist module
 
                 lop_0 {
                         compatible = "system-device-tree-v1,lop,load";
@@ -284,7 +286,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                         id = "xlnx,output,cdo";
                 };
 
-# assist: call an assist function that is compatible with the id
+## assist: call an assist function that is compatible with the id
 
                 lop_0 {
                         compatible = "system-device-tree-v1,lop,assist-v1";
@@ -299,7 +301,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                         // output = "<output directory>";
                 };
 
-# modify: a general purpose node and property modify/delete/add/move operation
+## modify: a general purpose node and property modify/delete/add/move operation
 
     #         format is: "path":"property":"replacement"
     #                     - modify to "nothing", is a remove operation
@@ -366,7 +368,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                         };
                 };
 
-# node add: copies the compiled node to the target device tree
+## node add: copies the compiled node to the target device tree
 
     # Additional operations or assists can modify this node just as if it was
     # compiled into the original device tree. In this example the __...__ values
@@ -413,7 +415,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                   };
 
 
-# output: write selected nodes to an output file
+## output: write selected nodes to an output file
 
     # multiple of these can be in a single lop file. They pull fields from the
     # modified system device tree and write them to output files.
@@ -451,7 +453,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                nodes = "axi.*:testprop:testvalue";
         };
 
-# conditional: do a conditional test on nodes of the tree, and execute an operation
+## conditional: do a conditional test on nodes of the tree, and execute an operation
 
     # does a set of conditional tests against a nodes in the system device tree that
     # match the structure of the conditional tree found at the base defined by "cond_root".
@@ -684,7 +686,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                 };
 
 
-# print: output strings during processing
+## print: output strings during processing
 
     # print provides basic string output and is primarily provided for debug purposes
     # (complex output can be generated from code lops).
@@ -704,7 +706,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                 };
 
 
-# exec: execute another lop
+## exec: execute another lop
 
     # Commonly used in combination with a conditional lop to avoid code duplication
     # and execute another lopper operation. i.e. renaming a node, deleting a property
@@ -738,7 +740,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                       exec = <&track_feature>;
                 };
 
-# select: select nodes to be used in other lopper operations
+## select: select nodes to be used in other lopper operations
 
     # select is provided to build up complex conditionals or series of nodes,
     # It is similar to the conditional lop (and could replace it in the
@@ -827,7 +829,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                       ";
                 };
 
-# tree: create a subtree from specified nodes
+## tree: create a subtree from specified nodes
 
     # To allow for nodes to not only be collected for output, but also for
     # modification, we have the "tree" lop.
@@ -866,7 +868,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                        nodes = "reserved-memory", "zynqmp-rpu", "zynqmp_ipi1";
                 };
 
-# xlate: translate a node / properties
+## xlate: translate a node / properties
 
     # It is becoming more common that non dts compatible trees / properties
     # are carried along side of device tree ones (i.e. yaml), and those
@@ -913,7 +915,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
     # in the node).
 
 
-# meta-v1, phandle-desc-v1
+## meta-v1, phandle-desc-v1
 
     # lopper performs phandle validation and phandle replacement during dts /
     # dtb output handling. To do these lookups, it must understand the names and
@@ -954,7 +956,7 @@ NOTE/TODO: bindings will be written for the lopper operations.
                       mynewproperty = "phandle field field";
                 };
 
-# conditional execution or inhibiting of a lop execution
+## conditional execution or inhibiting of a lop execution
 
 There are two properties that can be used to control the execution of a
 lop.
@@ -1104,7 +1106,7 @@ LopperProp routines can be used to modify the tree.
 If the module has invalid code, or otherwise generates and exception, Lopper
 catches it and reports the error to the user.
 
-# Command line assists:
+## Command line assists:
 
 Commonly we want to run an assist against the loaded system device tree and exit.
 
@@ -1136,7 +1138,7 @@ tree. It can then process the arguments as it sees fit:
        /bus@f1000000/dma@ffae0000: compatible = "xlnx,zynqmp-dma-1.0";
        /bus@f1000000/dma@ffa90000: compatible = "xlnx,zynqmp-dma-1.0";
 
-# output assists:
+## output assists:
 
 Output assists are similar to standard (node) assists, except they are called
 when an output file extension is not recognized. Each loaded assist is queried
@@ -1157,7 +1159,7 @@ above) to the passed output filename.
 
 The output filename is passed via the options dictionary, in the key 'outfile'
 
-# execution samples:
+## execution samples:
 
     # testing with openamp domains
     #
