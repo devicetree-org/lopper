@@ -9,12 +9,15 @@
  * lop-domain-chosen.dts: Copy chosen node from target domain to /chosen
  *
  * Usage:
- *   lopper -t DOMAIN_LABEL -i lop-domain-chosen.dts ...
+ *   lopper -t DOMAIN_NAME -i lop-domain-chosen.dts ...
+ *   lopper -t /domains/DOMAIN_NAME -i lop-domain-chosen.dts ...
  *
  * This lop finds chosen subnodes under domains and copies their properties
  * to the main device tree's /chosen node. If -t is specified, only the
- * target domain's chosen node is processed. Otherwise, all domain chosen
- * nodes are processed (last one wins for conflicting properties).
+ * target domain's chosen node is processed. The target can be specified as
+ * a domain name/label (e.g., APU_linux) or an absolute path (e.g.,
+ * /domains/APU_linux). Without -t, all domain chosen nodes are processed
+ * (last one wins for conflicting properties).
  *
  * Properties are copied in overwrite mode - existing properties with the
  * same name are replaced.
@@ -72,8 +75,13 @@
                                             # Check if this chosen node's parent matches target domain
                                             parent_path = domain_chosen.abs_path.rsplit('/chosen', 1)[0]
                                             parent_node = tree[parent_path]
-                                            # Match by label or by node name
-                                            if parent_node.label != _td and parent_node.name != _td:
+                                            # Match by absolute path, label, or node name
+                                            if _td.startswith('/'):
+                                                # Absolute path match
+                                                if parent_path != _td:
+                                                    lopper.log._debug(f'lop-domain-chosen: skipping {domain_chosen.abs_path} (path {parent_path} != {_td})')
+                                                    continue
+                                            elif parent_node.label != _td and parent_node.name != _td:
                                                 lopper.log._debug(f'lop-domain-chosen: skipping {domain_chosen.abs_path} (not target domain {_td})')
                                                 continue
 
