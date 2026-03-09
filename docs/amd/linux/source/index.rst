@@ -3,8 +3,8 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to Linux Device Tree Generation for AMD SOCs using Lopper and SDT's documentation!
-===========================================================================================
+Linux Device Tree Generation for AMD SOCs using Lopper and SDT's
+================================================================
 
 .. toctree::
    :maxdepth: 3
