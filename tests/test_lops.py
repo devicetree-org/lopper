@@ -488,3 +488,162 @@ class TestNoexecConditional:
                 "Lop with noexec='__selected__' should be skipped when nodes selected"
             assert "final-marker" in content, \
                 "Final lop should have run"
+
+
+class TestLopDomainChosen:
+    """Test lop-domain-chosen for copying domain chosen nodes to root /chosen.
+
+    Tests both domain name and absolute path targeting.
+    """
+
+    # DTS with domains that have chosen subnodes
+    TEST_DTS = """\
+/dts-v1/;
+
+/ {
+    #address-cells = <2>;
+    #size-cells = <2>;
+
+    chosen {
+        stdout-path = "original-stdout-path";
+    };
+
+    domains {
+        domain_apu: domain_apu {
+            compatible = "openamp,domain-v1";
+            chosen {
+                bootargs = "console=ttyPS0,115200";
+                stdout-path = "serial0:115200n8";
+            };
+        };
+
+        domain_rpu: domain_rpu {
+            compatible = "openamp,domain-v1";
+            chosen {
+                bootargs = "rpu-bootargs";
+            };
+        };
+    };
+};
+"""
+
+    @pytest.fixture
+    def domain_chosen_files(self, test_outdir):
+        """Create test DTS file for domain chosen tests."""
+        dts_file = os.path.join(test_outdir, "domain-chosen-test.dts")
+        with open(dts_file, 'w') as f:
+            f.write(self.TEST_DTS)
+        return dts_file
+
+    def test_domain_chosen_with_domain_name(self, test_outdir, domain_chosen_files):
+        """Test lop-domain-chosen with domain name target (-t domain_apu)."""
+        from lopper import LopperSDT
+
+        dts_file = domain_chosen_files
+        lop_file = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "lopper", "lops", "lop-domain-chosen.dts"
+        )
+        output_file = os.path.join(test_outdir, "domain-chosen-output-name.dts")
+
+        sdt = LopperSDT(dts_file)
+        sdt.outdir = test_outdir
+        sdt.output_file = output_file
+        sdt.cleanup_flag = True
+        sdt.dryrun = False
+        sdt.target_domain = "domain_apu"
+
+        sdt.setup(dts_file, [lop_file], "", force=True)
+        sdt.perform_lops()
+        sdt.write()
+
+        with open(output_file) as f:
+            content = f.read()
+
+        # The root /chosen should now have bootargs from domain_apu
+        # Using regex to match the root chosen node (not nested in domains)
+        import re
+        # Find root level chosen node content
+        root_chosen_match = re.search(r'^\s*chosen\s*\{([^}]*)\}', content, re.MULTILINE)
+        assert root_chosen_match, "Root /chosen node should exist"
+        root_chosen_content = root_chosen_match.group(1)
+
+        assert "console=ttyPS0,115200" in root_chosen_content, \
+            "Root /chosen should have bootargs from domain_apu"
+        assert "serial0:115200n8" in root_chosen_content, \
+            "Root /chosen should have stdout-path from domain_apu"
+        assert "rpu-bootargs" not in root_chosen_content, \
+            "Root /chosen should NOT have bootargs from domain_rpu"
+
+    def test_domain_chosen_with_absolute_path(self, test_outdir, domain_chosen_files):
+        """Test lop-domain-chosen with absolute path target (-t /domains/domain_rpu)."""
+        from lopper import LopperSDT
+
+        dts_file = domain_chosen_files
+        lop_file = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "lopper", "lops", "lop-domain-chosen.dts"
+        )
+        output_file = os.path.join(test_outdir, "domain-chosen-output-path.dts")
+
+        sdt = LopperSDT(dts_file)
+        sdt.outdir = test_outdir
+        sdt.output_file = output_file
+        sdt.cleanup_flag = True
+        sdt.dryrun = False
+        # Use absolute path to target the RPU domain
+        sdt.target_domain = "/domains/domain_rpu"
+
+        sdt.setup(dts_file, [lop_file], "", force=True)
+        sdt.perform_lops()
+        sdt.write()
+
+        with open(output_file) as f:
+            content = f.read()
+
+        # The root /chosen should now have bootargs from domain_rpu
+        import re
+        root_chosen_match = re.search(r'^\s*chosen\s*\{([^}]*)\}', content, re.MULTILINE)
+        assert root_chosen_match, "Root /chosen node should exist"
+        root_chosen_content = root_chosen_match.group(1)
+
+        assert "rpu-bootargs" in root_chosen_content, \
+            "Root /chosen should have bootargs from domain_rpu"
+        # APU's bootargs should NOT be present when targeting RPU
+        assert "console=ttyPS0,115200" not in root_chosen_content, \
+            "Root /chosen should NOT have bootargs from domain_apu"
+
+    def test_domain_chosen_no_target(self, test_outdir, domain_chosen_files):
+        """Test lop-domain-chosen without target - all domain chosen nodes merged."""
+        from lopper import LopperSDT
+
+        dts_file = domain_chosen_files
+        lop_file = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "lopper", "lops", "lop-domain-chosen.dts"
+        )
+        output_file = os.path.join(test_outdir, "domain-chosen-output-all.dts")
+
+        sdt = LopperSDT(dts_file)
+        sdt.outdir = test_outdir
+        sdt.output_file = output_file
+        sdt.cleanup_flag = True
+        sdt.dryrun = False
+        # No target_domain set - all should be processed
+
+        sdt.setup(dts_file, [lop_file], "", force=True)
+        sdt.perform_lops()
+        sdt.write()
+
+        with open(output_file) as f:
+            content = f.read()
+
+        # The root /chosen should have properties merged (last wins)
+        import re
+        root_chosen_match = re.search(r'^\s*chosen\s*\{([^}]*)\}', content, re.MULTILINE)
+        assert root_chosen_match, "Root /chosen node should exist"
+        root_chosen_content = root_chosen_match.group(1)
+
+        # At least one domain's bootargs should be present
+        assert "bootargs" in root_chosen_content, \
+            "Root /chosen should have bootargs from at least one domain"
