@@ -68,7 +68,7 @@
                 lop_7 {
                       compatible = "system-device-tree-v1,lop,modify";
                       // this will use the selected nodes above, to add a property
-		      noexec = "not __selected__";
+                      noexec = "not __selected__";
                       flags = "strict";
                       modify = ":interrupt-parent:&gic";
                 };
