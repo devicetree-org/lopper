@@ -1466,11 +1466,15 @@ class LopperYAML(LopperJSON):
                 yaml = ruamel.yaml
                 yaml_obj = None
             else:
-                # Use 'rt' (round-trip) type to support HexInt and other scalar types
-                yaml_obj = YAML(typ='rt')
+                yaml_obj = YAML(typ='safe')
                 yaml_obj.default_flow_style = False
                 yaml_obj.canonical = False
                 yaml_obj.default_style = None
+                # Add representer for HexInt to output hex format (0xff instead of 255)
+                yaml_obj.representer.add_representer(
+                    HexInt,
+                    lambda dumper, data: dumper.represent_scalar('tag:yaml.org,2002:int', hex(data))
+                )
 
             # This stops tags from being output.
             # We could make this a configuration option in the future

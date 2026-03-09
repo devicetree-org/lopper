@@ -29,6 +29,10 @@ Options:
     --include-pattern       Regex pattern for node names to include
     --exclude-pattern       Regex pattern for node names to exclude
     --include-clocks        Include clock nodes in device list (default: excluded)
+    --include-infrastructure  Comma-separated infrastructure category names to include
+                            Use --list-infrastructure to see available categories
+                            Use 'all' to include all infrastructure devices
+    --list-infrastructure   List available infrastructure categories and exit
 
 Example:
     # Generate SDT devices YAML (use '-' to skip main output, -o for assist output)
@@ -134,6 +138,11 @@ def usage():
       --include-pattern       Regex pattern for node names to include
       --exclude-pattern       Regex pattern for node names to exclude
       --include-clocks        Include clock nodes in device list (default: excluded)
+      --include-infrastructure  Comma-separated infrastructure category names to include
+                              (devices normally excluded as non-assignable)
+                              Use --list-infrastructure to see available categories
+                              Use 'all' to include all infrastructure devices
+      --list-infrastructure   List available infrastructure categories and exit
 
    Generate YAML domain containing devices from the System Device Tree.
    The generated YAML can be used as a parent domain for glob-based device matching.
@@ -150,6 +159,41 @@ def usage():
       lopper system.dts - -- sdt_devices -o output.yaml -c bus,cpu
       lopper system.dts - -- sdt_devices -o output.yaml --exclude-categories firmware
       lopper system.dts - -- sdt_devices -o output.yaml --include-pattern "serial@.*"
+      lopper system.dts - -- sdt_devices -o output.yaml --include-infrastructure protection
+    """)
+
+
+def list_infrastructure():
+    """Print available infrastructure categories and their descriptions."""
+    print("""
+   Infrastructure Categories (excluded by default):
+
+   These devices cannot be independently assigned to domains or protected
+   by XPPU/XMPU. Use --include-infrastructure <category> to include them.
+
+   Category        Description                              Example patterns
+   --------        -----------                              ----------------
+   interrupt       Interrupt controllers (shared)           arm,gic, interrupt-controller
+   bus             Bus nodes (structural, not devices)      simple-bus
+   ipi             IPI mailbox infrastructure               zynqmp-ipi-mailbox
+   smmu            SMMU/IOMMU address translation           arm,smmu, iommu
+   power           Power management and CPU states          arm,psci, arm,idle-state
+   syscon          System controller registers              syscon
+   phy             PHY providers (not standalone)           phy-provider
+   reset           Reset controllers (shared)               reset-controller
+   pinctrl         Pin control/muxing (shared)              pinctrl
+   misc            Miscellaneous structural nodes           gpio-keys, chosen
+   slcr            SLCR and clock/reset control             *slcr*, *_crf_*, *_crl_*
+   interconnect    Interconnect fabric (shared)             *_gpv@*, *_cci_*, *_afi_*
+   protection      Protection units (can't protect self)    *xmpu*, *xppu*
+   cpu-ctrl        CPU cluster control registers            *_apu_*, *_rpu_*
+   platform        Platform/IO configuration                *_siou@*, *iouslcr*
+
+   Use 'all' to include all infrastructure devices:
+      lopper system.dts - -- sdt_devices --include-infrastructure all -o output.yaml
+
+   Include multiple categories:
+      lopper system.dts - -- sdt_devices --include-infrastructure protection,slcr -o output.yaml
     """)
 
 
@@ -165,28 +209,98 @@ class SDTDevices:
         'memory': [r'memory@', r'ddr'],
     }
 
-    # Compatible strings that indicate infrastructure/non-splittable devices
-    # These should be excluded from the device list since they can't be
-    # independently assigned to domains or protected by XPPU/XMPU
-    INFRASTRUCTURE_COMPAT_PATTERNS = [
-        r'interrupt-controller',  # Interrupt controllers (can't split)
-        r'arm,gic',               # GIC (can't split)
-        r'simple-bus',            # Bus nodes
-        r'xlnx,zynqmp-ipi-mailbox',  # IPI mailbox infrastructure
-        r'xlnx,versal-ipi-dest-mailbox',  # IPI destination (child nodes)
-        r'arm,smmu',              # SMMU (system infrastructure)
-        r'iommu',                 # IOMMU
-        r'arm,idle-state',        # CPU idle states
-        r'arm,psci',              # PSCI
-        r'syscon',                # System controller (infrastructure)
-        r'xlnx,zynqmp-power',     # Power management
-        r'phy-provider',          # PHY providers (not standalone devices)
-        r'reset-controller',      # Reset controllers
-        r'pinctrl',               # Pin control
-        r'gpio-keys',             # GPIO key abstraction (not hardware)
-        r'chosen$',               # Chosen node
-        r'memory$',               # Memory node (handled separately)
-    ]
+    # Infrastructure device categories - devices that typically can't be
+    # independently assigned to domains or protected by XPPU/XMPU.
+    # Organized into categories so specific categories can be included via
+    # --include-infrastructure option.
+    INFRASTRUCTURE_CATEGORIES = {
+        # Core interrupt infrastructure - cannot be split between domains
+        'interrupt': [
+            r'interrupt-controller',
+            r'arm,gic',
+        ],
+        # Bus nodes - structural, not actual devices
+        'bus': [
+            r'simple-bus',
+        ],
+        # IPI mailbox infrastructure - shared communication
+        'ipi': [
+            r'xlnx,zynqmp-ipi-mailbox',
+            r'xlnx,versal-ipi-dest-mailbox',
+        ],
+        # SMMU/IOMMU - system-level address translation
+        'smmu': [
+            r'arm,smmu',
+            r'iommu',
+        ],
+        # Power management and CPU states
+        'power': [
+            r'arm,idle-state',
+            r'arm,psci',
+            r'xlnx,zynqmp-power',
+        ],
+        # System controller registers
+        'syscon': [
+            r'syscon',
+        ],
+        # PHY providers - not standalone devices
+        'phy': [
+            r'phy-provider',
+        ],
+        # Reset controllers - shared infrastructure
+        'reset': [
+            r'reset-controller',
+        ],
+        # Pin control - shared multiplexing
+        'pinctrl': [
+            r'pinctrl',
+        ],
+        # Miscellaneous structural/virtual nodes
+        'misc': [
+            r'gpio-keys',
+            r'chosen$',
+            r'memory$',
+        ],
+        # SLCR and clock/reset control registers - not PMU controlled
+        'slcr': [
+            r'slcr',
+            r'_crf_',
+            r'_crf@',
+            r'_crl_',
+            r'_crl@',
+        ],
+        # Interconnect fabric - shared infrastructure
+        'interconnect': [
+            r'_gpv@',
+            r'_gpv_',
+            r'_cci_',
+            r'_cci@',
+            r'_afi_',
+            r'_afi@',
+        ],
+        # Protection units - can't protect themselves
+        'protection': [
+            r'xmpu',
+            r'xppu',
+        ],
+        # CPU cluster control registers (psu_apu@, ps_wizard_0_ps11_0_apu_0@, etc.)
+        'cpu-ctrl': [
+            r'_apu@',
+            r'_apu_\d+@',
+            r'_rpu@',
+            r'_rpu_[a-z]@',
+        ],
+        # Platform/IO configuration
+        'platform': [
+            r'_siou@',
+            r'iou.*scntr',
+            r'iousecure',
+            r'iouslcr',
+        ],
+    }
+
+    # All infrastructure category names for validation
+    INFRASTRUCTURE_CATEGORY_NAMES = list(INFRASTRUCTURE_CATEGORIES.keys())
 
     # Clock-related compatible patterns - separated so they can be optionally included
     # NOTE: Clock domain assignment is not currently implemented. When included,
@@ -200,18 +314,47 @@ class SDTDevices:
         r'clock-controller',      # Clock controllers
     ]
 
-    def __init__(self, sdt, include_clocks=False):
+    def __init__(self, sdt, include_clocks=False, include_infrastructure=None):
         """Initialize the SDT devices generator.
 
         Args:
             sdt (LopperSDT): The system device tree instance
             include_clocks (bool): If True, include clock nodes in device list.
                                    Default is False (clocks excluded).
+            include_infrastructure (list): List of infrastructure category names
+                                          to include (not exclude). Use ['all'] to
+                                          include all infrastructure devices.
+                                          Default is None (all infra excluded).
         """
         self.sdt = sdt
         self.include_clocks = include_clocks
+        self.include_infrastructure = include_infrastructure or []
         self.tree = LopperTree()
         self.tree.phandle_resolution = False
+
+        # Build the active exclusion patterns based on which categories are NOT included
+        self._build_active_patterns()
+
+    def _build_active_patterns(self):
+        """Build the active infrastructure exclusion patterns.
+
+        Combines patterns from all infrastructure categories that are NOT
+        in the include_infrastructure list. If 'all' is in include_infrastructure,
+        no patterns are excluded.
+        """
+        self.active_infra_patterns = []
+
+        # If 'all' specified, don't exclude any infrastructure
+        if 'all' in self.include_infrastructure:
+            lopper.log._info("Including all infrastructure devices")
+            return
+
+        # Build exclusion patterns from categories NOT in include list
+        for category, patterns in self.INFRASTRUCTURE_CATEGORIES.items():
+            if category not in self.include_infrastructure:
+                self.active_infra_patterns.extend(patterns)
+            else:
+                lopper.log._info(f"Including infrastructure category: {category}")
 
     def _classify_memory_type(self, node_name):
         """Classify memory node into memory or sram category.
@@ -292,6 +435,7 @@ class SDTDevices:
         Actual devices that can be assigned to domains have:
         1. A 'compatible' property identifying the device type
         2. A compatible string that's NOT infrastructure (clocks, interrupt controllers, etc.)
+        3. A node name that's NOT infrastructure (slcr, xmpu, etc.)
 
         Structural nodes (port@*, endpoint@*) don't have compatible properties.
         Infrastructure nodes (clocks, GIC, SMMU) have compatible but can't be split.
@@ -312,10 +456,18 @@ class SDTDevices:
         if not valid_compat:
             return False
 
+        # Check if node name matches infrastructure patterns
+        # (for patterns like _apu@, _gpv@, xmpu, etc.)
+        node_name = node.name
+        for pattern in self.active_infra_patterns:
+            if re.search(pattern, node_name, re.IGNORECASE):
+                lopper.log._debug(f"  Skipping infrastructure device (name): {node_name}")
+                return False
+
         # Check if any compatible string matches infrastructure patterns
         for compat_str in valid_compat:
             compat_str = str(compat_str)
-            for pattern in self.INFRASTRUCTURE_COMPAT_PATTERNS:
+            for pattern in self.active_infra_patterns:
                 if re.search(pattern, compat_str, re.IGNORECASE):
                     lopper.log._debug(f"  Skipping infrastructure device: {node.name} ({compat_str})")
                     return False
@@ -425,19 +577,69 @@ class SDTDevices:
         lopper.log._info(f"Discovered {len(devices)} bus devices")
         return devices
 
+    def _parse_cpu_map(self, cluster_node):
+        """Parse cpu-map node to get linear CPU enumeration.
+
+        The cpu-map node describes the physical topology with clusters and cores.
+        We use it to enumerate CPUs linearly (0, 1, 2, ...) rather than using
+        MPIDR-based reg values which create sparse bitmasks.
+
+        Args:
+            cluster_node: The parent CPU cluster node (e.g., cpus-a78@0)
+
+        Returns:
+            dict: Mapping of CPU node path to linear index, or None if no cpu-map
+        """
+        cpu_map = None
+        for child in cluster_node.child_nodes.values():
+            if child.name == 'cpu-map':
+                cpu_map = child
+                break
+
+        if not cpu_map:
+            return None
+
+        # Parse cpu-map: cluster0/core0/cpu, cluster0/core1/cpu, etc.
+        cpu_index_map = {}
+        linear_idx = 0
+
+        # Get clusters in sorted order for consistent enumeration
+        clusters = sorted([n for n in cpu_map.child_nodes.values()
+                          if n.name.startswith('cluster')],
+                         key=lambda n: n.name)
+
+        for cluster in clusters:
+            # Get cores in sorted order
+            cores = sorted([n for n in cluster.child_nodes.values()
+                           if n.name.startswith('core')],
+                          key=lambda n: n.name)
+
+            for core in cores:
+                # The 'cpu' property is a phandle to the actual CPU node
+                cpu_phandle = core.propval('cpu')
+                if cpu_phandle and len(cpu_phandle) > 0:
+                    # Resolve phandle to node path
+                    phandle_val = cpu_phandle[0]
+                    if isinstance(phandle_val, int):
+                        cpu_node = self.sdt.tree.pnode(phandle_val)
+                        if cpu_node:
+                            cpu_index_map[cpu_node.abs_path] = linear_idx
+                            linear_idx += 1
+
+        return cpu_index_map if cpu_index_map else None
+
     def discover_cpus(self):
         """Find all CPU clusters and CPUs in SDT.
 
         Discovers CPU nodes by looking for nodes with device_type="cpu"
-        and their parent clusters. Builds cpumask from cpu@N numbering.
+        and their parent clusters. Uses cpu-map for proper CPU enumeration
+        when available, falling back to sequential enumeration.
 
         Returns:
             list: List of CPU entry dictionaries with cluster info including:
                 - dev: cluster name/label
-                - cluster: cluster label (if present)
                 - compatible: CPU compatible string
-                - cpumask: hex bitmap of available CPUs (e.g., "0x3" for cpu@0,cpu@1)
-                - cpus: list of individual CPU info
+                - cpumask: hex bitmap of available CPUs
         """
         cpus = []
         cluster_info = {}  # cluster_path -> {cluster, compat, cpu_nodes}
@@ -452,7 +654,8 @@ class SDTDevices:
                         cluster_info[cluster.abs_path] = {
                             'cluster': cluster,
                             'compat': None,
-                            'cpu_nodes': []
+                            'cpu_nodes': [],
+                            'cpu_map': None
                         }
                     cluster_info[cluster.abs_path]['cpu_nodes'].append(node)
                     # Get compatible from first CPU
@@ -461,29 +664,46 @@ class SDTDevices:
                         if compat and len(compat) > 0:
                             cluster_info[cluster.abs_path]['compat'] = compat[0]
 
-        # Second pass: build one entry per CPU (matching reference format)
+        # Parse cpu-map for each cluster if available
+        for cluster_path, info in cluster_info.items():
+            info['cpu_map'] = self._parse_cpu_map(info['cluster'])
+
+        # Second pass: build one entry per cluster with combined cpumask
         for cluster_path, info in cluster_info.items():
             cluster = info['cluster']
             cluster_name = cluster.label if cluster.label else cluster.name
+            cpu_map = info['cpu_map']
 
-            # Enumerate CPUs sequentially within cluster (0, 1, 2, ...)
-            # Don't use unit address as bit position - it may be MPIDR-based
-            for cpu_idx, cpu_node in enumerate(info['cpu_nodes']):
-                entry = {'dev': cluster_name}
-                entry['cluster'] = cluster_name
+            # Build cpumask - use cpu-map indices if available, else enumerate
+            cpumask = 0
+            for idx, cpu_node in enumerate(info['cpu_nodes']):
+                if cpu_map and cpu_node.abs_path in cpu_map:
+                    # Use linear index from cpu-map
+                    cpu_idx = cpu_map[cpu_node.abs_path]
+                else:
+                    # Fallback: sequential enumeration within cluster
+                    cpu_idx = idx
 
-                # Individual CPU identifier
-                cpu_label = cpu_node.label if cpu_node.label else cpu_node.name
-                entry['cluster_cpu'] = cpu_label
+                cpumask |= (1 << cpu_idx)
 
-                # cpumask: single bit for this CPU's position in cluster
-                entry['cpumask'] = HexInt(1 << cpu_idx)
+            entry = {'dev': cluster_name}
+            entry['cpumask'] = HexInt(cpumask) if cpumask else HexInt(0)
 
-                if info['compat']:
-                    entry['compatible'] = info['compat']
+            if info['compat']:
+                entry['compatible'] = info['compat']
 
-                cpus.append(entry)
-                lopper.log._debug(f"  Found CPU: {cpu_label} in cluster {cluster_name}")
+            cpus.append(entry)
+            map_source = "cpu-map" if cpu_map else "sequential"
+            lopper.log._debug(f"  Found CPU cluster: {cluster_name} (cpumask={hex(cpumask)}, {len(info['cpu_nodes'])} CPUs, {map_source})")
+
+        # TODO: Future enhancements for smarter CPU grouping:
+        # 1. Parse power-domains property to group R52 CPUs by RPU cluster
+        #    (e.g., RPU_A: cortexr52_0+1, RPU_B: cortexr52_2+3, etc.)
+        # 2. Use xlnx,lockstep-select to determine lockstep vs split mode
+        # 3. Consider cpu-map cluster hierarchy for A78 physical topology
+        # 4. Add execution-level information from cpu node properties
+        # Currently we keep it simple: one entry per DTS cluster node with
+        # combined cpumask for all CPUs in that node.
 
         lopper.log._info(f"Discovered {len(cpus)} CPU clusters")
         return cpus
@@ -564,6 +784,17 @@ class SDTDevices:
             name_lower = node.name.lower()
             if any(p in name_lower for p in ['tcm', 'ocm', 'sram', 'bram']):
                 if '@' in node.name and node.abs_path not in seen:
+                    # Check if this is actually a memory node, not infrastructure
+                    # (e.g., ocm_xmpu is protection unit, not memory)
+                    is_infrastructure = False
+                    for pattern in self.active_infra_patterns:
+                        if re.search(pattern, node.name, re.IGNORECASE):
+                            lopper.log._debug(f"  Skipping infrastructure SRAM: {node.name}")
+                            is_infrastructure = True
+                            break
+                    if is_infrastructure:
+                        continue
+
                     seen.add(node.abs_path)
 
                     entry = {'dev': node.name}
@@ -900,7 +1131,7 @@ def sdt_devices(tgt_node, sdt, options):
             ["help", "verbose", "bus-types=", "domain-name=",
              "categories=", "exclude-categories=",
              "include-pattern=", "exclude-pattern=",
-             "include-clocks"]
+             "include-clocks", "include-infrastructure=", "list-infrastructure"]
         )
     except getopt.GetoptError as e:
         lopper.log._error(f"Invalid option: {e}")
@@ -916,10 +1147,14 @@ def sdt_devices(tgt_node, sdt, options):
     include_pattern = None
     exclude_pattern = None
     include_clocks = False
+    include_infrastructure = []
 
     for o, a in opts:
         if o in ('-h', '--help'):
             usage()
+            return True
+        elif o in ('--list-infrastructure',):
+            list_infrastructure()
             return True
         elif o in ('-v', '--verbose'):
             verbose = verbose + 1
@@ -939,6 +1174,18 @@ def sdt_devices(tgt_node, sdt, options):
             exclude_pattern = a
         elif o in ('--include-clocks',):
             include_clocks = True
+        elif o in ('--include-infrastructure',):
+            # Parse comma-separated infrastructure categories
+            infra_cats = [c.strip().lower() for c in a.split(',')]
+            for cat in infra_cats:
+                if cat == 'all':
+                    include_infrastructure = ['all']
+                    break
+                elif cat in SDTDevices.INFRASTRUCTURE_CATEGORY_NAMES:
+                    include_infrastructure.append(cat)
+                else:
+                    lopper.log._warning(f"Unknown infrastructure category: {cat}")
+                    lopper.log._warning(f"Valid categories: {', '.join(SDTDevices.INFRASTRUCTURE_CATEGORY_NAMES)}")
 
     # Handle category exclusions
     if categories is None:
@@ -971,9 +1218,12 @@ def sdt_devices(tgt_node, sdt, options):
         lopper.log._info(f"sdt_devices: exclude pattern: {exclude_pattern}")
     if include_clocks:
         lopper.log._info(f"sdt_devices: including clock nodes")
+    if include_infrastructure:
+        lopper.log._info(f"sdt_devices: including infrastructure: {include_infrastructure}")
 
     # Create the generator and build the domain tree
-    generator = SDTDevices(sdt, include_clocks=include_clocks)
+    generator = SDTDevices(sdt, include_clocks=include_clocks,
+                           include_infrastructure=include_infrastructure)
     tree = generator.generate_domain( domain_name=domain_name,
                                       categories=categories,
                                       bus_types=bus_types,
