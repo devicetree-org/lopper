@@ -1064,7 +1064,11 @@ def cpu_expand( tree, subnode, verbose = 0):
                 print( f"         mode: {c['mode']}" )
 
         if type(c) == dict:
-            cluster = c['cluster']
+            # Support both 'cluster' (traditional) and 'dev' (sdt_devices) keys
+            cluster = c.get('cluster') or c.get('dev')
+            if not cluster:
+                # Skip CPU entries without cluster/dev info
+                continue
             if 'cluster_cpu' in c.keys():
                 cluster_cpu = c['cluster_cpu']
         else:
@@ -1100,35 +1104,38 @@ def cpu_expand( tree, subnode, verbose = 0):
         # */
         if type(c) == dict:
             mode_mask = 0
-            mode = c['mode']
-            if mode:
-                try:
-                    secure = mode['secure']
-                    if secure:
-                        mode_mask = set_bit( mode_mask, 31 )
-                except:
-                    pass
-
-                try:
-                    lockstep = mode['lockstep']
-                    if lockstep:
-                        mode_mask = set_bit( mode_mask, 30 )
-                except:
-                    pass
-
-                try:
-                    el = mode['el']
-                    if el:
-                        mode_mask = set_bit( mode_mask, 0 )
-                        mode_mask = set_bit( mode_mask, 1 )
-                except:
-                    pass
-
-            mask = c['cpumask']
             try:
-                mask = int(mask,16)
+                mode = c['mode']
+                if mode:
+                    try:
+                        secure = mode['secure']
+                        if secure:
+                            mode_mask = set_bit( mode_mask, 31 )
+                    except:
+                        pass
+
+                    try:
+                        lockstep = mode['lockstep']
+                        if lockstep:
+                            mode_mask = set_bit( mode_mask, 30 )
+                    except:
+                        pass
+
+                    try:
+                        el = mode['el']
+                        if el:
+                            mode_mask = set_bit( mode_mask, 0 )
+                            mode_mask = set_bit( mode_mask, 1 )
+                    except:
+                        pass
             except:
                 pass
+
+            try:
+                mask = c['cpumask']
+                mask = int(mask,16)
+            except:
+                mask = 0
         else:
             mode_mask = 0x0
             mask = 0x0
