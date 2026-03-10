@@ -187,3 +187,214 @@ class TestGlobAccessIntegration:
             a.get("dev") == "*" for a in access if isinstance(a, dict)
         )
         assert star_found, "APU_domain should have dev: '*' in access"
+
+
+class TestPeerExclusion:
+    """Test peer exclusion: explicit device refs excluded from glob matches.
+
+    When sibling domains have explicit device references and glob patterns,
+    the explicit refs should be removed from the pool before glob expansion.
+    """
+
+    def test_peer_exclusion_explicit_wins(self, tmp_path):
+        """Test that explicit device refs are excluded from glob matches."""
+        import subprocess
+        import os
+
+        # Write test YAML files
+        devices_yaml = tmp_path / "devices.yaml"
+        devices_yaml.write_text("""
+domains:
+  sdt_all_devices:
+    compatible: openamp,domain-v1,devices
+    id: 0
+    access:
+    - dev: serial@ff000000
+    - dev: serial@ff010000
+    - dev: can@ff060000
+    - dev: ethernet@ff0e0000
+""")
+
+        child_yaml = tmp_path / "child.yaml"
+        child_yaml.write_text("""
+domains:
+  linux:
+    compatible: openamp,domain-v1
+    id: 1
+    access:
+    - dev: "*"
+
+  zephyr:
+    compatible: openamp,domain-v1
+    id: 2
+    access:
+    - dev: serial@ff000000
+""")
+
+        output_dts = tmp_path / "output.dts"
+
+        # Run lopper
+        cmd = [
+            "./lopper.py", "-f", "--permissive", "--auto",
+            "-i", str(devices_yaml),
+            "-i", str(child_yaml),
+            "./lopper/selftest/system-top.dts",
+            str(output_dts)
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.getcwd())
+        assert result.returncode == 0, f"Lopper failed: {result.stderr}"
+
+        # Read output
+        output_content = output_dts.read_text()
+
+        # Find linux domain access list
+        import re
+        linux_match = re.search(r'linux\s*\{[^}]*access\s*=\s*<([^;]+);', output_content, re.DOTALL)
+        assert linux_match, "Could not find linux domain access property"
+
+        linux_access = linux_match.group(1)
+
+        # serial@ff000000 should NOT be in linux (zephyr claimed it explicitly)
+        assert "serialff000000" not in linux_access, \
+            "serial@ff000000 should be excluded from linux glob (zephyr claimed it)"
+
+        # serial@ff010000 SHOULD be in linux (not claimed by anyone)
+        assert "serialff010000" in linux_access, \
+            "serial@ff010000 should be in linux glob result"
+
+        # Find zephyr domain access list
+        zephyr_match = re.search(r'zephyr\s*\{[^}]*access\s*=\s*<([^;]+);', output_content, re.DOTALL)
+        assert zephyr_match, "Could not find zephyr domain access property"
+
+        zephyr_access = zephyr_match.group(1)
+
+        # serial@ff000000 SHOULD be in zephyr (explicit claim)
+        assert "serialff000000" in zephyr_access, \
+            "serial@ff000000 should be in zephyr (explicit claim)"
+
+    def test_peer_exclusion_multiple_explicit(self, tmp_path):
+        """Test multiple explicit refs are all excluded from glob."""
+        import subprocess
+        import os
+
+        devices_yaml = tmp_path / "devices.yaml"
+        devices_yaml.write_text("""
+domains:
+  sdt_all_devices:
+    compatible: openamp,domain-v1,devices
+    id: 0
+    access:
+    - dev: serial@ff000000
+    - dev: serial@ff010000
+    - dev: can@ff060000
+    - dev: ethernet@ff0e0000
+""")
+
+        child_yaml = tmp_path / "child.yaml"
+        child_yaml.write_text("""
+domains:
+  linux:
+    compatible: openamp,domain-v1
+    id: 1
+    access:
+    - dev: "*"
+
+  zephyr:
+    compatible: openamp,domain-v1
+    id: 2
+    access:
+    - dev: serial@ff000000
+
+  baremetal:
+    compatible: openamp,domain-v1
+    id: 3
+    access:
+    - dev: can@ff060000
+""")
+
+        output_dts = tmp_path / "output.dts"
+
+        cmd = [
+            "./lopper.py", "-f", "--permissive", "--auto",
+            "-i", str(devices_yaml),
+            "-i", str(child_yaml),
+            "./lopper/selftest/system-top.dts",
+            str(output_dts)
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.getcwd())
+        assert result.returncode == 0, f"Lopper failed: {result.stderr}"
+
+        output_content = output_dts.read_text()
+
+        # Find linux domain access
+        import re
+        linux_match = re.search(r'linux\s*\{[^}]*access\s*=\s*<([^;]+);', output_content, re.DOTALL)
+        assert linux_match, "Could not find linux domain"
+
+        linux_access = linux_match.group(1)
+
+        # Both explicitly claimed devices should be excluded from linux
+        assert "serialff000000" not in linux_access, \
+            "serial@ff000000 should be excluded (zephyr claimed)"
+        assert "canff060000" not in linux_access, \
+            "can@ff060000 should be excluded (baremetal claimed)"
+
+        # Unclaimed devices should be in linux
+        assert "serialff010000" in linux_access, \
+            "serial@ff010000 should be in linux"
+        assert "ethernetff0e0000" in linux_access, \
+            "ethernet@ff0e0000 should be in linux"
+
+    def test_no_exclusion_without_globs(self, tmp_path):
+        """Test that exclusion only happens when globs are present."""
+        import subprocess
+        import os
+
+        devices_yaml = tmp_path / "devices.yaml"
+        devices_yaml.write_text("""
+domains:
+  sdt_all_devices:
+    compatible: openamp,domain-v1,devices
+    id: 0
+    access:
+    - dev: serial@ff000000
+    - dev: serial@ff010000
+""")
+
+        # Both domains have explicit refs, no globs
+        child_yaml = tmp_path / "child.yaml"
+        child_yaml.write_text("""
+domains:
+  linux:
+    compatible: openamp,domain-v1
+    id: 1
+    access:
+    - dev: serial@ff010000
+
+  zephyr:
+    compatible: openamp,domain-v1
+    id: 2
+    access:
+    - dev: serial@ff000000
+""")
+
+        output_dts = tmp_path / "output.dts"
+
+        cmd = [
+            "./lopper.py", "-f", "--permissive", "--auto",
+            "-i", str(devices_yaml),
+            "-i", str(child_yaml),
+            "./lopper/selftest/system-top.dts",
+            str(output_dts)
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.getcwd())
+        assert result.returncode == 0, f"Lopper failed: {result.stderr}"
+
+        output_content = output_dts.read_text()
+
+        # Both domains should have their explicit devices
+        assert "serialff010000" in output_content
+        assert "serialff000000" in output_content
