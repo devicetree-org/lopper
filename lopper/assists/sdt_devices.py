@@ -1018,7 +1018,7 @@ class SDTDevices:
         device types (matching isospec format):
             /domains
                 /<domain_name>
-                    compatible = "lopper,sdt-devices-v1"
+                    compatible = "openamp,domain-v1,devices"
                     id = 0
                     cpus: [...]
                     memory: [...]
@@ -1047,7 +1047,7 @@ class SDTDevices:
         # Create the device domain
         domain = LopperNode(name=domain_name)
         domain.phandle_resolution = False
-        domain["compatible"] = "lopper,sdt-devices-v1"
+        domain["compatible"] = "openamp,domain-v1,devices"
         domain["id"] = 0
         domains + domain
 
