@@ -237,6 +237,10 @@ def wildcard_devices( tree, domains_node ):
     1. Explicit 'parent:' property on the individual domain
     2. parent: auto - infer by walking up the tree hierarchy
     3. Sibling domain with 'openamp,domain-v1,devices' compatible string
+
+    Peer exclusion: If any domain uses glob patterns, explicit device references
+    in sibling domains are removed from the devices pool before glob expansion.
+    This ensures explicit references take priority over glob matches.
     """
     # Find sibling domain with devices compatible string
     # This domain serves as the device inventory for glob matching
@@ -248,10 +252,41 @@ def wildcard_devices( tree, domains_node ):
                 compat = ','.join(compat)
             if ',devices' in compat:
                 devices_domain = sibling
-                _debug( f"found devices domain: {sibling.abs_path}" )
+                _debug( f"found devices domain: {devices_domain.abs_path}" )
                 break
         except:
             pass
+
+    # Peer exclusion: if any domain has globs, remove explicit refs from pool
+    if devices_domain:
+        has_globs = False
+        explicit_devices = set()
+
+        # First pass: check for globs and collect explicit device refs
+        for domain in domains_node.subnodes():
+            if domain == devices_domain:
+                continue
+            try:
+                access_chunks = domain_access( domain )
+                for a in access_chunks:
+                    dev = a.get("dev", "")
+                    if is_glob_pattern( dev ):
+                        has_globs = True
+                    else:
+                        explicit_devices.add( dev )
+            except:
+                pass
+
+        # If globs exist, remove explicit devices from the pool
+        if has_globs and explicit_devices:
+            _debug( f"peer exclusion: removing {len(explicit_devices)} explicit devices from pool" )
+            pool_access = domain_access( devices_domain )
+            if pool_access:
+                filtered_access = [a for a in pool_access if a.get("dev", "") not in explicit_devices]
+                removed_count = len(pool_access) - len(filtered_access)
+                if removed_count > 0:
+                    _info( f"peer exclusion: removed {removed_count} explicitly-claimed devices from glob pool" )
+                    domain_access( devices_domain, filtered_access )
 
     for domain in domains_node.subnodes():
         _debug( f"wildcard device expansion: processing {domain.abs_path}" )
