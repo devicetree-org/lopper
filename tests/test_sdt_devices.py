@@ -413,7 +413,7 @@ class TestSDTDevicesGeneration:
         for child in domains_node.subnodes(children_only=True):
             if child.name == 'test_domain':
                 compat = child["compatible"].value
-                assert "lopper,sdt-devices-v1" in compat
+                assert "openamp,domain-v1,devices" in compat
                 break
 
     def test_generate_domain_has_id(self, lopper_sdt):
@@ -713,7 +713,7 @@ class TestBackwardsCompatibility:
     def test_domain_has_compatible_string(
         self, lopper_sdt, temp_output_file
     ):
-        """Test domain has lopper,sdt-devices-v1 compatible."""
+        """Test domain has openamp,domain-v1,devices compatible."""
         lopper_sdt.output_file = temp_output_file
         options = {
             'verbose': 0,
@@ -726,7 +726,7 @@ class TestBackwardsCompatibility:
             data = yaml.safe_load(f)
 
         domain = data['domains']['sdt_all_devices']
-        assert domain.get('compatible') == 'lopper,sdt-devices-v1'
+        assert domain.get('compatible') == 'openamp,domain-v1,devices'
 
 
 class TestSDTDevicesGlobUsage:
@@ -798,5 +798,5 @@ class TestSDTDevicesGlobUsage:
         domain = data['domains']['sdt_all_devices']
         compatible = domain.get('compatible')
 
-        assert compatible == 'lopper,sdt-devices-v1', \
+        assert compatible == 'openamp,domain-v1,devices', \
             "Domain should have identifiable compatible string"
