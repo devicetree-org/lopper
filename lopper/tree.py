@@ -2365,8 +2365,15 @@ class LopperNode(object):
                 # cannot automatically update those references. A tree walk would be
                 # required to find and fix them, which is expensive.
                 # TODO: Consider maintaining a reverse lookup map for phandle references.
-                _warning(f"phandle_set: changing phandle from {old_phandle} to {value} "
-                         f"for node {self.abs_path} - this may orphan numeric references")
+                # Only warn if phandle_change warning is enabled (this happens during
+                # normal operations like duplicate phandle resolution)
+                if "phandle_change" in self.tree.warnings or "all" in self.tree.warnings:
+                    msg = (f"phandle_set: changing phandle from {old_phandle} to {value} "
+                           f"for node {self.abs_path} - this may orphan numeric references")
+                    if self.tree.werror:
+                        lopper.log._error(msg, also_exit=1)
+                    else:
+                        _warning(msg)
             # Add new phandle to index
             self.tree.__pnodes__[value] = self
 

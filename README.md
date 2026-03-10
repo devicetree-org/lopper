@@ -131,6 +131,8 @@ Usage: lopper [OPTION] <system device tree> [<output file>]...
     , --permissive    do not enforce fully validated properties (phandles, etc)
     , -W              enable a warning:
                           invalid_phandle (warn on invalid phandles)
+                          duplicate_phandle (warn on duplicate phandle values)
+                          phandle_change (warn when phandle value changes)
                           all (enable all warnings)
     , --symbols       generate (and maintain) the __symbols__ node during processing
   -o, --output        output file

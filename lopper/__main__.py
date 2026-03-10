@@ -75,6 +75,7 @@ def usage():
     print('    , -W              enable a warning: '  )
     print('                          invalid_phandle (warn on invalid phandle references)' )
     print('                          duplicate_phandle (warn on duplicate phandle values)' )
+    print('                          phandle_change (warn when phandle value changes)' )
     print('                          all (enable all warnings)' )
     print('    , --symbols       generate (and maintain) the __symbols__ node during processing' )
     print('  -o, --output        output file')
