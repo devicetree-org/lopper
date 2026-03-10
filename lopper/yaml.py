@@ -169,6 +169,11 @@ def reparent_nodes_by_specified_path(root, spec_data):
                     child_node = node_map.get(key)
                     parent_path = value['custom_parent']
 
+                    # Skip reparenting for 'auto' - handled at expansion time
+                    if parent_path == 'auto':
+                        traverse_yaml_data(value)
+                        continue
+
                     if '/' in parent_path:
                         # Handle path-like syntax
                         new_parent_node = find_node_by_path(root, parent_path)

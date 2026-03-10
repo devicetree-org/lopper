@@ -232,7 +232,27 @@ def wildcard_devices( tree, domains_node ):
 
     Returns:
         None
+
+    The parent domain for glob expansion is determined in this order:
+    1. Explicit 'parent:' property on the individual domain
+    2. parent: auto - infer by walking up the tree hierarchy
+    3. Sibling domain with 'openamp,domain-v1,devices' compatible string
     """
+    # Find sibling domain with devices compatible string
+    # This domain serves as the device inventory for glob matching
+    devices_domain = None
+    for sibling in domains_node.subnodes(children_only=True):
+        try:
+            compat = sibling["compatible"].value
+            if isinstance(compat, list):
+                compat = ','.join(compat)
+            if ',devices' in compat:
+                devices_domain = sibling
+                _debug( f"found devices domain: {sibling.abs_path}" )
+                break
+        except:
+            pass
+
     for domain in domains_node.subnodes():
         _debug( f"wildcard device expansion: processing {domain.abs_path}" )
 
@@ -253,23 +273,34 @@ def wildcard_devices( tree, domains_node ):
                         d_parent = domain_parent( domain )
                         parent_domain = None
 
+                        # Try to find parent domain in priority order:
+                        # 1. Explicit parent: property
+                        # 2. parent: auto (walk up tree)
+                        # 3. Sibling with ,devices compatible
                         if d_parent:
-                            # Explicit parent: property
                             d_parent_path = d_parent.value
-                            try:
-                                if d_parent_path.startswith('/'):
-                                    parent_domain = tree[d_parent_path]
-                                else:
-                                    nodes = tree.nodes( d_parent_path + "$" )
-                                    parent_domain = nodes[0] if nodes else None
-                            except Exception as e:
-                                _error( f"glob in {domain.abs_path}: explicit parent '{d_parent_path}' not found: {e}", True )
-                        else:
-                            # No explicit parent: property, try to infer by walking up tree
-                            parent_domain = infer_parent_domain( tree, domain )
+                            if d_parent_path == "auto":
+                                # parent: auto - infer by walking up tree
+                                _debug( f"parent: auto - inferring parent domain" )
+                                parent_domain = infer_parent_domain( tree, domain )
+                            else:
+                                # Explicit parent: property on domain
+                                try:
+                                    if d_parent_path.startswith('/'):
+                                        parent_domain = tree[d_parent_path]
+                                    else:
+                                        nodes = tree.nodes( d_parent_path + "$" )
+                                        parent_domain = nodes[0] if nodes else None
+                                except:
+                                    pass
+
+                        # Fallback to devices domain if no parent found yet
+                        if not parent_domain and devices_domain and devices_domain != domain:
+                            _debug( f"using devices domain: {devices_domain.abs_path}" )
+                            parent_domain = devices_domain
 
                         if not parent_domain:
-                            _error( f"glob in {domain.abs_path}: no parent domain with devices found (explicit or inferred)", True )
+                            _error( f"glob in {domain.abs_path}: no parent domain found (use parent: property or add domain with compatible containing ',devices')", True )
 
                         # Get parent's access list and verify it has devices
                         parent_access = domain_access( parent_domain )
