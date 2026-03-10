@@ -13,11 +13,15 @@
 
 set -euo pipefail
 
-# Activate venv if it exists
-if [ -d "venv-lopper" ]; then
-    source venv-lopper/bin/activate
-elif [ -d ".venv" ]; then
-    source .venv/bin/activate
+# Activate venv if found and not already active
+# Check common venv locations, only activate if activate script exists
+if [ -z "${VIRTUAL_ENV:-}" ]; then
+    for venv_dir in venv-lopper .venv venv; do
+        if [ -f "$venv_dir/bin/activate" ]; then
+            source "$venv_dir/bin/activate"
+            break
+        fi
+    done
 fi
 
 # Default: run all tests with verbose output
