@@ -762,6 +762,43 @@ def core_domain_access( tgt_node, sdt, options ):
 
     sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
 
+    if tgt_node.propval("stdout") != ['']:
+        # collect all potential UARTs
+        uarts = [ node for node in sdt.tree['/axi'].subnodes() if node.propval("xlnx,uart-board-interface") != [''] ]
+
+        # collect mentioned UART
+        stdout_node = sdt.tree.lnodes(tgt_node.propval("stdout")[0])
+
+        if stdout_node == []:
+            lopper.log._warning( f"unable to find serial node: ", tgt_node.propval("stdout") )
+            return False
+
+        # we only care about stripping out irrelevant UARTs now
+        if stdout_node in uarts:
+            uarts.remove(stdout_node)
+
+        sdtout_path_prop = None
+        bootargs_prop = None
+        if stdout_node != []:
+            stdout_node = stdout_node[0]
+            try:
+                # collect relevant properties
+                sdtout_path_prop = sdt.tree['/chosen']['stdout-path']
+                bootargs_prop = sdt.tree['/chosen']['bootargs']
+
+                # ensure only valid UART are mentioned if at all
+                for prop in [ sdtout_path_prop, bootargs_prop ]:
+                    for current_uart in uarts:
+                        current_uart['status'] = "disabled"
+
+                        if current_uart.label in prop.value[0]:
+                            prop.value[0] = prop.value[0].replace(current_uart.label, stdout_node.label)
+                        if hex(current_uart['reg'][1]) in prop.value[0]:
+                            prop.value[0] = prop.value[0].replace(hex(current_uart['reg'][1]), hex(stdout_node['reg'][1]))
+
+            except Exception as e:
+                lopper.log._warning( f"exception while processing chosen: {e}")
+
     # final) deal with unreferenced nodes
     refd_nodes = sdt.tree.refd()
     return True
