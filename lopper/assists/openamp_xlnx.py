@@ -462,16 +462,40 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
     if tree['/chosen'].propval('zephyr,ocm') != ['']:
         tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,ocm'])
 
-    if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ]:
-        if tree['/chosen'].propval('stdout-path') != [''] and 'serial1' in tree['/chosen']['stdout-path'].value[0]:
-            tree['/chosen']['stdout-path'].value[0] = tree['/chosen']['stdout-path'].value[0].replace('serial1', 'serial0')
+    board_versal2_ve_p_a1225 = "amd,versal2-ve-p-a1225" in tree['/']['compatible'].value
+    board_vek385_reva = "amd,versal2-vek385-revA" in tree['/']['compatible'].value
 
     if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ]:
+        # keep stdout to serial1 for board_versal2_ve_p_a1225 vek385 reva only. otherwise set to serial0
+        serial0 = [ "f1920000", "serial0" ]
+        serial1 = [ "f1930000", "serial1" ]
+
+        serial_to_use = serial0
+        serial_to_remove = serial1
+
+        if board_versal2_ve_p_a1225 or board_vek385_reva:
+            serial_to_use = serial1
+            serial_to_remove = serial0
+
+        for chosen_prop in ["stdout-path", "bootargs"]:
+            for index, val in enumerate(serial_to_remove):
+                if tree['/chosen'].propval(chosen_prop) != [''] and val in tree['/chosen'][chosen_prop].value[0]:
+                    tree['/chosen'][chosen_prop].value[0] = tree['/chosen'][chosen_prop].value[0].replace(val, serial_to_use[index])
+
         try:
-             serial1_node = tree['/axi/serial@f1930000']
-             tree - serial1_node
+            # default remove serial1
+            serial_node_to_remove = tree[f'/axi/serial@%s' % serial_to_remove[0]]
+            tree - serial_node_to_remove
         except:
             pass
+
+        # for board_versal2_ve_p_a1225 remove UFS
+        if board_versal2_ve_p_a1225:
+            try:
+                ufs = tree['/axi/ufs@f10b0000']
+                tree - ufs
+            except:
+                pass
 
     # if user passes in xlnx,zephyr,mems - then update device_type for those referenced nodes.
     xlnx_zeph_mems = domain_node.propval("xlnx,zephyr,mems")
