@@ -1,0 +1,229 @@
+/*
+ * Test device tree for phandle property cell lookups
+ *
+ * This file tests that phandle_possible_properties correctly handles
+ * properties with variable cell counts by looking up #*-cells properties
+ * on the referenced nodes.
+ *
+ * Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+	compatible = "test,phandle-cells";
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	/* Interrupt controllers with different #interrupt-cells */
+	intc1: interrupt-controller@1000 {
+		compatible = "test,intc-1cell";
+		#interrupt-cells = <1>;
+		interrupt-controller;
+		reg = <0x0 0x1000 0x0 0x100>;
+	};
+
+	intc2: interrupt-controller@2000 {
+		compatible = "test,intc-2cell";
+		#interrupt-cells = <2>;
+		interrupt-controller;
+		reg = <0x0 0x2000 0x0 0x100>;
+	};
+
+	intc3: interrupt-controller@3000 {
+		compatible = "test,intc-3cell";
+		#interrupt-cells = <3>;
+		interrupt-controller;
+		reg = <0x0 0x3000 0x0 0x100>;
+	};
+
+	/* IOMMU controllers with different #iommu-cells */
+	iommu1: iommu@10000 {
+		compatible = "test,iommu-0cell";
+		#iommu-cells = <0>;
+		reg = <0x0 0x10000 0x0 0x1000>;
+	};
+
+	iommu2: iommu@20000 {
+		compatible = "test,iommu-1cell";
+		#iommu-cells = <1>;
+		reg = <0x0 0x20000 0x0 0x1000>;
+	};
+
+	iommu3: iommu@30000 {
+		compatible = "test,iommu-2cell";
+		#iommu-cells = <2>;
+		reg = <0x0 0x30000 0x0 0x1000>;
+	};
+
+	/* Reset controllers with different #reset-cells */
+	reset1: reset-controller@40000 {
+		compatible = "test,reset-0cell";
+		#reset-cells = <0>;
+		reg = <0x0 0x40000 0x0 0x100>;
+	};
+
+	reset2: reset-controller@50000 {
+		compatible = "test,reset-1cell";
+		#reset-cells = <1>;
+		reg = <0x0 0x50000 0x0 0x100>;
+	};
+
+	reset3: reset-controller@60000 {
+		compatible = "test,reset-2cell";
+		#reset-cells = <2>;
+		reg = <0x0 0x60000 0x0 0x100>;
+	};
+
+	/* Power domain controllers with different #power-domain-cells */
+	power1: power-controller@70000 {
+		compatible = "test,power-0cell";
+		#power-domain-cells = <0>;
+		reg = <0x0 0x70000 0x0 0x100>;
+	};
+
+	power2: power-controller@80000 {
+		compatible = "test,power-1cell";
+		#power-domain-cells = <1>;
+		reg = <0x0 0x80000 0x0 0x100>;
+	};
+
+	/* Mailbox controllers with different #mbox-cells */
+	mbox1: mailbox@90000 {
+		compatible = "test,mbox-1cell";
+		#mbox-cells = <1>;
+		reg = <0x0 0x90000 0x0 0x100>;
+	};
+
+	mbox2: mailbox@a0000 {
+		compatible = "test,mbox-2cell";
+		#mbox-cells = <2>;
+		reg = <0x0 0xa0000 0x0 0x100>;
+	};
+
+	/* DMA controllers with different #dma-cells */
+	dma1: dma-controller@b0000 {
+		compatible = "test,dma-1cell";
+		#dma-cells = <1>;
+		reg = <0x0 0xb0000 0x0 0x1000>;
+	};
+
+	dma2: dma-controller@c0000 {
+		compatible = "test,dma-2cell";
+		#dma-cells = <2>;
+		reg = <0x0 0xc0000 0x0 0x1000>;
+	};
+
+	/* PHY controllers with different #phy-cells */
+	phy1: phy@d0000 {
+		compatible = "test,phy-1cell";
+		#phy-cells = <1>;
+		reg = <0x0 0xd0000 0x0 0x100>;
+	};
+
+	phy2: phy@e0000 {
+		compatible = "test,phy-3cell";
+		#phy-cells = <3>;
+		reg = <0x0 0xe0000 0x0 0x100>;
+	};
+
+	/* Thermal sensor with #thermal-sensor-cells */
+	thermal1: thermal-sensor@f0000 {
+		compatible = "test,thermal-0cell";
+		#thermal-sensor-cells = <0>;
+		reg = <0x0 0xf0000 0x0 0x100>;
+	};
+
+	thermal2: thermal-sensor@f1000 {
+		compatible = "test,thermal-1cell";
+		#thermal-sensor-cells = <1>;
+		reg = <0x0 0xf1000 0x0 0x100>;
+	};
+
+	/* Consumer devices using the above controllers */
+
+	/* Test interrupts-extended with varying #interrupt-cells */
+	device1: device@100000 {
+		compatible = "test,consumer";
+		reg = <0x0 0x100000 0x0 0x1000>;
+		/* intc1 has 1 cell, intc2 has 2 cells, intc3 has 3 cells */
+		interrupts-extended = <&intc1 5>,
+				      <&intc2 10 0x4>,
+				      <&intc3 0 15 0x4>;
+	};
+
+	/* Test iommus with varying #iommu-cells */
+	device2: device@200000 {
+		compatible = "test,consumer";
+		reg = <0x0 0x200000 0x0 0x1000>;
+		/* iommu1 has 0 cells, iommu2 has 1 cell, iommu3 has 2 cells */
+		iommus = <&iommu1>,
+			 <&iommu2 0x100>,
+			 <&iommu3 0x200 0x1>;
+	};
+
+	/* Test resets with varying #reset-cells */
+	device3: device@300000 {
+		compatible = "test,consumer";
+		reg = <0x0 0x300000 0x0 0x1000>;
+		/* reset1 has 0 cells, reset2 has 1 cell, reset3 has 2 cells */
+		resets = <&reset1>,
+			 <&reset2 5>,
+			 <&reset3 10 0x1>;
+	};
+
+	/* Test power-domains with varying #power-domain-cells */
+	device4: device@400000 {
+		compatible = "test,consumer";
+		reg = <0x0 0x400000 0x0 0x1000>;
+		/* power1 has 0 cells, power2 has 1 cell */
+		power-domains = <&power1>,
+				<&power2 3>;
+	};
+
+	/* Test mboxes with varying #mbox-cells */
+	device5: device@500000 {
+		compatible = "test,consumer";
+		reg = <0x0 0x500000 0x0 0x1000>;
+		/* mbox1 has 1 cell, mbox2 has 2 cells */
+		mboxes = <&mbox1 0>,
+			 <&mbox2 1 0x0>;
+		mbox-names = "tx", "rx";
+	};
+
+	/* Test dmas with varying #dma-cells */
+	device6: device@600000 {
+		compatible = "test,consumer";
+		reg = <0x0 0x600000 0x0 0x1000>;
+		/* dma1 has 1 cell, dma2 has 2 cells */
+		dmas = <&dma1 0>,
+		       <&dma2 1 0x1>;
+		dma-names = "tx", "rx";
+	};
+
+	/* Test phys with varying #phy-cells */
+	device7: device@700000 {
+		compatible = "test,consumer";
+		reg = <0x0 0x700000 0x0 0x1000>;
+		/* phy1 has 1 cell, phy2 has 3 cells */
+		phys = <&phy1 0>,
+		       <&phy2 1 2 3>;
+		phy-names = "usb", "pcie";
+	};
+
+	/* Test thermal-sensors with varying #thermal-sensor-cells */
+	thermal-zones {
+		cpu-thermal {
+			polling-delay-passive = <250>;
+			polling-delay = <1000>;
+			/* thermal1 has 0 cells, thermal2 has 1 cell */
+			thermal-sensors = <&thermal1>;
+		};
+		gpu-thermal {
+			polling-delay-passive = <250>;
+			polling-delay = <1000>;
+			thermal-sensors = <&thermal2 0>;
+		};
+	};
+};
