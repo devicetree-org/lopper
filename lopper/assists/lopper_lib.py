@@ -377,7 +377,9 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
             # couldn't find the node, skip
             continue
 
-        sub_cpus = tree.subnodes( cpu_node, "cpu@.*" )
+        # Only consider direct CPU child nodes; avoid matching cache nodes
+        # whose paths also include "cpu@".
+        sub_cpus = cpu_node.subnodes( children_only=True, name="cpu@.*" )
         sub_cpus_all = sub_cpus + sub_cpus_all
 
         lopper.log._info( f"cpu prop phandle: {cpu_phandle}" )
