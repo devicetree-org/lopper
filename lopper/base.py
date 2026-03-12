@@ -624,7 +624,7 @@ class lopper_base:
                     "access" : [ 'phandle flags' ],
                     "cpus" : [ 'phandle mask mode' ],
                     "clocks" : [ 'phandle:#clock-cells' ],
-                    "reset-gpios" : [ 'phandle field field' ],
+                    "reset-gpios" : [ 'phandle:#gpio-cells' ],
                     "gpios" : [ 'phandle:#gpio-cells' ],
                     "resets" : [ 'phandle field' ],
                     "assigned-clocks" : [ 'phandle:#clock-cells' ],
