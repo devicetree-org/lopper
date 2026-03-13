@@ -101,6 +101,102 @@ def filter_ipi_nodes_for_cpu(sdt, machine):
         return
 
 
+def check_console_uart_accessibility(sdt, options, address_map, na, ns):
+    """
+    Check if the console UART (from /chosen/stdout-path) is accessible to MicroBlaze RISC-V.
+
+    Logic:
+    1. Read /chosen/stdout-path to get configured console UART alias (e.g., serial0)
+    2. Resolve alias to get actual UART device node
+    3. Extract UART base address from reg property
+    4. Check if address or phandle is in MicroBlaze address-map
+    5. If accessible: enable PS UART (set status="okay")
+    6. If NOT accessible: find PL UART in address-map and update /chosen/stdout-path
+
+    This ensures Vitis BSP and Zephyr use the same console UART.
+
+    Args:
+        sdt: System device tree
+        options: User options with processor name
+        address_map: Address-map from CPU cluster node
+        na: Number of address cells
+        ns: Number of size cells
+    """
+    try:
+        # Only process for MicroBlaze RISC-V
+        match_cpunode = get_cpu_node(sdt, options)
+        cpu_ip = match_cpunode.propval('xlnx,ip-name', list)
+        if not cpu_ip or cpu_ip[0] not in ('microblaze', 'microblaze_riscv'):
+            return
+
+        chosen_node = sdt.tree['/chosen']
+        if chosen_node.propval('stdout-path') == ['']:
+            return
+
+        stdout_path = chosen_node.propval('stdout-path', list)[0]
+        alias_name = stdout_path.split(':')[0]
+
+        alias_node = sdt.tree['/aliases']
+        if alias_node.propval(alias_name) == ['']:
+            return
+
+        uart_path = alias_node.propval(alias_name, list)[0]
+
+        try:
+            uart_node = sdt.tree[uart_path]
+        except KeyError:
+            return
+
+        if uart_node.propval('reg') == ['']:
+            return
+
+        reg_value = uart_node.propval('reg', list)
+        uart_base_addr = reg_value[0]
+
+        cells = na + ns
+        tmp = na
+        mapped_addresses = {}
+        mapped_phandles = []
+
+        while tmp < len(address_map):
+            child_addr = address_map[tmp - na]
+            phandle = address_map[tmp]
+            mapped_addresses[child_addr] = phandle
+            mapped_phandles.append(phandle)
+            tmp = tmp + cells + na + 1
+
+        uart_phandle = uart_node.phandle
+        is_accessible = (uart_base_addr in mapped_addresses) or (uart_phandle in mapped_phandles)
+
+        if is_accessible:
+            current_status = uart_node.propval('status', list)
+            if current_status and current_status[0] == 'disabled':
+                uart_node['status'] = 'okay'
+        else:
+            pl_uart_compatibles = [
+                'xlnx,axi-uart16550', 'xlnx,xps-uart16550',
+                'xlnx,xps-uartlite', 'xlnx,mdm-riscv',
+                'ns16550'
+            ]
+
+            accessible_pl_uart = None
+            for node in sdt.tree.nodes('/.*'):
+                if node.propval('compatible') != ['']:
+                    node_compatibles = node.propval('compatible', list)
+                    if any(compat in node_compatibles for compat in pl_uart_compatibles):
+                        if node.phandle in mapped_phandles:
+                            accessible_pl_uart = node
+                            break
+
+            if accessible_pl_uart:
+                pl_uart_label = accessible_pl_uart.label if accessible_pl_uart.label else "serial_pl"
+                alias_node[pl_uart_label] = accessible_pl_uart.abs_path
+                baud_rate = ":" + stdout_path.split(':')[1] if ':' in stdout_path else ""
+                chosen_node['stdout-path'] = pl_uart_label + baud_rate
+    except Exception:
+        pass
+
+
 # tgt_node: is the top level domain node
 # sdt: is the system device-tree
 # options: User provided options (processor name)
@@ -198,6 +294,11 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 sdt.tree.add(subnode)
 
     filter_ipi_nodes_for_cpu(sdt, machine)
+
+    # Check console UART accessibility for MicroBlaze Zephyr DTS
+    # This ensures Vitis BSP and Zephyr use the same accessible console UART
+    if zephyr_dt:
+        check_console_uart_accessibility(sdt, options, address_map, na, ns)
 
     node_list = []
     cpu_ip = match_cpunode.propval('xlnx,ip-name', list)
@@ -1063,7 +1164,16 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     root_sub_nodes = root_node.subnodes()
     symbol_node = sdt.tree['/__symbols__']
     valid_alias_proplist = []
-
+    stdout_baud = None
+    try:
+        chosen_node = sdt.tree['/chosen']
+        if chosen_node.propval('stdout-path') != ['']:
+            stdout_path = chosen_node.propval('stdout-path', list)[0]
+            match = re.search(r':(\d+)', str(stdout_path))
+            if match:
+                stdout_baud = int(match.group(1))
+    except Exception:
+        stdout_baud = None
     """
     DRC Checks
     1) Interrupt controller is present or not
@@ -1110,6 +1220,136 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
         print(err_timer_nointr)
         sys.exit(1)
 
+    memnode_list = sdt.tree.nodes('/memory@.*')
+    for mem_node in memnode_list:
+        if mem_node.propval('ranges') != ['']:
+            mem_node.delete('ranges')
+
+    # MicroBlaze Zephyr DTS should only keep PL peripherals plus core nodes
+    # when the design includes both PS and PL (MicroBlaze) domains.
+    has_pl_mb = False
+    try:
+        match_cpunode = get_cpu_node(sdt, options)
+        cpu_ip = match_cpunode.propval('xlnx,ip-name', list)
+        has_pl_mb = bool(cpu_ip and cpu_ip[0] == "microblaze_riscv")
+    except Exception:
+        has_pl_mb = any(
+            node.propval('xlnx,ip-name') != [''] and node.propval('xlnx,ip-name', list)[0] == "microblaze_riscv"
+            for node in root_sub_nodes
+        )
+
+    has_ps_axi = False
+    ps_serial_data_to_recreate = []
+
+    try:
+        axi_node = sdt.tree['/axi']
+        has_ps_axi = True
+
+        if has_pl_mb:
+            ps_uart_compatibles = ['arm,pl011', 'arm,sbsa-uart', 'arm,primecell']
+            for node in list(axi_node.subnodes()):
+                if node.propval('compatible') != ['']:
+                    node_compatibles = node.propval('compatible', list)
+                    if any(compat in node_compatibles for compat in ps_uart_compatibles):
+                        if 'serial' in node.name.lower() and node.propval('status', list) == ['okay']:
+                            node_data = {
+                                'name': node.name,
+                                'label': node.label,
+                                'properties': {}
+                            }
+                            for prop_name, prop_obj in node.__props__.items():
+                                node_data['properties'][prop_name] = prop_obj.value
+                            ps_serial_data_to_recreate.append(node_data)
+    except Exception:
+        pass
+
+    if has_pl_mb and has_ps_axi:
+        allowed_top_nodes = {
+            "amba_pl",
+            "soc",
+            "chosen",
+            "aliases",
+            "clocks",
+            "__symbols__",
+        }
+        for node in list(root_sub_nodes):
+            if node.depth != 1:
+                continue
+            if node.name in allowed_top_nodes:
+                continue
+            if node.name.startswith("memory@"):
+                continue
+            if node.name.startswith("cpus"):
+                continue
+            sdt.tree.delete(node)
+        root_sub_nodes = root_node.subnodes()
+
+        if ps_serial_data_to_recreate:
+            target_bus = None
+            try:
+                target_bus = sdt.tree['/soc']
+            except KeyError:
+                try:
+                    target_bus = sdt.tree['/amba_pl']
+                except KeyError:
+                    pass
+
+            if target_bus:
+                for idx, serial_data in enumerate(ps_serial_data_to_recreate):
+                    try:
+                        new_serial_path = f"{target_bus.abs_path}/{serial_data['name']}"
+                        serial_label = f"serial{idx}"
+
+                        new_serial = LopperNode(-1, new_serial_path)
+                        new_serial.tree = sdt.tree
+                        new_serial.label = serial_label
+
+                        new_serial + LopperProp(name="compatible", value=["arm,sbsa-uart"])
+                        new_serial + LopperProp(name="status", value=["okay"])
+
+                        if 'reg' in serial_data['properties']:
+                            new_serial + LopperProp(name="reg", value=serial_data['properties']['reg'])
+
+                        baudrate = serial_data['properties']['xlnx,baudrate'][0] if 'xlnx,baudrate' in serial_data['properties'] else 115200
+                        new_serial + LopperProp(name="current-speed", value=[baudrate])
+
+                        sdt.tree.add(new_serial)
+
+                        alias_path = new_serial.abs_path.replace("/amba_pl/", "/soc/")
+                        alias_node = sdt.tree['/aliases']
+                        alias_node + LopperProp(name=serial_label, value=alias_path)
+
+                        valid_alias_proplist.append(serial_data['name'])
+                    except Exception:
+                        pass
+
+        try:
+            chosen_node = sdt.tree['/chosen']
+            memnode_list = sdt.tree.nodes('/memory@.*')
+            ddr_memory = None
+            bram_memory = None
+            ocm_memory = None
+            for mem_node in memnode_list:
+                mem_path = mem_node.abs_path.lower()
+                mem_name = mem_node.name.lower()
+
+                if 'ddr' in mem_path or 'ddr' in mem_name or any(addr in mem_name for addr in ['@40000000', '@80000000', '@8000', '@4000', 'axi_noc', 'noc']):
+                    if not ddr_memory:
+                        ddr_memory = mem_node
+                elif any(keyword in mem_path or keyword in mem_name for keyword in ['bram', 'axi_bram', 'axi-bram', 'blockram', 'dlmb', 'ilmb', 'lmb']):
+                    if not bram_memory:
+                        bram_memory = mem_node
+                elif any(keyword in mem_path or keyword in mem_name for keyword in ['ocm', 'tcm']) or (mem_name.startswith('memory@') and 'sram' in mem_path):
+                    if not ocm_memory:
+                        ocm_memory = mem_node
+
+            selected_sram = ddr_memory or bram_memory or ocm_memory
+
+            if selected_sram:
+                chosen_node['zephyr,sram'] = LopperProp(name="zephyr,sram", value=selected_sram.abs_path)
+        except Exception:
+            pass
+
     license_content = '''#
 # Copyright (c) 2024 - 2025 Advanced Micro Devices, Inc.
 #
@@ -1145,16 +1385,25 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
             if val == "microblaze_riscv":
                 compatlist = ['amd,mbv32', 'riscv']
                 node['compatible'] = compatlist
-                new_node = LopperNode()
-                new_node.name = "interrupt-controller"
-                new_node['compatible'] = "riscv,cpu-intc"
-                new_prop = LopperProp( "interrupt-controller" )
-                new_node + new_prop
-                new_node['#interrupt-cells'] = 1
-                new_node.label_set("cpu_intc")
-                node.add(new_node)
-                phandle_val = new_node.phandle_or_create()
-                new_node + LopperProp(name="phandle", value=phandle_val)
+
+                # Find existing interrupt-controller child or create a new one
+                intc_node = None
+                for child in node.child_nodes.values():
+                    if child.name == "interrupt-controller":
+                        intc_node = child
+                        break
+                if not intc_node:
+                    intc_node = LopperNode()
+                    intc_node.name = "interrupt-controller"
+                    node.add(intc_node)
+
+                intc_node.label_set("cpu_intc")
+                intc_node['compatible'] = "riscv,cpu-intc"
+                intc_node['#interrupt-cells'] = 1
+                if 'interrupt-controller' not in intc_node.__props__:
+                    intc_node + LopperProp("interrupt-controller")
+                phandle_val = intc_node.phandle_or_create()
+                intc_node + LopperProp(name="phandle", value=phandle_val)
 
     zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
     if utils.is_file(zephyr_supported_schema_file):
@@ -1216,9 +1465,13 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                                node["reg-shift"] = LopperProp("reg-shift")
                                node["reg-shift"].value = 2
                             if node.propval('current-speed') == ['']:
-                               # Using default IP baud-rate of 9600, but change according to uart-setup for prints
                                node["current-speed"] = LopperProp("current-speed")
-                               node["current-speed"].value = 9600
+                               if node.propval('xlnx,baudrate') != ['']:
+                                   node["current-speed"].value = node["xlnx,baudrate"].value
+                               elif stdout_baud:
+                                   node["current-speed"].value = stdout_baud
+                               else:
+                                   node["current-speed"].value = 9600
                         # MDM RISCV DEBUG UARTLITE
                         if "xlnx,mdm-riscv-1.0" in node["compatible"].value:
                             node["compatible"].value = ["xlnx,xps-uartlite-1.00a"]
