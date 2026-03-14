@@ -372,6 +372,21 @@ xlnx,axi-ethernet-1.00.a:
     - local-mac-address
     - xlnx,rxcsum
     - xlnx,txcsum
+
+xlnx,gem-controller:
+  required:
+    - compatible
+    - reg
+    - status
+
+xlnx,versal-gem:
+  required:
+    - compatible
+    - status
+    - clock-frequency
+    - interrupts
+    - local-mac-address
+
 mmio-sram:
   required:
     - compatible

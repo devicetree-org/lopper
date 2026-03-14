@@ -594,6 +594,11 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
                 intr_list = node["interrupts"].value
                 node["interrupts"].value = [cell for i in range(0, len(intr_list), 3)
                                 for cell in intr_list[i:i+3] + [0xa0]]
+            elif compatible == "xlnx,versal-gem":
+                # GEM: Convert 3-cell interrupts to 4-cell GICv3 format
+                intr_list = node["interrupts"].value
+                node["interrupts"].value = [cell for i in range(0, len(intr_list), 3)
+                                for cell in intr_list[i:i+3] + [0xa0]]
             elif node.propval('interrupts') != ['']:
                 intr_list = node["interrupts"].value
                 intr_list.append("0xa0")            
@@ -878,6 +883,43 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                         node['#address-cells'] = 1
                         node['#size-cells'] = 0
                         node['compatible'] = "xlnx,ps-gpio"
+                    # GEM (Gigabit Ethernet MAC) — xlnx,versal-gem / cdns,gem
+                    if "xlnx,versal-gem" in node["compatible"].value:
+                        # Remove any pre-existing sub-nodes
+                        for subnode in node.subnodes():
+                            node.delete(subnode)
+                        # Add the (CRL_APB) GEM0_REF_CTRL reg as a second reg entry
+                        node["reg"].value = node["reg"].value + [0x0, 0xff5e0050, 0x0, 0x4]
+                        # --- Build ethernet_mac child node ---
+                        mac_node = LopperNode()
+                        mac_node["compatible"] = ["xlnx,gem"]
+                        mac_node["status"] = "okay"
+                        # clock-frequency: read from xlnx,enet-clk-freq-hz (set by pcw.dtsi)
+                        if node.propval('xlnx,enet-clk-freq-hz') != ['']:
+                            mac_node["clock-frequency"] = node["xlnx,enet-clk-freq-hz"].value
+                        # Copy interrupts (already converted to 4-cell GICv3 format)
+                        if node.propval('interrupts') != ['']:
+                            mac_node["interrupts"] = node["interrupts"].value
+                        # Fixed MAC tuning parameters
+                        mac_node["amba-ahb-burst-length"] = 16
+                        mac_node["hw-rx-buffer-size"] = 3
+                        mac_node["hw-rx-buffer-offset"] = 0
+                        mac_node + LopperProp("hw-tx-buffer-size-full")
+                        mac_node["rx-buffer-descriptors"] = 32
+                        mac_node["tx-buffer-descriptors"] = 32
+                        mac_node["rx-buffer-size"] = 1536
+                        mac_node["tx-buffer-size"] = 1536
+                        mac_node + LopperProp("discard-rx-fcs")
+                        mac_node + LopperProp("unicast-hash")
+                        mac_addr_prop = LopperProp(name="local-mac-address")
+                        mac_addr_prop.value = [0x00, 0x0a, 0x35, 0x00, 0x01, 0x02]
+                        mac_addr_prop.binary = True
+                        mac_node + mac_addr_prop
+                        mac_node.name = "ethernet_mac"
+                        mac_node.label_set(f"{node.label}_mac")
+                        node.add(mac_node)
+                        node["compatible"].value = ["xlnx,gem-controller"]
+                        is_supported_periph = [value for key,value in schema.items() if key in node["compatible"].value]
                     if is_supported_periph:
                         required_prop = is_supported_periph[0]["required"]
                         prop_list = list(node.__props__.keys())
