@@ -1328,6 +1328,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
 
     has_ps_axi = False
     ps_serial_data_to_recreate = []
+    ps_ipi_data_to_recreate = []
 
     try:
         axi_node = sdt.tree['/axi']
@@ -1335,6 +1336,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
 
         if has_pl_mb:
             ps_uart_compatibles = ['arm,pl011', 'arm,sbsa-uart', 'arm,primecell']
+            ps_ipi_compatibles = ['xlnx,versal-ipi-mailbox']
             for node in list(axi_node.subnodes()):
                 if node.propval('compatible') != ['']:
                     node_compatibles = node.propval('compatible', list)
@@ -1348,6 +1350,26 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                             for prop_name, prop_obj in node.__props__.items():
                                 node_data['properties'][prop_name] = prop_obj.value
                             ps_serial_data_to_recreate.append(node_data)
+                    elif any(compat in node_compatibles for compat in ps_ipi_compatibles):
+                        if node.propval('status', list) == ['okay']:
+                            node_data = {
+                                'name': node.name,
+                                'label': node.label,
+                                'properties': {},
+                                'children': []
+                            }
+                            for prop_name, prop_obj in node.__props__.items():
+                                node_data['properties'][prop_name] = prop_obj.value
+                            for child in node.child_nodes.values():
+                                child_data = {
+                                    'name': child.name,
+                                    'label': child.label,
+                                    'properties': {}
+                                }
+                                for prop_name, prop_obj in child.__props__.items():
+                                    child_data['properties'][prop_name] = prop_obj.value
+                                node_data['children'].append(child_data)
+                            ps_ipi_data_to_recreate.append(node_data)
     except Exception:
         pass
 
@@ -1372,7 +1394,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
             sdt.tree.delete(node)
         root_sub_nodes = root_node.subnodes()
 
-        if ps_serial_data_to_recreate:
+        if ps_serial_data_to_recreate or ps_ipi_data_to_recreate:
             target_bus = None
             try:
                 target_bus = sdt.tree['/soc']
@@ -1410,6 +1432,51 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                         valid_alias_proplist.append(serial_data['name'])
                     except Exception:
                         pass
+                if ps_ipi_data_to_recreate:
+                    _schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
+                    _schema = utils.load_yaml(_schema_file) if utils.is_file(_schema_file) else {}
+                    ipi_parent_required = _schema.get('xlnx,versal-ipi-mailbox', {}).get('required', [])
+                    ipi_child_required = _schema.get('xlnx,versal-ipi-dest-mailbox', {}).get('required', [])
+
+                    for ipi_data in ps_ipi_data_to_recreate:
+                        try:
+                            new_ipi_path = f"{target_bus.abs_path}/{ipi_data['name']}"
+                            ipi_label = ipi_data['label']
+
+                            new_ipi = LopperNode(-1, new_ipi_path)
+                            new_ipi.tree = sdt.tree
+                            new_ipi.label = ipi_label
+
+                            for prop_name, prop_val in ipi_data['properties'].items():
+                                if ipi_parent_required and prop_name not in ipi_parent_required:
+                                    continue
+                                if prop_name == 'compatible':
+                                    new_ipi + LopperProp(name="compatible", value=["xlnx,mbox-versal-ipi-mailbox"])
+                                else:
+                                    new_ipi + LopperProp(name=prop_name, value=prop_val)
+
+                            sdt.tree.add(new_ipi)
+
+                            for child_data in ipi_data.get('children', []):
+                                new_child = LopperNode()
+                                # Match ARM path naming: child@<reg_addr_hex>
+                                child_reg = child_data['properties'].get('reg', [])
+                                if len(child_reg) > 1:
+                                    new_child.name = f"child@{hex(child_reg[1])[2:]}"
+                                else:
+                                    new_child.name = child_data['name']
+                                new_child.label = child_data['label']
+                                for prop_name, prop_val in child_data['properties'].items():
+                                    if ipi_child_required and prop_name not in ipi_child_required:
+                                        continue
+                                    if prop_name == 'compatible':
+                                        new_child + LopperProp(name="compatible", value=["xlnx,mbox-versal-ipi-dest-mailbox"])
+                                    else:
+                                        new_child + LopperProp(name=prop_name, value=prop_val)
+                                new_ipi.add(new_child)
+
+                        except Exception:
+                            pass
 
         try:
             chosen_node = sdt.tree['/chosen']
