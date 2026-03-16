@@ -361,6 +361,269 @@ def find_address_in_map(entries, address):
     return None
 
 
+def _is_cpu_cluster(node):
+    """Check if a node is a CPU cluster.
+
+    A CPU cluster is identified by:
+    - Having an address-map property (restricted access cluster), or
+    - Being named 'cpus' or 'cpus-cluster*', or
+    - Having compatible containing 'cpus,cluster'
+    """
+    if 'address-map' in node.__props__:
+        return True
+
+    # Check node name
+    if node.name == 'cpus' or node.name.startswith('cpus-cluster'):
+        return True
+
+    # Check compatible property
+    try:
+        compat = node['compatible'].value
+        if isinstance(compat, list):
+            for c in compat:
+                if 'cpus' in str(c).lower():
+                    return True
+        elif 'cpus' in str(compat).lower():
+            return True
+    except (KeyError, TypeError):
+        pass
+
+    return False
+
+
+def _get_child_devices(tree, bus_node, parent_addr, map_size, max_children=10):
+    """Get child devices of a bus node with their addresses.
+
+    Args:
+        tree: LopperTree
+        bus_node: The bus/interconnect node
+        parent_addr: Base address of the bus in parent's view
+        map_size: Size of the mapped region
+        max_children: Maximum number of children to return
+
+    Returns:
+        List of (address, size, label) tuples for child devices
+    """
+    children = []
+
+    # Get address/size cells for this bus
+    try:
+        child_ac = bus_node['#address-cells'].value[0]
+        child_sc = bus_node['#size-cells'].value[0]
+    except (KeyError, IndexError, TypeError):
+        child_ac = 2
+        child_sc = 2
+
+    # Parse ranges to understand address translation
+    # Empty ranges (or ['']) means 1:1 mapping (identity)
+    # ranges format: child_addr(child_ac) parent_addr(parent_ac) size(child_sc)
+    ranges_offset = 0
+    try:
+        ranges = bus_node['ranges'].value
+        if ranges and ranges != [''] and len(ranges) >= child_ac:
+            # Get the child base address from ranges
+            ranges_offset = cell_value_get(ranges, child_ac, 0)[0]
+    except (KeyError, IndexError, TypeError):
+        pass
+
+    # Iterate children
+    for child in bus_node.child_nodes.values():
+        if 'reg' not in child.__props__:
+            continue
+
+        try:
+            reg = child['reg'].value
+            if not reg or reg == ['']:
+                continue
+
+            # Get child's address from reg property
+            child_addr = cell_value_get(reg, child_ac, 0)[0]
+
+            # Get size if available
+            if len(reg) >= child_ac + child_sc:
+                child_size = cell_value_get(reg, child_sc, child_ac)[0]
+            else:
+                child_size = 0
+
+            # For 1:1 mapping (empty ranges), child_addr IS the system address
+            # Check if this falls within the mapped region
+            if child_addr >= parent_addr and child_addr < parent_addr + map_size:
+                label = child.label if child.label else child.name
+                children.append((child_addr, child_size, label))
+
+        except (IndexError, TypeError, ValueError):
+            continue
+
+        if len(children) >= max_children:
+            break
+
+    # Sort by address
+    children.sort(key=lambda x: x[0])
+    return children
+
+
+def render_cpu_access_map(tree, cpu_cluster=None, width=60, expand=False):
+    """Render an ASCII visualization of CPU cluster device accessibility.
+
+    Shows which devices each CPU cluster can access based on its address-map
+    property. Clusters without address-map are shown as having unrestricted
+    system access.
+
+    Args:
+        tree: LopperTree to visualize
+        cpu_cluster: Specific CPU cluster node or path (None for all clusters)
+        width: Width of the visualization in characters
+        expand: If True, show child devices of bus nodes
+
+    Returns:
+        String containing the ASCII visualization
+    """
+    lines = []
+
+    # Find CPU clusters to visualize
+    clusters = []
+    if cpu_cluster is not None:
+        if isinstance(cpu_cluster, str):
+            node = tree.deref(cpu_cluster)
+            if node:
+                clusters = [node]
+        else:
+            clusters = [cpu_cluster]
+    else:
+        # Find all CPU cluster nodes
+        for node in tree.__nodes__.values():
+            if _is_cpu_cluster(node):
+                clusters.append(node)
+
+    if not clusters:
+        return "No CPU clusters found.\n"
+
+    # Sort clusters by path for consistent output
+    clusters = sorted(clusters, key=lambda n: n.abs_path)
+
+    # Render each cluster
+    for cluster in clusters:
+        lines.append("=" * width)
+        cluster_label = cluster.label if cluster.label else cluster.name
+        title = f"CPU Cluster: {cluster_label}"
+        lines.append(title.center(width))
+        lines.append(f"Path: {cluster.abs_path}".center(width))
+        lines.append("=" * width)
+
+        # Check if cluster has address-map
+        if 'address-map' not in cluster.__props__:
+            lines.append("")
+            lines.append("  (no address-map - unrestricted system access)")
+            lines.append("")
+            continue
+
+        # Parse address-map
+        try:
+            address_map = cluster['address-map'].value
+            na = cluster['#ranges-address-cells'].value[0]
+            ns = cluster['#ranges-size-cells'].value[0]
+        except (KeyError, IndexError, TypeError):
+            lines.append("  (unable to parse address-map)")
+            lines.append("")
+            continue
+
+        entries = parse_address_map(address_map, na, ns)
+
+        if not entries:
+            lines.append("  (empty address-map)")
+            lines.append("")
+            continue
+
+        # Header
+        lines.append("")
+        lines.append(f"  {'Address Range':<36} {'Size':<12} Device")
+        lines.append(f"  {'-' * 36} {'-' * 12} {'-' * (width - 54)}")
+
+        # Sort entries by address
+        sorted_entries = sorted(entries, key=lambda e: e.child_addr)
+
+        # Track unique devices (same phandle may appear multiple times)
+        seen_devices = {}
+
+        for entry in sorted_entries:
+            # Skip zero-size entries (typically non-memory mapped devices)
+            if entry.size == 0:
+                continue
+
+            # Format address range
+            addr_start = f"0x{entry.child_addr:08x}"
+            addr_end = f"0x{entry.child_addr + entry.size - 1:08x}"
+            addr_range = f"{addr_start} - {addr_end}"
+
+            # Format size
+            if entry.size >= 0x100000:
+                size_str = f"{entry.size // 0x100000} MB"
+            elif entry.size >= 0x400:
+                size_str = f"{entry.size // 0x400} KB"
+            else:
+                size_str = f"{entry.size} B"
+
+            # Resolve device node
+            device_node = tree.pnode(entry.phandle)
+            if device_node:
+                device_label = device_node.label if device_node.label else device_node.name
+                device_path = device_node.abs_path
+
+                # Track for summary
+                if entry.phandle not in seen_devices:
+                    seen_devices[entry.phandle] = device_node
+            else:
+                device_label = f"<phandle {entry.phandle}>"
+                device_path = ""
+
+            lines.append(f"  {addr_range:<36} {size_str:<12} {device_label}")
+
+            # Expand bus nodes to show children
+            if expand and device_node and device_node.child_nodes:
+                children = _get_child_devices(tree, device_node, entry.child_addr, entry.size)
+                for i, (child_addr, child_size, child_label) in enumerate(children):
+                    # Use tree drawing characters
+                    if i == len(children) - 1:
+                        prefix = "    └─"
+                    else:
+                        prefix = "    ├─"
+
+                    # Format child address and size
+                    child_addr_str = f"0x{child_addr:08x}"
+                    if child_size >= 0x100000:
+                        child_size_str = f"{child_size // 0x100000} MB"
+                    elif child_size >= 0x400:
+                        child_size_str = f"{child_size // 0x400} KB"
+                    elif child_size > 0:
+                        child_size_str = f"{child_size} B"
+                    else:
+                        child_size_str = ""
+
+                    lines.append(f"{prefix} {child_addr_str:<31} {child_size_str:<12} {child_label}")
+
+        # Summary
+        lines.append("")
+        lines.append(f"  Total mappings: {len(entries)}")
+        lines.append(f"  Unique devices: {len(seen_devices)}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def render_all_cpu_access_maps(tree, width=60, expand=False):
+    """Render ASCII visualization for all CPU clusters in a tree.
+
+    Args:
+        tree: LopperTree to visualize
+        width: Width of the visualization in characters
+        expand: If True, show child devices of bus nodes
+
+    Returns:
+        String containing the ASCII visualization
+    """
+    return render_cpu_access_map(tree, cpu_cluster=None, width=width, expand=expand)
+
+
 def _normalize_start_size_value(raw_value, default_value):
     """Convert YAML-provided start/size representations into integers."""
     if raw_value is None:
