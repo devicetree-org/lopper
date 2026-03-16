@@ -91,6 +91,8 @@ def usage():
     print('                          schema_all (enable all schema checks)' )
     print('                          all (enable all warnings)' )
     print('    , --memmap        output file for memory map visualization (use - for stdout)' )
+    print('    , --cpumap        output file for CPU access map visualization (use - for stdout)' )
+    print('    , --cpumap-expand expand bus nodes to show child devices in cpumap' )
     print('    , --symbols       generate (and maintain) the __symbols__ node during processing' )
     print('  -o, --output        output file')
     print('    , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes' )
@@ -568,6 +570,17 @@ def main():
             with open(memmap_file, 'w') as f:
                 f.write(memmap_output)
             _info(f"memory map written to {memmap_file}")
+
+    # Generate CPU access map visualization if requested
+    if cpumap_file:
+        from lopper.assists.lopper_lib import render_all_cpu_access_maps
+        cpumap_output = render_all_cpu_access_maps(device_tree.tree, expand=cpumap_expand)
+        if cpumap_file == "-":
+            print(cpumap_output)
+        else:
+            with open(cpumap_file, 'w') as f:
+                f.write(cpumap_output)
+            _info(f"CPU access map written to {cpumap_file}")
 
     if not dryrun:
         # write any changes to the FDT, before we do our write
