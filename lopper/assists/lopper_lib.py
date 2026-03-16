@@ -17,6 +17,7 @@ import re
 import subprocess
 import shutil
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 from pathlib import PurePath
 from io import StringIO
@@ -211,6 +212,153 @@ def cell_value_split( value, cell_size ):
         ret_val.append(value)
 
     return ret_val
+
+
+# =============================================================================
+# Address-Map Parsing Utilities
+# =============================================================================
+#
+# The address-map property in CPU cluster nodes defines which devices are
+# accessible to that CPU. The format is:
+#
+#   child_addr(na cells) phandle(1) parent_addr(na cells) size(ns cells)
+#
+# Where:
+#   na = #ranges-address-cells (from the cluster node)
+#   ns = #ranges-size-cells (from the cluster node)
+#
+# These utilities parse the raw property into structured data for easier use.
+# =============================================================================
+
+@dataclass
+class LopperAddressMapEntry:
+    """A single entry in an address-map property.
+
+    Represents one mapping from a CPU cluster's address space to a device.
+
+    Attributes:
+        child_addr: Address in CPU's view (child address space)
+        phandle: Phandle of the target device node
+        parent_addr: Address in parent/system view
+        size: Size of the mapping in bytes
+    """
+    child_addr: int
+    phandle: int
+    parent_addr: int
+    size: int
+
+    def contains_address(self, addr):
+        """Check if this mapping contains the given address.
+
+        Args:
+            addr: Address to check
+
+        Returns:
+            True if addr falls within [child_addr, child_addr + size)
+        """
+        return self.child_addr <= addr < (self.child_addr + self.size)
+
+    def __repr__(self):
+        return (f"LopperAddressMapEntry(child=0x{self.child_addr:x}, "
+                f"phandle={self.phandle}, parent=0x{self.parent_addr:x}, "
+                f"size=0x{self.size:x})")
+
+
+def parse_address_map(address_map_value, address_cells, size_cells):
+    """Parse an address-map property into structured entries.
+
+    The address-map property format per entry is:
+        child_addr(na cells) + phandle(1) + parent_addr(na cells) + size(ns cells)
+
+    Args:
+        address_map_value: Raw property value (list of u32 cells)
+        address_cells: Value of #ranges-address-cells (na)
+        size_cells: Value of #ranges-size-cells (ns)
+
+    Returns:
+        List of LopperAddressMapEntry objects
+
+    Example:
+        >>> cluster = tree['/cpus-a72@0']
+        >>> entries = parse_address_map(
+        ...     cluster['address-map'].value,
+        ...     cluster['#ranges-address-cells'].value[0],
+        ...     cluster['#ranges-size-cells'].value[0]
+        ... )
+        >>> for e in entries:
+        ...     print(f"0x{e.child_addr:x} -> phandle {e.phandle}")
+    """
+    entries = []
+    na = address_cells
+    ns = size_cells
+
+    # Entry format: child_addr(na) + phandle(1) + parent_addr(na) + size(ns)
+    entry_size = na + 1 + na + ns
+
+    if not address_map_value or address_map_value == ['']:
+        return entries
+
+    idx = 0
+    while idx + entry_size <= len(address_map_value):
+        # Extract child address (na cells)
+        child_addr, _ = cell_value_get(address_map_value, na, idx)
+
+        # Phandle position per address-map definition in base.py:
+        #   '#ranges-address-cells phandle #ranges-address-cells #ranges-size-cells'
+        # So phandle is at offset na (after the child_addr cells)
+        phandle = address_map_value[idx + na]
+
+        # Parent address (na cells) at offset na + 1
+        parent_addr, _ = cell_value_get(address_map_value, na, idx + na + 1)
+
+        # Size (ns cells) at offset na + 1 + na
+        size, _ = cell_value_get(address_map_value, ns, idx + na + 1 + na)
+
+        entries.append(LopperAddressMapEntry(
+            child_addr=child_addr,
+            phandle=phandle,
+            parent_addr=parent_addr,
+            size=size
+        ))
+
+        idx += entry_size
+
+    return entries
+
+
+def get_accessible_phandles(address_map_value, address_cells, size_cells):
+    """Extract just the phandles from an address-map property.
+
+    This provides backwards-compatible functionality matching existing
+    while loops scattered across assists.
+
+    Args:
+        address_map_value: Raw property value (list of u32 cells)
+        address_cells: Value of #ranges-address-cells
+        size_cells: Value of #ranges-size-cells
+
+    Returns:
+        List of phandle integers from the address-map
+    """
+    entries = parse_address_map(address_map_value, address_cells, size_cells)
+    return [e.phandle for e in entries]
+
+
+def find_address_in_map(entries, address):
+    """Find which address-map entry contains the given address.
+
+    Args:
+        entries: Parsed address-map entries (from parse_address_map)
+        address: Address to look up (in child/CPU address space)
+
+    Returns:
+        The matching LopperAddressMapEntry, or None if not mapped
+    """
+    for entry in entries:
+        if entry.contains_address(address):
+            return entry
+    return None
+
 
 def _normalize_start_size_value(raw_value, default_value):
     """Convert YAML-provided start/size representations into integers."""

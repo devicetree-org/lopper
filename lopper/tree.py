@@ -5316,6 +5316,82 @@ class LopperTree:
 
         return target_node
 
+    def accessible_by(self, target):
+        """Find which CPU clusters can access a device or address.
+
+        This method searches all CPU cluster nodes (nodes with address-map
+        property) and returns those whose address-map includes the target.
+
+        Args:
+            target: Either:
+                    - A LopperNode (checks if node's phandle is in address-map)
+                    - An int (checks if address falls within any mapping)
+                    - A string (resolved via deref: path, label, or alias)
+
+        Returns:
+            List of LopperNode objects representing CPU clusters that can
+            access the target. Empty list if no cluster can access it.
+
+        Example:
+            >>> clusters = tree.accessible_by(uart_node)
+            >>> if clusters:
+            ...     print(f"UART accessible by: {[c.abs_path for c in clusters]}")
+            >>> clusters = tree.accessible_by(0xff000000)
+            >>> clusters = tree.accessible_by('/uart@ff000000')
+            >>> clusters = tree.accessible_by('serial0')  # alias
+            >>> clusters = tree.accessible_by('uart0')    # label
+        """
+        # Lazy import to avoid circular dependency
+        from lopper.assists import lopper_lib
+
+        # Resolve target to node if string (path, label, or alias)
+        target_node = None
+        target_address = None
+
+        if isinstance(target, int):
+            target_address = target
+        elif isinstance(target, str):
+            # Use deref for full resolution: path -> label -> alias
+            target_node = self.deref(target)
+            if target_node is None:
+                lopper.log._debug(f"accessible_by: could not resolve target: {target}")
+                return []
+        else:
+            # Assume it's a node
+            target_node = target
+
+        # Find all CPU cluster nodes (nodes with address-map property)
+        matching_clusters = []
+
+        for node in self.__nodes__.values():
+            if 'address-map' not in node.__props__:
+                continue
+
+            addr_map_prop = node.__props__['address-map']
+            is_accessible = False
+
+            if target_node is not None:
+                # Use resolve_phandles() to get referenced nodes
+                phandle_targets = addr_map_prop.resolve_phandles()
+                if target_node in phandle_targets:
+                    is_accessible = True
+            elif target_address is not None:
+                # For address lookup, we need the parsed entries with address ranges
+                try:
+                    address_map = addr_map_prop.value
+                    na = node['#ranges-address-cells'].value[0]
+                    ns = node['#ranges-size-cells'].value[0]
+                    entries = lopper_lib.parse_address_map(address_map, na, ns)
+                    if lopper_lib.find_address_in_map(entries, target_address) is not None:
+                        is_accessible = True
+                except (KeyError, IndexError, TypeError):
+                    continue
+
+            if is_accessible:
+                matching_clusters.append(node)
+
+        return matching_clusters
+
     def exec_cmd( self, node, cmd, env = None, module_list=[], module_load_paths=[] ):
         """Execute a (limited) code block against a node
 
