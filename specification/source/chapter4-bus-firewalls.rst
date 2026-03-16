@@ -72,8 +72,8 @@ the Bus Master ID of the device:
            bus-master-id = <&lpd_xppu 0x212>;
    };
 
-Full Example
-~~~~~~~~~~~~
+Full Example Hardware Description
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: dts
 
@@ -184,8 +184,8 @@ listed in the firewallconf property:
 In this example, we want to block all bus-master-ids except for the ones
 of domain-0 and domain-1.
 
-Full Example
-~~~~~~~~~~~~
+Full Example Firewall Configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Two domains are block access from everybody else to their resources with
 the exception of two devices, ethernet and serial0, which are shared
