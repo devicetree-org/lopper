@@ -13,6 +13,8 @@ from lopper.assists.lopper_lib import (
     parse_address_map,
     get_accessible_phandles,
     find_address_in_map,
+    render_cpu_access_map,
+    render_all_cpu_access_maps,
 )
 
 
@@ -417,6 +419,65 @@ class TestAccessibleByMultipleClusters:
         assert len(result) == len(expected_clusters)
         for cluster in expected_clusters:
             assert cluster in result
+
+
+class TestRenderCpuAccessMap:
+    """Tests for the CPU access map visualization."""
+
+    def test_render_returns_string(self, lopper_sdt):
+        """Test that render_cpu_access_map returns a string."""
+        tree = lopper_sdt.tree
+        result = render_cpu_access_map(tree)
+        assert isinstance(result, str)
+
+    def test_render_unrestricted_access_message(self, lopper_tree):
+        """Test message for clusters without address-map."""
+        # lopper_tree has a /cpus node but no address-map
+        result = render_cpu_access_map(lopper_tree)
+        # Should show unrestricted access for the cpus node
+        assert "unrestricted" in result or "No CPU clusters" in result
+
+    def test_render_all_returns_string(self, lopper_sdt):
+        """Test that render_all_cpu_access_maps returns a string."""
+        tree = lopper_sdt.tree
+        result = render_all_cpu_access_maps(tree)
+        assert isinstance(result, str)
+
+    def test_render_contains_header(self, lopper_sdt):
+        """Test that output contains expected header elements."""
+        tree = lopper_sdt.tree
+
+        # Find a cluster to test with
+        cluster = None
+        for node in tree:
+            if 'address-map' in node.__props__:
+                cluster = node
+                break
+
+        if cluster is None:
+            pytest.skip("No CPU cluster found")
+
+        result = render_cpu_access_map(tree, cluster)
+        assert "CPU Cluster:" in result
+        assert "Address Range" in result
+        assert "Device" in result
+
+    def test_render_by_path(self, lopper_sdt):
+        """Test render with path string."""
+        tree = lopper_sdt.tree
+
+        # Find a cluster path
+        cluster_path = None
+        for node in tree:
+            if 'address-map' in node.__props__:
+                cluster_path = node.abs_path
+                break
+
+        if cluster_path is None:
+            pytest.skip("No CPU cluster found")
+
+        result = render_cpu_access_map(tree, cluster_path)
+        assert "CPU Cluster:" in result
 
 
 class TestAddressMapParsingMatchesLegacy:
