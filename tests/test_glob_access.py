@@ -398,3 +398,73 @@ domains:
         # Both domains should have their explicit devices
         assert "serialff010000" in output_content
         assert "serialff000000" in output_content
+
+    def test_peer_exclusion_with_explicit_parent(self, tmp_path):
+        """Test peer exclusion when parent is explicit (not ,devices compatible).
+
+        This tests the scenario where:
+        - default domain has devices (no ,devices compatible)
+        - APU_Linux has parent: /domains/default and uses dev: "*"
+        - RPU_Zephyr has explicit dev: serial@ff000000
+
+        serial@ff000000 should be excluded from APU_Linux's glob match.
+        """
+        import subprocess
+        import os
+
+        domains_yaml = tmp_path / "domains.yaml"
+        domains_yaml.write_text("""
+domains:
+  default:
+    compatible: openamp,domain-v1
+    id: 0
+    access:
+    - dev: serial@ff000000
+    - dev: serial@ff010000
+    - dev: can@ff060000
+
+  APU_Linux:
+    parent: /domains/default
+    compatible: openamp,domain-v1
+    id: 1
+    access:
+    - dev: "*"
+
+  RPU_Zephyr:
+    parent: /domains/default
+    compatible: openamp,domain-v1
+    id: 2
+    access:
+    - dev: serial@ff000000
+""")
+
+        output_dts = tmp_path / "output.dts"
+
+        cmd = [
+            "./lopper.py", "-f", "--permissive", "--auto",
+            "-i", str(domains_yaml),
+            "./lopper/selftest/system-top.dts",
+            str(output_dts)
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.getcwd())
+        assert result.returncode == 0, f"Lopper failed: {result.stderr}"
+
+        output_content = output_dts.read_text()
+
+        # Find APU_Linux domain access
+        import re
+        linux_match = re.search(r'APU_Linux\s*\{[^}]*access\s*=\s*<([^;]+);', output_content, re.DOTALL)
+        assert linux_match, "Could not find APU_Linux domain"
+
+        linux_access = linux_match.group(1)
+
+        # serial@ff000000 should be excluded (RPU_Zephyr claimed it)
+        assert "serialff000000" not in linux_access, \
+            "serial@ff000000 should be excluded from APU_Linux (RPU_Zephyr claimed)"
+
+        # Other devices should be in APU_Linux
+        assert "serialff010000" in linux_access, \
+            "serial@ff010000 should be in APU_Linux"
+        assert "canff060000" in linux_access, \
+            "can@ff060000 should be in APU_Linux"
