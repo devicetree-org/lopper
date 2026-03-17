@@ -2488,6 +2488,42 @@ class LopperNode(object):
 
         return flat_list
 
+    def property_find(self, prop_name, inherit=True):
+        """Find a property, optionally walking up the parent chain.
+
+        Device tree properties like interrupt-parent, #address-cells, and
+        #size-cells are commonly inherited from parent nodes. This method
+        finds such properties by walking up the tree.
+
+        Args:
+            prop_name: Property name to find
+            inherit: If True, walk up parent chain to find the property.
+                     If False, only check this node. Default is True.
+
+        Returns:
+            Tuple of (property, defining_node) where:
+                - property is the LopperProp object, or None if not found
+                - defining_node is the node where the property was found
+
+        Example:
+            >>> # Find interrupt-parent (may be inherited) and resolve it
+            >>> prop, _ = node.property_find('interrupt-parent')
+            >>> if prop:
+            ...     intc = node.tree.deref(prop.value[0])
+            ...     print(f"Interrupt controller: {intc.abs_path}")
+
+            >>> # Check only this node (no inheritance)
+            >>> prop, _ = node.property_find('status', inherit=False)
+        """
+        search = self
+        while search:
+            if prop_name in search.__props__:
+                return search[prop_name], search
+            if not inherit:
+                break
+            search = search.parent
+        return None, None
+
     def children( self ):
         """Return the immediate children of this node
 
