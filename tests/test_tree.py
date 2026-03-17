@@ -923,3 +923,72 @@ class TestNodeIsCompatible:
                 assert node.type == compat_prop, \
                     f"Node type {node.type} should equal compatible {compat_prop}"
                 break
+
+
+class TestPropertyFind:
+    """Tests for property_find() method."""
+
+    def test_property_find_on_node(self, lopper_sdt):
+        """Test finding a property directly on a node."""
+        tree = lopper_sdt.tree
+
+        # Find a node with a known property
+        for node in tree:
+            if 'compatible' in node.__props__:
+                prop, owner = node.property_find('compatible')
+                assert prop is not None, "Should find compatible property"
+                assert owner == node, "Owner should be the node itself"
+                assert prop.name == 'compatible'
+                break
+
+    def test_property_find_inherited(self, lopper_sdt):
+        """Test finding an inherited property from parent."""
+        tree = lopper_sdt.tree
+
+        # Find a child node that inherits #address-cells from parent
+        for node in tree:
+            if node.parent and '#address-cells' not in node.__props__:
+                # Check if parent has it
+                if node.parent and '#address-cells' in node.parent.__props__:
+                    prop, owner = node.property_find('#address-cells')
+                    assert prop is not None, "Should find inherited #address-cells"
+                    assert owner != node, "Owner should not be the child node"
+                    assert owner == node.parent or owner.abs_path in node.abs_path, \
+                        "Owner should be an ancestor"
+                    break
+
+    def test_property_find_no_inherit(self, lopper_sdt):
+        """Test property_find with inherit=False."""
+        tree = lopper_sdt.tree
+
+        # Find a child node that doesn't have #address-cells directly
+        for node in tree:
+            if node.parent and '#address-cells' not in node.__props__:
+                if node.parent and '#address-cells' in node.parent.__props__:
+                    prop, owner = node.property_find('#address-cells', inherit=False)
+                    assert prop is None, "Should not find property with inherit=False"
+                    assert owner is None
+                    break
+
+    def test_property_find_not_found(self, lopper_sdt):
+        """Test property_find when property doesn't exist."""
+        tree = lopper_sdt.tree
+        root = tree['/']
+
+        prop, owner = root.property_find('nonexistent-property-xyz')
+        assert prop is None
+        assert owner is None
+
+    def test_property_find_with_deref(self, lopper_sdt):
+        """Test property_find combined with deref for phandle resolution."""
+        tree = lopper_sdt.tree
+
+        # Find a node with interrupt-parent
+        for node in tree:
+            prop, _ = node.property_find('interrupt-parent')
+            if prop:
+                # Resolve the phandle using deref
+                target = tree.deref(prop.value[0])
+                assert target is not None, "deref should resolve the phandle"
+                assert hasattr(target, 'abs_path'), "Should be a LopperNode"
+                break
