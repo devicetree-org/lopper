@@ -514,6 +514,75 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                         if "okay" in node.propval('status', list)[0]:
                             node.propval('status', list)[0] = "disabled"
 
+    # For MicroBlaze/MicroBlaze RISC-V: remap PS peripheral interrupts to AXI INTC.
+    # PS peripherals like sysmon have GIC-format interrupts (3-cell) but on MicroBlaze
+    # they are routed via ps_pl_irq through xlconcat to the AXI INTC. The SDT does not
+    # capture this cross-domain routing, so we detect and remap here.
+    cpu_ip_name = match_cpunode.propval('xlnx,ip-name', list)[0]
+    if cpu_ip_name in ('microblaze', 'microblaze_riscv'):
+        axi_intc_node = None
+        for node in sdt.tree['/'].subnodes():
+            if node.propval('xlnx,ip-name', list) == ['axi_intc']:
+                axi_intc_node = node
+                break
+
+        if axi_intc_node is not None:
+            intc_phandle = axi_intc_node.phandle
+            num_intr = axi_intc_node.propval('xlnx,num-intr-inputs', list)[0]
+
+            for node in sdt.tree['/'].subnodes():
+                if node.propval('interrupts') == [''] or node.propval('compatible') == ['']:
+                    continue
+
+                intr_val = node.propval('interrupts')
+                if len(intr_val) < 3:
+                    continue
+
+                # Use property_find() to walk parent chain for interrupt-parent
+                prop, _ = node.property_find('interrupt-parent')
+                if not prop:
+                    continue
+
+                # Use deref() to resolve the phandle to a node
+                intr_parent = sdt.tree.deref(prop.value[0])
+                if not intr_parent:
+                    continue
+
+                inc = intr_parent.propval('#interrupt-cells', list)[0]
+                if inc != 3:
+                    continue
+
+                # Remap known PS peripherals routed via ps_pl_irq to AXI INTC
+                compat = node.propval('compatible', list)
+                if 'xlnx,versal-sysmon' in compat:
+                    # Determine the AXI INTC input by finding the next input
+                    # after all PL peripherals already connected to the INTC
+                    used_inputs = set()
+                    for n in sdt.tree['/'].subnodes():
+                        if n.propval('interrupts') == ['']:
+                            continue
+                        n_prop, _ = n.property_find('interrupt-parent')
+                        if not n_prop:
+                            continue
+                        if n_prop.value[0] == intc_phandle and n != node:
+                            n_intr = n.propval('interrupts')
+                            if len(n_intr) >= 2:
+                                used_inputs.add(n_intr[0])
+
+                    sysmon_intr_id = None
+                    if used_inputs:
+                        next_input = max(used_inputs) + 1
+                        if next_input < num_intr:
+                            sysmon_intr_id = next_input
+                    else:
+                        sysmon_intr_id = 0
+
+                    if sysmon_intr_id is not None:
+                        from lopper.tree import LopperProp
+                        node['interrupt-parent'] = LopperProp(
+                            name='interrupt-parent', value=[intc_phandle])
+                        node.add(node['interrupt-parent'])
+                        node['interrupts'].value = [sysmon_intr_id, 0x2]
     # Remove symbol node referneces
     symbol_node = sdt.tree['/__symbols__']
     prop_list = list(symbol_node.__props__.keys())
@@ -1736,4 +1805,3 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
             mem_node.delete('xlnx,ip-name')
 
     return True
-
