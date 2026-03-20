@@ -293,7 +293,7 @@ def generate_master_ipi_mask_def(sdtinfo_obj):
 def get_prealloc_for_master_txt(master_name, prealloc_list, sdtinfo_obj):
     node_count = 0
     master_prealloc_txt = []
-    if is_ipi_present(master_name, sdtinfo_obj) != "":
+    if is_ipi_present(master_name, sdtinfo_obj) == True:
         master_mask = get_ipi_mask_txt(master_name, sdtinfo_obj)
         master_prealloc_txt.append("\t/* Prealloc for " + master_name + " */\n")
         master_prealloc_txt.append("\t" + master_mask + ",\n")
@@ -367,17 +367,17 @@ def generate_slave_section_data(sdtinfo_obj):
         ipi_perm = ""
         if periph_type == "ipi":
             if periph_label == "NODE_IPI_APU":
-                if "psu_cortexa53_0" in sdtinfo_obj.masters.keys() and is_ipi_present("psu_cortexa53_0", sdtinfo_obj) != "":
+                if "psu_cortexa53_0" in sdtinfo_obj.masters.keys() and is_ipi_present("psu_cortexa53_0", sdtinfo_obj) == True:
                     ipi_perm = get_ipi_mask_txt("psu_cortexa53_0", sdtinfo_obj)
                 else:
                     ipi_perm = ""
             elif periph_label == "NODE_IPI_RPU_0":
-                if "psu_cortexr5_0" in sdtinfo_obj.masters.keys() and is_ipi_present("psu_cortexr5_0", sdtinfo_obj) != "":
+                if "psu_cortexr5_0" in sdtinfo_obj.masters.keys() and is_ipi_present("psu_cortexr5_0", sdtinfo_obj) == True:
                     ipi_perm = get_ipi_mask_txt("psu_cortexr5_0", sdtinfo_obj)
                 else:
                     ipi_perm = ""
             elif periph_label == "NODE_IPI_RPU_1":
-                if "psu_cortexr5_1" in sdtinfo_obj.masters.keys() and is_ipi_present("psu_cortexr5_1", sdtinfo_obj) != "":
+                if "psu_cortexr5_1" in sdtinfo_obj.masters.keys() and is_ipi_present("psu_cortexr5_1", sdtinfo_obj) == True:
                     ipi_perm = get_ipi_mask_txt("psu_cortexr5_1", sdtinfo_obj)
                 else:
                     ipi_perm = ""
@@ -398,13 +398,13 @@ def generate_prealloc_section_data(sdtinfo_obj):
     out_lines = ["\n"]
     master_count = 0
     proc_type = sdtinfo_obj.proc_type
-    if is_ipi_present("psu_cortexa53_0", sdtinfo_obj) != "":
+    if is_ipi_present("psu_cortexa53_0", sdtinfo_obj) == True:
         chc.apu_prealloc_list.append("NODE_IPI_APU")
     if proc_type == "psu_cortexr5_0":
         chc.rpu_0_prealloc_list.extend(chc.rpu_0_prealloc_conditional_list)
-    if is_ipi_present("psu_cortexr5_0", sdtinfo_obj) != "":
+    if is_ipi_present("psu_cortexr5_0", sdtinfo_obj) == True:
         chc.rpu_0_prealloc_list.append("NODE_IPI_RPU_0")
-    if is_ipi_present("psu_cortexr5_1", sdtinfo_obj) != "":
+    if is_ipi_present("psu_cortexr5_1", sdtinfo_obj) == True:
         chc.rpu_1_prealloc_list.append("NODE_IPI_RPU_1")
     out_lines.append("\tPM_CONFIG_PREALLOC_SECTION_ID, /* Preallaoc SectionID */\n")
     for master in sdtinfo_obj.masters.keys():
@@ -446,7 +446,7 @@ def get_periph_perm_mask_txt_for_rst_line(reset_line, sdtinfo_obj):
         for master in sdtinfo_obj.masters.keys():
             slave_list = get_slaves_for_master(sdtinfo_obj, master)
             for slave in slave_list:
-                if periph_name == slave and (is_ipi_present(master, sdtinfo_obj) != ""):
+                if periph_name == slave and (is_ipi_present(master, sdtinfo_obj) == True):
                     master_ipi_mask_txt = get_ipi_mask_txt(master, sdtinfo_obj)
                     macro_list1.append(master_ipi_mask_txt)
                     if master_ipi_mask_txt in reset_management_master_list:
@@ -463,7 +463,7 @@ def get_periph_perm_mask_txt_for_rst_line(reset_line, sdtinfo_obj):
         else:
             mem_perms = 0
         for master in sdtinfo_obj.masters.keys():
-            if (mem_perms & get_ipi_mask(master, sdtinfo_obj)) != 0 and (is_ipi_present(master, sdtinfo_obj)) != "":
+            if (mem_perms & get_ipi_mask(master, sdtinfo_obj)) != 0 and (is_ipi_present(master, sdtinfo_obj)) == True:
                 master_ipi_mask_txt = get_ipi_mask_txt(master, sdtinfo_obj)
                 macro_list1.append(master_ipi_mask_txt)
                 if master_ipi_mask_txt in reset_management_master_list:
@@ -488,7 +488,7 @@ def generate_reset_section_data(sdtinfo_obj):
         if line_type == "normal":
             out_lines.append("\t" + line_name + ", " + get_all_masters_mask_txt(sdtinfo_obj) + ",\n")
         elif line_type == "rpu_only":
-            if ("psu_cortexr5_0" in sdtinfo_obj.masters.keys()) and (is_ipi_present("psu_cortexr5_0", sdtinfo_obj) != ""):
+            if ("psu_cortexr5_0" in sdtinfo_obj.masters.keys()) and (is_ipi_present("psu_cortexr5_0", sdtinfo_obj) == True):
                 out_lines.append("\t" + line_name + ", " + get_ipi_mask_txt("psu_cortexr5_0", sdtinfo_obj) + ",\n")
             else:
                 out_lines.append("\t" + line_name + ", 0,\n")
