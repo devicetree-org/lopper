@@ -2009,12 +2009,15 @@ class LopperNode(object):
                 p.__dbg__ = value
         else:
             if name == "phandle":
-                # Delegate to phandle_set() which handles:
-                # - duplicate phandle detection (with -W duplicate_phandle)
-                # - tree __pnodes__ index updates
-                # - phandle property sync
-                # Note: phandle_set() uses __dict__ to set the value, avoiding recursion
-                self.phandle_set(value)
+                # Fast path: when no warnings are enabled, skip phandle_set() overhead
+                # and directly update the phandle value and tree index
+                if self.tree and not self.tree.warnings:
+                    self.__dict__['phandle'] = value
+                    if value > 0:
+                        self.tree.__pnodes__[value] = self
+                else:
+                    # Full path with duplicate detection and warning checks
+                    self.phandle_set(value)
             else:
                 # we do it this way, otherwise the property "ref" breaks
                 super().__setattr__(name, value)
