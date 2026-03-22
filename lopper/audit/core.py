@@ -146,6 +146,59 @@ def report_invalid_phandles(tree, werror=False, warn_only_modified=True):
     return len(invalid_refs)
 
 
+def check_duplicate_phandles(tree):
+    """Check for duplicate phandle values across the tree.
+
+    This performs a single O(n) pass through the tree to find nodes
+    with duplicate phandle values. This is more efficient than checking
+    on every phandle assignment.
+
+    Args:
+        tree (LopperTree): The tree to check
+
+    Returns:
+        dict: {phandle_value: [list of node paths claiming it]}
+              Only includes phandles with more than one node.
+    """
+    phandle_to_nodes = {}
+
+    for node in tree:
+        ph = node.phandle
+        if ph and ph > 0:
+            if ph not in phandle_to_nodes:
+                phandle_to_nodes[ph] = []
+            phandle_to_nodes[ph].append(node.abs_path)
+
+    # Return only duplicates (phandles claimed by more than one node)
+    return {ph: nodes for ph, nodes in phandle_to_nodes.items() if len(nodes) > 1}
+
+
+def report_duplicate_phandles(tree, werror=False):
+    """Check and report duplicate phandle values.
+
+    Convenience wrapper that checks for duplicate phandles and logs warnings/errors.
+
+    Args:
+        tree (LopperTree): The tree to check
+        werror (bool): If True, treat warnings as errors and exit
+
+    Returns:
+        int: Number of duplicate phandle values found
+    """
+    duplicates = check_duplicate_phandles(tree)
+
+    for phandle, node_paths in duplicates.items():
+        nodes_str = ", ".join(node_paths)
+        msg = (f"duplicate_phandle: phandle {phandle:#x} is claimed by "
+               f"multiple nodes: {nodes_str}")
+        if werror:
+            lopper.log._error(msg, also_exit=1)
+        else:
+            lopper.log._warning(msg)
+
+    return len(duplicates)
+
+
 def check_reserved_memory_in_memory_ranges(tree, domain_node):
     """Check that reserved-memory regions fall within domain memory ranges.
 

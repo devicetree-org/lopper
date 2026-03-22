@@ -2009,15 +2009,15 @@ class LopperNode(object):
                 p.__dbg__ = value
         else:
             if name == "phandle":
-                # Fast path: when no warnings are enabled, skip phandle_set() overhead
-                # and directly update the phandle value and tree index
-                if self.tree and not self.tree.warnings:
-                    self.__dict__['phandle'] = value
-                    if value > 0:
-                        self.tree.__pnodes__[value] = self
-                else:
-                    # Full path with duplicate detection and warning checks
-                    self.phandle_set(value)
+                # Delegate to phandle_set() which handles:
+                # - tree __pnodes__ index updates
+                # - phandle property sync
+                # - old phandle cleanup
+                #
+                # Duplicate phandle detection is now done lazily at resolve()
+                # time via lopper.audit.check_duplicate_phandles(), making
+                # phandle_set() fast even with -W duplicate_phandle enabled.
+                self.phandle_set(value)
             else:
                 # we do it this way, otherwise the property "ref" breaks
                 super().__setattr__(name, value)
@@ -2335,25 +2335,10 @@ class LopperNode(object):
 
     def phandle_set(self,value):
         # Get old phandle, defaulting to 0 if not yet set (during __init__)
-        try:
-            old_phandle = self.__dict__.get('phandle', 0)
-        except:
-            old_phandle = 0
+        old_phandle = self.__dict__.get('phandle', 0)
 
         # Update the tree's phandle index if we are assigned to a tree
         if self.tree and value > 0:
-            # Check for duplicate phandle before making any changes
-            existing = self.tree.__pnodes__.get(value)
-            if existing and existing is not self:
-                # Warn if duplicate_phandle or all warnings enabled
-                if "duplicate_phandle" in self.tree.warnings or "all" in self.tree.warnings:
-                    msg = (f"duplicate_phandle: phandle {value:#x} already mapped to "
-                           f"{existing.abs_path}, now being claimed by {self.abs_path}")
-                    if self.tree.werror:
-                        lopper.log._error(msg, also_exit=1)
-                    else:
-                        lopper.log._warning(msg)
-
             # Remove old phandle from index if it existed and is different
             if old_phandle > 0 and old_phandle != value:
                 try:
@@ -2361,35 +2346,31 @@ class LopperNode(object):
                 except:
                     pass
                 # WARNING: Changing a node's phandle from one non-zero value to another
-                # can orphan references. Other nodes may have properties that reference
-                # this node by its numeric phandle (not by symbol/label). Those properties
-                # will now point to an invalid phandle. We don't currently maintain a
-                # reverse lookup of "all properties referencing a given phandle", so we
-                # cannot automatically update those references. A tree walk would be
-                # required to find and fix them, which is expensive.
-                # TODO: Consider maintaining a reverse lookup map for phandle references.
-                # Only warn if phandle_change warning is enabled (this happens during
-                # normal operations like duplicate phandle resolution)
-                if "phandle_change" in self.tree.warnings or "all" in self.tree.warnings:
-                    msg = (f"phandle_set: changing phandle from {old_phandle} to {value} "
-                           f"for node {self.abs_path} - this may orphan numeric references")
-                    if self.tree.werror:
-                        lopper.log._error(msg, also_exit=1)
-                    else:
-                        _warning(msg)
+                # can orphan references. Only warn if phandle_change warning is enabled.
+                # Check warnings only if non-empty (fast path for common case)
+                if self.tree.warnings:
+                    if "phandle_change" in self.tree.warnings or "all" in self.tree.warnings:
+                        msg = (f"phandle_set: changing phandle from {old_phandle} to {value} "
+                               f"for node {self.abs_path} - this may orphan numeric references")
+                        if self.tree.werror:
+                            lopper.log._error(msg, also_exit=1)
+                        else:
+                            _warning(msg)
             # Add new phandle to index
+            # Note: duplicate phandle detection is done lazily at resolve() time
+            # via lopper.audit.check_duplicate_phandles() for better performance
             self.tree.__pnodes__[value] = self
 
         # Set the phandle attribute (after index updates to avoid recursion via __setattr__)
         self.__dict__['phandle'] = value
 
-        # is there a phandle property ? That is only used
-        # in printing, but it should be updated to match
-        try:
-            phandle_prop = self.__props__["phandle"]
-            self.__props__["phandle"].value = value
-        except:
-            True
+        # Sync phandle property if it exists (used in printing)
+        # Use __dict__ access to avoid __getattribute__ recursion during __init__
+        props = self.__dict__.get('__props__')
+        if props:
+            phandle_prop = props.get("phandle")
+            if phandle_prop:
+                phandle_prop.value = value
 
     def label_set(self,value):
         # someone is labelling a node, the tree's lnodes need to be
@@ -4531,6 +4512,11 @@ class LopperTree:
         # This fires regardless of --permissive since user explicitly requested it
         if "invalid_phandle" in self.warnings or "all" in self.warnings:
             lopper.audit.report_invalid_phandles(self, werror=self.werror)
+
+        # Check for duplicate phandle values if warning is enabled
+        # This is done lazily here rather than on every phandle assignment for performance
+        if "duplicate_phandle" in self.warnings or "all" in self.warnings:
+            lopper.audit.report_duplicate_phandles(self, werror=self.werror)
 
         self.__check__ = False
 

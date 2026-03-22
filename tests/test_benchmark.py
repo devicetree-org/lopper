@@ -125,57 +125,59 @@ class TestPhandlePerformance:
             f"This may indicate a regression in the phandle fast path."
         )
 
-    def test_phandle_with_warnings_slower(self, machine_factor):
+    def test_phandle_with_warnings_similar_performance(self, machine_factor):
         """
-        Verify that phandle assignment with warnings enabled is slower.
+        Verify that phandle assignment performance is similar with or without warnings.
 
-        This is expected behavior - the warning path does more work.
-        This test documents the performance difference.
+        With lazy duplicate detection (checking at resolve() time instead of
+        on every assignment), the warning path should have similar performance
+        to the fast path. This test verifies that optimization is working.
         """
-        num_nodes = 100  # Fewer nodes since slow path is slower
+        num_nodes = 100
 
-        # Pre-create nodes for fast path test
-        tree_fast = LopperTree()
-        tree_fast.warnings = []
-        fast_nodes = []
+        # Pre-create nodes for path without warnings
+        tree_no_warn = LopperTree()
+        tree_no_warn.warnings = []
+        no_warn_nodes = []
         for i in range(num_nodes):
-            node = LopperNode(number=i, name=f"fast{i}")
-            node.tree = tree_fast
-            fast_nodes.append(node)
+            node = LopperNode(number=i, name=f"nowarn{i}")
+            node.tree = tree_no_warn
+            no_warn_nodes.append(node)
 
-        # Pre-create nodes for slow path test
-        tree_slow = LopperTree()
-        tree_slow.warnings = ["duplicate_phandle"]
-        slow_nodes = []
+        # Pre-create nodes for path with warnings
+        tree_with_warn = LopperTree()
+        tree_with_warn.warnings = ["duplicate_phandle"]
+        with_warn_nodes = []
         for i in range(num_nodes):
-            node = LopperNode(number=i + num_nodes, name=f"slow{i}")
-            node.tree = tree_slow
-            slow_nodes.append(node)
+            node = LopperNode(number=i + num_nodes, name=f"warn{i}")
+            node.tree = tree_with_warn
+            with_warn_nodes.append(node)
 
-        # Time fast path (no warnings)
+        # Time path without warnings
         start = time.perf_counter()
-        for i, node in enumerate(fast_nodes):
+        for i, node in enumerate(no_warn_nodes):
             node.phandle = i + 1
-        fast_time = time.perf_counter() - start
+        no_warn_time = time.perf_counter() - start
 
-        # Time slow path (with warnings)
+        # Time path with warnings
         start = time.perf_counter()
-        for i, node in enumerate(slow_nodes):
+        for i, node in enumerate(with_warn_nodes):
             node.phandle = i + num_nodes + 1
-        slow_time = time.perf_counter() - start
+        with_warn_time = time.perf_counter() - start
 
         # Log the ratio for informational purposes
-        if fast_time > 0.0001:  # Avoid division issues
-            ratio = slow_time / fast_time
-            print(f"\nPhandle performance ratio (slow/fast): {ratio:.2f}x")
-            print(f"  Fast path: {fast_time*1000:.3f}ms for {num_nodes} nodes")
-            print(f"  Slow path: {slow_time*1000:.3f}ms for {num_nodes} nodes")
+        if no_warn_time > 0.0001:  # Avoid division issues
+            ratio = with_warn_time / no_warn_time
+            print(f"\nPhandle performance ratio (with_warnings/no_warnings): {ratio:.2f}x")
+            print(f"  No warnings:   {no_warn_time*1000:.3f}ms for {num_nodes} nodes")
+            print(f"  With warnings: {with_warn_time*1000:.3f}ms for {num_nodes} nodes")
 
-            # The slow path should be noticeably slower
-            # If ratio < 1.5, the fast path might not be working
-            assert ratio > 1.2, (
-                f"Warning path should be slower than fast path. "
-                f"Ratio {ratio:.2f}x suggests fast path may not be active."
+            # With lazy duplicate detection, both paths should be similar.
+            # Allow up to 3x difference to account for measurement noise.
+            # If ratio > 3, the lazy detection optimization may be broken.
+            assert ratio < 3.0, (
+                f"Warning path is much slower than no-warning path. "
+                f"Ratio {ratio:.2f}x suggests lazy duplicate detection may not be working."
             )
 
 

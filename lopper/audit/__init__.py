@@ -35,6 +35,8 @@ from .core import (
     _cell_value_get,
     check_invalid_phandles,
     report_invalid_phandles,
+    check_duplicate_phandles,
+    report_duplicate_phandles,
     check_reserved_memory_in_memory_ranges,
     validate_reserved_memory_in_memory_ranges,
 )
@@ -81,6 +83,8 @@ __all__ = [
     '_cell_value_get',
     'check_invalid_phandles',
     'report_invalid_phandles',
+    'check_duplicate_phandles',
+    'report_duplicate_phandles',
     'check_reserved_memory_in_memory_ranges',
     'validate_reserved_memory_in_memory_ranges',
     # Memory enums
