@@ -10,7 +10,7 @@ has practical information, known limitations and TODO items.
 
 Lopper is in a single repository, and is available via git or pypi:
 
-### git:
+## git:
 
    % git clone git://github.com/devicetree-org/lopper
 
@@ -32,7 +32,7 @@ Lopper is in a single repository, and is available via git or pypi:
    For yaml file processing, lopper has an optional dependency on python's yaml
    and ruamel, and anytree for importing the contents of yaml files.
 
-#### Using [venv](https://docs.python.org/3/library/venv.html) based flow with git:
+### Using [venv](https://docs.python.org/3/library/venv.html) based flow with git:
 
    Using python3's venv faciliates lopper development and usage. Please refer to
    python documentation to get more information about this topic. Some starting
@@ -64,7 +64,7 @@ Now, everytime you'd like to use lopper, just activate and deactivate within any
     deactivate
 ```
 
-### pypi:
+## pypi:
 
    % pip install lopper
 
