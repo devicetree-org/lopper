@@ -462,17 +462,6 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
     if tree['/chosen'].propval('zephyr,ocm') != ['']:
         tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,ocm'])
 
-    if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ]:
-        if tree['/chosen'].propval('stdout-path') != [''] and 'serial1' in tree['/chosen']['stdout-path'].value[0]:
-            tree['/chosen']['stdout-path'].value[0] = tree['/chosen']['stdout-path'].value[0].replace('serial1', 'serial0')
-
-    if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ]:
-        try:
-             serial1_node = tree['/axi/serial@f1930000']
-             tree - serial1_node
-        except:
-            pass
-
     # if user passes in xlnx,zephyr,mems - then update device_type for those referenced nodes.
     xlnx_zeph_mems = domain_node.propval("xlnx,zephyr,mems")
     if xlnx_zeph_mems != [''] and isinstance(xlnx_zeph_mems, list):
@@ -1045,13 +1034,27 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
     power_domains = openamp_channel_info["rpu_core_pd_prop"].value
 
+    r5_core_reg_names_mappings = { "ffe00000" : "atcm0", "ffe20000" : "btcm0",
+                                "ffe90000" : "atcm1", "ffeb0000" : "btcm1" }
+    r52_core_reg_names_mappings = { "atcm" : "atcm0", "btcm" : "btcm0", "ctcm": "ctcm0" }
+
+    core_reg_names_mappings = r52_core_reg_names_mappings if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ] else r5_core_reg_names_mappings
+
     # loop through TCM nodes
     for n in [ n for n in channel_elfload_nodes if n.propval("xlnx,ip-name") != [''] ]:
         pd = n.propval("power-domains")
         power_domains.extend(pd)
         core_reg_val.extend(memory_nodes[pd[1]]["rpu_view"])
         cluster_ranges_val.extend(memory_nodes[pd[1]]["system_view"])
-        core_reg_names.append(n.name)
+
+        # map TCM node name to binding compliant TCM name
+        if not any(tcm_name_substr in n.name.lower() for tcm_name_substr in core_reg_names_mappings.keys()):
+            print(f"ERROR: Unable to map %s to proper TCM spec name" % n.name)
+            return False
+
+        for tcm_substr in core_reg_names_mappings.keys():
+            if tcm_substr in n.name:
+                core_reg_names.append(core_reg_names_mappings[tcm_substr])
 
     # construct remoteproc cluster node
     cluster_node_path = "/remoteproc@" + xlnx_remoteproc_v2_cluster_base_str(platform, rpu_core)
