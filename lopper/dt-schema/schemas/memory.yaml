@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Copyright 2018 Linaro Ltd.
+# Copyright 2026 AMD Inc.
+#
+# Vendored from https://github.com/devicetree-org/dt-schema
+# Simplified for lopper validation use
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/memory.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: /memory nodes
+
+description: |
+  Memory nodes describe the physical memory layout for the system.
+  The device_type property is required and must be "memory".
+
+maintainers:
+  - Rob Herring <robh@kernel.org>
+
+properties:
+  device_type:
+    const: memory
+
+  reg:
+    description: Physical memory address and size pairs
+
+required:
+  - device_type
+  - reg

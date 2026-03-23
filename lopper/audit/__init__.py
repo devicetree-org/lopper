@@ -71,6 +71,26 @@ from .memviz import (
     render_memory_map,
 )
 
+# Re-export schema validation functions and classes
+from .schema import (
+    # Enums
+    ConstraintType,
+    # Data classes
+    PropertyConstraint,
+    NodeConstraints,
+    # Constraint definitions
+    NODE_PROPERTY_CONSTRAINTS,
+    # Validation functions
+    check_forbidden_properties,
+    check_required_properties,
+    check_property_values,
+    check_mutex_properties,
+    # Validator class
+    SchemaValidator,
+    # Convenience function
+    validate_schema,
+)
+
 # Define what is exported when using `from lopper.audit import *`
 __all__ = [
     # Base framework classes
@@ -102,10 +122,25 @@ __all__ = [
     'check_domain_memory_overlaps',
     'check_cross_domain_memory_overlaps',
     'check_carveout_in_reserved_memory',
-    # Validator
+    # Memory validator
     'MemoryValidator',
     'validate_memory',
     # Visualization
     'MemoryVisualizer',
     'render_memory_map',
+    # Schema enums
+    'ConstraintType',
+    # Schema data classes
+    'PropertyConstraint',
+    'NodeConstraints',
+    # Schema constraints
+    'NODE_PROPERTY_CONSTRAINTS',
+    # Schema validation functions
+    'check_forbidden_properties',
+    'check_required_properties',
+    'check_property_values',
+    'check_mutex_properties',
+    # Schema validator
+    'SchemaValidator',
+    'validate_schema',
 ]

@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Copyright 2018 Linaro Ltd.
+# Copyright 2026 AMD Inc.
+#
+# Vendored from https://github.com/devicetree-org/dt-schema
+# Simplified for lopper validation use
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/reserved-memory/reserved-memory.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: /reserved-memory child nodes
+
+description: |
+  Reserved memory nodes define regions of memory set aside for specific
+  purposes. These nodes must NOT have device_type property - that is
+  only for /memory nodes.
+
+  The no-map and reusable properties are mutually exclusive.
+
+maintainers:
+  - Rob Herring <robh@kernel.org>
+
+properties:
+  reg:
+    description: Memory region address and size
+
+  size:
+    description: Size of dynamically allocated region
+
+  alignment:
+    description: Alignment for dynamically allocated region
+
+  no-map:
+    type: boolean
+    description: |
+      Region should not be mapped by the operating system.
+
+  reusable:
+    type: boolean
+    description: |
+      Region can be reclaimed by OS if memory pressure requires.
+
+# device_type is forbidden on reserved-memory children
+# This is not explicitly stated but is the de-facto standard
+not:
+  required:
+    - device_type
+
+# no-map and reusable are mutually exclusive
+dependentSchemas:
+  no-map:
+    not:
+      required:
+        - reusable
+  reusable:
+    not:
+      required:
+        - no-map

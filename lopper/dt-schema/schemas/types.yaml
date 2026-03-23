@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Copyright 2018 Linaro Ltd.
+# Copyright 2026 AMD Inc.
+#
+# Vendored from https://github.com/devicetree-org/dt-schema
+# Common type definitions for device tree validation
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/types.yaml#
+$schema: http://json-schema.org/draft-07/schema#
+
+title: Common type definitions
+
+description: |
+  Common property type definitions used across device tree schemas.
+
+definitions:
+  uint32:
+    type: integer
+    minimum: 0
+    maximum: 0xffffffff
+
+  uint64:
+    type: integer
+    minimum: 0
+    maximum: 0xffffffffffffffff
+
+  phandle:
+    type: integer
+    minimum: 1
+    maximum: 0xffffffff
+
+  string:
+    type: string
+
+  string-array:
+    type: array
+    items:
+      type: string
+
+  uint32-array:
+    type: array
+    items:
+      $ref: "#/definitions/uint32"
+
+  uint64-array:
+    type: array
+    items:
+      $ref: "#/definitions/uint64"
+
+  flag:
+    type: boolean
+    const: true
