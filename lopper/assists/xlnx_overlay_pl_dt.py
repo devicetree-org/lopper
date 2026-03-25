@@ -137,7 +137,7 @@ def infer_platform_from_sdt(sdt):
     return None
 
 def usage():
-    print('Usage: lopper -O <output_dir> -f --enhanced <system-top.dts> [<lopper-gen DT>] -- xlnx_overlay_pl_dt [<machine>] <configuration> [<pl.dtsi>] [--firmware-name=<name>]')
+    print('Usage: lopper -O <output_dir> -f --enhanced <system-top.dts> [<lopper-gen DT>] -- xlnx_overlay_pl_dt [<machine>] <configuration> [<pl.dtsi>] [options]')
     print('\nArguments:')
     print('  <output_dir>      - Directory where the lopper generated overlay `pl.dtsi` file will be stored')
     print('  <system-top.dts>  - Full system device tree source')
@@ -148,14 +148,75 @@ def usage():
     print('  <configuration>   - Configuration type: full | segmented | dfx | external-fpga-config')
     print('  <pl.dtsi>         - (Optional, for backward compatibility only) pl.dtsi file path - IGNORED')
     print('                      This argument is accepted but not used. The assist reads pl.dtsi from system device tree.')
-    print('  --firmware-name=<name> - (Optional) Override the default firmware-name in the output')
+    print('\nOptions:')
+    print('  --firmware-name=<name> - Override the default firmware-name in the output')
+    print('  --nodes=<node-spec>[;<node-spec>;...] - Specify nodes to include in overlay')
+    print('                      Overrides default /amba_pl extraction when specified.')
+    print('                      Semicolons separate node specs; commas separate properties.')
+    print('                      Node spec format:')
+    print('                        <node>           - Include entire node (by path or label)')
+    print('                        <node>#<prop>,<prop>,... - Include only specific properties')
+    print('                      Examples:')
+    print('                        --nodes=/amba_pl                    - Extract entire /amba_pl node')
+    print('                        --nodes=mmi_dc#clocks,clock-names   - Only clocks/clock-names from mmi_dc')
+    print('                        --nodes=/amba_pl;mmi_dc#clocks      - Combine whole node and property specs')
     print('\nExamples:')
     print(' With machine argument:')
     print(' lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi')
     print('')
     print(' With automatic platform inference:')
     print(' lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <config> <path_to_pl_dtsi>/pl.dtsi')
-    print('  --firmware-name=<name> - (Optional) Override the default firmware-name in the output')
+    print('')
+    print(' With explicit node selection:')
+    print(' lopper -O <output_dir>/ -f --enhanced system-top.dts out.dts -- xlnx_overlay_pl_dt cortexa78_0 full --nodes="mmi_dc#clocks,clock-names;phy0"')
+
+def parse_node_specs(specs_str):
+    """
+    Parse node specification string into structured format.
+
+    Format: <node-spec>[;<node-spec>;...]
+    Where node-spec is either:
+      - <node>              : Include entire node (path like /amba_pl or label like mmi_dc)
+      - <node>#<prop>[,<prop>,...] : Include only specific properties
+
+    Semicolons separate node specs; commas separate properties within a node spec.
+
+    Args:
+        specs_str: The specification string (value after --nodes=)
+
+    Returns:
+        list of dict: [{'node': str, 'properties': list or None}, ...]
+                      properties is None for whole-node extraction
+
+    Examples:
+        '/amba_pl'                    -> [{'node': '/amba_pl', 'properties': None}]
+        'mmi_dc#clocks,clock-names'   -> [{'node': 'mmi_dc', 'properties': ['clocks', 'clock-names']}]
+        'mmi_dc#clocks;phy0'          -> [{'node': 'mmi_dc', 'properties': ['clocks']},
+                                          {'node': 'phy0', 'properties': None}]
+    """
+    result = []
+
+    # Split on semicolons to get individual node specs
+    node_specs = specs_str.split(';')
+
+    for spec in node_specs:
+        spec = spec.strip()
+        if not spec:
+            continue
+
+        if '#' in spec:
+            # Node with specific properties
+            parts = spec.split('#', 1)
+            node_name = parts[0].strip()
+            props_part = parts[1].strip()
+            props = [p.strip() for p in props_part.split(',') if p.strip()]
+            result.append({'node': node_name, 'properties': props if props else None})
+        else:
+            # Whole node extraction
+            result.append({'node': spec, 'properties': None})
+
+    return result
+
 
 def validate_and_parse_options(options, sdt):
     """
@@ -202,9 +263,12 @@ def validate_and_parse_options(options, sdt):
 
     # Process optional arguments
     firmware_override = None
+    node_specs = None
     for arg in optional_args:
         if arg.startswith("--firmware-name="):
             firmware_override = arg.split("=", 1)[1]
+        elif arg.startswith("--nodes="):
+            node_specs = parse_node_specs(arg.split("=", 1)[1])
 
     # Parse arguments based on count
     try:
@@ -274,7 +338,7 @@ def validate_and_parse_options(options, sdt):
         usage()
         sys.exit(1)
 
-    return platform, config, zynq_platforms, versal_platforms, firmware_override
+    return platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs
 
 def validate_amba_pl_node(amba_node):
     """
@@ -476,18 +540,23 @@ def move_nodes_to_fpga(new_amba_node, fpga_node, node_collections, platform, con
 
     return new_amba_node, fpga_node
 
-def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree):
+def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree,
+                       user_overlay_files=None):
     """
     Build overlay tree from amba and fpga nodes, establishing overlay relationship.
 
     Creates a new overlay tree, adds nodes, establishes overlay relationship with
-    base tree, reorders nodes, and resolves all references.
+    base tree, reorders nodes, and resolves all references. Also pulls fragments
+    for phandle references and user overlay properties.
 
     Args:
         new_amba_node: The prepared amba node for overlay
         fpga_node: The configured fpga node
         fpga_node_name: The name of the fpga node (e.g., "&fpga" or "&fpga_full")
         base_tree: The base device tree to overlay against
+        user_overlay_files: Optional list of user overlay filenames to pull back
+                            (e.g., ['mmi_dc.dtsi']). If None, pulls all overlay
+                            sources.
 
     Returns:
         LopperTree: The constructed and resolved overlay tree
@@ -504,6 +573,33 @@ def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree):
     # Add nodes to overlay_tree
     overlay_tree = overlay_tree + new_amba_node
     overlay_tree = overlay_tree + fpga_node
+
+    # Pull fragments for base tree properties that reference overlay nodes
+    # (e.g., cpus_a78.address-map, imux.interrupt-map referencing PL nodes)
+    ref_fragments = base_tree.fragment_add_for_refs(overlay_tree)
+    if ref_fragments:
+        _info(f"Added {len(ref_fragments)} fragment(s) for phandle references")
+
+    # Pull fragments for user overlay properties
+    # These are properties tagged with _source='overlay:<filename>' during setup
+    if user_overlay_files:
+        for overlay_file in user_overlay_files:
+            src_fragments = base_tree.fragment_add_for_overlay_sources(
+                overlay_tree,
+                source_filter=overlay_file,
+                mode='properties'
+            )
+            if src_fragments:
+                _info(f"Added {len(src_fragments)} fragment(s) for overlay '{overlay_file}'")
+    else:
+        # Pull all overlay-sourced properties
+        src_fragments = base_tree.fragment_add_for_overlay_sources(
+            overlay_tree,
+            source_filter='*',
+            mode='properties'
+        )
+        if src_fragments:
+            _info(f"Added {len(src_fragments)} fragment(s) for user overlay properties")
 
     # Establish overlay relationship to resolve phandle references against base tree
     overlay_tree.overlay_of(base_tree)
@@ -551,6 +647,114 @@ def clean_overlay_properties(overlay_tree):
                 node.delete('status')
         except:
             pass
+
+def resolve_node_by_label_or_path(sdt, node_ref):
+    """
+    Resolve a node reference which may be a path or a label.
+
+    Args:
+        sdt: System device tree object
+        node_ref: Node path (e.g., /amba_pl) or label (e.g., mmi_dc)
+
+    Returns:
+        LopperNode or None: The resolved node, or None if not found
+    """
+    # First try as a direct path
+    if node_ref.startswith('/'):
+        try:
+            return sdt.tree[node_ref]
+        except KeyError:
+            return None
+
+    # Try as a label - first check __symbols__ if present
+    try:
+        symbols = sdt.tree['/__symbols__']
+        for prop in symbols:
+            if prop.name == node_ref:
+                # prop.value is the path
+                path = prop.value[0] if isinstance(prop.value, list) else prop.value
+                return sdt.tree[path]
+    except (KeyError, IndexError, TypeError):
+        pass
+
+    # Fallback: iterate through all nodes checking their labels
+    # This handles cases where __symbols__ isn't present (e.g., source DTS files)
+    for node in sdt.tree:
+        if node.label == node_ref:
+            return node
+
+    return None
+
+
+def build_overlay_from_node_specs(sdt, node_specs, base_tree):
+    """
+    Build an overlay tree from explicit node specifications.
+
+    This is an alternative to the default /amba_pl extraction, allowing users
+    to specify exactly which nodes and/or properties should be in the overlay.
+
+    Args:
+        sdt: System device tree object
+        node_specs: List of node specs from parse_node_specs()
+                    [{'node': str, 'properties': list or None}, ...]
+        base_tree: The base tree to establish overlay relationship with
+
+    Returns:
+        LopperTree: The constructed overlay tree
+    """
+    overlay_tree = LopperTree()
+
+    for spec in node_specs:
+        node_ref = spec['node']
+        properties = spec['properties']
+
+        node = resolve_node_by_label_or_path(sdt, node_ref)
+        if node is None:
+            _warning(f"Node '{node_ref}' not found in device tree, skipping")
+            continue
+
+        if properties is None:
+            # Whole node extraction - clone the node for overlay
+            if not node.label:
+                _warning(f"Node '{node_ref}' has no label, cannot create overlay fragment")
+                continue
+
+            # Create overlay fragment reference
+            fragment = LopperNode(name="&" + node.label)
+            fragment.label = ""
+
+            # Copy all properties (except structural ones)
+            skip_props = {'phandle', 'linux,phandle', '#address-cells', '#size-cells',
+                          'ranges', 'compatible'}
+            for prop in node:
+                if prop.name not in skip_props and not prop.name.startswith('lopper-'):
+                    new_prop = copy.deepcopy(prop)
+                    new_prop.node = fragment
+                    fragment.__props__[prop.name] = new_prop
+
+            overlay_tree.add(fragment)
+            _info(f"Added overlay fragment for entire node '{node.label}'")
+
+        else:
+            # Property-specific extraction
+            if not node.label:
+                _warning(f"Node '{node_ref}' has no label, cannot create overlay fragment")
+                continue
+
+            # Use fragment_create from tree.py which handles companions
+            fragment = base_tree.fragment_create(node, properties, include_companions=True)
+            if fragment:
+                overlay_tree.add(fragment)
+                _info(f"Added overlay fragment for '{node.label}' with properties: {properties}")
+            else:
+                _warning(f"No matching properties found for '{node_ref}#{','.join(properties)}'")
+
+    # Establish overlay relationship for phandle resolution
+    overlay_tree.overlay_of(base_tree)
+    overlay_tree.resolve()
+
+    return overlay_tree
+
 
 def write_output_files(overlay_tree, sdt, pl_file, dtso_file):
     """
@@ -607,46 +811,67 @@ Output:
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
     # Parse and validate options
-    platform, config, zynq_platforms, versal_platforms, firmware_override = validate_and_parse_options(options, sdt)
+    platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs = validate_and_parse_options(options, sdt)
 
     overlay_tree = LopperTree()
 
     print("Starting overlay generation...")
 
-    # Extract the /amba_pl node from sdt.tree
-    amba_node = sdt.tree["/amba_pl"]
+    # Get user overlay files that were identified during setup
+    # These are -i files containing &label { } syntax
+    # The _overlay_targets dict has overlay filenames as keys
+    overlay_targets = getattr(sdt, '_overlay_targets', None)
+    user_overlay_files = list(overlay_targets.keys()) if overlay_targets else None
+    if user_overlay_files:
+        _info(f"User overlay files to pull back: {user_overlay_files}")
 
-    # Validate that amba_pl has valid PL nodes with register properties
-    if not validate_amba_pl_node(amba_node):
-        return True
+    # Check if explicit node selection was provided
+    if node_specs:
+        # Use explicit node specifications - completely overrides default behavior
+        _info(f"Using explicit node selection: {node_specs}")
+        overlay_tree = build_overlay_from_node_specs(sdt, node_specs, sdt.tree)
 
-    # Prepare amba node for overlay
-    new_amba_node = prepare_amba_node(amba_node, sdt, tgt_node)
+        if len(overlay_tree.__nodes__) == 0:
+            _error("No valid overlay nodes created from --nodes specification")
+            return True
 
-    # Extract firmware-name property from amba node and remove it from amba node
-    firmware_name = new_amba_node["firmware-name"]
-    new_amba_node = new_amba_node - firmware_name
+    else:
+        # Default behavior: extract /amba_pl node
+        # Extract the /amba_pl node from sdt.tree
+        amba_node = sdt.tree["/amba_pl"]
 
-    # Override firmware name if provided via command line
-    if firmware_override:
-        firmware_name.value = [firmware_override]
+        # Validate that amba_pl has valid PL nodes with register properties
+        if not validate_amba_pl_node(amba_node):
+            return True
 
-    # Create and configure FPGA node
-    fpga_node, fpga_node_name = create_fpga_node(
-        platform, config, firmware_name, zynq_platforms, versal_platforms
-    )
+        # Prepare amba node for overlay
+        new_amba_node = prepare_amba_node(amba_node, sdt, tgt_node)
 
-    # Collect special nodes from amba node
-    node_collections = collect_special_nodes(new_amba_node)
+        # Extract firmware-name property from amba node and remove it from amba node
+        firmware_name = new_amba_node["firmware-name"]
+        new_amba_node = new_amba_node - firmware_name
 
-    # Move special nodes to fpga node based on platform and configuration
-    new_amba_node, fpga_node = move_nodes_to_fpga(
-        new_amba_node, fpga_node, node_collections,
-        platform, config, zynq_platforms
-    )
+        # Override firmware name if provided via command line
+        if firmware_override:
+            firmware_name.value = [firmware_override]
 
-    # Build overlay tree
-    overlay_tree = build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, sdt.tree)
+        # Create and configure FPGA node
+        fpga_node, fpga_node_name = create_fpga_node(
+            platform, config, firmware_name, zynq_platforms, versal_platforms
+        )
+
+        # Collect special nodes from amba node
+        node_collections = collect_special_nodes(new_amba_node)
+
+        # Move special nodes to fpga node based on platform and configuration
+        new_amba_node, fpga_node = move_nodes_to_fpga(
+            new_amba_node, fpga_node, node_collections,
+            platform, config, zynq_platforms
+        )
+
+        # Build overlay tree with user overlay content
+        overlay_tree = build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, sdt.tree,
+                                          user_overlay_files=user_overlay_files)
 
     # Clean overlay properties
     clean_overlay_properties(overlay_tree)
