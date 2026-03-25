@@ -1556,7 +1556,18 @@ class LopperProp():
                 formatted_records = []
                 phandle_record = []
                 if phandle_map:
+                    # Get companion property for syncing when records are dropped
+                    companion_val = None
+                    companion_prop = None
+                    if self.node:
+                        companion_name = lopper.base.lopper_base.phandle_property_companion(self.name)
+                        if companion_name and companion_name in self.node.__props__:
+                            companion_prop = self.node.__props__[companion_name]
+                            if isinstance(companion_prop.value, (list, tuple)):
+                                companion_val = list(companion_prop.value)
+
                     pval_index = 0
+                    kept_companion = []
                     # each entry in the phandle map list, is a "record" in the phandle
                     # list.
                     for rnum,record in enumerate(phandle_map):
@@ -1652,6 +1663,14 @@ class LopperProp():
                                     formatted_records.append( ",\n" )
                                 else:
                                     formatted_records.append( ";" )
+
+                            # Track kept companion entries
+                            if companion_val is not None and rnum < len(companion_val):
+                                kept_companion.append(companion_val[rnum])
+
+                    # Update companion property with kept entries
+                    if companion_prop is not None:
+                        companion_prop.value = kept_companion
                 else:
                     # no phandles
                     if resolver_type:
@@ -2471,6 +2490,66 @@ class LopperNode(object):
                     flat_list.append(sublist)
 
         return flat_list
+
+    def node_refs( self, search_tree=None ):
+        """Find all properties in a tree that reference this node
+
+        Scans all properties in the search tree (or this node's tree if not
+        specified) and returns those that contain phandle references to this
+        node. This is the reverse of resolve_all_refs() - instead of finding
+        what this node references, it finds what references this node.
+
+        This method works even if the target node has been removed from the
+        search tree, by checking raw property values for phandle matches.
+
+        Args:
+            search_tree (LopperTree, optional): The tree to search for references.
+                                                If None, uses this node's tree.
+
+        Returns:
+            list of tuples: [(node, prop_name, companion_prop_name or None), ...]
+                           where companion_prop_name is the associated -names
+                           property if one exists (e.g., clock-names for clocks)
+        """
+        if search_tree is None:
+            if self.tree is None:
+                return []
+            search_tree = self.tree
+
+        if self.phandle is None or self.phandle <= 0:
+            return []
+
+        target_phandle = self.phandle
+        referencing_props = []
+
+        # Get the list of property names that can contain phandles
+        phandle_props = lopper.base.lopper_base.phandle_possible_properties()
+
+        for node in search_tree:
+            # Don't include self-references
+            if node.abs_path == self.abs_path:
+                continue
+
+            for prop in node:
+                # Skip internal/structural properties
+                if prop.name.startswith('lopper-') or prop.name == 'phandle':
+                    continue
+
+                # Only check properties that can contain phandles
+                if prop.name not in phandle_props:
+                    continue
+
+                # Use resolve_phandles() to get actual phandle targets,
+                # avoiding false positives from matching non-phandle integers
+                try:
+                    phandle_targets = prop.resolve_phandles()
+                    if self in phandle_targets:
+                        companion = lopper.base.lopper_base.phandle_property_companion(prop.name)
+                        referencing_props.append((node, prop.name, companion))
+                except Exception:
+                    continue
+
+        return referencing_props
 
     def property_find(self, prop_name, inherit=True):
         """Find a property, optionally walking up the parent chain.
@@ -4251,6 +4330,148 @@ class LopperTree:
         # store the parent tree, this is used for resolving
         # lables and phandles before printing
         self._external_trees.append(parent_tree)
+
+    def tree_refs( self, target_tree ):
+        """Find properties in this tree that reference nodes in target_tree
+
+        Scans all nodes in target_tree and uses each node's node_refs()
+        method to find properties in this tree that reference them. This is
+        useful for finding properties that will become invalid when target_tree
+        nodes are extracted into an overlay.
+
+        Args:
+            target_tree (LopperTree): The tree containing nodes that might
+                                      be referenced
+
+        Returns:
+            list of tuples: [(node, prop_name, companion_prop_name or None), ...]
+                           where companion_prop_name is the associated -names
+                           property if one exists (e.g., clock-names for clocks)
+        """
+        referencing_props = []
+
+        # For each node in target_tree, find properties in self that reference it
+        for target_node in target_tree:
+            refs = target_node.node_refs(self)
+            referencing_props.extend(refs)
+
+        return referencing_props
+
+    def fragment_create( self, source_node, property_names, include_companions=True ):
+        """Create an overlay fragment node with only specified properties
+
+        Creates an overlay fragment (a node using &label syntax) containing
+        only the specified properties from the source node. This is used to
+        create partial overlays where only certain properties need to override
+        the base tree.
+
+        Args:
+            source_node (LopperNode): The node to extract properties from
+            property_names (list): List of property names to include
+            include_companions (bool): If True, automatically include companion
+                                       -names properties (e.g., clock-names
+                                       when clocks is specified)
+
+        Returns:
+            LopperNode: The created fragment node, or None if source_node has
+                        no label or no properties were found
+
+        Example:
+            # Create fragment: &mmi_dc { clocks = <...>; clock-names = "..."; };
+            fragment = tree.fragment_create(mmi_dc_node, ["clocks"])
+        """
+        if not source_node.label:
+            lopper.log._warning(f"Node {source_node.abs_path} has no label, cannot create overlay fragment")
+            return None
+
+        # Expand property list to include companions
+        all_props = set(property_names)
+        if include_companions:
+            for prop_name in property_names:
+                companion = lopper.base.lopper_base.phandle_property_companion(prop_name)
+                if companion:
+                    all_props.add(companion)
+
+        # Create fragment node with reference name
+        fragment_name = "&" + source_node.label
+        fragment = LopperNode(name=fragment_name)
+        fragment.label = ""  # Fragment itself doesn't need a label
+
+        props_added = 0
+        for prop_name in all_props:
+            try:
+                prop = source_node[prop_name]
+                if prop:
+                    # Use deepcopy which handles property copying correctly
+                    # (uses __dict__ assignment to avoid triggering resolution)
+                    new_prop = copy.deepcopy(prop)
+                    new_prop.node = fragment
+                    fragment.__props__[prop_name] = new_prop
+                    props_added += 1
+            except (KeyError, TypeError):
+                pass
+
+        if props_added == 0:
+            return None
+
+        return fragment
+
+    def fragment_add_for_refs( self, overlay_tree ):
+        """Add overlay fragments for properties that reference the overlay
+
+        Scans this tree (the base tree) for properties that contain phandle
+        references to nodes in overlay_tree. For each such property, creates
+        an overlay fragment containing that property (and its companion -names
+        property if applicable) and adds it to the overlay tree.
+
+        This ensures that when the overlay is applied, properties that reference
+        overlay nodes will have their complete values restored (rather than
+        having invalid phandle references stripped during output).
+
+        Args:
+            overlay_tree (LopperTree): The overlay tree to add fragments to.
+                                       Modified in place.
+
+        Returns:
+            int: Number of fragments added
+
+        Example:
+            # After extracting /amba_pl to overlay:
+            # Find base tree props referencing overlay and add fragments
+            num_added = base_tree.fragment_add_for_refs(overlay_tree)
+        """
+        # Find properties that reference the overlay
+        referencing = self.tree_refs(overlay_tree)
+
+        if not referencing:
+            return 0
+
+        # Group by node to create one fragment per node
+        node_props = {}
+        for node, prop_name, companion in referencing:
+            key = node.abs_path
+            if key not in node_props:
+                node_props[key] = {'node': node, 'props': set()}
+            node_props[key]['props'].add(prop_name)
+            if companion:
+                node_props[key]['props'].add(companion)
+
+        # Create fragments and add to overlay
+        fragments_added = 0
+        for path, info in node_props.items():
+            node = info['node']
+            props = list(info['props'])
+
+            try:
+                fragment = self.fragment_create(node, props)
+                if fragment:
+                    overlay_tree.add(fragment)
+                    fragments_added += 1
+                    lopper.log._info(f"Added overlay fragment for {node.label} with properties: {props}")
+            except Exception as e:
+                lopper.log._warning(f"Failed to create overlay fragment for {node.abs_path}: {e}")
+
+        return fragments_added
 
     def phandles( self ):
         """Utility function to get the active phandles in the tree
