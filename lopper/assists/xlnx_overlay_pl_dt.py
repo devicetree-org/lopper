@@ -18,7 +18,7 @@ import struct
 import subprocess
 import sys
 import types
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from pathlib import Path, PurePath
 from re import *
 
@@ -33,6 +33,18 @@ from lopper.tree import LopperNode, LopperTree
 sys.path.append(os.path.dirname(__file__))
 _init(__name__)
 from baremetalconfig_xlnx import *
+
+OverlayOptions = namedtuple('OverlayOptions', [
+    'platform',
+    'config',
+    'zynq_platforms',
+    'versal_platforms',
+    'firmware_override',
+    'user_dtsi_file',
+])
+
+match_list = ["v_tc", "v_smpte_uhdsdi_tx", "v_smpte_uhdsdi_rx", "v_hdmi_tx1", "v_hdmi_rx1",
+              "v_hdmi_rx", "v_hdmi_tx", "v_dp_tx", "v_dp_rx", "v_dp_rx1", "v_dp_tx1"]
 
 
 def is_compat( node, compat_string_to_test ):
@@ -58,9 +70,6 @@ def remove_node_ref(sdt, tgt_node, ref_node):
     for prop,node1 in prop_dict.items():
         if prop not in match_label_list:
             sdt.tree['/' + ref_node.name].delete(prop)
-
-match_list = ["v_tc", "v_smpte_uhdsdi_tx", "v_smpte_uhdsdi_rx", "v_hdmi_tx1", "v_hdmi_rx1",
-              "v_hdmi_rx", "v_hdmi_tx", "v_dp_tx", "v_dp_rx", "v_dp_rx1", "v_dp_tx1"]
 
 def add_status_disabled_after_ipname(filepath, match_list):
     """
@@ -137,7 +146,7 @@ def infer_platform_from_sdt(sdt):
     return None
 
 def usage():
-    print('Usage: lopper -O <output_dir> -f --enhanced <system-top.dts> [<lopper-gen DT>] -- xlnx_overlay_pl_dt [<machine>] <configuration> [<pl.dtsi>] [--firmware-name=<name>]')
+    print('Usage: lopper -O <output_dir> -f --enhanced <system-top.dts> [<lopper-gen DT>] -- xlnx_overlay_pl_dt [<machine>] <configuration> [<pl.dtsi>] [--firmware-name=<name>] [--user-dtsi=<path>]')
     print('\nArguments:')
     print('  <output_dir>      - Directory where the lopper generated overlay `pl.dtsi` file will be stored')
     print('  <system-top.dts>  - Full system device tree source')
@@ -149,13 +158,54 @@ def usage():
     print('  <pl.dtsi>         - (Optional, for backward compatibility only) pl.dtsi file path - IGNORED')
     print('                      This argument is accepted but not used. The assist reads pl.dtsi from system device tree.')
     print('  --firmware-name=<name> - (Optional) Override the default firmware-name in the output')
+    print('  --user-dtsi=<path>     - (Optional) Path to a user-provided .dtsi file to append to the generated pl.dtsi')
+    print('                           The file must use overlay reference syntax (e.g. &label { ... };)')
     print('\nExamples:')
     print(' With machine argument:')
     print(' lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi')
     print('')
     print(' With automatic platform inference:')
     print(' lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <config> <path_to_pl_dtsi>/pl.dtsi')
-    print('  --firmware-name=<name> - (Optional) Override the default firmware-name in the output')
+    print('')
+    print(' With user overlay:')
+    print(' lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <config> --user-dtsi=<path_to_user>/user.dtsi')
+
+def validate_user_dtsi(user_dtsi_file):
+    """
+    Validate a user-provided .dtsi file for use as an overlay fragment.
+
+    Checks extension (must be .dtsi), readability, presence of overlay reference nodes,
+    and absence of forbidden DTS headers (/dts-v1/, /plugin/).
+
+    Args:
+        user_dtsi_file: Path string from --user-dtsi= argument
+
+    Raises:
+        SystemExit: If any validation check fails
+    """
+    if not user_dtsi_file.lower().endswith(".dtsi"):
+        _error(f"user-dtsi file '{user_dtsi_file}' does not have a .dtsi extension.", also_exit=1)
+
+    try:
+        with open(user_dtsi_file, "r", encoding="utf-8") as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        _error(f"user-dtsi file '{user_dtsi_file}' is not a valid text file (encoding error). Expected UTF-8.", also_exit=1)
+    except OSError as e:
+        _error(f"user-dtsi file '{user_dtsi_file}' could not be read: {e}", also_exit=1)
+
+    if not re.search(r'^\s*&\w+\s*\{', content, re.MULTILINE):
+        _error(f"user-dtsi file '{user_dtsi_file}' contains no overlay reference nodes (e.g. &label {{ ... }};).", also_exit=1)
+
+    forbidden_header_patterns = {
+        "/dts-v1/": re.compile(r'^\s*/dts-v1/\s*;', re.MULTILINE),
+        "/plugin/":  re.compile(r'^\s*/plugin/\s*;', re.MULTILINE),
+    }
+    for header, pattern in forbidden_header_patterns.items():
+        if pattern.search(content):
+            _error(f"user-dtsi file '{user_dtsi_file}' must not contain '{header}' header.")
+            _error(f"The generated pl.dtsi already has /dts-v1/ and /plugin/ headers.")
+            _error(f"user-dtsi content must use overlay reference syntax only (e.g. &label {{ ... }};)", also_exit=1)
 
 def validate_and_parse_options(options, sdt):
     """
@@ -165,6 +215,7 @@ def validate_and_parse_options(options, sdt):
     - Mode 2 (2 args): <machine> <config> OR <config> <pl.dtsi> (backward compatibility)
     - Mode 3 (3 args): <machine> <config> <pl.dtsi> (backward compatibility)
     - Optional: --firmware-name=<name> to override firmware name
+    - Optional: --user-dtsi=<path> to append a user-provided dtsi file to the generated pl.dtsi
 
     Note: pl.dtsi argument is accepted for backward compatibility but ignored with warning.
 
@@ -173,7 +224,8 @@ def validate_and_parse_options(options, sdt):
         sdt: System device tree object for auto-inference
 
     Returns:
-        tuple: (platform, config, zynq_platforms, versal_platforms, firmware_override)
+        OverlayOptions: Named tuple with fields platform, config, zynq_platforms,
+                        versal_platforms, firmware_override, user_dtsi_file
 
     Raises:
         SystemExit: If validation fails for platform or config
@@ -202,9 +254,17 @@ def validate_and_parse_options(options, sdt):
 
     # Process optional arguments
     firmware_override = None
+    user_dtsi_file = None
+    known_options = ["--firmware-name=", "--user-dtsi="]
     for arg in optional_args:
         if arg.startswith("--firmware-name="):
             firmware_override = arg.split("=", 1)[1]
+        elif arg.startswith("--user-dtsi="):
+            user_dtsi_file = arg.split("=", 1)[1]
+            validate_user_dtsi(user_dtsi_file)
+        else:
+            _warning(f"Unknown option '{arg}' will be ignored.")
+            _warning(f"Supported options: {', '.join(known_options)}")
 
     # Parse arguments based on count
     try:
@@ -274,7 +334,14 @@ def validate_and_parse_options(options, sdt):
         usage()
         sys.exit(1)
 
-    return platform, config, zynq_platforms, versal_platforms, firmware_override
+    return OverlayOptions(
+        platform=platform,
+        config=config,
+        zynq_platforms=zynq_platforms,
+        versal_platforms=versal_platforms,
+        firmware_override=firmware_override,
+        user_dtsi_file=user_dtsi_file,
+    )
 
 def validate_amba_pl_node(amba_node):
     """
@@ -552,12 +619,13 @@ def clean_overlay_properties(overlay_tree):
         except:
             pass
 
-def write_output_files(overlay_tree, sdt, pl_file, dtso_file):
+def write_output_files(overlay_tree, sdt, pl_file, dtso_file, user_dtsi_file=None):
     """
     Write output files and perform post-processing.
 
     Writes overlay tree to pl.dtsi, performs post-processing
     (interrupt-parent replacement, status disabled for video IPs),
+    optionally appends user-provided overlay content,
     and copies pl.dtsi to pl.dtso.
 
     Args:
@@ -565,6 +633,7 @@ def write_output_files(overlay_tree, sdt, pl_file, dtso_file):
         sdt: The system device tree object
         pl_file: Path to output pl.dtsi file
         dtso_file: Path to output pl.dtso file
+        user_dtsi_file: (Optional) Path to user-provided .dtsi file to append
     """
     # Write overlay tree
     LopperSDT(None).write(overlay_tree, pl_file, True, True)
@@ -581,6 +650,15 @@ def write_output_files(overlay_tree, sdt, pl_file, dtso_file):
 
     # Add status = "disabled" for specific video IPs
     add_status_disabled_after_ipname(pl_file, match_list)
+
+    # Append user-provided dtsi overlay content if specified.
+    # Content has already been validated in validate_and_parse_options.
+    if user_dtsi_file:
+        _info(f"Appending user overlay content from: {user_dtsi_file}")
+        with open(user_dtsi_file, "r", encoding="utf-8") as user_f:
+            user_content = user_f.read().strip()
+        with open(pl_file, "a") as f:
+            f.write("\n" + user_content + "\n")
 
     # Copy contents from pl.dtsi to pl.dtso in the same directory
     with open(pl_file, "r") as src, open(dtso_file, "w") as dst:
@@ -607,7 +685,7 @@ Output:
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
     # Parse and validate options
-    platform, config, zynq_platforms, versal_platforms, firmware_override = validate_and_parse_options(options, sdt)
+    opts = validate_and_parse_options(options, sdt)
 
     overlay_tree = LopperTree()
 
@@ -628,12 +706,12 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     new_amba_node = new_amba_node - firmware_name
 
     # Override firmware name if provided via command line
-    if firmware_override:
-        firmware_name.value = [firmware_override]
+    if opts.firmware_override:
+        firmware_name.value = [opts.firmware_override]
 
     # Create and configure FPGA node
     fpga_node, fpga_node_name = create_fpga_node(
-        platform, config, firmware_name, zynq_platforms, versal_platforms
+        opts.platform, opts.config, firmware_name, opts.zynq_platforms, opts.versal_platforms
     )
 
     # Collect special nodes from amba node
@@ -642,7 +720,7 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     # Move special nodes to fpga node based on platform and configuration
     new_amba_node, fpga_node = move_nodes_to_fpga(
         new_amba_node, fpga_node, node_collections,
-        platform, config, zynq_platforms
+        opts.platform, opts.config, opts.zynq_platforms
     )
 
     # Build overlay tree
@@ -657,7 +735,7 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     print( f"pl: {pl_file} dtso: {dtso_file}" )
 
     # Write output files and perform post-processing
-    write_output_files(overlay_tree, sdt, pl_file, dtso_file)
+    write_output_files(overlay_tree, sdt, pl_file, dtso_file, opts.user_dtsi_file)
 
     print("Overlay generation completed successfully!")
     return True
