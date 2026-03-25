@@ -5,6 +5,18 @@
  *       Bruce Ashfield <bruce.ashfield@xilinx.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * @brief lop behavior summary
+ *
+ * Description:
+ * - Adjusts A72 interrupt mux topology, updates symbol/label references, and
+ *   remaps users from imux to gic where required.
+ *
+ * Key Operations:
+ * - assist-v1, modify, select-v1, code-v1
+ *
+ * Notable Targets:
+ * - /axi/imux, /apu-bus/interrupt-controller@f9000000, interrupt-parent:&imux
  */
 
 /dts-v1/;

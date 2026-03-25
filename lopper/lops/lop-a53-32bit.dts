@@ -5,6 +5,19 @@
  *     Rompicharla Dhriti Sree <DhritiSree.Rompicharla@amd.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * @brief lop behavior summary
+ *
+ * Description:
+ * - Filters A53 address-map entries to retain only 32-bit groups. It
+ *   removes the node entries having 64 bit address notion to support the
+ *   32 bit mode of A53 processor.
+ *
+ * Key Operations:
+ * - select-v1, code-v1
+ *
+ * Notable Targets:
+ * - /cpus-a53.*:address-map:
  */
 
 /dts-v1/;

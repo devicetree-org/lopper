@@ -5,6 +5,18 @@
  *       Mubin Sayyed <mubin.sayyed@amd.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * @brief lop behavior summary
+ *
+ * Description:
+ * - Adapts MicroBlaze Zephyr interrupt controller layout by renaming/removing
+ *   nodes and updating parent/symbol references.
+ *
+ * Key Operations:
+ * - select-v1, modify, code-v1
+ *
+ * Notable Targets:
+ * - /soc/interrupt-controller*, cpus cluster nodes, /__symbols__
  */
 
 /dts-v1/;

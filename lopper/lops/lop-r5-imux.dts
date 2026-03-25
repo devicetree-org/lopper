@@ -5,6 +5,18 @@
  *       Bruce Ashfield <bruce.ashfield@xilinx.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * @brief lop behavior summary
+ *
+ * Description:
+ * - Removes R5 interrupt-multiplex structures and retargets interrupt-parent
+ *   references to gic.
+ *
+ * Key Operations:
+ * - assist-v1, select-v1, modify
+ *
+ * Notable Targets:
+ * - /axi/imux, interrupt-parent:&imux, /axi/interrupt-multiplex
  */
 
 /dts-v1/;

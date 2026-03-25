@@ -5,6 +5,18 @@
  *     Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * @brief lop behavior summary
+ *
+ * Description:
+ * - Splits Cadence TTC blocks into individual timer-counter nodes and updates
+ *   register offsets and symbol links for baremetal BSPs.
+ *
+ * Key Operations:
+ * - select-v1, code-v1
+ *
+ * Notable Targets:
+ * - compatible:cdns,ttc, /__symbols__
  */
 
 /dts-v1/;
