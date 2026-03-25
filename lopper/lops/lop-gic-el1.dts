@@ -5,6 +5,18 @@
  *     Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * @brief lop behavior summary
+ *
+ * Description:
+ * - Selects GICv3/GIC-400 interrupt controller nodes and updates their reg
+ *   property for EL1 Non-Secure Xen mappings.
+ *
+ * Key Operations:
+ * - select-v1, code-v1
+ *
+ * Notable Targets:
+ * - compatible:arm,gic-v3, compatible:arm,gic-400
  */
 
 /dts-v1/;

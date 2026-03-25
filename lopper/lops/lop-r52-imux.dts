@@ -5,6 +5,18 @@
  *       Onkar Harsh <onkar.harsh@amd.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * @brief lop behavior summary
+ *
+ * Description:
+ * - Simplifies R52 interrupt mux configuration by deleting interrupt-multiplex
+ *   nodes and remapping interrupt parents.
+ *
+ * Key Operations:
+ * - assist-v1, select-v1, modify
+ *
+ * Notable Targets:
+ * - /axi/imux, interrupt-parent:&imux, /axi/interrupt-multiplex
  */
 
 /dts-v1/;

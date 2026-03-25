@@ -5,7 +5,19 @@
  *     Dhriti Sree Rompicharla <DhritiSree.Rompicharla@amd.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
-*/
+ *
+ * @brief lop behavior summary
+ *
+ * Description:
+ * - Builds a CPU-to-OS support list for downstream tools by scanning CPU/device
+ *   capabilities and emitting YAML-oriented data.
+ *
+ * Key Operations:
+ * - select-v1, code-v1
+ *
+ * Notable Targets:
+ * - /.*:device_type:cpu, /.*:xlnx,ip-name:ai_engine
+ */
 
 /dts-v1/;
 

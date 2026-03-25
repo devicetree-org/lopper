@@ -5,6 +5,19 @@
  *     Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * @brief lop behavior summary
+ *
+ * Description:
+ * - Generates a compact CPU type list from cluster nodes for YAML/reporting
+ *   consumers, ignores ai-engine specific checks done in lop-cpu-oslist for
+ *   vendor specific tools.
+ *
+ * Key Operations:
+ * - select-v1, code-v1
+ *
+ * Notable Targets:
+ * - /.*:compatible:cpus,cluster
  */
 
 /dts-v1/;

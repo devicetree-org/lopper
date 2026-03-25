@@ -7,6 +7,18 @@
  *       Onkar Harsh <onkar.harsh@amd.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * @brief lop behavior summary
+ *
+ * Description:
+ * - Adjusts A53 interrupt mux topology, updates symbol/label references, and
+ *   remaps users from imux to gic where required.
+ *
+ * Key Operations:
+ * - assist-v1, modify, select-v1, code-v1
+ *
+ * Notable Targets:
+ * - /axi/imux, /apu-bus/interrupt-controller@f9010000, interrupt-parent:&imux
  */
 
 /dts-v1/;
