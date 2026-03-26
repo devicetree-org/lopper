@@ -732,7 +732,7 @@ class LopperProp():
 
         return ret_val
 
-    def phandle_map( self, tag_invalid = True ):
+    def phandle_map( self, tag_invalid = True, context_trees=None ):
         """Determines the phandle elements/params of a property
 
         Takes a property name and returns a list of lists, where phandles are
@@ -740,6 +740,8 @@ class LopperProp():
 
         Args:
             tag_invalid (bool): default True. Whether or not invalid phandles should be indicated with "invald"
+            context_trees (list, optional): Additional trees to search for phandle resolution.
+                                            Useful for cross-tree resolution (e.g., overlay referencing base).
 
         Returns:
             A list / map of values. Where 0 in the list means no phandle, and
@@ -912,7 +914,7 @@ class LopperProp():
                     if len(derefs) >= 2:
                         # step 1) lookup the node
                         if self.node and self.node.tree:
-                            node_deref = self.node.tree.deref( val )
+                            node_deref = self.node.tree.deref( val, context_trees=context_trees )
                         else:
                             # if we aren't in a tree, we really can't continue since
                             # whatever we do will be wrong, just return an empty
@@ -1054,7 +1056,7 @@ class LopperProp():
             for p in property_val_group:
                 if property_chunk_idx in phandle_index_list:
                     if self.node and self.node.tree:
-                        node_deref = self.node.tree.deref( p )
+                        node_deref = self.node.tree.deref( p, context_trees=context_trees )
                         # This second check is currently disabled as it impacts runtime
                         # significantly. If the pattern learning isn't sufficient, this
                         # can be re-enabled
@@ -2497,7 +2499,7 @@ class LopperNode(object):
 
         return flat_list
 
-    def node_refs( self, search_tree=None ):
+    def node_refs( self, search_tree=None, context_trees=None ):
         """Find all properties in a tree that reference this node
 
         Scans all properties in the search tree (or this node's tree if not
@@ -2505,12 +2507,14 @@ class LopperNode(object):
         node. This is the reverse of resolve_all_refs() - instead of finding
         what this node references, it finds what references this node.
 
-        This method works even if the target node has been removed from the
-        search tree, by checking raw property values for phandle matches.
-
         Args:
             search_tree (LopperTree, optional): The tree to search for references.
                                                 If None, uses this node's tree.
+            context_trees (list, optional): Additional trees for phandle resolution.
+                                            If None, defaults to [self.tree] to enable
+                                            cross-tree reference detection (e.g., finding
+                                            base tree properties that reference overlay nodes).
+                                            Pass [] to disable cross-tree resolution.
 
         Returns:
             list of tuples: [(node, prop_name, companion_prop_name or None), ...]
@@ -2525,7 +2529,10 @@ class LopperNode(object):
         if self.phandle is None or self.phandle <= 0:
             return []
 
-        target_phandle = self.phandle
+        # Default context_trees to [self.tree] for cross-tree resolution
+        if context_trees is None:
+            context_trees = [self.tree] if self.tree else []
+
         referencing_props = []
 
         # Get the list of property names that can contain phandles
@@ -2545,27 +2552,22 @@ class LopperNode(object):
                 if prop.name not in phandle_props:
                     continue
 
-                # Use phandle_map() to identify phandle positions in the property
-                # Then check if any position contains our target_phandle value
+                # Use phandle_map() with context_trees to resolve phandles
+                # across trees. Non-zero entries are resolved nodes.
                 try:
-                    phandle_records = prop.phandle_map()
+                    phandle_records = prop.phandle_map(context_trees=context_trees)
+                    if not phandle_records:
+                        continue
 
-                    # phandle_map returns list of records, each record is a sublist
-                    # where the first element is the node (or #invalid) and remaining
-                    # elements are 0 for non-phandle cells
-                    # We need to check if any raw phandle value matches target_phandle
+                    # Check if any cell resolved to self
                     found_ref = False
-                    prop_val_idx = 0
                     for record in phandle_records:
-                        # First element is the phandle position
-                        # Even if it resolved to #invalid, check the raw value
-                        if prop_val_idx < len(prop.value):
-                            raw_phandle = prop.value[prop_val_idx]
-                            if raw_phandle == target_phandle:
+                        for cell in record:
+                            if cell != 0 and cell != "#invalid" and cell is self:
                                 found_ref = True
                                 break
-                        # Advance by record length
-                        prop_val_idx += len(record)
+                        if found_ref:
+                            break
 
                     if found_ref:
                         companion = lopper.base.lopper_base.phandle_property_companion(prop.name)
@@ -4562,7 +4564,15 @@ class LopperTree:
             parent_tree._metadata['child_trees'].append(self)
             lopper.log._debug( f"Registered overlay '{name}' with parent tree" )
 
-        # Apply property filtering if requested
+        # Auto-generate fragments for base tree properties that reference overlay nodes
+        # This ensures cross-tree references remain valid when the overlay is applied
+        # Done BEFORE filtering so exclude_props/exclude_nodes can filter fragment content too
+        auto_fragments = parent_tree.fragment_add_for_refs(self)
+        self._metadata['auto_fragments'] = auto_fragments
+        if auto_fragments:
+            lopper.log._debug( f"Auto-generated {len(auto_fragments)} fragment(s) for cross-tree references" )
+
+        # Apply property filtering if requested (runs after fragment generation)
         if exclude_props:
             for node in self:
                 for prop_name in exclude_props:
@@ -4570,7 +4580,7 @@ class LopperTree:
                         del node.__props__[prop_name]
                         lopper.log._debug( f"Removed property '{prop_name}' from {node.abs_path}" )
 
-        # Apply node filtering if requested
+        # Apply node filtering if requested (runs after fragment generation)
         if exclude_nodes:
             for pattern in exclude_nodes:
                 for node in list(self.nodes(pattern)):
@@ -4674,23 +4684,48 @@ class LopperTree:
         overlay nodes will have their complete values restored (rather than
         having invalid phandle references stripped during output).
 
+        Dangling Phandle Handling:
+            After nodes are extracted to an overlay, the base tree may contain
+            properties with phandle references to those (now missing) nodes.
+            This function does NOT remove those properties from the base tree.
+            Instead, Lopper's write-time strict mode drops properties containing
+            invalid phandle references. The workflow is:
+
+            1. Fragment is created containing the referencing property
+            2. Base tree retains property with (now dangling) phandle
+            3. On write, Lopper drops properties with invalid phandles from base
+            4. Result: property exists only in overlay (via fragment)
+
+            When the overlay is applied, the fragment restores the property with
+            valid phandle references.
+
+        Filtering Behavior:
+            If overlay_of() is called with exclude_props that filter a fragment
+            property, the property is removed from the fragment. Since the base
+            tree's dangling reference is also dropped at write time, the property
+            is effectively discarded from both trees - this is intentional when
+            filtering is requested.
+
         Args:
             overlay_tree (LopperTree): The overlay tree to add fragments to.
                                        Modified in place.
 
         Returns:
-            int: Number of fragments added
+            list: List of fragment nodes that were added to overlay_tree.
+                  Empty list if no fragments were needed.
 
         Example:
             # After extracting /amba_pl to overlay:
             # Find base tree props referencing overlay and add fragments
-            num_added = base_tree.fragment_add_for_refs(overlay_tree)
+            fragments = base_tree.fragment_add_for_refs(overlay_tree)
+            for frag in fragments:
+                print(f"Added fragment for {frag['target-path'].value[0]}")
         """
         # Find properties that reference the overlay
         referencing = self.tree_refs(overlay_tree)
 
         if not referencing:
-            return 0
+            return []
 
         # Group by node to create one fragment per node
         node_props = {}
@@ -4703,7 +4738,7 @@ class LopperTree:
                 node_props[key]['props'].add(companion)
 
         # Create fragments and add to overlay
-        fragments_added = 0
+        fragments_added = []
         for path, info in node_props.items():
             node = info['node']
             props = list(info['props'])
@@ -4712,10 +4747,124 @@ class LopperTree:
                 fragment = self.fragment_create(node, props)
                 if fragment:
                     overlay_tree.add(fragment)
-                    fragments_added += 1
+                    fragments_added.append(fragment)
                     lopper.log._info(f"Added overlay fragment for {node.label} with properties: {props}")
             except Exception as e:
                 lopper.log._warning(f"Failed to create overlay fragment for {node.abs_path}: {e}")
+
+        return fragments_added
+
+    def fragment_add_for_overlay_sources( self, overlay_tree, source_filter='*',
+                                          mode='properties' ):
+        """Add overlay fragments for properties that came from user overlays.
+
+        Scans this tree (the base tree) for properties that have a _source
+        attribute indicating they came from a user overlay file. Creates
+        overlay fragments containing those properties.
+
+        This complements fragment_add_for_refs() which handles phandle
+        references. Together they ensure that:
+        1. Properties referencing overlay nodes are pulled into fragments
+        2. Properties from user overlays are also pulled into fragments
+
+        Args:
+            overlay_tree (LopperTree): The overlay tree to add fragments to.
+                                       Modified in place.
+            source_filter: Filter for which overlay sources to include.
+                '*' - all overlay sources (default)
+                'mmi_dc.dtsi' - specific overlay filename
+                ['a.dtsi', 'b.dtsi'] - list of overlay filenames
+            mode: How to handle properties from matching overlays.
+                'properties' - only include properties with matching _source
+                'full_nodes' - include ALL properties from nodes that have
+                               any property with matching _source
+
+        Returns:
+            list: List of fragment nodes that were added to overlay_tree.
+                  Empty list if no fragments were needed.
+
+        Example:
+            # After extracting PL nodes to overlay, also pull user overlay content:
+            base_tree.fragment_add_for_refs(overlay_tree)  # phandle refs
+            base_tree.fragment_add_for_overlay_sources(
+                overlay_tree,
+                source_filter='mmi_dc.dtsi',
+                mode='properties'
+            )
+        """
+        # Find nodes with overlay-sourced properties
+        nodes_with_sources = self.nodes_with_overlay_sources(source_filter)
+
+        if not nodes_with_sources:
+            return []
+
+        # Group by node and determine which properties to include
+        node_props = {}
+        for node, overlay_props in nodes_with_sources:
+            key = node.abs_path
+
+            if mode == 'full_nodes':
+                # Include ALL properties from the node
+                all_prop_names = list(node.__props__.keys())
+                # Filter out internal properties
+                props_to_include = [p for p in all_prop_names
+                                    if not p.startswith('lopper-') and p != 'phandle']
+            else:
+                # mode == 'properties': only include overlay-sourced properties
+                props_to_include = [prop_name for prop_name, source in overlay_props]
+
+            if key not in node_props:
+                node_props[key] = {'node': node, 'props': set()}
+            node_props[key]['props'].update(props_to_include)
+
+        # Create fragments and add to overlay
+        fragments_added = []
+        for path, info in node_props.items():
+            node = info['node']
+            props = list(info['props'])
+
+            # Skip if node has no label (can't create fragment reference)
+            if not node.label:
+                lopper.log._debug(f"Skipping {node.abs_path}: no label for fragment reference")
+                continue
+
+            # Check if a fragment for this node already exists in overlay
+            # (may have been created by fragment_add_for_refs)
+            # Use __nodes__ dict directly to avoid disturbing iterator state
+            existing_fragment = None
+            fragment_name = "&" + node.label
+            for overlay_node in overlay_tree.__nodes__.values():
+                if overlay_node.name == fragment_name:
+                    existing_fragment = overlay_node
+                    break
+
+            if existing_fragment:
+                # Merge properties into existing fragment
+                props_added = 0
+                for prop_name in props:
+                    if prop_name not in existing_fragment.__props__:
+                        try:
+                            prop = node[prop_name]
+                            if prop:
+                                new_prop = copy.deepcopy(prop)
+                                new_prop.node = existing_fragment
+                                existing_fragment.__props__[prop_name] = new_prop
+                                props_added += 1
+                        except (KeyError, TypeError):
+                            pass
+
+                if props_added > 0:
+                    lopper.log._info(f"Merged {props_added} overlay-sourced properties into existing fragment for {node.label}")
+            else:
+                # Create new fragment
+                try:
+                    fragment = self.fragment_create(node, props)
+                    if fragment:
+                        overlay_tree.add(fragment)
+                        fragments_added.append(fragment)
+                        lopper.log._info(f"Added overlay fragment for {node.label} with overlay-sourced properties: {props}")
+                except Exception as e:
+                    lopper.log._warning(f"Failed to create overlay fragment for {node.abs_path}: {e}")
 
         return fragments_added
 
@@ -5583,13 +5732,15 @@ class LopperTree:
         return matches
 
 
-    def deref( self, phandle_or_label_or_alias ):
+    def deref( self, phandle_or_label_or_alias, context_trees=None ):
         """Find a node by a phandle or label
 
         dereferences a phandle or label to find the target node.
 
         Args:
            phandle_or_label_or_alias (int or string)
+           context_trees (list, optional): Additional trees to search for resolution.
+                                           These are checked after self and _external_trees.
 
         Returns:
            LopperNode: the matching node if found, None otherwise
@@ -5598,7 +5749,9 @@ class LopperTree:
         try:
             tgn = None
             trees_to_check = [ self ] + self._external_trees
-            for t in [ self ] + self._external_trees:
+            if context_trees:
+                trees_to_check = trees_to_check + context_trees
+            for t in trees_to_check:
                 try:
                     if tgn:
                         break
