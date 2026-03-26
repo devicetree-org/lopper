@@ -2520,15 +2520,11 @@ class LopperNode(object):
                 if prop.name not in phandle_props:
                     continue
 
-                # Check if property value contains our phandle
-                # Property values are typically lists of integers for phandle properties
+                # Use resolve_phandles() to get actual phandle targets,
+                # avoiding false positives from matching non-phandle integers
                 try:
-                    prop_val = prop.value
-                    if not isinstance(prop_val, (list, tuple)):
-                        continue
-
-                    # Check if our target phandle appears in the property value
-                    if target_phandle in prop_val:
+                    phandle_targets = prop.resolve_phandles()
+                    if self in phandle_targets:
                         companion = lopper.base.lopper_base.phandle_property_companion(prop.name)
                         referencing_props.append((node, prop.name, companion))
                 except Exception:
