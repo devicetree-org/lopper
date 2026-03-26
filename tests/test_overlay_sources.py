@@ -478,6 +478,7 @@ class TestRegexFallback:
                 os.unlink(f.name)
 
 
+
 class TestFragmentAddForOverlaySources:
     """Test LopperTree.fragment_add_for_overlay_sources() method."""
 
