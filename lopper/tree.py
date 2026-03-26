@@ -1556,7 +1556,18 @@ class LopperProp():
                 formatted_records = []
                 phandle_record = []
                 if phandle_map:
+                    # Get companion property for syncing when records are dropped
+                    companion_val = None
+                    companion_prop = None
+                    if self.node:
+                        companion_name = lopper.base.lopper_base.phandle_property_companion(self.name)
+                        if companion_name and companion_name in self.node.__props__:
+                            companion_prop = self.node.__props__[companion_name]
+                            if isinstance(companion_prop.value, (list, tuple)):
+                                companion_val = list(companion_prop.value)
+
                     pval_index = 0
+                    kept_companion = []
                     # each entry in the phandle map list, is a "record" in the phandle
                     # list.
                     for rnum,record in enumerate(phandle_map):
@@ -1652,6 +1663,14 @@ class LopperProp():
                                     formatted_records.append( ",\n" )
                                 else:
                                     formatted_records.append( ";" )
+
+                            # Track kept companion entries
+                            if companion_val is not None and rnum < len(companion_val):
+                                kept_companion.append(companion_val[rnum])
+
+                    # Update companion property with kept entries
+                    if companion_prop is not None:
+                        companion_prop.value = kept_companion
                 else:
                     # no phandles
                     if resolver_type:
