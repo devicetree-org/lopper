@@ -1383,7 +1383,7 @@ class LopperProp():
 
         return ptype
 
-    def resolve( self, strict = None ):
+    def resolve( self, strict = None, sync_companions = True ):
         """resolve (calculate) property details
 
         Some attributes of a property are not known at initialization
@@ -1669,7 +1669,8 @@ class LopperProp():
                                 kept_companion.append(companion_val[rnum])
 
                     # Update companion property with kept entries
-                    if companion_prop is not None:
+                    # Only sync if sync_companions is True (default)
+                    if companion_prop is not None and sync_companions:
                         companion_prop.value = kept_companion
                 else:
                     # no phandles
@@ -2539,13 +2540,32 @@ class LopperNode(object):
                 if prop.name not in phandle_props:
                     continue
 
-                # Use resolve_phandles() to get actual phandle targets,
-                # avoiding false positives from matching non-phandle integers
+                # Use phandle_map() to identify phandle positions in the property
+                # Then check if any position contains our target_phandle value
                 try:
-                    phandle_targets = prop.resolve_phandles()
-                    if self in phandle_targets:
+                    phandle_records = prop.phandle_map()
+
+                    # phandle_map returns list of records, each record is a sublist
+                    # where the first element is the node (or #invalid) and remaining
+                    # elements are 0 for non-phandle cells
+                    # We need to check if any raw phandle value matches target_phandle
+                    found_ref = False
+                    prop_val_idx = 0
+                    for record in phandle_records:
+                        # First element is the phandle position
+                        # Even if it resolved to #invalid, check the raw value
+                        if prop_val_idx < len(prop.value):
+                            raw_phandle = prop.value[prop_val_idx]
+                            if raw_phandle == target_phandle:
+                                found_ref = True
+                                break
+                        # Advance by record length
+                        prop_val_idx += len(record)
+
+                    if found_ref:
                         companion = lopper.base.lopper_base.phandle_property_companion(prop.name)
                         referencing_props.append((node, prop.name, companion))
+
                 except Exception:
                     continue
 
@@ -3598,7 +3618,8 @@ class LopperNode(object):
                         if node_source:
                             self._source = node_source
 
-                        self.__props__[prop].resolve( strict )
+                        # Don't sync companions during tree load - only at final output
+                        self.__props__[prop].resolve( strict, sync_companions=False )
                         self.__props__[prop].__modified__ = False
 
                         # if our node has a property of type label, we bubble it up to the node
@@ -3613,7 +3634,8 @@ class LopperNode(object):
                 # we had labels, some output strings in the properities may need to be
                 # update to reflect the new targets
                 for p in self.__props__:
-                    self.__props__[p].resolve( strict )
+                    # Don't sync companions during tree load - only at final output
+                    self.__props__[p].resolve( strict, sync_companions=False )
                     self.__props__[p].__modified__ = False
 
                 # now delete the lopper-prop-* property, we'll just run with
@@ -3999,7 +4021,15 @@ class LopperTree:
         self.phandle_resolution = True
         self.phandle_static_map = None
 
-        self._external_trees = []
+        # Unified tree metadata - tracks relationships between trees
+        self._metadata = {
+            'type': 'primary',           # 'primary' | 'extracted' | 'overlay' | 'domain'
+            'name': None,                # Name used as key in sdt.subtrees
+            'source': None,              # Path this tree was extracted/derived from
+            'parent': None,              # Tree this was extracted/derived from
+            'child_trees': [],           # Trees derived from this one
+            'external_trees': [],        # Trees to search during phandle resolution
+        }
 
         self.strict = True
         self.warnings = []
@@ -4022,6 +4052,69 @@ class LopperTree:
                    '__fdt_number__' : 0,
                    '__fdt_phandle__' : -1 }
         self.load( i_dct )
+
+    @property
+    def _external_trees(self):
+        """Backward compatible property: return external_trees from metadata
+
+        This allows existing code that accesses self._external_trees to
+        continue working unchanged while we transition to unified metadata.
+
+        Returns:
+            list: Trees to search during phandle resolution
+        """
+        return self._metadata.get('external_trees', [])
+
+    @_external_trees.setter
+    def _external_trees(self, value):
+        """Backward compatible setter: set external_trees in metadata
+
+        Args:
+            value (list): Trees to set for phandle resolution
+        """
+        self._metadata['external_trees'] = value
+
+    def child_trees(self, tree_type=None):
+        """Return child trees, optionally filtered by type
+
+        Child trees are trees that were derived from this tree, such as
+        extracted nodes or overlays. They are tracked in the metadata
+        for reconstruction and verification purposes.
+
+        Args:
+            tree_type (str, optional): Filter by tree type. Valid values are
+                'extracted', 'overlay', 'domain'. If None, returns all child trees.
+
+        Returns:
+            list: List of LopperTree objects that are children of this tree
+        """
+        children = self._metadata.get('child_trees', [])
+        if tree_type:
+            return [t for t in children if t._metadata.get('type') == tree_type]
+        return children
+
+    def extracted_trees(self):
+        """Return all extracted trees
+
+        Extracted trees contain nodes that were removed from this tree via
+        delete() with capture=True. These nodes are preserved for later
+        reconstruction or verification.
+
+        Returns:
+            list: List of LopperTree objects containing extracted nodes
+        """
+        return self.child_trees('extracted')
+
+    def overlay_trees(self):
+        """Return all overlay trees
+
+        Overlay trees are trees that extend this tree via the overlay_of()
+        mechanism. They reference this tree for phandle resolution.
+
+        Returns:
+            list: List of LopperTree objects that are overlays of this tree
+        """
+        return self.child_trees('overlay')
 
     def __iter__(self):
         """magic method to support iteration
@@ -4100,6 +4193,13 @@ class LopperTree:
             self.__dict__[name] = value
             for n in self.__nodes__.values():
                 n.__dbg__ = value
+        elif name == "_external_trees":
+            # Route through the metadata for backward compat
+            if '_metadata' in self.__dict__:
+                self.__dict__['_metadata']['external_trees'] = value
+            else:
+                # During __init__, _metadata may not exist yet
+                self.__dict__[name] = value
         else:
             self.__dict__[name] = value
 
@@ -4313,7 +4413,22 @@ class LopperTree:
                                 node_string="node:" + node_string
                                 lopper.log._warning( node_string )
 
-    def overlay_of( self, parent_tree ):
+    def overlay_of( self, parent_tree, name=None, exclude_props=None, exclude_nodes=None ):
+        """Make this tree an overlay of parent_tree
+
+        Sets up this tree to be an overlay that extends parent_tree. The overlay
+        will use parent_tree for phandle resolution and will be registered as a
+        child tree of parent_tree for tracking purposes.
+
+        Args:
+            parent_tree (LopperTree): The base tree this overlays
+            name (str, optional): Name for tracking in sdt.subtrees. If None,
+                                  generates a name like 'overlay_1'
+            exclude_props (list, optional): List of property names to remove from
+                                           overlay (e.g., ['address-map', 'interrupt-map'])
+            exclude_nodes (list, optional): List of node paths/patterns to remove
+                                           from overlay
+        """
         # we are becoming an overlay_of the passed tree
         self._type = "dts_overlay"
 
@@ -4328,8 +4443,36 @@ class LopperTree:
             del n.__props__['phandle']
 
         # store the parent tree, this is used for resolving
-        # lables and phandles before printing
-        self._external_trees.append(parent_tree)
+        # labels and phandles before printing
+        self._metadata['external_trees'].append(parent_tree)
+
+        # Set metadata for this overlay
+        if name is None:
+            name = f"overlay_{len(parent_tree._metadata.get('child_trees', [])) + 1}"
+
+        self._metadata['type'] = 'overlay'
+        self._metadata['name'] = name
+        self._metadata['parent'] = parent_tree
+
+        # Register with parent (for tracking, NOT resolution)
+        if self not in parent_tree._metadata.get('child_trees', []):
+            parent_tree._metadata['child_trees'].append(self)
+            lopper.log._debug( f"Registered overlay '{name}' with parent tree" )
+
+        # Apply property filtering if requested
+        if exclude_props:
+            for node in self:
+                for prop_name in exclude_props:
+                    if prop_name in node.__props__:
+                        del node.__props__[prop_name]
+                        lopper.log._debug( f"Removed property '{prop_name}' from {node.abs_path}" )
+
+        # Apply node filtering if requested
+        if exclude_nodes:
+            for pattern in exclude_nodes:
+                for node in list(self.nodes(pattern)):
+                    self.delete(node, capture=False)
+                    lopper.log._debug( f"Removed node {node.abs_path} matching pattern '{pattern}'" )
 
     def tree_refs( self, target_tree ):
         """Find properties in this tree that reference nodes in target_tree
@@ -4810,16 +4953,24 @@ class LopperTree:
 
         return self
 
-    def delete( self, node, delete_from_parent = True, force=False ):
+    def delete( self, node, delete_from_parent = True, force=False, capture=True ):
         """delete a node from a tree
 
         If a node is resolved and syncd to the FDT, this routine deletes it
         from the FDT and the LopperTree structure.
 
+        When capture=True and the node is resolved, a copy of the node (and its
+        children) is preserved in an extracted tree tracked via _metadata['child_trees'].
+        This enables round-trip reconstruction and verification.
+
         Args:
            node (int or LopperNode): the node to delete
            delete_fom_parent (bool): flag indicating if the node should be
                                      removed from the parent node.
+           force (bool): force deletion even if node is not resolved
+           capture (bool): if True, capture the deleted node in an extracted tree
+                          for later reconstruction. Set to False for internal
+                          deletions or when capture is not needed.
 
         Returns:
            Boolean: True if deleted, False otherwise. KeyError if node is not found
@@ -4839,9 +4990,48 @@ class LopperTree:
         if n.__nstate__ == "resolved" and self.__must_sync__ == False:
             lopper.log._debug( f"{self} deleting [{[n]}] node {n.abs_path}" )
 
+            # Capture the node before deletion if:
+            # 1. capture=True
+            # 2. delete_from_parent=True (indicates top-level deletion, not recursive)
+            # 3. This tree is NOT an extracted/derived tree (prevent infinite recursion)
+            should_capture = (capture and
+                              delete_from_parent and
+                              self._metadata.get('type') not in ('extracted', 'overlay'))
+
+            if should_capture:
+                # Create a name based on the node name
+                extracted_name = f"extracted_{n.name}"
+
+                # Find or create extracted tree for this source
+                extracted = None
+                for t in self._metadata['child_trees']:
+                    if t._metadata.get('name') == extracted_name:
+                        extracted = t
+                        break
+
+                if extracted is None:
+                    extracted = LopperTree()
+                    extracted._metadata = {
+                        'type': 'extracted',
+                        'name': extracted_name,
+                        'source': n.abs_path,
+                        'parent': self,
+                        'child_trees': [],
+                        'external_trees': [],
+                    }
+                    self._metadata['child_trees'].append(extracted)
+                    lopper.log._debug( f"Created extracted tree '{extracted_name}' for {n.abs_path}" )
+
+                # Clone the node and add to extracted tree
+                # The () operator creates a deep copy
+                cloned = n()
+                extracted.add(cloned)
+                lopper.log._debug( f"Captured node {n.abs_path} in extracted tree '{extracted_name}'" )
+
             if n.child_nodes:
                 for cn_path,cn in list(n.child_nodes.items()):
-                    self.delete( cn, False, force=force )
+                    # Recursive deletes don't capture - the parent clone includes children
+                    self.delete( cn, False, force=force, capture=False )
 
             try:
                 del self.__nodes__[n.abs_path]
