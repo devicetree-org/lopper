@@ -135,6 +135,26 @@ class LopperSDT:
         self.tmpfiles = []
         self.schema = None
 
+    def subtrees_sync(self):
+        """Populate subtrees dict from self.tree._metadata['child_trees']
+
+        Copies child trees (extracted, overlays) tracked on the main SDT tree
+        into the subtrees dict so they're accessible by name. This allows
+        assists and other code to access these trees via sdt.subtrees['name'].
+
+        Called after assists run or when subtrees dict access is needed.
+
+        Note: Operates on self.tree (the main SDT tree), not arbitrary trees.
+        """
+        if self.tree is None:
+            return
+
+        for child in self.tree._metadata.get('child_trees', []):
+            name = child._metadata.get('name')
+            if name and name not in self.subtrees:
+                self.subtrees[name] = child
+                lopper.log._debug( f"Synced subtree '{name}' from tree metadata" )
+
     def setup(self, sdt_file, input_files, include_paths, force=False, libfdt=True, config=None):
         """executes setup and initialization tasks for a system device tree
 
