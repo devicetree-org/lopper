@@ -280,7 +280,7 @@ class TestFragmentAddForRefs:
         # Count nodes after
         overlay_count_after = sum(1 for _ in overlay_tree)
 
-        assert fragments_added > 0, "Expected at least one fragment to be added"
+        assert len(fragments_added) > 0, "Expected at least one fragment to be added"
         assert overlay_count_after > overlay_count_before, (
             "Overlay tree should have more nodes after adding fragments"
         )

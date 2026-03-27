@@ -310,3 +310,85 @@ class TestSubtreesSync:
 
         # Should keep the existing one
         assert lopper_sdt.subtrees['test_child'] is existing
+
+
+class TestAutoFragments:
+    """Test that overlay_of() generates auto-fragments for cross-tree references."""
+
+    def test_overlay_of_generates_auto_fragments(self):
+        """overlay_of() should generate fragments for base properties referencing overlay nodes."""
+        from lopper.tree import LopperProp
+
+        # Create base tree with a device that references a clock
+        base = LopperTree()
+        base_root = base['/']
+        base_root + LopperProp(name='#clock-cells', value=[1])
+
+        device = LopperNode(-1, "/device")
+        device.phandle = 0x10
+        device.label = "my_device"
+        device + LopperProp(name='clocks', value=[0x20, 0x0])  # References phandle 0x20
+        device + LopperProp(name='clock-names', value=["pl_clk"])
+        base.add(device)
+        base.sync()
+        base.resolve()
+
+        # Create overlay tree with the referenced clock node
+        overlay = LopperTree()
+        pl_clock = LopperNode(-1, "/pl_clock")
+        pl_clock.phandle = 0x20  # This is what device references
+        pl_clock.label = "pl_clk_0"
+        pl_clock + LopperProp(name='#clock-cells', value=[1])
+        overlay.add(pl_clock)
+        overlay.sync()
+        overlay.resolve()
+
+        # Call overlay_of - should auto-generate fragments
+        overlay.overlay_of(base)
+
+        # Check that auto_fragments metadata is populated
+        assert 'auto_fragments' in overlay._metadata
+        assert isinstance(overlay._metadata['auto_fragments'], list)
+        assert len(overlay._metadata['auto_fragments']) > 0
+
+    def test_auto_fragments_contains_fragment_nodes(self):
+        """auto_fragments metadata should contain the generated fragment nodes."""
+        from lopper.tree import LopperProp
+
+        base = LopperTree()
+        base_root = base['/']
+        base_root + LopperProp(name='#clock-cells', value=[1])
+
+        device = LopperNode(-1, "/device")
+        device.phandle = 0x10
+        device.label = "my_device"
+        device + LopperProp(name='clocks', value=[0x20, 0x0])
+        base.add(device)
+        base.sync()
+        base.resolve()
+
+        overlay = LopperTree()
+        pl_clock = LopperNode(-1, "/pl_clock")
+        pl_clock.phandle = 0x20
+        pl_clock.label = "pl_clk_0"
+        pl_clock + LopperProp(name='#clock-cells', value=[1])
+        overlay.add(pl_clock)
+        overlay.sync()
+        overlay.resolve()
+
+        overlay.overlay_of(base)
+
+        # Fragment nodes should be in auto_fragments list
+        fragments = overlay._metadata['auto_fragments']
+        fragment_names = [f.name for f in fragments]
+        assert "&my_device" in fragment_names
+
+    def test_auto_fragments_empty_when_no_refs(self):
+        """auto_fragments should be empty when no cross-tree references exist."""
+        base = LopperTree()
+        overlay = LopperTree()
+
+        overlay.overlay_of(base)
+
+        assert 'auto_fragments' in overlay._metadata
+        assert overlay._metadata['auto_fragments'] == []

@@ -4474,6 +4474,13 @@ class LopperTree:
                     self.delete(node, capture=False)
                     lopper.log._debug( f"Removed node {node.abs_path} matching pattern '{pattern}'" )
 
+        # Auto-generate fragments for base tree properties that reference overlay nodes
+        # This ensures cross-tree references remain valid when the overlay is applied
+        auto_fragments = parent_tree.fragment_add_for_refs(self)
+        self._metadata['auto_fragments'] = auto_fragments
+        if auto_fragments:
+            lopper.log._debug( f"Auto-generated {len(auto_fragments)} fragment(s) for cross-tree references" )
+
     def tree_refs( self, target_tree ):
         """Find properties in this tree that reference nodes in target_tree
 
@@ -4576,18 +4583,21 @@ class LopperTree:
                                        Modified in place.
 
         Returns:
-            int: Number of fragments added
+            list: List of fragment nodes that were added to overlay_tree.
+                  Empty list if no fragments were needed.
 
         Example:
             # After extracting /amba_pl to overlay:
             # Find base tree props referencing overlay and add fragments
-            num_added = base_tree.fragment_add_for_refs(overlay_tree)
+            fragments = base_tree.fragment_add_for_refs(overlay_tree)
+            for frag in fragments:
+                print(f"Added fragment for {frag['target-path'].value[0]}")
         """
         # Find properties that reference the overlay
         referencing = self.tree_refs(overlay_tree)
 
         if not referencing:
-            return 0
+            return []
 
         # Group by node to create one fragment per node
         node_props = {}
@@ -4600,7 +4610,7 @@ class LopperTree:
                 node_props[key]['props'].add(companion)
 
         # Create fragments and add to overlay
-        fragments_added = 0
+        fragments_added = []
         for path, info in node_props.items():
             node = info['node']
             props = list(info['props'])
@@ -4609,7 +4619,7 @@ class LopperTree:
                 fragment = self.fragment_create(node, props)
                 if fragment:
                     overlay_tree.add(fragment)
-                    fragments_added += 1
+                    fragments_added.append(fragment)
                     lopper.log._info(f"Added overlay fragment for {node.label} with properties: {props}")
             except Exception as e:
                 lopper.log._warning(f"Failed to create overlay fragment for {node.abs_path}: {e}")
