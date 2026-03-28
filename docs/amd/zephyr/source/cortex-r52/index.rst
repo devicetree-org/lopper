@@ -59,7 +59,7 @@ This step transforms the domain-specific device-tree from Step 1 into a Zephyr-c
 - ``{workspace}``: Output directory for generated files
 - ``system-domain.dts``: Domain-specific device-tree file generated in Step 1
 - ``{proc}``: Processor name (refer to the processor name in the ``pl.dtsi`` file - this varies based on the processor configuration in the Vivado design)
-**Optional**: - ``{zephyr_board_dts}``: Zephyr board-specific device-tree configuration. When provided, it will be compared against the domain-specific device-tree and removes unneeded nodes as per design configuration or mapping requirements
+- **Optional**: ``{zephyr_board_dts}``: Zephyr board-specific device-tree configuration. When provided, it will be compared against the domain-specific device-tree and removes unneeded nodes as per design configuration or mapping requirements
 
 **Output**: ``system-zephyr.dts`` - Zephyr-specific device-tree file
 
@@ -71,13 +71,13 @@ This step transforms the domain-specific device-tree from Step 1 into a Zephyr-c
 Platform-Specific Processor Names
 ---------------------------------
 
-+----------------+--------------------+
-| Platform       | Processor Name     |
-+================+====================+
-| Versal Gen 2   | ``cortexr52_0``    |
-+----------------+--------------------+
++----------------+---------------------+
+| Platform       | Processor Name      |
++================+=====================+
+| Versal Gen 2   | ``cortexr52_0``     |
++----------------+---------------------+
 | Versal Net     | ``psx_cortexr52_0`` |
-+----------------+--------------------+
++----------------+---------------------+
 
 Prerequisites
 -------------

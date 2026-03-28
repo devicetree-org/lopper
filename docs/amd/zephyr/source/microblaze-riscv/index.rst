@@ -45,7 +45,7 @@ This step transforms the domain-specific device-tree from Step 1 into a Zephyr-c
 - ``lop-microblaze-riscv.dts``: Hardware configuration file containing tuning flags in YAML format
 - ``system-domain.dts``: Domain-specific device-tree file generated in Step 1
 - ``{proc}``: Processor name (same as Step 1)
-**Optional**: - ``{zephyr_board_dts}``: Zephyr board-specific device-tree configuration. When provided, it will be compared against the domain-specific device-tree and removes unneeded nodes as per design configuration or mapping requirements
+- **Optional**: ``{zephyr_board_dts}``: Zephyr board-specific device-tree configuration. When provided, it will be compared against the domain-specific device-tree and removes unneeded nodes as per design configuration or mapping requirements
 
 **Output**: ``system-zephyr.dts`` - Zephyr-specific device-tree file
 

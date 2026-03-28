@@ -282,7 +282,7 @@ These special key values are an extension to YAML merge keys: <<+ and <<*
      to specify multiple aliases, if a single alias is specified
      (in a list or not) then this is equivalent to <<
 
-<<*: Future: Indicates that node expansion/inheritance should be
+<<\*: Future: Indicates that node expansion/inheritance should be
      performed. This allows the multiple inheritance of YAML
      nodes (in the current implementation it is functionally
      equivalent to <<+)
