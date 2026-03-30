@@ -645,6 +645,9 @@ def _infer_type_from_value(value):
         return PropertyType.FLAG
 
     if isinstance(value, str):
+        # Empty string is also EMPTY/FLAG
+        if value == '':
+            return PropertyType.EMPTY
         return PropertyType.STRING
 
     if isinstance(value, int):
@@ -665,6 +668,10 @@ def _infer_type_from_value(value):
             return PropertyType.EMPTY
 
         first = value[0]
+
+        # List containing only empty string is EMPTY/FLAG (e.g., ranges;)
+        if len(value) == 1 and first == '':
+            return PropertyType.EMPTY
 
         # List of strings
         if isinstance(first, str):
@@ -695,8 +702,12 @@ def _get_resolver():
     try:
         from lopper.schema import get_schema_manager
         manager = get_schema_manager()
-        if manager and manager._resolver:
-            return manager._resolver
+        if manager:
+            # Try both the method and the attribute
+            resolver = getattr(manager, 'resolver', None)
+            if resolver is None:
+                resolver = getattr(manager, '_resolver', None)
+            return resolver
     except Exception:
         pass
     return None
@@ -706,9 +717,10 @@ def _types_compatible(actual, expected):
     """Check if actual type is compatible with expected type.
 
     Some type mismatches are acceptable:
-    - UINT8/UINT16/UINT32 are all "integers"
+    - UINT8/UINT16/UINT32/UINT64 are all "integers"
     - STRING and STRING_ARRAY with single element
     - Array variants of base types
+    - FLAG/EMPTY can also have values (ranges, dma-ranges)
 
     Args:
         actual: PropertyType inferred from value
@@ -720,12 +732,19 @@ def _types_compatible(actual, expected):
     if actual == expected:
         return True
 
-    # Integer types are compatible with each other
+    # Integer types are compatible with each other (including arrays)
     int_types = {
         PropertyType.UINT8, PropertyType.UINT16, PropertyType.UINT32, PropertyType.UINT64,
         PropertyType.INT8, PropertyType.INT16, PropertyType.INT32, PropertyType.INT64,
     }
-    if actual in int_types and expected in int_types:
+    int_array_types = {
+        PropertyType.UINT8_ARRAY, PropertyType.UINT16_ARRAY,
+        PropertyType.UINT32_ARRAY, PropertyType.UINT64_ARRAY,
+    }
+    all_int_types = int_types | int_array_types
+
+    # All integer types (scalar and array) are compatible
+    if actual in all_int_types and expected in all_int_types:
         return True
 
     # Array types are compatible with scalar types
@@ -747,6 +766,10 @@ def _types_compatible(actual, expected):
 
     # EMPTY and FLAG are compatible
     if {actual, expected} == {PropertyType.EMPTY, PropertyType.FLAG}:
+        return True
+
+    # FLAG/EMPTY can also have integer values (ranges, dma-ranges can be empty or have values)
+    if expected == PropertyType.FLAG and actual in all_int_types:
         return True
 
     return False
@@ -793,10 +816,10 @@ def check_learned_type_violations(tree, min_confidence=0.8):
         except (KeyError, TypeError):
             pass
 
-        # Check each property
-        for prop_name in node.props:
+        # Check each property (iterate over node yields property objects)
+        for prop in node:
             try:
-                prop = node[prop_name]
+                prop_name = prop.name
                 if prop is None:
                     continue
 
@@ -877,9 +900,9 @@ def check_type_frequency_anomalies(tree, minority_threshold=0.1):
     anomalies = 0
 
     for node in tree:
-        for prop_name in node.props:
+        for prop in node:
             try:
-                prop = node[prop_name]
+                prop_name = prop.name
                 if prop is None:
                     continue
 
