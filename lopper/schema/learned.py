@@ -18,6 +18,10 @@ import os
 from lopper.log import _warning, _info, _error, _debug, _init, _level
 import logging
 
+# Import unified types for Phase 2 integration
+from .types import PropertyType, TypeDefinition
+from .core import PropertySpec
+
 _init( __name__ )
 _init( "schema.py" )
 
@@ -1631,6 +1635,95 @@ class DTSPropertyTypeResolver:
     def get_common_properties(self):
         """Get a dictionary of all common property types for quick reference"""
         return self._property_types.copy()
+
+    def resolve_property_spec(self, prop_name, node_path=None, compatible=None):
+        """
+        Get unified PropertySpec for a property.
+
+        This is the Phase 2 unified API that returns PropertySpec objects
+        compatible with the new schema system. It wraps get_property_type()
+        to maintain backwards compatibility while providing richer type info.
+
+        Args:
+            prop_name: Property name
+            node_path: Full path to node (e.g., "/soc/uart@ff000000")
+            compatible: Compatible string(s) for the node
+
+        Returns:
+            PropertySpec with type information and metadata
+        """
+        # Get the LopperFmt type using existing logic
+        lopper_fmt = self.get_property_type(prop_name, node_path, compatible)
+
+        # Convert to PropertyType
+        prop_type = PropertyType.from_lopper_fmt(lopper_fmt)
+
+        # Determine source and confidence based on how it was resolved
+        source = "unknown"
+        confidence = 0.0
+
+        # Check resolution path to determine source
+        if node_path and node_path in self._path_properties:
+            path_props = self._path_properties[node_path].get('properties', {})
+            if prop_name in path_props:
+                source = "learned-path"
+                confidence = 0.9
+
+        elif compatible:
+            compat_list = [compatible] if isinstance(compatible, str) else compatible
+            for compat in compat_list:
+                if compat in self._compatible_properties:
+                    if prop_name in self._compatible_properties[compat]:
+                        source = "learned-compatible"
+                        confidence = 0.85
+                        break
+
+        elif prop_name in self._property_types:
+            source = "learned"
+            confidence = 0.8
+
+        elif prop_name in PROPERTY_NAME_HEURISTICS.get('exact', {}):
+            source = "heuristic"
+            confidence = 0.7
+
+        elif any(prop_name.endswith(s) for s in PROPERTY_NAME_HEURISTICS.get('suffixes', {})):
+            source = "heuristic"
+            confidence = 0.5
+
+        else:
+            source = "unknown"
+            confidence = 0.0
+
+        # Get type frequencies if available
+        type_frequencies = {}
+        prop_def = self.schema.get('property_definitions', {}).get(prop_name, {})
+        if '_type_frequencies' in prop_def:
+            type_frequencies = prop_def['_type_frequencies']
+
+        # Get phandle pattern if available
+        phandle_pattern = prop_def.get('phandle-pattern')
+
+        # Get context lookups if available
+        context_lookups = prop_def.get('context-lookups', [])
+
+        # Build TypeDefinition
+        type_def = TypeDefinition(
+            property_type=prop_type,
+            source=source,
+            description=prop_def.get('description')
+        )
+
+        # Build and return PropertySpec
+        return PropertySpec(
+            name=prop_name,
+            type_def=type_def,
+            confidence=confidence,
+            source=source,
+            context=compatible if compatible else node_path,
+            type_frequencies=type_frequencies,
+            phandle_pattern=phandle_pattern,
+            context_lookups=context_lookups
+        )
 
 
 def add_property_heuristic(heuristic_type, pattern, fmt_type):
