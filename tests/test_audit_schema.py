@@ -681,6 +681,14 @@ class TestInferTypeFromValue:
         mock_prop = MockProp("test")
         assert _infer_type_from_value(mock_prop) == PropertyType.STRING
 
+    def test_infer_empty_string(self):
+        """Empty string should infer to EMPTY."""
+        assert _infer_type_from_value('') == PropertyType.EMPTY
+
+    def test_infer_single_empty_string_list(self):
+        """[''] (empty property like ranges;) should infer to EMPTY."""
+        assert _infer_type_from_value(['']) == PropertyType.EMPTY
+
 
 class TestTypesCompatible:
     """Tests for _types_compatible function."""
