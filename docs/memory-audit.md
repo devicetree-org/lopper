@@ -24,20 +24,20 @@ Memory Cross-Checking" requirements, replacing a previous monolithic approach
 
 ```bash
 # Enable overlap detection during lopper processing
-lopper -W memory_overlap system-device-tree.dts -- lop-file.dts output.dts
+./lopper.py -f -W memory_overlap system-device-tree.dts output.dts
 
 # Enable all memory checks
-lopper -W memory_all system-device-tree.dts -- lop-file.dts output.dts
+./lopper.py -f -W memory_all system-device-tree.dts output.dts
 ```
 
 ### Generate a Memory Map Visualization
 
 ```bash
 # Output memory map to a file
-lopper --memmap=memmap.txt system-device-tree.dts -- lop-file.dts output.dts
+./lopper.py -f --memmap=memmap.txt system-device-tree.dts output.dts
 
 # Output to stdout
-lopper --memmap=- system-device-tree.dts -- lop-file.dts output.dts
+./lopper.py -f --memmap=- system-device-tree.dts output.dts
 ```
 
 ## Warning Flags
@@ -126,10 +126,9 @@ Memory validation runs at different phases of lopper processing:
 ## Example: Full Validation Run
 
 ```bash
-lopper -W memory_all --memmap=memory-layout.txt \
-    system-device-tree.dts \
-    -- domains.yaml lop-domain.dts \
-    output-device-tree.dts
+./lopper.py -f -W memory_all --memmap=memory-layout.txt \
+    -i domains.yaml \
+    system-device-tree.dts output-device-tree.dts
 ```
 
 This will:
@@ -173,7 +172,7 @@ When multiple teams define reserved-memory regions, conflicts can occur.
 The audit framework catches these before they cause runtime failures:
 
 ```bash
-lopper -W memory_overlap system-device-tree.dts -- domains.yaml output.dts
+./lopper.py -f -W memory_overlap -i domains.yaml system-device-tree.dts output.dts
 ```
 
 If two reserved-memory regions overlap:
@@ -190,7 +189,7 @@ For OpenAMP flows, the memory audit replaces the older `xlnx_validate_carveouts(
 with more comprehensive checks:
 
 ```bash
-lopper -W memory_all -i openamp-spec.yaml system.dts linux.dts
+./lopper.py -f -W memory_all -i openamp-spec.yaml system.dts output.dts
 ```
 
 This validates:
@@ -203,7 +202,7 @@ This validates:
 When something isn't working, visualize the memory map:
 
 ```bash
-lopper --memmap=- system-device-tree.dts -- domains.yaml /dev/null
+./lopper.py -f --memmap=- -i domains.yaml system-device-tree.dts /tmp/output.dts
 ```
 
 The ASCII map shows all memory regions with overlap highlighting, making it
@@ -221,8 +220,35 @@ The audit framework is implemented as a package in `lopper/audit/`:
 | `memory.py` | MemoryRegion, MemoryMap, validation checks |
 | `memviz.py` | ASCII memory map visualization |
 
-Test coverage: 99 tests across `test_audit_base.py`, `test_audit_memory.py`,
-and `test_audit_memviz.py`.
+Test coverage includes unit tests across `test_audit_base.py`, `test_audit_memory.py`,
+`test_audit_memviz.py`, and end-to-end tests in `test_audit_memory_e2e.py`.
+
+## Runnable Examples
+
+These examples use files included in the lopper repository.
+
+### Check Reserved-Memory Test SDT
+
+```bash
+./lopper.py -f -W memory_all \
+    ./lopper/selftest/reserved-memory-test-sdt.dts \
+    /tmp/output.dts
+```
+
+### Generate Visual Memory Map
+
+```bash
+./lopper.py -f --memmap=- \
+    ./lopper/selftest/reserved-memory-test-sdt.dts \
+    /tmp/output.dts
+```
+
+### Fail on Memory Issues
+
+```bash
+./lopper.py -f -W memory_overlap --werror \
+    system-device-tree.dts output.dts
+```
 
 ## Related
 
