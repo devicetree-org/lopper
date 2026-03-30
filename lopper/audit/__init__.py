@@ -73,10 +73,9 @@ from .memviz import (
 
 # Re-export schema validation functions and classes
 from .schema import (
-    # Enums
+    # Data classes (note: ConstraintType is re-exported from lopper.schema.core)
     ConstraintType,
-    # Data classes
-    PropertyConstraint,
+    PropertyConstraint,  # Alias for lopper.schema.core.Constraint
     NodeConstraints,
     # Constraint definitions
     NODE_PROPERTY_CONSTRAINTS,
@@ -90,6 +89,9 @@ from .schema import (
     # Convenience function
     validate_schema,
 )
+
+# Also export Constraint directly for code using the new unified name
+from lopper.schema.core import Constraint
 
 # Define what is exported when using `from lopper.audit import *`
 __all__ = [
@@ -131,7 +133,8 @@ __all__ = [
     # Schema enums
     'ConstraintType',
     # Schema data classes
-    'PropertyConstraint',
+    'Constraint',  # New unified name
+    'PropertyConstraint',  # Alias for Constraint (backwards compatibility)
     'NodeConstraints',
     # Schema constraints
     'NODE_PROPERTY_CONSTRAINTS',
