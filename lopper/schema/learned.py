@@ -1513,6 +1513,11 @@ class DTSPropertyTypeResolver:
         """
         Get LopperFmt type for a property.
 
+        .. deprecated::
+            For new code, use :meth:`resolve_property_spec` which returns
+            a :class:`PropertySpec` with richer type information including
+            confidence scores, type frequencies, and phandle patterns.
+
         Args:
             prop_name: Property name
             node_path: Full path to node (e.g., "/soc/uart@ff000000")

@@ -374,3 +374,81 @@ class TestTypeDefinitionConversionToLopperFmt:
         """DT_SCHEMA_TYPES['phandle'] should convert to LopperFmt.UINT32."""
         td = DT_SCHEMA_TYPES['phandle']
         assert td.property_type.to_lopper_fmt() == LopperFmt.UINT32
+
+
+class TestDeprecationWarnings:
+    """Test deprecation warnings for legacy APIs."""
+
+    def test_get_schema_manager_warns(self):
+        """get_schema_manager() should emit deprecation warning."""
+        import warnings
+        import lopper.schema
+
+        # Enable deprecation warnings for this test
+        lopper.schema._DEPRECATION_WARNINGS_ENABLED = True
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            manager = lopper.schema.get_schema_manager()
+
+            # Check a deprecation warning was issued
+            assert len(w) >= 1
+            assert any(issubclass(warning.category, DeprecationWarning) for warning in w)
+            assert any("get_schema_manager" in str(warning.message) for warning in w)
+
+    def test_schema_manager_class_warns(self):
+        """SchemaManager() should emit deprecation warning."""
+        import warnings
+        import lopper.schema
+
+        # Enable deprecation warnings for this test
+        lopper.schema._DEPRECATION_WARNINGS_ENABLED = True
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            # Creating SchemaManager directly should warn
+            manager = lopper.schema.SchemaManager()
+
+            assert len(w) >= 1
+            assert any(issubclass(warning.category, DeprecationWarning) for warning in w)
+            assert any("SchemaManager" in str(warning.message) for warning in w)
+
+    def test_deprecation_warnings_can_be_disabled(self):
+        """Deprecation warnings should be suppressible."""
+        import warnings
+        import lopper.schema
+
+        # Disable deprecation warnings
+        lopper.schema._DEPRECATION_WARNINGS_ENABLED = False
+
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                manager = lopper.schema.get_schema_manager()
+
+                # No deprecation warnings should be issued
+                deprecation_warnings = [
+                    warning for warning in w
+                    if issubclass(warning.category, DeprecationWarning)
+                    and "get_schema_manager" in str(warning.message)
+                ]
+                assert len(deprecation_warnings) == 0
+        finally:
+            # Re-enable for other tests
+            lopper.schema._DEPRECATION_WARNINGS_ENABLED = True
+
+    def test_new_api_does_not_warn(self):
+        """get_registry() should not emit deprecation warning."""
+        import warnings
+        import lopper.schema
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            registry = lopper.schema.get_registry()
+
+            # No deprecation warnings for new API
+            deprecation_warnings = [
+                warning for warning in w
+                if issubclass(warning.category, DeprecationWarning)
+            ]
+            assert len(deprecation_warnings) == 0
