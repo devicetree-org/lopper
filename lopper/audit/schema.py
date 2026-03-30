@@ -101,7 +101,7 @@ class NodeConstraints:
 
 def _get_schema_dir():
     """Get the path to vendored dt-schema files."""
-    return os.path.join(os.path.dirname(__file__), '..', 'dt-schema', 'schemas')
+    return os.path.join(os.path.dirname(__file__), '..', 'schema', 'dt-schema', 'schemas')
 
 
 def _parse_schema_file(schema_path):
