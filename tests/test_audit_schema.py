@@ -27,9 +27,14 @@ from lopper.audit.schema import (
     check_required_properties,
     check_property_values,
     check_mutex_properties,
+    check_learned_type_violations,
+    check_type_frequency_anomalies,
+    _infer_type_from_value,
+    _types_compatible,
     SchemaValidator,
     validate_schema,
 )
+from lopper.schema.types import PropertyType
 from lopper.audit.base import (
     ValidationPhase,
     ValidationResult,
@@ -617,3 +622,215 @@ class TestTypeUnification:
         """lopper.audit.ConstraintType should be the unified type."""
         from lopper.audit import ConstraintType as AuditConstraintType
         assert AuditConstraintType is CoreConstraintType
+
+
+class TestInferTypeFromValue:
+    """Tests for _infer_type_from_value function."""
+
+    def test_infer_none_is_empty(self):
+        """None should infer to EMPTY."""
+        assert _infer_type_from_value(None) == PropertyType.EMPTY
+
+    def test_infer_empty_list_is_empty(self):
+        """Empty list should infer to EMPTY."""
+        assert _infer_type_from_value([]) == PropertyType.EMPTY
+
+    def test_infer_string(self):
+        """String should infer to STRING."""
+        assert _infer_type_from_value("hello") == PropertyType.STRING
+
+    def test_infer_string_list_single(self):
+        """Single-element string list should infer to STRING."""
+        assert _infer_type_from_value(["hello"]) == PropertyType.STRING
+
+    def test_infer_string_list_multiple(self):
+        """Multi-element string list should infer to STRING_ARRAY."""
+        assert _infer_type_from_value(["a", "b", "c"]) == PropertyType.STRING_ARRAY
+
+    def test_infer_small_int(self):
+        """Small int should infer to UINT8."""
+        assert _infer_type_from_value(42) == PropertyType.UINT8
+
+    def test_infer_medium_int(self):
+        """Medium int should infer to UINT16."""
+        assert _infer_type_from_value(1000) == PropertyType.UINT16
+
+    def test_infer_large_int(self):
+        """Large int should infer to UINT32."""
+        assert _infer_type_from_value(0x80000000) == PropertyType.UINT32
+
+    def test_infer_very_large_int(self):
+        """Very large int should infer to UINT64."""
+        assert _infer_type_from_value(0x100000000) == PropertyType.UINT64
+
+    def test_infer_negative_int(self):
+        """Negative int should infer to INT32."""
+        assert _infer_type_from_value(-1) == PropertyType.INT32
+
+    def test_infer_int_list(self):
+        """Int list should infer to UINT32_ARRAY."""
+        assert _infer_type_from_value([1, 2, 3]) == PropertyType.UINT32_ARRAY
+
+    def test_infer_bool(self):
+        """Bool should infer to FLAG."""
+        assert _infer_type_from_value(True) == PropertyType.FLAG
+        assert _infer_type_from_value(False) == PropertyType.FLAG
+
+    def test_infer_wrapped_value(self):
+        """Wrapped property value should be unwrapped."""
+        mock_prop = MockProp("test")
+        assert _infer_type_from_value(mock_prop) == PropertyType.STRING
+
+
+class TestTypesCompatible:
+    """Tests for _types_compatible function."""
+
+    def test_same_types_compatible(self):
+        """Same types should be compatible."""
+        assert _types_compatible(PropertyType.UINT32, PropertyType.UINT32)
+        assert _types_compatible(PropertyType.STRING, PropertyType.STRING)
+
+    def test_integer_types_compatible(self):
+        """All integer types should be compatible."""
+        assert _types_compatible(PropertyType.UINT8, PropertyType.UINT32)
+        assert _types_compatible(PropertyType.UINT32, PropertyType.UINT64)
+        assert _types_compatible(PropertyType.UINT16, PropertyType.UINT8)
+
+    def test_array_and_scalar_compatible(self):
+        """Array types compatible with scalar base."""
+        assert _types_compatible(PropertyType.UINT32, PropertyType.UINT32_ARRAY)
+        assert _types_compatible(PropertyType.UINT32_ARRAY, PropertyType.UINT32)
+        assert _types_compatible(PropertyType.STRING, PropertyType.STRING_ARRAY)
+
+    def test_phandle_compatible_with_uint32(self):
+        """PHANDLE should be compatible with UINT32."""
+        assert _types_compatible(PropertyType.UINT32, PropertyType.PHANDLE)
+        assert _types_compatible(PropertyType.UINT32_ARRAY, PropertyType.PHANDLE_ARRAY)
+
+    def test_empty_and_flag_compatible(self):
+        """EMPTY and FLAG should be compatible."""
+        assert _types_compatible(PropertyType.EMPTY, PropertyType.FLAG)
+        assert _types_compatible(PropertyType.FLAG, PropertyType.EMPTY)
+
+    def test_string_and_uint32_not_compatible(self):
+        """STRING and UINT32 should not be compatible."""
+        assert not _types_compatible(PropertyType.STRING, PropertyType.UINT32)
+        assert not _types_compatible(PropertyType.UINT32, PropertyType.STRING)
+
+
+class TestCheckLearnedTypeViolations:
+    """Tests for check_learned_type_violations function."""
+
+    def test_no_resolver_returns_pass(self):
+        """Without resolver, should return passing result."""
+        tree = MockTree([
+            MockNode('/test', {'compatible': ['test-device']}),
+        ])
+
+        results = check_learned_type_violations(tree)
+
+        assert len(results) == 1
+        assert results[0].passed
+        assert 'No learned schema' in results[0].message or 'no violations' in results[0].message
+
+    def test_function_handles_empty_tree(self):
+        """Should handle empty tree gracefully."""
+        tree = MockTree([])
+
+        results = check_learned_type_violations(tree)
+
+        assert len(results) >= 1
+        assert all(r.passed for r in results)
+
+    def test_check_name_is_correct(self):
+        """Results should have correct check_name."""
+        tree = MockTree([])
+
+        results = check_learned_type_violations(tree)
+
+        for r in results:
+            assert r.check_name == 'schema_learned_types'
+
+
+class TestCheckTypeFrequencyAnomalies:
+    """Tests for check_type_frequency_anomalies function."""
+
+    def test_no_resolver_returns_pass(self):
+        """Without resolver, should return passing result."""
+        tree = MockTree([
+            MockNode('/test', {}),
+        ])
+
+        results = check_type_frequency_anomalies(tree)
+
+        assert len(results) == 1
+        assert results[0].passed
+        assert 'No learned schema' in results[0].message or 'No type frequency anomalies' in results[0].message
+
+    def test_function_handles_empty_tree(self):
+        """Should handle empty tree gracefully."""
+        tree = MockTree([])
+
+        results = check_type_frequency_anomalies(tree)
+
+        assert len(results) >= 1
+        assert all(r.passed for r in results)
+
+    def test_check_name_is_correct(self):
+        """Results should have correct check_name."""
+        tree = MockTree([])
+
+        results = check_type_frequency_anomalies(tree)
+
+        for r in results:
+            assert r.check_name == 'schema_type_frequency'
+
+
+class TestSchemaValidatorLearnedChecks:
+    """Tests for learned schema checks in SchemaValidator."""
+
+    def test_learned_types_flag_defined(self):
+        """schema_learned_types should be in WARNING_FLAGS."""
+        assert 'schema_learned_types' in SchemaValidator.WARNING_FLAGS
+
+    def test_type_frequency_flag_defined(self):
+        """schema_type_frequency should be in WARNING_FLAGS."""
+        assert 'schema_type_frequency' in SchemaValidator.WARNING_FLAGS
+
+    def test_schema_learned_meta_flag(self):
+        """schema_learned meta flag should exist and include both checks."""
+        assert 'schema_learned' in SchemaValidator.META_FLAGS
+        learned_flags = SchemaValidator.META_FLAGS['schema_learned']
+        assert 'schema_learned_types' in learned_flags
+        assert 'schema_type_frequency' in learned_flags
+
+    def test_schema_all_includes_learned(self):
+        """schema_all meta flag should include learned checks."""
+        all_flags = SchemaValidator.META_FLAGS['schema_all']
+        assert 'schema_learned_types' in all_flags
+        assert 'schema_type_frequency' in all_flags
+
+    def test_check_registry_has_learned_checks(self):
+        """CHECK_REGISTRY should have learned check functions."""
+        assert 'schema_learned_types' in SchemaValidator.CHECK_REGISTRY
+        assert 'schema_type_frequency' in SchemaValidator.CHECK_REGISTRY
+
+        # Verify they're callable
+        _, func = SchemaValidator.CHECK_REGISTRY['schema_learned_types']
+        assert callable(func)
+        _, func = SchemaValidator.CHECK_REGISTRY['schema_type_frequency']
+        assert callable(func)
+
+    def test_run_phase_with_learned_checks(self):
+        """Running with schema_learned should execute learned checks."""
+        tree = MockTree([
+            MockNode('/test', {'reg': [0, 0x1000]}),
+        ])
+
+        validator = SchemaValidator(warnings=['schema_learned'])
+        results = validator.run_phase(ValidationPhase.POST_YAML, tree)
+
+        # Should have run both learned checks
+        check_names = {r.check_name for r in results}
+        assert 'schema_learned_types' in check_names
+        assert 'schema_type_frequency' in check_names
