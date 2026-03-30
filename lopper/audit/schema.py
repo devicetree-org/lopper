@@ -700,8 +700,10 @@ def _get_resolver():
         DTSPropertyTypeResolver instance, or None if unavailable
     """
     try:
-        from lopper.schema import get_schema_manager
-        manager = get_schema_manager()
+        # Use internal _get_schema_manager() to avoid deprecation warnings
+        # in internal code paths. Public API users get the warning.
+        from lopper.schema.learned import _get_schema_manager
+        manager = _get_schema_manager()
         if manager:
             # Try both the method and the attribute
             resolver = getattr(manager, 'resolver', None)
