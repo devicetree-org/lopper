@@ -6,6 +6,7 @@ This module tests the schema validation framework:
 - Node pattern matching: _node_matches_pattern, _get_matching_constraints
 - Validation checks: check_forbidden_properties, check_required_properties, etc.
 - SchemaValidator: Orchestration of phased validation
+- Type unification: ConstraintType and Constraint come from lopper.schema.core
 
 Tests validation rules for reserved-memory nodes where device_type="memory"
 incorrectly applied can cause Xen boot failures.
@@ -33,6 +34,12 @@ from lopper.audit.base import (
     ValidationPhase,
     ValidationResult,
     ValidatorRegistry,
+)
+
+# Import unified types for comparison
+from lopper.schema.core import (
+    ConstraintType as CoreConstraintType,
+    Constraint as CoreConstraint,
 )
 
 
@@ -551,3 +558,62 @@ class TestIntegrationScenarios:
         assert 'schema_required_props' in check_names
         assert 'schema_forbidden_props' in check_names
         assert 'schema_mutex_props' in check_names
+
+
+class TestTypeUnification:
+    """Tests verifying unified types from lopper.schema.core are used."""
+
+    def test_constraint_type_is_from_core(self):
+        """ConstraintType should be the same as lopper.schema.core.ConstraintType."""
+        assert ConstraintType is CoreConstraintType
+
+    def test_property_constraint_is_constraint_alias(self):
+        """PropertyConstraint should be an alias for lopper.schema.core.Constraint."""
+        assert PropertyConstraint is CoreConstraint
+
+    def test_constraint_type_values_match(self):
+        """ConstraintType values should match between audit and core."""
+        # These are the same enum now, but verify the values are correct
+        assert ConstraintType.REQUIRED == CoreConstraintType.REQUIRED
+        assert ConstraintType.FORBIDDEN == CoreConstraintType.FORBIDDEN
+        assert ConstraintType.CONST == CoreConstraintType.CONST
+        assert ConstraintType.ENUM == CoreConstraintType.ENUM
+        assert ConstraintType.MUTEX == CoreConstraintType.MUTEX
+
+    def test_core_has_additional_constraint_types(self):
+        """Core may have additional constraint types like RANGE and PATTERN."""
+        # These are available in the unified type but not used in audit yet
+        assert hasattr(CoreConstraintType, 'RANGE')
+        assert hasattr(CoreConstraintType, 'PATTERN')
+
+    def test_property_constraint_creation_uses_core_fields(self):
+        """PropertyConstraint should have all fields from Constraint."""
+        constraint = PropertyConstraint(
+            constraint_type=ConstraintType.FORBIDDEN,
+            properties=['device_type'],
+            expected_value=None,
+            message="device_type is forbidden"
+        )
+        # These are core.Constraint fields
+        assert hasattr(constraint, 'constraint_type')
+        assert hasattr(constraint, 'properties')
+        assert hasattr(constraint, 'expected_value')
+        assert hasattr(constraint, 'message')
+
+    def test_loaded_constraints_use_unified_types(self):
+        """Loaded constraints should use the unified ConstraintType."""
+        for name, nc in NODE_PROPERTY_CONSTRAINTS.items():
+            for constraint in nc.constraints:
+                assert isinstance(constraint.constraint_type, ConstraintType)
+                assert isinstance(constraint.constraint_type, CoreConstraintType)
+
+    def test_audit_package_exports_constraint(self):
+        """lopper.audit should export Constraint in addition to PropertyConstraint."""
+        from lopper.audit import Constraint, PropertyConstraint
+        assert Constraint is PropertyConstraint
+        assert Constraint is CoreConstraint
+
+    def test_audit_package_constraint_type_is_unified(self):
+        """lopper.audit.ConstraintType should be the unified type."""
+        from lopper.audit import ConstraintType as AuditConstraintType
+        assert AuditConstraintType is CoreConstraintType

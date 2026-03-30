@@ -14,8 +14,9 @@ This module provides schema-based property validation for device trees,
 loading constraints from vendored dt-schema YAML files.
 
 Key components:
-- ConstraintType: Enum of constraint types (required, forbidden, etc.)
-- PropertyConstraint: Dataclass for individual property constraints
+- ConstraintType: Enum of constraint types (from lopper.schema.core)
+- Constraint: Dataclass for individual constraints (from lopper.schema.core)
+- PropertyConstraint: Alias for Constraint (backwards compatibility)
 - NodeConstraints: Dataclass for node-level constraint groupings
 - load_constraints_from_schema(): Loads constraints from dt-schema YAML
 - Standalone check functions: check_forbidden_properties, etc.
@@ -23,10 +24,12 @@ Key components:
 
 The constraints are loaded dynamically from YAML schema files in
 lopper/dt-schema/schemas/, making validation fully data-driven.
+
+Note: This module uses unified types from lopper.schema.core. The
+PropertyConstraint name is preserved for backwards compatibility.
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
 from fnmatch import fnmatch
 import glob
 import os
@@ -48,35 +51,12 @@ from .base import (
     ValidatorRegistry,
 )
 
+# Import unified types from lopper.schema.core
+from lopper.schema.core import ConstraintType, Constraint
 
-class ConstraintType(Enum):
-    """
-    Property constraint types using dt-schema/JSON Schema terminology.
-
-    These are lopper's own constraint implementations, using vocabulary
-    consistent with upstream dt-schema for familiarity.
-    """
-    REQUIRED = "required"    # Property must be present
-    FORBIDDEN = "forbidden"  # Property must NOT be present
-    CONST = "const"          # Property must have specific value
-    ENUM = "enum"            # Property must be one of allowed values
-    MUTEX = "mutex"          # Properties are mutually exclusive
-
-
-@dataclass
-class PropertyConstraint:
-    """A single property constraint.
-
-    Attributes:
-        constraint_type: Type of constraint (required, forbidden, etc.)
-        properties: List of property names this constraint applies to
-        expected_value: Expected value for CONST/ENUM constraints
-        message: Optional human-readable message for violations
-    """
-    constraint_type: ConstraintType
-    properties: list
-    expected_value: object = None
-    message: str = None
+# Backwards compatibility alias: PropertyConstraint -> Constraint
+# Existing code using PropertyConstraint will continue to work
+PropertyConstraint = Constraint
 
 
 @dataclass
@@ -85,9 +65,12 @@ class NodeConstraints:
 
     Attributes:
         node_pattern: Glob pattern matching node paths (e.g., "/memory@*")
-        constraints: List of PropertyConstraint objects
+        constraints: List of Constraint objects
         description: Optional description of this constraint set
         schema_file: Source schema file path
+
+    Note: This is similar to lopper.schema.core.NodeSpec but includes
+    schema_file for audit diagnostics. Keeping locally for now.
     """
     node_pattern: str
     constraints: list
