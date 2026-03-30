@@ -79,11 +79,14 @@ from .schema import (
     NodeConstraints,
     # Constraint definitions
     NODE_PROPERTY_CONSTRAINTS,
-    # Validation functions
+    # Validation functions (dt-schema based)
     check_forbidden_properties,
     check_required_properties,
     check_property_values,
     check_mutex_properties,
+    # Validation functions (learned schema based)
+    check_learned_type_violations,
+    check_type_frequency_anomalies,
     # Validator class
     SchemaValidator,
     # Convenience function
@@ -138,11 +141,14 @@ __all__ = [
     'NodeConstraints',
     # Schema constraints
     'NODE_PROPERTY_CONSTRAINTS',
-    # Schema validation functions
+    # Schema validation functions (dt-schema based)
     'check_forbidden_properties',
     'check_required_properties',
     'check_property_values',
     'check_mutex_properties',
+    # Schema validation functions (learned schema based)
+    'check_learned_type_violations',
+    'check_type_frequency_anomalies',
     # Schema validator
     'SchemaValidator',
     'validate_schema',
