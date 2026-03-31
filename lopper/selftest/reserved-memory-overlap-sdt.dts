@@ -1,0 +1,74 @@
+/dts-v1/;
+
+/*
+ * Test system device tree for memory overlap detection
+ * Used to test:
+ * 1. Overlapping reserved-memory regions trigger warnings
+ * 2. Containment (one region inside another) triggers warnings
+ * 3. Memory map visualization shows 'X' markers for overlaps
+ * 4. --werror causes non-zero exit on overlaps
+ *
+ * Memory layout:
+ *   0x00000000 - 0x80000000: Physical memory (2GB)
+ *   0x10000000 - 0x30000000: region1 (512MB)
+ *   0x20000000 - 0x40000000: region2 (512MB) - OVERLAPS region1!
+ *   0x50000000 - 0x58000000: outer (128MB)
+ *   0x52000000 - 0x54000000: inner (32MB) - CONTAINED in outer!
+ */
+
+/ {
+	compatible = "xlnx,zynqmp";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	model = "Test SDT for memory overlap detection";
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			compatible = "arm,cortex-a72";
+			device_type = "cpu";
+			reg = <0>;
+		};
+	};
+
+	memory@0 {
+		device_type = "memory";
+		/* 2GB of memory: 0x0 - 0x80000000 */
+		reg = <0x0 0x0 0x0 0x80000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/*
+		 * Overlapping regions - should trigger warning
+		 * region1: 0x10000000 - 0x30000000 (512MB)
+		 * region2: 0x20000000 - 0x40000000 (512MB)
+		 * Overlap:  0x20000000 - 0x30000000 (256MB)
+		 */
+		region1: region1@10000000 {
+			reg = <0x0 0x10000000 0x0 0x20000000>;
+		};
+
+		region2: region2@20000000 {
+			reg = <0x0 0x20000000 0x0 0x20000000>;
+		};
+
+		/*
+		 * Containment - inner fully inside outer - should trigger warning
+		 * outer: 0x50000000 - 0x58000000 (128MB)
+		 * inner: 0x52000000 - 0x54000000 (32MB)
+		 */
+		outer: outer@50000000 {
+			reg = <0x0 0x50000000 0x0 0x8000000>;
+		};
+
+		inner: inner@52000000 {
+			reg = <0x0 0x52000000 0x0 0x2000000>;
+		};
+	};
+};

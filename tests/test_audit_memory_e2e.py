@@ -378,10 +378,8 @@ class TestMemoryAuditE2E:
 class TestMemoryAuditWithRepositoryFiles:
     """Tests using actual repository files for integration testing."""
 
-    def test_reserved_memory_test_sdt(self):
-        """Run memory audit on the test SDT file from lopper/selftest."""
-        dts_file = "./lopper/selftest/reserved-memory-test-sdt.dts"
-
+    def run_lopper_on_file(self, dts_file, extra_args=None):
+        """Helper to run lopper on a repository file."""
         if not os.path.exists(dts_file):
             pytest.skip(f"Test file not found: {dts_file}")
 
@@ -390,12 +388,10 @@ class TestMemoryAuditWithRepositoryFiles:
             output_file = f.name
 
         try:
-            cmd = [
-                "./lopper.py", "-f",
-                "-W", "memory_all",
-                dts_file,
-                output_file
-            ]
+            cmd = ["./lopper.py", "-f"]
+            if extra_args:
+                cmd.extend(extra_args)
+            cmd.extend([dts_file, output_file])
 
             result = subprocess.run(
                 cmd,
@@ -403,45 +399,105 @@ class TestMemoryAuditWithRepositoryFiles:
                 text=True,
                 cwd=os.getcwd()
             )
-
-            # Should succeed on well-formed test SDT
-            assert result.returncode == 0, f"Failed: {result.stderr}"
+            return result
         finally:
             if os.path.exists(output_file):
                 os.unlink(output_file)
+
+    def test_reserved_memory_test_sdt(self):
+        """Run memory audit on the clean test SDT (no overlaps expected)."""
+        result = self.run_lopper_on_file(
+            "./lopper/selftest/reserved-memory-test-sdt.dts",
+            ["-W", "memory_all"]
+        )
+
+        # Should succeed on well-formed test SDT with no overlaps
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        # Should NOT have overlap warnings (regions don't overlap)
+        combined = result.stdout + result.stderr
+        assert "overlap" not in combined.lower() or "no overlap" in combined.lower(), \
+            f"Unexpected overlap warning on clean SDT: {combined}"
 
     def test_memmap_on_test_sdt(self):
-        """Generate memory map from the test SDT file."""
-        dts_file = "./lopper/selftest/reserved-memory-test-sdt.dts"
+        """Generate memory map from the clean test SDT file."""
+        result = self.run_lopper_on_file(
+            "./lopper/selftest/reserved-memory-test-sdt.dts",
+            ["--memmap=-"]
+        )
 
-        if not os.path.exists(dts_file):
-            pytest.skip(f"Test file not found: {dts_file}")
+        assert result.returncode == 0, f"Failed: {result.stderr}"
 
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix=".dts", delete=False) as f:
-            output_file = f.name
+        # Memory map should show regions from the test SDT
+        # The test SDT has regions at 0x10000000, 0x30000000, 0x50000000
+        assert "0x" in result.stdout, \
+            f"Expected hex addresses in memmap, got: {result.stdout}"
 
-        try:
-            cmd = [
-                "./lopper.py", "-f",
-                "--memmap=-",
-                dts_file,
-                output_file
-            ]
+        # Should NOT have OVERLAPS DETECTED section (no actual overlaps)
+        assert "OVERLAPS DETECTED" not in result.stdout, \
+            f"Unexpected overlap detection in clean SDT memmap"
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=os.getcwd()
-            )
+    def test_overlap_sdt_emits_warning(self):
+        """Verify overlap SDT emits warning about overlapping regions."""
+        result = self.run_lopper_on_file(
+            "./lopper/selftest/reserved-memory-overlap-sdt.dts",
+            ["-W", "memory_overlap"]
+        )
 
-            assert result.returncode == 0, f"Failed: {result.stderr}"
+        # Should succeed (warnings don't cause failure without --werror)
+        assert result.returncode == 0, f"Failed: {result.stderr}"
 
-            # Memory map should show regions from the test SDT
-            # The test SDT has regions at 0x10000000, 0x30000000, 0x50000000
-            assert "0x" in result.stdout, \
-                f"Expected hex addresses in memmap, got: {result.stdout}"
-        finally:
-            if os.path.exists(output_file):
-                os.unlink(output_file)
+        # Must have overlap warning
+        combined = result.stdout + result.stderr
+        assert "overlap" in combined.lower(), \
+            f"Expected overlap warning, got: {combined}"
+        assert "region1" in combined or "region2" in combined, \
+            f"Expected region names in warning, got: {combined}"
+
+    def test_overlap_sdt_with_werror_fails(self):
+        """Verify overlap SDT with --werror exits non-zero."""
+        result = self.run_lopper_on_file(
+            "./lopper/selftest/reserved-memory-overlap-sdt.dts",
+            ["-W", "memory_overlap", "--werror"]
+        )
+
+        # Should fail with non-zero exit
+        assert result.returncode != 0, \
+            f"Expected non-zero exit with --werror, got 0"
+
+        # Should have ERROR (not just WARNING)
+        combined = result.stdout + result.stderr
+        assert "error" in combined.lower(), \
+            f"Expected ERROR in output, got: {combined}"
+
+    def test_overlap_sdt_memmap_shows_markers(self):
+        """Verify overlap SDT memmap shows X markers for overlaps."""
+        result = self.run_lopper_on_file(
+            "./lopper/selftest/reserved-memory-overlap-sdt.dts",
+            ["--memmap=-", "-W", "memory_overlap"]
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        # Must have X markers in the memory map
+        assert "X" in result.stdout, \
+            f"Expected X overlap markers in memmap, got: {result.stdout}"
+
+        # Should show OVERLAPS DETECTED section
+        assert "OVERLAP" in result.stdout, \
+            f"Expected OVERLAPS section in memmap, got: {result.stdout}"
+
+    def test_overlap_sdt_detects_containment(self):
+        """Verify overlap SDT detects containment (inner inside outer)."""
+        result = self.run_lopper_on_file(
+            "./lopper/selftest/reserved-memory-overlap-sdt.dts",
+            ["-W", "memory_overlap"]
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        combined = result.stdout + result.stderr
+        # Should detect at least 2 overlaps: region1/region2 and outer/inner
+        overlap_count = combined.lower().count("overlap")
+        assert overlap_count >= 2, \
+            f"Expected multiple overlap warnings (region1/2 and outer/inner), got: {combined}"
