@@ -202,6 +202,10 @@ class LopperProp():
 
         self.abs_path = ""
 
+        # Source tracking for overlay provenance
+        # Format: None (base tree), 'overlay:<filename>', 'yaml:<filename>', etc.
+        self._source = None
+
         if value == None:
             self.value = []
         else:
@@ -251,6 +255,7 @@ class LopperProp():
         new_instance.ptype = self.ptype
         new_instance.binary = self.binary
         new_instance.phandle_resolution = self.phandle_resolution
+        new_instance._source = self._source
 
         if self.__dbg__ > 1:
             lopper.log._debug( f"property deep copy done: {[self]} ({type(new_instance.value)})({new_instance.value})" )
@@ -3113,6 +3118,65 @@ class LopperNode(object):
             except:
                 return [""]
 
+    def overlay_sourced_properties(self, source_filter=None):
+        """Return properties that came from overlays matching the filter.
+
+        Finds properties on this node that have a _source attribute indicating
+        they came from a user overlay file. Used for pulling overlay-contributed
+        properties back into generated overlay fragments.
+
+        Args:
+            source_filter: Filter for which overlay sources to match.
+                None - return all overlay-sourced properties
+                '*' - return all overlay-sourced properties (same as None)
+                'mmi_dc.dtsi' - match specific overlay filename
+                ['a.dtsi', 'b.dtsi'] - match any of these overlay filenames
+
+        Returns:
+            list: List of (prop_name, source) tuples for matching properties.
+                  Empty list if no properties match.
+
+        Example:
+            # Find all properties from any overlay
+            props = node.overlay_sourced_properties('*')
+
+            # Find properties from specific overlay
+            props = node.overlay_sourced_properties('mmi_dc.dtsi')
+            for prop_name, source in props:
+                print(f"{prop_name} came from {source}")
+        """
+        matches = []
+
+        # Normalize filter to list
+        if source_filter is None or source_filter == '*':
+            # Match any overlay source
+            filter_list = None
+        elif isinstance(source_filter, str):
+            filter_list = [source_filter]
+        else:
+            filter_list = list(source_filter)
+
+        for prop_name, prop in self.__props__.items():
+            source = getattr(prop, '_source', None)
+            if source is None:
+                continue
+
+            # Check if source indicates an overlay
+            if not source.startswith('overlay:'):
+                continue
+
+            # Extract overlay filename from source
+            overlay_name = source[8:]  # Remove 'overlay:' prefix
+
+            if filter_list is None:
+                # Match any overlay
+                matches.append((prop_name, source))
+            elif overlay_name in filter_list:
+                # Match specific overlay(s)
+                matches.append((prop_name, source))
+
+        return matches
+
     def is_compatible(self, compat_string, match_type="substring"):
         """Check if the node is compatible with the given string(s).
 
@@ -4115,6 +4179,45 @@ class LopperTree:
             list: List of LopperTree objects that are overlays of this tree
         """
         return self.child_trees('overlay')
+
+    def nodes_with_overlay_sources(self, source_filter=None):
+        """Find all nodes that have properties from matching overlays.
+
+        Scans the tree for nodes containing properties that came from user
+        overlay files. Used for identifying which nodes need their overlay-
+        contributed properties pulled into generated overlay fragments.
+
+        Args:
+            source_filter: Filter for which overlay sources to match.
+                None - match all overlay sources
+                '*' - match all overlay sources (same as None)
+                'mmi_dc.dtsi' - match specific overlay filename
+                ['a.dtsi', 'b.dtsi'] - match any of these overlay filenames
+
+        Returns:
+            list: List of (node, [(prop_name, source), ...]) tuples.
+                  Each tuple contains a node and the list of its overlay-
+                  sourced properties matching the filter.
+                  Empty list if no nodes match.
+
+        Example:
+            # Find all nodes with properties from any overlay
+            for node, props in tree.nodes_with_overlay_sources('*'):
+                print(f"{node.abs_path} has {len(props)} overlay properties")
+
+            # Find nodes touched by specific overlay
+            for node, props in tree.nodes_with_overlay_sources('mmi_dc.dtsi'):
+                for prop_name, source in props:
+                    print(f"  {node.abs_path}.{prop_name}")
+        """
+        matches = []
+
+        for node in self:
+            overlay_props = node.overlay_sourced_properties(source_filter)
+            if overlay_props:
+                matches.append((node, overlay_props))
+
+        return matches
 
     def __iter__(self):
         """magic method to support iteration
