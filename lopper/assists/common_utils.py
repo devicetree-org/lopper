@@ -1,5 +1,5 @@
 #/*
-# * Copyright (c) 2023 - 2025 Advanced Micro Devices, Inc. All Rights Reserved.
+# * Copyright (c) 2023 - 2026 Advanced Micro Devices, Inc. All Rights Reserved.
 # *
 # * Author:
 # *       Onkar Harsh <onkar.harsh@amd.com>
@@ -141,6 +141,38 @@ def find_files(search_pattern, search_path):
     """
 
     return glob.glob(f"{search_path}{os.path.sep}{search_pattern}")
+
+def parse_depends_schema(depends_dict):
+    """
+    Parse the depends dictionary to determine validation mode and extract driver requirements.
+    
+    Supports three formats:
+    1. Traditional flat format: {'driver1': [props], 'driver2': [props]} - all required
+    2. oneOf format: {'oneOf': [{'driver1': [props]}, {'driver2': [props]}]} - at least one required
+    3. anyOf format: {'anyOf': [{'driver1': [props]}, {'driver2': [props]}]} - at least one required
+    
+    Args:
+        depends_dict: The depends dictionary from YAML schema
+        
+    Returns:
+        tuple: (validation_mode, driver_requirements_dict)
+               validation_mode: 'all', 'oneOf', or 'anyOf'
+               driver_requirements_dict: dict mapping driver names to their required properties
+    """
+    if not depends_dict:
+        return ('all', {})
+    
+    # Check for oneOf and anyOf formats
+    for mode in ('oneOf', 'anyOf'):
+        if mode in depends_dict:
+            driver_reqs = {}
+            for item in depends_dict[mode]:
+                if isinstance(item, dict):
+                    driver_reqs.update(item)
+            return (mode, driver_reqs)
+    # Traditional flat format - all drivers required
+    driver_reqs = {k: v for k, v in depends_dict.items() if k not in ['condition']}
+    return ('all', driver_reqs)
     
 def log_setup(options):
   
