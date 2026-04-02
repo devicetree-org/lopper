@@ -1,5 +1,5 @@
 #/*
-# * Copyright (C) 2024 - 2025 Advanced Micro Devices, Inc.  All rights reserved.
+# * Copyright (C) 2024 - 2026 Advanced Micro Devices, Inc.  All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
@@ -76,12 +76,29 @@ def check_required_prop(sdt, node, required_props):
     prop_dict.update({label_name:prop_list})
     return prop_dict
 
+def handle_validation_error(err_msg, validation_mode, validation_errors):
+    """
+    Handle validation error based on validation mode.
+    For 'all' mode: Exit immediately with error
+    For 'oneOf'/'anyOf' mode: Track error and continue checking other options
+    
+    Args:
+        err_msg: The error message to report
+        validation_mode: 'all', 'oneOf', or 'anyOf'
+        validation_errors: List to collect errors for oneOf/anyOf
+    """
+    if validation_mode == 'all':
+        _error(err_msg)
+        sys.exit(1)
+    else:
+        # For oneOf/anyOf, track error but continue checking other drivers
+        validation_errors.append(err_msg)
+
 def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
     proc_name = options['args'][0]
     src_path = utils.get_abs_path(options['args'][1])
     repo_path_data = options['args'][2]
-
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     node_list = []
@@ -93,7 +110,6 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
         except:
            pass
     matched_node = get_cpu_node(sdt, options)
-
     proc_ip_name = matched_node['xlnx,ip-name'].value[0]
     src_path = src_path.rstrip(os.path.sep)
     name = utils.get_base_name(utils.get_dir_path(src_path))
@@ -123,19 +139,24 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
         has_valid_mem = check_for_mem(sdt, options, mem_type, required_mem)
         if not has_valid_mem[0]:
             if has_valid_mem[-1] != 0x0:
-                err_msg = f'ERROR: {name} application requires atleast {hex(has_valid_mem[2])} bytes of {has_valid_mem[1]} memory at {hex(has_valid_mem[-1])} to run'
+                err_msg = f'ERROR: {name} application requires at least {hex(has_valid_mem[2])} bytes of {has_valid_mem[1]} memory at {hex(has_valid_mem[-1])} to run'
             else:
-                err_msg = f'ERROR: {name} application requires atleast {hex(has_valid_mem[2])} bytes of {has_valid_mem[1]} memory'
+                err_msg = f'ERROR: {name} application requires at least {hex(has_valid_mem[2])} bytes of {has_valid_mem[1]} memory'
             _error(err_msg)
-            print(err_msg)
             sys.exit(1)
 
     """
     Get the Device type and split the dict based on the device type
     if device type is not there return success
     """
-    meta_dict = schema.get('depends',{})
-    meta_dict.pop("condition",None)
+    
+    depends_raw = schema.get('depends', {})
+    # Parse depends schema to get validation mode (all/oneOf/anyOf) and driver requirements
+    validation_mode, meta_dict = utils.parse_depends_schema(depends_raw)
+    
+    if validation_mode in ['oneOf', 'anyOf']:
+        _info(f"{name} uses {validation_mode} dependencies - validating in Lopper")
+    
     dev_dict = {}
     for drv, prop_list in sorted(meta_dict.items(), key=lambda kv:(kv[0], kv[1])):
         if utils.is_file(repo_path_data):
@@ -150,41 +171,49 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
             drv_yamlpath = os.path.join(drv_dir, "data", f"{drv}.yaml")
 
         if not utils.is_file(drv_yamlpath):
-            _warning(f"{drv} yaml file {drv_yamlpath} doesnt exist")
+            _warning(f"{drv} yaml file {drv_yamlpath} doesn't exist")
             continue
         
         drv_schema = utils.load_yaml(drv_yamlpath)
         hw_type = drv_schema.get('device_type',{})
-        if hw_type:
-            if hw_type in dev_dict:
-                val = dev_dict[hw_type]
-                val.append({drv:prop_list})
-                dev_dict[hw_type] = val
-            else:
-                dev_dict.update({hw_type:[{drv:prop_list}]})
+        # If device_type is not defined, use driver name as the type
+        if not hw_type:
+            hw_type = drv
+        
+        if hw_type in dev_dict:
+            val = dev_dict[hw_type]
+            val.append({drv:prop_list})
+            dev_dict[hw_type] = val
         else:
-            continue
+            dev_dict.update({hw_type:[{drv: prop_list}]})
 
+    # Track which drivers were found (for oneOf/anyOf validation)
+    found_drivers = []
+    validation_errors = []
+    
+    # Load repo schema once if needed.
+    repo_schema = None
+    if utils.is_file(repo_path_data):
+        repo_schema = utils.load_yaml(repo_path_data)
+    
     for dev_type, dev_list in dev_dict.items():
         valid_hw = None
-        driver_list = []
         for dev in dev_list:
-            for drv,prop_list in dev.items():
-                if utils.is_file(repo_path_data):
-                    repo_schema = utils.load_yaml(repo_path_data)
+            for drv, prop_list in dev.items():
+                # Get driver directory path
+                if repo_schema:
                     drv_data = repo_schema['driver']
-                    drv_dir = drv_data.get(drv,{}).get('vless','')
-                    if not drv_dir and drv_data.get(drv,{}).get('path',''):
-                        drv_dir = drv_data.get(drv,{}).get('path','')[0]
+                    drv_dir = drv_data.get(drv, {}).get('vless', '')
+                    if not drv_dir and drv_data.get(drv, {}).get('path', ''):
+                        drv_dir = drv_data.get(drv, {}).get('path', '')[0]
                 else:
                     drv_dir = os.path.join(repo_path_data, "XilinxProcessorIPLib", "drivers", drv)
 
                 drv_yamlpath = os.path.join(drv_dir, "data", f"{drv}.yaml")
                 if not utils.is_file(drv_yamlpath):
-                    _warning(f"{drv} yaml file {drv_yamlpath} doesnt exist")
+                    _warning(f"{drv} yaml file {drv_yamlpath} doesn't exist")
                     continue
 
-                driver_list.append(drv)
                 nodes = getmatch_nodes(sdt, node_list, drv_yamlpath, options)
                 if nodes:
                     """
@@ -193,20 +222,35 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
                     """
                     if (drv == "emacps") and ("phy-handle" in prop_list):
                         prop_list.remove("phy-handle")
-                    valid_hw = nodes[0],prop_list
+                    valid_hw = nodes[0], prop_list
+                    found_drivers.append(drv)
+        
         if valid_hw:
             prop_dict = check_required_prop(sdt, valid_hw[0], valid_hw[1])
-            for ip,prop_list in prop_dict.items():
+            for ip, prop_list in prop_dict.items():
                 for prop in prop_list:
                     if 'False' in prop:
                         err_msg = f'ERROR: {name} requires {ip} with {prop[0]} enabled'
-                        print(err_msg)
-                        _error(err_msg)
-                        sys.exit(1)
+                        handle_validation_error(err_msg, validation_mode, validation_errors)
         else:
-            err_msg = f'ERROR: {name} requires at least one {dev_type} hardware instance to be present'
-            print(err_msg)
+            driver_names = [drv for dev in dev_list for drv in dev.keys()]
+            if len(driver_names) == 1:
+                err_msg = f'ERROR: {name} requires {driver_names[0]} hardware instance to be present'
+            else:
+                err_msg = f'ERROR: {name} requires at least one {dev_type} hardware instance to be present'
+            handle_validation_error(err_msg, validation_mode, validation_errors)
+    
+    if validation_mode in ['oneOf', 'anyOf']:
+        if not found_drivers:
+            # No drivers found - fail with all collected errors
+            required_drivers = list(meta_dict.keys())
+            err_msg = f'ERROR: {name} requires {validation_mode} of {required_drivers}, but none found in hardware'
+            for ve in validation_errors:
+                _debug(ve)
             _error(err_msg)
             sys.exit(1)
+        else:
+            # At least one driver found - success
+            _info(f"{name} {validation_mode} dependency satisfied by: {found_drivers}")
 
     return True
