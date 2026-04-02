@@ -18,6 +18,65 @@ from lopper.assists.lopper_lib import (
 )
 
 
+@pytest.fixture
+def tree_with_address_map():
+    """Build a synthetic LopperTree with address-map data.
+
+    Layout:
+        /uart      - device (phandle=10)
+        /spi       - device (phandle=20)
+        /cpus-a72  - cluster with address-map referencing uart (10) and spi (20)
+        /cpus-r5   - cluster with address-map referencing uart (10) only
+                     (uart is a shared device accessible by both clusters)
+
+    address-map format with na=1, ns=1 per entry:
+        child_addr, phandle, parent_addr, size
+    """
+    tree = LopperTree()
+
+    uart = LopperNode(-1, "/uart")
+    uart + LopperProp("compatible", -1, uart, ["arm,pl011"])
+    tree.add(uart)
+
+    spi = LopperNode(-1, "/spi")
+    spi + LopperProp("compatible", -1, spi, ["arm,pl022"])
+    tree.add(spi)
+
+    # CPU cluster A72 - maps uart (10) and spi (20)
+    a72 = LopperNode(-1, "/cpus-a72")
+    a72 + LopperProp("#ranges-address-cells", -1, a72, [1])
+    a72 + LopperProp("#ranges-size-cells", -1, a72, [1])
+    tree.add(a72)
+
+    # CPU cluster R5 - maps only uart (10)
+    r5 = LopperNode(-1, "/cpus-r5")
+    r5 + LopperProp("#ranges-address-cells", -1, r5, [1])
+    r5 + LopperProp("#ranges-size-cells", -1, r5, [1])
+    tree.add(r5)
+
+    tree.sync()
+    tree.resolve()
+
+    # Set phandles after nodes are in the tree so __pnodes__ index is updated
+    tree['/uart'].phandle = 10
+    tree['/spi'].phandle = 20
+
+    # Add address-map props to cluster nodes after phandles are registered
+    a72_node = tree['/cpus-a72']
+    a72_node + LopperProp("address-map", -1, a72_node,
+                          [0xff000000, 10, 0xff000000, 0x1000,
+                           0xff010000, 20, 0xff010000, 0x1000])
+
+    r5_node = tree['/cpus-r5']
+    r5_node + LopperProp("address-map", -1, r5_node,
+                         [0xff000000, 10, 0xff000000, 0x1000])
+
+    tree.sync()
+    tree.resolve()
+
+    return tree
+
+
 class TestLopperAddressMapEntry:
     """Tests for the LopperAddressMapEntry dataclass."""
 
@@ -284,43 +343,20 @@ class TestAccessibleByWithSystemTree:
         result = tree.accessible_by(root)
         assert isinstance(result, list)
 
-    def test_accessible_by_node_target(self, lopper_sdt):
+    def test_accessible_by_node_target(self, tree_with_address_map):
         """Test accessible_by with a node target."""
-        tree = lopper_sdt.tree
+        tree = tree_with_address_map
 
-        # Find a node that might be in an address-map
-        try:
-            # Look for any node with address-map
-            cluster = None
-            for node in tree:
-                if 'address-map' in node.__props__:
-                    cluster = node
-                    break
+        # uart (phandle=10) is in cpus-a72's address-map
+        uart = tree.pnode(10)
+        assert uart is not None
 
-            if cluster is None:
-                pytest.skip("No CPU cluster with address-map found")
+        result = tree.accessible_by(uart)
+        assert len(result) >= 1
 
-            # Get the address-map and find a phandle
-            address_map = cluster['address-map'].value
-            na = cluster['#ranges-address-cells'].value[0]
-            ns = cluster['#ranges-size-cells'].value[0]
-
-            entries = parse_address_map(address_map, na, ns)
-            if not entries:
-                pytest.skip("Empty address-map")
-
-            # Find the node for first phandle
-            target = tree.pnode(entries[0].phandle)
-            if target is None:
-                pytest.skip("Could not resolve phandle to node")
-
-            # This node should be accessible by at least one cluster
-            result = tree.accessible_by(target)
-            assert len(result) >= 1
-            assert cluster in result
-
-        except (KeyError, IndexError, TypeError):
-            pytest.skip("Could not set up test")
+        # cpus-a72 should be in the result
+        a72 = tree['/cpus-a72']
+        assert a72 in result
 
     def test_accessible_by_path_string(self, lopper_sdt):
         """Test accessible_by with path string target."""
@@ -348,77 +384,78 @@ class TestAccessibleByWithSystemTree:
         assert isinstance(result, list)
         # May or may not have matches depending on tree
 
-    def test_accessible_by_returns_cluster_nodes(self, lopper_sdt):
+    def test_accessible_by_returns_cluster_nodes(self, tree_with_address_map):
         """Test that accessible_by returns nodes with address-map property."""
-        tree = lopper_sdt.tree
+        tree = tree_with_address_map
 
-        # Find a target that's definitely in some address-map
-        for node in tree:
-            if 'address-map' in node.__props__:
-                try:
-                    address_map = node['address-map'].value
-                    na = node['#ranges-address-cells'].value[0]
-                    ns = node['#ranges-size-cells'].value[0]
-                    entries = parse_address_map(address_map, na, ns)
-                    if entries:
-                        target = tree.pnode(entries[0].phandle)
-                        if target:
-                            result = tree.accessible_by(target)
-                            # All returned nodes should have address-map
-                            for cluster in result:
-                                assert 'address-map' in cluster.__props__
-                            return
-                except (KeyError, IndexError, TypeError):
-                    continue
+        uart = tree.pnode(10)
+        assert uart is not None
 
-        pytest.skip("No suitable test data found")
+        result = tree.accessible_by(uart)
+        assert len(result) >= 1
+        # All returned nodes should have address-map
+        for cluster in result:
+            assert 'address-map' in cluster.__props__
 
 
 class TestAccessibleByMultipleClusters:
     """Test accessible_by when multiple clusters can access a device."""
 
-    def test_multiple_clusters_same_device(self, lopper_sdt):
+    def test_multiple_clusters_same_device(self, tree_with_address_map):
         """Test that accessible_by returns all clusters that can access a device."""
+        tree = tree_with_address_map
+
+        # uart (phandle=10) is mapped by both cpus-a72 and cpus-r5
+        uart = tree.pnode(10)
+        assert uart is not None
+
+        result = tree.accessible_by(uart)
+        assert len(result) == 2
+
+        a72 = tree['/cpus-a72']
+        r5 = tree['/cpus-r5']
+        assert a72 in result
+        assert r5 in result
+
+
+class TestRenderCpuAccessMap:
+    """Tests for the CPU access map visualization."""
+
+    def test_render_returns_string(self, lopper_sdt):
+        """Test that render_cpu_access_map returns a string."""
         tree = lopper_sdt.tree
+        result = render_cpu_access_map(tree)
+        assert isinstance(result, str)
 
-        # Find a phandle that appears in multiple address-maps
-        phandle_to_clusters = {}
+    def test_render_unrestricted_access_message(self, lopper_tree):
+        """Test message for clusters without address-map."""
+        # lopper_tree has a /cpus node but no address-map
+        result = render_cpu_access_map(lopper_tree)
+        # Should show unrestricted access for the cpus node
+        assert "unrestricted" in result or "No CPU clusters" in result
 
-        for node in tree:
-            if 'address-map' not in node.__props__:
-                continue
-            try:
-                address_map = node['address-map'].value
-                na = node['#ranges-address-cells'].value[0]
-                ns = node['#ranges-size-cells'].value[0]
-                entries = parse_address_map(address_map, na, ns)
-                for entry in entries:
-                    if entry.phandle not in phandle_to_clusters:
-                        phandle_to_clusters[entry.phandle] = []
-                    phandle_to_clusters[entry.phandle].append(node)
-            except (KeyError, IndexError, TypeError):
-                continue
+    def test_render_all_returns_string(self, lopper_sdt):
+        """Test that render_all_cpu_access_maps returns a string."""
+        tree = lopper_sdt.tree
+        result = render_all_cpu_access_maps(tree)
+        assert isinstance(result, str)
 
-        # Find a phandle that's in multiple clusters
-        shared_phandle = None
-        expected_clusters = None
-        for phandle, clusters in phandle_to_clusters.items():
-            if len(clusters) > 1:
-                shared_phandle = phandle
-                expected_clusters = clusters
-                break
+    def test_render_contains_header(self, tree_with_address_map):
+        """Test that output contains expected header elements."""
+        tree = tree_with_address_map
+        cluster = tree['/cpus-a72']
 
-        if shared_phandle is None:
-            pytest.skip("No device shared by multiple clusters")
+        result = render_cpu_access_map(tree, cluster)
+        assert "CPU Cluster:" in result
+        assert "Address Range" in result
+        assert "Device" in result
 
-        target = tree.pnode(shared_phandle)
-        if target is None:
-            pytest.skip("Could not resolve shared phandle")
+    def test_render_by_path(self, tree_with_address_map):
+        """Test render with path string."""
+        tree = tree_with_address_map
 
-        result = tree.accessible_by(target)
-        assert len(result) == len(expected_clusters)
-        for cluster in expected_clusters:
-            assert cluster in result
+        result = render_cpu_access_map(tree, '/cpus-a72')
+        assert "CPU Cluster:" in result
 
 
 class TestRenderCpuAccessMap:
