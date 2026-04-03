@@ -808,6 +808,9 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                     if any(version in node["compatible"].value for version in ("arm,cortex-r52", "arm,cortex-a78")):
                         if node.propval('xlnx,timestamp-clk-freq') != ['']:
                             node["clock-frequency"] = node['xlnx,timestamp-clk-freq'].value
+                    if any(version in node["compatible"].value for version in ("arm,cortex-r52", "arm,cortex-r5")):
+                        if node.name != ['']:
+                            node.name = "cpu@0"
                     if node.propval('xlnx,ip-name') != ['']:
                         val = node.propval('xlnx,ip-name', list)[0]
                         if val == "axi_intc":
