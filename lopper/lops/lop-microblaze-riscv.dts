@@ -13,7 +13,7 @@
  * - select-v1, code-v1
  *
  * Notable Targets:
- * - /cpus_.*/cpu*.*:compatible:.*microblaze_riscv
+ * - /cpus_.\*cpu*.*:compatible:.*microblaze_riscv
  */
 
 /dts-v1/;
