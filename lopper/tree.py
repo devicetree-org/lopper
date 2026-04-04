@@ -5973,7 +5973,17 @@ class LopperTree:
         if self.__new_iteration__:
             self.__new_iteration__ = False
 
-            child_nodes = self.subnodes( self.__nodes__[ "/"] )
+            if "/" in self.__nodes__:
+                child_nodes = self.subnodes( self.__nodes__[ "/"] )
+            else:
+                # Rootless tree (e.g. compiled overlay DTB): top-level nodes have
+                # no parent or a parent path of "/".  Collect them all and walk their
+                # subtrees so normal iteration works on fragment@N / __fixups__ etc.
+                top_nodes = [ n for n in self.__nodes__.values()
+                               if n.parent is None or n.parent.abs_path == "/" ]
+                child_nodes = []
+                for n in top_nodes:
+                    child_nodes.extend( self.subnodes(n) )
             self.__node_iter__ = iter( child_nodes )
 
             if self.__current_node__ == "/" and self.__start_node__ == "/":
