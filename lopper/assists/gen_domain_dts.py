@@ -763,7 +763,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
             if "xlnx,zynqmp-rtc" in node["compatible"].value:
                 rtc_nodes.append(node)
 
-    xlnx_remove_unsupported_nodes(tgt_node, sdt)
+    xlnx_remove_unsupported_nodes(tgt_node, sdt, machine)
 
     # Zephyr Watchdog samples/tests expects watchdog0 alias.
     # Add watchdog0 alias by referring it to the first occurence of the wwdt node
@@ -785,15 +785,13 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
             compatible = node.propval('compatible', list)[0]
             if compatible == "arm,armv8-timer" and 'psv_cortexr5' in machine:
                 sdt.tree.delete(node)
-            if compatible == "xlnx,ttcps" and 'psv_cortexr5' not in machine:
-                sdt.tree.delete(node)
         if node.name == 'reserved-memory' and 'r52' in machine:
             node.delete('ranges')
             node + LopperProp(name='ranges')
 
     return True
 
-def xlnx_remove_unsupported_nodes(tgt_node, sdt):
+def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine):
     root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
     valid_alias_proplist = []
@@ -942,18 +940,38 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt):
                         node["compatible"] = "xlnx,versal-8.9a"
                     # TTCPS
                     if "cdns,ttc" in node["compatible"].value:
-                        node["compatible"] = "xlnx,ttcps"
-                        if node.propval('interrupt-names') == ['']:
-                            ttc_irq_names = ["irq_0", "irq_1", "irq_2"]
-                            node["interrupt-names"] = LopperProp("interrupt-names")
-                            node["interrupt-names"].value = ttc_irq_names
-                            node.add(node["interrupt-names"])
-                        clk_freq = node.propval('xlnx,clock-freq')
-                        # Round to nearest MHz (optional but clean)
-                        rounded_clk = int(round(clk_freq[0] / 1000000.0)) * 1000000
-                        node["clock-frequency"] = LopperProp("clock-frequency")
-                        node["clock-frequency"].value = rounded_clk
-                        node.add(node["clock-frequency"])
+                        if 'psv_cortexr5' in machine:
+                            node["compatible"] = "xlnx,ttcps"
+                            if node.propval('interrupt-names') == ['']:
+                                ttc_irq_names = ["irq_0", "irq_1", "irq_2"]
+                                node["interrupt-names"] = LopperProp("interrupt-names")
+                                node["interrupt-names"].value = ttc_irq_names
+                                node.add(node["interrupt-names"])
+                            clk_freq = node.propval('xlnx,clock-freq')
+                            # Round to nearest MHz (optional but clean)
+                            rounded_clk = int(round(clk_freq[0] / 1000000.0)) * 1000000
+                            node["clock-frequency"] = LopperProp("clock-frequency")
+                            node["clock-frequency"].value = rounded_clk
+                            node.add(node["clock-frequency"])
+                        else:
+                            for i in range(3):
+                                new_node = LopperNode()
+                                new_node["compatible"] = "xlnx,ttc-counter"
+                                new_node["clock-frequency"] = LopperProp("clock-frequency")
+                                new_node["clock-frequency"].value = node["xlnx,clock-freq"].value
+                                new_node.add(new_node["clock-frequency"])
+                                new_node["reg"] = node["reg"]
+                                new_node.label_set(f"{node.label}_timer{i}")
+                                new_node["interrupt-parent"] = node["interrupt-parent"]
+                                new_node.name = f"counter{i}@{node['reg'][1]:x}"
+                                new_node["timer-id"] = LopperProp("timer-id")
+                                new_node["timer-id"].value = i
+                                new_node["interrupts"] = LopperProp("interrupts")
+                                new_node["interrupts"].value = node["interrupts"].value[i * 4 : (i + 1) * 4]
+                                new_node["timer-width"] = node["timer-width"]
+                                new_node.parent = node.parent
+                                node.parent.add(new_node)
+                            sdt.tree.delete(node)
                     # CANFD
                     if "xlnx,canfd-2.0" in node["compatible"].value:
                         node["compatible"] = "xlnx,canfd-2.0"
