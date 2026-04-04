@@ -1442,3 +1442,97 @@ _BASE_DTS = """\
 """
 
 
+class TestOverlayE2E:
+    """End-to-end CLI tests: lopper processes a user overlay DTSI alongside
+    a base DTS, just as a user would invoke it on the command line."""
+
+    def run_lopper(self, tmp_path, base_dts, overlay_dtsi, extra_args=None):
+        """Run lopper with a base DTS and a user overlay DTSI.
+
+        Mirrors the user command:
+            lopper.py -f -i <user-overlay.dtsi> <system-top.dts> <output.dts>
+        """
+        base_file = tmp_path / "system-top.dts"
+        base_file.write_text(base_dts)
+
+        overlay_file = tmp_path / "user-overlay.dtsi"
+        overlay_file.write_text(overlay_dtsi)
+
+        output_file = tmp_path / "output.dts"
+
+        cmd = ["./lopper.py", "-f"]
+        if extra_args:
+            cmd.extend(extra_args)
+        cmd.extend(["-i", str(overlay_file),
+                    str(base_file), str(output_file)])
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=os.getcwd()
+        )
+        return result, output_file
+
+    def test_overlay_properties_appear_in_output(self, tmp_path):
+        """User overlay properties are merged into the output DTS.
+
+        The user provides a .dtsi that sets status = "okay" on mmi_dc.
+        After lopper processes both files, the output DTS must contain
+        the property from the overlay.
+        """
+        overlay = '&mmi_dc { status = "okay"; };\n'
+
+        result, output_file = self.run_lopper(tmp_path, _BASE_DTS, overlay)
+
+        assert result.returncode == 0, \
+            f"lopper failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        assert output_file.exists(), "output DTS was not created"
+
+        content = output_file.read_text()
+        assert 'status = "okay"' in content, \
+            f"User overlay property 'status = okay' not found in output:\n{content}"
+
+    def test_overlay_with_nested_nodes_no_error(self, tmp_path):
+        """User overlay with nested child nodes is processed without error.
+
+        Onkar's use case: ports/endpoint hierarchy inside the user overlay.
+        Lopper must handle this without crashing.
+        """
+        overlay = """\
+&mmi_dc {
+    status = "okay";
+    ports {
+        port@0 {
+            endpoint {
+                remote-endpoint = <&mmi_dc>;
+            };
+        };
+    };
+};
+"""
+        result, output_file = self.run_lopper(tmp_path, _BASE_DTS, overlay)
+
+        assert result.returncode == 0, \
+            f"lopper failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        assert output_file.exists(), "output DTS was not created"
+
+    def test_overlay_listed_in_system_device_tree(self, tmp_path):
+        """Lopper includes the user overlay DTSI in the system device tree list.
+
+        The overlay file is concatenated with the base DTS before compilation.
+        Verbose output lists all inputs under 'system device tree:' — the overlay
+        must appear there, confirming lopper accepted it as an input.
+        """
+        overlay = '&mmi_dc { xlnx,dc-pixel-format = "rgb888"; };\n'
+
+        result, _ = self.run_lopper(
+            tmp_path, _BASE_DTS, overlay, extra_args=["-v"]
+        )
+
+        assert result.returncode == 0, \
+            f"lopper failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+
+        combined = result.stdout + result.stderr
+        assert "user-overlay.dtsi" in combined, \
+            f"Expected user-overlay.dtsi to appear in lopper output:\n{combined}"
