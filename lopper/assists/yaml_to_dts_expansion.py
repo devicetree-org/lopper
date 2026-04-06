@@ -249,7 +249,7 @@ def wildcard_devices( tree, domains_node ):
         try:
             compat = sibling["compatible"].value
             if isinstance(compat, list):
-                compat = ','.join(compat)
+                compat = ','.join(str(item) for item in compat)
             if ',devices' in compat:
                 devices_domain = sibling
                 _debug( f"found devices domain: {devices_domain.abs_path}" )
@@ -262,9 +262,12 @@ def wildcard_devices( tree, domains_node ):
         d_parent = domain_parent( domain )
         if d_parent:
             d_parent_path = d_parent.value
+            # .value returns a list; extract the first element as the path string
+            if isinstance(d_parent_path, list):
+                d_parent_path = d_parent_path[0] if d_parent_path else None
             if d_parent_path == "auto":
                 return infer_parent_domain( tree, domain )
-            else:
+            elif d_parent_path:
                 try:
                     if d_parent_path.startswith('/'):
                         return tree[d_parent_path]

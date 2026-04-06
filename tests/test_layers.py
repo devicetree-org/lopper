@@ -112,9 +112,14 @@ class TestLayeredPropStorage:
 
 class TestViewContextManager:
     def test_default_view_is_winning(self):
+        """Without a view, prop.value returns __dict__['value'] (live value)."""
         t, n, p = _make_tree_with_prop([100])
         p.set_layer_value('base', [100])
         p.set_layer_value('pl_overlay', [200], priority=500)
+        # No view active: returns raw __dict__['value'] which is [100] (initial)
+        assert p.value == [100]
+        # Writing through the normal path updates __dict__['value']
+        p.value = [200]
         assert p.value == [200]
 
     def test_base_view_returns_base(self):
@@ -135,23 +140,25 @@ class TestViewContextManager:
         t, n, p = _make_tree_with_prop([100])
         p.set_layer_value('base', [100])
         p.set_layer_value('pl_overlay', [200], priority=500)
+        p.__dict__['value'] = [200]  # simulate overlay being applied
         with t.view('base'):
             assert p.value == [100]
-        # After exiting, returns to winning
+        # After exiting, returns to raw value (overlay applied)
         assert p.value == [200]
 
     def test_nested_views(self):
-        t, n, p = _make_tree_with_prop([100])
+        t, n, p = _make_tree_with_prop([300])
         p.set_layer_value('base', [100])
         p.set_layer_value('overlay_a', [200], priority=500)
         p.set_layer_value('overlay_b', [300], priority=600)
+        # __dict__['value'] = [300] (set by _make_tree_with_prop)
         with t.view('base'):
             assert p.value == [100]
             with t.view('overlay_a'):
                 assert p.value == [200]
             # Inner view exited, back to base
             assert p.value == [100]
-        # Both exited, back to winning
+        # Both exited, back to raw value
         assert p.value == [300]
 
     def test_view_yields_tree(self):
@@ -196,12 +203,13 @@ class TestBackwardCompat:
         assert p.value == [10, 20]
 
     def test_propval_no_view(self):
-        """LopperNode.propval() should return winning value with no view set."""
+        """LopperNode.propval() returns raw __dict__['value'] with no view set."""
         t, n, p = _make_tree_with_prop([42], name='reg')
         p.set_layer_value('base', [42])
         p.set_layer_value('overlay', [99], priority=500)
+        # No view: propval returns the live __dict__['value'] = [42]
         result = n.propval('reg')
-        assert result == [99]
+        assert result == [42]
 
     def test_propval_in_base_view(self):
         """LopperNode.propval() returns base value inside base view."""

@@ -313,29 +313,33 @@ class LopperProp():
         return max(self._layers.values(), key=lambda e: e[0])[1]
 
     def __getattribute__(self, name):
-        """Intercept 'value' reads to return view-context-appropriate layer value."""
+        """Intercept 'value' reads to return view-context-appropriate layer value.
+
+        When no view context is active, returns __dict__["value"] directly
+        (identical to the pre-layers behaviour).  Only when a named view is
+        active does this look up the appropriate layer value, making the
+        layered storage transparent to all existing code paths.
+        """
         if name == 'value':
             d = object.__getattribute__(self, '__dict__')
-            # Only activate layered logic if _layers is initialised and non-empty
             layers = d.get('_layers')
             if layers:
+                # Check for an active view context via the owning tree
                 node = d.get('_node')
-                tree = None
+                view = None
                 if node is not None:
-                    # LopperNode uses .tree (not ._tree) for the owning tree
                     try:
                         tree = node.__dict__.get('tree')
+                        if tree is not None:
+                            view_local = tree.__dict__.get('_view_local')
+                            if view_local is not None:
+                                view = getattr(view_local, 'active', None)
                     except Exception:
                         pass
-                view = None
-                if tree is not None:
-                    # Access _view_local directly from tree's __dict__ to bypass
-                    # LopperTree.__getattribute__ which may not handle it yet
-                    view_local = tree.__dict__.get('_view_local')
-                    if view_local is not None:
-                        view = getattr(view_local, 'active', None)
-                return object.__getattribute__(self, '_winning_layer_value')(view)
-            # Fallback: return raw value from __dict__
+                if view is not None:
+                    # A named view is active — return that layer's value
+                    return object.__getattribute__(self, '_winning_layer_value')(view)
+            # No active view: return raw __dict__["value"] (original behaviour)
             return d.get('value', [])
         return object.__getattribute__(self, name)
 
@@ -578,9 +582,17 @@ class LopperProp():
         if self.pclass == "json" and other_prop.pclass == "json":
             lopper.log._debug( f"property merge: json -> json" )
             try:
-                # Decode the JSON strings
-                t1_list = json.loads(self.value)
-                t2_list = json.loads(other_prop.value)
+                # Use __dict__["value"] to get the raw JSON string, bypassing the
+                # layer-aware __getattribute__ which would return a list wrapper.
+                t1_raw = self.__dict__.get("value", self.value)
+                t2_raw = other_prop.__dict__.get("value", other_prop.value)
+                # If raw value is a list, unwrap to get the JSON string
+                if isinstance(t1_raw, list):
+                    t1_raw = t1_raw[0] if t1_raw else "[]"
+                if isinstance(t2_raw, list):
+                    t2_raw = t2_raw[0] if t2_raw else "[]"
+                t1_list = json.loads(t1_raw)
+                t2_list = json.loads(t2_raw)
 
                 # Check if both lists have exactly one dictionary each
                 if len(t1_list) == 1 and isinstance(t1_list[0], dict) and \
@@ -603,6 +615,9 @@ class LopperProp():
                 # Update base layer only if not already set (preserve pre-merge value)
                 if 'base' not in self._layers or not self._layers['base'][1]:
                     self.set_layer_value('base', merged_json_str)
+                else:
+                    # Base already exists; record merged result as modifications so it wins
+                    self.set_layer_value('modifications', merged_json_str)
 
                 lopper.log._debug(f"merged value: {self.value}")
 
@@ -651,6 +666,9 @@ class LopperProp():
             # Update base layer only if not already set (preserve pre-merge value)
             if 'base' not in self._layers or not self._layers['base'][1]:
                 self.set_layer_value('base', result)
+            else:
+                # Base already exists; record merged result as modifications so it wins
+                self.set_layer_value('modifications', result)
 
             lopper.log._debug(f"merged value:: {self.value}")
 

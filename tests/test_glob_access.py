@@ -15,6 +15,7 @@ Author:
 """
 
 import os
+import sys
 import json
 import pytest
 from lopper.assists.yaml_to_dts_expansion import (
@@ -235,7 +236,7 @@ domains:
 
         # Run lopper
         cmd = [
-            "./lopper.py", "-f", "--permissive", "--auto",
+            sys.executable, "./lopper.py", "-f", "--permissive", "--auto",
             "-i", str(devices_yaml),
             "-i", str(child_yaml),
             "./lopper/selftest/system-top.dts",
@@ -316,7 +317,7 @@ domains:
         output_dts = tmp_path / "output.dts"
 
         cmd = [
-            "./lopper.py", "-f", "--permissive", "--auto",
+            sys.executable, "./lopper.py", "-f", "--permissive", "--auto",
             "-i", str(devices_yaml),
             "-i", str(child_yaml),
             "./lopper/selftest/system-top.dts",
@@ -383,7 +384,7 @@ domains:
         output_dts = tmp_path / "output.dts"
 
         cmd = [
-            "./lopper.py", "-f", "--permissive", "--auto",
+            sys.executable, "./lopper.py", "-f", "--permissive", "--auto",
             "-i", str(devices_yaml),
             "-i", str(child_yaml),
             "./lopper/selftest/system-top.dts",
@@ -441,7 +442,7 @@ domains:
         output_dts = tmp_path / "output.dts"
 
         cmd = [
-            "./lopper.py", "-f", "--permissive", "--auto",
+            sys.executable, "./lopper.py", "-f", "--permissive", "--auto",
             "-i", str(domains_yaml),
             "./lopper/selftest/system-top.dts",
             str(output_dts)
