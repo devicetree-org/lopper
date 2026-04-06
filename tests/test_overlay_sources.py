@@ -1,7 +1,7 @@
 """
-Tests for overlay source tracking infrastructure.
+Tests for overlay layer tracking infrastructure.
 
-Tests the _source attribute on LopperProp and helper methods for
+Tests the _layers dict on LopperProp and helper methods for
 finding overlay-sourced properties on nodes and trees.
 
 Also tests the helper functions for identifying and extracting
@@ -16,43 +16,41 @@ from lopper.tree import LopperTree, LopperNode, LopperProp
 from lopper import LopperSDT
 
 
-class TestPropertySourceAttribute:
-    """Test that _source attribute is properly initialized and copied."""
+class TestPropertyLayerTracking:
+    """Test that _layers dict tracks overlay provenance correctly."""
 
-    def test_source_defaults_to_none(self):
-        """New properties should have _source = None."""
+    def test_new_prop_has_no_overlay_layers(self):
+        """New properties should have no overlay layers in _layers."""
         prop = LopperProp('test-prop', value=[1, 2, 3])
-        assert prop._source is None
+        overlay_layers = [k for k in prop._layers if k not in ('base', 'modifications')]
+        assert overlay_layers == []
 
-    def test_source_can_be_set(self):
-        """_source should be settable."""
+    def test_set_layer_value_records_layer(self):
+        """_set_layer_value should store the layer in _layers."""
         prop = LopperProp('test-prop', value=[1, 2, 3])
-        prop._source = 'overlay:mmi_dc.dtsi'
-        assert prop._source == 'overlay:mmi_dc.dtsi'
+        prop._set_layer_value('mmi_dc', [42], priority=500)
+        assert 'mmi_dc' in prop._layers
+        assert prop._layers['mmi_dc'] == (500, [42])
 
-    def test_source_preserved_on_deepcopy(self):
-        """_source should be preserved when property is deep copied."""
+    def test_overlay_layer_preserved_on_deepcopy(self):
+        """Overlay layers should be preserved when property is deep copied."""
         import copy
         prop = LopperProp('test-prop', value=[1, 2, 3])
-        prop._source = 'overlay:test.dtsi'
+        prop._set_layer_value('test', [99], priority=500)
 
         prop_copy = copy.deepcopy(prop)
 
-        assert prop_copy._source == 'overlay:test.dtsi'
+        assert 'test' in prop_copy._layers
+        assert prop_copy._layers['test'] == (500, [99])
 
-    def test_source_formats(self):
-        """Various source format strings should be accepted."""
+    def test_multiple_overlay_layers(self):
+        """Multiple overlay layers can coexist."""
         prop = LopperProp('test-prop', value=[1])
-
-        # Test various formats
-        prop._source = 'overlay:mmi_dc.dtsi'
-        assert prop._source == 'overlay:mmi_dc.dtsi'
-
-        prop._source = 'yaml:domains.yaml'
-        assert prop._source == 'yaml:domains.yaml'
-
-        prop._source = 'json:config.json'
-        assert prop._source == 'json:config.json'
+        prop._set_layer_value('mmi_dc', [1], priority=500)
+        prop._set_layer_value('pl_overlay', [2], priority=500)
+        overlay_layers = [k for k in prop._layers if k not in ('base', 'modifications')]
+        assert 'mmi_dc' in overlay_layers
+        assert 'pl_overlay' in overlay_layers
 
 
 class TestNodeOverlaySourcedProperties:
@@ -80,14 +78,15 @@ class TestNodeOverlaySourcedProperties:
         tree.sync()
         tree.resolve()
 
-        # Add property with overlay source
+        # Add property with overlay layer
         prop = LopperProp(name='overlay-prop', value=[1])
-        prop._source = 'overlay:mmi_dc.dtsi'
+        prop._set_layer_value('mmi_dc', [1], priority=500)
         tree['/test'].__props__['overlay-prop'] = prop
 
         result = tree['/test'].overlay_sourced_properties()
         assert len(result) == 1
-        assert result[0] == ('overlay-prop', 'overlay:mmi_dc.dtsi')
+        assert result[0][0] == 'overlay-prop'
+        assert result[0][1] == 'mmi_dc'
 
     def test_filter_by_specific_overlay(self):
         """Should filter by specific overlay name."""
@@ -99,11 +98,11 @@ class TestNodeOverlaySourcedProperties:
 
         # Add properties from different overlays
         prop1 = LopperProp(name='prop1', value=[1])
-        prop1._source = 'overlay:overlay_a.dtsi'
+        prop1._set_layer_value('overlay_a', [1], priority=500)
         tree['/test'].__props__['prop1'] = prop1
 
         prop2 = LopperProp(name='prop2', value=[2])
-        prop2._source = 'overlay:overlay_b.dtsi'
+        prop2._set_layer_value('overlay_b', [2], priority=500)
         tree['/test'].__props__['prop2'] = prop2
 
         # Filter for overlay_a only
@@ -126,15 +125,15 @@ class TestNodeOverlaySourcedProperties:
 
         # Add properties from different overlays
         prop1 = LopperProp(name='prop1', value=[1])
-        prop1._source = 'overlay:a.dtsi'
+        prop1._set_layer_value('a', [1], priority=500)
         tree['/test'].__props__['prop1'] = prop1
 
         prop2 = LopperProp(name='prop2', value=[2])
-        prop2._source = 'overlay:b.dtsi'
+        prop2._set_layer_value('b', [2], priority=500)
         tree['/test'].__props__['prop2'] = prop2
 
         prop3 = LopperProp(name='prop3', value=[3])
-        prop3._source = 'overlay:c.dtsi'
+        prop3._set_layer_value('c', [3], priority=500)
         tree['/test'].__props__['prop3'] = prop3
 
         # Filter for a and b
@@ -155,28 +154,28 @@ class TestNodeOverlaySourcedProperties:
 
         # Add properties from different overlays
         prop1 = LopperProp(name='prop1', value=[1])
-        prop1._source = 'overlay:a.dtsi'
+        prop1._set_layer_value('a', [1], priority=500)
         tree['/test'].__props__['prop1'] = prop1
 
         prop2 = LopperProp(name='prop2', value=[2])
-        prop2._source = 'overlay:b.dtsi'
+        prop2._set_layer_value('b', [2], priority=500)
         tree['/test'].__props__['prop2'] = prop2
 
         result = tree['/test'].overlay_sourced_properties('*')
         assert len(result) == 2
 
-    def test_ignores_non_overlay_sources(self):
-        """Should ignore properties with non-overlay sources (yaml, json)."""
+    def test_ignores_base_and_modifications_layers(self):
+        """Should ignore 'base' and 'modifications' layers — only overlay layers count."""
         tree = LopperTree()
         node = LopperNode(-1, "/test")
         tree.add(node)
         tree.sync()
         tree.resolve()
 
-        # Add property with yaml source
-        prop = LopperProp(name='yaml-prop', value=[1])
-        prop._source = 'yaml:domains.yaml'
-        tree['/test'].__props__['yaml-prop'] = prop
+        # A prop with only base layer (no overlay)
+        prop = LopperProp(name='base-prop', value=[1])
+        # _layers already has 'base' from __init__ seeding; no overlay layer added
+        tree['/test'].__props__['base-prop'] = prop
 
         result = tree['/test'].overlay_sourced_properties('*')
         assert result == []
@@ -208,7 +207,7 @@ class TestTreeNodesWithOverlaySources:
 
         # Add overlay property to node1 only
         prop = LopperProp(name='overlay-prop', value=[1])
-        prop._source = 'overlay:test.dtsi'
+        prop._set_layer_value('test', [1], priority=500)
         tree['/node1'].__props__['overlay-prop'] = prop
 
         result = tree.nodes_with_overlay_sources()
@@ -228,12 +227,12 @@ class TestTreeNodesWithOverlaySources:
 
         # Add overlay property from 'a.dtsi' to node1
         prop1 = LopperProp(name='prop1', value=[1])
-        prop1._source = 'overlay:a.dtsi'
+        prop1._set_layer_value('a', [1], priority=500)
         tree['/node1'].__props__['prop1'] = prop1
 
         # Add overlay property from 'b.dtsi' to node2
         prop2 = LopperProp(name='prop2', value=[2])
-        prop2._source = 'overlay:b.dtsi'
+        prop2._set_layer_value('b', [2], priority=500)
         tree['/node2'].__props__['prop2'] = prop2
 
         # Filter for a.dtsi
@@ -257,7 +256,7 @@ class TestTreeNodesWithOverlaySources:
         # Add multiple overlay properties
         for i in range(3):
             prop = LopperProp(name=f'prop{i}', value=[i])
-            prop._source = 'overlay:test.dtsi'
+            prop._set_layer_value('test', [i], priority=500)
             tree['/test'].__props__[f'prop{i}'] = prop
 
         result = tree.nodes_with_overlay_sources()
@@ -495,17 +494,17 @@ class TestFragmentAddForOverlaySources:
 
         # Add overlay-sourced properties
         prop1 = LopperProp(name='status', value=["okay"])
-        prop1._source = 'overlay:test.dtsi'
+        prop1._set_layer_value('test', ["okay"], priority=500)
         tree['/device'].__props__['status'] = prop1
 
         prop2 = LopperProp(name='clocks', value=[0x20, 0x0])
-        prop2._source = 'overlay:test.dtsi'
+        prop2._set_layer_value('test', [0x20, 0x0], priority=500)
         tree['/device'].__props__['clocks'] = prop2
 
         # Create overlay tree
         overlay = LopperTree()
 
-        # Add fragments for overlay sources
+        # Add fragments for overlay layers
         fragments = tree.fragment_add_for_overlay_sources(overlay)
 
         assert len(fragments) == 1
@@ -521,12 +520,12 @@ class TestFragmentAddForOverlaySources:
         tree.sync()
         tree.resolve()
 
-        # Add one overlay-sourced property
+        # Add one overlay-layer property
         prop1 = LopperProp(name='status', value=["okay"])
-        prop1._source = 'overlay:test.dtsi'
+        prop1._set_layer_value('test', ["okay"], priority=500)
         tree['/device'].__props__['status'] = prop1
 
-        # Add one non-sourced property
+        # Add one base-only property (no overlay layer)
         prop2 = LopperProp(name='reg', value=[0x0, 0x1000])
         tree['/device'].__props__['reg'] = prop2
 
@@ -548,12 +547,12 @@ class TestFragmentAddForOverlaySources:
         tree.sync()
         tree.resolve()
 
-        # Add one overlay-sourced property
+        # Add one overlay-layer property
         prop1 = LopperProp(name='status', value=["okay"])
-        prop1._source = 'overlay:test.dtsi'
+        prop1._set_layer_value('test', ["okay"], priority=500)
         tree['/device'].__props__['status'] = prop1
 
-        # Add one non-sourced property
+        # Add one base-only property
         prop2 = LopperProp(name='reg', value=[0x0, 0x1000])
         tree['/device'].__props__['reg'] = prop2
 
@@ -575,13 +574,13 @@ class TestFragmentAddForOverlaySources:
         tree.sync()
         tree.resolve()
 
-        # Add properties from different overlays
+        # Add properties from different overlay layers
         prop1 = LopperProp(name='prop_a', value=[1])
-        prop1._source = 'overlay:a.dtsi'
+        prop1._set_layer_value('a', [1], priority=500)
         tree['/device'].__props__['prop_a'] = prop1
 
         prop2 = LopperProp(name='prop_b', value=[2])
-        prop2._source = 'overlay:b.dtsi'
+        prop2._set_layer_value('b', [2], priority=500)
         tree['/device'].__props__['prop_b'] = prop2
 
         overlay = LopperTree()
@@ -624,9 +623,9 @@ class TestFragmentAddForOverlaySources:
         tree.sync()
         tree.resolve()
 
-        # Add overlay-sourced property
+        # Add overlay-layer property
         prop = LopperProp(name='status', value=["okay"])
-        prop._source = 'overlay:test.dtsi'
+        prop._set_layer_value('test', ["okay"], priority=500)
         tree['/device'].__props__['status'] = prop
 
         # Create overlay with existing fragment for same node
@@ -666,7 +665,7 @@ class TestFragmentAddForOverlaySources:
         tree.resolve()
 
         prop = LopperProp(name='status', value=["okay"])
-        prop._source = 'overlay:test.dtsi'
+        prop._set_layer_value('test', ["okay"], priority=500)
         tree['/device'].__props__['status'] = prop
 
         overlay = LopperTree()
@@ -724,7 +723,7 @@ class TestOverlaySourceIntegration:
 
             # Step 4: Tag properties as coming from overlay
             # (simulating what _tag_overlay_properties does after merge)
-            source_tag = f"overlay:{os.path.basename(overlay_file)}"
+            overlay_layer = os.path.splitext(os.path.basename(overlay_file))[0]
             for label, target_info in targets.items():
                 # Find node by label - use __nodes__ to avoid iterator state issues
                 node = None
@@ -743,7 +742,7 @@ class TestOverlaySourceIntegration:
                         else:
                             prop = LopperProp(name=prop_name, value=[0x20, 0x0])
 
-                        prop._source = source_tag
+                        prop._set_layer_value(overlay_layer, prop.__dict__.get('value', []), priority=500)
                         node.__props__[prop_name] = prop
 
             # Step 5: Verify properties are tagged
@@ -817,7 +816,7 @@ class TestOverlaySourceIntegration:
             # Tag properties from each overlay
             for overlay_file in [display_file, audio_file]:
                 targets = extract_overlay_targets(overlay_file)
-                source_tag = f"overlay:{os.path.basename(overlay_file)}"
+                overlay_layer = os.path.splitext(os.path.basename(overlay_file))[0]
 
                 for label, target_info in targets.items():
                     # Use __nodes__ to avoid iterator state issues
@@ -830,7 +829,7 @@ class TestOverlaySourceIntegration:
                     if node:
                         for prop_name in target_info['props']:
                             prop = LopperProp(name=prop_name, value=["okay"])
-                            prop._source = source_tag
+                            prop._set_layer_value(overlay_layer, ["okay"], priority=500)
                             node.__props__[prop_name] = prop
 
             # Generate fragments for only display.dtsi
@@ -879,11 +878,11 @@ class TestOverlaySourceIntegration:
         # 1. clocks property referencing PL node (phandle ref)
         # 2. status property (non-phandle, just overlay source)
         clocks_prop = LopperProp(name='clocks', value=[0x50, 0x0])
-        clocks_prop._source = 'overlay:mmi_dc.dtsi'
+        clocks_prop._set_layer_value('mmi_dc', [0x50, 0x0], priority=500)
         tree['/amba/mmi_dc@fd4a0000'].__props__['clocks'] = clocks_prop
 
         status_prop = LopperProp(name='status', value=["okay"])
-        status_prop._source = 'overlay:mmi_dc.dtsi'
+        status_prop._set_layer_value('mmi_dc', ["okay"], priority=500)
         tree['/amba/mmi_dc@fd4a0000'].__props__['status'] = status_prop
 
         # Create output overlay (simulating extracted PL nodes)
@@ -944,7 +943,7 @@ class TestOverlaySourceIntegration:
 
         for name, value in props_from_overlay:
             prop = LopperProp(name=name, value=value)
-            prop._source = 'overlay:mmi_dc.dtsi'
+            prop._set_layer_value('mmi_dc', value, priority=500)
             tree['/amba/mmi_dc@fd4a0000'].__props__[name] = prop
 
         # Generate fragment
@@ -1019,7 +1018,7 @@ class TestOverlaySourceIntegration:
 
             # Step 3: Simulate merge - add overlay properties to base tree
             # (In real flow, DTC does this during concatenated compilation)
-            source_tag = f"overlay:{overlay_basename}"
+            overlay_layer = os.path.splitext(overlay_basename)[0]
             for label, target_info in targets.items():
                 node = None
                 for n in base_tree.__nodes__.values():
@@ -1032,7 +1031,7 @@ class TestOverlaySourceIntegration:
                         # Create property with value from expected_props
                         value = expected_props.get(prop_name, ["unknown"])
                         prop = LopperProp(name=prop_name, value=value)
-                        prop._source = source_tag
+                        prop._set_layer_value(overlay_layer, value, priority=500)
                         node.__props__[prop_name] = prop
 
             # Step 4: Extract overlay content back out
@@ -1120,7 +1119,7 @@ class TestOverlaySourceIntegration:
 
             # === STEP 1: Tag user overlay properties (done by LopperSDT.setup) ===
             targets = extract_overlay_targets(overlay_file)
-            source_tag = f"overlay:{os.path.basename(overlay_file)}"
+            overlay_layer = os.path.splitext(os.path.basename(overlay_file))[0]
 
             for label, target_info in targets.items():
                 node = None
@@ -1141,7 +1140,7 @@ class TestOverlaySourceIntegration:
                         else:
                             prop = LopperProp(name=prop_name, value=["unknown"])
 
-                        prop._source = source_tag
+                        prop._set_layer_value(overlay_layer, prop.__dict__.get('value', []), priority=500)
                         node.__props__[prop_name] = prop
 
             # === STEP 2: Extract PL nodes to overlay (done by assist) ===
@@ -1276,21 +1275,21 @@ class TestOverlaySourceIntegration:
 
             # === STEP 2: LopperSDT._tag_overlay_properties tags props AND child subtrees ===
             overlay_basename = os.path.basename(overlay_file)
-            source_tag = f"overlay:{overlay_basename}"
+            overlay_layer = os.path.splitext(overlay_basename)[0]
 
             sdt = LopperSDT("")
             sdt.tree = base_tree
             sdt._overlay_targets = {overlay_basename: targets}
             sdt._tag_overlay_properties()
 
-            # Verify tagging reached the deep endpoint node
+            # Verify tagging reached the deep endpoint node (layer key present)
             ep_props = base_tree['/amba/mmi_dc@fd4a0000/ports/port@0/endpoint'].__props__
-            assert ep_props['remote-endpoint']._source == source_tag, \
-                "remote-endpoint inside nested endpoint should be tagged as overlay-sourced"
+            assert overlay_layer in ep_props['remote-endpoint']._layers, \
+                "remote-endpoint inside nested endpoint should have overlay layer"
 
             ports_props = base_tree['/amba/mmi_dc@fd4a0000/ports'].__props__
-            assert ports_props['#address-cells']._source == source_tag, \
-                "#address-cells on ports node should be tagged as overlay-sourced"
+            assert overlay_layer in ports_props['#address-cells']._layers, \
+                "#address-cells on ports node should have overlay layer"
 
             # === STEP 3: fragment generation pulls both flat props and child content ===
             output_overlay = LopperTree()
@@ -1383,7 +1382,7 @@ class TestOverlaySourceIntegration:
 
             # === STEP 2: LopperSDT._tag_overlay_properties tags props AND child subtrees ===
             overlay_basename = os.path.basename(overlay_file)
-            source_tag = f"overlay:{overlay_basename}"
+            overlay_layer = os.path.splitext(overlay_basename)[0]
 
             sdt = LopperSDT("")
             sdt.tree = base_tree
@@ -1392,8 +1391,8 @@ class TestOverlaySourceIntegration:
 
             # Endpoint's data-lanes must be tagged even though it has no PL ref
             ep_props = base_tree['/amba/mmi_dc@fd4a0000/ports/port@0/endpoint'].__props__
-            assert ep_props['data-lanes']._source == source_tag, \
-                "data-lanes inside nested endpoint should be tagged as overlay-sourced"
+            assert overlay_layer in ep_props['data-lanes']._layers, \
+                "data-lanes inside nested endpoint should have overlay layer"
 
             # === STEP 3: Fragment generation captures flat properties ===
             output_overlay = LopperTree()

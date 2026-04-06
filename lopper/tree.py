@@ -24,6 +24,8 @@ from collections import Counter
 from io import StringIO
 import copy
 import json
+import threading
+from contextlib import contextmanager
 
 import lopper.base
 from lopper.base import lopper_base
@@ -202,12 +204,16 @@ class LopperProp():
 
         self.abs_path = ""
 
-        # Source tracking for overlay provenance
-        # Format: None (base tree), 'overlay:<filename>', 'yaml:<filename>', etc.
-        self._source = None
+        # Layered value storage: layer_name -> (priority, value_list)
+        # Priorities: base=0, overlay layers=500, modifications=1000
+        self._layers = {}
+
+        # Back-reference to the owning LopperNode (set by LopperNode when added)
+        self._node = None
 
         if value == None:
             self.value = []
+            self._layers['base'] = (0, [])
         else:
             # we want to avoid the overriden __setattr__ below
             self.__dict__["value"] = value
@@ -215,6 +221,9 @@ class LopperProp():
             # resolved, it may be used in some sort of test that
             # needs a type
             self.ptype = self.property_type_guess()
+            # Seed base layer with initial value
+            v = value if isinstance(value, list) else [value]
+            self._layers['base'] = (0, v)
 
 
     def __deepcopy__(self, memodict={}):
@@ -255,12 +264,80 @@ class LopperProp():
         new_instance.ptype = self.ptype
         new_instance.binary = self.binary
         new_instance.phandle_resolution = self.phandle_resolution
-        new_instance._source = self._source
+        new_instance._layers = copy.deepcopy(self._layers, memodict)
+        new_instance._node = None  # don't copy the backref; caller sets it
 
         if self.__dbg__ > 1:
             lopper.log._debug( f"property deep copy done: {[self]} ({type(new_instance.value)})({new_instance.value})" )
 
         return new_instance
+
+    # ------------------------------------------------------------------
+    # Layered value API
+    # ------------------------------------------------------------------
+
+    def _set_layer_value(self, layer_name, value, priority=None):
+        """Store value for a named layer.
+
+        Default priorities: 'base'=0, named overlays=500, 'modifications'=1000.
+
+        Args:
+            layer_name: Name of the layer (e.g., 'base', 'pl_overlay', 'modifications')
+            value: The value to store (list or scalar, stored as list)
+            priority: Optional override; defaults based on layer_name
+        """
+        if priority is None:
+            priority = {'base': 0, 'modifications': 1000}.get(layer_name, 500)
+        v = value if isinstance(value, list) else [value]
+        self._layers[layer_name] = (priority, v)
+
+    def _layer_value(self, layer_name):
+        """Return value for a specific layer, or None if layer doesn't exist."""
+        entry = self._layers.get(layer_name)
+        return entry[1] if entry else None
+
+    def _winning_layer_value(self, view=None):
+        """Return value from the highest-priority layer, optionally for a view.
+
+        Args:
+            view: Layer name to select exactly, or None to return winning (highest priority)
+
+        Returns:
+            list value, or raw __dict__['value'] as fallback if _layers is empty
+        """
+        if not self._layers:
+            return self.__dict__.get('value', [])
+        if view is not None and view in self._layers:
+            return self._layers[view][1]
+        # Return value from highest priority layer
+        return max(self._layers.values(), key=lambda e: e[0])[1]
+
+    def __getattribute__(self, name):
+        """Intercept 'value' reads to return view-context-appropriate layer value."""
+        if name == 'value':
+            d = object.__getattribute__(self, '__dict__')
+            # Only activate layered logic if _layers is initialised and non-empty
+            layers = d.get('_layers')
+            if layers:
+                node = d.get('_node')
+                tree = None
+                if node is not None:
+                    # LopperNode uses .tree (not ._tree) for the owning tree
+                    try:
+                        tree = node.__dict__.get('tree')
+                    except Exception:
+                        pass
+                view = None
+                if tree is not None:
+                    # Access _view_local directly from tree's __dict__ to bypass
+                    # LopperTree.__getattribute__ which may not handle it yet
+                    view_local = tree.__dict__.get('_view_local')
+                    if view_local is not None:
+                        view = getattr(view_local, 'active', None)
+                return object.__getattribute__(self, '_winning_layer_value')(view)
+            # Fallback: return raw value from __dict__
+            return d.get('value', [])
+        return object.__getattribute__(self, name)
 
     def __str__( self ):
         """The string representation of the property
@@ -455,6 +532,10 @@ class LopperProp():
             except:
                 self.__modified__ = True
 
+            # Record explicit writes in the 'modifications' layer (highest priority)
+            if '_layers' in self.__dict__:
+                self.__dict__['_layers']['modifications'] = (1000, self.__dict__[name])
+
             self.resolve()
         else:
             self.__dict__[name] = value
@@ -519,6 +600,10 @@ class LopperProp():
                 # on the LopperProp class
                 self.__dict__["value"] = merged_json_str
 
+                # Update base layer only if not already set (preserve pre-merge value)
+                if 'base' not in self._layers or not self._layers['base'][1]:
+                    self.set_layer_value('base', merged_json_str)
+
                 lopper.log._debug(f"merged value: {self.value}")
 
             except Exception as e:
@@ -562,6 +647,10 @@ class LopperProp():
 
             # Assume `self.value` can store result directly for non-JSON data
             self.__dict__["value"] = result
+
+            # Update base layer only if not already set (preserve pre-merge value)
+            if 'base' not in self._layers or not self._layers['base'][1]:
+                self.set_layer_value('base', result)
 
             lopper.log._debug(f"merged value:: {self.value}")
 
@@ -1888,6 +1977,10 @@ class LopperNode(object):
         self.__nstate__ = "init"
         self.__modified__ = False
 
+        # Layered view: which overlay layer this node originated from.
+        # None = base tree node; '<overlay-name>' = node added by that overlay.
+        self._origin_layer = None
+
     def __deepcopy__(self, memodict={}):
         """ Create a deep copy of a node
 
@@ -1935,8 +2028,6 @@ class LopperNode(object):
         # /copied to the path, but for now, we leave it to the caller.
         new_instance.abs_path = copy.deepcopy( self.abs_path, memodict )
         new_instance.indent_char = self.indent_char
-
-        new_instance._source = self._source
 
         # this may cause duplicate phandles, be careful when assiging to
         # a tree ... but doing this means that there's a chance copied
@@ -2295,9 +2386,12 @@ class LopperNode(object):
         if isinstance(val, LopperProp ):
             # we can try to assign
             self.__props__[key] = val
+            val._node = self
+            val.node = self
         else:
             np = LopperProp( key, -1, self, val, self.__dbg__ )
             self.__props__[key] = np
+            np._node = self
             self.__props__[key].resolve()
 
             # throw an exception, since this is not a valid
@@ -2706,6 +2800,30 @@ class LopperNode(object):
                 except:
                     output = sys.stdout
 
+        # View context: check whether this node is visible in the active view.
+        # Nodes with _origin_layer set are overlay-introduced and invisible in 'base' view.
+        # The root '/' node is always visible.
+        if self.abs_path != '/':
+            try:
+                active_view = self.tree.__dict__.get('_view_local')
+                active_view = getattr(active_view, 'active', None) if active_view else None
+            except Exception:
+                active_view = None
+            if active_view is not None:
+                origin = self.__dict__.get('_origin_layer')
+                if active_view == 'base' and origin is not None:
+                    # Overlay-only node — not visible in base view
+                    if as_string:
+                        sys.stdout = sys.__stdout__
+                        return mystdout.getvalue()
+                    return
+                if active_view != 'base' and origin is not None and origin != active_view:
+                    # Node belongs to a different overlay layer
+                    if as_string:
+                        sys.stdout = sys.__stdout__
+                        return mystdout.getvalue()
+                    return
+
         try:
             if self.tree._type == "dts":
                 depth = self.depth
@@ -2807,10 +2925,35 @@ class LopperNode(object):
                 outstring = f"phandle = <{hex(self.phandle)}>;"
                 print(outstring.rjust(len(outstring)+(depth*8)+8, self.indent_char), file=output, flush=True )
 
+        # Determine active view for property filtering and re-resolution
+        try:
+            _vl = self.tree.__dict__.get('_view_local')
+            _active_view = getattr(_vl, 'active', None) if _vl else None
+        except Exception:
+            _active_view = None
+
         # now the properties
         for p in self:
             if resolve_props:
                 p.resolve( strict )
+
+            # View-based property filtering:
+            # In 'base' view, skip properties that came from an overlay
+            if _active_view == 'base' and any(
+                    k not in ('base', 'modifications') for k in p._layers):
+                continue
+
+            # Re-resolve string_val from the winning layer value for this view.
+            # This is needed because resolve() was called outside the view context
+            # and string_val was derived from the merged (winning-without-view) value.
+            if _active_view is not None and p._layers:
+                layer_val = p._winning_layer_value(_active_view)
+                if layer_val != p.__dict__.get('value'):
+                    # Temporarily update __dict__["value"] for resolve() then restore
+                    saved = p.__dict__.get('value')
+                    p.__dict__['value'] = layer_val
+                    p.resolve(strict)
+                    p.__dict__['value'] = saved
 
             p.print( output )
 
@@ -3123,59 +3266,44 @@ class LopperNode(object):
     def overlay_sourced_properties(self, source_filter=None):
         """Return properties that came from overlays matching the filter.
 
-        Finds properties on this node that have a _source attribute indicating
-        they came from a user overlay file. Used for pulling overlay-contributed
-        properties back into generated overlay fragments.
+        Finds properties on this node that have overlay layer entries in
+        _layers (any key that is not 'base' or 'modifications'). Used for
+        pulling overlay-contributed properties back into generated overlay
+        fragments.
 
         Args:
-            source_filter: Filter for which overlay sources to match.
+            source_filter: Filter for which overlay layers to match.
                 None - return all overlay-sourced properties
                 '*' - return all overlay-sourced properties (same as None)
-                'mmi_dc.dtsi' - match specific overlay filename
-                ['a.dtsi', 'b.dtsi'] - match any of these overlay filenames
+                'mmi_dc.dtsi' - match layer name 'mmi_dc' (stem without extension)
+                ['a.dtsi', 'b.dtsi'] - match any of these layer stems
 
         Returns:
-            list: List of (prop_name, source) tuples for matching properties.
+            list: List of (prop_name, layer_name) tuples for matching properties.
                   Empty list if no properties match.
-
-        Example:
-            # Find all properties from any overlay
-            props = node.overlay_sourced_properties('*')
-
-            # Find properties from specific overlay
-            props = node.overlay_sourced_properties('mmi_dc.dtsi')
-            for prop_name, source in props:
-                print(f"{prop_name} came from {source}")
         """
-        matches = []
+        _INTERNAL = frozenset(('base', 'modifications'))
 
-        # Normalize filter to list
+        # Normalise filter: convert filenames to stems, build set or None
         if source_filter is None or source_filter == '*':
-            # Match any overlay source
-            filter_list = None
-        elif isinstance(source_filter, str):
-            filter_list = [source_filter]
+            filter_set = None
         else:
-            filter_list = list(source_filter)
+            if isinstance(source_filter, str):
+                source_filter = [source_filter]
+            filter_set = {os.path.splitext(f)[0] for f in source_filter}
 
+        matches = []
         for prop_name, prop in self.__props__.items():
-            source = getattr(prop, '_source', None)
-            if source is None:
+            overlay_layers = [k for k in prop._layers if k not in _INTERNAL]
+            if not overlay_layers:
                 continue
-
-            # Check if source indicates an overlay
-            if not source.startswith('overlay:'):
-                continue
-
-            # Extract overlay filename from source
-            overlay_name = source[8:]  # Remove 'overlay:' prefix
-
-            if filter_list is None:
-                # Match any overlay
-                matches.append((prop_name, source))
-            elif overlay_name in filter_list:
-                # Match specific overlay(s)
-                matches.append((prop_name, source))
+            if filter_set is None:
+                matches.append((prop_name, overlay_layers[0]))
+            else:
+                for layer in overlay_layers:
+                    if layer in filter_set:
+                        matches.append((prop_name, layer))
+                        break
 
         return matches
 
@@ -3674,6 +3802,7 @@ class LopperNode(object):
                     else:
                         self.__props__[prop] = LopperProp( prop, -1, self,
                                                            prop_val, self.__dbg__ )
+                        self.__props__[prop]._node = self
 
                         if dtype == LopperFmt.UINT8:
                             self.__props__[prop].binary = True
@@ -3718,6 +3847,7 @@ class LopperNode(object):
                 if saved_props[p].__pstate__ != "deleted":
                     self.__props__[p] = saved_props[p]
                     self.__props__[p].node = self
+                    self.__props__[p]._node = self
 
             if not self.type:
                 self.type = [ "" ]
@@ -4109,6 +4239,10 @@ class LopperTree:
         self._resolver = None
         self._validator = None
 
+        # Thread-local view context: active layer name or None (= winning/merged)
+        self.__dict__['_view_local'] = threading.local()
+        self.__dict__['_view_local'].active = None
+
         # output/print information
         self.indent_char = ' '
 
@@ -4182,35 +4316,57 @@ class LopperTree:
         """
         return self.child_trees('overlay')
 
-    def nodes_with_overlay_sources(self, source_filter=None):
-        """Find all nodes that have properties from matching overlays.
+    @contextmanager
+    def view(self, layer_name):
+        """Context manager: set active view layer for property value reads.
 
-        Scans the tree for nodes containing properties that came from user
-        overlay files. Used for identifying which nodes need their overlay-
-        contributed properties pulled into generated overlay fragments.
+        Within the block, LopperProp.value returns the value from layer_name
+        rather than the winning (highest priority) value. Restores the previous
+        context on exit. Thread-safe via threading.local().
 
         Args:
-            source_filter: Filter for which overlay sources to match.
-                None - match all overlay sources
-                '*' - match all overlay sources (same as None)
-                'mmi_dc.dtsi' - match specific overlay filename
-                ['a.dtsi', 'b.dtsi'] - match any of these overlay filenames
+            layer_name: Layer to activate. Common values: 'base' (original SDT
+                        values before any overlay), '<overlay-name>' (a specific
+                        overlay's values), None (winning/merged, the default).
+
+        Example::
+
+            # Write base SDT without overlay properties
+            with sdt.tree.view('base'):
+                sdt.tree.print(output_file)
+
+            # Write with all applied overlays (default behaviour)
+            sdt.tree.print(output_file)
+
+        Yields:
+            self (the tree), to allow ``with sdt.tree.view('base') as t:`` usage.
+        """
+        view_local = self.__dict__.get('_view_local')
+        prev = getattr(view_local, 'active', None) if view_local else None
+        if view_local is not None:
+            view_local.active = layer_name
+        try:
+            yield self
+        finally:
+            if view_local is not None:
+                view_local.active = prev
+
+    def nodes_with_overlay_sources(self, source_filter=None):
+        """Find all nodes that have properties from matching overlay layers.
+
+        Scans the tree for nodes containing properties that carry overlay
+        layer entries in _layers. The filter accepts overlay filenames
+        (e.g., 'mmi_dc.dtsi') and matches against the stem ('mmi_dc').
+
+        Args:
+            source_filter: Filter for which overlay layers to match.
+                None/'*' - match all overlay layers
+                'mmi_dc.dtsi' - match layer stem 'mmi_dc'
+                ['a.dtsi', 'b.dtsi'] - match any of these layer stems
 
         Returns:
-            list: List of (node, [(prop_name, source), ...]) tuples.
-                  Each tuple contains a node and the list of its overlay-
-                  sourced properties matching the filter.
+            list: List of (node, [(prop_name, layer_name), ...]) tuples.
                   Empty list if no nodes match.
-
-        Example:
-            # Find all nodes with properties from any overlay
-            for node, props in tree.nodes_with_overlay_sources('*'):
-                print(f"{node.abs_path} has {len(props)} overlay properties")
-
-            # Find nodes touched by specific overlay
-            for node, props in tree.nodes_with_overlay_sources('mmi_dc.dtsi'):
-                for prop_name, source in props:
-                    print(f"  {node.abs_path}.{prop_name}")
         """
         matches = []
 
@@ -4756,41 +4912,27 @@ class LopperTree:
 
     def fragment_add_for_overlay_sources( self, overlay_tree, source_filter='*',
                                           mode='properties' ):
-        """Add overlay fragments for properties that came from user overlays.
+        """Add overlay fragments for properties that came from user overlay layers.
 
-        Scans this tree (the base tree) for properties that have a _source
-        attribute indicating they came from a user overlay file. Creates
-        overlay fragments containing those properties.
-
-        This complements fragment_add_for_refs() which handles phandle
-        references. Together they ensure that:
-        1. Properties referencing overlay nodes are pulled into fragments
-        2. Properties from user overlays are also pulled into fragments
+        Scans this tree (the base tree) for properties that carry overlay
+        layer entries in _layers and creates overlay fragments for them.
+        The filter accepts overlay filenames; matching is done against the
+        layer name (stem without extension).
 
         Args:
             overlay_tree (LopperTree): The overlay tree to add fragments to.
                                        Modified in place.
-            source_filter: Filter for which overlay sources to include.
-                '*' - all overlay sources (default)
-                'mmi_dc.dtsi' - specific overlay filename
-                ['a.dtsi', 'b.dtsi'] - list of overlay filenames
-            mode: How to handle properties from matching overlays.
-                'properties' - only include properties with matching _source
-                'full_nodes' - include ALL properties from nodes that have
-                               any property with matching _source
+            source_filter: Filter for which overlay layers to include.
+                '*' - all overlay layers (default)
+                'mmi_dc.dtsi' - layer named 'mmi_dc'
+                ['a.dtsi', 'b.dtsi'] - list of layer stems to match
+            mode: How to handle matched nodes.
+                'properties' - only include overlay-layer properties
+                'full_nodes' - include ALL properties from matched nodes
 
         Returns:
             list: List of fragment nodes that were added to overlay_tree.
                   Empty list if no fragments were needed.
-
-        Example:
-            # After extracting PL nodes to overlay, also pull user overlay content:
-            base_tree.fragment_add_for_refs(overlay_tree)  # phandle refs
-            base_tree.fragment_add_for_overlay_sources(
-                overlay_tree,
-                source_filter='mmi_dc.dtsi',
-                mode='properties'
-            )
         """
         # Find nodes with overlay-sourced properties
         nodes_with_sources = self.nodes_with_overlay_sources(source_filter)

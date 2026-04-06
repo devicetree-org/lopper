@@ -482,19 +482,24 @@ class LopperSDT:
 
         tagged_count = 0
 
-        def tag_subtree(node, source_tag):
+        def tag_subtree(node, overlay_layer):
             """Recursively tag all properties on node and all descendants."""
             count = 0
+            # Mark entire node as overlay-originated
+            node._origin_layer = overlay_layer
             for prop_name in list(node.__props__.keys()):
-                node.__props__[prop_name]._source = source_tag
+                prop = node.__props__[prop_name]
+                # Record overlay layer value (current merged value IS the overlay value)
+                prop._set_layer_value(overlay_layer, prop.__dict__.get('value', []), priority=500)
                 count += 1
-                lopper.log._debug(f"Tagged {node.abs_path}.{prop_name} from {source_tag}")
+                lopper.log._debug(f"Tagged {node.abs_path}.{prop_name} with layer '{overlay_layer}'")
             for child in node.child_nodes.values():
-                count += tag_subtree(child, source_tag)
+                count += tag_subtree(child, overlay_layer)
             return count
 
         for overlay_name, targets in self._overlay_targets.items():
-            source_tag = f"overlay:{overlay_name}"
+            # Layer name is just the overlay filename without extension, e.g. 'pl_overlay'
+            overlay_layer = os.path.splitext(overlay_name)[0]
 
             for label, target_info in targets.items():
                 # Support both old list format and new dict format
@@ -516,7 +521,9 @@ class LopperSDT:
                 # Tag direct properties on the target node
                 for prop_name in prop_names:
                     if prop_name in node.__props__:
-                        node.__props__[prop_name]._source = source_tag
+                        prop = node.__props__[prop_name]
+                        # Record overlay layer value
+                        prop._set_layer_value(overlay_layer, prop.__dict__.get('value', []), priority=500)
                         tagged_count += 1
                         lopper.log._debug(f"Tagged {node.abs_path}.{prop_name} from {overlay_name}")
 
@@ -525,7 +532,7 @@ class LopperSDT:
                     child_path = node.abs_path.rstrip('/') + '/' + child_name
                     if child_path in self.tree.__nodes__:
                         child_node = self.tree.__nodes__[child_path]
-                        tagged_count += tag_subtree(child_node, source_tag)
+                        tagged_count += tag_subtree(child_node, overlay_layer)
                     else:
                         lopper.log._debug(f"Overlay child node '{child_path}' not found in merged tree")
 
