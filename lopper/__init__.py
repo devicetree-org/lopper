@@ -451,6 +451,112 @@ class LopperSDT:
         self.tmpfiles = []
         self.schema = None
 
+    def _seed_base_layers(self):
+        """Seed the 'base' layer for all properties in self.tree.
+
+        Called after the base DTS is compiled and loaded, before any overlay
+        files are applied. Records the pre-overlay value of every property as
+        the 'base' layer so that tree.view('base') can return original values.
+        """
+        if self.tree is None:
+            return
+
+        for node in self.tree:
+            for prop_name, prop in node.__props__.items():
+                raw_val = prop.__dict__.get('value', [])
+                if 'base' not in prop._layers or not prop._layers['base'][1]:
+                    prop.set_layer_value('base', raw_val, priority=0)
+
+    def _apply_overlay_dts_files(self, overlay_dts_files, include_paths):
+        """Compile and apply DTS overlay files as separate layers.
+
+        For each overlay file:
+        1. Compile standalone using compile_overlay_standalone()
+        2. Walk the overlay tree nodes
+        3. Merge each overlay node into self.tree (adding new nodes and
+           updating existing ones)
+        4. Seed the overlay layer for every modified/added property
+
+        This is called after _seed_base_layers() so the 'base' layer has
+        already been populated with pre-overlay values.
+
+        Args:
+            overlay_dts_files: list of DTS/DTSI overlay file paths
+            include_paths: include path string for dtc preprocessing
+        """
+        if not overlay_dts_files or self.tree is None:
+            return
+
+        for overlay_file in overlay_dts_files:
+            overlay_name = os.path.basename(overlay_file)
+            overlay_layer = os.path.splitext(overlay_name)[0]
+            source_tag = f"overlay:{overlay_name}"
+
+            lopper.log._info(f"Applying overlay layer '{overlay_layer}' from {overlay_name}")
+
+            overlay_tree = compile_overlay_standalone(
+                overlay_file,
+                include_paths=include_paths,
+                tmpdir=self.tmpdir,
+                save_temps=self.save_temps
+            )
+
+            if overlay_tree is None:
+                lopper.log._warning(f"Could not compile overlay {overlay_name} standalone; "
+                                    f"skipping layer seeding for this file")
+                continue
+
+            # Walk overlay tree nodes and apply to self.tree
+            for o_node in overlay_tree:
+                if o_node.abs_path in ('/', '__fixups__', '/__fixups__',
+                                       '__local_fixups__', '/__local_fixups__',
+                                       '__symbols__', '/__symbols__'):
+                    continue
+
+                node_path = o_node.abs_path
+
+                if node_path in self.tree.__nodes__:
+                    # Existing node: merge overlay properties, seed overlay layer for each
+                    base_node = self.tree.__nodes__[node_path]
+                    for prop_name, o_prop in o_node.__props__.items():
+                        o_val = o_prop.__dict__.get('value', [])
+                        if prop_name in base_node.__props__:
+                            b_prop = base_node.__props__[prop_name]
+                            # Seed overlay layer with overlay's value before merge
+                            b_prop.set_layer_value(overlay_layer, o_val, priority=500)
+                            b_prop._source = source_tag
+                            # Update the raw value (winning: overlay wins over base)
+                            b_prop.__dict__['value'] = o_val
+                            b_prop._layers['modifications'] = (1000, o_val)
+                        else:
+                            # New property introduced by overlay
+                            from lopper.tree import LopperProp
+                            new_prop = LopperProp(prop_name, value=o_val)
+                            new_prop._source = source_tag
+                            new_prop.set_layer_value('base', [], priority=0)
+                            new_prop.set_layer_value(overlay_layer, o_val, priority=500)
+                            base_node[prop_name] = new_prop
+                else:
+                    # New node introduced by overlay — find/create parent
+                    parent_path = '/'.join(node_path.split('/')[:-1]) or '/'
+                    if parent_path in self.tree.__nodes__:
+                        parent_node = self.tree.__nodes__[parent_path]
+                        from lopper.tree import LopperNode
+                        new_node = LopperNode(-1, node_path)
+                        new_node._origin_layer = overlay_layer
+                        self.tree.add(new_node)
+                        # Copy properties from overlay node
+                        for prop_name, o_prop in o_node.__props__.items():
+                            o_val = o_prop.__dict__.get('value', [])
+                            from lopper.tree import LopperProp
+                            new_prop = LopperProp(prop_name, value=o_val)
+                            new_prop._source = source_tag
+                            new_prop.set_layer_value('base', [], priority=0)
+                            new_prop.set_layer_value(overlay_layer, o_val, priority=500)
+                            new_node[prop_name] = new_prop
+
+            lopper.log._debug(f"Applied overlay layer '{overlay_layer}' from {overlay_name}")
+
     def _tag_overlay_properties(self):
         """Tag properties that came from user overlay files.
 
@@ -725,6 +831,7 @@ class LopperSDT:
             # do we have any extra sdt files to concatenate first ?
             fp = ""
             fpp = tempfile.NamedTemporaryFile( delete=False )
+            overlay_dts_files = []
             # TODO: if the count is one, we shouldn't be doing the tmp file processing.
             if sdt_files:
                 sdt_files.insert( 0, self.dts )
@@ -751,36 +858,50 @@ class LopperSDT:
                                 self._overlay_targets[overlay_name] = targets
                                 lopper.log._debug(f"Identified overlay {overlay_name} targeting: {list(targets.keys())}")
 
-                # this block concatenates all the files into a single dts to
-                # compile
+                # Separate overlay DTS files from base DTS files so that
+                # base and overlay layers can be seeded independently.
+                # Overlay files use &label { } syntax to modify existing nodes.
+                overlay_dts_files = []
+                base_dts_files = []
+                for f in sdt_files:
+                    if f.endswith(".dts") or f.endswith(".dtsi"):
+                        if f != self.dts and is_overlay_file(f):
+                            overlay_dts_files.append(f)
+                        else:
+                            base_dts_files.append(f)
+
+                # Concatenate only base DTS files into the file to compile.
+                # Overlay files will be compiled separately after the base tree
+                # is loaded so that base and overlay layers are properly seeded.
                 with open( fpp.name, 'wb') as wfd:
-                    for f in sdt_files:
-                        if f.endswith(".dts") or f.endswith(".dtsi"):
-                            with open(f, 'rb') as fd:
-                                shutil.copyfileobj(fd, wfd)
+                    for f in base_dts_files:
+                        with open(f, 'rb') as fd:
+                            shutil.copyfileobj(fd, wfd)
 
-                        elif re.search( r".yaml$", f ):
-                            # Note: if tree merging isn't sufficient for these, we could use
-                            #       deepmerge functionality directly on mutltiple yaml files
-                            # look for a special front end, for this or any file for that matter
-                            yaml = LopperYAML( f, config=config )
-                            yaml_tree = yaml.to_tree()
-                            yaml_tree._type = "yaml"
+                # Handle yaml/json extended trees from all sdt_files
+                for f in sdt_files:
+                    if re.search( r".yaml$", f ):
+                        # Note: if tree merging isn't sufficient for these, we could use
+                        #       deepmerge functionality directly on mutltiple yaml files
+                        # look for a special front end, for this or any file for that matter
+                        yaml = LopperYAML( f, config=config )
+                        yaml_tree = yaml.to_tree()
+                        yaml_tree._type = "yaml"
 
-                            # save the tree for future processing (and joining with the main
-                            # system device tree). No code after this needs to be concerned that
-                            # this came from yaml.
-                            sdt_extended_trees.append( yaml_tree )
-                        elif re.search( r".json$", f ):
-                            # look for a special front end, for this or any file for that matter
-                            json = LopperJSON( json=f, config=config )
-                            json_tree = json.to_tree()
-                            json_tree._type = "json"
+                        # save the tree for future processing (and joining with the main
+                        # system device tree). No code after this needs to be concerned that
+                        # this came from yaml.
+                        sdt_extended_trees.append( yaml_tree )
+                    elif re.search( r".json$", f ):
+                        # look for a special front end, for this or any file for that matter
+                        json = LopperJSON( json=f, config=config )
+                        json_tree = json.to_tree()
+                        json_tree._type = "json"
 
-                            # save the tree for future processing (and joining with the main
-                            # system device tree). No code after this needs to be concerned that
-                            # this came from yaml.
-                            sdt_extended_trees.append( json_tree )
+                        # save the tree for future processing (and joining with the main
+                        # system device tree). No code after this needs to be concerned that
+                        # this came from yaml.
+                        sdt_extended_trees.append( json_tree )
 
                 fp = fpp.name
             else:
@@ -894,6 +1015,23 @@ class LopperSDT:
 
             self.tree.__symbols__ = self.symbols
 
+            # Seed the 'base' layer for every property in the base tree.
+            # This captures the pre-overlay values so that tree.view('base')
+            # returns original SDT values independent of any applied overlays.
+            self._seed_base_layers()
+
+            # Apply DTS overlay files as separate layers now that the base
+            # tree is loaded and the 'base' layer is seeded.  Each overlay
+            # is compiled standalone and merged so that its layer can be
+            # independently tracked.
+            if overlay_dts_files:
+                self._apply_overlay_dts_files(overlay_dts_files, include_paths)
+            elif hasattr(self, '_overlay_targets') and self._overlay_targets:
+                # Fallback: use the old _tag_overlay_properties() approach when
+                # overlay_dts_files was not populated (e.g. the sdt_files branch
+                # was not taken above).
+                self._tag_overlay_properties()
+
             # join any extended trees to the one we just created
             for t in sdt_extended_trees:
                 for node in t['/'].children():
@@ -914,11 +1052,6 @@ class LopperSDT:
                             merge = True
 
                         self.tree = self.tree.add( node, merge=merge )
-
-            # Tag properties that came from user overlays
-            # This uses the overlay targets extracted before compilation
-            if hasattr(self, '_overlay_targets') and self._overlay_targets:
-                self._tag_overlay_properties()
 
             fpp.close()
             self.tmpfiles.append( fpp.name )
