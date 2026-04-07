@@ -160,6 +160,12 @@ def usage():
     print('                        --nodes=/amba_pl                    - Extract entire /amba_pl node')
     print('                        --nodes=mmi_dc#clocks,clock-names   - Only clocks/clock-names from mmi_dc')
     print('                        --nodes=/amba_pl;mmi_dc#clocks      - Combine whole node and property specs')
+    print('  --exclude-props=<prop>[,<prop>,...] - Comma-separated list of properties to exclude from overlay')
+    print('                      These properties will be removed from the generated overlay output.')
+    print('                      Example: --exclude-props=address-map,interrupt-map')
+    print('  --exclude-nodes=<node>[,<node>,...] - Comma-separated list of node paths/labels to exclude')
+    print('                      These nodes will be removed from the generated overlay output.')
+    print('                      Example: --exclude-nodes=/amba_pl/some_node')
     print('\nExamples:')
     print(' With machine argument:')
     print(' lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi')
@@ -264,11 +270,17 @@ def validate_and_parse_options(options, sdt):
     # Process optional arguments
     firmware_override = None
     node_specs = None
+    exclude_props = None
+    exclude_nodes = None
     for arg in optional_args:
         if arg.startswith("--firmware-name="):
             firmware_override = arg.split("=", 1)[1]
         elif arg.startswith("--nodes="):
             node_specs = parse_node_specs(arg.split("=", 1)[1])
+        elif arg.startswith("--exclude-props="):
+            exclude_props = [p.strip() for p in arg.split("=", 1)[1].split(",") if p.strip()]
+        elif arg.startswith("--exclude-nodes="):
+            exclude_nodes = [n.strip() for n in arg.split("=", 1)[1].split(",") if n.strip()]
 
     # Parse arguments based on count
     try:
@@ -338,7 +350,7 @@ def validate_and_parse_options(options, sdt):
         usage()
         sys.exit(1)
 
-    return platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs
+    return platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs, exclude_props, exclude_nodes
 
 def validate_amba_pl_node(amba_node):
     """
@@ -541,7 +553,7 @@ def move_nodes_to_fpga(new_amba_node, fpga_node, node_collections, platform, con
     return new_amba_node, fpga_node
 
 def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree,
-                       user_overlay_files=None):
+                       user_overlay_files=None, exclude_props=None, exclude_nodes=None):
     """
     Build overlay tree from amba and fpga nodes, establishing overlay relationship.
 
@@ -599,7 +611,7 @@ def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree,
             _info(f"Added {len(src_fragments)} fragment(s) for user overlay properties")
 
     # Establish overlay relationship to resolve phandle references against base tree
-    overlay_tree.overlay_of(base_tree)
+    overlay_tree.overlay_of(base_tree, exclude_props=exclude_props, exclude_nodes=exclude_nodes)
 
     # Reorder nodes: fpga node should come after amba node
     try:
@@ -683,7 +695,7 @@ def resolve_node_by_label_or_path(sdt, node_ref):
     return None
 
 
-def build_overlay_from_node_specs(sdt, node_specs, base_tree):
+def build_overlay_from_node_specs(sdt, node_specs, base_tree, exclude_props=None, exclude_nodes=None):
     """
     Build an overlay tree from explicit node specifications.
 
@@ -747,7 +759,7 @@ def build_overlay_from_node_specs(sdt, node_specs, base_tree):
                 _warning(f"No matching properties found for '{node_ref}#{','.join(properties)}'")
 
     # Establish overlay relationship for phandle resolution
-    overlay_tree.overlay_of(base_tree)
+    overlay_tree.overlay_of(base_tree, exclude_props=exclude_props, exclude_nodes=exclude_nodes)
     overlay_tree.resolve()
 
     return overlay_tree
@@ -808,7 +820,7 @@ Output:
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
     # Parse and validate options
-    platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs = validate_and_parse_options(options, sdt)
+    platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs, exclude_props, exclude_nodes = validate_and_parse_options(options, sdt)
 
     overlay_tree = LopperTree()
 
@@ -826,7 +838,8 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     if node_specs:
         # Use explicit node specifications - completely overrides default behavior
         _info(f"Using explicit node selection: {node_specs}")
-        overlay_tree = build_overlay_from_node_specs(sdt, node_specs, sdt.tree)
+        overlay_tree = build_overlay_from_node_specs(sdt, node_specs, sdt.tree,
+                                                     exclude_props=exclude_props, exclude_nodes=exclude_nodes)
 
         if len(overlay_tree.__nodes__) == 0:
             _error("No valid overlay nodes created from --nodes specification")
@@ -868,7 +881,8 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
 
         # Build overlay tree with user overlay content
         overlay_tree = build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, sdt.tree,
-                                          user_overlay_files=user_overlay_files)
+                                          user_overlay_files=user_overlay_files,
+                                          exclude_props=exclude_props, exclude_nodes=exclude_nodes)
 
     # Clean overlay properties
     clean_overlay_properties(overlay_tree)
@@ -880,6 +894,16 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
 
     # Write output files and perform post-processing
     write_output_files(overlay_tree, sdt, pl_file, dtso_file)
+
+    # Write the main SDT output in base view so overlay-originated property
+    # values (e.g., address-map, interrupt-map from cpus_a78) do not bleed
+    # into the no-pl SDT output.  We write it here with an explicit view
+    # context and clear sdt.output_file so the main lopper loop does not
+    # write a second (unviewed) copy.
+    if getattr(sdt, '_overlay_targets', None) and sdt.output_file:
+        with sdt.tree.view('base'):
+            sdt.write()
+        sdt.output_file = ""
 
     print("Overlay generation completed successfully!")
     return True

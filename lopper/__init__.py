@@ -432,7 +432,6 @@ class LopperSDT:
         self.dryrun = False
         self.assists = []
         self.output_file = ""
-        self.write_view = None  # If set, main output is written in this layer view
         self.cleanup_flag = True
         self.save_temps = False
         self.enhanced = False
@@ -1424,12 +1423,8 @@ class LopperSDT:
 
             tree_to_write.strict = not self.permissive
             tree_to_write.resolve()
-            # Consume write_view immediately so it is one-shot and never
-            # silently carries over to a subsequent write() call.
-            active_view = view if view is not None else self.write_view
-            self.write_view = None
-            if active_view is not None:
-                with tree_to_write.view(active_view):
+            if view is not None:
+                with tree_to_write.view(view):
                     tree_to_write.print( output_filename )
             else:
                 tree_to_write.print( output_filename )
