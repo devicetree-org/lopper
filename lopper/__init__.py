@@ -432,6 +432,7 @@ class LopperSDT:
         self.dryrun = False
         self.assists = []
         self.output_file = ""
+        self.write_view = None  # If set, main output is written in this layer view
         self.cleanup_flag = True
         self.save_temps = False
         self.enhanced = False
@@ -1358,7 +1359,7 @@ class LopperSDT:
         #       not cleaning up the concatenated compiled. pp file, since
         #       it is created with mktmp()
 
-    def write( self, tree = None, output_filename = None, overwrite = True, enhanced = False ):
+    def write( self, tree = None, output_filename = None, overwrite = True, enhanced = False, view = None ):
         """Write a system device tree to a file
 
         Write a fdt (or system device tree) to an output file. This routine uses
@@ -1423,7 +1424,15 @@ class LopperSDT:
 
             tree_to_write.strict = not self.permissive
             tree_to_write.resolve()
-            tree_to_write.print( output_filename )
+            # Consume write_view immediately so it is one-shot and never
+            # silently carries over to a subsequent write() call.
+            active_view = view if view is not None else self.write_view
+            self.write_view = None
+            if active_view is not None:
+                with tree_to_write.view(active_view):
+                    tree_to_write.print( output_filename )
+            else:
+                tree_to_write.print( output_filename )
 
         elif re.search( r"\.yaml$", output_filename ):
             if self.outdir and not Path( output_filename ).is_absolute():
