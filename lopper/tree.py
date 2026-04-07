@@ -4928,6 +4928,79 @@ class LopperTree:
 
         return fragments_added
 
+    def extract_nodes( self, dest_tree, layer_filter='*' ):
+        """Extract nodes into dest_tree based on their _origin_layer.
+
+        Finds top-level nodes in this tree whose _origin_layer matches
+        layer_filter, moves them (deep copy + delete) into dest_tree as real
+        nodes.  Only top-level matching nodes are moved; their children come
+        along automatically via the deep copy.
+
+        This is the node-level complement to fragment_add_for_overlay_sources(),
+        which handles property modifications on existing nodes.  Together they
+        enable full round-trip reconstruction of any layer-tagged content —
+        whether from an overlay applied via -i, a domain split, or any other
+        layer-named operation:
+
+            dest = LopperTree()
+            base_tree.extract_nodes(dest, layer_filter='pl')
+            base_tree.fragment_add_for_overlay_sources(dest, 'pl')
+            dest.overlay_of(base_tree)
+
+        Args:
+            dest_tree (LopperTree): Destination tree.  Modified in place.
+            layer_filter: Layer name stem or filename to match against
+                _origin_layer.  '*' matches any non-internal layer.
+                Accepts a single string or a list of strings.
+                Filenames are stem-matched: 'pl.dtsi' matches layer 'pl'.
+
+        Returns:
+            list: LopperNode objects moved into dest_tree.
+                  Empty list if nothing matched.
+        """
+        _INTERNAL = frozenset(('base', 'modifications'))
+
+        # Normalise filter to a set of stems (or None for wildcard)
+        if layer_filter is None or layer_filter == '*':
+            filter_set = None
+        else:
+            if isinstance(layer_filter, str):
+                layer_filter = [layer_filter]
+            filter_set = {os.path.splitext(f)[0] for f in layer_filter}
+
+        def _matches(origin):
+            if origin is None:
+                return False
+            if filter_set is None:
+                return origin not in _INTERNAL
+            return origin in filter_set
+
+        # Collect top-level matching nodes only (children travel with them)
+        matched = []
+        for node in list(self.__nodes__.values()):
+            if not _matches(node.__dict__.get('_origin_layer')):
+                continue
+            ancestor_matched = False
+            p = node.parent
+            while p is not None:
+                if _matches(p.__dict__.get('_origin_layer')):
+                    ancestor_matched = True
+                    break
+                p = p.parent
+            if not ancestor_matched:
+                matched.append(node)
+
+        moved = []
+        for node in matched:
+            cloned = node()
+            dest_tree.add(cloned)
+            self.delete(node, capture=False)
+            moved.append(cloned)
+            lopper.log._info(f"Extracted node {node.abs_path} "
+                             f"(layer '{node._origin_layer}') to dest tree")
+
+        return moved
+
     def fragment_add_for_overlay_sources( self, overlay_tree, source_filter='*',
                                           mode='properties' ):
         """Add overlay fragments for properties that came from user overlay layers.
