@@ -574,14 +574,11 @@ def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree,
     overlay_tree = overlay_tree + new_amba_node
     overlay_tree = overlay_tree + fpga_node
 
-    # Pull fragments for base tree properties that reference overlay nodes
-    # (e.g., cpus_a78.address-map, imux.interrupt-map referencing PL nodes)
-    ref_fragments = base_tree.fragment_add_for_refs(overlay_tree)
-    if ref_fragments:
-        _info(f"Added {len(ref_fragments)} fragment(s) for phandle references")
-
     # Pull fragments for user overlay properties
     # These are properties tagged with _source='overlay:<filename>' during setup
+    # Note: fragments for base tree phandle refs (e.g., cpus_a78.address-map)
+    # are handled automatically by overlay_of() below — no need to call
+    # fragment_add_for_refs() here.
     if user_overlay_files:
         for overlay_file in user_overlay_files:
             src_fragments = base_tree.fragment_add_for_overlay_sources(
