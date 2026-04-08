@@ -42,6 +42,8 @@ class PropertyType(Enum):
     # References
     PHANDLE = "phandle"
     PHANDLE_ARRAY = "phandle-array"
+    PATH_REF = "path-ref"    # string value is an absolute node path ("/axi/foo@0")
+    ALIAS_REF = "alias-ref"  # string value is an alias name, optionally ":options"
 
     # Strings
     STRING = "string"
@@ -78,6 +80,8 @@ class PropertyType(Enum):
             PropertyType.EMPTY: LopperFmt.EMPTY,
             PropertyType.PHANDLE: LopperFmt.UINT32,
             PropertyType.PHANDLE_ARRAY: LopperFmt.UINT32,
+            PropertyType.PATH_REF: LopperFmt.STRING,
+            PropertyType.ALIAS_REF: LopperFmt.STRING,
             PropertyType.UINT8_ARRAY: LopperFmt.UINT8,
             PropertyType.UINT16_ARRAY: LopperFmt.UINT16,
             PropertyType.UINT32_ARRAY: LopperFmt.UINT32,
@@ -220,5 +224,15 @@ DT_SCHEMA_TYPES: Dict[str, TypeDefinition] = {
         min_items=1,
         source="dt-schema",
         description="Array of phandles with optional specifier cells"
+    ),
+    'path-ref': TypeDefinition(
+        PropertyType.PATH_REF,
+        source="dt-schema",
+        description="Absolute device-tree node path string"
+    ),
+    'alias-ref': TypeDefinition(
+        PropertyType.ALIAS_REF,
+        source="dt-schema",
+        description="Alias name string, optionally suffixed with :options"
     ),
 }
