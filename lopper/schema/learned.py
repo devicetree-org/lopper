@@ -174,12 +174,19 @@ PROPERTY_TYPE_HINTS = {
         'device_type',
         'label',
         'bootargs',
-        'stdout-path',
         'phy-mode',
         'dr_mode',
         'maximum-speed',
         'enable-method',
         'entry-method',
+    ],
+
+    # Properties whose string value is an alias name (key in /aliases), optionally
+    # followed by :options (e.g. "serial0:115200n8").  These are checked at runtime
+    # against the live /aliases node; the list here seeds the known-good set.
+    'alias_ref_properties': [
+        'stdout-path',
+        'linux,stdout-path',
     ],
 
     # Properties that are always boolean (empty)
@@ -710,6 +717,9 @@ class DTSSchemaGenerator:
         value = value.strip()
 
         # Check explicit type hints first
+        if name in self.type_hints.get('alias_ref_properties', []):
+            return 'alias-ref' if '"' in value else 'unknown'
+
         if name in self.type_hints.get('string_properties', []):
             return 'string' if '"' in value else 'unknown'
 
@@ -786,8 +796,11 @@ class DTSSchemaGenerator:
             # Has quotes, so it's a string type
             if '", "' in value or '","' in value:
                 return 'string-array'
-            else:
-                return 'string'
+            # Path-ref: quoted string whose content starts with '/' (absolute node path)
+            inner = value.strip('"')
+            if inner.startswith('/'):
+                return 'path-ref'
+            return 'string'
         else:
             return 'unknown'
 
