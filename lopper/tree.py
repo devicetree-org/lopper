@@ -5194,6 +5194,65 @@ class LopperTree:
         # Without this, cached string_val entries for properties like address-map may
         # still reference deleted nodes, causing stale phandle records in the output.
         if self.strict:
+            # Pass A: drop dangling path-ref properties.
+            # Any string property whose value is an absolute node path that no longer
+            # exists in the tree is removed (e.g. stale /aliases entries after
+            # domain_access filters out a node).
+            try:
+                aliases_node = self["/aliases"]
+            except Exception:
+                aliases_node = None
+
+            for n in self:
+                props_to_delete = []
+                for p in n:
+                    val = p.value
+                    # String properties are stored as a list; extract single string value.
+                    if not isinstance(val, list) or len(val) != 1 or not isinstance(val[0], str):
+                        continue
+                    raw = val[0].strip().strip('"')
+                    if raw.startswith('/'):
+                        try:
+                            self[raw]
+                        except Exception:
+                            props_to_delete.append(p)
+                            lopper.log._warning(
+                                f"strict: dropping dangling path-ref "
+                                f"'{n.abs_path}/{p.name}' -> '{raw}' (node gone)")
+                for p in props_to_delete:
+                    n - p
+
+            # Pass B: drop dangling alias-ref properties.
+            # Properties like stdout-path reference an alias name; if that alias was
+            # removed in pass A (or never existed), the property is also stale.
+            # Only check properties explicitly registered as alias-ref to avoid false
+            # positives from generic string properties whose values look like identifiers.
+            if aliases_node is not None:
+                try:
+                    alias_ref_props = set(
+                        lopper.schema.PROPERTY_TYPE_HINTS.get('alias_ref_properties', [])
+                    )
+                except Exception:
+                    alias_ref_props = {'stdout-path', 'linux,stdout-path'}
+                for n in self:
+                    props_to_delete = []
+                    for p in n:
+                        if p.name not in alias_ref_props:
+                            continue
+                        val = p.value
+                        if not isinstance(val, list) or len(val) != 1 or not isinstance(val[0], str):
+                            continue
+                        raw = val[0].strip().strip('"')
+                        alias_name = raw.split(':')[0]
+                        if alias_name and aliases_node.propval(alias_name) == ['']:
+                            props_to_delete.append(p)
+                            lopper.log._warning(
+                                f"strict: dropping dangling alias-ref "
+                                f"'{n.abs_path}/{p.name}' -> alias '{alias_name}' "
+                                f"(no longer in /aliases)")
+                    for p in props_to_delete:
+                        n - p
+
             for n in self:
                 for p in n:
                     p.resolve()
