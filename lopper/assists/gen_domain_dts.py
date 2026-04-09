@@ -314,7 +314,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 if "okay" in node.propval('status', list)[0]:
                     node.propval('status', list)[0] = "disabled"
             if linux_dt and node.name == "pcie@fd0e0000":
-		# It needs to be disabled when pcie-mode is EndPoint
+                # It needs to be disabled when pcie-mode is EndPoint
                 mode = node.propval('xlnx,pcie-mode')
                 if mode == ['Endpoint , Device']:
                     if "okay" in node.propval('status', list)[0]:
@@ -453,6 +453,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             driver_proplist = driver_proplist + schema.get('required',[])
             if "xlnx,zynqmp-ipi-mailbox.yaml" in yaml_prune:
                 ipi_schema = schema
+
+    mapped_children_nodes = []
     for node in root_sub_nodes:
         if linux_dt:
             if node.propval('xlnx,ip-name') != ['']:
@@ -476,6 +478,11 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                         continue
                 elif linux_dt and "xlnx,versal-ddrmc" in node.propval('compatible', list):
                     # ddr controller is not mapped to APU and there is a special handling in SDT to make its status okay.
+                    continue
+                elif linux_dt and (node.parent is not None and ((node.parent in mapped_nodelist) or (node.parent in mapped_children_nodes))):
+                    # Add the unmapped nodes which are children of mapped nodes to the final device-tree. This is required to keep the hierarchy
+                    # of the device-tree intact and also to keep the nodes which are required for the mapped nodes to function properly.
+                    mapped_children_nodes.append(node)
                     continue
                 elif xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, sdt.tree):
                     continue
