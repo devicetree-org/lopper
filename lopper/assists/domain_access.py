@@ -871,6 +871,38 @@ def core_domain_access( tgt_node, sdt, options ):
     except Exception as e:
         lopper.log._warning( f"exception while processing chosen: {e}")
 
+    # 9) enact /domains/domainX/nodes processing
+    try:
+        nodes_node = domain_node.subnodes(children_only=True,name="nodes$")
+        if len(nodes_node) == 1:
+            lopper.log._debug( "processing nodes node" )
+
+            # Walk all descendants under /domains/<domain>/nodes so nested
+            # path segments like nodes/axi/timer@f1e90000 can be translated
+            # into a target SDT path.
+            for i in nodes_node[0].subnodes(children_only=False):
+                if i.__props__:
+                    # Convert /domains/<domain>/nodes/... into the corresponding
+                    # main-tree path, e.g. /domains/APU_Linux/nodes/axi/timer@...
+                    # -> /axi/timer@...
+                    lookup_path = "/" + i.abs_path.split("/nodes/", 1)[1]
+                    try:
+                        node = sdt.tree[lookup_path]
+                        # Apply the domain-local node properties onto the
+                        # resolved SDT node. These nodes act as patch specs,
+                        # not standalone hardware descriptions.
+                        for prop_key in i.__props__.keys():
+                            node[prop_key] = copy.deepcopy(i[prop_key].value)
+                    except KeyError:
+                        # Missing targets are ignored so optional or
+                        # forward-looking patch specs do not abort the pass.
+                        pass
+
+    except Exception as e:
+        lopper.log._warning( f"exception while processing nodes node: {e}")
+
+
+
     # delete unreferenced memory nodes
     prop = "memory"
     code = f"""
