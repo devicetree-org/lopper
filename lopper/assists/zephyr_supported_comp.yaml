@@ -122,6 +122,17 @@ cdns,i2c-r1p14:
     - '#address-cells'
     - '#size-cells'
 
+snps,dw-i3c-master-1.00a:
+  required:
+    - compatible
+    - status
+    - reg
+    - interrupts
+    - interrupt-parent
+    - clocks
+    - '#address-cells'
+    - '#size-cells'
+
 xlnx,xps-gpio-1.00.a:
   required:
     - compatible

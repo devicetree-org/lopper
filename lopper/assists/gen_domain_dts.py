@@ -986,6 +986,17 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine):
                             node["#size-cells"] = LopperProp("#size-cells")
                             node["#size-cells"].value = 0
                             node.add(node["#size-cells"])
+                    # PS-I3C
+                    if "snps,dw-i3c-master-1.00a" in node["compatible"].value:
+                        node["compatible"].value = ["snps,designware-i3c"]
+                        if node.propval('#address-cells') != [3]:
+                            node["#address-cells"] = LopperProp("#address-cells")
+                            node["#address-cells"].value = 3
+                            node.add(node["#address-cells"])
+                        if node.propval('#size-cells') != [0]:
+                            node["#size-cells"] = LopperProp("#size-cells")
+                            node["#size-cells"].value = 0
+                            node.add(node["#size-cells"])
                     #UFS
                     if "amd,versal2-ufs" in node["compatible"].value:
                         new_node = LopperNode()
