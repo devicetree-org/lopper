@@ -50,9 +50,9 @@ class SdtInfo:
             for node in self.__node_tree__:
                 if chc.masters[master]["name"] in  self.__get_cpu_name(node):
                     if self.__is_master_defined(master):
-                        master_tmp[master] = chc.masters[master]
+                        masters_tmp[master] = chc.masters[master]
         if len(masters_tmp) != 0:
-            self.masters = maaster_tmp
+            self.masters = masters_tmp
         else:
             self.masters = chc.masters
         return
