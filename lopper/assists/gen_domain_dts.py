@@ -1676,35 +1676,6 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
         except Exception:
             pass
 
-    license_content = '''#
-# Copyright (c) 2024 - 2025 Advanced Micro Devices, Inc.
-#
-# SPDX-License-Identifier: Apache-2.0
-#
-
-'''
-    fix_part= '''
-	select CLOCK_CONTROL
-	select CLOCK_CONTROL_FIXED_RATE_CLOCK
-	select CONSOLE
-	select SERIAL
-	select UART_CONSOLE if (UART_NS16550 || UART_XLNX_UARTLITE  || UART_XLNX_IOMODULE)
-	select UART_INTERRUPT_DRIVEN if (UART_NS16550 || UART_XLNX_UARTLITE  || UART_XLNX_IOMODULE)
-	imply UART_NS16550 if DT_HAS_NS16550_ENABLED
-	imply UART_XLNX_UARTLITE if DT_HAS_UARTLITE_ENABLED
-	imply GPIO if DT_HAS_XLNX_XPS_GPIO_1_00_A_ENABLED
-	imply GPIO_XLNX_AXI if DT_HAS_XLNX_XPS_GPIO_1_00_A_ENABLED
-	imply AMD_TMRCTR if DT_HAS_AMD_XPS_TIMER_1_00_A_ENABLED
-	imply XLNX_INTC if DT_HAS_XLNX_XPS_INTC_1_00_A_ENABLED
-	select XLNX_INTC_USE_IPR if XLNX_INTC
-	select XLNX_INTC_USE_SIE if XLNX_INTC
-	select XLNX_INTC_USE_CIE if XLNX_INTC
-	select XLNX_INTC_USE_IVR if XLNX_INTC
-        imply MFD if DT_HAS_XLNX_IOMODULE_ENABLED
-        imply XLNX_IOMODULE_INTC if DT_HAS_XLNX_IOMODULE_INTC_ENABLED
-        imply XLNX_IOMODULE_PIT if DT_HAS_XLNX_IOMODULE_PIT_ENABLED
-'''
-
     max_mem_size = 0
     num_intr = None
     for node in root_sub_nodes:
@@ -2024,12 +1995,6 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
     match_cpunode.parent.delete("address-map")
     for node in root_sub_nodes:
 
-        soc_kconfig_file = os.path.join(sdt.outdir, "Kconfig")
-        soc_kconfig = open(soc_kconfig_file, 'a')
-
-        soc_defconfig_file = os.path.join(sdt.outdir, "Kconfig.defconfig")
-        defconfig_kconfig = open(soc_defconfig_file, 'a')
-
         if node.name == "chosen":
                 var = sdt.tree[node].propval('stdout-path', list)[0]
                 dev_node = var.split(':')[0]
@@ -2082,91 +2047,8 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                     match = re.search(r"(?<=\=).+?(?=\ )",var)
                     sdt.tree[node]['riscv,isa'] = match.group()
                     isa = match.group()
-                    original_isa_string = isa  # Store original ISA string before modification
 
-                    ''' Parse isa string and generate Kconfig.soc
-                        and Kconfig.defconfig based on that 
-                    ''' 
-
-                    soc_kconfig.write(str(license_content))
-                    soc_kconfig.write("config SOC_MBV32\n")
-
-                    soc_kconfig.write("\tselect RISCV\n")
-                    soc_kconfig.write("\tselect ATOMIC_OPERATIONS_C\n")
-                    soc_kconfig.write("\tselect INCLUDE_RESET_VECTOR\n")
-
-                    data_dict={'_zicsr':"\tselect RISCV_ISA_EXT_ZICSR\n",
-                               '_zifencei':"\tselect RISCV_ISA_EXT_ZIFENCEI\n",
-                               '_zba':"\tselect RISCV_ISA_EXT_ZBA\n",
-                               '_zbb':"\tselect RISCV_ISA_EXT_ZBB\n",
-                               '_zbc':"\tselect RISCV_ISA_EXT_ZBC\n",
-                               '_zbs':"\tselect RISCV_ISA_EXT_ZBS\n",
-                    }
-                    for key, value in data_dict.items():
-                        if isa.find(key) != -1:
-                            soc_kconfig.write(value)
-
-                    isa = isa.split('_')[0]
-
-                    data_dict={'rv32i':"\tselect RISCV_ISA_RV32I\n",
-                        'm':"\tselect RISCV_ISA_EXT_M\n",
-                        'a':"\tselect RISCV_ISA_EXT_A\n",
-                        'c':"\tselect RISCV_ISA_EXT_C\n",
-                        'f':"\tselect RISCV_ISA_EXT_F\n",
-                        'd':"\tselect RISCV_ISA_EXT_D\n",
-                    }
-                    for key, value in data_dict.items():
-                        if isa.find(key) != -1:
-                            soc_kconfig.write(value)
-
-                    soc_kconfig.write(str(fix_part))
-
-                    soc_kconfig.close()
-
-                    soc_defconfig_file = os.path.join(sdt.outdir, "Kconfig.defconfig")
-                    defconfig_kconfig = open(soc_defconfig_file, 'a')
-                    
-                    defconfig_kconfig.write(str(license_content))
-                    defconfig_kconfig.write("if SOC_MBV32\n\n")
-                    defconfig_kconfig.write("config MBV_CSR_DATA_WIDTH\n")
-                    defconfig_kconfig.write("\tint \"Select Control/Status register width\"\n")
-                    defconfig_kconfig.write("\tdefault 32\n\n")
-
-                    val = node.propval('xlnx,pmp-entries', list)[0]
-                    if val % 8 == 0 and val != 0:
-                        soc_kconfig = open(soc_kconfig_file, 'a')
-                        soc_kconfig.write("\tselect RISCV_PMP\n")
-                        soc_kconfig.close()
-
-                        defconfig_kconfig.write("config PMP_SLOTS\n")
-                        defconfig_kconfig.write("\tdefault %s\n\n" % str(val))
-
-                        val = node.propval('xlnx,pmp-granularity', list)[0]
-                        defconfig_kconfig.write("config PMP_GRANULARITY\n")
-                        val = pow(val + 2, 2)
-                        defconfig_kconfig.write("\tdefault %s\n\n" % str(val))
-
-                    # Add NUM_IRQS configuration
-                    if num_intr:
-                        defconfig_kconfig.write("config NUM_IRQS\n")
-                        defconfig_kconfig.write("\tdefault %s\n\n" % str(num_intr))
-
-                    # Add custom CPU idle capability
-                    defconfig_kconfig.write("config ARCH_HAS_CUSTOM_CPU_IDLE\n")
-                    defconfig_kconfig.write("\tdefault y\n\n")
-                    # Add custom atomic CPU idle capability
-                    defconfig_kconfig.write("config ARCH_HAS_CUSTOM_CPU_ATOMIC_IDLE\n")
-                    defconfig_kconfig.write("\tdefault y\n\n")
-
-                    # Add SYS_CLOCK_HW_CYCLES_PER_SEC at the end
-                    val = node.propval('clock-frequency', list)[0]
-                    defconfig_kconfig.write("config SYS_CLOCK_HW_CYCLES_PER_SEC\n")
-                    defconfig_kconfig.write("\tdefault $(dt_node_int_prop_int,/cpus/cpu@0,clock-frequency)\n\n")
-
-                    defconfig_kconfig.write("endif # SOC_MBV32\n")
-
-                    defconfig_kconfig.close()
-                    board_defconfig_content = generate_board_kconfig_defconfig(original_isa_string, node, is_axi_intc_present, num_intr)
+                    board_defconfig_content = generate_board_kconfig_defconfig(isa, node, is_axi_intc_present, num_intr)
                     board_defconfig_file = os.path.join(sdt.outdir, f"board_Kconfig.defconfig")
                     with open(board_defconfig_file, 'w') as board_defconfig:
                         board_defconfig.write(board_defconfig_content)
