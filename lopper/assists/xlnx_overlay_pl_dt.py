@@ -734,6 +734,9 @@ def write_output_files(overlay_tree, sdt, pl_file, dtso_file):
     # Replace interrupt-parent references from imux to gic
     content = content.replace('interrupt-parent = <&imux>;', 'interrupt-parent = <&gic>;')
 
+    # Remove empty overlay fragments left after property exclusion
+    content = re.sub(r'\n&\w+ \{\n\};\n', '', content)
+
     with open(pl_file, "w") as f:
         f.write(content)
 
@@ -766,6 +769,12 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
     # Parse and validate options
     platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs, exclude_props, exclude_nodes = validate_and_parse_options(options, sdt)
+
+    # Remove SDT-specific properties from overlay automatically
+    if exclude_props is None:
+        exclude_props = ['address-map']
+    elif 'address-map' not in exclude_props:
+        exclude_props.append('address-map')
 
     overlay_tree = LopperTree()
 
