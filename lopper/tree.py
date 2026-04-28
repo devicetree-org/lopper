@@ -4664,7 +4664,7 @@ class LopperTree:
         # Auto-generate fragments for base tree properties that reference overlay nodes
         # This ensures cross-tree references remain valid when the overlay is applied
         # Done BEFORE filtering so exclude_props/exclude_nodes can filter fragment content too
-        auto_fragments = parent_tree.fragment_add_for_refs(self)
+        auto_fragments = parent_tree.fragment_add_for_refs(self, exclude_props=exclude_props)
         self._metadata['auto_fragments'] = auto_fragments
         if auto_fragments:
             lopper.log._debug( f"Auto-generated {len(auto_fragments)} fragment(s) for cross-tree references" )
@@ -4769,7 +4769,7 @@ class LopperTree:
 
         return fragment
 
-    def fragment_add_for_refs( self, overlay_tree ):
+    def fragment_add_for_refs( self, overlay_tree, exclude_props=None ):
         """Add overlay fragments for all cross-tree content needed by the overlay.
 
         Two sources of fragments are handled:
@@ -4796,10 +4796,15 @@ class LopperTree:
         Args:
             overlay_tree (LopperTree): The overlay tree to add fragments to.
                                        Modified in place.
+            exclude_props (list, optional): Property names to skip when building
+                                            fragments. Prevents empty fragment
+                                            shells when a fragment would contain
+                                            only excluded properties.
 
         Returns:
             list: Fragment nodes added to overlay_tree.
         """
+        exclude_set = set(exclude_props) if exclude_props else set()
         fragments_added = []
 
         # --- source 1: phandle cross-references ---
@@ -4807,11 +4812,13 @@ class LopperTree:
 
         node_props = {}
         for node, prop_name, companion in referencing:
+            if prop_name in exclude_set:
+                continue
             key = node.abs_path
             if key not in node_props:
                 node_props[key] = {'node': node, 'props': set()}
             node_props[key]['props'].add(prop_name)
-            if companion:
+            if companion and companion not in exclude_set:
                 node_props[key]['props'].add(companion)
 
         for path, info in node_props.items():
@@ -4839,6 +4846,8 @@ class LopperTree:
                 fragment.label = ""
 
                 for prop in ov_node.__props__.values():
+                    if prop.name in exclude_set:
+                        continue
                     new_prop = copy.deepcopy(prop)
                     new_prop.node = fragment
                     fragment.__props__[prop.name] = new_prop
