@@ -5190,9 +5190,12 @@ class LopperTree:
                             self[raw]
                         except Exception:
                             props_to_delete.append(p)
-                            lopper.log._warning(
-                                f"strict: dropping dangling path-ref "
-                                f"'{n.abs_path}/{p.name}' -> '{raw}' (node gone)")
+                            # Suppress noise for comment nodes — they disappear
+                            # with their parent by design, not a real dangling ref.
+                            if not p.name.startswith('lopper-comment-'):
+                                lopper.log._warning(
+                                    f"strict: dropping dangling path-ref "
+                                    f"'{n.abs_path}/{p.name}' -> '{raw}' (node gone)")
                 for p in props_to_delete:
                     n - p
 
