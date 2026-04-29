@@ -663,9 +663,6 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
         try:
             res_mem_node = tree["/reserved-memory"]
             [ tree.delete(i) for i in res_mem_node.subnodes() if i.propval("compatible") == ['mmio-sram'] and os == "linux_dt" ]
-            if res_mem_node.propval("ranges") == [1]:
-                res_mem_node.delete("ranges")
-                res_mem_node + LopperProp(name="ranges")
         except KeyError:
             print("ERROR: carveouts should be in reserved memory.")
             return False
