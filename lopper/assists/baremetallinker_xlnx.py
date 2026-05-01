@@ -491,6 +491,13 @@ def get_ddr_address(sdt,tgt_node,mem_ranges,match_cpunode,cpu_ip_name,memtest_co
     if has_ddr and not memtest_config and not "microblaze" in cpu_ip_name:
         default_ddr = min(has_ddr, key=lambda k: has_ddr[k])
 
+    # For Microblaze RISC-V, use the BRAM memory if available
+    if cpu_ip_name == "microblaze_riscv" and valid_mem_ips and not memtest_config:
+        has_bram = [key for key in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse) if "_bram" in key and
+                    any(key.rsplit('_', 1)[0] in mem_ip for mem_ip in valid_mem_ips)]
+        if has_bram:
+            default_ddr = has_bram[0]
+
     mb_reset_addr = None
     if "microblaze" in cpu_ip_name:
         if match_cpunode.propval('xlnx,base-vectors') != ['']:
