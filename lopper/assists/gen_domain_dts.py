@@ -1022,6 +1022,15 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine):
                                     ufs_reg_val = ufs_reg_val + ufs_crp_reg
                                     break
                         node["reg"].value = ufs_reg_val
+                        if node.props('clock-names') != []:
+                            desired_clock_names = ["core", "ref_clk"]
+                            clk_names = node.propval("clock-names")
+                            if clk_names == []:
+                                clk_names_list = []
+                            else:
+                                clk_names_list = [str(x) for x in clk_names]
+                            if clk_names_list != desired_clock_names:
+                                node["clock-names"].value = desired_clock_names
                     #AXI-GPIO
                     if "xlnx,xps-gpio-1.00.a" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,xps-gpio-1.00.a"]
@@ -1136,7 +1145,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine):
                             else:
                                 clk_names_list = [str(x) for x in clk_names]
                             if clk_names_list != desired_clock_names:
-                                node["clock_names"].value = desired_clock_names
+                                node["clock-names"].value = desired_clock_names
                         if node.props("#dma-cells") != [] and node.propval("#dma-cells") != [1]:
                             node['#dma-cells'].value = [1]
                         if node.props("xlnx,bus-width") != [] and node.propval("xlnx,bus-width") != [64]:
@@ -1257,7 +1266,9 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine):
                             sdt.tree.add(new_node)
                             if node.props('clocks') != []:
                                 node.delete('clocks')
-                            if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or node["compatible"].value == ["amd,versal2-dma-1.0"]:
+                            if node["compatible"].value == ["xlnx,zynqmp-dma-1.0"] or \
+                                node["compatible"].value == ["amd,versal2-dma-1.0"] or \
+                                "amd,versal2-ufs" in node["compatible"].value:
                                 clock_prop = f"clocks = <&{new_node.name}>, <&{new_node.name}>"
                             else:
                                 clock_prop = f"clocks = <&{new_node.name}>"
