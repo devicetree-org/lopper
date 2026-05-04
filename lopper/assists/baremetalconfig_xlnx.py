@@ -237,7 +237,6 @@ def scan_ranges_size(range_value, ns):
     return addr, size
 
 def get_clock_offset(node):
-    tclk_offset = 1
     if node.propval("clock-names") != ['']:
         clock_names = node["clock-names"].value
         try:
@@ -246,10 +245,18 @@ def get_clock_offset(node):
             clocklen = len(node["clocks"].value)
             if namelen != clocklen:
                 tclk_offset = 2 * tclk_offset + 1
-        except:
-            tclk_offset = 1
+                return tclk_offset
+            return tclk_offset
+        except Exception:
+            return 1
 
-    return tclk_offset
+    try:
+        ncells = len(node["clocks"].value)
+    except KeyError:
+        return 1
+    if ncells <= 1:
+        return 0
+    return 1
 
 def get_clock_prop(sdt, value, offset):
     """
@@ -259,9 +266,11 @@ def get_clock_prop(sdt, value, offset):
     """
     if offset < len(value):
         return value[offset]
-    else:
+    if not value:
+        return 0
+    if len(value) > 1:
         _warning(f"Invalid clock offset returning first clock")
-        return value[1]
+    return value[0]
 
 
 def get_pci_ranges(node, value, pad):
@@ -414,7 +423,7 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
             try:
                 phandle_value = node[subnode_prop].value[0]
             except KeyError:
-	        # Need to create dummy entries
+                # Need to create dummy entries
                 _debug(f"Find sub node is failed for {node.name}, creating dummy structure")
                 dummy_struct = True
 
@@ -788,8 +797,9 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
                             drvoptprop_list.append(child[1][p].value[0])
             else:
                 try:
-                    drvoptprop_list.append(hex(node[prop].value[0]))
-                except KeyError:
+                    v0 = node[prop].value[0]
+                    drvoptprop_list.append(hex(int(v0.partition(",")[0].strip(), 0) if isinstance(v0, str) else v0 if isinstance(v0, int) else int(v0, 0)))
+                except (KeyError, IndexError, TypeError, ValueError):
                     pass
 
         with open(cmake_file, 'a') as fd:
