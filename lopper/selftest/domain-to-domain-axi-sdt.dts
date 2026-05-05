@@ -1,0 +1,171 @@
+/dts-v1/;
+
+/*
+ * Test SDT for domain-to-domain phandle refcounting regression.
+ *
+ * Exercises step 2c in domain_access: subnodes of a domain node that
+ * reference /axi children via carveouts/elfload/mbox/timer phandles must
+ * survive filtering even when those /axi nodes are NOT in any domain's
+ * 'access' list.
+ *
+ * If the subnodes() scan is too shallow (children_only=True) or the parent
+ * chain is not marked, the /axi bus node gets ref=0 and the simple-bus
+ * filter at step 5 deletes it and every child regardless of refcount.
+ */
+
+/ {
+	compatible = "xlnx,versal-net";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	model = "Test SDT for domain-to-domain /axi node survival";
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpus_a78: cpus-a78@0 {
+			compatible = "cpus,cluster";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			cpu@0 {
+				compatible = "arm,cortex-a78";
+				device_type = "cpu";
+				reg = <0>;
+			};
+		};
+
+		cpus_r52: cpus-r52@0 {
+			compatible = "cpus,cluster";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			cpu@0 {
+				compatible = "arm,cortex-r52";
+				device_type = "cpu";
+				reg = <0>;
+			};
+		};
+	};
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x80000000>;
+	};
+
+	/*
+	 * The /axi simple-bus holds UIO nodes that domain-to-domain relations
+	 * reference via phandle.  These nodes are NOT in any domain's 'access'
+	 * list — they survive only because domain subnode phandle scan marks them.
+	 */
+	axi: axi {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/* UIO node referenced by APU_Linux domain-to-domain carveouts */
+		libmetal_uio_desc0: libmetal_uio_desc0@99c8000 {
+			reg = <0x0 0x99c8000 0x0 0x4000>;
+			compatible = "uio";
+		};
+
+		libmetal_uio_data: libmetal_uio_data@99d0000 {
+			reg = <0x0 0x99d0000 0x0 0x40000>;
+			compatible = "uio";
+		};
+
+		/* Timer node referenced by APU_Linux domain-to-domain timer */
+		test_timer: timer@f1e90000 {
+			reg = <0x0 0xf1e90000 0x0 0x1000>;
+			compatible = "uio";
+		};
+
+		/* Mailbox node referenced by APU_Linux domain-to-domain mbox */
+		test_mbox: mailbox@eb360000 {
+			reg = <0x0 0xeb360000 0x0 0x1000>;
+			compatible = "uio";
+		};
+
+		/* Regular /axi device that IS in the access list — survives via step 1a */
+		uart: serial@f1920000 {
+			reg = <0x0 0xf1920000 0x0 0x1000>;
+			compatible = "arm,pl011", "arm,primecell";
+		};
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/* Carveout referenced by elfload from RPU domain */
+		libmetal_elf_rsvd: libmetal_elf@9968000 {
+			reg = <0x0 0x9968000 0x0 0x60000>;
+			no-map;
+		};
+	};
+
+	/*
+	 * Pre-expanded domain nodes — in the real pipeline these come from
+	 * %.yaml.lop YAML expansion, but for unit testing we pre-populate them
+	 * with integer phandles so domain_access can run without YAML expansion.
+	 */
+	domains {
+		compatible = "openamp,domain-v1";
+
+		APU_Linux: APU_Linux {
+			compatible = "openamp,domain-v1";
+
+			cpus = <&cpus_a78 0xff 0x3>;
+
+			/* Regular access: uart survives via step 1a */
+			access = <&uart 0x0>;
+
+			memory = <0x0 0x0 0x0 0x80000000>;
+
+			/*
+			 * domain-to-domain subnode tree — 3 levels deep.
+			 * relation0 holds carveouts/mbox/timer phandles.
+			 * Step 2c must scan ALL subnodes (not just direct children)
+			 * and must mark the /axi parent chain so filter #1 keeps it.
+			 */
+			domain-to-domain {
+				compatible = "openamp,domain-to-domain-v1";
+
+				libmetal-relation {
+					compatible = "libmetal,ipc-v1";
+
+					relation0 {
+						remote = <&RPU_BM>;
+						carveouts = <&libmetal_uio_desc0 &libmetal_uio_data>;
+						mbox = <&test_mbox>;
+						timer = <&test_timer>;
+					};
+				};
+			};
+		};
+
+		RPU_BM: RPU_BM {
+			compatible = "openamp,domain-v1";
+
+			cpus = <&cpus_r52 0x1 0x3>;
+
+			memory = <0x0 0x0 0x0 0x10000000>;
+
+			domain-to-domain {
+				compatible = "openamp,domain-to-domain-v1";
+
+				libmetal-relation {
+					compatible = "libmetal,ipc-v1";
+
+					relation0 {
+						host = <&APU_Linux>;
+						carveouts = <&libmetal_uio_desc0 &libmetal_uio_data>;
+						elfload = <&libmetal_elf_rsvd>;
+					};
+				};
+			};
+		};
+	};
+};
