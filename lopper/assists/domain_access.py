@@ -482,14 +482,21 @@ def core_domain_access( tgt_node, sdt, options ):
     # property) and mark them as surviving in the Linux output, even though no
     # Linux device consumes them.
     #
-    # ref_node.ref = 1 marks only the directly-referenced node, consistent with
-    # how step 1a already handles indirect references.
+    # ref_node.ref = 1 marks only the directly-referenced node. We also walk
+    # up the parent chain and mark each ancestor, so that the simple-bus filter
+    # (step 5) does not drop a bus node before its refcounted children can be
+    # pruned. This mirrors the parent=True behaviour of resolve_all_refs() used
+    # in step 1a, without the unwanted transitive phandle following.
     try:
-        for subnode in domain_node.subnodes(children_only=True):
+        for subnode in domain_node.subnodes():
             for prop in subnode:
                 for ref_node in prop.resolve_phandles():
                     ref_node.ref = 1
                     _info(f"domain_access: refcounting domain subnode phandle: {ref_node.abs_path}")
+                    p = ref_node.parent
+                    while p and p.abs_path != "/":
+                        p.ref = 1
+                        p = p.parent
     except Exception as e:
         _warning(f"domain_access: exception in domain subnode refcounting: {e}")
 

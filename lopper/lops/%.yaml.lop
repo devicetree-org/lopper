@@ -25,6 +25,12 @@
                         cpus = "phandle mask mode";
                         include = "phandle";
                         firewallconf = "phandle type priority";
+                        carveouts = "phandle";
+                        elfload = "phandle";
+                        mbox = "phandle";
+                        timer = "phandle";
+                        host = "phandle";
+                        remote = "phandle";
                 };
 
                 lop_yaml_json_expand {
