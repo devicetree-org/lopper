@@ -624,6 +624,20 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     sdt.tree[match_cpunode].delete('timebase-frequency')
             except KeyError:
                 pass
+
+            # For SpartanUP+ Variants, add the riscv,timer node at root.
+            # It is wired to the per-hart CPU interrupt controller (cpu0_intc) at IRQ 5.
+            if linux_dt and match_cpunode.propval('xlnx,family', list)[0] in ('spartanuplus', 'spartanuplusaes1'):
+                from lopper.tree import LopperProp
+                timer_node = LopperNode()
+                timer_node.abs_path = "/timer"
+                timer_node.name = "timer"
+                timer_node.label = "int_timer"
+                timer_node ["compatible"] = "riscv,timer"
+                timer_node + LopperProp("bootph-all")
+                timer_node + LopperProp("interrupts-extended = <&cpu0_intc 5>")
+                sdt.tree + timer_node
+
             delete_unused_props( sdt.tree[match_cpunode] , driver_proplist, False)
 
     if zephyr_dt:
