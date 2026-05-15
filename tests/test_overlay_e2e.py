@@ -826,3 +826,107 @@ class TestTwoPassSubprocess:
             f"cdns,ttc missing from RPU1_BM.dts — base tree was unexpectedly modified"
         assert "uio" not in content, \
             f"uio leaked into RPU1_BM.dts — linux overlay contaminated base domain"
+
+
+# ---------------------------------------------------------------------------
+# Section 7: child-node deserialization regression
+#
+# Regression coverage for the bug where _deserialize_overlay_node() called
+# node.child_nodes.append(child) but child_nodes is an OrderedDict, not a
+# list — crashing with AttributeError on any overlay that contains nested
+# child nodes (e.g. zyxclmm_drm under &amba_pl).
+# ---------------------------------------------------------------------------
+
+class TestDeserializeOverlayChildNodes:
+    """_deserialize_overlay_node must correctly reconstruct nested child nodes.
+
+    Previously crashed: AttributeError: 'collections.OrderedDict' has no
+    attribute 'append'.  Fix: use child_nodes[child.abs_path] = child with
+    explicit parent assignment.
+    """
+
+    def _make_nested_overlay_node(self):
+        """Return a LopperNode with one level of child_nodes populated."""
+        from lopper.tree import LopperNode, LopperProp
+        from collections import OrderedDict
+
+        parent_node = LopperNode(-1, "/axi/amba_pl")
+        child_node = LopperNode(-1, "/axi/amba_pl/zyxclmm_drm")
+        lp = LopperProp("compatible", -1, child_node, ["xlnx,zocl"])
+        child_node.__props__["compatible"] = lp
+        child_node.parent = parent_node
+        parent_node.child_nodes[child_node.abs_path] = child_node
+        return parent_node
+
+    def test_serialize_nested_node_roundtrip(self):
+        """serialize → deserialize must not raise AttributeError for nested nodes."""
+        from lopper import _serialize_overlay_node, _deserialize_overlay_node
+
+        root = self._make_nested_overlay_node()
+        data = _serialize_overlay_node(root)
+
+        # This previously raised: AttributeError: 'OrderedDict' has no attribute 'append'
+        restored = _deserialize_overlay_node(data)
+        assert restored is not None, "Deserialized node is None"
+
+    def test_child_nodes_type_after_deserialize(self):
+        """child_nodes must remain an OrderedDict after deserialization."""
+        from collections import OrderedDict
+        from lopper import _serialize_overlay_node, _deserialize_overlay_node
+
+        root = self._make_nested_overlay_node()
+        data = _serialize_overlay_node(root)
+        restored = _deserialize_overlay_node(data)
+
+        assert isinstance(restored.child_nodes, OrderedDict), \
+            f"child_nodes is {type(restored.child_nodes)}, expected OrderedDict"
+
+    def test_child_count_preserved_after_deserialize(self):
+        """All child nodes must survive the serialize → deserialize round-trip."""
+        from lopper import _serialize_overlay_node, _deserialize_overlay_node
+
+        root = self._make_nested_overlay_node()
+        original_count = len(root.child_nodes)
+        data = _serialize_overlay_node(root)
+        restored = _deserialize_overlay_node(data)
+
+        assert len(restored.child_nodes) == original_count, \
+            f"Expected {original_count} child nodes, got {len(restored.child_nodes)}"
+
+    def test_child_node_props_preserved_after_deserialize(self):
+        """Child node properties must be intact after deserialization."""
+        from lopper import _serialize_overlay_node, _deserialize_overlay_node
+
+        root = self._make_nested_overlay_node()
+        data = _serialize_overlay_node(root)
+        restored = _deserialize_overlay_node(data)
+
+        child = list(restored.child_nodes.values())[0]
+        assert "compatible" in child.__props__, \
+            "compatible prop missing from deserialized child node"
+        assert child.__props__["compatible"].value == ["xlnx,zocl"], \
+            f"compatible value wrong: {child.__props__['compatible'].value}"
+
+    def test_child_parent_set_after_deserialize(self):
+        """Deserialized child nodes must have their parent correctly assigned."""
+        from lopper import _serialize_overlay_node, _deserialize_overlay_node
+
+        root = self._make_nested_overlay_node()
+        data = _serialize_overlay_node(root)
+        restored = _deserialize_overlay_node(data)
+
+        child = list(restored.child_nodes.values())[0]
+        assert child.parent is restored, \
+            f"child.parent is {child.parent}, expected the restored parent node"
+
+    def test_child_abs_path_is_dict_key(self):
+        """Each child must be keyed by its abs_path in child_nodes."""
+        from lopper import _serialize_overlay_node, _deserialize_overlay_node
+
+        root = self._make_nested_overlay_node()
+        data = _serialize_overlay_node(root)
+        restored = _deserialize_overlay_node(data)
+
+        child = list(restored.child_nodes.values())[0]
+        assert child.abs_path in restored.child_nodes, \
+            f"child abs_path '{child.abs_path}' not found as key in child_nodes"
