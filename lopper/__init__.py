@@ -571,6 +571,7 @@ def _deserialize_overlay_node(data, parent=None, tree=None):
     from lopper.tree import LopperNode, LopperProp
     node = LopperNode(-1, data["abs_path"])
     node.tree = tree
+    node.parent = parent
 
     for prop_name, val, pclass in data.get("props", []):
         lp = LopperProp(prop_name, -1, node, val)
@@ -584,7 +585,7 @@ def _deserialize_overlay_node(data, parent=None, tree=None):
 
     for child_data in data.get("children", []):
         child = _deserialize_overlay_node(child_data, parent=node, tree=tree)
-        node.child_nodes.append(child)
+        node.child_nodes[child.abs_path] = child
 
     return node
 
