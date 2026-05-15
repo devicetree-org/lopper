@@ -1615,7 +1615,7 @@ class LopperProp():
         if prop_type == "comment":
             outstring = ""
             for s in prop_val:
-                outstring += s
+                outstring += s if isinstance(s, str) else s.decode("utf-8", errors="replace")
 
         elif prop_type == "label":
             outstring = ""
