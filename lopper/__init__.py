@@ -584,7 +584,8 @@ def _deserialize_overlay_node(data, parent=None, tree=None):
 
     for child_data in data.get("children", []):
         child = _deserialize_overlay_node(child_data, parent=node, tree=tree)
-        node.child_nodes.append(child)
+        child.parent = node
+        node.child_nodes[child.abs_path] = child
 
     return node
 
