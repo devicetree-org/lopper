@@ -99,6 +99,7 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
     proc_name = options['args'][0]
     src_path = utils.get_abs_path(options['args'][1])
     repo_path_data = options['args'][2]
+    parent_app = options['args'][3] if len(options['args']) > 3 else ""
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
     node_list = []
@@ -111,6 +112,9 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
            pass
     matched_node = get_cpu_node(sdt, options)
     proc_ip_name = matched_node['xlnx,ip-name'].value[0]
+    family = sdt.tree['/'].propval('family')
+    family = family[0] if family else ""
+    variant = sdt.tree['/'].propval('variant')
     src_path = src_path.rstrip(os.path.sep)
     name = utils.get_base_name(utils.get_dir_path(src_path))
     # Incase of versioned component strip the version info
@@ -238,7 +242,12 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
                 err_msg = f'ERROR: {name} requires {driver_names[0]} hardware instance to be present'
             else:
                 err_msg = f'ERROR: {name} requires at least one {dev_type} hardware instance to be present'
-            handle_validation_error(err_msg, validation_mode, validation_errors)
+            if (parent_app == "srec_spi_bootloader"
+                    and family in ("microblaze", "microblaze_riscv")
+                    and "spartanuplus" not in variant):
+                _warning("Skipping the addition of xilsfl library for srec_spi_bootloader template, It is not required for Microblaze/Microblaze RISCV platforms other than Spartanuplus")
+            else:
+                handle_validation_error(err_msg, validation_mode, validation_errors)
     
     if validation_mode in ['oneOf', 'anyOf']:
         if not found_drivers:
