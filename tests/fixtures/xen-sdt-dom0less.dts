@@ -1,0 +1,91 @@
+/dts-v1/;
+
+/*
+ * Test SDT fixture — Shape B (container + dom0 + 1 dom0less guest).
+ *
+ * Also exercises xen,propagate-config on both the container and the
+ * dom0less guest (the escape hatch for keys not yet encoded in the
+ * xen,* schema).
+ */
+
+/ {
+	compatible = "test,xen-imagebuilder-dom0less";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	model = "Test SDT for image-builder Shape B dom0less Xen config generation";
+
+	cpus_a72: cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#cpus-mask-cells = <1>;
+		compatible = "cpus,cluster";
+
+		cpu@0 {
+			compatible = "arm,cortex-a72";
+			device_type = "cpu";
+			reg = <0>;
+		};
+
+		cpu@1 {
+			compatible = "arm,cortex-a72";
+			device_type = "cpu";
+			reg = <1>;
+		};
+
+		cpu@2 {
+			compatible = "arm,cortex-a72";
+			device_type = "cpu";
+			reg = <2>;
+		};
+	};
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x80000000>;
+	};
+
+	domains {
+		#address-cells = <2>;
+		#size-cells = <2>;
+
+		default: subsystem@1 {
+			compatible = "openamp,domain-v1";
+			cpus = <&cpus_a72 0x7 0x80000003>;
+			memory = <0x0 0x500000 0x0 0x7fb00000>;
+
+			xen: hypervisor@2 {
+				compatible = "openamp,domain-v1", "openamp,hypervisor-v1";
+				cpus = <&cpus_a72 0x7 0x00000002>;
+				memory = <0x0 0x40000000 0x0 0x40000000>;
+
+				xen,binary = "xen.efi";
+				xen,cmdline = "console=dtuart dtuart=serial0 dom0_mem=1024M";
+				xen,device-tree = "system.dtb";
+				xen,boot-mode = "dom0less";
+
+				xen,propagate-config = "BITSTREAM=\"design.bin\"";
+
+				dom0: domain@3 {
+					compatible = "openamp,domain-v1", "xen,domain-v2";
+					cpus = <&cpus_a72 0x3 0x00000001>;
+					memory = <0x0 0x40000000 0x0 0x40000000>;
+
+					xen,kernel = "Image";
+					xen,kernel-cmdline = "console=hvc0 root=/dev/mmcblk0p2 rw";
+					xen,initrd = "initrd";
+				};
+
+				zephyr_guest: domain@4 {
+					compatible = "openamp,domain-v1", "xen,domain-v2";
+					cpus = <&cpus_a72 0x4 0x00000001>;
+					memory = <0x0 0x80000000 0x0 0x4000000>;
+
+					xen,kernel = "zephyr.bin";
+					xen,kernel-cmdline = "";
+
+					xen,propagate-config = "DOMU_PASSTHROUGH_DTB[1]=\"zephyr-passthrough.dtb\"";
+				};
+			};
+		};
+	};
+};

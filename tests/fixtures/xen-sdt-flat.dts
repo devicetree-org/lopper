@@ -1,0 +1,52 @@
+/dts-v1/;
+
+/*
+ * Test SDT fixture — Shape A (Ben Levinsky's POC pattern).
+ *
+ * A single flat domain with compatible "xen,domain-v1" carrying the
+ * xen,* runtime properties directly. No hypervisor container, no
+ * VM children. The assist treats this as the dom0 domain; NUM_DOMUS=0.
+ */
+
+/ {
+	compatible = "test,xen-imagebuilder-flat";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	model = "Test SDT for image-builder Shape A (flat) Xen config generation";
+
+	cpus_a72: cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#cpus-mask-cells = <1>;
+		compatible = "cpus,cluster";
+
+		cpu@0 {
+			compatible = "arm,cortex-a72";
+			device_type = "cpu";
+			reg = <0>;
+		};
+	};
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x80000000>;
+	};
+
+	domains {
+		#address-cells = <2>;
+		#size-cells = <2>;
+
+		APU_Linux: domain@1 {
+			compatible = "openamp,domain-v1", "xen,domain-v1";
+			cpus = <&cpus_a72 0x1 0x80000003>;
+			memory = <0x0 0x0 0x0 0x80000000>;
+
+			xen,binary = "xen";
+			xen,cmdline = "console=dtuart dtuart=serial0 dom0_mem=1G dom0_max_vcpus=1 bootscrub=0 vwfi=native sched=null";
+			xen,device-tree = "mpsoc.dtb";
+			xen,kernel = "Image-dom0";
+			xen,kernel-cmdline = "console=hvc0 earlycon=xen earlyprintk=xen clk_ignore_unused";
+			xen,initrd = "dom0-ramdisk.cpio";
+		};
+	};
+};

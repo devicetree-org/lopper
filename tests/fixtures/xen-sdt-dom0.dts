@@ -1,0 +1,72 @@
+/dts-v1/;
+
+/*
+ * Test SDT fixture — Shape B (container + dom0 only).
+ *
+ * Hypervisor container (compatible openamp,hypervisor-v1) carrying the
+ * xen,* runtime properties, with one dom0 child VM (compatible
+ * xen,domain-v2). No dom0less guests. NUM_DOMUS=0 expected.
+ */
+
+/ {
+	compatible = "test,xen-imagebuilder-dom0";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	model = "Test SDT for image-builder Shape B dom0-only Xen config generation";
+
+	cpus_a72: cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#cpus-mask-cells = <1>;
+		compatible = "cpus,cluster";
+
+		cpu@0 {
+			compatible = "arm,cortex-a72";
+			device_type = "cpu";
+			reg = <0>;
+		};
+
+		cpu@1 {
+			compatible = "arm,cortex-a72";
+			device_type = "cpu";
+			reg = <1>;
+		};
+	};
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x80000000>;
+	};
+
+	domains {
+		#address-cells = <2>;
+		#size-cells = <2>;
+
+		default: subsystem@1 {
+			compatible = "openamp,domain-v1";
+			cpus = <&cpus_a72 0x3 0x80000003>;
+			memory = <0x0 0x500000 0x0 0x7fb00000>;
+
+			xen: hypervisor@2 {
+				compatible = "openamp,domain-v1", "openamp,hypervisor-v1";
+				cpus = <&cpus_a72 0x3 0x00000002>;
+				memory = <0x0 0x40000000 0x0 0x40000000>;
+
+				xen,binary = "xen.efi";
+				xen,cmdline = "console=dtuart dtuart=serial0 dom0_mem=1024M";
+				xen,device-tree = "system.dtb";
+				xen,boot-mode = "dom0";
+
+				dom0: domain@3 {
+					compatible = "openamp,domain-v1", "xen,domain-v2";
+					cpus = <&cpus_a72 0x1 0x00000001>;
+					memory = <0x0 0x40000000 0x0 0x40000000>;
+
+					xen,kernel = "Image";
+					xen,kernel-cmdline = "console=hvc0 root=/dev/mmcblk0p2 rw";
+					xen,initrd = "initrd";
+				};
+			};
+		};
+	};
+};
