@@ -625,10 +625,19 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             except KeyError:
                 pass
 
-            # For SpartanUP+ Variants, add the riscv,timer node at root.
-            # It is wired to the per-hart CPU interrupt controller (cpu0_intc) at IRQ 5.
-            if linux_dt and match_cpunode.propval('xlnx,family', list)[0] in ('spartanuplus', 'spartanuplusaes1'):
+            # Add cpu0_intc (riscv,cpu-intc) as a child of the CPU node,
+            # and add the riscv,timer node at root wired to cpu0_intc at IRQ 5.
+            # Also wire axi_intc to cpu0_intc at IRQ 9 (IRQ_S_EXT).
+            if linux_dt and match_cpunode.propval('xlnx,ip-name', list)[0] == 'microblaze_riscv':
                 from lopper.tree import LopperProp
+                intc_node = LopperNode()
+                intc_node.name = "interrupt-controller"
+                intc_node.label = "cpu0_intc"
+                intc_node['compatible'] = "riscv,cpu-intc"
+                intc_node['#interrupt-cells'] = 1
+                intc_node + LopperProp("interrupt-controller")
+                match_cpunode.add(intc_node)	
+
                 timer_node = LopperNode()
                 timer_node.abs_path = "/timer"
                 timer_node.name = "timer"
@@ -637,6 +646,11 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 timer_node + LopperProp("bootph-all")
                 timer_node + LopperProp("interrupts-extended = <&cpu0_intc 5>")
                 sdt.tree + timer_node
+
+                for node in sdt.tree['/'].subnodes():
+                    if node.propval('xlnx,ip-name', list) == ['axi_intc']:
+                        node + LopperProp("interrupts-extended = <&cpu0_intc 9>")
+                        break
 
             delete_unused_props( sdt.tree[match_cpunode] , driver_proplist, False)
 
