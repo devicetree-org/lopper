@@ -403,7 +403,7 @@ def prepare_amba_node(amba_node, sdt, tgt_node):
         _warning(f"No aliases node found in device tree")
 
     # Rename the new node in the overlay
-    new_amba_node.name = "&amba"
+    new_amba_node.name = "&amba_pl"
     new_amba_node.label = ""
 
     # Delete structural properties that should only exist in the base device tree
@@ -591,7 +591,7 @@ def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree,
 
     # Reorder nodes: fpga node should come after amba node
     try:
-        overlay_tree['/'].reorder_child("/&amba", "/" + fpga_node_name, after=True, debug=True)
+        overlay_tree['/'].reorder_child("/&amba_pl", "/" + fpga_node_name, after=True, debug=True)
     except Exception as e:
         _error(f"Reordering nodes: {e}")
         sys.exit(1)
@@ -827,6 +827,12 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
 
         overlay_tree = build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, sdt.tree,
                                           exclude_props=exclude_props, exclude_nodes=exclude_nodes)
+
+
+        amba_pl_ref = overlay_tree["/&amba_pl"]
+        amba_pl_ref.name = "&amba"
+        amba_pl_ref.label = ""
+
 
     # Clean overlay properties
     clean_overlay_properties(overlay_tree)
