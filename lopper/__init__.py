@@ -289,36 +289,33 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
         clean_node.__dict__['abs_path'] = target_abs_path
         clean_node.label = label
 
-        # Copy properties, resolving 0xffffffff placeholders
+        # Resolve 0xffffffff phandle placeholders in-place across
+        # overlay_child and all its children (ov_tree is temporary)
+        ov_node_prefix = frag_path + '/__overlay__'
+        for fix_label, fix_refs in label_to_fixups.items():
+            ph = label_to_phandle.get(fix_label)
+            if not ph: continue
+            for ref in fix_refs:
+                try:
+                    rn, rp, bo = ref.rsplit(':', 2)
+                    if not rn.startswith(ov_node_prefix): continue
+                    prop = ov_tree[rn].__props__.get(rp)
+                    if not prop: continue
+                    val = list(prop.__dict__.get('value', []))
+                    idx = int(bo) // 4
+                    if idx < len(val) and val[idx] == 4294967295:
+                        val[idx] = ph
+                        prop.__dict__['value'] = val
+                except Exception:
+                    pass
+
+        # Copy resolved properties to clean_node
         for prop in overlay_child.__props__.values():
             new_prop = copy.deepcopy(prop)
             new_prop.node = clean_node
-
-            val = new_prop.__dict__.get('value')
-            if isinstance(val, list) and 4294967295 in val:
-                val = list(val)
-                ov_node_prefix = frag_path + '/__overlay__'
-                for fix_label, fix_refs in label_to_fixups.items():
-                    ph = label_to_phandle.get(fix_label)
-                    if ph is None:
-                        continue
-                    for ref in fix_refs:
-                        try:
-                            ref_node, ref_prop, byte_off = ref.rsplit(':', 2)
-                            if ref_prop != prop.name:
-                                continue
-                            if not ref_node.startswith(ov_node_prefix):
-                                continue
-                            idx = int(byte_off) // 4
-                            if idx < len(val) and val[idx] == 4294967295:
-                                val[idx] = ph
-                        except Exception:
-                            pass
-                new_prop.__dict__['value'] = val
-
             clean_node.__props__[prop.name] = new_prop
 
-        # Recursively copy child nodes from __overlay__
+        # Recursively copy child nodes (fixups already resolved in-place)
         def _copy_children(src_node, dst_node):
             for child in src_node.child_nodes.values():
                 child_copy = copy.deepcopy(child)
