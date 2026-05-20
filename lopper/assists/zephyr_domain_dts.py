@@ -750,6 +750,59 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                             node['power-delay-ms'] = 10
                         node.add(new_node)
                         node["compatible"] = "xlnx,versal-8.9a"
+                    # SYSMON
+                    if "xlnx,versal-sysmon" in node["compatible"].value:
+                        supply_count = sum(
+                            1 for child in node.child_nodes.values()
+                            if not child.props("xlnx,aie-temp")
+                        )
+                        try:
+                            node.delete("xlnx,numchannels")
+                        except KeyError:
+                            pass
+                        num_prop = LopperProp("xlnx,numchannels")
+                        num_prop.value = [supply_count]
+                        node + num_prop
+                        used_names = set()
+                        for child in list(node.child_nodes.values()):
+                            # Drop AIE temp pseudo-node (not part of SysMon supply child-binding)
+                            if child.props("xlnx,aie-temp"):
+                                try:
+                                    node.delete(child)
+                                except KeyError:
+                                    pass
+                                continue
+                            reg_val = child.propval("reg", list)
+                            if not reg_val or reg_val == ['']:
+                                try:
+                                    node.delete(child)
+                                except KeyError:
+                                    pass
+                                continue
+                            try:
+                                reg_val = int(reg_val[0])
+                            except (TypeError, ValueError):
+                                try:
+                                    node.delete(child)
+                                except KeyError:
+                                    pass
+                                continue
+                            child.delete("reg")
+                            new_prop = LopperProp("xlnx,register")
+                            new_prop.value = [reg_val]
+                            child + new_prop
+                            rail_name = child.propval("xlnx,name", list)
+                            if rail_name and rail_name != ['']:
+                                rail_name = re.sub(r'[^A-Za-z0-9,._+-]', '_', str(rail_name[0]))
+                                if rail_name in used_names:
+                                    rail_name = f"{rail_name}_{reg_val}"
+                                child.name = rail_name
+                                child["xlnx,name"] = rail_name
+                            else:
+                                child.name = f"supply_{reg_val}"
+                                child["xlnx,name"] = f"supply_{reg_val}"
+                            used_names.add(child.name)
+                            delete_unused_props(child, ["xlnx,register", "xlnx,name"], False)
                     # TTCPS
                     if "cdns,ttc" in node["compatible"].value:
                         if 'psv_cortexr5' in machine or 'psu_cortexr5' in machine:
