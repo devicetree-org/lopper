@@ -4585,18 +4585,7 @@ class LopperTree:
             # we can try to assign
             if type(key) == int:
                 self.__nnodes__[key] = val
-                self.__nodes__[val.abspath] = val
-                if val.phandle != 0:
-                    self.__pnodes__[val.phandle] = val
-                if val.label:
-                    self.__lnodes__[val.label] = val
-            else:
-                self.__nodes__[key] = val
-                self.__nnodes__[val.number] = val
-                if val.phandle != 0:
-                    self.__pnodes__[val.phandle] = val
-                if val.label:
-                    self.__lnodes__[val.label] = val
+            self._register_node(val)
         else:
             # thrown an exception, since this is not a valid
             # thing to assign.
@@ -5535,6 +5524,34 @@ class LopperTree:
 
         return True
 
+    def _register_node(self, node):
+        """Insert a node into all tree index dicts atomically.
+
+        Writes the node into __nodes__, __nnodes__, __pnodes__, and __lnodes__
+        in one call, keeping all four indices consistent.  Duplicate labels are
+        disambiguated via label_set() so __lnodes__ always holds unique keys.
+
+        This is the single correct way to register a fully-constructed node
+        object.  Callers that write to __nodes__ directly will leave __lnodes__
+        (and potentially __pnodes__) stale, which causes lnodes() to silently
+        miss the node.  Use this method instead.
+
+        Args:
+            node (LopperNode): node to register; node.abs_path must be set.
+        """
+        self.__nodes__[node.abs_path] = node
+        if node.number >= 0:
+            self.__nnodes__[node.number] = node
+        if node.phandle > 0:
+            self.__pnodes__[node.phandle] = node
+        if node.label:
+            try:
+                if self.__lnodes__[node.label]:
+                    node.label_set(node.label)
+            except KeyError:
+                pass
+            self.__lnodes__[node.label] = node
+
     def add( self, node, dont_sync = False, merge = False ):
         """Add a node to a tree
 
@@ -5721,31 +5738,7 @@ class LopperTree:
             lopper.log._debug( f"node add: {node.abs_path}, after load. depth is : {node.depth}"
                                f"         phandle: {node.phandle} tree: {node.tree}" )
 
-            self.__nodes__[node.abs_path] = node
-
-            # note: this is similar to the the tree.load() code, it should be
-            #       consolidated
-            if node.number >= 0:
-                self.__nnodes__[node.number] = node
-            if node.phandle > 0:
-                # note: this should also have been done by node.load()
-                #       and the phandle_set() that was called in case of
-                #       a detected collision, but we assign it here to
-                #       be sure and to mark that we consider it part of the
-                #       tree at this point.
-                self.__pnodes__[node.phandle] = node
-            if node.label:
-                # we should check if there's already a node at the label
-                # value, and either warn, adjust or take some other appropriate
-                # action
-                try:
-                    if self.__lnodes__[node.label]:
-                        node.label_set( node.label )
-                        lopper.log._debug( f"node add: duplicate label, generated a new one: {node.label}" )
-                except:
-                    pass
-
-                self.__lnodes__[node.label] = node
+            self._register_node(node)
 
             # Check to see if the node has any children. If it does, are they already in
             # our node dictionary ? If they aren't, it means we are not just adding one
@@ -6724,13 +6717,7 @@ class LopperTree:
                 # we want to find these by name AND number (but note, number can
                 # change after some tree ops, so make sure to check the state of
                 # a tree/node before using the number
-                self.__nodes__[node.abs_path] = node
-
-                self.__nnodes__[node.number] = node
-                if node.phandle > 0:
-                    self.__pnodes__[node.phandle] = node
-                if node.label:
-                    self.__lnodes__[node.label] = node
+                self._register_node(node)
 
             for node_abs_path in nodes_saved:
                 # invalidate nodes, in case someone is holding a reference

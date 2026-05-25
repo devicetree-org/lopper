@@ -1007,10 +1007,8 @@ class TestOverlayFixupsTupleFormat:
         return tree
 
     def _add_node(self, tree, node):
-        """Insert node into both __nodes__ and __lnodes__ (by label if set)."""
-        tree.__nodes__[node.abs_path] = node
-        if getattr(node, 'label', None):
-            tree.__lnodes__[node.label] = node
+        """Register node into all tree indices via the public _register_node API."""
+        tree._register_node(node)
 
     def _make_base_tree(self, amba_path='/amba_pl'):
         """Minimal base tree with an amba_pl node (label 'amba_pl') and a cma node."""
