@@ -90,26 +90,38 @@ class LopperAssist:
 
 
 def is_overlay_file(filepath):
-    """Check if a DTS file contains overlay syntax (&label { }).
+    """Check if a DTS file is a true device-tree overlay.
 
-    Overlay files modify existing nodes using label references like
-    &mmi_dc { status = "okay"; }. This function detects such patterns
-    to identify files that should be tracked for source tagging.
+    Returns True only when the file contains an &label { } block AND
+    one of the following overlay markers is present:
+      - a /plugin/; directive (dtc's overlay marker), or
+      - a .dtso extension (Linux overlay-source convention).
+
+    A plain .dtsi fragment that uses &label { } without /plugin/; is
+    NOT an overlay: it is an include fragment that dtc resolves
+    natively when concatenated with the base tree, and treating it
+    as an overlay would park its contents under /__lopper-overlays__/
+    instead of merging them into the base SDT.
 
     Args:
-        filepath: Path to the DTS/DTSI file to check
+        filepath: Path to the DTS/DTSI/DTSO file to check
 
     Returns:
-        bool: True if file contains overlay syntax, False otherwise
+        bool: True if file is a true overlay, False otherwise
     """
     try:
         with open(filepath, 'r') as f:
             content = f.read()
-            # Look for &label { pattern indicating overlay modification
-            # Must have & followed by identifier and opening brace
-            return bool(re.search(r'&\w+\s*\{', content))
     except Exception:
         return False
+
+    if not re.search(r'&\w+\s*\{', content):
+        return False
+
+    if filepath.endswith('.dtso'):
+        return True
+
+    return bool(re.search(r'/plugin/\s*;', content))
 
 
 def _extract_overlay_targets_regex(filepath):

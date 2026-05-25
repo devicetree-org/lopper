@@ -14,12 +14,15 @@ from lopper import LopperSDT
 class TestIsOverlayFile:
     """Test is_overlay_file() helper function."""
 
-    def test_detects_overlay_syntax(self):
-        """Should detect &label { } overlay syntax."""
+    def test_detects_overlay_with_plugin_directive(self):
+        """Should detect a true overlay: /plugin/; plus &label { } syntax."""
         from lopper import is_overlay_file
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.dtsi', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.dts', delete=False) as f:
             f.write("""
+            /dts-v1/;
+            /plugin/;
+
             &mmi_dc {
                 status = "okay";
                 clocks = <&pl_clk 0>;
@@ -28,6 +31,42 @@ class TestIsOverlayFile:
             f.flush()
             try:
                 assert is_overlay_file(f.name) is True
+            finally:
+                os.unlink(f.name)
+
+    def test_detects_overlay_by_dtso_extension(self):
+        """Should detect a true overlay via .dtso extension + &label { }."""
+        from lopper import is_overlay_file
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.dtso', delete=False) as f:
+            f.write("""
+            &mmi_dc {
+                status = "okay";
+            };
+            """)
+            f.flush()
+            try:
+                assert is_overlay_file(f.name) is True
+            finally:
+                os.unlink(f.name)
+
+    def test_rejects_dtsi_fragment_without_plugin_directive(self):
+        """A .dtsi fragment with &label { } but no /plugin/; is an include,
+        not an overlay — dtc resolves the labels when concatenated with the
+        base tree, so it must merge into the base SDT."""
+        from lopper import is_overlay_file
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.dtsi', delete=False) as f:
+            f.write("""
+            &amba_pl {
+                zyxclmm_drm {
+                    compatible = "xlnx,zocl-versal";
+                };
+            };
+            """)
+            f.flush()
+            try:
+                assert is_overlay_file(f.name) is False
             finally:
                 os.unlink(f.name)
 
@@ -280,14 +319,14 @@ class TestOverlayE2E:
         )
         return result, output_file
 
-    def test_overlay_base_tree_unchanged(self, tmp_path):
-        """Base tree output does NOT contain overlay properties.
+    def test_true_overlay_base_tree_unchanged(self, tmp_path):
+        """A true /plugin/; overlay does NOT modify the default base output.
 
-        Overlays are kept separate; the default output reflects the base tree.
-        Callers retrieve the merged view via overlay_tree(stem), not the default
-        write path.
+        True overlays (declared with /plugin/;) are kept separate; the default
+        output reflects the base tree. Callers retrieve the merged view via
+        overlay_tree(stem), not the default write path.
         """
-        overlay = '&mmi_dc { status = "okay"; };\n'
+        overlay = '/dts-v1/;\n/plugin/;\n\n&mmi_dc { status = "okay"; };\n'
 
         result, output_file = self.run_lopper(tmp_path, _BASE_DTS, overlay)
 
@@ -301,6 +340,25 @@ class TestOverlayE2E:
             f"Base tree status should remain 'disabled':\n{content}"
         assert 'status = "okay"' not in content, \
             f"Overlay property leaked into base tree output:\n{content}"
+
+    def test_plain_dtsi_fragment_merges_into_base(self, tmp_path):
+        """A plain .dtsi fragment with &label { } (no /plugin/;) is an
+        include, not an overlay — its contents must be merged into the
+        base tree so that downstream assists see the new node.
+        """
+        overlay = '&mmi_dc { status = "okay"; };\n'
+
+        result, output_file = self.run_lopper(tmp_path, _BASE_DTS, overlay)
+
+        assert result.returncode == 0, \
+            f"lopper failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        assert output_file.exists(), "output DTS was not created"
+
+        content = output_file.read_text()
+        assert 'status = "okay"' in content, \
+            f"Plain .dtsi fragment should be merged into base tree:\n{content}"
+        assert '__lopper-overlays__' not in content, \
+            f"Plain .dtsi fragment should not be parked under overlays:\n{content}"
 
     def test_overlay_with_nested_nodes_no_error(self, tmp_path):
         """User overlay with nested child nodes is processed without error.
