@@ -851,7 +851,10 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
 
     # Write the main SDT output (base tree, no overlay values) and clear
     # sdt.output_file so the main lopper loop does not write a second copy.
-    if getattr(sdt, '_overlay_targets', None) and sdt.output_file:
+    overlay_subtrees = (
+        sdt.tree._metadata.get('overlay_subtrees') if sdt.tree else None
+    )
+    if overlay_subtrees and sdt.output_file:
         sdt.write()
         sdt.output_file = ""
 
