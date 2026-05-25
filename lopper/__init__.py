@@ -225,8 +225,12 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
 
     Returns (result_nodes, fixups) where:
       result_nodes  list of LopperNode ready for overlay_subtrees storage
-      fixups        dict {label: ["real_path:prop:byte_offset", ...]} ready
-                    for overlay_fixups storage; empty dict if no fixups
+      fixups        dict {phandle_target_label:
+                           [(fragment_label, relative_path, prop_name, byte_off), ...]}
+                    ready for overlay_fixups storage; empty dict if no fixups.
+                    Labels are used throughout — no abs_paths — so the dict
+                    remains correct if an assist renames a target node between
+                    registration and overlay_tree() build time.
 
     Nodes whose target label cannot be resolved against base_tree are skipped
     with a warning.
@@ -310,22 +314,35 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
         _copy_children(overlay_child, clean_node)
         result_nodes.append(clean_node)
 
-    # --- step 3: rewrite fixup refs from fragment paths to real paths ---
-    # "/fragment@0/__overlay__/zyxclmm_drm:xlnx,memory-region:0"
-    #   -> "/amba_pl/zyxclmm_drm:xlnx,memory-region:0"
-    # This lets _resolve_overlay_fixups() look up nodes directly by abs_path
-    # in the merged result tree without any knowledge of the dtc fragment layout.
+    # --- step 3: convert fixup refs to (fragment_label, relative_path, prop, offset) ---
+    # Original dtc ref: "/fragment@0/__overlay__/zyxclmm_drm:xlnx,memory-region:0"
+    # We strip the dtc fragment prefix and record:
+    #   fragment_label = "amba_pl"       (the label of the fragment target node)
+    #   relative_path  = "/zyxclmm_drm" (path below the target root; "" if on the target itself)
+    #   prop_name      = "xlnx,memory-region"
+    #   byte_off       = "0"
+    #
+    # Storing the fragment label + relative path — rather than a baked abs_path —
+    # means _resolve_overlay_fixups() can always look up where the label lives in
+    # the result tree at build time.  Any rename or move of the target node by an
+    # assist between registration and overlay_tree() is handled automatically.
+    # Build a reverse map: fragment_overlay_prefix -> fragment_label
+    frag_overlay_to_label = {
+        frag_path + '/__overlay__': label
+        for frag_path, label in fragment_to_label.items()
+    }
+
     rewritten_fixups = {}
     for fix_label, refs in label_to_fixups.items():
         rewritten = []
         for ref in refs:
             try:
                 node_path, prop_name, byte_off = ref.rsplit(':', 2)
-                for frag_prefix, real_prefix in fragment_overlay_to_real.items():
+                for frag_prefix, frag_label in frag_overlay_to_label.items():
                     if node_path.startswith(frag_prefix):
-                        node_path = real_prefix + node_path[len(frag_prefix):]
+                        relative_path = node_path[len(frag_prefix):]  # "" or "/child/..."
+                        rewritten.append((frag_label, relative_path, prop_name, byte_off))
                         break
-                rewritten.append(f"{node_path}:{prop_name}:{byte_off}")
             except Exception:
                 pass
         if rewritten:

@@ -159,9 +159,18 @@ def _resolve_overlay_fixups(tree, fixups):
 
     Args:
         tree:    the merged result LopperTree (base + overlay nodes)
-        fixups:  dict of {label: ["real_node_path:prop_name:byte_offset", ...]}
-                 produced by _unwrap_overlay_tree() with fragment paths already
-                 rewritten to the real abs_paths present in tree.__nodes__.
+        fixups:  dict produced by _unwrap_overlay_tree():
+                   { phandle_target_label:
+                       [(fragment_label, relative_path, prop_name, byte_offset_str), ...] }
+                 fragment_label    — label of the overlay target node (e.g. "amba_pl")
+                 relative_path     — path below that target to the property-holder node,
+                                     e.g. "/zyxclmm_drm" or "" if on the target itself
+                 phandle_target_label is the label whose phandle value replaces 0xffffffff
+
+    Because each entry stores a label + relative path rather than a baked abs_path,
+    resolution always uses the label's current location in the result tree.  Any
+    rename or move of the target node by an assist between registration and
+    overlay_tree() build time is handled transparently — no fallback needed.
     """
     for label, refs in fixups.items():
         nodes = tree.lnodes(label, exact=True)
@@ -172,9 +181,12 @@ def _resolve_overlay_fixups(tree, fixups):
             continue
         for ref in refs:
             try:
-                # format: "real_node_path:prop_name:byte_offset"
-                node_path, prop_name, byte_offset_str = ref.rsplit(':', 2)
+                frag_label, relative_path, prop_name, byte_offset_str = ref
                 byte_offset = int(byte_offset_str)
+                frag_nodes = tree.lnodes(frag_label, exact=True)
+                if not frag_nodes:
+                    continue
+                node_path = frag_nodes[0].abs_path + relative_path
                 if node_path not in tree.__nodes__:
                     continue
                 node = tree.__nodes__[node_path]
@@ -4297,6 +4309,15 @@ class LopperTree:
             if name not in subtrees:
                 return None
             self._overlay_trees[name] = self._build_overlay_tree(name)
+        # NOTE: the cached result is a snapshot taken at first-call time.
+        # If the base tree is mutated between two calls for the same name
+        # (e.g. phandles renumbered, nodes renamed) the second call returns the
+        # stale first snapshot rather than a fresh merge.  This is intentional
+        # for the common single-use flow (domain_access calls once, replaces
+        # sdt.tree) but would silently produce wrong results if the same name
+        # were requested across mutations.  If that becomes necessary, consider
+        # checksumming the base tree's node/phandle table and invalidating the
+        # cache on mismatch.
         return self._overlay_trees[name]
 
     def _build_overlay_tree(self, name):
