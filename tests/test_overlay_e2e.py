@@ -930,3 +930,298 @@ class TestDeserializeOverlayChildNodes:
         child = list(restored.child_nodes.values())[0]
         assert child.abs_path in restored.child_nodes, \
             f"child abs_path '{child.abs_path}' not found as key in child_nodes"
+
+
+# ---------------------------------------------------------------------------
+# Section 8: overlay_fixups label-tuple format and _resolve_overlay_fixups
+#
+# Validates that:
+#   - overlay_fixups stores (fragment_label, relative_path, prop_name, byte_off)
+#     tuples — not baked abs_path strings — so resolution is always against the
+#     label's current location in the result tree at build time.
+#   - _resolve_overlay_fixups correctly patches phandle placeholders on the
+#     fragment target node itself (relative_path == "") and on child nodes.
+#   - Renaming the fragment target node between registration and overlay_tree()
+#     is handled transparently via the label lookup.
+# ---------------------------------------------------------------------------
+
+class TestOverlayFixupsTupleFormat:
+    """overlay_fixups must store label+relative_path tuples, not abs_path strings.
+
+    The data structure for overlay_fixups is:
+        {phandle_target_label: [(fragment_label, relative_path, prop_name, byte_off), ...]}
+
+    This avoids baking abs_paths that become stale if an assist renames or
+    moves a target node between overlay registration and overlay_tree() build.
+    """
+
+    def _make_fixup_tree(self):
+        """Build a minimal tree that looks like a dtc-compiled overlay.
+
+        Produces:
+          /fragment@0  { target = <&amba_pl>;
+                         __overlay__ {
+                           zyxclmm_drm { xlnx,memory-region = <0xffffffff>; };
+                         };
+                       }
+          /__fixups__  { cma_reserved = "/fragment@0/__overlay__/zyxclmm_drm:xlnx,memory-region:0";
+                         amba_pl      = "/fragment@0:target:0"; }
+        """
+        import copy
+        from lopper.tree import LopperProp, LopperNode, LopperTree
+
+        tree = LopperTree()
+
+        # /__fixups__
+        fixups = LopperNode(name='__fixups__')
+        fixups.__dict__['abs_path'] = '/__fixups__'
+        p_target = LopperProp(name='amba_pl')
+        p_target.__dict__['value'] = '/fragment@0:target:0'
+        p_target.node = fixups
+        fixups.__props__['amba_pl'] = p_target
+        p_cma = LopperProp(name='cma_reserved')
+        p_cma.__dict__['value'] = '/fragment@0/__overlay__/zyxclmm_drm:xlnx,memory-region:0'
+        p_cma.node = fixups
+        fixups.__props__['cma_reserved'] = p_cma
+        tree.add(fixups)
+
+        # /fragment@0
+        frag = LopperNode(name='fragment@0')
+        frag.__dict__['abs_path'] = '/fragment@0'
+        tree.add(frag)
+
+        # /fragment@0/__overlay__
+        overlay_node = LopperNode(name='__overlay__')
+        overlay_node.__dict__['abs_path'] = '/fragment@0/__overlay__'
+        frag.add(overlay_node)
+
+        # /fragment@0/__overlay__/zyxclmm_drm  — the child with the placeholder
+        child = LopperNode(name='zyxclmm_drm')
+        child.__dict__['abs_path'] = '/fragment@0/__overlay__/zyxclmm_drm'
+        p_mr = LopperProp(name='xlnx,memory-region')
+        p_mr.__dict__['value'] = [0xffffffff]
+        p_mr.node = child
+        child.__props__['xlnx,memory-region'] = p_mr
+        overlay_node.add(child)
+
+        return tree
+
+    def _add_node(self, tree, node):
+        """Insert node into both __nodes__ and __lnodes__ (by label if set)."""
+        tree.__nodes__[node.abs_path] = node
+        if getattr(node, 'label', None):
+            tree.__lnodes__[node.label] = node
+
+    def _make_base_tree(self, amba_path='/amba_pl'):
+        """Minimal base tree with an amba_pl node (label 'amba_pl') and a cma node."""
+        from lopper.tree import LopperNode, LopperTree
+
+        tree = LopperTree()
+
+        amba = LopperNode(name=amba_path.split('/')[-1])
+        amba.__dict__['abs_path'] = amba_path
+        amba.label = 'amba_pl'
+        amba.__dict__['phandle'] = 0
+        self._add_node(tree, amba)
+
+        cma = LopperNode(name='cma_reserved')
+        cma.__dict__['abs_path'] = '/cma_reserved'
+        cma.label = 'cma_reserved'
+        cma.__dict__['phandle'] = 42
+        self._add_node(tree, cma)
+
+        return tree
+
+    # ------------------------------------------------------------------
+    # Format tests — inspect what _unwrap_overlay_tree stores
+    # ------------------------------------------------------------------
+
+    def test_fixup_entries_are_tuples(self):
+        """Each entry in overlay_fixups must be a 4-tuple, not a string."""
+        from lopper import _unwrap_overlay_tree
+
+        ov_tree = self._make_fixup_tree()
+        base_tree = self._make_base_tree()
+        _, fixups = _unwrap_overlay_tree(ov_tree, base_tree)
+
+        assert fixups, "no fixups returned — fixture may be wrong"
+        for label, refs in fixups.items():
+            for ref in refs:
+                assert isinstance(ref, tuple), \
+                    f"fixup ref for '{label}' is {type(ref).__name__}, expected tuple"
+                assert len(ref) == 4, \
+                    f"fixup ref for '{label}' has {len(ref)} elements, expected 4"
+
+    def test_fixup_tuple_contains_fragment_label(self):
+        """The first element of each tuple is the fragment target label string."""
+        from lopper import _unwrap_overlay_tree
+
+        ov_tree = self._make_fixup_tree()
+        base_tree = self._make_base_tree()
+        _, fixups = _unwrap_overlay_tree(ov_tree, base_tree)
+
+        for label, refs in fixups.items():
+            for frag_label, relative_path, prop_name, byte_off in refs:
+                assert isinstance(frag_label, str) and frag_label, \
+                    f"fragment_label is empty or not a str for phandle target '{label}'"
+
+    def test_fixup_tuple_child_relative_path(self):
+        """A fixup on a child node must store the relative path below the target."""
+        from lopper import _unwrap_overlay_tree
+
+        ov_tree = self._make_fixup_tree()
+        base_tree = self._make_base_tree()
+        _, fixups = _unwrap_overlay_tree(ov_tree, base_tree)
+
+        # cma_reserved fixup is on /zyxclmm_drm (child of target), not the target itself
+        assert 'cma_reserved' in fixups, "expected cma_reserved fixup"
+        for frag_label, relative_path, prop_name, byte_off in fixups['cma_reserved']:
+            assert relative_path == '/zyxclmm_drm', \
+                f"relative_path is '{relative_path}', expected '/zyxclmm_drm'"
+
+    def test_fixup_tuple_contains_no_abs_path(self):
+        """No fixup ref should start with '/' — abs_paths must not be stored."""
+        from lopper import _unwrap_overlay_tree
+
+        ov_tree = self._make_fixup_tree()
+        base_tree = self._make_base_tree()
+        _, fixups = _unwrap_overlay_tree(ov_tree, base_tree)
+
+        for label, refs in fixups.items():
+            for frag_label, relative_path, prop_name, byte_off in refs:
+                assert not frag_label.startswith('/'), \
+                    f"fragment_label '{frag_label}' looks like an abs_path — should be a label"
+
+    # ------------------------------------------------------------------
+    # Resolution tests — _resolve_overlay_fixups patches the right node
+    # ------------------------------------------------------------------
+
+    def _make_result_tree(self, amba_path='/amba_pl'):
+        """Result tree: amba_pl + child zyxclmm_drm + cma_reserved with phandle 42."""
+        from lopper.tree import LopperProp, LopperNode, LopperTree
+
+        tree = LopperTree()
+
+        amba = LopperNode(name=amba_path.split('/')[-1])
+        amba.__dict__['abs_path'] = amba_path
+        amba.label = 'amba_pl'
+        amba.__dict__['phandle'] = 0
+        self._add_node(tree, amba)
+
+        child = LopperNode(name='zyxclmm_drm')
+        child.__dict__['abs_path'] = amba_path + '/zyxclmm_drm'
+        p_mr = LopperProp(name='xlnx,memory-region')
+        p_mr.__dict__['value'] = [0xffffffff]
+        p_mr.node = child
+        child.__props__['xlnx,memory-region'] = p_mr
+        self._add_node(tree, child)
+
+        cma = LopperNode(name='cma_reserved')
+        cma.__dict__['abs_path'] = '/cma_reserved'
+        cma.label = 'cma_reserved'
+        cma.__dict__['phandle'] = 42
+        self._add_node(tree, cma)
+
+        return tree
+
+    def test_resolve_patches_child_node_placeholder(self):
+        """_resolve_overlay_fixups must patch 0xffffffff in a child node property."""
+        from lopper.tree import _resolve_overlay_fixups
+
+        result = self._make_result_tree()
+        fixups = {
+            'cma_reserved': [('amba_pl', '/zyxclmm_drm', 'xlnx,memory-region', '0')]
+        }
+        _resolve_overlay_fixups(result, fixups)
+
+        child = result['/amba_pl/zyxclmm_drm']
+        val = child.__props__['xlnx,memory-region'].__dict__['value']
+        assert val[0] == 42, \
+            f"placeholder not patched: got {val[0]!r}, expected phandle 42"
+
+    def test_resolve_patches_target_node_itself(self):
+        """_resolve_overlay_fixups must patch a placeholder on the target node itself."""
+        from lopper.tree import LopperProp, _resolve_overlay_fixups
+
+        result = self._make_result_tree()
+        amba = result['/amba_pl']
+        p = LopperProp(name='clocks')
+        p.__dict__['value'] = [0xffffffff]
+        p.node = amba
+        amba.__props__['clocks'] = p
+
+        fixups = {
+            'cma_reserved': [('amba_pl', '', 'clocks', '0')]
+        }
+        _resolve_overlay_fixups(result, fixups)
+
+        val = amba.__props__['clocks'].__dict__['value']
+        assert val[0] == 42, \
+            f"placeholder on target node not patched: got {val[0]!r}, expected 42"
+
+    def test_resolve_tolerates_missing_frag_label(self):
+        """A fixup whose fragment_label is absent in the result tree is silently skipped."""
+        from lopper.tree import _resolve_overlay_fixups
+
+        result = self._make_result_tree()
+        fixups = {
+            'cma_reserved': [('nonexistent_label', '/zyxclmm_drm', 'xlnx,memory-region', '0')]
+        }
+        # Must not raise
+        _resolve_overlay_fixups(result, fixups)
+
+        child = result['/amba_pl/zyxclmm_drm']
+        val = child.__props__['xlnx,memory-region'].__dict__['value']
+        assert val[0] == 0xffffffff, "placeholder should be unchanged when label is absent"
+
+    # ------------------------------------------------------------------
+    # Rename tolerance — target moved between registration and build time
+    # ------------------------------------------------------------------
+
+    def test_resolve_after_target_rename(self):
+        """Phandle is resolved correctly even when the target node was renamed.
+
+        Simulates an assist renaming /amba_pl -> /axi/amba_pl after overlay
+        registration.  Because resolution uses tree.lnodes(frag_label) the
+        rename is transparent — no fallback needed.
+
+        We build the result tree's __nodes__ directly to avoid tree.add()
+        path-composition side-effects; _resolve_overlay_fixups only uses
+        tree.__nodes__ and tree.lnodes(), so this is the correct minimal API.
+        """
+        from lopper.tree import LopperProp, LopperNode, LopperTree, _resolve_overlay_fixups
+
+        result = LopperTree()
+
+        # amba_pl at its *renamed* location — label still 'amba_pl'
+        amba = LopperNode(name='amba_pl')
+        amba.__dict__['abs_path'] = '/axi/amba_pl'
+        amba.label = 'amba_pl'
+        amba.__dict__['phandle'] = 0
+        self._add_node(result, amba)
+
+        # child under renamed amba_pl
+        child = LopperNode(name='zyxclmm_drm')
+        child.__dict__['abs_path'] = '/axi/amba_pl/zyxclmm_drm'
+        p_mr = LopperProp(name='xlnx,memory-region')
+        p_mr.__dict__['value'] = [0xffffffff]
+        p_mr.node = child
+        child.__props__['xlnx,memory-region'] = p_mr
+        self._add_node(result, child)
+
+        # cma_reserved with phandle 42
+        cma = LopperNode(name='cma_reserved')
+        cma.__dict__['abs_path'] = '/cma_reserved'
+        cma.label = 'cma_reserved'
+        cma.__dict__['phandle'] = 42
+        self._add_node(result, cma)
+
+        # Fixup tuple uses the label, not any abs_path — rename is invisible
+        fixups = {
+            'cma_reserved': [('amba_pl', '/zyxclmm_drm', 'xlnx,memory-region', '0')]
+        }
+        _resolve_overlay_fixups(result, fixups)
+
+        val = child.__props__['xlnx,memory-region'].__dict__['value']
+        assert val[0] == 42, \
+            f"phandle not resolved after rename: got {val[0]!r}, expected 42"
