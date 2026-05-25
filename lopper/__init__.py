@@ -216,20 +216,33 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
     This function reverses that structure:
     - Reads __fixups__ to map each fragment@N to its target label
     - Looks up that label in base_tree to find the real abs_path
-    - Copies __overlay__ props/children onto a clean node at that path
-    - Resolves 0xffffffff phandle placeholders using __fixups__ byte-offsets
+    - Copies __overlay__ props/children onto a clean node at that path,
+      preserving any 0xffffffff phandle placeholders as-is
+    - Rewrites the fixup path refs from the dtc fragment layout
+      (/fragment@N/__overlay__[/child]) to the real target paths
+      so _resolve_overlay_fixups() can patch nodes by their actual paths
+      in the merged result tree at overlay_tree() build time
 
-    Returns a list of LopperNode objects ready for storage in overlay_subtrees.
+    Returns (result_nodes, fixups) where:
+      result_nodes  list of LopperNode ready for overlay_subtrees storage
+      fixups        dict {label: ["real_path:prop:byte_offset", ...]} ready
+                    for overlay_fixups storage; empty dict if no fixups
+
     Nodes whose target label cannot be resolved against base_tree are skipped
     with a warning.
+
+    Phandle resolution is intentionally deferred to _resolve_overlay_fixups(),
+    called by _build_overlay_tree() once the full overlay tree is assembled.
+    This ensures resolution always runs against the final merged tree state
+    rather than the base tree snapshot at registration time.
     """
     import copy
 
     # --- step 1: read __fixups__ ---
-    # Map fragment path ("/fragment@0") -> target label ("mmi_dc")
-    # Map label -> list of fixup records ("node_path:prop_name:byte_offset")
-    fragment_to_label = {}   # "/fragment@0" -> "mmi_dc"
-    label_to_fixups   = {}   # "mmi_dc" -> ["/fragment@0/__overlay__:clocks:4", ...]
+    # fragment_to_label: "/fragment@0" -> "amba_pl"  (the target label)
+    # label_to_fixups:   "cma_reserved" -> ["/fragment@0/__overlay__/zyxclmm_drm:xlnx,memory-region:0", ...]
+    fragment_to_label = {}
+    label_to_fixups   = {}
 
     fixups_nodes = ov_tree.nodes('/__fixups__')
     fixups_node  = fixups_nodes[0] if fixups_nodes else None
@@ -241,22 +254,18 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
             for ref in refs:
                 if not isinstance(ref, str):
                     continue
-                frag_path = ref.split(':')[0]   # "/fragment@0" or "/fragment@0/__overlay__/child"
-                # Target entry: path is exactly /fragment@N (no sub-path)
+                frag_path = ref.split(':')[0]
+                # Target entry: "/fragment@N:target:0" — structural, not a phandle fixup
                 if frag_path.count('/') == 1 and ':target:' in ref:
                     fragment_to_label[frag_path] = label
                 else:
                     label_to_fixups.setdefault(label, []).append(ref)
 
-    # --- step 2: resolve label -> real phandle from base_tree ---
-    label_to_phandle = {}
-    for label in label_to_fixups:
-        nodes = base_tree.lnodes(label, exact=True)
-        if nodes and nodes[0].phandle and nodes[0].phandle > 0:
-            label_to_phandle[label] = nodes[0].phandle
-
-    # --- step 3: walk fragment@N nodes, build clean result nodes ---
+    # --- step 2: walk fragment@N nodes, build clean result nodes ---
     result_nodes = []
+    # fragment_overlay_to_real: "/fragment@0/__overlay__" -> "/amba_pl"
+    # Built during the walk so step 3 can rewrite child paths too.
+    fragment_overlay_to_real = {}
 
     for node in ov_tree:
         if not node.name.startswith('fragment@'):
@@ -267,14 +276,12 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
         if label is None:
             continue
 
-        # Find target abs_path in base_tree
         target_nodes = base_tree.lnodes(label, exact=True)
         if not target_nodes:
             lopper.log._warning(f"overlay: label '{label}' not found in base tree, skipping")
             continue
         target_abs_path = target_nodes[0].abs_path
 
-        # Find __overlay__ child
         overlay_child = None
         for child in node.child_nodes.values():
             if child.name == '__overlay__':
@@ -283,42 +290,18 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
         if overlay_child is None:
             continue
 
-        # Build a clean node at the target path; store the label so callers
-        # can emit &label fragments without re-querying the base tree.
+        frag_overlay_prefix = frag_path + '/__overlay__'
+        fragment_overlay_to_real[frag_overlay_prefix] = target_abs_path
+
         clean_node = LopperNode(name=target_nodes[0].name)
         clean_node.__dict__['abs_path'] = target_abs_path
         clean_node.label = label
 
-        # Copy properties, resolving 0xffffffff placeholders
         for prop in overlay_child.__props__.values():
             new_prop = copy.deepcopy(prop)
             new_prop.node = clean_node
-
-            val = new_prop.__dict__.get('value')
-            if isinstance(val, list) and 4294967295 in val:
-                val = list(val)
-                ov_node_prefix = frag_path + '/__overlay__'
-                for fix_label, fix_refs in label_to_fixups.items():
-                    ph = label_to_phandle.get(fix_label)
-                    if ph is None:
-                        continue
-                    for ref in fix_refs:
-                        try:
-                            ref_node, ref_prop, byte_off = ref.rsplit(':', 2)
-                            if ref_prop != prop.name:
-                                continue
-                            if not ref_node.startswith(ov_node_prefix):
-                                continue
-                            idx = int(byte_off) // 4
-                            if idx < len(val) and val[idx] == 4294967295:
-                                val[idx] = ph
-                        except Exception:
-                            pass
-                new_prop.__dict__['value'] = val
-
             clean_node.__props__[prop.name] = new_prop
 
-        # Recursively copy child nodes from __overlay__
         def _copy_children(src_node, dst_node):
             for child in src_node.child_nodes.values():
                 child_copy = copy.deepcopy(child)
@@ -327,7 +310,28 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
         _copy_children(overlay_child, clean_node)
         result_nodes.append(clean_node)
 
-    return result_nodes
+    # --- step 3: rewrite fixup refs from fragment paths to real paths ---
+    # "/fragment@0/__overlay__/zyxclmm_drm:xlnx,memory-region:0"
+    #   -> "/amba_pl/zyxclmm_drm:xlnx,memory-region:0"
+    # This lets _resolve_overlay_fixups() look up nodes directly by abs_path
+    # in the merged result tree without any knowledge of the dtc fragment layout.
+    rewritten_fixups = {}
+    for fix_label, refs in label_to_fixups.items():
+        rewritten = []
+        for ref in refs:
+            try:
+                node_path, prop_name, byte_off = ref.rsplit(':', 2)
+                for frag_prefix, real_prefix in fragment_overlay_to_real.items():
+                    if node_path.startswith(frag_prefix):
+                        node_path = real_prefix + node_path[len(frag_prefix):]
+                        break
+                rewritten.append(f"{node_path}:{prop_name}:{byte_off}")
+            except Exception:
+                pass
+        if rewritten:
+            rewritten_fixups[fix_label] = rewritten
+
+    return result_nodes, rewritten_fixups
 
 
 def extract_overlay_targets_from_tree(overlay_tree):
@@ -867,11 +871,14 @@ class LopperSDT:
                 sys.exit(1)
 
             # Unwrap the dtc plugin structure (fragment@N/__overlay__) into
-            # clean nodes at their real target paths with phandles resolved
-            # against the base tree.  Assists see normal LopperNode objects;
-            # no knowledge of dtc's internal compilation format is needed.
-            nodes = _unwrap_overlay_tree(ov_tree, self.tree)
+            # clean nodes at their real target paths.  Phandle placeholders
+            # (0xffffffff) are left intact; fixups are stored for deferred
+            # resolution at overlay_tree() build time against the final merged
+            # tree via _resolve_overlay_fixups().
+            nodes, fixups = _unwrap_overlay_tree(ov_tree, self.tree)
             self.tree._metadata.setdefault('overlay_subtrees', {})[stem] = nodes
+            if fixups:
+                self.tree._metadata.setdefault('overlay_fixups', {})[stem] = fixups
 
             lopper.log._debug(f"Registered {len(nodes)} overlay nodes for '{stem}'")
 

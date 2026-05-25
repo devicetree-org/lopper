@@ -150,29 +150,29 @@ def chunks_variable(lst, chunk_sizes):
         yield chunk
         start = end
 
-def _resolve_overlay_fixups(tree, fixups_node):
+def _resolve_overlay_fixups(tree, fixups):
     """Patch 0xffffffff phandle placeholders left by dtc plugin compilation.
 
-    dtc compiles DTS overlay files with /plugin/ which cannot resolve label
-    references at compile time (the base tree is absent).  It instead writes
-    0xffffffff into every phandle slot and records the location of each slot in
-    the __fixups__ node as "node_path:prop_name:byte_offset" strings, keyed by
-    the label name that needs resolving.
+    Called at overlay_tree() build time, after all overlay nodes have been
+    merged into the result tree, so phandles are resolved against a complete
+    and final tree rather than the base tree at registration time.
 
-    This function walks those records, looks up each label in the already-merged
-    result tree to find its real phandle, and patches the slot in place.
+    Args:
+        tree:    the merged result LopperTree (base + overlay nodes)
+        fixups:  dict of {label: ["real_node_path:prop_name:byte_offset", ...]}
+                 produced by _unwrap_overlay_tree() with fragment paths already
+                 rewritten to the real abs_paths present in tree.__nodes__.
     """
-    for label, fixup_refs in fixups_node.__props__.items():
+    for label, refs in fixups.items():
         nodes = tree.lnodes(label, exact=True)
         if not nodes:
             continue
         target_phandle = nodes[0].phandle
         if not target_phandle or target_phandle < 0:
             continue
-        refs = fixup_refs if isinstance(fixup_refs, list) else [fixup_refs]
         for ref in refs:
             try:
-                # format: "node_path:prop_name:byte_offset"
+                # format: "real_node_path:prop_name:byte_offset"
                 node_path, prop_name, byte_offset_str = ref.rsplit(':', 2)
                 byte_offset = int(byte_offset_str)
                 if node_path not in tree.__nodes__:
@@ -4335,10 +4335,10 @@ class LopperTree:
             _merge_node_into_tree(result, ov_node)
 
         # Resolve phandle placeholders left by dtc plugin compilation.
-        # Plain YAML overlays have no fixups node so this is a no-op for them.
-        fixups_node = self._metadata.get('overlay_fixups', {}).get(name)
-        if fixups_node is not None:
-            _resolve_overlay_fixups(result, fixups_node)
+        # Plain YAML overlays have no fixups entry so this is a no-op for them.
+        fixups = self._metadata.get('overlay_fixups', {}).get(name)
+        if fixups:
+            _resolve_overlay_fixups(result, fixups)
 
         # Re-resolve the whole tree so string_val is current for DTS output
         result.resolve()
