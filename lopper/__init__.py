@@ -124,100 +124,6 @@ def is_overlay_file(filepath):
     return bool(re.search(r'/plugin/\s*;', content))
 
 
-def _extract_overlay_targets_regex(filepath):
-    """Extract overlay targets using a brace-counting parser (fallback method).
-
-    Used when compiled tree analysis is not possible (e.g., during early
-    setup before full SDT is loaded, or when dtc is unavailable).
-
-    Handles arbitrarily nested child nodes inside &label { } blocks by
-    counting braces rather than using a fixed-depth regex.
-
-    Args:
-        filepath: Path to the overlay DTS/DTSI file
-
-    Returns:
-        dict: Mapping of label names to a dict with keys:
-              'props'    - list of direct property names on the overlay target
-              'children' - list of direct child node names added by the overlay
-              Example: {'mmi_dc': {'props': ['status', 'clocks'],
-                                   'children': ['ports']}}
-    """
-    targets = {}
-
-    try:
-        with open(filepath, 'r') as f:
-            content = f.read()
-
-        # Find the start of each &label { block using a simple scan
-        label_re = re.compile(r'&(\w+)\s*\{', re.DOTALL)
-        prop_re = re.compile(r'^([a-zA-Z][a-zA-Z0-9,._+#-]*)\s*[=;]')
-        child_re = re.compile(r'^([a-zA-Z][a-zA-Z0-9,._+#-]*)\s*\{')
-
-        for m in label_re.finditer(content):
-            label = m.group(1)
-            # Walk forward counting braces to find the matching closing brace
-            pos = m.end()   # just past the opening '{'
-            depth = 1
-            block_start = pos
-            block_end = pos
-            while pos < len(content) and depth > 0:
-                ch = content[pos]
-                if ch == '{':
-                    depth += 1
-                elif ch == '}':
-                    depth -= 1
-                    if depth == 0:
-                        block_end = pos
-                pos += 1
-
-            block = content[block_start:block_end]
-
-            # Parse direct properties and direct child nodes at depth=1
-            # We need to skip over nested blocks when looking for properties
-            props = []
-            children = []
-            inner_pos = 0
-            inner_depth = 0
-            line_buf = []
-            while inner_pos < len(block):
-                ch = block[inner_pos]
-                if ch == '{':
-                    if inner_depth == 0:
-                        # The text in line_buf is the child node name line
-                        child_line = ''.join(line_buf).strip()
-                        child_m = child_re.match(child_line)
-                        if child_m:
-                            children.append(child_m.group(1))
-                        line_buf = []
-                    inner_depth += 1
-                elif ch == '}':
-                    inner_depth -= 1
-                    line_buf = []
-                elif ch == '\n':
-                    if inner_depth == 0:
-                        line = ''.join(line_buf).strip()
-                        prop_m = prop_re.match(line)
-                        if prop_m:
-                            props.append(prop_m.group(1))
-                    line_buf = []
-                else:
-                    if inner_depth == 0:
-                        line_buf.append(ch)
-                inner_pos += 1
-
-            if label in targets:
-                targets[label]['props'].extend(props)
-                targets[label]['children'].extend(children)
-            else:
-                targets[label] = {'props': props, 'children': children}
-
-    except Exception as e:
-        lopper.log._warning(f"Failed to extract overlay targets from {filepath}: {e}")
-
-    return targets
-
-
 def _unwrap_overlay_tree(ov_tree, base_tree):
     """Unwrap a dtc plugin-compiled overlay tree into clean LopperNode objects.
 
@@ -363,97 +269,6 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
     return result_nodes, rewritten_fixups
 
 
-def extract_overlay_targets_from_tree(overlay_tree):
-    """Extract overlay targets by analyzing a compiled overlay tree.
-
-    A dtc plugin-compiled overlay has the structure:
-
-        fragment@N { target = <&label>; __overlay__ { props; child_nodes; }; };
-        __fixups__ { label = "/fragment@N:target:0"; other_label = "..."; };
-
-    __fixups__ maps every &label reference to its location. The target
-    label for fragment@N appears as the entry whose path contains ':target:'.
-    All other entries are phandle fixups inside the overlay body.
-
-    Args:
-        overlay_tree: A LopperTree loaded from a compiled overlay DTB
-
-    Returns:
-        dict: Mapping of label name to a dict with keys:
-              'props'    - list of direct property names on the overlay target
-              'children' - list of direct child node names added by the overlay
-              Example: {'mmi_dc': {'props': ['status', 'clocks'],
-                                   'children': ['ports']}}
-
-    Note:
-        The return value is a richer type than the regex fallback.
-        Callers that only need property names should iterate result[label]['props'].
-    """
-    targets = {}
-
-    try:
-        # Build fragment-path -> target-label mapping from __fixups__ node.
-        # __fixups__ property values are strings like "/fragment@0:target:0".
-        # The target label is the property name; the fragment path precedes the first ':'.
-        fragment_to_label = {}
-        fixups_node = overlay_tree.nodes('/__fixups__')
-        if fixups_node:
-            fixups_node = fixups_node[0] if isinstance(fixups_node, list) else fixups_node
-            for prop in fixups_node.__props__.values():
-                label = prop.name
-                # prop.value may be a string or list of strings
-                val = prop.value
-                if not isinstance(val, list):
-                    val = [val]
-                for path_str in val:
-                    if not isinstance(path_str, str):
-                        continue
-                    # path_str like "/fragment@0:target:0"
-                    # or "/fragment@0/__overlay__/child:some-prop:0"
-                    frag_path = path_str.split(':')[0]   # "/fragment@0"
-                    frag_name = frag_path.strip('/')      # "fragment@0"
-                    if frag_path.count('/') == 1 and ':target:' in path_str:
-                        fragment_to_label[frag_name] = label
-                        break
-
-        # Walk each top-level fragment@N node using the tree abstraction
-        for node in overlay_tree:
-            frag_name = node.name
-            if not frag_name.startswith('fragment@'):
-                continue
-            if frag_name not in fragment_to_label:
-                continue
-
-            label = fragment_to_label[frag_name]
-
-            # Find the __overlay__ child of this fragment.
-            # child_nodes keys are full paths; search by node name.
-            overlay_node = None
-            for child_path, child in node.child_nodes.items():
-                if child.name == '__overlay__':
-                    overlay_node = child
-                    break
-            if overlay_node is None:
-                continue
-
-            # Collect direct property names from __overlay__
-            props = list(overlay_node.__props__.keys())
-
-            # Collect direct child node names from __overlay__
-            children = [child.name for child in overlay_node.child_nodes.values()]
-
-            if label in targets:
-                targets[label]['props'].extend(props)
-                targets[label]['children'].extend(children)
-            else:
-                targets[label] = {'props': props, 'children': children}
-
-    except Exception as e:
-        lopper.log._warning(f"Failed to extract overlay targets from tree: {e}")
-
-    return targets
-
-
 def compile_overlay_standalone(overlay_file, include_paths="", tmpdir=None, save_temps=False):
     """Compile an overlay file standalone using dtc's plugin support.
 
@@ -526,39 +341,6 @@ def compile_overlay_standalone(overlay_file, include_paths="", tmpdir=None, save
         lopper.log._debug(f"Compiled overlay analysis failed for {overlay_file}: {e}")
 
     return None
-
-
-def extract_overlay_targets(overlay_file, include_paths="", tmpdir=None, save_temps=False):
-    """Extract which nodes and properties an overlay file targets.
-
-    Uses dtc's native plugin compilation to compile the overlay standalone,
-    then analyzes the resulting tree. Falls back to brace-counting parser if
-    compilation fails.
-
-    Args:
-        overlay_file: Path to the overlay DTS/DTSI file
-        include_paths: Include paths for preprocessing (when compiling)
-        tmpdir: Temporary directory for compilation artifacts
-
-    Returns:
-        dict: Mapping of label names to a dict with keys:
-              'props'    - list of direct property names modified by the overlay
-              'children' - list of direct child node names added by the overlay
-              Example: {'mmi_dc': {'props': ['status', 'clocks'],
-                                   'children': ['ports']}}
-    """
-    overlay_tree = compile_overlay_standalone(
-        overlay_file, include_paths, tmpdir, save_temps
-    )
-    if overlay_tree:
-        targets = extract_overlay_targets_from_tree(overlay_tree)
-        if targets:
-            lopper.log._debug(f"Used compiled analysis for {overlay_file}")
-            return targets
-
-    # Fallback to regex parsing
-    lopper.log._debug(f"Using regex fallback for {overlay_file}")
-    return _extract_overlay_targets_regex(overlay_file)
 
 
 def _serialize_overlay_node(ov_node):
@@ -1110,28 +892,6 @@ class LopperSDT:
             # TODO: if the count is one, we shouldn't be doing the tmp file processing.
             if sdt_files:
                 sdt_files.insert( 0, self.dts )
-
-                # Identify overlay files and extract their targets for source tracking.
-                # This allows us to tag properties that came from user overlays
-                # after the full compilation is complete.
-                #
-                # Uses compiled tree analysis when possible (per design) - compiles
-                # overlay with base SDT context for label resolution, then analyzes
-                # the resulting tree. Falls back to regex parsing if compilation fails.
-                self._overlay_targets = {}
-                for f in sdt_files:
-                    if (f.endswith(".dts") or f.endswith(".dtsi")) and f != self.dts:
-                        if is_overlay_file(f):
-                            overlay_name = os.path.basename(f)
-                            targets = extract_overlay_targets(
-                                f,
-                                include_paths=include_paths,
-                                tmpdir=self.tmpdir,
-                                save_temps=self.save_temps
-                            )
-                            if targets:
-                                self._overlay_targets[overlay_name] = targets
-                                lopper.log._debug(f"Identified overlay {overlay_name} targeting: {list(targets.keys())}")
 
                 # Separate overlay DTS files from base DTS files so that
                 # base and overlay layers can be seeded independently.
