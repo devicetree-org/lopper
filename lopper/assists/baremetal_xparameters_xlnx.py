@@ -554,20 +554,16 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         elif val == "UDIMMs":
             plat.buf(f"\n#define DDRMC5_DEVICE_TYPE_UDIMM\n")
 
-    #Define for DDRMC5_I2C_MASTER and DDRMC5_DEBUG_ELF (from axi_noc2 memory node)
-    for node in sdt.tree['/'].subnodes():
-        if node.propval('xlnx,ip-name') == ['axi_noc2']:
-            i2c_master = node.propval('xlnx,ddrmc5-i2c-master')
-            debug_elf = node.propval('xlnx,ddrmc5-debug-elf')
-            if i2c_master != ['']:
-                val = i2c_master[0]
-                plat.buf(f"\n/* DDRMC5_I2C_MASTER */")
-                plat.buf(f'\n#define DDRMC5_I2C_MASTER "{val}"\n')
-            if debug_elf != ['']:
-                val = debug_elf[0]
-                plat.buf(f"\n/* DDRMC5_DEBUG_ELF */")
-                plat.buf(f'\n#define DDRMC5_DEBUG_ELF "{val}"\n')
-            break
+    #Define for DDRMC5_I2C_MASTER and DDRMC5_DEBUG_ELF
+    if sdt.tree[tgt_node].propval('xlnx,ddrmc5-i2c-master') != ['']:
+        val = sdt.tree[tgt_node].propval('xlnx,ddrmc5-i2c-master', list)[0]
+        plat.buf(f"\n/* DDRMC5_I2C_MASTER */")
+        plat.buf(f'\n#define DDRMC5_I2C_MASTER "{val}"\n')
+
+    if sdt.tree[tgt_node].propval('xlnx,ddrmc5-debug-elf') != ['']:
+        val = sdt.tree[tgt_node].propval('xlnx,ddrmc5-debug-elf', list)[0]
+        plat.buf(f"\n/* DDRMC5_DEBUG_ELF */")
+        plat.buf(f'\n#define DDRMC5_DEBUG_ELF "{val}"\n')
 
     #Define for XSEM_CFRSCAN_EN
     if sdt.tree[tgt_node].propval('semmem-scan') != ['']:
