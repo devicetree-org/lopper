@@ -2068,6 +2068,8 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
             sdt.tree[node].delete('reg')
         if node.propval('clock-output-names') != ['']:
             sdt.tree[node].delete('clock-output-names')
+        if node.props('bootph-all') != []:
+            sdt.tree[node].delete('bootph-all')
         node.name = node.name.split('@')[0]
 
     match_cpunode = get_cpu_node(sdt, options)
