@@ -1,0 +1,102 @@
+# AMD Versal SoC hardware description
+#
+# Sourced exclusively from public material:
+#   xlnx-versal-power.h (Linux kernel,
+#   include/dt-bindings/power/, GPL-2.0)
+#   Encoding pattern documented at end of this file.
+#
+# NOT sourced from any reference SDT, internal XSA, or
+# internal-only header.
+
+soc:
+  family: xlnx,versal
+  matches:
+    - xlnx,versal
+    - xlnx,versal-vck190-revA
+    - xlnx,versal-vmk180-revA
+    - xlnx,versal-vc-p-a2197-00-revA
+
+pm_devices:
+  # Processors
+  0x18104001: PM_DEV_PMC_PROC
+  0x18108002: PM_DEV_PSM_PROC
+  0x1810c003: PM_DEV_ACPU_0
+  0x1810c004: PM_DEV_ACPU_1
+  0x18110005: PM_DEV_RPU0_0
+  0x18110006: PM_DEV_RPU0_1
+  # On-chip memory
+  0x18314007: PM_DEV_OCM_0
+  0x18314008: PM_DEV_OCM_1
+  0x18314009: PM_DEV_OCM_2
+  0x1831400a: PM_DEV_OCM_3
+  0x1831800b: PM_DEV_TCM_0_A
+  0x1831800c: PM_DEV_TCM_0_B
+  0x1831800d: PM_DEV_TCM_1_A
+  0x1831800e: PM_DEV_TCM_1_B
+  0x1831c00f: PM_DEV_L2_BANK_0
+  # DDR
+  0x18320010: PM_DEV_DDR_0
+  0x18520045: PM_DEV_DDRMC_0
+  0x18520046: PM_DEV_DDRMC_1
+  0x18520047: PM_DEV_DDRMC_2
+  0x18520048: PM_DEV_DDRMC_3
+  # LPD/FPD peripherals
+  0x18224018: PM_DEV_USB_0
+  0x18224019: PM_DEV_GEM_0
+  0x1822401a: PM_DEV_GEM_1
+  0x1822401b: PM_DEV_SPI_0
+  0x1822401c: PM_DEV_SPI_1
+  0x1822401d: PM_DEV_I2C_0
+  0x1822401e: PM_DEV_I2C_1
+  0x1822401f: PM_DEV_CAN_FD_0
+  0x18224020: PM_DEV_CAN_FD_1
+  0x18224021: PM_DEV_UART_0
+  0x18224022: PM_DEV_UART_1
+  0x18224023: PM_DEV_GPIO
+  0x18224024: PM_DEV_TTC_0
+  0x18224025: PM_DEV_TTC_1
+  0x18224026: PM_DEV_TTC_2
+  0x18224027: PM_DEV_TTC_3
+  0x18224028: PM_DEV_SWDT_LPD
+  0x18224029: PM_DEV_SWDT_FPD
+  0x1822402a: PM_DEV_OSPI
+  0x1822402b: PM_DEV_QSPI
+  0x1822402c: PM_DEV_GPIO_PMC
+  0x1822402d: PM_DEV_I2C_PMC
+  0x1822402e: PM_DEV_SDIO_0
+  0x1822402f: PM_DEV_SDIO_1
+  0x18224034: PM_DEV_RTC
+  0x18224035: PM_DEV_ADMA_0
+  0x18224036: PM_DEV_ADMA_1
+  0x18224037: PM_DEV_ADMA_2
+  0x18224038: PM_DEV_ADMA_3
+  0x18224039: PM_DEV_ADMA_4
+  0x1822403a: PM_DEV_ADMA_5
+  0x1822403b: PM_DEV_ADMA_6
+  0x1822403c: PM_DEV_ADMA_7
+  # IPI (inter-processor interrupts)
+  0x1822403d: PM_DEV_IPI_0
+  0x1822403e: PM_DEV_IPI_1
+  0x1822403f: PM_DEV_IPI_2
+  0x18224040: PM_DEV_IPI_3
+  0x18224041: PM_DEV_IPI_4
+  0x18224042: PM_DEV_IPI_5
+  0x18224043: PM_DEV_IPI_6
+  0x18224073: PM_DEV_IPI_PMC
+  # AI Engine
+  0x18224072: PM_DEV_AI
+
+# Encoding key (Versal PM node ID layout, from public TRM):
+#   0x18 _C_ N N _I I  where:
+#     0x18 = device-class (NODE_CLASS=DEVICE)
+#     C    = subclass nibble:
+#            0x10 → cluster control (subdivided below)
+#            0x22 → LPD/FPD peripheral
+#            0x31 → memory (OCM/TCM/L2)
+#            0x32 → DDR memory
+#            0x33 → memory-region (XRAM)
+#            0x42 → power-island/SOC
+#            0x52 → DDR controller
+#     NN   = type sub-nibble (4=PMC_PROC, 8=PSM_PROC,
+#            0c=ACPU, 10=RPU0, ...)
+#     II   = per-type index

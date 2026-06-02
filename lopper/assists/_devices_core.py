@@ -26,6 +26,7 @@ assists in this package"; not intended for direct use by tooling
 outside lopper.
 """
 
+import glob
 import os
 import re
 from enum import Enum
@@ -35,6 +36,13 @@ from ruamel.yaml.scalarint import HexInt
 
 import lopper
 import lopper.log
+
+# Per-SoC YAML data files live alongside the library. The loader matches
+# the input tree's root `compatible` against each file's `soc.matches`
+# list and returns the first match. New SoC support = drop a new file
+# in here (see lopper/data/socs/README.md for the schema).
+_SOC_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                             'data', 'socs')
 
 lopper.log._init(__name__)
 
@@ -193,6 +201,56 @@ class DevicesCore:
         r'clock-controller',      # Clock controllers
     ]
 
+    # Cache of (root_compatible_tuple → SoC-data dict) so we only load
+    # and match each YAML once per process.
+    _soc_data_cache = {}
+
+    @classmethod
+    def _load_soc_data(cls, compatibles):
+        """Find a SoC data file whose `soc.matches` contains any of
+        `compatibles` (the input tree's root compatible list).
+
+        Args:
+            compatibles (list[str]): Root-level compatible strings, in
+                                     priority order (most-specific first).
+
+        Returns:
+            dict: Parsed SoC data, or {} if no file matches.
+        """
+        key = tuple(compatibles)
+        if key in cls._soc_data_cache:
+            return cls._soc_data_cache[key]
+
+        result = {}
+        if not os.path.isdir(_SOC_DATA_DIR):
+            cls._soc_data_cache[key] = result
+            return result
+
+        try:
+            from ruamel.yaml import YAML
+            yaml_loader = YAML(typ='safe')
+        except Exception:
+            lopper.log._warning("ruamel.yaml unavailable; SoC data files not loaded")
+            cls._soc_data_cache[key] = result
+            return result
+
+        for path in sorted(glob.glob(os.path.join(_SOC_DATA_DIR, '*.yaml'))):
+            try:
+                with open(path) as fh:
+                    data = yaml_loader.load(fh) or {}
+            except Exception as e:
+                lopper.log._warning(f"Failed to parse SoC data {path}: {e}")
+                continue
+            matches = (data.get('soc') or {}).get('matches') or []
+            if any(c in matches for c in compatibles):
+                lopper.log._info(f"SoC data: matched {os.path.basename(path)} "
+                                 f"on {[c for c in compatibles if c in matches]}")
+                result = data
+                break
+
+        cls._soc_data_cache[key] = result
+        return result
+
     def __init__(self, sdt, include_clocks=False, include_infrastructure=None):
         """Initialize the device-inventory extractor.
 
@@ -216,6 +274,17 @@ class DevicesCore:
 
         # Build the active exclusion patterns based on which categories are NOT included
         self._build_active_patterns()
+
+        # Resolve the SoC data file (if any) for this input tree's root
+        # compatible list. Cached so repeated invocations are cheap.
+        identity = self._detect_soc_identity()
+        compatibles = []
+        if 'board' in identity:
+            compatibles.append(identity['board'])
+        if 'soc_family' in identity and identity['soc_family'] not in compatibles:
+            compatibles.append(identity['soc_family'])
+        self._soc_data = self._load_soc_data(compatibles) if compatibles else {}
+        self._pm_devices = (self._soc_data.get('pm_devices') or {})
 
     def _build_active_patterns(self):
         """Build the active infrastructure exclusion patterns.
@@ -254,29 +323,33 @@ class DevicesCore:
                     return mem_type
         return 'memory'
 
-    def _parse_reg_property(self, node):
-        """Parse reg property to extract start address and size.
+    def _parse_reg_ranges(self, node):
+        """Parse reg property into ALL (start, size) ranges it declares.
 
-        The reg property format depends on parent's #address-cells and #size-cells.
-        Common formats:
-        - 4 cells: <addr_hi addr_lo size_hi size_lo>
-        - 2 cells: <addr size>
+        A single node's reg property may declare multiple ranges by
+        concatenating tuples, e.g.:
+            reg = <0x00 0x00 0x00 0x80000000>,    // 2 GiB at 0x0
+                  <0x08 0x00 0x01 0x80000000>;    // 6 GiB at 0x8_0000_0000
+        Linux DTs commonly use this for memory@0 to declare DDR-low and
+        DDR-high in one node; the older single-range parser silently
+        dropped the second one.
 
         Args:
             node: LopperNode with reg property
 
         Returns:
-            tuple: (start_hex, size_hex) or (None, None) if not parseable
+            list of (start_hex, size_hex) tuples. Empty list if the
+            property is missing or unparseable. Tuple values are HexInt
+            for YAML hex formatting, or None if not derivable.
         """
         reg = node.propval("reg")
         if not reg or len(reg) < 2:
-            return None, None
+            return []
 
-        # Try to get #address-cells and #size-cells from parent
+        # Address/size cell counts come from the parent
         parent = node.parent
         addr_cells = 2  # default
         size_cells = 2  # default
-
         if parent:
             ac = parent.propval("#address-cells")
             if ac and len(ac) > 0 and isinstance(ac[0], int):
@@ -285,31 +358,50 @@ class DevicesCore:
             if sc and len(sc) > 0 and isinstance(sc[0], int):
                 size_cells = sc[0]
 
-        try:
-            # Parse based on cells
-            if addr_cells == 2 and size_cells == 2 and len(reg) >= 4:
-                # 64-bit address and size
-                start = (reg[0] << 32) | reg[1] if isinstance(reg[0], int) else 0
-                size = (reg[2] << 32) | reg[3] if isinstance(reg[2], int) else 0
-            elif addr_cells == 1 and size_cells == 1 and len(reg) >= 2:
-                # 32-bit address and size
-                start = reg[0] if isinstance(reg[0], int) else 0
-                size = reg[1] if isinstance(reg[1], int) else 0
-            elif addr_cells == 2 and size_cells == 1 and len(reg) >= 3:
-                # 64-bit address, 32-bit size
-                start = (reg[0] << 32) | reg[1] if isinstance(reg[0], int) else 0
-                size = reg[2] if isinstance(reg[2], int) else 0
-            else:
-                # Fallback: assume first value is address, second is size
-                start = reg[0] if isinstance(reg[0], int) else 0
-                size = reg[1] if isinstance(reg[1], int) else 0
+        tuple_size = addr_cells + size_cells
+        if tuple_size <= 0:
+            return []
 
-            # Return HexInt for proper YAML hex integer output
-            start_hex = HexInt(start) if start else None
-            size_hex = HexInt(size) if size else None
-            return start_hex, size_hex
-        except:
+        def _read_cells(start, count):
+            """Combine `count` consecutive 32-bit cells into one integer."""
+            val = 0
+            for i in range(count):
+                cell = reg[start + i]
+                if not isinstance(cell, int):
+                    return None
+                val = (val << 32) | (cell & 0xFFFFFFFF)
+            return val
+
+        ranges = []
+        try:
+            offset = 0
+            while offset + tuple_size <= len(reg):
+                addr = _read_cells(offset, addr_cells) if addr_cells else 0
+                size = _read_cells(offset + addr_cells, size_cells) if size_cells else 0
+                start_hex = HexInt(addr) if addr else None
+                size_hex = HexInt(size) if size else None
+                ranges.append((start_hex, size_hex))
+                offset += tuple_size
+        except Exception:
+            return ranges  # return whatever we got before the error
+
+        return ranges
+
+    def _parse_reg_property(self, node):
+        """Parse reg property and return just the first (start, size) range.
+
+        Kept for callers that only care about the primary range
+        (firmware/IPI/etc. typically have a single reg entry). For memory
+        nodes use _parse_reg_ranges() instead to capture multi-range
+        declarations.
+
+        Returns:
+            tuple: (start_hex, size_hex) or (None, None) if not parseable.
+        """
+        ranges = self._parse_reg_ranges(node)
+        if not ranges:
             return None, None
+        return ranges[0]
 
     def _is_actual_device(self, node):
         """Check if node represents an actual device (vs structural/infrastructure node).
@@ -453,6 +545,7 @@ class DevicesCore:
                         if status_str and status_str != "okay":
                             entry['status'] = status_str
 
+                    self._augment_device_entry(entry, node)
                     devices.append(entry)
                     lopper.log._debug(f"  Found bus device: {node.name}")
 
@@ -594,7 +687,9 @@ class DevicesCore:
         """Find all memory nodes in the tree.
 
         Discovers:
-        - Main memory nodes (memory@*)
+        - Main memory nodes (memory@*) — splits multi-range reg tuples
+          into one entry per range (e.g. Linux DT memory@0 declaring DDR
+          low and DDR high in one node becomes two inventory entries)
         - Reserved memory regions
         - SRAM/TCM regions
 
@@ -611,19 +706,40 @@ class DevicesCore:
                     continue
                 seen.add(node.abs_path)
 
-                entry = {'dev': node.name}
-                if node.label:
-                    entry['label'] = node.label
+                ranges = self._parse_reg_ranges(node)
+                if not ranges:
+                    # Node has no usable reg; emit the bare entry
+                    entry = {'dev': node.name}
+                    if node.label:
+                        entry['label'] = node.label
+                    self._augment_device_entry(entry, node)
+                    memory_devices['memory'].append(entry)
+                    lopper.log._debug(f"  Found memory: {node.name} (no reg)")
+                    continue
 
-                # Extract start address and size from reg property
-                start, size = self._parse_reg_property(node)
-                if start:
-                    entry['start'] = start
-                if size:
-                    entry['size'] = size
+                # Emit one inventory entry per range. The first range
+                # keeps the original node name + label (so single-range
+                # nodes look exactly the same as before); subsequent
+                # ranges get a synthesised name derived from their start
+                # address so they're unique.
+                for idx, (start, size) in enumerate(ranges):
+                    if idx == 0:
+                        entry = {'dev': node.name}
+                        if node.label:
+                            entry['label'] = node.label
+                    else:
+                        synth_name = ("memory@%x" % int(start)) if start else f"{node.name}:{idx}"
+                        entry = {'dev': synth_name}
 
-                memory_devices['memory'].append(entry)
-                lopper.log._debug(f"  Found memory: {node.name}")
+                    if start:
+                        entry['start'] = start
+                    if size:
+                        entry['size'] = size
+
+                    self._augment_device_entry(entry, node)
+                    memory_devices['memory'].append(entry)
+                    lopper.log._debug(f"  Found memory: {entry['dev']} "
+                                      f"(range {idx + 1}/{len(ranges)})")
 
         # Find reserved-memory children
         try:
@@ -655,6 +771,7 @@ class DevicesCore:
                     if reusable != ['']:
                         entry['reusable'] = True
 
+                self._augment_device_entry(entry, node)
                 mem_type = self._classify_memory_type(node.name)
                 memory_devices[mem_type].append(entry)
                 lopper.log._debug(f"  Found reserved memory: {node.name} ({mem_type})")
@@ -690,6 +807,7 @@ class DevicesCore:
                     if size:
                         entry['size'] = size
 
+                    self._augment_device_entry(entry, node)
                     memory_devices['sram'].append(entry)
                     lopper.log._debug(f"  Found SRAM: {node.name}")
 
@@ -731,6 +849,7 @@ class DevicesCore:
                 if node.label and node.label != dev_name:
                     entry['label'] = node.label
 
+                self._augment_device_entry(entry, node)
                 firmware_devices.append(entry)
                 lopper.log._debug(f"  Found firmware node: {dev_name}")
         except:
@@ -760,6 +879,7 @@ class DevicesCore:
                         if node.label:
                             entry['label'] = node.label
 
+                        self._augment_device_entry(entry, node)
                         firmware_devices.append(entry)
                         lopper.log._debug(f"  Found IPI controller: {dev_name}")
 
@@ -825,6 +945,7 @@ class DevicesCore:
                 if node.label:
                     entry['label'] = node.label
 
+                self._augment_device_entry(entry, node)
                 toplevel_devices.append(entry)
                 lopper.log._debug(f"  Found toplevel: {dev_name}")
 
@@ -833,6 +954,124 @@ class DevicesCore:
 
         lopper.log._info(f"Discovered {len(toplevel_devices)} toplevel nodes")
         return toplevel_devices
+
+    # bootph-* properties (U-Boot boot-phase tags) the augment hook
+    # surfaces on a device entry. Standard names from the dt-bindings.
+    _BOOTPH_PROPS = ('bootph-all', 'bootph-pre-ram', 'bootph-pre-sram',
+                     'bootph-some-ram', 'bootph-verify')
+
+    def _augment_device_entry(self, entry, node):
+        """Add extracted-but-not-required fields to a device inventory entry.
+
+        Called from every site that builds a per-device entry. Keep
+        additions cheap and side-effect-free; absence of a property
+        means the field is simply omitted. This is also the hook
+        future enhancements (PM-ID decode, etc.) will use.
+
+        Args:
+            entry (dict): The inventory entry being built. Mutated in place.
+            node (LopperNode): Source tree node the entry was built from.
+        """
+        # bootph-* presence flags — preserve so downstream consumers can
+        # honour the "this device must exist in early boot" intent. Emit
+        # as `bootph: <suffix>` (string when single, list when many).
+        # propval() returns [""] for both absent and boolean-present
+        # properties, so check __props__ membership directly.
+        phases = []
+        props = getattr(node, '__props__', {}) or {}
+        for prop in self._BOOTPH_PROPS:
+            if prop in props:
+                phases.append(prop[len('bootph-'):])
+
+        if phases:
+            entry['bootph'] = phases[0] if len(phases) == 1 else phases
+
+        # PM device ID decode — when a node carries
+        # `power-domains = <&provider ID …>`, look the IDs up against the
+        # SoC data file's pm_devices table and emit canonical names. The
+        # property may contain multiple <phandle id> tuples; we don't
+        # care which provider is referenced (the provider's
+        # #power-domain-cells differs by SoC, but on the Versal/ZynqMP
+        # PM the ID slot is always the cell immediately after the
+        # phandle, so we treat every second-cell-onward integer as a
+        # candidate ID).
+        if self._pm_devices:
+            pd = node.propval("power-domains")
+            if pd and pd != [""] and isinstance(pd, list):
+                names = []
+                # power-domains entries are flat lists of ints; phandles
+                # alternate with ID(s). Be conservative: try each int as
+                # a candidate ID and emit matches.
+                for cell in pd:
+                    if not isinstance(cell, int):
+                        continue
+                    name = self._pm_devices.get(cell) or self._pm_devices.get(hex(cell))
+                    if name and name not in names:
+                        names.append(name)
+                if names:
+                    entry['pm_node'] = names[0] if len(names) == 1 else names
+
+    def discover_aliases(self):
+        """Pass through the /aliases block from the source tree.
+
+        /aliases declares the canonical short name for user-facing
+        devices (serial0, ethernet0, mmc0, …) — the same identifiers a
+        user expects to keep meaning the same thing across the Linux
+        view and the assembled SDT. Preserving them lets downstream
+        consumers carry the user's intent through the pipeline.
+
+        Returns:
+            dict: {alias_name: target_path} pairs, or {} if /aliases is
+                  absent.
+        """
+        aliases = {}
+        try:
+            aliases_node = self.sdt.tree["/aliases"]
+        except Exception:
+            return aliases
+
+        for prop in aliases_node.__props__.values():
+            try:
+                val = prop.value
+                if isinstance(val, list) and val:
+                    val = val[0]
+                if val is None:
+                    continue
+                aliases[prop.name] = str(val).strip()
+            except Exception:
+                continue
+        return aliases
+
+    def _detect_soc_identity(self):
+        """Read SoC family and board identity from the tree's root node.
+
+        Root-level `compatible` is conventionally ordered most-specific
+        (board) → least-specific (SoC family), e.g.:
+            compatible = "xlnx,versal-vck190-revA", "xlnx,versal";
+            compatible = "fsl,imx8mm-evk",          "fsl,imx8mm";
+
+        Returns:
+            dict: {'soc_family': str, 'board': str, 'model': str},
+                  with absent fields omitted. Empty dict if root has no
+                  compatible/model.
+        """
+        identity = {}
+        try:
+            root = self.sdt.tree["/"]
+        except Exception:
+            return identity
+
+        compat = root.propval("compatible") or []
+        compat = [str(c).strip() for c in compat if c and str(c).strip()]
+        if compat:
+            identity['board'] = compat[0]
+            identity['soc_family'] = compat[-1]
+
+        model = root.propval("model") or []
+        if model and str(model[0]).strip():
+            identity['model'] = str(model[0]).strip()
+
+        return identity
 
     def discover_all(self, categories=None, bus_types=None,
                      include_pattern=None, exclude_pattern=None):
@@ -932,6 +1171,24 @@ class DevicesCore:
         domain["compatible"] = "openamp,domain-v1,devices"
         domain["id"] = 0
         domains + domain
+
+        # Tag the domain with SoC family / board identity so downstream
+        # consumers (and the future per-SoC data-file selector) can
+        # match without re-reading the input tree.
+        identity = self._detect_soc_identity()
+        for key in ('soc_family', 'board', 'model'):
+            if key in identity:
+                domain[key] = identity[key]
+
+        # Carry /aliases through to the domain so downstream consumers
+        # can resolve user-facing identifiers (serial0, ethernet0, …)
+        # against whichever assembled SDT they end up with.
+        aliases = self.discover_aliases()
+        if aliases:
+            aliases_prop = LopperProp("aliases", -1, domain, dict(aliases))
+            aliases_prop.phandle_resolution = False
+            domain + aliases_prop
+            lopper.log._info(f"Carried {len(aliases)} aliases through")
 
         # Discover all devices based on categories
         devices = self.discover_all( categories=categories,
