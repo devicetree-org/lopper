@@ -1,0 +1,67 @@
+# Upstream sync manifest
+#
+# Declares which files lopper/data/upstream/<source>/ mirrors from
+# upstream repos. Consumed by scripts/sync-upstream.py.
+#
+# Adding a new file: append to the appropriate source's `files:` list,
+# rerun sync-upstream.py with the right SRC env var pointed at a fresh
+# checkout, commit the result.
+#
+# Adding a new upstream source: add a top-level entry with `env_var:`,
+# `tag_pattern:`, `target_subdir:` and `files:`.
+
+sources:
+
+  - name: linux
+    env_var: LINUX_SRC
+    description: Mainline Linux kernel (torvalds/linux)
+    # Restrict to stable release tags; refuse arbitrary branch tips.
+    tag_pattern: "^v[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+    target_subdir: linux
+    files:
+      # dt-binding headers needed for cpp preprocessing of upstream DTSes
+      - include/dt-bindings/clock/imx8mm-clock.h
+      - include/dt-bindings/gpio/gpio.h
+      - include/dt-bindings/input/input.h
+      - include/dt-bindings/input/linux-event-codes.h
+      - include/dt-bindings/interrupt-controller/arm-gic.h
+      - include/dt-bindings/interrupt-controller/irq.h
+      - include/dt-bindings/power/imx8mm-power.h
+      - include/dt-bindings/reset/imx8mq-reset.h
+      - include/dt-bindings/thermal/thermal.h
+      - include/dt-bindings/usb/pd.h
+      # Per-target DTSes (NXP i.MX 8M Mini reference board)
+      - arch/arm64/boot/dts/freescale/imx8mm.dtsi
+      - arch/arm64/boot/dts/freescale/imx8mm-evk.dts
+      - arch/arm64/boot/dts/freescale/imx8mm-evk.dtsi
+      - arch/arm64/boot/dts/freescale/imx8mm-pinfunc.h
+
+  - name: linux-xlnx
+    env_var: LINUX_XLNX_SRC
+    description: Xilinx vendor kernel fork (Xilinx/linux-xlnx)
+    # Xilinx uses xlnx_rebase_v6.X.X tag naming
+    tag_pattern: "^(xlnx_rebase_v|v)[0-9]+\\..*$"
+    target_subdir: linux-xlnx
+    files:
+      - arch/arm64/boot/dts/xilinx/versal-vck190-revA.dts
+      - arch/arm64/boot/dts/xilinx/versal-vmk180-revA.dts
+      - arch/arm64/boot/dts/xilinx/versal.dtsi
+      - arch/arm64/boot/dts/xilinx/versal-clk.dtsi
+      - arch/arm64/boot/dts/xilinx/xlnx-versal-power.h
+      - arch/arm64/boot/dts/xilinx/xlnx-versal-regnode.h
+      - arch/arm64/boot/dts/xilinx/xlnx-versal-resets.h
+
+  - name: zephyr
+    env_var: ZEPHYR_SRC
+    description: Zephyr RTOS (zephyrproject-rtos/zephyr) — LTS or release tag
+    tag_pattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+(-rc[0-9]+)?$"
+    target_subdir: zephyr
+    files:
+      # Co-processor SoC DTSes
+      - dts/arm/nxp/nxp_imx8m_m4.dtsi
+      - dts/arm/xilinx/versal_rpu.dtsi
+      - dts/vendor/amd/versal.dtsi
+      # Per-target co-processor board files
+      - boards/nxp/imx8mm_evk/imx8mm_evk_mimx8mm6_m4.dts
+      - boards/nxp/imx8mm_evk/imx8mm_evk-pinctrl.dtsi
+      - boards/amd/versal_rpu/versal_rpu.dts
