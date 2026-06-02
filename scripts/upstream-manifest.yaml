@@ -43,13 +43,18 @@ sources:
     tag_pattern: "^(xlnx_rebase_v|v)[0-9]+\\..*$"
     target_subdir: linux-xlnx
     files:
+      # Versal board / SoC DTSes
       - arch/arm64/boot/dts/xilinx/versal-vck190-revA.dts
       - arch/arm64/boot/dts/xilinx/versal-vmk180-revA.dts
       - arch/arm64/boot/dts/xilinx/versal.dtsi
       - arch/arm64/boot/dts/xilinx/versal-clk.dtsi
-      - arch/arm64/boot/dts/xilinx/xlnx-versal-power.h
-      - arch/arm64/boot/dts/xilinx/xlnx-versal-regnode.h
-      - arch/arm64/boot/dts/xilinx/xlnx-versal-resets.h
+      # Versal clock/PM/reset binding headers — these used to live under
+      # arch/.../xilinx/ but moved into include/dt-bindings/ as Xilinx
+      # support went upstream (linux-xlnx tracks that move).
+      - include/dt-bindings/clock/xlnx-versal-clk.h
+      - include/dt-bindings/power/xlnx-versal-power.h
+      - include/dt-bindings/power/xlnx-versal-regnode.h
+      - include/dt-bindings/reset/xlnx-versal-resets.h
 
   - name: zephyr
     env_var: ZEPHYR_SRC
@@ -57,8 +62,10 @@ sources:
     tag_pattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+(-rc[0-9]+)?$"
     target_subdir: zephyr
     files:
-      # Co-processor SoC DTSes
-      - dts/arm/nxp/nxp_imx8m_m4.dtsi
+      # Co-processor SoC DTSes — Zephyr reorganised dts/arm/nxp/ into
+      # per-family subdirs (imx/, imxrt/, lpc/, …) around v3.x; the i.MX
+      # M4 dtsi moved with it.
+      - dts/arm/nxp/imx/nxp_imx8m_m4.dtsi
       - dts/arm/xilinx/versal_rpu.dtsi
       - dts/vendor/amd/versal.dtsi
       # Per-target co-processor board files

@@ -26,9 +26,13 @@ Usage:
     # Dry-run (show what would happen, change nothing):
     LINUX_SRC=/path/to/linux scripts/sync-upstream.py --dry-run
 
-Each source must be at a release tag matching the manifest's
-`tag_pattern:`. The script refuses to sync from a detached HEAD with no
-tag, an arbitrary branch tip, or a dirty tree.
+Reproducibility comes from the exact SHA, which is always recorded.
+The script accepts whatever the checkout is currently at — exact tag,
+post-tag commit, branch tip — and records the resolved tag-or-describe
+string plus the SHA in `.source`. If a source is on a commit that
+doesn't match the manifest's recommended `tag_pattern:`, the script
+warns but proceeds. The only hard refusal is a dirty working tree, since
+that would make the `.source` record lie.
 
 Design context: sdt-from-linux-upstream-sync.md.
 """
@@ -57,10 +61,15 @@ def run_git(src_dir, *args):
         return None
 
 
-def validate_source(src_dir, tag_pattern):
-    """Confirm src_dir is a clean git tree at a tag matching tag_pattern.
+def validate_source(src_dir, tag_pattern, source_name=None):
+    """Confirm src_dir is a clean git tree; resolve the most useful
+    description of its current HEAD.
 
-    Returns (tag, sha) on success; raises RuntimeError otherwise.
+    Returns (describe_string, sha) on success; raises RuntimeError only
+    when the tree is unusable (missing, not a git checkout, dirty).
+    A non-tag HEAD or a tag that doesn't match `tag_pattern` is reported
+    as a warning, not a failure — the SHA is the canonical pin, the
+    describe string is human-readable context.
     """
     if not src_dir.is_dir():
         raise RuntimeError(f"source path does not exist or is not a directory: {src_dir}")
@@ -71,17 +80,6 @@ def validate_source(src_dir, tag_pattern):
     if not sha:
         raise RuntimeError(f"cannot resolve HEAD in {src_dir}")
 
-    # `git describe --tags --exact-match` returns the tag iff HEAD is exactly on one.
-    tag = run_git(src_dir, 'describe', '--tags', '--exact-match')
-    if not tag:
-        raise RuntimeError(
-            f"HEAD of {src_dir} is not at a tag (got commit {sha[:12]}). "
-            f"Check out a release tag matching {tag_pattern!r} before syncing.")
-    if not re.match(tag_pattern, tag):
-        raise RuntimeError(
-            f"tag {tag!r} in {src_dir} does not match required pattern "
-            f"{tag_pattern!r}")
-
     # Refuse a dirty tree — the .source record would lie.
     dirty = run_git(src_dir, 'status', '--porcelain')
     if dirty:
@@ -89,7 +87,25 @@ def validate_source(src_dir, tag_pattern):
             f"working tree in {src_dir} is dirty; refuse to sync from "
             f"non-pristine source. Stash or clean it first.")
 
-    return tag, sha
+    # Prefer an exact tag match; fall back to `git describe --always` which
+    # returns "<tag>-<n>-g<sha>" for post-tag commits or just the SHA if
+    # the tree has no tags. Always returns something useful.
+    exact_tag = run_git(src_dir, 'describe', '--tags', '--exact-match') or ''
+    describe = exact_tag or run_git(src_dir, 'describe', '--tags', '--always', '--dirty') or sha[:12]
+
+    prefix = f"[{source_name}] " if source_name else ""
+    if exact_tag:
+        if tag_pattern and not re.match(tag_pattern, exact_tag):
+            print(f"  {prefix}note: tag {exact_tag!r} does not match "
+                  f"recommended pattern {tag_pattern!r} — proceeding anyway",
+                  file=sys.stderr)
+    else:
+        # Not on an exact tag; describe is "v6.12-15-gabcdef" or similar.
+        print(f"  {prefix}note: HEAD is not on a tag (resolved as {describe!r}); "
+              f"recording the exact SHA as the pin",
+              file=sys.stderr)
+
+    return describe, sha
 
 
 def sync_source(source, dry_run=False):
@@ -102,13 +118,14 @@ def sync_source(source, dry_run=False):
 
     src_dir = Path(src_path).resolve()
     try:
-        tag, sha = validate_source(src_dir, source['tag_pattern'])
+        describe, sha = validate_source(src_dir, source.get('tag_pattern'),
+                                        source_name=source['name'])
     except RuntimeError as e:
         print(f"  [{source['name']}] error: {e}", file=sys.stderr)
         return False
 
     target = UPSTREAM_ROOT / source['target_subdir']
-    print(f"  [{source['name']}] {src_dir}  tag={tag}  commit={sha[:12]}")
+    print(f"  [{source['name']}] {src_dir}  ref={describe}  commit={sha[:12]}")
     print(f"  [{source['name']}] target: {target.relative_to(REPO_ROOT)}")
 
     if dry_run:
@@ -142,7 +159,7 @@ def sync_source(source, dry_run=False):
     source_record.write_text(
         f"repo:       {source.get('description', source['name'])}\n"
         f"source_dir: {src_dir}\n"
-        f"tag:        {tag}\n"
+        f"ref:        {describe}\n"
         f"commit:     {sha}\n"
         f"manifest:   scripts/upstream-manifest.yaml\n"
         f"files:      {copied}/{len(source['files'])} copied\n"
