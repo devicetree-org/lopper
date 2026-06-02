@@ -205,17 +205,29 @@ class DevicesCore:
     # and match each YAML once per process.
     _soc_data_cache = {}
 
+    # The compatible-string suffix that identifies a SoC-facts block
+    # inside a unified `openamp,domain-v1` YAML. See sdt-from-linux
+    # design §6.1.
+    _SOC_FACTS_COMPATIBLE = 'openamp,domain-v1,soc-facts'
+
     @classmethod
     def _load_soc_data(cls, compatibles):
-        """Find a SoC data file whose `soc.matches` contains any of
-        `compatibles` (the input tree's root compatible list).
+        """Find a SoC-facts domain block whose `matches:` list contains
+        any of `compatibles` (the input tree's root compatible list).
+
+        Each YAML file under `lopper/data/socs/` follows the unified
+        schema (§6.1) — a `domains:` map at the root, with named child
+        blocks discriminated by `compatible:`. We pick the first block
+        whose compatible is `openamp,domain-v1,soc-facts` AND whose
+        `matches:` overlaps with the caller's compatibles.
 
         Args:
             compatibles (list[str]): Root-level compatible strings, in
                                      priority order (most-specific first).
 
         Returns:
-            dict: Parsed SoC data, or {} if no file matches.
+            dict: The matched soc-facts block (with its pm_devices etc.),
+                  or {} if no file matches.
         """
         key = tuple(compatibles)
         if key in cls._soc_data_cache:
@@ -241,11 +253,22 @@ class DevicesCore:
             except Exception as e:
                 lopper.log._warning(f"Failed to parse SoC data {path}: {e}")
                 continue
-            matches = (data.get('soc') or {}).get('matches') or []
-            if any(c in matches for c in compatibles):
-                lopper.log._info(f"SoC data: matched {os.path.basename(path)} "
-                                 f"on {[c for c in compatibles if c in matches]}")
-                result = data
+
+            domains = data.get('domains') or {}
+            for block_name, block in domains.items():
+                if not isinstance(block, dict):
+                    continue
+                if block.get('compatible') != cls._SOC_FACTS_COMPATIBLE:
+                    continue
+                matches = block.get('matches') or []
+                if any(c in matches for c in compatibles):
+                    hits = [c for c in compatibles if c in matches]
+                    lopper.log._info(
+                        f"SoC data: matched {os.path.basename(path)} "
+                        f"domain '{block_name}' on {hits}")
+                    result = block
+                    break
+            if result:
                 break
 
         cls._soc_data_cache[key] = result
