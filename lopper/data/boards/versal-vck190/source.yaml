@@ -1,0 +1,40 @@
+# Versal VCK190 EVK — reference board configuration for the
+# sdt-from-linux pipeline.
+#
+# Declares which upstream Linux device tree feeds this target and
+# which directories to put on the cpp include path for flattening.
+# Paths are repo-relative; the pipeline resolves them against the
+# lopper repo root at runtime.
+#
+# This file is INPUT to compose_devices; it never contains the device
+# inventory or partitioning intent — those are in expected-devices.yaml
+# (golden output) and augment.yaml (user-supplied augmentation)
+# respectively. See sdt-from-linux design §7.1.
+
+board:
+  name: versal-vck190
+  description: AMD Versal VCK190 evaluation board (Cortex-A72 cluster)
+  soc_family: xlnx,versal
+  # The root compatible the assembled Linux DT will carry — used as a
+  # sanity check that compose_devices is reading the file we think it
+  # is, and to drive selection of the matching lopper/data/socs/ entry.
+  expected_root_compatible:
+    - xlnx,versal-vck190-revA
+    - xlnx,versal
+
+linux:
+  # The top-level .dts to feed cpp + dtc + the extractor.
+  # All includes are resolved through the include_paths below.
+  input: lopper/data/upstream/linux-xlnx/arch/arm64/boot/dts/xilinx/versal-vck190-revA.dts
+
+  # cpp -I directories, in lookup order.
+  include_paths:
+    # Versal-specific .dtsi files (versal.dtsi, versal-clk.dtsi,
+    # versal-vmk180-revA.dts which versal-vck190-revA.dts includes)
+    - lopper/data/upstream/linux-xlnx/arch/arm64/boot/dts/xilinx
+    # Standard dt-binding headers — both vendor and mainline are
+    # searched because versal-clk.dtsi pulls in xlnx-versal-* headers
+    # from the vendor tree, while peripheral DTSes pull in mainline-
+    # standard headers (gpio.h, irq.h, etc.).
+    - lopper/data/upstream/linux-xlnx/include
+    - lopper/data/upstream/linux/include
