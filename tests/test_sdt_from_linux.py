@@ -154,3 +154,62 @@ def test_compose_versal_vck190(tmp_path):
         f"compose_devices output drifted from {golden}.\n"
         f"  If the drift is intentional, regenerate the golden:\n"
         f"      cp {out} {golden}")
+
+
+def test_compose_imx8mm_evk(tmp_path):
+    """End-to-end: vendored upstream NXP i.MX 8MM EVK Linux DT → devices.yaml.
+
+    Parallel to test_compose_versal_vck190 but for a SoC without a
+    public PM-ID table — proves the pipeline is SoC-agnostic and that
+    PM-ID decode gracefully skips when no per-SoC pm_devices entries
+    are available (imx8mm.yaml ships with pm_devices: {} on purpose;
+    NXP doesn't publish an equivalent of xlnx-versal-power.h).
+    """
+    flat = _flatten_board('imx8mm-evk', tmp_path)
+    out = _run_compose_devices(flat, 'imx8mm-evk', tmp_path)
+
+    devices = yaml.safe_load(out.read_text())
+    dom = devices['domains']['imx8mm-evk']
+
+    # SoC identity tagged from root compatible/model
+    assert dom['compatible'] == 'openamp,domain-v1,devices'
+    assert dom['soc_family'] == 'fsl,imx8mm'
+    assert dom['board'] == 'fsl,imx8mm-evk'
+    assert 'i.MX8MM EVK' in dom['model']
+
+    # A53 quad cluster
+    cpus = dom['cpus']
+    if isinstance(cpus, list):
+        cpus = cpus[0]
+    assert cpus['compatible'] == 'arm,cortex-a53'
+    assert cpus['cpumask'] == 0xf
+
+    # 2 GiB DDR at 0x40000000 (single range on the upstream EVK).
+    # LopperYAML collapses single-element lists to bare dicts; normalise.
+    mem = dom['memory']
+    if isinstance(mem, dict):
+        mem = [mem]
+    assert any(m.get('start') == 0x40000000 for m in mem), \
+        f"expected memory@40000000; got starts: {[m.get('start') for m in mem]}"
+
+    # Aliases preserved (the upstream SoC dtsi declares them automatically)
+    assert 'ethernet0' in dom['aliases']
+    assert 'gpio0' in dom['aliases']
+    assert 'i2c0' in dom['aliases']
+
+    # PM-ID decode is intentionally a no-op on i.MX (no public table) —
+    # the pipeline should not have tagged any device with pm_node.
+    pm_named = [d for d in dom['access'] if 'pm_node' in d]
+    assert pm_named == [], (
+        "i.MX 8MM has no public PM-ID table; imx8mm.yaml ships "
+        f"pm_devices: {{}}; pm_node tags should not appear. Got: {pm_named}")
+
+    # Byte-exact golden comparison
+    golden = BOARDS_ROOT / 'imx8mm-evk' / 'expected-devices.yaml'
+    assert golden.is_file(), (
+        f"golden file missing: {golden}\n"
+        f"  Generated output is at {out}; copy it as the golden once verified.")
+    assert out.read_text() == golden.read_text(), (
+        f"compose_devices output drifted from {golden}.\n"
+        f"  If the drift is intentional, regenerate the golden:\n"
+        f"      cp {out} {golden}")

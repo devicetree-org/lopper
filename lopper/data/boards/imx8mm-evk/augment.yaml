@@ -1,0 +1,30 @@
+# NXP i.MX 8M Mini EVK — board augmentation (placeholder).
+#
+# Reserved for M9: the user-side hand-written input that fills in what
+# the Linux DT can't carry. For i.MX 8MM this is non-trivial — Linux
+# has zero awareness of the M4 (no remoteproc node, no TCM, no
+# reserved-memory carve-out, no M4-side mailbox). The compose_devices
+# M9 overlay handler will merge this file in.
+#
+# When populated, this file uses openamp,domain-v1,board-augment
+# (see sdt-from-linux design §6.1):
+#
+# domains:
+#   imx8mm-evk:
+#     compatible: openamp,domain-v1,board-augment
+#     soc_family: fsl,imx8mm
+#     board: fsl,imx8mm-evk
+#     cpus:
+#       - dev: cpus-m4@0
+#         compatible: arm,cortex-m4
+#         cpumask: 0x1
+#     sram:
+#       - dev: itcm@1ffe0000
+#         start: 0x1ffe0000
+#         size: 0x20000           # 128 KB M4 ITCM
+#       - dev: dtcm@20000000
+#         start: 0x20000000
+#         size: 0x20000           # 128 KB M4 DTCM
+#       # OCRAM + MU mailbox (MU_B at 0x30ab0000), etc.
+
+domains: {}

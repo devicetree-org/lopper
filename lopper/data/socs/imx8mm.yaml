@@ -1,0 +1,53 @@
+# NXP i.MX 8M Mini SoC hardware description
+#
+# Public sources consulted:
+#   - imx8mm.dtsi (mainline Linux, GPL-2.0 / MIT dual)
+#   - i.MX 8M Mini Applications Processor Reference Manual (IMX8MMRM,
+#     NXP, publicly downloadable)
+#   - Zephyr nxp_imx8m_m4.dtsi (Apache-2.0) for the M4-side memory map
+#
+# NOT sourced from any reference SDT, internal XSA, or internal-only
+# header.
+#
+# Schema: openamp,domain-v1,soc-facts (see sdt-from-linux design §6.1).
+#
+# NOTE ON pm_devices: empty by design.
+#
+# NXP i.MX 8M Mini does NOT publish a Versal/ZynqMP-style PM device ID
+# table. The vendor's dt-binding header (dt-bindings/power/imx8mm-
+# power.h) defines IMX8MM_POWER_DOMAIN_* constants, but those are
+# small per-domain *indices* (0..11) used as second cells in
+# power-domains = <&gpc IMX8MM_POWER_DOMAIN_FOO>. They identify a
+# domain (group of devices), not a unique device. There is no public
+# mapping from a peripheral to a canonical PM device name on this SoC.
+#
+# Consequence: compose_devices' PM-ID decode is a no-op on i.MX 8MM
+# inputs — devices are still extracted, their addresses preserved, but
+# no `pm_node:` tag is emitted. This is correct behaviour; the loader's
+# `if self._pm_devices:` guard skips lookups gracefully.
+#
+# If a canonical name source ever surfaces (e.g. NXP publishes an SCFW
+# ID export, or a community-curated table appears), populate pm_devices
+# here and the decoder picks it up with no code change.
+
+domains:
+  imx8mm:
+    compatible: openamp,domain-v1,soc-facts
+    soc_family: fsl,imx8mm
+    matches:
+      - fsl,imx8mm
+      - fsl,imx8mm-evk
+      - fsl,imx8mm-evkb
+      - fsl,imx8mm-ddr3l-val
+      - fsl,imx8mm-ddr4-evk
+
+    pm_devices: {}    # see header note above
+
+    # Future blocks (same compatible, additive):
+    #   cluster_templates: …          # A53 cluster shape + M4 co-processor
+    #   tcm:                           # M4 ITCM/DTCM (sourced from
+    #     - { name: itcm, addr: 0x1ffe0000, size: 0x20000 }
+    #     - { name: dtcm, addr: 0x20000000, size: 0x20000 }
+    #   ipi:                           # MU mailbox pair (A-side / M-side)
+    #     - { name: MU_A, addr: 0x30aa0000 }
+    #     - { name: MU_B, addr: 0x30ab0000 }

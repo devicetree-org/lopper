@@ -1,0 +1,27 @@
+# NXP i.MX 8M Mini EVK — reference board configuration for the
+# sdt-from-linux pipeline.
+#
+# Quad Cortex-A53 cluster running Linux + Cortex-M4 co-processor
+# (visible in the Zephyr DT, not the Linux DT). compose_devices in its
+# M4 form processes only the Linux side; the M-side comes in at M6/M8
+# (Zephyr DT mining + merge).
+#
+# See sdt-from-linux design §5.1 for rationale, §7.1 for the layout.
+
+board:
+  name: imx8mm-evk
+  description: NXP i.MX 8M Mini EVK (quad Cortex-A53 + Cortex-M4)
+  soc_family: fsl,imx8mm
+  expected_root_compatible:
+    - fsl,imx8mm-evk
+    - fsl,imx8mm
+
+linux:
+  # Top-level board .dts to feed cpp + dtc + the extractor.
+  input: lopper/data/upstream/linux/arch/arm64/boot/dts/freescale/imx8mm-evk.dts
+
+  # cpp -I directories, in lookup order. The mainline Linux tree owns
+  # all dt-binding headers this board needs.
+  include_paths:
+    - lopper/data/upstream/linux/arch/arm64/boot/dts/freescale
+    - lopper/data/upstream/linux/include
