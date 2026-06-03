@@ -3,4 +3,4 @@ source_dir: /home/bruce/git/zephyr
 ref:        v4.4.0-4083-g1d012f32808
 commit:     1d012f32808d44618b7ed1d94fd2c492b9b6f3fe
 manifest:   scripts/upstream-manifest.yaml
-files:      6/6 copied
+files:      16/16 copied

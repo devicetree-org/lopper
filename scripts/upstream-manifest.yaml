@@ -67,8 +67,21 @@ sources:
       # per-family subdirs (imx/, imxrt/, lpc/, …) around v3.x; the i.MX
       # M4 dtsi moved with it.
       - dts/arm/nxp/imx/nxp_imx8m_m4.dtsi
+      - dts/arm/nxp/imx/nxp_imx8mm_m4.dtsi   # i.MX 8MM-specific overlay (pinctrl compatible)
       - dts/arm/xilinx/versal_rpu.dtsi
       - dts/vendor/amd/versal.dtsi
+      # ARM CPU profile dtsi files included by every co-processor SoC DT
+      - dts/arm/armv7-m.dtsi
+      - dts/arm/armv7-r.dtsi
+      # Common Zephyr DT helpers
+      - dts/common/freq.h
+      - dts/common/mem.h
+      - dts/common/skeleton.dtsi   # base / { ... } template included by armv7-{m,r}.dtsi
+      # Zephyr's own dt-binding headers (separate tree from Linux's)
+      - include/zephyr/dt-bindings/clock/imx_ccm.h
+      - include/zephyr/dt-bindings/gpio/gpio.h
+      - include/zephyr/dt-bindings/rdc/imx_rdc.h
+      - include/zephyr/dt-bindings/interrupt-controller/arm-gic.h
       # Per-target co-processor board files
       - boards/nxp/imx8mm_evk/imx8mm_evk_mimx8mm6_m4.dts
       - boards/nxp/imx8mm_evk/imx8mm_evk-pinctrl.dtsi
