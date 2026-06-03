@@ -1,0 +1,35 @@
+/*
+ * Copyright (c) 2026 Advanced Micro Devices, Inc.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Zephyr-side wrapper for the sdt-from-linux pipeline.
+ *
+ * Includes the upstream Zephyr i.MX 8MM M4 SoC dtsi (via the i.MX
+ * 8MM-specific overlay, which itself includes nxp_imx8m_m4.dtsi) and
+ * adds the minimum root metadata needed for compose_devices to
+ * identify the tree's SoC family.
+ *
+ * We do NOT include the upstream Zephyr board file
+ * (boards/nxp/imx8mm_evk/imx8mm_evk_mimx8mm6_m4.dts) because it
+ * pulls in a pinctrl dtsi from the hal_nxp Zephyr module
+ * (nxp/nxp_imx/mimx8mm6dvtlz-pinctrl.dtsi), which lives in a
+ * separate west-managed repo we don't vendor. Pinmux selections are
+ * irrelevant to device inventory anyway — what we need is the M4
+ * CPU, TCM/OCRAM, and the M-side MU mailbox, all of which the SoC
+ * dtsi carries.
+ *
+ * The compose_devices pipeline extracts: the M4 CPU cluster
+ * (cortex-m4), TCM (128 KB ITCM at 0x1ffe0000, 128 KB DTCM at
+ * 0x20000000), OCRAM regions (ocram_code/sys/s_code/s_sys), and
+ * the M-side MU mailbox at 0x30ab0000 (the A-side MU at 0x30aa0000
+ * lives in the Linux DT). The two views together reconstruct the
+ * full A53↔M4 IPC channel.
+ */
+
+/dts-v1/;
+#include <nxp/imx/nxp_imx8mm_m4.dtsi>
+
+/ {
+	model = "Zephyr i.MX 8M Mini M4 view (Cortex-M4)";
+	compatible = "nxp,mimx8mm_evk", "fsl,imx8mm";
+};

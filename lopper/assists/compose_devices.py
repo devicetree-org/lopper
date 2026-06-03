@@ -8,50 +8,56 @@
 # */
 
 """
-Compose a device inventory YAML from a Linux device tree plus
-optional per-board augmentation.
+Compose a device inventory YAML from a Linux device tree, optionally
+merged with a Zephyr device tree for the co-processor side, plus
+(future) per-board augmentation.
 
 This is the Linux-DT-side counterpart to sdt_devices. It accepts a
 pre-flattened Linux device tree as input (the lopper assist framework
 expects the input sdt up front; the cpp + dtc flattening step is the
 caller's responsibility) and runs the same DevicesCore extraction
-sdt_devices uses, then — once M9 lands — overlays the per-board
-augmentation YAML that fills in what the Linux view can't carry
-(additional CPU clusters, TCM/OCM, reserved-memory carve-outs, etc.).
-
-For M4 (this iteration) the overlay step is a no-op; behaviour is
-identical to running sdt_devices on the same flattened tree. The
-distinct assist exists so user-facing tooling has a stable name, the
---board flag selects per-board configuration, and the overlay seam is
-in place for M9 to wire into without API churn.
+sdt_devices uses. When given a Zephyr DT via --zephyr-dt (or implicit
+via --board), it extracts that tree separately and merges its devices
+into the Linux-side inventory — Linux is authoritative for shared
+addresses, Zephyr-only entries (TCM/OCRAM/M-core CPU/M-side mailbox)
+get added with a `source: zephyr` tag. M9 will then overlay the
+per-board augment.yaml.
 
 Usage:
-    lopper <flat-linux.dts> - -- compose_devices \\
-        --board <board-name> -o <output.yaml>
+    # Linux-only:
+    lopper <flat-linux.dts> - -- compose_devices --board <name> -o out.yaml
 
-    # Ad-hoc (no board config, just extract from the given tree):
-    lopper <flat-linux.dts> - -- compose_devices -o <output.yaml>
+    # Linux + Zephyr merge:
+    lopper <flat-linux.dts> - -- compose_devices --board <name> \\
+        --zephyr-dt <flat-zephyr.dts> -o out.yaml
+
+    # Ad-hoc, no board config:
+    lopper <flat-linux.dts> - -- compose_devices -o out.yaml
 
 Options:
     -v, --verbose          Enable verbose output
     -b, --board NAME       Use lopper/data/boards/<NAME>/ as the board
-                           reference; reads augment.yaml from there.
-                           Optional — if omitted, behaves like
-                           sdt_devices on the input tree.
+                           reference. Optional — without it, behaves
+                           like sdt_devices on the input tree.
+    --zephyr-dt PATH       Pre-flattened Zephyr DT to extract and merge
+                           into the Linux inventory. The Linux side is
+                           authoritative for shared addresses; the
+                           Zephyr side contributes co-processor CPU,
+                           TCM/OCRAM, and the M-/R-side view of shared
+                           peripherals (tagged source: zephyr).
     -o, --output PATH      Output YAML path
-    --include-clocks       Include clock nodes in the inventory
+    --include-clocks       Include clock nodes
     --include-infrastructure CSV
-                           Comma-separated infrastructure categories to
-                           include (see sdt_devices for the list)
+                           Comma-separated infrastructure categories
 
-Pipeline (when invoked with --board):
-    1. Validate that the input tree's root compatible matches the
-       board's expected_root_compatible (sanity check that the caller
-       fed us the file source.yaml points to).
-    2. Run DevicesCore extraction (memory split, PM-ID decode, aliases,
-       bootph, SoC identity tag — same machinery as sdt_devices).
-    3. (M9) Overlay augment.yaml from the board directory.
-    4. Emit openamp,domain-v1,devices YAML.
+Pipeline:
+    1. Validate input root compatible against board's expected list.
+    2. Run DevicesCore extraction on the Linux input (always).
+    3. If --zephyr-dt given, run DevicesCore on it as a second source
+       and merge into the Linux inventory (address-keyed, Linux wins).
+    4. Linux's SoC identity and /aliases drive the domain metadata.
+    5. (M9) Overlay augment.yaml from the board directory.
+    6. Emit openamp,domain-v1,devices YAML.
 """
 
 import getopt
@@ -59,7 +65,9 @@ import logging
 import os
 import re
 import sys
+import tempfile
 
+from lopper import LopperSDT
 from lopper.yaml import LopperYAML
 import lopper
 import lopper.log
@@ -155,6 +163,88 @@ def _sanity_check_board(sdt, board_data, board_name):
             f"— proceeding, but verify you're feeding the right file")
 
 
+def _addr_key(entry):
+    """Best-effort identity key for an inventory entry.
+
+    For nodes named with a unit address (`uart@30860000`), use the
+    address — same hardware peripheral seen from different sides
+    (Linux vs Zephyr) appears at the same address. For nodes without
+    an address (toplevel things like `pmu`, `versal_firmware`), use
+    the bare name. Returns (kind, value) so different keying styles
+    don't collide.
+    """
+    dev_name = entry.get('dev', '')
+    m = re.search(r'@([0-9a-fA-F]+)$', dev_name)
+    if m:
+        try:
+            return ('addr', int(m.group(1), 16))
+        except ValueError:
+            pass
+    return ('name', dev_name)
+
+
+def _load_secondary_sdt(dts_path):
+    """Load a second pre-flattened .dts as a LopperSDT for extraction.
+
+    The lopper assist framework hands us the primary sdt up front; for
+    the Zephyr-side input we instantiate a second LopperSDT manually.
+    Setup is configured for dry-run / permissive parsing since we only
+    care about the parsed tree, not lop application or output emission.
+    """
+    if not os.path.isfile(dts_path):
+        raise RuntimeError(f"zephyr DT not found: {dts_path}")
+    sdt = LopperSDT(dts_path)
+    sdt.dryrun = True
+    sdt.permissive = True
+    sdt.outdir = tempfile.mkdtemp(prefix='compose-devices-zephyr-')
+    # setup signature accepts (sdt_file, input_files, include_paths, ...);
+    # existing test infra passes empty strings rather than empty lists for
+    # the variadic args. Match that convention.
+    sdt.setup(dts_path, "", "", False, True, None)
+    return sdt
+
+
+def _merge_inventories(linux_devs, zephyr_devs):
+    """Combine a Zephyr-side inventory into a Linux-side inventory.
+
+    Merge rules (per design §5.2):
+      - cpus: always appended; different clusters never alias
+      - memory, sram, access: Linux entries kept as-is; Zephyr entries
+        added only when their identity key (see _addr_key) is not
+        already present in the Linux side. Added entries get a
+        `source: zephyr` tag so the merge is observable downstream.
+
+    Order is preserved: Linux first, then the surviving Zephyr entries.
+    """
+    merged = {k: list(linux_devs.get(k) or []) for k in
+              ('cpus', 'memory', 'sram', 'access')}
+
+    # CPUs: append every Zephyr cluster, tagged.
+    for cpu in (zephyr_devs.get('cpus') or []):
+        tagged = dict(cpu)
+        tagged.setdefault('source', 'zephyr')
+        merged['cpus'].append(tagged)
+
+    # memory / sram / access: skip duplicates by address-or-name key.
+    for prop_name in ('memory', 'sram', 'access'):
+        linux_keys = {_addr_key(e) for e in (linux_devs.get(prop_name) or [])}
+        added = 0
+        for entry in (zephyr_devs.get(prop_name) or []):
+            key = _addr_key(entry)
+            if key in linux_keys:
+                continue
+            tagged = dict(entry)
+            tagged.setdefault('source', 'zephyr')
+            merged[prop_name].append(tagged)
+            linux_keys.add(key)
+            added += 1
+        if added:
+            lopper.log._info(
+                f"compose_devices: merged {added} zephyr-only {prop_name} entries")
+
+    return merged
+
+
 def _apply_board_augment(tree, board_name):
     """M9 hook — merge lopper/data/boards/<name>/augment.yaml into the
     generated tree. Currently a no-op stub; the file is read only to
@@ -185,7 +275,7 @@ def compose_devices(tgt_node, sdt, options):
         opts, _ = getopt.getopt(
             args,
             "hvb:o:",
-            ["help", "verbose", "board=", "output=",
+            ["help", "verbose", "board=", "output=", "zephyr-dt=",
              "include-clocks", "include-infrastructure="])
     except getopt.GetoptError as e:
         lopper.log._error(f"compose_devices: invalid option: {e}")
@@ -194,6 +284,7 @@ def compose_devices(tgt_node, sdt, options):
 
     board_name = None
     output_file = None
+    zephyr_dt_path = None
     include_clocks = False
     include_infrastructure = []
 
@@ -207,6 +298,8 @@ def compose_devices(tgt_node, sdt, options):
             board_name = a
         elif o in ('-o', '--output'):
             output_file = a
+        elif o == '--zephyr-dt':
+            zephyr_dt_path = a
         elif o == '--include-clocks':
             include_clocks = True
         elif o == '--include-infrastructure':
@@ -226,15 +319,41 @@ def compose_devices(tgt_node, sdt, options):
             return False
         _sanity_check_board(sdt, board_data, board_name)
 
-    # Run extraction. Domain name reflects intent: this came from the
-    # Linux DT compose path, not from an SDT.
+    # Run extraction on the Linux side. Domain name reflects intent:
+    # this came from the Linux DT compose path, not from an SDT.
     domain_name = (board_data.get('board') or {}).get('name', 'composed_devices')
-    lopper.log._info(f"compose_devices: extracting inventory as domain '{domain_name}'")
+    lopper.log._info(
+        f"compose_devices: extracting Linux-side inventory as domain '{domain_name}'")
 
-    generator = DevicesCore(sdt,
+    linux_gen = DevicesCore(sdt,
                             include_clocks=include_clocks,
                             include_infrastructure=include_infrastructure)
-    tree = generator.generate_domain(domain_name=domain_name)
+    linux_devices = linux_gen.discover_all()
+    identity = linux_gen._detect_soc_identity()
+    aliases = linux_gen.discover_aliases()
+
+    # Optional Zephyr-side merge.
+    merged_devices = linux_devices
+    if zephyr_dt_path:
+        lopper.log._info(
+            f"compose_devices: extracting Zephyr-side inventory from {zephyr_dt_path}")
+        try:
+            zsdt = _load_secondary_sdt(zephyr_dt_path)
+        except RuntimeError as e:
+            lopper.log._error(str(e))
+            return False
+        zephyr_gen = DevicesCore(zsdt,
+                                 include_clocks=include_clocks,
+                                 include_infrastructure=include_infrastructure)
+        zephyr_devices = zephyr_gen.discover_all()
+        merged_devices = _merge_inventories(linux_devices, zephyr_devices)
+
+    # Build the unified domain tree using the (possibly merged) inventory.
+    # Linux identity + aliases are authoritative; the Zephyr side's
+    # own identity is intentionally discarded since the user-facing
+    # SDT name is the Linux-side board.
+    tree = linux_gen.build_domain_tree(domain_name, merged_devices,
+                                       identity=identity, aliases=aliases)
 
     _apply_board_augment(tree, board_name)
 

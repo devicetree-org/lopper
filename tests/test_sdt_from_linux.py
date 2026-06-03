@@ -39,22 +39,20 @@ pytestmark = pytest.mark.skipif(
     reason="sdt-from-linux integration tests require cpp and dtc")
 
 
-def _flatten_board(board_name, outdir):
-    """Run cpp + dtc on the Linux DT declared in the board's source.yaml.
+def _flatten_block(block, board_name, outdir, label):
+    """Run cpp + dtc on one side (linux or zephyr) of a board's source.yaml.
 
-    Returns the path to the resulting flat .dts.
+    Returns the path to the resulting flat .dts. Honours an optional
+    `dtc_force: true` on the block (needed for the i.MX 8MM Zephyr
+    side, whose unresolved pinctrl phandles point into a Zephyr west
+    module we don't vendor).
     """
-    src_yaml = BOARDS_ROOT / board_name / 'source.yaml'
-    assert src_yaml.is_file(), f"board source.yaml missing: {src_yaml}"
-    source = yaml.safe_load(src_yaml.read_text())
+    input_path = REPO_ROOT / block['input']
+    include_paths = [REPO_ROOT / p for p in block['include_paths']]
+    assert input_path.is_file(), f"{label} DT input missing: {input_path}"
 
-    linux = source['linux']
-    input_path = REPO_ROOT / linux['input']
-    include_paths = [REPO_ROOT / p for p in linux['include_paths']]
-    assert input_path.is_file(), f"Linux DT input missing: {input_path}"
-
-    pp_dts = outdir / f'{board_name}.pp.dts'
-    flat_dts = outdir / f'{board_name}.flat.dts'
+    pp_dts = outdir / f'{board_name}-{label}.pp.dts'
+    flat_dts = outdir / f'{board_name}-{label}.flat.dts'
 
     cpp_cmd = ['cpp', '-nostdinc', '-undef', '-x', 'assembler-with-cpp']
     for ip in include_paths:
@@ -62,22 +60,46 @@ def _flatten_board(board_name, outdir):
     cpp_cmd.extend([str(input_path), '-o', str(pp_dts)])
     cpp_result = subprocess.run(cpp_cmd, capture_output=True, text=True)
     assert cpp_result.returncode == 0, (
-        f"cpp failed for board {board_name}:\n{cpp_result.stderr}")
+        f"cpp failed for board {board_name} ({label}):\n{cpp_result.stderr}")
 
-    dtc_cmd = ['dtc', '-I', 'dts', '-O', 'dts',
-               '-o', str(flat_dts), str(pp_dts)]
+    dtc_cmd = ['dtc', '-I', 'dts', '-O', 'dts']
+    if block.get('dtc_force'):
+        dtc_cmd.append('-f')
+    dtc_cmd.extend(['-o', str(flat_dts), str(pp_dts)])
     dtc_result = subprocess.run(dtc_cmd, capture_output=True, text=True)
-    # dtc emits warnings on stderr even when it succeeds; only fail on
-    # non-zero exit.
     assert dtc_result.returncode == 0, (
-        f"dtc failed for board {board_name}:\n{dtc_result.stderr}")
+        f"dtc failed for board {board_name} ({label}):\n{dtc_result.stderr}")
 
     return flat_dts
 
 
-def _run_compose_devices(flat_dts, board_name, outdir):
-    """Invoke lopper.py with the compose_devices assist on the flat DT."""
-    out_yaml = outdir / 'devices.yaml'
+def _flatten_board(board_name, outdir, want_zephyr=False):
+    """Run cpp + dtc on the Linux side (and optionally Zephyr) of a board.
+
+    Returns the Linux flat path; if want_zephyr is True, returns a
+    (linux_flat, zephyr_flat) tuple instead.
+    """
+    src_yaml = BOARDS_ROOT / board_name / 'source.yaml'
+    assert src_yaml.is_file(), f"board source.yaml missing: {src_yaml}"
+    source = yaml.safe_load(src_yaml.read_text())
+
+    linux_flat = _flatten_block(source['linux'], board_name, outdir, 'linux')
+    if not want_zephyr:
+        return linux_flat
+
+    assert 'zephyr' in source, (
+        f"board {board_name}: source.yaml has no zephyr: block; cannot do merge run")
+    zephyr_flat = _flatten_block(source['zephyr'], board_name, outdir, 'zephyr')
+    return linux_flat, zephyr_flat
+
+
+def _run_compose_devices(flat_dts, board_name, outdir, zephyr_flat=None):
+    """Invoke lopper.py with the compose_devices assist on the flat DT.
+
+    If zephyr_flat is given, also pass --zephyr-dt for the merged path.
+    """
+    out_name = 'devices-merged.yaml' if zephyr_flat else 'devices.yaml'
+    out_yaml = outdir / out_name
     lop_main_out = outdir / f'{board_name}-lopout.dts'
 
     cmd = [sys.executable, str(LOPPER_PY), '-f',
@@ -85,6 +107,8 @@ def _run_compose_devices(flat_dts, board_name, outdir):
            '--', 'compose_devices',
            '--board', board_name,
            '-o', str(out_yaml)]
+    if zephyr_flat:
+        cmd.extend(['--zephyr-dt', str(zephyr_flat)])
     result = subprocess.run(cmd, cwd=str(REPO_ROOT),
                             capture_output=True, text=True)
     assert result.returncode == 0, (
@@ -212,4 +236,109 @@ def test_compose_imx8mm_evk(tmp_path):
     assert out.read_text() == golden.read_text(), (
         f"compose_devices output drifted from {golden}.\n"
         f"  If the drift is intentional, regenerate the golden:\n"
+        f"      cp {out} {golden}")
+
+
+def test_compose_versal_vck190_merged(tmp_path):
+    """End-to-end Linux + Zephyr merge for VCK190.
+
+    Adds Zephyr-side mining on top of the Linux-only path: the merged
+    inventory should contain an additional R5 cluster (cortex-r5f,
+    source: zephyr) and the OCM region at 0xfffc0000 (source: zephyr)
+    that Linux DT has no awareness of.
+    """
+    linux_flat, zephyr_flat = _flatten_board('versal-vck190', tmp_path,
+                                             want_zephyr=True)
+    out = _run_compose_devices(linux_flat, 'versal-vck190', tmp_path,
+                               zephyr_flat=zephyr_flat)
+
+    devices = yaml.safe_load(out.read_text())
+    dom = devices['domains']['versal-vck190']
+
+    # Linux's SoC identity remains authoritative
+    assert dom['board'] == 'xlnx,versal-vck190-revA'
+    assert dom['soc_family'] == 'xlnx,versal'
+
+    # Both clusters now present: A72 from Linux, R5 from Zephyr.
+    cpus = dom['cpus']
+    if isinstance(cpus, dict):
+        cpus = [cpus]
+    compats = [c.get('compatible') for c in cpus]
+    assert 'arm,cortex-a72' in compats, f"A72 cluster missing: {compats}"
+    assert 'arm,cortex-r5f' in compats, f"R5 cluster missing: {compats}"
+    r5 = next(c for c in cpus if c.get('compatible') == 'arm,cortex-r5f')
+    assert r5.get('source') == 'zephyr', (
+        f"R5 cluster should be tagged source: zephyr; got {r5!r}")
+
+    # OCM @ 0xfffc0000 is the Zephyr-only memory region the gap
+    # analysis flagged as missing from the Linux DT.
+    memory = dom['memory']
+    if isinstance(memory, dict):
+        memory = [memory]
+    ocm = [m for m in memory if m.get('start') == 0xfffc0000]
+    assert ocm, f"OCM @ 0xfffc0000 missing from merged inventory; got: {[m.get('start') for m in memory]}"
+    assert ocm[0].get('source') == 'zephyr', (
+        f"OCM should be tagged source: zephyr; got {ocm[0]!r}")
+
+    # Byte-exact merged golden
+    golden = BOARDS_ROOT / 'versal-vck190' / 'expected-devices-merged.yaml'
+    assert golden.is_file(), (
+        f"merged golden file missing: {golden}\n"
+        f"  Generated output is at {out}; copy it as the golden once verified.")
+    assert out.read_text() == golden.read_text(), (
+        f"compose_devices merged output drifted from {golden}.\n"
+        f"  If the drift is intentional, regenerate:\n"
+        f"      cp {out} {golden}")
+
+
+def test_compose_imx8mm_evk_merged(tmp_path):
+    """End-to-end Linux + Zephyr merge for i.MX 8MM EVK.
+
+    The killer-result case: Linux DT has zero awareness of the M4 (no
+    remoteproc, no TCM, no M-side mailbox). The Zephyr DT carries
+    exactly those facts. Merging gives the full chip view.
+    """
+    linux_flat, zephyr_flat = _flatten_board('imx8mm-evk', tmp_path,
+                                             want_zephyr=True)
+    out = _run_compose_devices(linux_flat, 'imx8mm-evk', tmp_path,
+                               zephyr_flat=zephyr_flat)
+
+    devices = yaml.safe_load(out.read_text())
+    dom = devices['domains']['imx8mm-evk']
+
+    # Linux identity preserved
+    assert dom['board'] == 'fsl,imx8mm-evk'
+
+    # Both clusters present
+    cpus = dom['cpus']
+    if isinstance(cpus, dict):
+        cpus = [cpus]
+    compats = [c.get('compatible') for c in cpus]
+    assert 'arm,cortex-a53' in compats, f"A53 cluster missing: {compats}"
+    assert 'arm,cortex-m4' in compats, f"M4 cluster missing: {compats}"
+    m4 = next(c for c in cpus if c.get('compatible') == 'arm,cortex-m4')
+    assert m4.get('source') == 'zephyr', \
+        f"M4 cluster should be tagged source: zephyr; got {m4!r}"
+
+    # M-side MU mailbox (MU_B @ 0x30ab0000) — partners the Linux DT's
+    # MU_A @ 0x30aa0000 and only the Zephyr side declares it.
+    access = dom['access']
+    mu_b = [d for d in access if d.get('dev') == 'mailbox@30ab0000']
+    assert mu_b, "MU_B mailbox @ 0x30ab0000 should be merged from Zephyr"
+    assert mu_b[0].get('source') == 'zephyr', \
+        f"MU_B should be tagged source: zephyr; got {mu_b[0]!r}"
+
+    # M4 ITCM (code@1ffe0000) — Zephyr-only by definition
+    itcm = [d for d in access if d.get('dev') == 'code@1ffe0000']
+    assert itcm, "M4 ITCM (code@1ffe0000) should be present"
+    assert itcm[0].get('source') == 'zephyr'
+
+    # Byte-exact merged golden
+    golden = BOARDS_ROOT / 'imx8mm-evk' / 'expected-devices-merged.yaml'
+    assert golden.is_file(), (
+        f"merged golden file missing: {golden}\n"
+        f"  Generated output is at {out}; copy it as the golden once verified.")
+    assert out.read_text() == golden.read_text(), (
+        f"compose_devices merged output drifted from {golden}.\n"
+        f"  If the drift is intentional, regenerate:\n"
         f"      cp {out} {golden}")

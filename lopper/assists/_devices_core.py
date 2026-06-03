@@ -1154,109 +1154,93 @@ class DevicesCore:
 
         return devices
 
-    def generate_domain(self, domain_name='sdt_all_devices', categories=None,
-                       bus_types=None, include_pattern=None, exclude_pattern=None):
-        """Generate a domain node containing discovered devices.
+    def build_domain_tree(self, domain_name, devices,
+                          identity=None, aliases=None):
+        """Wrap a pre-built devices dict into an openamp,domain-v1,devices tree.
 
-        Creates a tree structure with separate properties for different
-        device types (matching isospec format):
-            /domains
-                /<domain_name>
-                    compatible = "openamp,domain-v1,devices"
-                    id = 0
-                    cpus: [...]
-                    memory: [...]
-                    sram: [...]
-                    access: [...]
+        Split out from generate_domain so callers that need to merge
+        multiple sources (e.g. Linux + Zephyr in compose_devices) can
+        discover each separately, combine the dicts, and call this once
+        for the final emit.
 
         Args:
             domain_name (str): Name for the generated domain node
-            categories (list): List of DeviceCategory to include
-            bus_types (list): List of bus compatible strings to search
-            include_pattern (str): Regex pattern for including devices
-            exclude_pattern (str): Regex pattern for excluding devices
+            devices (dict): Dict with 'cpus', 'memory', 'sram', 'access'
+                            lists in inventory-entry form
+            identity (dict, optional): {'soc_family', 'board', 'model'};
+                                       any present keys become domain
+                                       properties. If None, the calling
+                                       instance's _detect_soc_identity()
+                                       is used.
+            aliases (dict, optional): {alias_name: target_path}; if None,
+                                      the calling instance's
+                                      discover_aliases() is used.
 
         Returns:
-            LopperTree: Tree containing the generated domain
+            LopperTree: Tree containing /domains/<domain_name> populated.
         """
         # Create fresh tree
         self.tree = LopperTree()
         self.tree.phandle_resolution = False
 
         # Create /domains container
-        domains = LopperNode(abspath="/domains", name="domains")
-        domains.phandle_resolution = False
-        self.tree = self.tree + domains
+        domains_node = LopperNode(abspath="/domains", name="domains")
+        domains_node.phandle_resolution = False
+        self.tree = self.tree + domains_node
 
         # Create the device domain
         domain = LopperNode(name=domain_name)
         domain.phandle_resolution = False
         domain["compatible"] = "openamp,domain-v1,devices"
         domain["id"] = 0
-        domains + domain
+        domains_node + domain
 
-        # Tag the domain with SoC family / board identity so downstream
-        # consumers (and the future per-SoC data-file selector) can
-        # match without re-reading the input tree.
-        identity = self._detect_soc_identity()
+        # Tag the domain with SoC family / board identity. Caller can
+        # override (e.g. compose_devices uses the Linux side's identity
+        # even when merging Zephyr into it).
+        if identity is None:
+            identity = self._detect_soc_identity()
         for key in ('soc_family', 'board', 'model'):
             if key in identity:
                 domain[key] = identity[key]
 
-        # Carry /aliases through to the domain so downstream consumers
-        # can resolve user-facing identifiers (serial0, ethernet0, …)
-        # against whichever assembled SDT they end up with.
-        aliases = self.discover_aliases()
+        # Carry aliases through. Caller-provided wins (compose_devices
+        # uses Linux's aliases authoritatively).
+        if aliases is None:
+            aliases = self.discover_aliases()
         if aliases:
             aliases_prop = LopperProp("aliases", -1, domain, dict(aliases))
             aliases_prop.phandle_resolution = False
             domain + aliases_prop
             lopper.log._info(f"Carried {len(aliases)} aliases through")
 
-        # Discover all devices based on categories
-        devices = self.discover_all( categories=categories,
-                                     bus_types=bus_types,
-                                     include_pattern=include_pattern,
-                                     exclude_pattern=exclude_pattern )
+        # Emit each property block if non-empty.
+        for prop_name in ('cpus', 'memory', 'sram', 'access'):
+            entries = devices.get(prop_name) or []
+            if not entries:
+                continue
+            prop = LopperProp(prop_name, -1, domain, [])
+            prop.phandle_resolution = False
+            domain + prop
+            for entry in entries:
+                prop.value.append(entry)
+            lopper.log._info(f"Added {len(entries)} {prop_name} entries")
 
-        # Add cpus property if we have CPUs
-        if devices['cpus']:
-            cpus_prop = LopperProp("cpus", -1, domain, [])
-            cpus_prop.phandle_resolution = False
-            domain + cpus_prop
-            for cpu in devices['cpus']:
-                cpus_prop.value.append(cpu)
-            lopper.log._info(f"Added {len(devices['cpus'])} CPU entries")
-
-        # Add memory property if we have memory
-        if devices['memory']:
-            memory_prop = LopperProp("memory", -1, domain, [])
-            memory_prop.phandle_resolution = False
-            domain + memory_prop
-            for mem in devices['memory']:
-                memory_prop.value.append(mem)
-            lopper.log._info(f"Added {len(devices['memory'])} memory entries")
-
-        # Add sram property if we have SRAM
-        if devices['sram']:
-            sram_prop = LopperProp("sram", -1, domain, [])
-            sram_prop.phandle_resolution = False
-            domain + sram_prop
-            for sram in devices['sram']:
-                sram_prop.value.append(sram)
-            lopper.log._info(f"Added {len(devices['sram'])} SRAM entries")
-
-        # Add access property for bus/firmware/toplevel devices
-        if devices['access']:
-            access_prop = LopperProp("access", -1, domain, [])
-            access_prop.phandle_resolution = False
-            domain + access_prop
-            for dev in devices['access']:
-                access_prop.value.append(dev)
-            lopper.log._info(f"Added {len(devices['access'])} access entries")
-
-        total = (len(devices['cpus']) + len(devices['memory']) +
-                len(devices['sram']) + len(devices['access']))
+        total = sum(len(devices.get(k) or []) for k in
+                    ('cpus', 'memory', 'sram', 'access'))
         lopper.log._info(f"Generated domain '{domain_name}' with {total} total entries")
-
         return self.tree
+
+    def generate_domain(self, domain_name='sdt_all_devices', categories=None,
+                       bus_types=None, include_pattern=None, exclude_pattern=None):
+        """Discover devices on this instance's input and build the domain tree.
+
+        Backward-compatible thin wrapper around discover_all +
+        build_domain_tree for callers (sdt_devices) that operate on a
+        single input source.
+        """
+        devices = self.discover_all(categories=categories,
+                                    bus_types=bus_types,
+                                    include_pattern=include_pattern,
+                                    exclude_pattern=exclude_pattern)
+        return self.build_domain_tree(domain_name, devices)

@@ -1,0 +1,175 @@
+domains:
+  versal-vck190:
+    access:
+    - dev: can@ff060000
+      pm_node: PM_DEV_CAN_FD_0
+      status: disabled
+    - dev: can@ff070000
+      pm_node: PM_DEV_CAN_FD_1
+    - dev: cci@fd000000
+      status: disabled
+    - dev: dma-controller@ffa80000
+      pm_node: PM_DEV_ADMA_0
+    - dev: dma-controller@ffa90000
+      pm_node: PM_DEV_ADMA_1
+    - dev: dma-controller@ffaa0000
+      pm_node: PM_DEV_ADMA_2
+    - dev: dma-controller@ffab0000
+      pm_node: PM_DEV_ADMA_3
+    - dev: dma-controller@ffac0000
+      pm_node: PM_DEV_ADMA_4
+    - dev: dma-controller@ffad0000
+      pm_node: PM_DEV_ADMA_5
+    - dev: dma-controller@ffae0000
+      pm_node: PM_DEV_ADMA_6
+    - dev: dma-controller@ffaf0000
+      pm_node: PM_DEV_ADMA_7
+    - dev: ethernet@ff0c0000
+      pm_node: PM_DEV_GEM_0
+    - dev: ethernet@ff0d0000
+      pm_node: PM_DEV_GEM_1
+    - dev: gpio@ff0b0000
+      pm_node: PM_DEV_GPIO
+    - dev: gpio@f1020000
+      label: gpiof1020000
+      pm_node: PM_DEV_GPIO_PMC
+    - dev: i2c@ff020000
+      pm_node: PM_DEV_I2C_0
+    - dev: i2c@ff030000
+      pm_node: PM_DEV_I2C_1
+    - dev: i2c@f1000000
+      pm_node: PM_DEV_I2C_PMC
+      status: disabled
+    - dev: memory-controller@f6150000
+      status: disabled
+    - dev: memory-controller@f62c0000
+      status: disabled
+    - dev: memory-controller@f6430000
+      status: disabled
+    - dev: memory-controller@f65a0000
+      status: disabled
+    - dev: memory-controller@ff960000
+    - dev: rtc@f12a0000
+      pm_node: PM_DEV_RTC
+    - dev: mmc@f1040000
+      pm_node: PM_DEV_SDIO_0
+      status: disabled
+    - dev: mmc@f1050000
+      pm_node: PM_DEV_SDIO_1
+    - bootph: all
+      dev: serial@ff000000
+      pm_node: PM_DEV_UART_0
+    - bootph: all
+      dev: serial@ff010000
+      pm_node: PM_DEV_UART_1
+      status: disabled
+    - dev: spi@f1010000
+      pm_node: PM_DEV_OSPI
+      status: disabled
+    - dev: spi@f1030000
+      pm_node: PM_DEV_QSPI
+      status: disabled
+    - dev: spi@ff040000
+      pm_node: PM_DEV_SPI_0
+      status: disabled
+    - dev: spi@ff050000
+      pm_node: PM_DEV_SPI_1
+      status: disabled
+    - dev: sysmon@f1270000
+      label: sysmonf1270000
+    - dev: sysmon@109270000
+      status: disabled
+    - dev: sysmon@111270000
+      status: disabled
+    - dev: sysmon@119270000
+      status: disabled
+    - dev: timer@ff0e0000
+      pm_node: PM_DEV_TTC_0
+      status: disabled
+    - dev: timer@ff0f0000
+      pm_node: PM_DEV_TTC_1
+      status: disabled
+    - dev: timer@ff100000
+      pm_node: PM_DEV_TTC_2
+      status: disabled
+    - dev: timer@ff110000
+      pm_node: PM_DEV_TTC_3
+      status: disabled
+    - dev: usb@ff9d0000
+      pm_node: PM_DEV_USB_0
+    - dev: pci@fca10000
+      status: disabled
+    - dev: pcie@fcdd0000
+      status: disabled
+    - dev: watchdog@fd4d0000
+      pm_node: PM_DEV_SWDT_FPD
+    - dev: watchdog@ff120000
+      pm_node: PM_DEV_SWDT_LPD
+      status: disabled
+    - dev: edac@f2014050
+      status: disabled
+    - bootph: all
+      dev: versal_firmware
+    - dev: l2_cache
+      label: l2_cache
+    - dev: opp_table_cpu
+      label: opp_table_cpu
+    - bootph: all
+      dev: dcc
+    - dev: fpga-region
+    - dev: pmu
+    - dev: timer
+    - dev: versal_fpga
+      label: versal_fpga
+    - dev: versal_thermal_sensor
+      label: versal_thermal_sensor
+    - dev: memory@fffc0000
+      source: zephyr
+      status: disabled
+    aliases:
+      ethernet0: /axi/ethernet@ff0c0000
+      ethernet1: /axi/ethernet@ff0d0000
+      i2c0: /axi/i2c@ff020000
+      i2c1: /axi/i2c@ff030000
+      mmc0: /axi/mmc@f1050000
+      rtc0: /axi/rtc@f12a0000
+      serial0: /axi/serial@ff000000
+      serial2: /dcc
+      spi0: /axi/spi@f1030000
+      usb0: /axi/usb@ff9d0000
+    board: xlnx,versal-vck190-revA
+    compatible: openamp,domain-v1,devices
+    cpus:
+    - compatible: arm,cortex-a72
+      cpumask: 0x3
+      dev: cpus
+    - compatible: arm,cortex-r5f
+      cpumask: 0x1
+      dev: cpus
+      source: zephyr
+    id: 0
+    memory:
+    - dev: memory@0
+      size: 0x80000000
+    - dev: memory@800000000
+      size: 0x180000000
+      start: 0x800000000
+    - dev: memory@fffc0000
+      size: 0x40000
+      source: zephyr
+      start: 0xfffc0000
+    model: Xilinx Versal vck190 Eval board revA
+    soc_family: xlnx,versal
+    sram:
+    - dev: bbram-zeroize@4
+      size: 0x4
+      start: 0x4
+    - dev: bbram-key@10
+      size: 0x20
+      start: 0x10
+    - dev: bbram-usr@30
+      size: 0x4
+      start: 0x30
+    - dev: bbram-lock@48
+      size: 0x4
+      start: 0x48

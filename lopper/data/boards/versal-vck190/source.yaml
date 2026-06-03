@@ -38,3 +38,26 @@ linux:
     # standard headers (gpio.h, irq.h, etc.).
     - lopper/data/upstream/linux-xlnx/include
     - lopper/data/upstream/linux/include
+
+zephyr:
+  # The Zephyr-side wrapper DT (see zephyr-input.dts in this
+  # directory for rationale). Provides the RPU view — R5 cluster,
+  # TCM (ITCM @ 0x0, 128 KB), OCM (@ 0xfffc0000, 256 KB), and the
+  # RPU-side view of LPD peripherals.
+  input: lopper/data/boards/versal-vck190/zephyr-input.dts
+
+  include_paths:
+    # Local shims (BIT() etc.) — must be searched FIRST so they take
+    # precedence over the upstream zephyr headers they replace.
+    - lopper/data/boards/zephyr-shims
+    # This board's directory (for sibling .dtsi includes if any)
+    - lopper/data/boards/versal-vck190
+    # Zephyr's dts tree — angle-bracket includes resolve against the
+    # `dts/` root plus its `dts/arm/`, `dts/vendor/`, `dts/common/`
+    # subdirs.
+    - lopper/data/upstream/zephyr/dts
+    - lopper/data/upstream/zephyr/dts/arm
+    - lopper/data/upstream/zephyr/dts/vendor
+    - lopper/data/upstream/zephyr/dts/common
+    # Zephyr's own dt-bindings (separate tree from Linux's)
+    - lopper/data/upstream/zephyr/include

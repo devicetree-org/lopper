@@ -25,3 +25,27 @@ linux:
   include_paths:
     - lopper/data/upstream/linux/arch/arm64/boot/dts/freescale
     - lopper/data/upstream/linux/include
+
+zephyr:
+  # The Zephyr-side wrapper DT (see zephyr-input.dts in this
+  # directory for rationale). Provides the M-side view — M4 cluster,
+  # TCM (ITCM @ 0x1ffe0000, DTCM @ 0x20000000), OCRAM regions, and
+  # the M-side MU mailbox (0x30ab0000, partner of the Linux DT's
+  # MU_A @ 0x30aa0000).
+  #
+  # Flattening this tree requires `dtc -f` because the upstream
+  # Zephyr i.MX SoC dtsi uses pinctrl phandles that resolve through
+  # the hal_nxp west module (not vendored here). The unresolved
+  # phandles are pinmux infrastructure, not in scope for inventory
+  # extraction, and the resulting tree is valid for our purposes.
+  input: lopper/data/boards/imx8mm-evk/zephyr-input.dts
+  dtc_force: true
+
+  include_paths:
+    - lopper/data/boards/zephyr-shims
+    - lopper/data/boards/imx8mm-evk
+    - lopper/data/upstream/zephyr/dts
+    - lopper/data/upstream/zephyr/dts/arm
+    - lopper/data/upstream/zephyr/dts/vendor
+    - lopper/data/upstream/zephyr/dts/common
+    - lopper/data/upstream/zephyr/include
