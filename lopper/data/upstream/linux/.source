@@ -3,4 +3,4 @@ source_dir: /home/bruce/git/linux
 ref:        v7.1-rc6-63-gba3e43a9e601
 commit:     ba3e43a9e601636f5edb54e259a74f96ca3b8fd8
 manifest:   scripts/upstream-manifest.yaml
-files:      14/14 copied
+files:      15/15 copied

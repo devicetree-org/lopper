@@ -26,6 +26,7 @@ sources:
       - include/dt-bindings/input/linux-event-codes.h
       - include/dt-bindings/interrupt-controller/arm-gic.h
       - include/dt-bindings/interrupt-controller/irq.h
+      - include/dt-bindings/phy/phy-imx8-pcie.h
       - include/dt-bindings/power/imx8mm-power.h
       - include/dt-bindings/reset/imx8mq-reset.h
       - include/dt-bindings/thermal/thermal.h
