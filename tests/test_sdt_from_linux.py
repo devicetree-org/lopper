@@ -5,17 +5,22 @@
 Integration test for the sdt-from-linux pipeline.
 
 End-to-end: vendored upstream Linux DT under lopper/data/upstream/ is
-flattened per the board's source.yaml declaration, fed through the
-compose_devices assist, and the resulting openamp,domain-v1,devices
-YAML is checked structurally and diffed against a committed golden
-file at lopper/data/boards/<board>/expected-devices.yaml.
+flattened per the board's source.yaml declaration, fed through
+compose_devices to produce an openamp,domain-v1,devices YAML, then
+fed through assemble_sdt to produce a system-top.dts. Each stage's
+output is structurally checked and diffed against a committed golden
+file at lopper/data/boards/<board>/expected-*.
+
+The pipeline orchestration (cpp + dtc + lopper invocations) lives in
+scripts/build-board-sdt.py, which the tests invoke as a subprocess.
+This keeps the orchestration logic in one place — users running the
+pipeline drive it through the same script the tests use.
 
 The pipeline depends on `cpp` and `dtc`. Tests skip when those aren't
 available so that environments without a toolchain can still run the
 rest of the suite.
 """
 
-import os
 import shutil
 import subprocess
 import sys
@@ -26,7 +31,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BOARDS_ROOT = REPO_ROOT / 'lopper' / 'data' / 'boards'
-LOPPER_PY = REPO_ROOT / 'lopper.py'
+BUILD_SCRIPT = REPO_ROOT / 'scripts' / 'build-board-sdt.py'
 
 
 def _have_tools():
@@ -39,119 +44,34 @@ pytestmark = pytest.mark.skipif(
     reason="sdt-from-linux integration tests require cpp and dtc")
 
 
-def _flatten_block(block, board_name, outdir, label):
-    """Run cpp + dtc on one side (linux or zephyr) of a board's source.yaml.
+def _run_pipeline(board_name, outdir, no_zephyr=False):
+    """Drive the full pipeline for one board via scripts/build-board-sdt.py.
 
-    Returns the path to the resulting flat .dts. Honours an optional
-    `dtc_force: true` on the block (needed for the i.MX 8MM Zephyr
-    side, whose unresolved pinctrl phandles point into a Zephyr west
-    module we don't vendor).
+    Returns a dict of output artifact paths. The script knows the
+    per-board cpp include paths, the dtc_force flag, the chained
+    Lopper invocations — the test just calls it and checks the
+    outputs.
     """
-    input_path = REPO_ROOT / block['input']
-    include_paths = [REPO_ROOT / p for p in block['include_paths']]
-    assert input_path.is_file(), f"{label} DT input missing: {input_path}"
-
-    pp_dts = outdir / f'{board_name}-{label}.pp.dts'
-    flat_dts = outdir / f'{board_name}-{label}.flat.dts'
-
-    cpp_cmd = ['cpp', '-nostdinc', '-undef', '-x', 'assembler-with-cpp']
-    for ip in include_paths:
-        cpp_cmd.extend(['-I', str(ip)])
-    cpp_cmd.extend([str(input_path), '-o', str(pp_dts)])
-    cpp_result = subprocess.run(cpp_cmd, capture_output=True, text=True)
-    assert cpp_result.returncode == 0, (
-        f"cpp failed for board {board_name} ({label}):\n{cpp_result.stderr}")
-
-    dtc_cmd = ['dtc', '-I', 'dts', '-O', 'dts']
-    if block.get('dtc_force'):
-        dtc_cmd.append('-f')
-    dtc_cmd.extend(['-o', str(flat_dts), str(pp_dts)])
-    dtc_result = subprocess.run(dtc_cmd, capture_output=True, text=True)
-    assert dtc_result.returncode == 0, (
-        f"dtc failed for board {board_name} ({label}):\n{dtc_result.stderr}")
-
-    return flat_dts
-
-
-def _flatten_board(board_name, outdir, want_zephyr=False):
-    """Run cpp + dtc on the Linux side (and optionally Zephyr) of a board.
-
-    Returns the Linux flat path; if want_zephyr is True, returns a
-    (linux_flat, zephyr_flat) tuple instead.
-    """
-    src_yaml = BOARDS_ROOT / board_name / 'source.yaml'
-    assert src_yaml.is_file(), f"board source.yaml missing: {src_yaml}"
-    source = yaml.safe_load(src_yaml.read_text())
-
-    linux_flat = _flatten_block(source['linux'], board_name, outdir, 'linux')
-    if not want_zephyr:
-        return linux_flat
-
-    assert 'zephyr' in source, (
-        f"board {board_name}: source.yaml has no zephyr: block; cannot do merge run")
-    zephyr_flat = _flatten_block(source['zephyr'], board_name, outdir, 'zephyr')
-    return linux_flat, zephyr_flat
-
-
-def _run_compose_devices(flat_dts, board_name, outdir, zephyr_flat=None):
-    """Invoke lopper.py with the compose_devices assist on the flat DT.
-
-    If zephyr_flat is given, also pass --zephyr-dt for the merged path.
-    """
-    out_name = 'devices-merged.yaml' if zephyr_flat else 'devices.yaml'
-    out_yaml = outdir / out_name
-    lop_main_out = outdir / f'{board_name}-lopout.dts'
-
-    cmd = [sys.executable, str(LOPPER_PY), '-f',
-           str(flat_dts), str(lop_main_out),
-           '--', 'compose_devices',
+    cmd = [sys.executable, str(BUILD_SCRIPT),
            '--board', board_name,
-           '-o', str(out_yaml)]
-    if zephyr_flat:
-        cmd.extend(['--zephyr-dt', str(zephyr_flat)])
-    result = subprocess.run(cmd, cwd=str(REPO_ROOT),
-                            capture_output=True, text=True)
+           '--output-dir', str(outdir)]
+    if no_zephyr:
+        cmd.append('--no-zephyr')
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, (
-        f"compose_devices failed for board {board_name}:\n"
+        f"build-board-sdt.py failed for board {board_name}:\n"
         f"--- stdout ---\n{result.stdout}\n"
         f"--- stderr ---\n{result.stderr}\n")
-    assert out_yaml.is_file(), f"compose_devices produced no output: {out_yaml}"
-    return out_yaml
 
-
-def _run_assemble_sdt(devices_yaml, board_name, outdir):
-    """Invoke lopper.py with the assemble_sdt assist on a devices YAML.
-
-    assemble_sdt ignores the main sdt input; we still have to give
-    lopper.py *some* file to load (otherwise it errors out). Re-use the
-    Linux flat DT we already have on disk for the board.
-    """
-    out_dts = outdir / 'system-top.dts'
-    lop_main_out = outdir / f'{board_name}-assemble-lopout.dts'
-    # Lopper needs a real input file to load (even if the assist
-    # ignores it). Reuse the Linux flat we built earlier — the
-    # assist's sdt param goes unused.
-    dummy_sdt = outdir / f'{board_name}-linux.flat.dts'
-    if not dummy_sdt.is_file():
-        # we expect _flatten_board to have been called for this board
-        # before us; fall back to whichever flat file is around.
-        candidates = list(outdir.glob('*-linux.flat.dts'))
-        assert candidates, f"no flat .dts in {outdir} to use as dummy lopper input"
-        dummy_sdt = candidates[0]
-
-    cmd = [sys.executable, str(LOPPER_PY), '-f',
-           str(dummy_sdt), str(lop_main_out),
-           '--', 'assemble_sdt',
-           '--devices', str(devices_yaml),
-           '-o', str(out_dts)]
-    result = subprocess.run(cmd, cwd=str(REPO_ROOT),
-                            capture_output=True, text=True)
-    assert result.returncode == 0, (
-        f"assemble_sdt failed for board {board_name}:\n"
-        f"--- stdout ---\n{result.stdout}\n"
-        f"--- stderr ---\n{result.stderr}\n")
-    assert out_dts.is_file(), f"assemble_sdt produced no output: {out_dts}"
-    return out_dts
+    artifacts = {
+        'devices_yaml': outdir / f'{board_name}-devices.yaml',
+        'system_top_dts': outdir / f'{board_name}-system-top.dts',
+    }
+    for name, path in artifacts.items():
+        assert path.is_file(), (
+            f"build-board-sdt.py reported success but {name} is missing: {path}")
+    return artifacts
 
 
 def _dtc_parses(dts_path):
@@ -167,8 +87,20 @@ def _dtc_parses(dts_path):
     return result.returncode == 0 and not fatal
 
 
+def _assert_golden(generated, golden, label):
+    """Byte-exact comparison; helpful error pointing at the regen command."""
+    assert golden.is_file(), (
+        f"{label} golden missing: {golden}\n"
+        f"  Generated output is at {generated}; copy it as the golden "
+        f"once verified.")
+    assert generated.read_text() == golden.read_text(), (
+        f"{label} drifted from {golden}.\n"
+        f"  If the drift is intentional, regenerate the golden:\n"
+        f"      cp {generated} {golden}")
+
+
 def test_compose_versal_vck190(tmp_path):
-    """End-to-end: vendored upstream Versal Linux DT → devices.yaml.
+    """End-to-end (Linux-only): vendored upstream Versal Linux DT → devices.yaml.
 
     Verifies structurally that all five M2 mining enhancements
     propagate through compose_devices (memory split, SoC identity,
@@ -176,13 +108,13 @@ def test_compose_versal_vck190(tmp_path):
     golden file. Drift fails the test; regenerate the golden when the
     drift is intentional.
     """
-    flat = _flatten_board('versal-vck190', tmp_path)
-    out = _run_compose_devices(flat, 'versal-vck190', tmp_path)
+    artifacts = _run_pipeline('versal-vck190', tmp_path, no_zephyr=True)
+    out = artifacts['devices_yaml']
 
     devices = yaml.safe_load(out.read_text())
     dom = devices['domains']['versal-vck190']
 
-    # M2-3: SoC identity tagged from root compatible/model
+    # SoC identity tagged from root compatible/model
     assert dom['compatible'] == 'openamp,domain-v1,devices'
     assert dom['soc_family'] == 'xlnx,versal'
     assert dom['board'] == 'xlnx,versal-vck190-revA'
@@ -195,16 +127,16 @@ def test_compose_versal_vck190(tmp_path):
     assert cpus['compatible'] == 'arm,cortex-a72'
     assert cpus['cpumask'] == 0x3
 
-    # M2-1: multi-range memory split surfaces DDR-high
+    # Multi-range memory split surfaces DDR-high
     starts = [m.get('start', 0) for m in dom['memory']]
     assert 0x800000000 in starts, (
         "DDR-high (memory@800000000) should be present via multi-range split; "
         f"got memory starts: {starts}")
 
-    # M2-2: aliases passed through verbatim
+    # Aliases passed through verbatim
     assert dom['aliases']['serial0'] == '/axi/serial@ff000000'
 
-    # M2-5: PM-ID decode tags Versal devices canonically
+    # PM-ID decode tags Versal devices canonically
     pm_named = [d for d in dom['access'] if 'pm_node' in d]
     assert len(pm_named) >= 30, (
         "PM-ID decode should tag ~33 devices via versal.yaml; "
@@ -212,24 +144,18 @@ def test_compose_versal_vck190(tmp_path):
     assert any(d.get('pm_node') == 'PM_DEV_UART_0' for d in dom['access']), \
         "Console UART should be tagged PM_DEV_UART_0"
 
-    # M2-4: bootph-all preserved on the early-boot device set
+    # bootph-all preserved on the early-boot device set
     bootph = [d for d in dom['access'] if d.get('bootph') == 'all']
     assert any('serial' in d['dev'] for d in bootph), \
         "Console UART should carry bootph:all"
 
-    # Byte-exact golden comparison
-    golden = BOARDS_ROOT / 'versal-vck190' / 'expected-devices.yaml'
-    assert golden.is_file(), (
-        f"golden file missing: {golden}\n"
-        f"  Generated output is at {out}; copy it as the golden once verified.")
-    assert out.read_text() == golden.read_text(), (
-        f"compose_devices output drifted from {golden}.\n"
-        f"  If the drift is intentional, regenerate the golden:\n"
-        f"      cp {out} {golden}")
+    _assert_golden(out,
+                   BOARDS_ROOT / 'versal-vck190' / 'expected-devices.yaml',
+                   label='compose_devices Linux-only')
 
 
 def test_compose_imx8mm_evk(tmp_path):
-    """End-to-end: vendored upstream NXP i.MX 8MM EVK Linux DT → devices.yaml.
+    """End-to-end (Linux-only): vendored upstream NXP i.MX 8MM EVK Linux DT → devices.yaml.
 
     Parallel to test_compose_versal_vck190 but for a SoC without a
     public PM-ID table — proves the pipeline is SoC-agnostic and that
@@ -237,8 +163,8 @@ def test_compose_imx8mm_evk(tmp_path):
     are available (imx8mm.yaml ships with pm_devices: {} on purpose;
     NXP doesn't publish an equivalent of xlnx-versal-power.h).
     """
-    flat = _flatten_board('imx8mm-evk', tmp_path)
-    out = _run_compose_devices(flat, 'imx8mm-evk', tmp_path)
+    artifacts = _run_pipeline('imx8mm-evk', tmp_path, no_zephyr=True)
+    out = artifacts['devices_yaml']
 
     devices = yaml.safe_load(out.read_text())
     dom = devices['domains']['imx8mm-evk']
@@ -276,15 +202,9 @@ def test_compose_imx8mm_evk(tmp_path):
         "i.MX 8MM has no public PM-ID table; imx8mm.yaml ships "
         f"pm_devices: {{}}; pm_node tags should not appear. Got: {pm_named}")
 
-    # Byte-exact golden comparison
-    golden = BOARDS_ROOT / 'imx8mm-evk' / 'expected-devices.yaml'
-    assert golden.is_file(), (
-        f"golden file missing: {golden}\n"
-        f"  Generated output is at {out}; copy it as the golden once verified.")
-    assert out.read_text() == golden.read_text(), (
-        f"compose_devices output drifted from {golden}.\n"
-        f"  If the drift is intentional, regenerate the golden:\n"
-        f"      cp {out} {golden}")
+    _assert_golden(out,
+                   BOARDS_ROOT / 'imx8mm-evk' / 'expected-devices.yaml',
+                   label='compose_devices Linux-only')
 
 
 def test_compose_versal_vck190_merged(tmp_path):
@@ -295,10 +215,8 @@ def test_compose_versal_vck190_merged(tmp_path):
     source: zephyr) and the OCM region at 0xfffc0000 (source: zephyr)
     that Linux DT has no awareness of.
     """
-    linux_flat, zephyr_flat = _flatten_board('versal-vck190', tmp_path,
-                                             want_zephyr=True)
-    out = _run_compose_devices(linux_flat, 'versal-vck190', tmp_path,
-                               zephyr_flat=zephyr_flat)
+    artifacts = _run_pipeline('versal-vck190', tmp_path)
+    out = artifacts['devices_yaml']
 
     devices = yaml.safe_load(out.read_text())
     dom = devices['domains']['versal-vck190']
@@ -328,7 +246,7 @@ def test_compose_versal_vck190_merged(tmp_path):
     assert ocm[0].get('source') == 'zephyr', (
         f"OCM should be tagged source: zephyr; got {ocm[0]!r}")
 
-    # M9: board augment overlay contributed the R5 firmware
+    # Board augment overlay contributed the R5 firmware
     # carve-out (rpu0_reserved @ 0x3e000000).
     aug = [m for m in memory if m.get('dev') == 'rpu0_reserved']
     assert aug, f"rpu0_reserved missing; got dev names: {[m.get('dev') for m in memory]}"
@@ -336,15 +254,9 @@ def test_compose_versal_vck190_merged(tmp_path):
     assert aug[0].get('start') == 0x3e000000
     assert aug[0].get('no-map') is True
 
-    # Byte-exact merged golden
-    golden = BOARDS_ROOT / 'versal-vck190' / 'expected-devices-merged.yaml'
-    assert golden.is_file(), (
-        f"merged golden file missing: {golden}\n"
-        f"  Generated output is at {out}; copy it as the golden once verified.")
-    assert out.read_text() == golden.read_text(), (
-        f"compose_devices merged output drifted from {golden}.\n"
-        f"  If the drift is intentional, regenerate:\n"
-        f"      cp {out} {golden}")
+    _assert_golden(out,
+                   BOARDS_ROOT / 'versal-vck190' / 'expected-devices-merged.yaml',
+                   label='compose_devices merged')
 
 
 def test_compose_imx8mm_evk_merged(tmp_path):
@@ -354,10 +266,8 @@ def test_compose_imx8mm_evk_merged(tmp_path):
     remoteproc, no TCM, no M-side mailbox). The Zephyr DT carries
     exactly those facts. Merging gives the full chip view.
     """
-    linux_flat, zephyr_flat = _flatten_board('imx8mm-evk', tmp_path,
-                                             want_zephyr=True)
-    out = _run_compose_devices(linux_flat, 'imx8mm-evk', tmp_path,
-                               zephyr_flat=zephyr_flat)
+    artifacts = _run_pipeline('imx8mm-evk', tmp_path)
+    out = artifacts['devices_yaml']
 
     devices = yaml.safe_load(out.read_text())
     dom = devices['domains']['imx8mm-evk']
@@ -389,7 +299,7 @@ def test_compose_imx8mm_evk_merged(tmp_path):
     assert itcm, "M4 ITCM (code@1ffe0000) should be present"
     assert itcm[0].get('source') == 'zephyr'
 
-    # M9: board augment overlay contributed the M4 firmware reserve
+    # Board augment overlay contributed the M4 firmware reserve
     # and the rpmsg shared-memory region.
     memory = dom['memory']
     if isinstance(memory, dict):
@@ -403,29 +313,21 @@ def test_compose_imx8mm_evk_merged(tmp_path):
     assert rpmsg[0].get('source') == 'augment'
     assert rpmsg[0].get('start') == 0xb8000000
 
-    # Byte-exact merged golden
-    golden = BOARDS_ROOT / 'imx8mm-evk' / 'expected-devices-merged.yaml'
-    assert golden.is_file(), (
-        f"merged golden file missing: {golden}\n"
-        f"  Generated output is at {out}; copy it as the golden once verified.")
-    assert out.read_text() == golden.read_text(), (
-        f"compose_devices merged output drifted from {golden}.\n"
-        f"  If the drift is intentional, regenerate:\n"
-        f"      cp {out} {golden}")
+    _assert_golden(out,
+                   BOARDS_ROOT / 'imx8mm-evk' / 'expected-devices-merged.yaml',
+                   label='compose_devices merged')
 
 
 def test_assemble_versal_vck190_sdt(tmp_path):
     """End-to-end: vendored upstream Versal Linux+Zephyr → system-top.dts.
 
-    Chains compose_devices → assemble_sdt, then asserts the resulting
-    SDT is dtc-clean, contains both CPU clusters wrapped as
-    cpus,cluster, and matches the committed golden expected-sdt.dts.
+    Chains compose_devices → assemble_sdt via the build-board script,
+    then asserts the resulting SDT is dtc-clean, contains both CPU
+    clusters wrapped as cpus,cluster, and matches the committed golden
+    expected-sdt.dts.
     """
-    linux_flat, zephyr_flat = _flatten_board('versal-vck190', tmp_path,
-                                             want_zephyr=True)
-    devices_yaml = _run_compose_devices(linux_flat, 'versal-vck190', tmp_path,
-                                        zephyr_flat=zephyr_flat)
-    sdt = _run_assemble_sdt(devices_yaml, 'versal-vck190', tmp_path)
+    artifacts = _run_pipeline('versal-vck190', tmp_path)
+    sdt = artifacts['system_top_dts']
 
     assert _dtc_parses(sdt), f"dtc failed to parse {sdt}"
     text = sdt.read_text()
@@ -438,14 +340,9 @@ def test_assemble_versal_vck190_sdt(tmp_path):
     assert 'lopper-source = "zephyr"' in text
     assert 'lopper-source = "augment"' in text
 
-    golden = BOARDS_ROOT / 'versal-vck190' / 'expected-sdt.dts'
-    assert golden.is_file(), (
-        f"sdt golden missing: {golden}\n"
-        f"  Generated output is at {sdt}; copy it as the golden once verified.")
-    assert sdt.read_text() == golden.read_text(), (
-        f"assemble_sdt output drifted from {golden}.\n"
-        f"  If the drift is intentional, regenerate:\n"
-        f"      cp {sdt} {golden}")
+    _assert_golden(sdt,
+                   BOARDS_ROOT / 'versal-vck190' / 'expected-sdt.dts',
+                   label='assemble_sdt')
 
 
 def test_assemble_imx8mm_evk_sdt(tmp_path):
@@ -456,11 +353,8 @@ def test_assemble_imx8mm_evk_sdt(tmp_path):
     M-side TCM/OCRAM/mailbox merged into the inventory, all from
     public-only inputs. Diff against the committed golden.
     """
-    linux_flat, zephyr_flat = _flatten_board('imx8mm-evk', tmp_path,
-                                             want_zephyr=True)
-    devices_yaml = _run_compose_devices(linux_flat, 'imx8mm-evk', tmp_path,
-                                        zephyr_flat=zephyr_flat)
-    sdt = _run_assemble_sdt(devices_yaml, 'imx8mm-evk', tmp_path)
+    artifacts = _run_pipeline('imx8mm-evk', tmp_path)
+    sdt = artifacts['system_top_dts']
 
     assert _dtc_parses(sdt), f"dtc failed to parse {sdt}"
     text = sdt.read_text()
@@ -474,11 +368,6 @@ def test_assemble_imx8mm_evk_sdt(tmp_path):
     assert 'm4_reserved' in text
     assert 'rpmsg_shmem' in text
 
-    golden = BOARDS_ROOT / 'imx8mm-evk' / 'expected-sdt.dts'
-    assert golden.is_file(), (
-        f"sdt golden missing: {golden}\n"
-        f"  Generated output is at {sdt}; copy it as the golden once verified.")
-    assert sdt.read_text() == golden.read_text(), (
-        f"assemble_sdt output drifted from {golden}.\n"
-        f"  If the drift is intentional, regenerate:\n"
-        f"      cp {sdt} {golden}")
+    _assert_golden(sdt,
+                   BOARDS_ROOT / 'imx8mm-evk' / 'expected-sdt.dts',
+                   label='assemble_sdt')
