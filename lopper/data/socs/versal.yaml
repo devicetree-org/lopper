@@ -1,9 +1,14 @@
 # AMD Versal SoC hardware description
 #
 # Sourced exclusively from public material:
-#   xlnx-versal-power.h (Linux kernel,
-#   include/dt-bindings/power/, GPL-2.0)
-#   Encoding pattern documented at end of this file.
+#   - xlnx-versal-power.h (Linux kernel, include/dt-bindings/power/,
+#     GPL-2.0; vendored under lopper/data/upstream/linux-xlnx/)
+#   - Zephyr's amd/versal.dtsi + arm/xilinx/versal_rpu.dtsi
+#     (Apache-2.0; vendored under lopper/data/upstream/zephyr/) —
+#     for TCM/OCM/GIC address facts on the RPU side
+#   - Versal ACAP Technical Reference Manual (UG1304, Xilinx/AMD,
+#     publicly downloadable) — for TCM global-view addresses, IPI
+#     buffer base, and cluster topology
 #
 # NOT sourced from any reference SDT, internal XSA, or
 # internal-only header.
@@ -11,6 +16,26 @@
 # Schema: openamp,domain-v1,soc-facts (see sdt-from-linux design §6.1).
 # Loader picks this file by matching any `matches:` entry against the
 # input tree's root `compatible` list.
+#
+# Block layout in this file:
+#   pm_devices         — hex PM ID → canonical name lookup
+#                        (consumed today by compose_devices' PM-ID decoder)
+#   cluster_templates  — per-cluster-type silicon facts (compatible,
+#                        enable-method, default cpu count, per-cpu PM
+#                        IDs). Future M11+ assemble_sdt will read this
+#                        to emit per-cluster wrappers and GIC splits
+#                        when the board augment asks for a cluster.
+#   tcm_map            — RPU TCM banks: local address (R5 view),
+#                        global address (A72/PMC view), size, PM ID.
+#                        Future assemble_sdt will emit memory@ nodes.
+#   ocm_map            — OCM banks
+#   ipi                — IPI buffer base and channel count for the
+#                        message-passing interconnect; future
+#                        assemble_sdt will emit IPI mailbox topology
+#                        when partition intent declares IPI channels.
+#   gic                — Global Interrupt Controller layout (per
+#                        cluster); future per-cluster GIC split uses
+#                        this to wrap GIC under amba_apu / amba_rpu.
 
 domains:
   versal:
@@ -91,6 +116,141 @@ domains:
       0x18224073: PM_DEV_IPI_PMC
       # AI Engine
       0x18224072: PM_DEV_AI
+
+    # Per-cluster-type silicon facts. Each entry describes ONE class
+    # of cluster the Versal Prime silicon (vc1902 and family) ships
+    # with. A board's augment.yaml says which clusters it actually
+    # populates; future assemble_sdt iterations read these templates
+    # to emit consistent cluster wrappers with the right PM IDs.
+    cluster_templates:
+      - role: apu
+        cluster_compatible: cpus,cluster
+        compatible: arm,cortex-a72
+        enable_method: psci
+        max_cpus: 2
+        per_cpu_pm_ids:                # in core-index order
+          - PM_DEV_ACPU_0
+          - PM_DEV_ACPU_1
+        notes: >
+          APU is the Linux-running cluster. Always present; the Linux
+          DT enumerates this side. Cache: 32K I + 32K D per core, 1 MB
+          unified L2.
+
+      - role: rpu
+        cluster_compatible: cpus,cluster
+        compatible: arm,cortex-r5
+        enable_method: xlnx,r5-remoteproc
+        max_cpus: 2
+        per_cpu_pm_ids:
+          - PM_DEV_RPU0_0
+          - PM_DEV_RPU0_1
+        modes: [split, lockstep]      # both RPU operating modes supported
+        notes: >
+          RPU is the real-time cluster. Two R5F cores that can run
+          split (independent) or lockstep (paired for safety). Each
+          core has its own ATCM + BTCM (see tcm_map). The APU
+          typically loads R5 firmware via the remoteproc driver.
+
+      - role: pmc
+        cluster_compatible: cpus,cluster
+        compatible: pmc-microblaze
+        enable_method: bootrom
+        max_cpus: 1
+        per_cpu_pm_ids:
+          - PM_DEV_PMC_PROC
+        notes: >
+          Platform Management Controller — runs the PLM firmware.
+          Boot-only from the Linux perspective; typically not
+          partitionable.
+
+      - role: psm
+        cluster_compatible: cpus,cluster
+        compatible: psm-microblaze
+        enable_method: bootrom
+        max_cpus: 1
+        per_cpu_pm_ids:
+          - PM_DEV_PSM_PROC
+        notes: >
+          Platform Security Module microblaze — handles low-power
+          state transitions on behalf of the PMC.
+
+    # RPU TCM (Tightly Coupled Memory) banks. Each R5 core has an
+    # ATCM and BTCM, each 32 KB. The "local" address is what the R5
+    # sees (0x0 for ATCM, 0x20000 for BTCM); the "global" address
+    # (0xFFE0_0000 range) is what the APU / PMC see via the system
+    # interconnect. Lockstep mode aliases the second R5's TCM
+    # addresses; split mode exposes both pairs independently.
+    tcm_map:
+      - name: PM_DEV_TCM_0_A           # RPU0 core 0 ATCM
+        pm_id: 0x1831800b
+        local_addr: 0x00000000
+        global_addr: 0xffe00000
+        size: 0x10000                  # 64 KB (per TRM UG1304)
+        rpu_core: 0
+      - name: PM_DEV_TCM_0_B           # RPU0 core 0 BTCM
+        pm_id: 0x1831800c
+        local_addr: 0x00020000
+        global_addr: 0xffe20000
+        size: 0x10000
+        rpu_core: 0
+      - name: PM_DEV_TCM_1_A           # RPU0 core 1 ATCM
+        pm_id: 0x1831800d
+        local_addr: 0x00000000         # core-local; same as core 0 in lockstep
+        global_addr: 0xffe90000        # global view distinct
+        size: 0x10000
+        rpu_core: 1
+      - name: PM_DEV_TCM_1_B           # RPU0 core 1 BTCM
+        pm_id: 0x1831800e
+        local_addr: 0x00020000
+        global_addr: 0xffeb0000
+        size: 0x10000
+        rpu_core: 1
+
+    # OCM (On-Chip Memory) banks — 256 KB total, accessible from
+    # both APU and RPU. Confirmed via Zephyr's amd/versal.dtsi
+    # (`memory@fffc0000, size = 256K`).
+    ocm_map:
+      base: 0xfffc0000
+      total_size: 0x40000              # 256 KB
+      bank_size: 0x10000               # 64 KB per PM-tracked bank
+      banks:
+        - { name: PM_DEV_OCM_0, pm_id: 0x18314007, offset: 0x00000 }
+        - { name: PM_DEV_OCM_1, pm_id: 0x18314008, offset: 0x10000 }
+        - { name: PM_DEV_OCM_2, pm_id: 0x18314009, offset: 0x20000 }
+        - { name: PM_DEV_OCM_3, pm_id: 0x1831400a, offset: 0x30000 }
+
+    # Versal IPI (Inter-Processor Interrupt) topology. The buffer
+    # base is at 0xFF3F_0000 (LPD region) per UG1304. There are 8 IPI
+    # agents in total (IPI_0..IPI_6 plus IPI_PMC), each with its own
+    # PM device ID for power control.
+    ipi:
+      buffer_base: 0xff3f0000
+      buffer_size: 0x10000              # 64 KB per UG1304
+      channel_count: 8
+      channels:
+        - { name: PM_DEV_IPI_0,   pm_id: 0x1822403d, role: general }
+        - { name: PM_DEV_IPI_1,   pm_id: 0x1822403e, role: general }
+        - { name: PM_DEV_IPI_2,   pm_id: 0x1822403f, role: general }
+        - { name: PM_DEV_IPI_3,   pm_id: 0x18224040, role: general }
+        - { name: PM_DEV_IPI_4,   pm_id: 0x18224041, role: general }
+        - { name: PM_DEV_IPI_5,   pm_id: 0x18224042, role: general }
+        - { name: PM_DEV_IPI_6,   pm_id: 0x18224043, role: general }
+        - { name: PM_DEV_IPI_PMC, pm_id: 0x18224073, role: pmc }
+
+    # Global Interrupt Controller (GIC-500, ARM GIC-v3) layout.
+    # Single physical GIC, two views: amba_apu wraps the GIC seen by
+    # the A72 cluster; amba_rpu wraps the GIC seen by the R5 cluster.
+    # Both views point at the same hardware. Addresses confirmed via
+    # the vendored Zephyr versal_rpu.dtsi (gic @ 0xf9000000).
+    gic:
+      compatible: arm,gic-v3
+      distributor:    { addr: 0xf9000000, size: 0x10000 }
+      redistributor:  { addr: 0xf9080000, size: 0x80000 }
+      cpu_interface:  { addr: 0xf9001000, size: 0x2000 }   # GICv2 compat
+      its:            { addr: 0xf9020000, size: 0x20000 }  # MSI controller
+      # Per-cluster bus wrapping for the per-cluster GIC view:
+      apu_bus: amba_apu
+      rpu_bus: amba_rpu
 
 # Encoding key (Versal PM node ID layout, from public TRM):
 #   0x18 _C_ N N _I I  where:
