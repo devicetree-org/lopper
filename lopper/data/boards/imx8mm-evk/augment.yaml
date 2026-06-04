@@ -1,30 +1,39 @@
-# NXP i.MX 8M Mini EVK — board augmentation (placeholder).
+# NXP i.MX 8M Mini EVK — board augmentation (M9 overlay input).
 #
-# Reserved for M9: the user-side hand-written input that fills in what
-# the Linux DT can't carry. For i.MX 8MM this is non-trivial — Linux
-# has zero awareness of the M4 (no remoteproc node, no TCM, no
-# reserved-memory carve-out, no M4-side mailbox). The compose_devices
-# M9 overlay handler will merge this file in.
+# Hand-authored facts that Linux DT and Zephyr DT do not carry:
+# integration-level decisions (which DDR region holds the M4
+# firmware blob, MU agent assignments, etc.) and any board
+# peripherals not present in either upstream tree.
 #
-# When populated, this file uses openamp,domain-v1,board-augment
-# (see sdt-from-linux design §6.1):
+# Linux DT for i.MX 8M Mini has zero awareness of the M4 (no
+# remoteproc node, no reserved-memory for M4 firmware). The Zephyr
+# DT gives us the M4 silicon view but not the integration choices
+# either. This file is where those choices live.
 #
-# domains:
-#   imx8mm-evk:
-#     compatible: openamp,domain-v1,board-augment
-#     soc_family: fsl,imx8mm
-#     board: fsl,imx8mm-evk
-#     cpus:
-#       - dev: cpus-m4@0
-#         compatible: arm,cortex-m4
-#         cpumask: 0x1
-#     sram:
-#       - dev: itcm@1ffe0000
-#         start: 0x1ffe0000
-#         size: 0x20000           # 128 KB M4 ITCM
-#       - dev: dtcm@20000000
-#         start: 0x20000000
-#         size: 0x20000           # 128 KB M4 DTCM
-#       # OCRAM + MU mailbox (MU_B at 0x30ab0000), etc.
+# Schema: openamp,domain-v1,board-augment (see sdt-from-linux
+# design §6.1). Inventory blocks (cpus, memory, sram, access) get
+# merged into the compose_devices output with `source: augment`
+# tags so the provenance is observable.
 
-domains: {}
+domains:
+  imx8mm-evk:
+    compatible: openamp,domain-v1,board-augment
+    soc_family: fsl,imx8mm
+    board: fsl,imx8mm-evk
+
+    # Reserved DDR carve-out for the M4 firmware blob the A53 side
+    # loads before releasing the M4 from reset. 1 MiB at the start
+    # of usable DDR (above ATF/U-Boot) is the i.MX OpenAMP demo
+    # convention; the exact base/size is an integration choice.
+    memory:
+      - dev: m4_reserved
+        start: 0x80000000
+        size: 0x100000            # 1 MiB
+        no-map: true
+
+      # rpmsg shared-memory region — A53 and M4 both map this for
+      # ring-buffer communication via the MU mailbox pair.
+      - dev: rpmsg_shmem
+        start: 0xb8000000
+        size: 0x400000            # 4 MiB
+        no-map: true

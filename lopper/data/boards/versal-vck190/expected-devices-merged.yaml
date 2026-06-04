@@ -158,6 +158,11 @@ domains:
       size: 0x40000
       source: zephyr
       start: 0xfffc0000
+    - dev: rpu0_reserved
+      no-map: true
+      size: 0x4000000
+      source: augment
+      start: 0x3e000000
     model: Xilinx Versal vck190 Eval board revA
     soc_family: xlnx,versal
     sram:

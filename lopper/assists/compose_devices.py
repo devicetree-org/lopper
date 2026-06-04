@@ -67,12 +67,19 @@ import re
 import sys
 import tempfile
 
+from ruamel.yaml.scalarint import HexInt
+
 from lopper import LopperSDT
 from lopper.yaml import LopperYAML
 import lopper
 import lopper.log
 
 from lopper.assists._devices_core import DeviceCategory, DevicesCore
+
+# Augment entries that come in as plain ints from the YAML loader
+# need to be HexInt-wrapped so the output emitter formats them in hex,
+# matching what the extractor produces from real DT reg properties.
+_HEX_FIELDS = ('start', 'size', 'addr', 'reg')
 
 lopper.log._init(__name__)
 
@@ -204,60 +211,136 @@ def _load_secondary_sdt(dts_path):
     return sdt
 
 
-def _merge_inventories(linux_devs, zephyr_devs):
-    """Combine a Zephyr-side inventory into a Linux-side inventory.
+def _merge_inventories(base_devs, extra_devs, source_tag):
+    """Combine a secondary inventory into a base inventory.
 
-    Merge rules (per design §5.2):
+    Used twice in compose_devices:
+      1. base = Linux-side, extra = Zephyr-side, tag = "zephyr"
+      2. base = (Linux+Zephyr), extra = board augment YAML,
+         tag = "augment"
+
+    Merge rules:
       - cpus: always appended; different clusters never alias
-      - memory, sram, access: Linux entries kept as-is; Zephyr entries
+      - memory, sram, access: base entries kept as-is; extra entries
         added only when their identity key (see _addr_key) is not
-        already present in the Linux side. Added entries get a
-        `source: zephyr` tag so the merge is observable downstream.
+        already present in the base. Added entries get a `source: tag`
+        annotation so the merge is observable downstream.
 
-    Order is preserved: Linux first, then the surviving Zephyr entries.
+    Order preserved: base first, then surviving extra entries.
     """
-    merged = {k: list(linux_devs.get(k) or []) for k in
+    merged = {k: list(base_devs.get(k) or []) for k in
               ('cpus', 'memory', 'sram', 'access')}
 
-    # CPUs: append every Zephyr cluster, tagged.
-    for cpu in (zephyr_devs.get('cpus') or []):
+    # CPUs: append every extra cluster, tagged.
+    for cpu in (extra_devs.get('cpus') or []):
         tagged = dict(cpu)
-        tagged.setdefault('source', 'zephyr')
+        tagged.setdefault('source', source_tag)
         merged['cpus'].append(tagged)
 
     # memory / sram / access: skip duplicates by address-or-name key.
     for prop_name in ('memory', 'sram', 'access'):
-        linux_keys = {_addr_key(e) for e in (linux_devs.get(prop_name) or [])}
-        added = 0
-        for entry in (zephyr_devs.get(prop_name) or []):
+        base_keys = {_addr_key(e) for e in (base_devs.get(prop_name) or [])}
+        added = skipped = 0
+        for entry in (extra_devs.get(prop_name) or []):
             key = _addr_key(entry)
-            if key in linux_keys:
+            if key in base_keys:
+                skipped += 1
+                lopper.log._debug(
+                    f"compose_devices: {source_tag} {prop_name} entry "
+                    f"{entry.get('dev','?')!r} collides with existing inventory "
+                    f"entry; skipping (base wins)")
                 continue
             tagged = dict(entry)
-            tagged.setdefault('source', 'zephyr')
+            tagged.setdefault('source', source_tag)
             merged[prop_name].append(tagged)
-            linux_keys.add(key)
+            base_keys.add(key)
             added += 1
-        if added:
+        if added or skipped:
             lopper.log._info(
-                f"compose_devices: merged {added} zephyr-only {prop_name} entries")
+                f"compose_devices: {source_tag} {prop_name}: "
+                f"merged {added}, skipped {skipped} duplicate")
 
     return merged
 
 
-def _apply_board_augment(tree, board_name):
-    """M9 hook — merge lopper/data/boards/<name>/augment.yaml into the
-    generated tree. Currently a no-op stub; the file is read only to
-    surface a friendly log line, so the seam is observably present.
+def _load_board_augment(board_name):
+    """Load the per-board augment.yaml (M9 overlay input).
+
+    Returns the augment block (the inventory-shaped dict with
+    cpus/memory/sram/access lists) when one is present and has the
+    openamp,domain-v1,board-augment compatible, or {} otherwise.
+
+    Empty augment files (stub `domains: {}`) and missing files both
+    return {} silently — this is the no-op augment case.
     """
     if not board_name:
-        return
-    augment_path = os.path.join(_BOARDS_ROOT, board_name, 'augment.yaml')
-    if not os.path.isfile(augment_path):
-        return
-    lopper.log._info(
-        f"compose_devices: board augment ({augment_path}) present; "
-        f"overlay handler not yet implemented (M9) — ignored")
+        return {}
+    path = os.path.join(_BOARDS_ROOT, board_name, 'augment.yaml')
+    if not os.path.isfile(path):
+        return {}
+    try:
+        from ruamel.yaml import YAML
+        yaml = YAML(typ='safe')
+        with open(path) as fh:
+            data = yaml.load(fh) or {}
+    except Exception as e:
+        lopper.log._warning(f"compose_devices: failed to parse {path}: {e}")
+        return {}
+
+    domains = data.get('domains') or {}
+    for block_name, block in domains.items():
+        if not isinstance(block, dict):
+            continue
+        if block.get('compatible') != 'openamp,domain-v1,board-augment':
+            continue
+        # Only the inventory blocks bubble up — identity fields stay on
+        # the augment side (Linux's identity is authoritative).
+        inventory = {k: list(block.get(k) or [])
+                     for k in ('cpus', 'memory', 'sram', 'access')}
+        # Normalise: addresses/sizes the user wrote as 0xNNNN come back
+        # as plain ints from the YAML loader. Re-wrap as HexInt so the
+        # output emitter formats them in hex (matching extractor output).
+        for entries in inventory.values():
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                for field in _HEX_FIELDS:
+                    if field in entry and isinstance(entry[field], int) \
+                            and not isinstance(entry[field], HexInt):
+                        entry[field] = HexInt(entry[field])
+        nonempty = {k: v for k, v in inventory.items() if v}
+        if nonempty:
+            lopper.log._info(
+                f"compose_devices: loaded augment block '{block_name}' from "
+                f"{path} ({sum(len(v) for v in nonempty.values())} entries "
+                f"across {list(nonempty)})")
+        return inventory
+    return {}
+
+
+def _apply_board_augment(devices, board_name, *, enabled=True):
+    """Merge the per-board augment.yaml into the inventory dict.
+
+    Reads `lopper/data/boards/<name>/augment.yaml`, finds the
+    openamp,domain-v1,board-augment block, and merges its inventory
+    lists into `devices` via the same address-keyed dedup logic
+    used for the Zephyr-side merge. Entries from the augment file
+    carry a `source: augment` tag.
+
+    No-op when:
+      - enabled is False
+      - board_name is empty
+      - no augment.yaml exists for this board
+      - the file's augment block is empty (the stub `domains: {}` case)
+
+    Returns the (possibly-augmented) devices dict.
+    """
+    if not enabled or not board_name:
+        return devices
+    augment = _load_board_augment(board_name)
+    if not any(augment.values()):
+        return devices
+    return _merge_inventories(devices, augment, source_tag='augment')
 
 
 def compose_devices(tgt_node, sdt, options):
@@ -276,6 +359,7 @@ def compose_devices(tgt_node, sdt, options):
             args,
             "hvb:o:",
             ["help", "verbose", "board=", "output=", "zephyr-dt=",
+             "no-augment",
              "include-clocks", "include-infrastructure="])
     except getopt.GetoptError as e:
         lopper.log._error(f"compose_devices: invalid option: {e}")
@@ -285,6 +369,7 @@ def compose_devices(tgt_node, sdt, options):
     board_name = None
     output_file = None
     zephyr_dt_path = None
+    apply_augment = True
     include_clocks = False
     include_infrastructure = []
 
@@ -300,6 +385,8 @@ def compose_devices(tgt_node, sdt, options):
             output_file = a
         elif o == '--zephyr-dt':
             zephyr_dt_path = a
+        elif o == '--no-augment':
+            apply_augment = False
         elif o == '--include-clocks':
             include_clocks = True
         elif o == '--include-infrastructure':
@@ -346,16 +433,20 @@ def compose_devices(tgt_node, sdt, options):
                                  include_clocks=include_clocks,
                                  include_infrastructure=include_infrastructure)
         zephyr_devices = zephyr_gen.discover_all()
-        merged_devices = _merge_inventories(linux_devices, zephyr_devices)
+        merged_devices = _merge_inventories(linux_devices, zephyr_devices,
+                                            source_tag='zephyr')
 
-    # Build the unified domain tree using the (possibly merged) inventory.
-    # Linux identity + aliases are authoritative; the Zephyr side's
-    # own identity is intentionally discarded since the user-facing
-    # SDT name is the Linux-side board.
+    # Apply the board augment overlay (M9). No-op when the board has
+    # no augment.yaml or its block is empty; --no-augment disables.
+    merged_devices = _apply_board_augment(merged_devices, board_name,
+                                          enabled=apply_augment)
+
+    # Build the unified domain tree using the (possibly merged + augmented)
+    # inventory. Linux identity + aliases are authoritative; the Zephyr and
+    # augment sides' identity is intentionally discarded since the
+    # user-facing SDT name is the Linux-side board.
     tree = linux_gen.build_domain_tree(domain_name, merged_devices,
                                        identity=identity, aliases=aliases)
-
-    _apply_board_augment(tree, board_name)
 
     # Output file resolution mirrors sdt_devices.
     if not output_file:

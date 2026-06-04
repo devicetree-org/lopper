@@ -163,8 +163,18 @@ domains:
       dev: cpus
     id: 0
     memory:
-      dev: memory@40000000
+    - dev: memory@40000000
       size: 0x80000000
       start: 0x40000000
+    - dev: m4_reserved
+      no-map: true
+      size: 0x100000
+      source: augment
+      start: 0x80000000
+    - dev: rpmsg_shmem
+      no-map: true
+      size: 0x400000
+      source: augment
+      start: 0xb8000000
     model: FSL i.MX8MM EVK board
     soc_family: fsl,imx8mm

@@ -280,6 +280,14 @@ def test_compose_versal_vck190_merged(tmp_path):
     assert ocm[0].get('source') == 'zephyr', (
         f"OCM should be tagged source: zephyr; got {ocm[0]!r}")
 
+    # M9: board augment overlay contributed the R5 firmware
+    # carve-out (rpu0_reserved @ 0x3e000000).
+    aug = [m for m in memory if m.get('dev') == 'rpu0_reserved']
+    assert aug, f"rpu0_reserved missing; got dev names: {[m.get('dev') for m in memory]}"
+    assert aug[0].get('source') == 'augment'
+    assert aug[0].get('start') == 0x3e000000
+    assert aug[0].get('no-map') is True
+
     # Byte-exact merged golden
     golden = BOARDS_ROOT / 'versal-vck190' / 'expected-devices-merged.yaml'
     assert golden.is_file(), (
@@ -332,6 +340,20 @@ def test_compose_imx8mm_evk_merged(tmp_path):
     itcm = [d for d in access if d.get('dev') == 'code@1ffe0000']
     assert itcm, "M4 ITCM (code@1ffe0000) should be present"
     assert itcm[0].get('source') == 'zephyr'
+
+    # M9: board augment overlay contributed the M4 firmware reserve
+    # and the rpmsg shared-memory region.
+    memory = dom['memory']
+    if isinstance(memory, dict):
+        memory = [memory]
+    m4_reserved = [m for m in memory if m.get('dev') == 'm4_reserved']
+    assert m4_reserved, "m4_reserved missing from merged inventory"
+    assert m4_reserved[0].get('source') == 'augment'
+    assert m4_reserved[0].get('start') == 0x80000000
+    rpmsg = [m for m in memory if m.get('dev') == 'rpmsg_shmem']
+    assert rpmsg, "rpmsg_shmem missing from merged inventory"
+    assert rpmsg[0].get('source') == 'augment'
+    assert rpmsg[0].get('start') == 0xb8000000
 
     # Byte-exact merged golden
     golden = BOARDS_ROOT / 'imx8mm-evk' / 'expected-devices-merged.yaml'
