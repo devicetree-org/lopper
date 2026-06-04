@@ -119,6 +119,54 @@ def _run_compose_devices(flat_dts, board_name, outdir, zephyr_flat=None):
     return out_yaml
 
 
+def _run_assemble_sdt(devices_yaml, board_name, outdir):
+    """Invoke lopper.py with the assemble_sdt assist on a devices YAML.
+
+    assemble_sdt ignores the main sdt input; we still have to give
+    lopper.py *some* file to load (otherwise it errors out). Re-use the
+    Linux flat DT we already have on disk for the board.
+    """
+    out_dts = outdir / 'system-top.dts'
+    lop_main_out = outdir / f'{board_name}-assemble-lopout.dts'
+    # Lopper needs a real input file to load (even if the assist
+    # ignores it). Reuse the Linux flat we built earlier — the
+    # assist's sdt param goes unused.
+    dummy_sdt = outdir / f'{board_name}-linux.flat.dts'
+    if not dummy_sdt.is_file():
+        # we expect _flatten_board to have been called for this board
+        # before us; fall back to whichever flat file is around.
+        candidates = list(outdir.glob('*-linux.flat.dts'))
+        assert candidates, f"no flat .dts in {outdir} to use as dummy lopper input"
+        dummy_sdt = candidates[0]
+
+    cmd = [sys.executable, str(LOPPER_PY), '-f',
+           str(dummy_sdt), str(lop_main_out),
+           '--', 'assemble_sdt',
+           '--devices', str(devices_yaml),
+           '-o', str(out_dts)]
+    result = subprocess.run(cmd, cwd=str(REPO_ROOT),
+                            capture_output=True, text=True)
+    assert result.returncode == 0, (
+        f"assemble_sdt failed for board {board_name}:\n"
+        f"--- stdout ---\n{result.stdout}\n"
+        f"--- stderr ---\n{result.stderr}\n")
+    assert out_dts.is_file(), f"assemble_sdt produced no output: {out_dts}"
+    return out_dts
+
+
+def _dtc_parses(dts_path):
+    """Return True if dtc can compile the DTS to DTB without errors."""
+    dtb = dts_path.with_suffix('.dtb')
+    result = subprocess.run(
+        ['dtc', '-I', 'dts', '-O', 'dtb', '-o', str(dtb), str(dts_path)],
+        capture_output=True, text=True)
+    # dtc emits warnings about non-canonical unit-address etc. — those
+    # are tolerable for an SDT intermediate. Only ERROR / FATAL block.
+    fatal = any(tag in (result.stderr or '')
+                for tag in ('Error:', 'FATAL ERROR:'))
+    return result.returncode == 0 and not fatal
+
+
 def test_compose_versal_vck190(tmp_path):
     """End-to-end: vendored upstream Versal Linux DT → devices.yaml.
 
@@ -364,3 +412,73 @@ def test_compose_imx8mm_evk_merged(tmp_path):
         f"compose_devices merged output drifted from {golden}.\n"
         f"  If the drift is intentional, regenerate:\n"
         f"      cp {out} {golden}")
+
+
+def test_assemble_versal_vck190_sdt(tmp_path):
+    """End-to-end: vendored upstream Versal Linux+Zephyr → system-top.dts.
+
+    Chains compose_devices → assemble_sdt, then asserts the resulting
+    SDT is dtc-clean, contains both CPU clusters wrapped as
+    cpus,cluster, and matches the committed golden expected-sdt.dts.
+    """
+    linux_flat, zephyr_flat = _flatten_board('versal-vck190', tmp_path,
+                                             want_zephyr=True)
+    devices_yaml = _run_compose_devices(linux_flat, 'versal-vck190', tmp_path,
+                                        zephyr_flat=zephyr_flat)
+    sdt = _run_assemble_sdt(devices_yaml, 'versal-vck190', tmp_path)
+
+    assert _dtc_parses(sdt), f"dtc failed to parse {sdt}"
+    text = sdt.read_text()
+
+    assert 'compatible = "xlnx,versal-vck190-revA", "xlnx,versal";' in text
+    assert 'cpus_a72: cpus-a72@0' in text, "A72 cluster wrapper missing"
+    assert 'cpus_r5: cpus-r5@1' in text, "R5 cluster wrapper missing"
+    assert 'compatible = "cpus,cluster";' in text, "no cpus,cluster compatible"
+    # Source-tag round-trip from compose_devices through assemble_sdt.
+    assert 'lopper-source = "zephyr"' in text
+    assert 'lopper-source = "augment"' in text
+
+    golden = BOARDS_ROOT / 'versal-vck190' / 'expected-sdt.dts'
+    assert golden.is_file(), (
+        f"sdt golden missing: {golden}\n"
+        f"  Generated output is at {sdt}; copy it as the golden once verified.")
+    assert sdt.read_text() == golden.read_text(), (
+        f"assemble_sdt output drifted from {golden}.\n"
+        f"  If the drift is intentional, regenerate:\n"
+        f"      cp {sdt} {golden}")
+
+
+def test_assemble_imx8mm_evk_sdt(tmp_path):
+    """End-to-end: vendored upstream NXP Linux+Zephyr → system-top.dts.
+
+    The killer-result case: a system-top.dts that contains both the
+    Linux-side A53 cluster AND the Zephyr-side M4 cluster, with the
+    M-side TCM/OCRAM/mailbox merged into the inventory, all from
+    public-only inputs. Diff against the committed golden.
+    """
+    linux_flat, zephyr_flat = _flatten_board('imx8mm-evk', tmp_path,
+                                             want_zephyr=True)
+    devices_yaml = _run_compose_devices(linux_flat, 'imx8mm-evk', tmp_path,
+                                        zephyr_flat=zephyr_flat)
+    sdt = _run_assemble_sdt(devices_yaml, 'imx8mm-evk', tmp_path)
+
+    assert _dtc_parses(sdt), f"dtc failed to parse {sdt}"
+    text = sdt.read_text()
+
+    assert 'compatible = "fsl,imx8mm-evk", "fsl,imx8mm";' in text
+    assert 'cpus_a53: cpus-a53@0' in text, "A53 cluster wrapper missing"
+    assert 'cpus_m4: cpus-m4@1' in text, "M4 cluster wrapper missing"
+    assert 'compatible = "cpus,cluster";' in text
+    # Augment-derived M4 firmware carve-out and the rpmsg region
+    # should both be reachable as memory entries in the SDT.
+    assert 'm4_reserved' in text
+    assert 'rpmsg_shmem' in text
+
+    golden = BOARDS_ROOT / 'imx8mm-evk' / 'expected-sdt.dts'
+    assert golden.is_file(), (
+        f"sdt golden missing: {golden}\n"
+        f"  Generated output is at {sdt}; copy it as the golden once verified.")
+    assert sdt.read_text() == golden.read_text(), (
+        f"assemble_sdt output drifted from {golden}.\n"
+        f"  If the drift is intentional, regenerate:\n"
+        f"      cp {sdt} {golden}")
