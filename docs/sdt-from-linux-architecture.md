@@ -38,34 +38,41 @@ material any OSS contributor can obtain.
 ## Pipeline overview
 
 ```
-   Linux DT (upstream)         ─┐
-   Zephyr DT (upstream)        ─┤   ──→ compose_devices ──┐
-   SoC silicon-facts YAML      ─┤                          │
-   Per-board augment YAML      ─┘                          │
-                                                           ▼
-                                                     devices.yaml
-                                              (openamp,domain-v1,devices)
-                                                           │
-                                                           ▼
-                                                     assemble_sdt
-                                                           │
-                                                           ▼
-                                                    system-top.dts
-                                                           │
-                  User partition intent ─────────┐         │
-                  (domains.yaml,                 │         │
-                   openamp,domain-v1)            ▼         ▼
-                                              existing downstream tools
-                                       (per-OS DT slicing, BSP gen, OpenAMP,
-                                        FPGA overlays, hypervisor configs,
-                                        cross-OS validation, …)
+   Linux DT (upstream)         ─────────────────────────────┐
+                                                            │
+   Zephyr DT (upstream)        ─┐                           │
+   Per-board augment YAML      ─┴─→ compose_non_linux ──┐   │
+                                    (rich props,         │   │
+                                     "&label" phandles)  │   │
+                                                         ▼   ▼
+                                                    non-linux.yaml ──→ assemble_sdt
+                                              (openamp,domain-v1,non-linux)         │
+                                                                                    ▼
+                                                                            system-top.dts
+                                                                              (Linux DT base
+                                                                               + cpus,cluster wrap
+                                                                               + non-Linux overlay)
+                                                                                    │
+                  User partition intent ───────────────────────────────┐            │
+                  (domains.yaml,                                       │            │
+                   openamp,domain-v1)                                  ▼            ▼
+                                                                  existing downstream tools
+                                                           (per-OS DT slicing, BSP gen, OpenAMP,
+                                                            FPGA overlays, hypervisor configs,
+                                                            cross-OS validation, …)
 ```
 
-The pipeline is intentionally two-stage: extraction (`compose_devices`)
-produces a canonical inventory YAML; assembly (`assemble_sdt`) turns
-that into the SDT. The intermediate format is the same shape that
-existing inventory-producing tools emit, so downstream consumers can
-treat input from either path interchangeably.
+The pipeline is two-stage: extraction (`compose_non_linux`)
+captures everything the Linux DT does not already carry — co-
+processor clusters, TCM/OCRAM regions, the co-processor side of the
+IPC fabric, augment-derived reserved-memory carve-outs — into a
+rich-property YAML where every kept node retains its full DT
+property set (with phandle refs encoded as `"&label"` strings).
+Assembly (`assemble_sdt`) then loads the Linux DT as the SDT base
+and overlays the non-Linux content on top, so Linux-side nodes
+round-trip verbatim (preserving the bootability of the SDT after
+downstream per-OS slicing) and non-Linux content joins the merged
+tree as siblings of the Linux clusters.
 
 ### Where the user's two YAML inputs fit
 
@@ -144,84 +151,91 @@ Each per-board directory contains the following files:
   the upstream Zephyr SoC dtsi and adds minimum root metadata.
   Sidesteps Zephyr board files that depend on west-managed modules
   we don't vendor.
-- `expected-devices.yaml` / `expected-devices-merged.yaml` /
-  `expected-sdt.dts` — golden outputs the integration tests diff
-  against.
+- `expected-non-linux.yaml` / `expected-sdt.dts` — golden outputs
+  the integration tests diff against.
 
-### Extraction: `compose_devices`
+### Extraction: `compose_non_linux`
 
-`lopper/assists/compose_devices.py` is the Lopper assist that walks
-the Linux DT, optionally walks the Zephyr DT, merges them, applies the
-per-board augment overlay, and emits the canonical
-`openamp,domain-v1,devices` YAML inventory.
+`lopper/assists/compose_non_linux.py` is the Lopper assist that
+walks the Zephyr DT, captures every node not already present in
+the Linux DT at the same address, merges the per-board augment
+overlay, and emits the `openamp,domain-v1,non-linux` YAML.
 
-The walking, categorisation, and YAML emit logic is shared with the
-existing `sdt_devices` assist via `lopper/assists/_devices_core.py`
-(see below). `compose_devices` adds the multi-source orchestration:
+The assist takes the Zephyr DT as its main Lopper input and the
+Linux DT as a secondary `LopperSDT` via `--linux-dt` (for address
+dedup). For each kept node it captures the complete property set:
 
-- Linux side: the standard Lopper assist input (a pre-flattened .dts).
-- Zephyr side (optional, via `--zephyr-dt`): loaded as a secondary
-  `LopperSDT`, walked through the same `DevicesCore`.
-- Merge: address-keyed dedup. Linux entries win on collision; Zephyr
-  entries with addresses not in the Linux side are appended with
-  `source: zephyr`. Cluster entries are always appended (different
-  cluster types never alias). Linux's SoC identity and `/aliases`
-  are authoritative.
-- Augment overlay: loads `augment.yaml`, finds the
-  `openamp,domain-v1,board-augment` block, merges its cpus / memory /
-  sram / access lists into the inventory with `source: augment` tags.
-  HexInt-normalises user-written numbers so the output formats them
-  consistently.
+- Plain int / int-array properties → HexInt-wrapped for hex output.
+- Strings → passed through as-is.
+- Boolean-present properties → emitted as YAML `true`.
+- Phandle-bearing properties (looked up via Lopper's
+  `phandle_possible_properties()` registry) → encoded as canonical
+  `"&label"` string refs (matching what `LopperTree.label_to_phandle`
+  accepts on the consumer side). Single-phandle/no-cells properties
+  collapse to a bare `"&label"` scalar; phandle-plus-cells become a
+  flat list mixing the `"&label"` string with HexInt cells.
+- Memory nodes → reg cell-arrays normalised to the `{start, size}`
+  convention used in `domains.yaml` and the SDT spec, so all memory
+  entries (Zephyr-mined and augment-derived) speak one form.
+
+Augment overlay: loads `augment.yaml`, finds the
+`openamp,domain-v1,board-augment` block, merges its cpus / memory /
+sram / access lists into the corresponding non-linux buckets with
+`source: augment` tags. HexInt-normalises user-written numbers so
+the output formats them consistently with the Zephyr-derived
+content.
 
 ### Shared extraction core: `_devices_core.DevicesCore`
 
 The module `lopper/assists/_devices_core.py` is input-agnostic
-library code that both `sdt_devices` (operates on a pre-existing SDT)
-and `compose_devices` (operates on a Linux DT, optionally merged with
-Zephyr) call into. It provides:
+library code that the existing `sdt_devices` assist (which operates
+on a pre-existing SDT to produce the thin partitioning inventory)
+calls into. It provides device categorisation, walking, and per-OS
+discovery primitives that `sdt_devices` uses to produce the
+`openamp,domain-v1,devices` inventory consumed by the domain
+allocator and downstream slicer.
 
-- `DeviceCategory` enum (BUS / CPU / MEMORY / FIRMWARE / TOPLEVEL).
-- Infrastructure-device filter taxonomy (interrupt controllers, SMMU,
-  power-management nodes, etc. — devices that can't be split between
-  domains).
-- Tree walking and per-category discovery (`discover_bus_devices`,
-  `discover_cpus`, `discover_memory`, `discover_firmware`,
-  `discover_toplevel`).
-- Per-device augmentation hook (`_augment_device_entry`) that emits
-  the `bootph` tags and decodes the `power-domains` reference via
-  the per-SoC `pm_devices` table.
-- Root-level extraction: SoC identity from root `compatible` and
-  `model`, aliases pass-through from `/aliases`.
-- Tree builder (`build_domain_tree`) that takes a pre-built
-  inventory dict and emits the `openamp,domain-v1,devices` tree.
-  Split from `generate_domain` so callers that merge multiple
-  sources (compose_devices) can discover separately, combine, build
-  once.
+`compose_non_linux` is intentionally separate: it captures
+*rich-property* node content for the SDT base, where
+`_devices_core` produces *thin* inventory entries for partitioning.
+The two outputs serve different stages of the larger flow.
 
 ### Assembly: `assemble_sdt`
 
-`lopper/assists/assemble_sdt.py` is the Lopper assist that turns the
-devices YAML into the `system-top.dts`. Input is purely the YAML; the
-main Lopper sdt argument is unused. Output emission is by string
-templating rather than tree manipulation — direct templating gives
-exact control over formatting (for byte-stable golden comparison)
-and avoids LopperTree resolve/sync mechanics for what is structurally
-a write-only transformation.
+`lopper/assists/assemble_sdt.py` is the Lopper assist that produces
+the `system-top.dts`. Inputs: `--linux-dt <flat>` (loaded as the SDT
+base, so its nodes/properties/phandles/labels round-trip verbatim)
+and `--non-linux <yaml>` (the compose_non_linux output, overlaid on
+top). Output emission is via `LopperTreePrinter` over the merged
+in-memory tree.
 
-The assembler emits, in order: root metadata (identity from
-inventory), one `cpus,cluster`-wrapped node per `cpus` entry, memory
-nodes from the memory list, a `reserved-memory` block containing any
-`no-map` / `reusable` entries from sram and memory, an `amba: axi`
-simple-bus with per-device stub nodes for the addressable `access`
-entries, addressless `access` entries at root (dcc, firmware, …),
-aliases pass-through, and a `/domains` placeholder.
+The assembler proceeds in stages:
 
-Per-device stubs carry the inventory-derived facts (reg, status,
-source tag, pm_node, bootph). Full per-device detail (clocks,
-interrupts, vendor properties) is not reproduced — those would
-require re-loading the source DTs during assembly, which is a future
-enhancement. The current output is a structural SDT consumable by
-domain-processing tools, not a Linux-bootable DT.
+1. Load the Linux DT as a mutable `LopperSDT` base tree.
+2. Mark `/cpus` with the SDT spec's `cpus,cluster` compatible and
+   add a `cpus_<arch>` label. The node name stays unchanged so that
+   any Linux DT references into `/cpus/cpu@N` still resolve.
+3. Attach each non-linux cluster entry as a sibling root-level
+   `cpus,cluster` node (e.g. `cpus_r5: cpus-r5@0`) with its cpu
+   children.
+4. Attach each non-linux memory entry: `no-map` carve-outs land
+   under `/reserved-memory/<name>`; the rest become `/memory@<addr>`
+   nodes at root. `{start, size}` is unpacked into a `reg`
+   cell-array at the parent's address/size cell counts.
+5. Attach each non-linux peripheral under a `/non_linux_soc`
+   simple-bus wrapper — the co-processor's reg values are
+   bus-relative and would either clash with Linux-side absolute
+   addresses or break unit-address uniqueness if hoisted to root.
+6. Walk the merged tree and resolve `"&label"` phandle refs via
+   `LopperTree.label_to_phandle()` against the merged label space.
+7. Emit via `LopperTreePrinter`. As a final pass, the Lopper-
+   synthesised `&invalid_phandle` sentinel (which Lopper emits for
+   literal-zero phandle slots, a valid DT idiom meaning "no phandle
+   here") is substituted with `0x0` so dtc accepts the output.
+
+Every added node carries a `lopper-source` tag (`zephyr` /
+`augment` / `non-linux`) so the downstream slicer can split the
+merged tree back into per-OS DTs based on provenance.
 
 ### Pipeline runner: `scripts/build-board-sdt.py`
 
@@ -230,17 +244,20 @@ pipeline end-to-end for one shipped board. Given `--board <name>`,
 it reads `lopper/data/boards/<name>/source.yaml`, preprocesses the
 upstream Linux DT (and Zephyr DT when present) with cpp + dtc using
 the include paths declared in the board config, then invokes
-`compose_devices` and `assemble_sdt` in sequence. Users running the
-pipeline drive it through this script; the integration tests in
-`tests/test_sdt_from_linux.py` invoke the same script so there is
-one canonical implementation of the orchestration.
+`compose_non_linux` and `assemble_sdt` in sequence. With
+`--no-zephyr` it skips the `compose_non_linux` stage entirely and
+calls `assemble_sdt` without `--non-linux`, producing a Linux-only
+SDT. Users running the pipeline drive it through this script; the
+integration tests in `tests/test_sdt_from_linux.py` invoke the same
+script so there is one canonical implementation of the
+orchestration.
 
-This also explains why `compose_devices` and `assemble_sdt` accept
-pre-flattened `.dts` inputs rather than running cpp/dtc themselves:
-preprocessing belongs in the orchestration layer (this script),
-keeping the assists read-only on already-flat trees so they can
-be exercised in isolation by tests or by external tools that
-preprocess their input differently.
+This also explains why both assists accept pre-flattened `.dts`
+inputs rather than running cpp/dtc themselves: preprocessing
+belongs in the orchestration layer (this script), keeping the
+assists read-only on already-flat trees so they can be exercised
+in isolation by tests or by external tools that preprocess their
+input differently.
 
 ### Bootstrap tooling: `scripts/`
 
@@ -272,24 +289,33 @@ family. The loader dispatches on the suffix.
 | compatible | Purpose | Producer | Consumer |
 |---|---|---|---|
 | `openamp,domain-v1` | User partition intent (per-OS device assignment) | hand-written by user | existing Lopper domain processing |
-| `openamp,domain-v1,devices` | Generated device inventory (pipeline intermediate) | `sdt_devices` / `compose_devices` | `assemble_sdt`, audit framework, domain-processing tools |
+| `openamp,domain-v1,devices` | Generated device inventory (thin shape used for partitioning) | `sdt_devices` | audit framework, domain-processing tools |
+| `openamp,domain-v1,non-linux` | Generated rich-property non-Linux content (Zephyr-mined + augment-derived) | `compose_non_linux` | `assemble_sdt` |
 | `openamp,domain-v1,soc-facts` | Per-SoC silicon facts (PM IDs, cluster shapes, TCM/OCM map) | shipped under `lopper/data/socs/`, hand-curated from public docs | `_devices_core` PM-ID decoder; future cluster-template consumers |
-| `openamp,domain-v1,board-augment` | Per-board integration overlay | shipped under `lopper/data/boards/<board>/augment.yaml`, hand-written | `compose_devices` augment merger |
+| `openamp,domain-v1,board-augment` | Per-board integration overlay | shipped under `lopper/data/boards/<board>/augment.yaml`, hand-written | `compose_non_linux` augment merger |
 
-Inventory blocks (`cpus`, `memory`, `sram`, `access`) share the same
-shape across all four compatibles, so cross-source merging is a list
-append rather than a format translation.
+The thin (`devices`) and rich (`non-linux`) intermediates target
+different stages: the inventory shape feeds partitioning logic that
+only needs to know what is reachable, while the non-linux shape
+preserves the full DT property set needed to reconstitute a
+bootable per-OS DT after slicing.
 
 ## Data flow
 
 ```
-Linux DT  ────→ flatten (cpp + dtc) ────→ flat .dts ────→ LopperSDT ──┐
-Zephyr DT ────→ flatten (cpp + dtc) ────→ flat .dts ────→ LopperSDT ──┤
-                                                                       ├──→ compose_devices ──→ devices.yaml
-SoC YAML       (read at import; PM-ID table consulted per device) ────┤
-Augment YAML   (read for the --board the user picks; merged last) ────┘
-
-                                                  devices.yaml ──→ assemble_sdt ──→ system-top.dts
+Linux DT  ────→ flatten (cpp + dtc) ────→ flat .dts ──────────────────────────────┐
+                                                                                   │
+Zephyr DT ────→ flatten (cpp + dtc) ────→ flat .dts ────→ LopperSDT ──┐            │
+                                                                       │            │
+Augment YAML   (read for the --board the user picks; merged last) ────┴─→ compose_non_linux
+                                                                                   │
+                                                                          non-linux.yaml
+                                                                                   │
+                                                                                   ▼
+                                                          assemble_sdt ◄──── Linux flat .dts (re-loaded as base)
+                                                                                   │
+                                                                                   ▼
+                                                                            system-top.dts
 ```
 
 The cpp + dtc steps and the chained Lopper invocations are
@@ -364,11 +390,13 @@ same principles apply throughout):
 
 A new merge-time signal (the kind of per-device tag the pipeline
 attaches as it walks the tree) belongs in
-`_devices_core._augment_device_entry`. A new extraction source (a
-new kind of input tree to mine) belongs in a new helper method on
-`DevicesCore` plus a call site in `compose_devices`. A new
-downstream output shape belongs in a new assist that consumes
-`openamp,domain-v1,devices` alongside the existing `assemble_sdt`.
+`_devices_core._augment_device_entry`. A new extraction source for
+non-Linux content (e.g. a Xen-side hypervisor DT, an FPGA partial
+overlay) belongs in `compose_non_linux` alongside the existing
+Zephyr-side walker. A new downstream output shape belongs in a new
+assist that consumes `openamp,domain-v1,non-linux` (or
+`openamp,domain-v1,devices`, depending on whether it needs rich or
+thin input) alongside the existing `assemble_sdt`.
 
 ## See also
 

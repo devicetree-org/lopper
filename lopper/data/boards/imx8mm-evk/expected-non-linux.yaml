@@ -1,0 +1,106 @@
+non_linux:
+  compatible: openamp,domain-v1,non-linux
+  source_summary:
+    clusters: 1
+    memory: 5
+    devices: 6
+  clusters:
+    cpus:
+      source: zephyr
+      properties:
+        '#address-cells': 0x1
+        '#size-cells': 0x0
+      cpus:
+        cpu@0:
+          source: zephyr
+          properties:
+            device_type: cpu
+            compatible: arm,cortex-m4
+            reg: 0x0
+  memory:
+    memory@20000000:
+      source: zephyr
+      properties:
+        compatible: nxp,imx-dtcm
+        start: 0x20000000
+        size: 0x20000
+    memory@20200000:
+      source: zephyr
+      properties:
+        device_type: memory
+        compatible: nxp,imx-sys-bus
+        start: 0x20200000
+        size: 0x40000
+    memory@20180000:
+      source: zephyr
+      properties:
+        device_type: memory
+        compatible: nxp,imx-sys-bus
+        start: 0x20180000
+        size: 0x8000
+    m4_reserved:
+      source: augment
+      properties:
+        start: 0x80000000
+        size: 0x100000
+        no-map: true
+    rpmsg_shmem:
+      source: augment
+      properties:
+        start: 0xb8000000
+        size: 0x400000
+        no-map: true
+  devices:
+    interrupt-controller@e000e100:
+      source: zephyr
+      properties:
+        '#address-cells': 0x1
+        compatible: arm,v7m-nvic
+        reg:
+          - 0xe000e100
+          - 0xc00
+        interrupt-controller: true
+        '#interrupt-cells': 0x2
+        arm,num-irq-priority-bits: 0x4
+      label: interrupt_controllere000e100
+    timer@e000e010:
+      source: zephyr
+      properties:
+        compatible: arm,armv7m-systick
+        reg:
+          - 0xe000e010
+          - 0x10
+    code@1ffe0000:
+      source: zephyr
+      properties:
+        compatible: nxp,imx-itcm
+        reg:
+          - 0x1ffe0000
+          - 0x20000
+    code@900000:
+      source: zephyr
+      properties:
+        compatible: nxp,imx-code-bus
+        reg:
+          - 0x900000
+          - 0x40000
+    code@180000:
+      source: zephyr
+      properties:
+        compatible: nxp,imx-code-bus
+        reg:
+          - 0x180000
+          - 0x8000
+    mailbox@30ab0000:
+      source: zephyr
+      properties:
+        compatible: nxp,imx-mu
+        reg:
+          - 0x30ab0000
+          - 0x10000
+        interrupts:
+          - 0x61
+          - 0x0
+        rdc: 0xf
+        status: disabled
+  board: imx8mm-evk

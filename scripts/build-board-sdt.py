@@ -4,24 +4,21 @@
 # SPDX-License-Identifier: BSD-3-Clause
 """
 Drive the full sdt-from-linux pipeline for one shipped board:
-  source.yaml → cpp + dtc → compose_devices → assemble_sdt
-                                                     ↓
-                                              system-top.dts
+  source.yaml → cpp + dtc → compose_non_linux → assemble_sdt
+                                                       ↓
+                                                system-top.dts
+
+The Linux DT is the base of the SDT, so its devices come along
+verbatim. compose_non_linux extracts the co-processor side from
+the Zephyr DT and the per-board augment YAML into a rich-property
+non-linux YAML. assemble_sdt loads the Linux DT as the base tree
+and overlays the non-linux content on top, producing the SDT.
 
 This is the canonical entry point for running the pipeline on a
 board configured under lopper/data/boards/<board>/. It reads the
 board's source.yaml, preprocesses the upstream Linux DT (and the
-upstream Zephyr DT, when the board has a zephyr: block), invokes
-the compose_devices Lopper assist to build the inventory YAML,
-then invokes the assemble_sdt Lopper assist to produce the SDT.
-
-Users should not need to invoke cpp or dtc themselves — this
-script encodes the per-board cpp include paths, the dtc_force
-flag for boards whose Zephyr side needs it, and the chained
-Lopper invocations. The integration tests in
-tests/test_sdt_from_linux.py also drive the pipeline through this
-script so there is one canonical implementation of the
-orchestration.
+upstream Zephyr DT, when the board has a zephyr: block), then
+chains the two Lopper assists.
 
 Usage:
     scripts/build-board-sdt.py --board <board-name> [options]
@@ -33,9 +30,10 @@ Options:
                            ./<board>-build/. Created if missing.
     --no-zephyr            Skip the Zephyr-side flatten and merge
                            even when the board's source.yaml has a
-                           zephyr: block. Produces a Linux-only SDT.
-    --no-augment           Pass --no-augment to compose_devices,
-                           disabling the per-board augment overlay.
+                           zephyr: block. Produces a Linux-only SDT
+                           (assemble_sdt runs with no non-linux YAML
+                           input — augment-only content is dropped).
+    --no-augment           Skip the per-board augment YAML overlay.
                            Mostly useful for diagnostic runs.
     -v, --verbose          Print each cpp/dtc/lopper invocation as
                            it runs.
@@ -43,7 +41,7 @@ Options:
 Outputs (under <output-dir>):
     <board>-linux.flat.dts        preprocessed Linux DT
     <board>-zephyr.flat.dts       preprocessed Zephyr DT (if --no-zephyr not set)
-    <board>-devices.yaml          compose_devices output
+    <board>-non-linux.yaml        compose_non_linux output (if Zephyr DT present)
     <board>-system-top.dts        assemble_sdt output (the SDT)
     <board>-*.pp.dts              intermediate cpp output (kept for inspection)
 
@@ -130,51 +128,62 @@ def _flatten(block, board_name, label, outdir, verbose):
     return flat_dts
 
 
-def _run_compose(linux_flat, board_name, outdir, zephyr_flat, no_augment,
-                 verbose):
-    """Invoke lopper.py with the compose_devices assist."""
-    devices_yaml = outdir / f'{board_name}-devices.yaml'
-    lop_main_out = outdir / f'{board_name}-compose-lopout.dts'
+def _run_compose_non_linux(zephyr_flat, linux_flat, board_name, outdir,
+                           no_augment, verbose):
+    """Invoke lopper.py with the compose_non_linux assist.
 
-    cmd = [sys.executable, str(LOPPER_PY), '-f',
-           str(linux_flat), str(lop_main_out),
-           '--', 'compose_devices',
+    Takes the Zephyr DT as the main lopper input; passes the Linux DT
+    via --linux-dt for address dedup against the eventual base tree.
+    """
+    non_linux_yaml = outdir / f'{board_name}-non-linux.yaml'
+    lop_main_out = outdir / f'{board_name}-compose-non-linux-lopout.dts'
+
+    cmd = [sys.executable, str(LOPPER_PY),
+           '-O', str(outdir), '--permissive', '-f',
+           str(zephyr_flat), str(lop_main_out),
+           '--', 'compose_non_linux',
+           '--linux-dt', str(linux_flat),
            '--board', board_name,
-           '-o', str(devices_yaml)]
-    if zephyr_flat is not None:
-        cmd.extend(['--zephyr-dt', str(zephyr_flat)])
+           '-o', str(non_linux_yaml)]
     if no_augment:
-        cmd.append('--no-augment')
+        # compose_non_linux looks up augment.yaml via --board; pass an
+        # empty --augment to suppress the per-board overlay.
+        cmd.extend(['--augment', '/dev/null'])
 
     _print_cmd(cmd, verbose)
     result = subprocess.run(cmd, cwd=str(REPO_ROOT),
                             capture_output=True, text=True)
     if result.returncode != 0:
         raise PipelineError(
-            f"compose_devices failed for board '{board_name}':\n"
+            f"compose_non_linux failed for board '{board_name}':\n"
             f"--- stdout ---\n{result.stdout}\n"
             f"--- stderr ---\n{result.stderr}\n")
-    if not devices_yaml.is_file():
+    if not non_linux_yaml.is_file():
         raise PipelineError(
-            f"compose_devices reported success but produced no output: {devices_yaml}")
-    return devices_yaml
+            f"compose_non_linux reported success but produced no output: "
+            f"{non_linux_yaml}")
+    return non_linux_yaml
 
 
-def _run_assemble(devices_yaml, linux_flat, board_name, outdir, verbose):
+def _run_assemble(linux_flat, non_linux_yaml, board_name, outdir, verbose):
     """Invoke lopper.py with the assemble_sdt assist.
 
     assemble_sdt ignores the main sdt input, but lopper.py still
     requires something to load. We pass the Linux flat .dts as a
-    placeholder — it's already on disk and assemble_sdt won't read it.
+    placeholder — assemble_sdt re-loads it via --linux-dt.
     """
     sdt = outdir / f'{board_name}-system-top.dts'
     lop_main_out = outdir / f'{board_name}-assemble-lopout.dts'
 
-    cmd = [sys.executable, str(LOPPER_PY), '-f',
+    cmd = [sys.executable, str(LOPPER_PY),
+           '-O', str(outdir), '--permissive', '-f',
            str(linux_flat), str(lop_main_out),
            '--', 'assemble_sdt',
-           '--devices', str(devices_yaml),
+           '--linux-dt', str(linux_flat),
            '-o', str(sdt)]
+    if non_linux_yaml is not None:
+        cmd.extend(['--non-linux', str(non_linux_yaml)])
+
     _print_cmd(cmd, verbose)
     result = subprocess.run(cmd, cwd=str(REPO_ROOT),
                             capture_output=True, text=True)
@@ -232,14 +241,18 @@ def build_board(board_name, output_dir, no_zephyr=False, no_augment=False,
                                output_dir, verbose)
         artifacts['zephyr_flat'] = zephyr_flat
 
-    # Stage 3: compose_devices.
-    devices_yaml = _run_compose(linux_flat, board_name, output_dir,
-                                zephyr_flat=zephyr_flat,
-                                no_augment=no_augment, verbose=verbose)
-    artifacts['devices_yaml'] = devices_yaml
+    # Stage 3: compose_non_linux (only when there's a Zephyr DT to
+    # extract from; otherwise the SDT is Linux-only and assemble_sdt
+    # runs without a non-linux overlay).
+    non_linux_yaml = None
+    if zephyr_flat is not None:
+        non_linux_yaml = _run_compose_non_linux(
+            zephyr_flat, linux_flat, board_name, output_dir,
+            no_augment=no_augment, verbose=verbose)
+        artifacts['non_linux_yaml'] = non_linux_yaml
 
     # Stage 4: assemble_sdt.
-    sdt = _run_assemble(devices_yaml, linux_flat, board_name, output_dir,
+    sdt = _run_assemble(linux_flat, non_linux_yaml, board_name, output_dir,
                         verbose=verbose)
     artifacts['system_top_dts'] = sdt
 
@@ -274,13 +287,14 @@ def main():
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"board:        {args.board}")
-    print(f"output dir:   {artifacts['output_dir']}")
-    print(f"linux flat:   {artifacts['linux_flat'].name}")
+    print(f"board:           {args.board}")
+    print(f"output dir:      {artifacts['output_dir']}")
+    print(f"linux flat:      {artifacts['linux_flat'].name}")
     if 'zephyr_flat' in artifacts:
-        print(f"zephyr flat:  {artifacts['zephyr_flat'].name}")
-    print(f"devices yaml: {artifacts['devices_yaml'].name}")
-    print(f"system-top:   {artifacts['system_top_dts'].name}")
+        print(f"zephyr flat:     {artifacts['zephyr_flat'].name}")
+    if 'non_linux_yaml' in artifacts:
+        print(f"non-linux yaml:  {artifacts['non_linux_yaml'].name}")
+    print(f"system-top:      {artifacts['system_top_dts'].name}")
     print()
     print(f"Generated SDT: {artifacts['system_top_dts']}")
 
