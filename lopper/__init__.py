@@ -1097,7 +1097,15 @@ class LopperSDT:
         if self.dts and re.search( r".dts$", self.dts ):
             # do we have any extra sdt files to concatenate first ?
             fp = ""
-            fpp = tempfile.NamedTemporaryFile( delete=False )
+            # Place the concatenated temp DTS inside self.tmpdir (a fresh
+            # mkdtemp() per LopperSDT instance) rather than the system /tmp
+            # directly. cpp resolves #include "..." against the source file's
+            # directory first; if that's the system /tmp, a stray /tmp/<file>.dtsi
+            # will silently shadow the include we actually want from the
+            # caller's -I paths. self.tmpdir is freshly created and guaranteed
+            # empty of such files, so quoted-include resolution falls through
+            # to the explicit -I search.
+            fpp = tempfile.NamedTemporaryFile( delete=False, dir=self.tmpdir, suffix=".dts" )
             overlay_dts_files = []
             # TODO: if the count is one, we shouldn't be doing the tmp file processing.
             if sdt_files:
@@ -1336,7 +1344,8 @@ class LopperSDT:
                 sys.exit(1)
 
             fp = ""
-            fpp = tempfile.NamedTemporaryFile( delete=False )
+            # Keep temp under self.tmpdir for isolation (see DTS branch above).
+            fpp = tempfile.NamedTemporaryFile( delete=False, dir=self.tmpdir, suffix=".yaml" )
             if sdt_files:
                 sdt_files.insert( 0, self.dts )
 
@@ -1378,7 +1387,8 @@ class LopperSDT:
                 sys.exit(1)
 
             fp = ""
-            fpp = tempfile.NamedTemporaryFile( delete=False )
+            # Keep temp under self.tmpdir for isolation (see DTS branch above).
+            fpp = tempfile.NamedTemporaryFile( delete=False, dir=self.tmpdir, suffix=".json" )
             if sdt_files:
                 sdt_files.insert( 0, self.dts )
 
