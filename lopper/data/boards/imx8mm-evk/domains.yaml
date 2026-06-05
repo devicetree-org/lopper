@@ -1,0 +1,57 @@
+# NXP i.MX 8M Mini EVK — board domains.yaml (starter).
+#
+# Standard openamp,domain-v1 shape. Two roles in one file:
+#
+#   1. Integration declarations — facts the upstream Linux DT and
+#      Zephyr DT do not carry that need to become first-class SDT
+#      nodes: reserved-memory carve-outs (memory entries with
+#      `no-map: true`) and any board-only peripherals (access
+#      entries carrying their own properties) absent from both
+#      upstream trees. assemble_sdt walks this file at SDT-build
+#      time and injects each declared node into the SDT.
+#
+#   2. Partition intent — which device / memory / cluster belongs
+#      to which OS. The downstream Lopper domain-processing tools
+#      (gen_domain_dts, openamp, etc.) consume this side of the
+#      file after the SDT exists.
+#
+# Linux DT for i.MX 8M Mini has zero awareness of the M4 (no
+# remoteproc node, no reserved-memory for M4 firmware). The Zephyr
+# DT gives us the M4 silicon view but not the integration choices.
+# That's what this file is for.
+#
+# This is the shipped per-board template. Do NOT edit it in place
+# (a git pull would clobber your changes). Instead, keep a small
+# overlay file of just your deployment's changes and pass it with
+# --domains; the pipeline deep-merges your overlay on top of this
+# template. Use sdt-domains.yaml (auto-generated alongside the SDT)
+# as a reference for what the SDT contains and as a starting point
+# for the partition section.
+
+domains:
+  default:
+    compatible: openamp,domain-v1
+    id: 0
+    domains:
+      MCU:
+        compatible: openamp,domain-v1
+        memory:
+          # Reserved DDR carve-out for the M4 firmware blob the
+          # A53 side loads before releasing the M4 from reset. 1 MiB
+          # at the start of usable DDR (above ATF / U-Boot) is the
+          # i.MX OpenAMP demo convention; the exact base / size is
+          # an integration choice.
+          - dev: m4_reserved
+            start: 0x80000000
+            size: 0x100000           # 1 MiB
+            no-map: true
+
+          # rpmsg shared-memory region — A53 and M4 both map this
+          # for ring-buffer communication via the MU mailbox pair.
+          # Listed under MCU here because the M4 firmware owns the
+          # region; the A53-side domain typically also references
+          # it for cross-mapping.
+          - dev: rpmsg_shmem
+            start: 0xb8000000
+            size: 0x400000           # 4 MiB
+            no-map: true

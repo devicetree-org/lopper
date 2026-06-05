@@ -22,8 +22,8 @@ in CI: **AMD Versal VCK190** and **NXP i.MX 8M Mini EVK**.
 | **Linux DT** | The board's upstream Linux kernel device tree. Describes Linux's view: the cluster Linux runs on and the peripherals reachable from it. |
 | **Zephyr DT** | The board's upstream Zephyr RTOS device tree (when available). Describes the co-processor's view: M-core / R-core CPU, TCM/OCRAM, and the other side of the IPC mailbox. |
 | **SoC silicon-facts YAML** | A per-SoC file shipped under `lopper/data/socs/`. Public silicon facts (PM device IDs, cluster shapes, TCM/OCM map, IPI topology). Sourced from kernel headers and the public TRM. One per silicon family. |
-| **Board augment YAML** | A small hand-written file under `lopper/data/boards/<board>/augment.yaml`. Carries the integration decisions neither Linux nor Zephyr describes — typically reserved-memory carve-outs for co-processor firmware and the rpmsg shared region. |
-| **`compose_non_linux`** | Lopper assist that walks the Zephyr DT (and the per-board augment YAML), captures every node not already present at the same address in the Linux DT, and emits an `openamp,domain-v1,non-linux` YAML carrying the full property set for each kept node. Phandle refs are encoded as canonical `"&label"` strings so they re-resolve against the merged tree at assembly time. |
+| **Board domains.yaml** | A hand-written `openamp,domain-v1` file under `lopper/data/boards/<board>/domains.yaml`, matching the existing system device tree domains.yaml conventions. Two roles in one file: (1) *integration declarations* — facts Linux and Zephyr don't carry that need to become first-class SDT nodes: reserved-memory carve-outs (memory entries with `no-map: true`) for co-processor firmware / rpmsg regions, and any board-only peripherals (access entries carrying their own properties) absent from both upstream trees; `assemble_sdt` injects each into the SDT; (2) *partition intent* — which device / memory / cluster belongs to which OS, consumed by downstream domain-processing tools after the SDT exists. |
+| **`compose_non_linux`** | Lopper assist that walks the Zephyr DT (and the per-board domains.yaml), captures every node not already present at the same address in the Linux DT, and emits an `openamp,domain-v1,non-linux` YAML carrying the full property set for each kept node. Phandle refs are encoded as canonical `"&label"` strings so they re-resolve against the merged tree at assembly time. |
 | **`assemble_sdt`** | Lopper assist that loads the Linux DT as the SDT base, marks `/cpus` with the `cpus,cluster` compatible the SDT spec uses, then overlays the non-linux YAML's clusters / memory / devices on top, producing the `system-top.dts`. |
 | **`sdt_devices`** | Existing Lopper assist run *post-SDT* to enumerate every device in the assembled SDT into a YAML inventory. This becomes the vocabulary a user-written `domains.yaml` can glob against. |
 | **`sdt_domains`** | Lopper assist that walks the assembled SDT, partitions devices / memory across one starter domain per `cpus,cluster` (using the `lopper-source` tags assemble_sdt attached), and emits a `sdt-domains.yaml` for the user to edit. |
@@ -31,11 +31,25 @@ in CI: **AMD Versal VCK190** and **NXP i.MX 8M Mini EVK**.
 ```
    Linux DT       ────────────────────────────────────────────────┐
                                                                   │
-   Zephyr DT      ─┐                                              ├──→ assemble_sdt ──→ system-top.dts
-   Augment YAML   ─┴─→ compose_non_linux ──→ non-linux.yaml  ────┘   (Linux DT base
-                       (per-node rich props,                            + cpus,cluster wrap
-                        phandle refs as "&label")                       + non-Linux overlay)
+   Zephyr DT            ─┐                                        ├──→ assemble_sdt ──→ system-top.dts
+   USER's domains.yaml ──┴─→ compose_non_linux ──→ non-linux.yaml ┘   (Linux DT base
+        │                    (per-node rich props,                      + cpus,cluster wrap
+        │                     phandle refs as "&label")                 + non-Linux overlay)
+        │
+        └──────────────────────────────────────────────────────→ downstream domain-processing tools
+                                                                  (per-OS DT slicing, etc., after
+                                                                   the SDT exists)
 ```
+
+The user's `domains.yaml` (matching the existing system device tree
+`openamp,domain-v1` conventions) is the same physical file at both
+points: `compose_non_linux` pulls *integration declarations*
+(reserved-memory carve-outs, board-only peripherals) out of it at
+SDT-build time, and the downstream domain-processing tools consume
+its *partition intent* (which device belongs to which OS) after the
+SDT exists. See
+[Bringing your own domains.yaml](#bringing-your-own-domainsyaml)
+below.
 
 ## Running it on a board we ship
 
@@ -84,7 +98,8 @@ Useful flags:
 | Flag | Effect |
 |---|---|
 | `--no-zephyr` | Skip the Zephyr-side flatten and `compose_non_linux` stage. Produces a Linux-only SDT (the Linux DT with `cpus,cluster` wrapping and no non-Linux overlay). |
-| `--no-augment` | Suppress the per-board augment overlay during `compose_non_linux`. Useful for diagnostic runs (compare the un-augmented non-linux YAML against the augmented one to see what the board YAML contributed). |
+| `--domains PATH` | User's per-deployment domains.yaml overlay, deep-merged on top of the shipped per-board template (overlay wins by `dev` key; new entries added). See [Bringing your own domains.yaml](#bringing-your-own-domainsyaml). |
+| `--no-template` | Skip the shipped per-board template; use only `--domains` (or nothing) as the integration source. Diagnostic / bring-your-own-template use. |
 | `-v`, `--verbose` | Print each cpp/dtc/lopper invocation as it runs. |
 
 ### Verify the result
@@ -105,6 +120,128 @@ confirm the script reproduces them:
 diff /tmp/vck190-build/versal-vck190-system-top.dts \
      lopper/data/boards/versal-vck190/expected-sdt.dts
 ```
+
+### Bringing your own domains.yaml
+
+The `--board <name>` invocation above auto-locates the
+**shipped template** under
+`lopper/data/boards/<board>/domains.yaml` (inside this repo). That
+template is pre-populated with the board's integration declarations
+and a skeleton partition, and is enough for first-run / reference
+builds.
+
+For an actual deployment you do **not** copy the template. Instead,
+write a small **overlay** file — name it whatever you like, put it
+wherever you like — containing only your edits, and pass its path
+with `--domains`. The pipeline deep-merges your overlay on top of
+the shipped template (your entries override the template's by `dev`
+key; new entries are added), so `git pull` keeps the template fresh
+underneath without disturbing your overlay. Use an absolute path:
+`build-board-sdt.py` runs lopper with its working directory set to
+the repo root, so a relative `--domains` path resolves against the
+repo root, not your shell's current directory.
+
+```bash
+# Your overlay holds only what differs from the template.
+cat > ~/work/my-vck190-overrides.yaml <<'EOF'
+domains:
+  default:
+    compatible: openamp,domain-v1
+    domains:
+      RPU:
+        compatible: openamp,domain-v1
+        memory:
+          # shrink the template's rpu0_reserved carveout
+          - dev: rpu0_reserved
+            start: 0x3e000000
+            size: 0x100000
+            no-map: true
+EOF
+
+scripts/build-board-sdt.py --board versal-vck190 \
+    --domains ~/work/my-vck190-overrides.yaml \
+    -o /tmp/vck190-build
+```
+
+The merged result is the same `openamp,domain-v1` content the
+downstream Lopper domain-processing tools consume when they slice
+`system-top.dts` — one overlay file, two consumers (SDT-build
+extracts integration declarations from the merged view; the
+partitioner reads partition intent from it).
+
+The shipped template is **not** meant to be edited in place; `git
+pull` will clobber edits. Keep your changes in the overlay.
+
+To ignore the shipped template entirely (bring-your-own-template,
+or a diagnostic run), add `--no-template` — then only your
+`--domains` file feeds the integration overlay.
+
+#### `sdt-domains.yaml` vs. your `domains.yaml`
+
+`sdt-domains.yaml` is a generated file in the same
+`openamp,domain-v1` shape as your `domains.yaml`, produced by
+`sdt_domains` walking the assembled SDT. It is a **candidate
+partition, not a device list**: one domain per `cpus,cluster`, with
+a first-guess assignment of resources by `lopper-source` tag — the
+Linux/`APU` domain gets a single `dev: '*'` access glob (Linux
+claims everything by default), and each co-processor domain
+(`RPU` / `MCU`) enumerates its source-tagged peripherals plus the
+reserved-memory carve-outs whose names match it. (The flat
+per-device enumeration you glob *against* is the separate
+`sdt-devices.yaml`.) Read it to see how the chip would split by
+default, then copy what you want into your own overlay.
+
+It is a different file from your hand-edited `domains.yaml`:
+
+| | `<board>-sdt-domains.yaml` | your `domains.yaml` |
+|---|---|---|
+| Producer | `sdt_domains` assist (regenerated every run) | hand-edited by you |
+| Lives where | output directory alongside the SDT | your deployment workspace |
+| Authoritative? | No — disposable reference / snapshot | Yes — downstream tools consume this |
+| Carries integration declarations? | No — only mirrors what's in the SDT | Yes — `no-map` memory entries you want injected |
+| Edited? | No — read for ideas, copy fragments out | Yes — both integration and partition |
+| Survives `git pull` / pipeline re-run? | Regenerated each run | Yes (lives outside the repo) |
+
+The intended workflow: after a pipeline run, read the regenerated
+`sdt-domains.yaml` to see what the SDT contains and how
+`sdt_domains` would partition it by default, then pull useful bits
+into your own hand-edited `domains.yaml` (or use it as a starting
+template when first setting up a deployment).
+
+### Globbing against `sdt-devices.yaml`
+
+The other generated file, `<board>-sdt-devices.yaml`, is a flat
+enumeration of every device in the assembled SDT (tagged
+`openamp,domain-v1,devices`). Its job is to be the **vocabulary**
+your `domains.yaml` globs against: instead of listing every
+peripheral by name in an access list, you write a glob like
+`dev: "*serial*"` and let Lopper expand it against the enumeration.
+
+Load the enumeration and your domains file together as inputs — the
+enumeration is the parent the patterns resolve against:
+
+```bash
+lopper -f --permissive --enhanced --auto \
+    -i /tmp/vck190-build/versal-vck190-sdt-devices.yaml \
+    -i ~/work/my-vck190-domains.yaml \
+    /tmp/vck190-build/versal-vck190-system-top.dts  out.dts
+```
+
+A `domains.yaml` access list can then mix globs with explicit
+entries — for example, hand everything matching `*serial*` and
+`*i2c*` to one domain:
+
+```yaml
+access:
+  - dev: "*serial*"
+  - dev: "*i2c*"
+```
+
+Globs only resolve when the device-enumeration parent is present on
+the command line; without the `-i <board>-sdt-devices.yaml` input
+there is nothing for the patterns to expand against. (This is
+distinct from `sdt-domains.yaml`, which is a candidate partition,
+not a glob target.)
 
 ### Running the integration tests
 
@@ -134,7 +271,7 @@ integrate with another build system), the breakdown is:
    honoring `dtc_force: true` for boards that set it.
 3. **`compose_non_linux`** Lopper assist on the flat Zephyr DT,
    with `--linux-dt <flat>` for address dedup and `--board <name>`
-   to locate the augment YAML, producing
+   to locate the domains.yaml, producing
    `<board>-non-linux.yaml`.
 4. **`assemble_sdt`** Lopper assist with `--linux-dt <flat>` and
    `--non-linux <yaml>`, producing `<board>-system-top.dts`. With
@@ -236,7 +373,7 @@ for adding your own. The minimum input set for a new board:
    changes.
 4. **Per-board directory** under `lopper/data/boards/<your-board>/`
    containing `source.yaml` (declares input paths + cpp include
-   paths) and `augment.yaml` (integration decisions Linux doesn't
+   paths) and `domains.yaml` (integration decisions Linux doesn't
    carry — reserved-memory carve-outs for co-processor firmware,
    rpmsg shared regions, etc.). Copy from the closest reference
    board to start.
@@ -249,13 +386,15 @@ unchanged with `--board <your-board>`.
 - `scripts/sync-upstream.py` — vendoring upstream Linux/Zephyr
   into `lopper/data/upstream/` from local clones at pinned tags
 - `scripts/extract-pm-ids.py` — bootstrap a starter SoC YAML
-  from a public PM-ID dt-binding header
+  from a public PM-ID dt-binding header (a kernel
+  `include/dt-bindings/power/<soc>.h` header of `#define PM_DEV_*`
+  power-management IDs; see the architecture doc for details)
 - `scripts/upstream-manifest.yaml` — declarative list of files to
   vendor from each upstream source
 - `lopper/data/socs/README.md` — schema for SoC silicon-facts files
 - `lopper/data/boards/<board>/source.yaml` — declarative pipeline
   inputs for one board (header comments document the schema)
-- `lopper/data/boards/<board>/augment.yaml` — hand-written
+- `lopper/data/boards/<board>/domains.yaml` — hand-written
   integration decisions per board (header comments include
   inline examples)
 - `tests/test_sdt_from_linux.py` — integration tests that exercise

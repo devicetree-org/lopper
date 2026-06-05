@@ -31,11 +31,30 @@ existing Lopper YAML convention recognised by
 `LopperTree.label_to_phandle()`, so assemble_sdt can resolve them
 against the merged Linux-DT-base tree at assembly time.
 
+Two YAML files combine here for the integration overlay:
+
+  - The shipped per-board template at
+    lopper/data/boards/<board>/domains.yaml, auto-located via
+    --board. Carries the board's stable integration declarations.
+  - The user's per-deployment overlay passed via --domains. Holds
+    only the edits the user adds on top of the template.
+
+The two get deep-merged in memory via the shared
+`LopperYAML.deep_merge` (dicts recurse, lists append) before
+extraction; the per-`dev` extraction that follows is last-wins, so
+an overlay entry overrides the template entry with the same `dev`
+and adds entries with a new `dev`. Users don't have to copy the
+template into their workspace and keep it in sync — they maintain a
+small overlay file with their
+specific changes, and `git pull` refreshes the template
+underneath without disturbing their edits.
+
 Usage:
     lopper <flat-zephyr.dts> - -- compose_non_linux \\
         --linux-dt <flat-linux.dts> \\
-        [--augment <augment.yaml>] \\
         [--board <name>] \\
+        [--domains <user-overlay.yaml>] \\
+        [--no-template] \\
         -o non-linux.yaml
 
 Options:
@@ -44,15 +63,21 @@ Options:
                            which addresses are already covered (those
                            are dropped — Linux DT supplies them).
                            Required.
-    --augment PATH         Optional per-board augment.yaml to merge
-                           in (cpus / memory / sram / access lists).
-                           If --board is given but --augment isn't,
-                           the assist looks up
-                           lopper/data/boards/<board>/augment.yaml
-                           automatically.
-    -b, --board NAME       Optional board name for board-config
-                           lookup (only used to find augment.yaml
-                           when --augment is omitted).
+    -b, --board NAME       Auto-locate the shipped per-board template
+                           at lopper/data/boards/<NAME>/domains.yaml
+                           and use it as the integration base.
+    --domains PATH         User's per-deployment overlay, deep-merged
+                           on top of the board template. Reserved-
+                           memory carve-outs (`no-map: true` memory
+                           entries) and board-only peripherals
+                           declared here get tagged `source: domain`
+                           and injected into the SDT by assemble_sdt.
+                           Same file the downstream domain-processing
+                           tools consume for partition intent after
+                           the SDT exists.
+    --no-template          Skip the shipped per-board template; use
+                           only what --domains provides. Diagnostic /
+                           bring-your-own-template use.
     -o, --output PATH      Output YAML path (required).
 """
 
@@ -66,6 +91,7 @@ import tempfile
 from ruamel.yaml.scalarint import HexInt
 
 from lopper import LopperSDT
+from lopper.yaml import LopperYAML
 import lopper
 import lopper.log
 import lopper.base
@@ -74,7 +100,7 @@ import lopper.base
 lopper.log._init(__name__)
 
 
-# Repo root and per-board data root, for augment lookup.
+# Repo root and per-board data root, for domains.yaml lookup.
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
 _BOARDS_ROOT = os.path.join(_REPO_ROOT, 'lopper', 'data', 'boards')
@@ -94,19 +120,24 @@ def usage():
    Usage: compose_non_linux --linux-dt <linux.dts> -o <out.yaml> [options]
 
       -v, --verbose          Enable verbose output
-      --linux-dt PATH        Pre-flattened Linux DT (required) — used
-                             to skip addresses Linux already covers.
-      --augment PATH         Optional augment.yaml to merge.
-      -b, --board NAME       Optional board name; auto-locates
-                             augment.yaml under lopper/data/boards/.
+      --linux-dt PATH        Pre-flattened Linux DT (required).
+      -b, --board NAME       Auto-locate the shipped per-board
+                             domains.yaml template under
+                             lopper/data/boards/<NAME>/.
+      --domains PATH         User's per-deployment overlay, deep-
+                             merged on top of the board template.
+                             Overlay overrides template entries with
+                             the same `dev`; new `dev`s are added.
+      --no-template          Skip the shipped per-board template.
       -o, --output PATH      Output YAML path (required).
 
    Walks the Zephyr device tree (the main lopper -f input), captures
    every node not present in the Linux DT at the same address, emits
    rich per-device properties (with phandle references encoded as
-   dicts), and merges the per-board augment overlay. The resulting
-   non-linux.yaml is consumed by assemble_sdt to produce the SDT
-   alongside the Linux DT base.
+   "&label" strings), and merges integration declarations from the
+   per-board domains.yaml template plus any --domains overlay. The
+   resulting non-linux.yaml is consumed by assemble_sdt to produce
+   the SDT alongside the Linux DT base.
     """)
 
 
@@ -448,11 +479,11 @@ def _normalise_memory_properties(props, ac, sc):
     return out
 
 
-_AUGMENT_HEX_FIELDS = ('start', 'size', 'addr', 'reg')
+_DOMAINS_HEX_FIELDS = ('start', 'size', 'addr', 'reg')
 
 
-def _normalise_augment_entry(entry):
-    """User-written ints in augment.yaml come in as plain Python ints
+def _normalise_domains_entry(entry):
+    """User-written ints in domains.yaml come in as plain Python ints
     after the YAML loader. Wrap the conventional address/size fields
     as HexInt so the output formats them in hex — matching how
     extractor-derived values look in the same YAML.
@@ -461,7 +492,7 @@ def _normalise_augment_entry(entry):
     for k, v in entry.items():
         if k == 'dev':
             continue
-        if k in _AUGMENT_HEX_FIELDS and isinstance(v, int) \
+        if k in _DOMAINS_HEX_FIELDS and isinstance(v, int) \
                 and not isinstance(v, HexInt):
             out[k] = HexInt(v)
         else:
@@ -469,60 +500,125 @@ def _normalise_augment_entry(entry):
     return out
 
 
-def _merge_augment(non_linux, augment_path):
-    """Merge augment YAML's openamp,domain-v1,board-augment block in.
-
-    Augment entries are simpler than Zephyr-extracted ones (they
-    typically only declare reserved-memory carve-outs and the like)
-    so we keep their YAML form as-is, just tagged source: augment.
+def _iter_domain_blocks(root):
+    """Yield (name, block) for every openamp,domain-v1 sub-domain in
+    the user's domains.yaml, walking the conventional shape
+    `domains.<root>.domains.<name>: { ... }`.
     """
-    if not augment_path or not os.path.isfile(augment_path):
-        return non_linux
+    domains = root.get('domains') or {}
+    for outer_name, outer in domains.items():
+        if not isinstance(outer, dict):
+            continue
+        # The outermost (default) block typically wraps per-OS sub-
+        # domains under its own `domains:` key, but the user is
+        # permitted to put declarations directly on the outer block.
+        yield outer_name, outer
+        inner = outer.get('domains') or {}
+        for name, blk in inner.items():
+            if isinstance(blk, dict):
+                yield name, blk
+
+
+def _is_reserved_memory_entry(entry):
+    """Reserved-memory declarations are memory entries flagged with
+    `no-map: true` (or `reusable: true`). They name a region the
+    SDT must carry as a /reserved-memory child, even though the
+    upstream Linux DT and Zephyr DT do not.
+    """
+    if not isinstance(entry, dict):
+        return False
+    return bool(entry.get('no-map') or entry.get('reusable'))
+
+
+def _load_yaml_file(path):
+    """Return parsed YAML or None if the file is missing/unreadable."""
+    if not path or not os.path.isfile(path):
+        return None
     from ruamel.yaml import YAML
     yaml = YAML(typ='safe')
     try:
-        with open(augment_path) as fh:
-            data = yaml.load(fh) or {}
+        with open(path) as fh:
+            return yaml.load(fh) or {}
     except Exception as e:
-        lopper.log._warning(f"compose_non_linux: failed to read {augment_path}: {e}")
+        lopper.log._warning(
+            f"compose_non_linux: failed to read {path}: {e}")
+        return None
+
+
+def _merge_domains_integration(non_linux, template_path, overlay_path):
+    """Inject integration declarations from the per-board domains.yaml
+    template plus an optional user overlay.
+
+    Both files use the standard openamp,domain-v1 shape. The template
+    ships with the repo at lopper/data/boards/<board>/domains.yaml and
+    is auto-located via --board; the overlay is the user's per-
+    deployment file referenced via --domains. They get deep-merged in
+    memory via the shared `LopperYAML.deep_merge` (dicts recurse,
+    lists append), then the merged structure is scanned for:
+
+      - Reserved-memory carve-outs (memory / sram entries with
+        `no-map: true` or `reusable: true`) → injected as
+        `source: domain` entries; assemble_sdt later puts each under
+        the SDT's /reserved-memory.
+      - Board-only peripherals in access lists that carry their own
+        properties (i.e. declarations, not bare references / globs).
+
+    Because the overlay is merged second, its list entries land after
+    the template's; the per-`dev` dict assignment below is last-wins,
+    so an overlay entry with the same `dev` as a template entry
+    overrides it, and a new `dev` is added.
+
+    Pure partition-intent entries (memory referencing an existing SDT
+    node without no-map, access globs, etc.) are ignored here —
+    they're consumed later by the domain-processing tools, not by
+    SDT assembly.
+    """
+    template = _load_yaml_file(template_path)
+    overlay = _load_yaml_file(overlay_path)
+    if template and overlay:
+        merged = LopperYAML.deep_merge(template, overlay)
+    else:
+        merged = template or overlay
+    if not merged:
         return non_linux
 
-    domains = data.get('domains') or {}
-    for block_name, block in domains.items():
-        if not isinstance(block, dict):
-            continue
-        if block.get('compatible') != 'openamp,domain-v1,board-augment':
-            continue
-        # Each inventory list becomes augment-tagged entries in the
-        # corresponding non-linux bucket.
-        for entry in (block.get('cpus') or []):
-            name = entry.get('dev', f'augment-cpus-{len(non_linux["clusters"])}')
-            non_linux['clusters'][name] = {
-                'source': 'augment',
-                'properties': _normalise_augment_entry(entry),
-            }
+    for _name, block in _iter_domain_blocks(merged):
+        # Reserved-memory carve-outs from the memory/sram lists.
         for entry in (block.get('memory') or []) + (block.get('sram') or []):
-            name = entry.get('dev', f'augment-mem-{len(non_linux["memory"])}')
-            non_linux['memory'][name] = {
-                'source': 'augment',
-                'properties': _normalise_augment_entry(entry),
+            if not _is_reserved_memory_entry(entry):
+                continue
+            dev = entry.get('dev') or f'domain-mem-{len(non_linux["memory"])}'
+            non_linux['memory'][dev] = {
+                'source': 'domain',
+                'properties': _normalise_domains_entry(entry),
             }
+        # Board-only peripherals from the access list — same idea:
+        # only entries that declare a new node (not a glob, not a
+        # bare reference to an SDT-resident name).
         for entry in (block.get('access') or []):
-            name = entry.get('dev', f'augment-dev-{len(non_linux["devices"])}')
-            non_linux['devices'][name] = {
-                'source': 'augment',
-                'properties': _normalise_augment_entry(entry),
+            if not isinstance(entry, dict):
+                continue
+            dev = entry.get('dev')
+            # Skip globs and references that don't carry their own
+            # properties — those are partition intent, not declarations.
+            if not dev or '*' in dev:
+                continue
+            extra = {k: v for k, v in entry.items()
+                     if k not in ('dev', 'flags', 'label', 'spec_name')}
+            if not extra:
+                continue
+            non_linux['devices'][dev] = {
+                'source': 'domain',
+                'properties': _normalise_domains_entry(entry),
             }
     return non_linux
 
 
-def _resolve_augment_path(args_augment, board_name):
-    """If --augment was given, use it. Else if --board, look it up."""
-    if args_augment:
-        return args_augment
-    if board_name:
-        return os.path.join(_BOARDS_ROOT, board_name, 'augment.yaml')
-    return None
+def _resolve_template_path(board_name):
+    """Return the shipped per-board template path, or None."""
+    if not board_name:
+        return None
+    return os.path.join(_BOARDS_ROOT, board_name, 'domains.yaml')
 
 
 # --- entry point ------------------------------------------------------
@@ -541,17 +637,18 @@ def compose_non_linux(tgt_node, sdt, options):
     try:
         opts, _ = getopt.getopt(
             args, "hvb:o:",
-            ["help", "verbose", "linux-dt=", "augment=",
-             "board=", "output="])
+            ["help", "verbose", "linux-dt=", "domains=",
+             "no-template", "board=", "output="])
     except getopt.GetoptError as e:
         lopper.log._error(f"compose_non_linux: invalid option: {e}")
         usage()
         return False
 
     linux_dt_path = None
-    augment_path = None
+    overlay_path = None
     board_name = None
     output_file = None
+    suppress_template = False
 
     for o, a in opts:
         if o in ('-h', '--help'):
@@ -561,8 +658,10 @@ def compose_non_linux(tgt_node, sdt, options):
             verbose += 1
         elif o == '--linux-dt':
             linux_dt_path = a
-        elif o == '--augment':
-            augment_path = a
+        elif o == '--domains':
+            overlay_path = a
+        elif o == '--no-template':
+            suppress_template = True
         elif o in ('-b', '--board'):
             board_name = a
         elif o in ('-o', '--output'):
@@ -582,8 +681,9 @@ def compose_non_linux(tgt_node, sdt, options):
         usage()
         return False
 
-    # Resolve augment path.
-    augment_path = _resolve_augment_path(augment_path, board_name)
+    # Auto-locate the shipped per-board template (unless suppressed),
+    # then overlay the user's --domains file on top.
+    template_path = None if suppress_template else _resolve_template_path(board_name)
 
     # Load Linux DT (secondary).
     try:
@@ -594,10 +694,12 @@ def compose_non_linux(tgt_node, sdt, options):
 
     lopper.log._info(
         f"compose_non_linux: zephyr={sdt.dts}, linux={linux_dt_path}, "
-        f"augment={augment_path or '(none)'}")
+        f"template={template_path or '(none)'}, "
+        f"overlay={overlay_path or '(none)'}")
 
     non_linux = _extract_non_linux(sdt, linux_sdt)
-    non_linux = _merge_augment(non_linux, augment_path)
+    non_linux = _merge_domains_integration(non_linux, template_path,
+                                           overlay_path)
 
     # Build the YAML.
     payload = {

@@ -1053,7 +1053,7 @@
                 rpu0_reserved@3e000000 {
                         reg = <0x0 0x3e000000 0x0 0x4000000>;
                         no-map;
-                        lopper-source = "augment";
+                        lopper-source = "domain";
                 };
         };
 

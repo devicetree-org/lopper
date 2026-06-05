@@ -41,11 +41,11 @@ domains:
           - dev: m4_reserved@80000000
             start: 0x80000000
             size: 0x100000
-            source: augment
+            source: domain
           - dev: rpmsg_shmem@b8000000
             start: 0xb8000000
             size: 0x400000
-            source: augment
+            source: domain
         access:
           - dev: interrupt-controller@e000e100
             flags: {}

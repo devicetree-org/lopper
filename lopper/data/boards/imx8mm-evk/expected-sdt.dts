@@ -2300,13 +2300,13 @@
                 m4_reserved@80000000 {
                         reg = <0x0 0x80000000 0x0 0x100000>;
                         no-map;
-                        lopper-source = "augment";
+                        lopper-source = "domain";
                 };
 
                 rpmsg_shmem@b8000000 {
                         reg = <0x0 0xb8000000 0x0 0x400000>;
                         no-map;
-                        lopper-source = "augment";
+                        lopper-source = "domain";
                 };
         };
 

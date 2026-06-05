@@ -27,7 +27,7 @@ non_linux:
         zephyr,memory-region: OCM
         status: disabled
     rpu0_reserved:
-      source: augment
+      source: domain
       properties:
         start: 0x3e000000
         size: 0x4000000

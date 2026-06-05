@@ -6,10 +6,11 @@
 # Paths are repo-relative; the pipeline resolves them against the
 # lopper repo root at runtime.
 #
-# This file is INPUT to compose_devices; it never contains the device
-# inventory or partitioning intent — those are in expected-devices.yaml
-# (golden output) and augment.yaml (user-supplied augmentation)
-# respectively. See sdt-from-linux design §7.1.
+# This file is INPUT to the pipeline (compose_non_linux + assemble_sdt);
+# it never contains integration declarations or partitioning intent —
+# those are in domains.yaml (user-supplied, integration + partition).
+# Golden outputs the integration tests diff against live in expected-*
+# files alongside this one.
 
 board:
   name: versal-vck190

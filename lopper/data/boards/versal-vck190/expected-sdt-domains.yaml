@@ -33,7 +33,7 @@ domains:
           - dev: rpu0_reserved@3e000000
             start: 0x3e000000
             size: 0x4000000
-            source: augment
+            source: domain
         access:
           - dev: pmc_gpio_bank@3
             flags: {}

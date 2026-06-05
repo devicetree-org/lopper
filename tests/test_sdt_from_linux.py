@@ -45,15 +45,18 @@ pytestmark = pytest.mark.skipif(
     reason="sdt-from-linux integration tests require cpp and dtc")
 
 
-def _run_pipeline(board_name, outdir, no_zephyr=False, no_augment=False):
+def _run_pipeline(board_name, outdir, no_zephyr=False, no_template=False,
+                  domains_overlay=None):
     """Drive the full pipeline for one board via scripts/build-board-sdt.py."""
     cmd = [sys.executable, str(BUILD_SCRIPT),
            '--board', board_name,
            '--output-dir', str(outdir)]
     if no_zephyr:
         cmd.append('--no-zephyr')
-    if no_augment:
-        cmd.append('--no-augment')
+    if no_template:
+        cmd.append('--no-template')
+    if domains_overlay is not None:
+        cmd.extend(['--domains', str(domains_overlay)])
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, (
@@ -102,7 +105,7 @@ def _assert_golden(generated, golden, label):
 
 def test_compose_non_linux_versal_vck190(tmp_path):
     """compose_non_linux mines the Versal Zephyr DT for R5-side content
-    not present in the Linux DT, merges the per-board augment overlay,
+    not present in the Linux DT, merges the per-board domains.yaml integration overlay,
     and emits a rich-property non-linux YAML.
     """
     artifacts = _run_pipeline('versal-vck190', tmp_path)
@@ -123,7 +126,7 @@ def test_compose_non_linux_versal_vck190(tmp_path):
     assert any('cortex-r5' in c for c in cpu_compats), \
         f"R5 cpu compatible missing: {cpu_compats}"
 
-    # OCM @ 0xfffc0000 (Zephyr-source) and the augment-derived
+    # OCM @ 0xfffc0000 (Zephyr-source) and the domains.yaml-derived
     # rpu0_reserved should both be present in the memory bucket, both
     # normalised to the {start, size} convention.
     memory = nl['memory']
@@ -134,8 +137,8 @@ def test_compose_non_linux_versal_vck190(tmp_path):
     assert ocm['properties']['size'] == 0x40000
 
     rpu = memory.get('rpu0_reserved')
-    assert rpu and rpu['source'] == 'augment', \
-        f"rpu0_reserved missing from augment overlay: {rpu!r}"
+    assert rpu and rpu['source'] == 'domain', \
+        f"rpu0_reserved missing from domains.yaml overlay: {rpu!r}"
     assert rpu['properties']['start'] == 0x3e000000
     assert rpu['properties']['no-map'] is True
 
@@ -146,7 +149,7 @@ def test_compose_non_linux_versal_vck190(tmp_path):
 
 def test_compose_non_linux_imx8mm_evk(tmp_path):
     """compose_non_linux for i.MX 8MM: M4 cluster, TCM/OCRAM regions,
-    M-side mailbox, and the augment-derived M4 reserved + rpmsg
+    M-side mailbox, and the domains.yaml-derived M4 reserved + rpmsg
     shared regions all show up as rich entries.
     """
     artifacts = _run_pipeline('imx8mm-evk', tmp_path)
@@ -174,10 +177,10 @@ def test_compose_non_linux_imx8mm_evk(tmp_path):
 
     # Augment-derived M4 firmware + rpmsg carve-outs.
     m4_reserved = memory.get('m4_reserved')
-    assert m4_reserved and m4_reserved['source'] == 'augment'
+    assert m4_reserved and m4_reserved['source'] == 'domain'
     assert m4_reserved['properties']['start'] == 0x80000000
     rpmsg = memory.get('rpmsg_shmem')
-    assert rpmsg and rpmsg['source'] == 'augment'
+    assert rpmsg and rpmsg['source'] == 'domain'
     assert rpmsg['properties']['start'] == 0xb8000000
 
     # M-side MU mailbox @ 0x30ab0000 — Linux DT has MU_A @ 0x30aa0000;
@@ -217,7 +220,7 @@ def test_assemble_versal_vck190_sdt(tmp_path):
     assert 'compatible = "cpus,cluster";' in text, "no cpus,cluster compatible"
     # Source-tag round-trip from compose_non_linux through assemble_sdt.
     assert 'lopper-source = "zephyr"' in text
-    assert 'lopper-source = "augment"' in text
+    assert 'lopper-source = "domain"' in text
     # Augment-derived OCM carveout lands under /reserved-memory.
     assert 'rpu0_reserved' in text
 
@@ -281,7 +284,7 @@ def test_sdt_devices_versal_vck190(tmp_path):
 def test_sdt_domains_versal_vck190(tmp_path):
     """sdt_domains emits one starter domain per cpus,cluster,
     partitioned by lopper-source: APU (untagged Linux side) and RPU
-    (zephyr-tagged R5 cluster + augment carve-outs that name-match).
+    (zephyr-tagged R5 cluster + domains.yaml carve-outs that name-match).
     """
     artifacts = _run_pipeline('versal-vck190', tmp_path)
     out = artifacts['sdt_domains_yaml']
@@ -333,7 +336,7 @@ def test_sdt_domains_imx8mm_evk(tmp_path):
     mcu = root['MCU']
     assert mcu['cpus'][0]['cluster'] == 'cpus_m4'
     mem_names = [m['dev'] for m in mcu['memory']]
-    # M-side TCM + augment carve-outs land in MCU.
+    # M-side TCM + domains.yaml carve-outs land in MCU.
     assert any('memory@20000000' in n for n in mem_names), f"DTCM missing: {mem_names}"
     assert any('m4_reserved' in n for n in mem_names)
     assert any('rpmsg_shmem' in n for n in mem_names)
@@ -364,3 +367,48 @@ def test_linux_only_sdt_versal(tmp_path):
     # No non-Linux content was overlaid.
     assert 'cpus-r5@0' not in text
     assert 'non_linux_soc' not in text
+
+
+def test_domains_overlay_layers_on_top_of_template(tmp_path):
+    """The shipped board template + a user --domains overlay deep-merge
+    in compose_non_linux: the overlay's entries override the template's
+    by `dev` key, and overlay-only entries get added on top. Verifies
+    the no-copy / no-sync deployment pattern.
+    """
+    overlay = tmp_path / 'my-overrides.yaml'
+    overlay.write_text(
+        "domains:\n"
+        "  default:\n"
+        "    compatible: openamp,domain-v1\n"
+        "    domains:\n"
+        "      RPU:\n"
+        "        compatible: openamp,domain-v1\n"
+        "        memory:\n"
+        "          # override: shrink the rpu0_reserved carveout\n"
+        "          - dev: rpu0_reserved\n"
+        "            start: 0x3e000000\n"
+        "            size: 0x100000\n"
+        "            no-map: true\n"
+        "          # new: add a small ipc_share region\n"
+        "          - dev: my_ipc_share\n"
+        "            start: 0x3f000000\n"
+        "            size: 0x10000\n"
+        "            no-map: true\n"
+    )
+    artifacts = _run_pipeline('versal-vck190', tmp_path,
+                              domains_overlay=overlay)
+    sdt = artifacts['system_top_dts']
+    text = sdt.read_text()
+
+    # Override took effect — size is the overlay's 0x100000, not the
+    # template's 0x4000000.
+    import re
+    m = re.search(r'rpu0_reserved@\w+ \{[^}]*reg = <([^>]+)>;', text)
+    assert m, "rpu0_reserved node not found in assembled SDT"
+    cells = m.group(1).split()
+    assert cells[-1] == '0x100000', \
+        f"overlay's rpu0_reserved size should have replaced the template's; got reg = <{m.group(1)}>"
+
+    # Addition took effect — overlay-only entry shows up.
+    assert 'my_ipc_share' in text, \
+        "overlay-only my_ipc_share carveout missing from SDT"

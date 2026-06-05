@@ -31,11 +31,12 @@ produces a *starting point*, not a final partition:
 - Untagged cluster (the Linux side) → access list is a single
   `dev: "*"` glob, since Linux normally claims everything not
   explicitly assigned elsewhere. The user narrows it.
-- Tagged cluster (lopper-source = zephyr/augment/non-linux) →
+- Tagged cluster (lopper-source = zephyr/domain/non-linux) →
   access list enumerates the children of `/non_linux_soc`
   carrying the same source tag, plus explicit memory entries.
-- Augment-derived reserved-memory carve-outs are heuristic-matched
-  to clusters by name prefix (`rpu0_*` → R5 cluster, `m4_*` → M4
+- Reserved-memory carve-outs (whether contributed by the board
+  domains.yaml or already in the SDT) are heuristic-matched to
+  clusters by name prefix (`rpu0_*` → R5 cluster, `m4_*` → M4
   cluster); shared regions (`rpmsg_*`, `shmem_*`, `vdev*`) are
   attached to every non-Linux domain.
 
@@ -166,8 +167,9 @@ _SHARED_AUGMENT_NAME_RE = re.compile(r'(rpmsg|shmem|vdev|ipc_share)',
                                      re.IGNORECASE)
 
 
-def _augment_target_arch(name):
-    """Heuristic: which cluster arch does this augment carveout belong to?
+def _carveout_target_arch(name):
+    """Heuristic: which cluster arch does this reserved-memory carveout
+    belong to?
 
     Returns a short token like 'r5' or 'm4', or None if shared / unknown.
     """
@@ -203,7 +205,7 @@ def _enumerate_root_memory(sdt, want_source=None):
 
 
 def _enumerate_reserved_memory(sdt):
-    """Return children of /reserved-memory (the augment + ad-hoc carve-outs)."""
+    """Return children of /reserved-memory (board-declared carve-outs)."""
     try:
         resmem = sdt.tree['/reserved-memory']
     except Exception:
@@ -316,9 +318,8 @@ def _build_non_linux_domain(sdt, cluster_node, cluster_arch, cluster_source,
     """Domain block for one co-processor cluster.
 
     Pulls in:
-      - The matching augment-tagged reserved-memory carve-outs
-        (heuristic by name prefix), plus any shared (`rpmsg_*`,
-        `shmem_*`) carve-outs.
+      - The matching reserved-memory carve-outs (heuristic by name
+        prefix), plus any shared (`rpmsg_*`, `shmem_*`) carve-outs.
       - Every child of /non_linux_soc tagged matching the cluster's
         source (typically all of them — the bus wraps the
         co-processor's view).
@@ -332,9 +333,9 @@ def _build_non_linux_domain(sdt, cluster_node, cluster_arch, cluster_source,
     #    heuristic (rpu*/m4*/...); shared carve-outs (rpmsg/shmem)
     #    land in every non-Linux domain.
     for m in reserved_mem:
-        target = _augment_target_arch(m.name)
+        target = _carveout_target_arch(m.name)
         if target is None or target == cluster_arch:
-            memory_entries.append(_memory_entry(m, source_hint='augment'))
+            memory_entries.append(_memory_entry(m, source_hint='domain'))
 
     access_entries = [_access_entry(child) for child in bus_children]
 

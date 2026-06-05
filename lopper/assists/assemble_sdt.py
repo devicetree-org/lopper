@@ -376,7 +376,7 @@ def _add_non_linux_memory(sdt, non_linux):
                 _attach_property(child, k, v)
             child + LopperProp(name='no-map')
             child + LopperProp(name='lopper-source',
-                               value=entry.get('source', 'augment'))
+                               value=entry.get('source', 'domain'))
         else:
             ac, sc = _root_cells(sdt)
             node_name = name

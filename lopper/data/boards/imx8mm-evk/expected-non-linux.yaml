@@ -39,13 +39,13 @@ non_linux:
         start: 0x20180000
         size: 0x8000
     m4_reserved:
-      source: augment
+      source: domain
       properties:
         start: 0x80000000
         size: 0x100000
         no-map: true
     rpmsg_shmem:
-      source: augment
+      source: domain
       properties:
         start: 0xb8000000
         size: 0x400000

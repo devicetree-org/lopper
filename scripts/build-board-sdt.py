@@ -10,7 +10,7 @@ Drive the full sdt-from-linux pipeline for one shipped board:
 
 The Linux DT is the base of the SDT, so its devices come along
 verbatim. compose_non_linux extracts the co-processor side from
-the Zephyr DT and the per-board augment YAML into a rich-property
+the Zephyr DT and the per-board domains.yaml into a rich-property
 non-linux YAML. assemble_sdt loads the Linux DT as the base tree
 and overlays the non-linux content on top, producing the SDT.
 
@@ -32,9 +32,18 @@ Options:
                            even when the board's source.yaml has a
                            zephyr: block. Produces a Linux-only SDT
                            (assemble_sdt runs with no non-linux YAML
-                           input — augment-only content is dropped).
-    --no-augment           Skip the per-board augment YAML overlay.
-                           Mostly useful for diagnostic runs.
+                           input — board domains.yaml content is dropped).
+    --domains PATH         User's per-deployment domains.yaml overlay
+                           (deep-merged on top of the shipped per-board
+                           template at lopper/data/boards/<board>/
+                           domains.yaml). The user maintains a small
+                           overlay file with their specific edits;
+                           git pull refreshes the template without
+                           disturbing their copy.
+    --no-template          Skip the shipped per-board template; use
+                           only --domains (or nothing) as the source
+                           of integration declarations. Diagnostic /
+                           bring-your-own-template use.
     -v, --verbose          Print each cpp/dtc/lopper invocation as
                            it runs.
 
@@ -135,11 +144,14 @@ def _flatten(block, board_name, label, outdir, verbose):
 
 
 def _run_compose_non_linux(zephyr_flat, linux_flat, board_name, outdir,
-                           no_augment, verbose):
+                           overlay_path, no_template, verbose):
     """Invoke lopper.py with the compose_non_linux assist.
 
     Takes the Zephyr DT as the main lopper input; passes the Linux DT
     via --linux-dt for address dedup against the eventual base tree.
+    The board's shipped domains.yaml template is auto-located via
+    --board; an optional user-supplied overlay file gets layered on
+    top via --domains.
     """
     non_linux_yaml = outdir / f'{board_name}-non-linux.yaml'
     lop_main_out = outdir / f'{board_name}-compose-non-linux-lopout.dts'
@@ -151,10 +163,10 @@ def _run_compose_non_linux(zephyr_flat, linux_flat, board_name, outdir,
            '--linux-dt', str(linux_flat),
            '--board', board_name,
            '-o', str(non_linux_yaml)]
-    if no_augment:
-        # compose_non_linux looks up augment.yaml via --board; pass an
-        # empty --augment to suppress the per-board overlay.
-        cmd.extend(['--augment', '/dev/null'])
+    if overlay_path:
+        cmd.extend(['--domains', str(overlay_path)])
+    if no_template:
+        cmd.append('--no-template')
 
     _print_cmd(cmd, verbose)
     result = subprocess.run(cmd, cwd=str(REPO_ROOT),
@@ -270,8 +282,8 @@ def _have_tools():
     return missing
 
 
-def build_board(board_name, output_dir, no_zephyr=False, no_augment=False,
-                verbose=False):
+def build_board(board_name, output_dir, no_zephyr=False, no_template=False,
+                domains_overlay=None, verbose=False):
     """Run the four-stage pipeline end-to-end for one board.
 
     Returns a dict of artifact paths the script produced.
@@ -315,7 +327,8 @@ def build_board(board_name, output_dir, no_zephyr=False, no_augment=False,
     if zephyr_flat is not None:
         non_linux_yaml = _run_compose_non_linux(
             zephyr_flat, linux_flat, board_name, output_dir,
-            no_augment=no_augment, verbose=verbose)
+            overlay_path=domains_overlay, no_template=no_template,
+            verbose=verbose)
         artifacts['non_linux_yaml'] = non_linux_yaml
 
     # Stage 4: assemble_sdt.
@@ -344,9 +357,15 @@ def main():
     p.add_argument('--no-zephyr', action='store_true',
                    help="skip the Zephyr-side flatten and merge even when "
                         "the board's source.yaml has a zephyr: block")
-    p.add_argument('--no-augment', action='store_true',
-                   help="pass --no-augment to compose_devices (disables the "
-                        "per-board augment overlay)")
+    p.add_argument('--domains', default=None,
+                   help="user's per-deployment domains.yaml overlay; "
+                        "deep-merged on top of the shipped per-board "
+                        "template at lopper/data/boards/<board>/"
+                        "domains.yaml")
+    p.add_argument('--no-template', action='store_true',
+                   help="skip the shipped per-board template; use only "
+                        "--domains (or nothing) as the source of "
+                        "integration declarations")
     p.add_argument('-v', '--verbose', action='store_true',
                    help="print each cpp/dtc/lopper invocation")
     args = p.parse_args()
@@ -356,7 +375,8 @@ def main():
     try:
         artifacts = build_board(args.board, output_dir,
                                 no_zephyr=args.no_zephyr,
-                                no_augment=args.no_augment,
+                                no_template=args.no_template,
+                                domains_overlay=args.domains,
                                 verbose=args.verbose)
     except PipelineError as e:
         print(f"error: {e}", file=sys.stderr)
