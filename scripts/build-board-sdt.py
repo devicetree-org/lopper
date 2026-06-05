@@ -43,6 +43,12 @@ Outputs (under <output-dir>):
     <board>-zephyr.flat.dts       preprocessed Zephyr DT (if --no-zephyr not set)
     <board>-non-linux.yaml        compose_non_linux output (if Zephyr DT present)
     <board>-system-top.dts        assemble_sdt output (the SDT)
+    <board>-sdt-devices.yaml      sdt_devices enumeration of every node in
+                                  the assembled SDT — the "vocabulary" a
+                                  user-written domains.yaml can glob against
+    <board>-sdt-domains.yaml      sdt_domains starter — one domain per
+                                  cpus,cluster, partitioned by
+                                  lopper-source tag; edit-then-use
     <board>-*.pp.dts              intermediate cpp output (kept for inspection)
 
 Example:
@@ -165,6 +171,67 @@ def _run_compose_non_linux(zephyr_flat, linux_flat, board_name, outdir,
     return non_linux_yaml
 
 
+def _run_sdt_devices(sdt, board_name, outdir, verbose):
+    """Enumerate every device in the assembled SDT into a YAML inventory.
+
+    Output feeds the glob-driven domains workflow: a user writes a
+    domains.yaml with `dev: "*pattern*"` access entries and loads
+    sdt-devices.yaml as a parent so the patterns expand against the
+    full enumeration.
+    """
+    devices_yaml = outdir / f'{board_name}-sdt-devices.yaml'
+    lop_main_out = outdir / f'{board_name}-sdt-devices-lopout.dts'
+
+    cmd = [sys.executable, str(LOPPER_PY),
+           '-O', str(outdir), '--permissive', '-f',
+           str(sdt), str(lop_main_out),
+           '--', 'sdt_devices',
+           '-o', str(devices_yaml)]
+    _print_cmd(cmd, verbose)
+    result = subprocess.run(cmd, cwd=str(REPO_ROOT),
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        raise PipelineError(
+            f"sdt_devices failed for board '{board_name}':\n"
+            f"--- stdout ---\n{result.stdout}\n"
+            f"--- stderr ---\n{result.stderr}\n")
+    if not devices_yaml.is_file():
+        raise PipelineError(
+            f"sdt_devices reported success but produced no output: {devices_yaml}")
+    return devices_yaml
+
+
+def _run_sdt_domains(sdt, board_name, outdir, verbose):
+    """Produce a starter domains.yaml from the assembled SDT.
+
+    Walks the SDT for cpus,cluster nodes and partitions devices /
+    memory across one domain per cluster, using the lopper-source
+    tags assemble_sdt attached during assembly. The result is a
+    user-editable starting point — not a final partition.
+    """
+    domains_yaml = outdir / f'{board_name}-sdt-domains.yaml'
+    lop_main_out = outdir / f'{board_name}-gen-domains-lopout.dts'
+
+    cmd = [sys.executable, str(LOPPER_PY),
+           '-O', str(outdir), '--permissive', '-f',
+           str(sdt), str(lop_main_out),
+           '--', 'sdt_domains',
+           '-o', str(domains_yaml)]
+    _print_cmd(cmd, verbose)
+    result = subprocess.run(cmd, cwd=str(REPO_ROOT),
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        raise PipelineError(
+            f"sdt_domains failed for board '{board_name}':\n"
+            f"--- stdout ---\n{result.stdout}\n"
+            f"--- stderr ---\n{result.stderr}\n")
+    if not domains_yaml.is_file():
+        raise PipelineError(
+            f"sdt_domains reported success but produced no output: "
+            f"{domains_yaml}")
+    return domains_yaml
+
+
 def _run_assemble(linux_flat, non_linux_yaml, board_name, outdir, verbose):
     """Invoke lopper.py with the assemble_sdt assist.
 
@@ -256,6 +323,14 @@ def build_board(board_name, output_dir, no_zephyr=False, no_augment=False,
                         verbose=verbose)
     artifacts['system_top_dts'] = sdt
 
+    # Stage 5: post-SDT enumeration and partitioning starters. These
+    # are independent of one another and only consume the assembled
+    # SDT, but it's convenient to produce them in the same run.
+    artifacts['sdt_devices_yaml'] = _run_sdt_devices(
+        sdt, board_name, output_dir, verbose=verbose)
+    artifacts['sdt_domains_yaml'] = _run_sdt_domains(
+        sdt, board_name, output_dir, verbose=verbose)
+
     return artifacts
 
 
@@ -295,6 +370,8 @@ def main():
     if 'non_linux_yaml' in artifacts:
         print(f"non-linux yaml:  {artifacts['non_linux_yaml'].name}")
     print(f"system-top:      {artifacts['system_top_dts'].name}")
+    print(f"sdt-devices:     {artifacts['sdt_devices_yaml'].name}")
+    print(f"sdt-domains:  {artifacts['sdt_domains_yaml'].name}")
     print()
     print(f"Generated SDT: {artifacts['system_top_dts']}")
 

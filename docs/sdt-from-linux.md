@@ -25,6 +25,8 @@ in CI: **AMD Versal VCK190** and **NXP i.MX 8M Mini EVK**.
 | **Board augment YAML** | A small hand-written file under `lopper/data/boards/<board>/augment.yaml`. Carries the integration decisions neither Linux nor Zephyr describes — typically reserved-memory carve-outs for co-processor firmware and the rpmsg shared region. |
 | **`compose_non_linux`** | Lopper assist that walks the Zephyr DT (and the per-board augment YAML), captures every node not already present at the same address in the Linux DT, and emits an `openamp,domain-v1,non-linux` YAML carrying the full property set for each kept node. Phandle refs are encoded as canonical `"&label"` strings so they re-resolve against the merged tree at assembly time. |
 | **`assemble_sdt`** | Lopper assist that loads the Linux DT as the SDT base, marks `/cpus` with the `cpus,cluster` compatible the SDT spec uses, then overlays the non-linux YAML's clusters / memory / devices on top, producing the `system-top.dts`. |
+| **`sdt_devices`** | Existing Lopper assist run *post-SDT* to enumerate every device in the assembled SDT into a YAML inventory. This becomes the vocabulary a user-written `domains.yaml` can glob against. |
+| **`sdt_domains`** | Lopper assist that walks the assembled SDT, partitions devices / memory across one starter domain per `cpus,cluster` (using the `lopper-source` tags assemble_sdt attached), and emits a `sdt-domains.yaml` for the user to edit. |
 
 ```
    Linux DT       ────────────────────────────────────────────────┐
@@ -67,9 +69,15 @@ scripts/build-board-sdt.py --board versal-vck190 -o /tmp/vck190-build
 scripts/build-board-sdt.py --board imx8mm-evk -o /tmp/imx8mm-build
 ```
 
-Each invocation writes a handful of files into the output directory
-and prints a summary. The artifact that matters is
-`<output-dir>/<board>-system-top.dts` — the assembled SDT.
+Each invocation writes the following files into the output directory:
+
+| File | Stage | Purpose |
+|---|---|---|
+| `<board>-linux.flat.dts` / `<board>-zephyr.flat.dts` | flatten | cpp + dtc preprocessed inputs |
+| `<board>-non-linux.yaml` | `compose_non_linux` | rich-property co-processor extract |
+| `<board>-system-top.dts` | `assemble_sdt` | **the SDT** — Linux DT base + non-Linux overlay |
+| `<board>-sdt-devices.yaml` | `sdt_devices` | full device enumeration of the SDT, for glob-driven `domains.yaml` |
+| `<board>-sdt-domains.yaml` | `sdt_domains` | one starter domain per `cpus,cluster`, partitioned by source tag — edit-then-use |
 
 Useful flags:
 
@@ -107,9 +115,10 @@ the same script. Single command:
 ./run_pytest.sh tests/test_sdt_from_linux.py
 ```
 
-Five tests run end-to-end: `compose_non_linux` and `assemble_sdt`
-for each reference board (four tests), plus a Linux-only SDT case
-for the `--no-zephyr` degradation path. All diff against the
+Eight tests run end-to-end: `compose_non_linux`, `assemble_sdt`,
+and `sdt_domains` for each reference board, plus
+`sdt_devices` enumeration on the Versal SDT and a Linux-only SDT
+case for the `--no-zephyr` degradation path. All diff against
 committed goldens — drift in the pipeline fails the test.
 
 ### Driving the stages manually (for reference)
@@ -131,6 +140,12 @@ integrate with another build system), the breakdown is:
    `--non-linux <yaml>`, producing `<board>-system-top.dts`. With
    `--non-linux` omitted (the `--no-zephyr` path) it produces a
    Linux-only SDT.
+5. **`sdt_devices`** Lopper assist on the assembled SDT with
+   `-o <board>-sdt-devices.yaml`, producing the device enumeration
+   used as a parent for glob-driven `domains.yaml` files.
+6. **`sdt_domains`** Lopper assist on the assembled SDT
+   with `-o <board>-sdt-domains.yaml`, producing the starter
+   partition the user edits.
 
 Run `scripts/build-board-sdt.py --board <name> -v` to see the exact
 commands the script executes for any given board. The script's

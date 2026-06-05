@@ -1,0 +1,68 @@
+domains:
+  default:
+    compatible: openamp,domain-v1
+    id: 0
+    domains:
+      APU:
+        compatible: openamp,domain-v1
+        cpus:
+          - cluster: cpus_a53
+            cpumask: 0xf
+            mode:
+              el: 0x3
+              secure: false
+        memory:
+          - dev: memory@40000000
+            start: 0x40000000
+            size: 0x80000000
+        access:
+          - dev: '*'
+        id: 0
+      MCU:
+        compatible: openamp,domain-v1
+        cpus:
+          - cluster: cpus_m4
+            cpumask: 0x1
+            mode:
+              secure: false
+        memory:
+          - dev: memory@20000000
+            start: 0x20000000
+            size: 0x20000
+            source: zephyr
+          - dev: memory@20200000
+            start: 0x20200000
+            size: 0x40000
+            source: zephyr
+          - dev: memory@20180000
+            start: 0x20180000
+            size: 0x8000
+            source: zephyr
+          - dev: m4_reserved@80000000
+            start: 0x80000000
+            size: 0x100000
+            source: augment
+          - dev: rpmsg_shmem@b8000000
+            start: 0xb8000000
+            size: 0x400000
+            source: augment
+        access:
+          - dev: interrupt-controller@e000e100
+            flags: {}
+            source: zephyr
+          - dev: timer@e000e010
+            flags: {}
+            source: zephyr
+          - dev: code@1ffe0000
+            flags: {}
+            source: zephyr
+          - dev: code@900000
+            flags: {}
+            source: zephyr
+          - dev: code@180000
+            flags: {}
+            source: zephyr
+          - dev: mailbox@30ab0000
+            flags: {}
+            source: zephyr
+        id: 1

@@ -61,7 +61,11 @@ def _run_pipeline(board_name, outdir, no_zephyr=False, no_augment=False):
         f"--- stdout ---\n{result.stdout}\n"
         f"--- stderr ---\n{result.stderr}\n")
 
-    artifacts = {'system_top_dts': outdir / f'{board_name}-system-top.dts'}
+    artifacts = {
+        'system_top_dts': outdir / f'{board_name}-system-top.dts',
+        'sdt_devices_yaml': outdir / f'{board_name}-sdt-devices.yaml',
+        'sdt_domains_yaml': outdir / f'{board_name}-sdt-domains.yaml',
+    }
     if not no_zephyr:
         artifacts['non_linux_yaml'] = outdir / f'{board_name}-non-linux.yaml'
 
@@ -251,6 +255,96 @@ def test_assemble_imx8mm_evk_sdt(tmp_path):
     _assert_golden(sdt,
                    BOARDS_ROOT / 'imx8mm-evk' / 'expected-sdt.dts',
                    label='assemble_sdt')
+
+
+## --- sdt_devices on the assembled SDT ----------------------------------
+
+def test_sdt_devices_versal_vck190(tmp_path):
+    """sdt_devices enumerates every device in the assembled SDT into a
+    YAML vocabulary the downstream glob-driven domains.yaml workflow
+    consumes as a parent.
+    """
+    artifacts = _run_pipeline('versal-vck190', tmp_path)
+    out = artifacts['sdt_devices_yaml']
+
+    data = yaml.safe_load(out.read_text())
+    dom = data['domains']['sdt_all_devices']
+    devs = [e.get('dev', '') for e in dom.get('access', [])]
+    # Core peripherals from the Linux DT.
+    assert any('serial@ff000000' in d for d in devs), \
+        f"console UART missing from enumeration: {devs[:5]}…"
+    assert any('ethernet@ff0c0000' in d for d in devs)
+
+
+## --- sdt_domains -----------------------------------------------
+
+def test_sdt_domains_versal_vck190(tmp_path):
+    """sdt_domains emits one starter domain per cpus,cluster,
+    partitioned by lopper-source: APU (untagged Linux side) and RPU
+    (zephyr-tagged R5 cluster + augment carve-outs that name-match).
+    """
+    artifacts = _run_pipeline('versal-vck190', tmp_path)
+    out = artifacts['sdt_domains_yaml']
+
+    data = yaml.safe_load(out.read_text())
+    root = data['domains']['default']['domains']
+
+    assert 'APU' in root, f"APU domain missing; got {list(root)}"
+    assert 'RPU' in root, f"RPU domain missing; got {list(root)}"
+
+    apu = root['APU']
+    assert apu['cpus'][0]['cluster'] == 'cpus_a72'
+    assert apu['cpus'][0]['cpumask'] == 0x3
+    # Linux starter uses a single wildcard glob for access.
+    assert apu['access'] == [{'dev': '*'}]
+    # Linux memory is the Linux DT's /memory@0 (untagged), not the
+    # Zephyr-tagged OCM at 0xfffc0000.
+    apu_mem_names = [m['dev'] for m in apu['memory']]
+    assert 'memory@0' in apu_mem_names
+    assert 'memory@fffc0000' not in apu_mem_names
+
+    rpu = root['RPU']
+    assert rpu['cpus'][0]['cluster'] == 'cpus_r5'
+    rpu_mem_names = [m['dev'] for m in rpu['memory']]
+    # OCM (Zephyr-tagged root memory) lands in the R5 domain.
+    assert 'memory@fffc0000' in rpu_mem_names
+    # Augment rpu0_reserved heuristic-matched to the R5 cluster.
+    assert any('rpu0_reserved' in n for n in rpu_mem_names)
+
+    _assert_golden(out,
+                   BOARDS_ROOT / 'versal-vck190' / 'expected-sdt-domains.yaml',
+                   label='sdt_domains')
+
+
+def test_sdt_domains_imx8mm_evk(tmp_path):
+    """sdt_domains for i.MX 8MM: APU + MCU starter domains,
+    M4 firmware carve-out and rpmsg shared region attached to MCU,
+    M-side peripherals from /non_linux_soc attached as access.
+    """
+    artifacts = _run_pipeline('imx8mm-evk', tmp_path)
+    out = artifacts['sdt_domains_yaml']
+
+    data = yaml.safe_load(out.read_text())
+    root = data['domains']['default']['domains']
+
+    assert 'APU' in root
+    assert 'MCU' in root
+
+    mcu = root['MCU']
+    assert mcu['cpus'][0]['cluster'] == 'cpus_m4'
+    mem_names = [m['dev'] for m in mcu['memory']]
+    # M-side TCM + augment carve-outs land in MCU.
+    assert any('memory@20000000' in n for n in mem_names), f"DTCM missing: {mem_names}"
+    assert any('m4_reserved' in n for n in mem_names)
+    assert any('rpmsg_shmem' in n for n in mem_names)
+
+    access_names = [a['dev'] for a in mcu['access']]
+    assert any('mailbox@30ab0000' in a for a in access_names), \
+        f"M4 mailbox missing from MCU access: {access_names}"
+
+    _assert_golden(out,
+                   BOARDS_ROOT / 'imx8mm-evk' / 'expected-sdt-domains.yaml',
+                   label='sdt_domains')
 
 
 def test_linux_only_sdt_versal(tmp_path):

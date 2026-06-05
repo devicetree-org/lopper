@@ -237,20 +237,53 @@ Every added node carries a `lopper-source` tag (`zephyr` /
 `augment` / `non-linux`) so the downstream slicer can split the
 merged tree back into per-OS DTs based on provenance.
 
+### Post-SDT enumeration: `sdt_devices` (existing)
+
+`lopper/assists/sdt_devices.py` is a pre-existing assist that
+walks a finished SDT and emits an `openamp,domain-v1,devices`
+inventory of every node it found. Run after `assemble_sdt`, its
+output (`<board>-sdt-devices.yaml`) is the vocabulary a user-
+written `domains.yaml` can glob against — Lopper's existing
+domain-processing tooling expands `dev: "*pattern*"` access
+entries against a parent enumeration loaded via `-i`. The
+pipeline runs this so users have the vocabulary file ready
+without a separate manual step.
+
+### Post-SDT starter: `sdt_domains`
+
+`lopper/assists/sdt_domains.py` walks the assembled SDT,
+finds every `cpus,cluster` node, and emits one starter domain per
+cluster — partitioned by the `lopper-source` tags `assemble_sdt`
+attached during assembly:
+
+- **Untagged cluster** (the Linux side) → an `APU` domain whose
+  access list is a single `dev: "*"` glob, since the Linux side
+  typically claims everything not explicitly assigned elsewhere.
+- **Tagged cluster** (`zephyr` / `non-linux`) → an `RPU` / `MCU`
+  domain enumerating the children of `/non_linux_soc` and the
+  augment carve-outs whose names suggest this cluster
+  (`rpu*` → R5, `m4*` → M4, shared `rpmsg*` / `shmem*` land in
+  every non-Linux domain).
+
+The result is an `openamp,domain-v1` YAML that exists *to be
+edited*: cpumasks, access narrowing, augment-carve-out reassignment
+all default to obvious choices the user refines. The starter saves
+the user from typing out the obvious split by hand.
+
 ### Pipeline runner: `scripts/build-board-sdt.py`
 
-This script is the canonical entry point that runs the four-stage
+This script is the canonical entry point that runs the full
 pipeline end-to-end for one shipped board. Given `--board <name>`,
 it reads `lopper/data/boards/<name>/source.yaml`, preprocesses the
 upstream Linux DT (and Zephyr DT when present) with cpp + dtc using
-the include paths declared in the board config, then invokes
-`compose_non_linux` and `assemble_sdt` in sequence. With
-`--no-zephyr` it skips the `compose_non_linux` stage entirely and
-calls `assemble_sdt` without `--non-linux`, producing a Linux-only
-SDT. Users running the pipeline drive it through this script; the
-integration tests in `tests/test_sdt_from_linux.py` invoke the same
-script so there is one canonical implementation of the
-orchestration.
+the include paths declared in the board config, then runs
+`compose_non_linux`, `assemble_sdt`, `sdt_devices`, and
+`sdt_domains` in sequence. With `--no-zephyr` it skips
+`compose_non_linux` and calls `assemble_sdt` without `--non-linux`,
+producing a Linux-only SDT. Users running the pipeline drive it
+through this script; the integration tests in
+`tests/test_sdt_from_linux.py` invoke the same script so there is
+one canonical implementation of the orchestration.
 
 This also explains why both assists accept pre-flattened `.dts`
 inputs rather than running cpp/dtc themselves: preprocessing

@@ -1,0 +1,194 @@
+domains:
+  sdt_all_devices:
+    access:
+    - dev: dma-controller@33000000
+      label: dma_controller33000000
+    - dev: nand-controller@33002000
+      status: disabled
+    - dev: pcie@33800000
+    - dev: pcie-ep@33800000
+      status: disabled
+    - dev: gpu@38000000
+    - dev: gpu@38008000
+    - dev: video-codec@38300000
+    - dev: video-codec@38310000
+    - dev: memory-controller@3d400000
+    - dev: ddr-pmu@3d800000
+    - dev: gpio@30200000
+      label: gpio30200000
+    - dev: gpio@30210000
+      label: gpio30210000
+    - dev: gpio@30220000
+      label: gpio30220000
+    - dev: gpio@30230000
+      label: gpio30230000
+    - dev: gpio@30240000
+    - dev: tmu@30260000
+      label: tmu30260000
+    - dev: watchdog@30280000
+    - dev: watchdog@30290000
+      status: disabled
+    - dev: watchdog@302a0000
+      status: disabled
+    - dev: dma-controller@302c0000
+      label: dma_controller302c0000
+    - dev: dma-controller@302b0000
+    - dev: clock-controller@30360000
+    - dev: clock-controller@30380000
+      label: clock_controller30380000_1
+    - dev: gpc@303a0000
+    - dev: sai@30010000
+      status: disabled
+    - dev: sai@30020000
+      label: sai30020000
+    - dev: sai@30030000
+      label: sai30030000
+    - dev: sai@30050000
+      status: disabled
+    - dev: sai@30060000
+      status: disabled
+    - dev: audio-controller@30080000
+      label: audio_controller30080000
+    - dev: spdif@30090000
+      label: spdif30090000
+    - dev: pwm@30660000
+    - dev: pwm@30670000
+      status: disabled
+    - dev: pwm@30680000
+      status: disabled
+    - dev: pwm@30690000
+      status: disabled
+    - dev: timer@306a0000
+    - dev: crypto@30900000
+    - dev: i2c@30a20000
+    - dev: i2c@30a30000
+    - dev: i2c@30a40000
+    - dev: i2c@30a50000
+      status: disabled
+    - dev: serial@30a60000
+      status: disabled
+    - dev: mailbox@30aa0000
+    - dev: mmc@30b40000
+      status: disabled
+    - dev: mmc@30b50000
+    - dev: mmc@30b60000
+    - dev: spi@30bb0000
+    - dev: dma-controller@30bd0000
+      label: dma_controller30bd0000
+    - dev: ethernet@30be0000
+    - dev: spi@30820000
+      status: disabled
+    - dev: spi@30830000
+      status: disabled
+    - dev: spi@30840000
+      status: disabled
+    - dev: serial@30860000
+    - dev: serial@30880000
+    - dev: serial@30890000
+    - dev: lcdif@32e00000
+    - dev: dsi@32e10000
+    - dev: csi@32e20000
+    - dev: mipi-csi@32e30000
+    - dev: usb@32e40000
+    - dev: usbmisc@32e40200
+      label: usbmisc32e40200
+    - dev: usb@32e50000
+      status: disabled
+    - dev: usbmisc@32e50200
+      label: usbmisc32e50200
+    - dev: pcie-phy@32f00000
+      label: pcie_phy32f00000
+    - dev: timer@e000e010
+    - dev: code@1ffe0000
+    - dev: code@900000
+    - dev: code@180000
+    - dev: mailbox@30ab0000
+      status: disabled
+    - dev: dsi@32e10000
+    - dev: mipi-csi@32e30000
+    - dev: opp_table
+      label: opp_table
+    - dev: pmu
+    - dev: timer
+    - dev: usbphynop1
+      label: usbphynop1
+    - dev: usbphynop2
+      label: usbphynop2
+    - dev: hdmi-connector
+    - dev: leds
+    - dev: regulator_pcie
+      label: regulator_pcie
+    - dev: regulator_usdhc2
+      label: regulator_usdhc2
+    - dev: regulator_1v5
+      label: regulator_1v5
+    - dev: regulator_1v8
+      label: regulator_1v8
+    - dev: regulator_vddext_3v3
+      label: regulator_vddext_3v3
+    - dev: backlight
+    - dev: ir-receiver
+    - dev: audio_codec_bt_sco
+      label: audio_codec_bt_sco
+    - dev: audio_codec
+      label: audio_codec
+    - dev: sound-bt-sco
+    - dev: sound-wm8524
+    - dev: sound-micfil
+    - dev: spdif_out
+      label: spdif_out
+    - dev: spdif_in
+      label: spdif_in
+    - dev: sound-spdif
+    aliases:
+      ethernet0: /soc@0/bus@30800000/ethernet@30be0000
+      gpio0: /soc@0/bus@30000000/gpio@30200000
+      gpio1: /soc@0/bus@30000000/gpio@30210000
+      gpio2: /soc@0/bus@30000000/gpio@30220000
+      gpio3: /soc@0/bus@30000000/gpio@30230000
+      gpio4: /soc@0/bus@30000000/gpio@30240000
+      i2c0: /soc@0/bus@30800000/i2c@30a20000
+      i2c1: /soc@0/bus@30800000/i2c@30a30000
+      i2c2: /soc@0/bus@30800000/i2c@30a40000
+      i2c3: /soc@0/bus@30800000/i2c@30a50000
+      mmc0: /soc@0/bus@30800000/mmc@30b40000
+      mmc1: /soc@0/bus@30800000/mmc@30b50000
+      mmc2: /soc@0/bus@30800000/mmc@30b60000
+      serial0: /soc@0/bus@30800000/spba-bus@30800000/serial@30860000
+      serial1: /soc@0/bus@30800000/spba-bus@30800000/serial@30890000
+      serial2: /soc@0/bus@30800000/spba-bus@30800000/serial@30880000
+      serial3: /soc@0/bus@30800000/serial@30a60000
+      spi0: /soc@0/bus@30800000/spi@30bb0000
+      spi1: /soc@0/bus@30800000/spba-bus@30800000/spi@30830000
+      spi2: /soc@0/bus@30800000/spba-bus@30800000/spi@30840000
+    board: fsl,imx8mm-evk
+    compatible: openamp,domain-v1,devices
+    cpus:
+    - compatible: arm,cortex-a53
+      cpumask: 0xf
+      dev: cpus
+    - compatible: arm,cortex-m4
+      cpumask: 0x1
+      dev: cpus-m4@0
+    id: 0
+    memory:
+    - dev: memory@40000000
+      size: 0x80000000
+      start: 0x40000000
+    - dev: memory@20000000
+      size: 0x20000
+      start: 0x20000000
+    - dev: memory@20200000
+      size: 0x40000
+      start: 0x20200000
+    - dev: memory@20180000
+      size: 0x8000
+      start: 0x20180000
+    - dev: m4_reserved@80000000
+      size: 0x100000
+      start: 0x80000000
+    - dev: rpmsg_shmem@b8000000
+      size: 0x400000
+      start: 0xb8000000
+    model: FSL i.MX8MM EVK board
+    soc_family: fsl,imx8mm
