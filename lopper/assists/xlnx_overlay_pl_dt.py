@@ -770,6 +770,43 @@ Output:
     - pl.dtso: Copy of pl.dtsi with .dtso extension
     Note: Modified system device tree (with /amba_pl node removed) is written by lopper itself
 """
+
+def discover_overlay_files(sdt):
+    """Auto-discover *.dtso overlay files co-located with system-top.dts.
+
+    Scans the directory containing the input SDT file for files matching
+    the *.dtso extension and registers them via the same compilation path
+    used by the -i flag, so fragment_add_for_refs() emits them as overlay
+    fragments in pl.dtsi automatically.
+
+    Args:
+        sdt: LopperSDT object with .dts pointing to the input file
+    """
+    if not sdt.dts:
+        return
+
+    sdt_dir = Path(sdt.dts).resolve().parent
+    overlay_files = sorted(sdt_dir.glob('*.dtso'))
+
+    if not overlay_files:
+        return
+
+    existing = set(sdt.tree._metadata.get('overlay_subtrees', {}).keys())
+    new_files = []
+    for f in overlay_files:
+        if f.stem not in existing:
+            new_files.append(str(f))
+        else:
+            _info(f"Overlay '{f.stem}' already registered (via -i?), skipping")
+
+    if not new_files:
+        return
+
+    for f in new_files:
+        print(f"Auto-discovered overlay: {Path(f).name}")
+
+    sdt._compile_overlay_subtrees(new_files, str(sdt_dir))
+
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
     # Parse and validate options
@@ -780,6 +817,8 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         exclude_props = ['address-map']
     elif 'address-map' not in exclude_props:
         exclude_props.append('address-map')
+
+    discover_overlay_files(sdt)
 
     overlay_tree = LopperTree()
 
