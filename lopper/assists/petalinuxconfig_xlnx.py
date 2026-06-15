@@ -72,16 +72,29 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
     4. For uart device_type add default baud rate 
     5. ???
     """
-    tmp_dict = {}
+    tmp_dict = {'slaves': {}}  # Initialize slaves dict to prevent KeyError
     proc_name = ""
     device_type_dict = {}
+
+    if not os.path.isfile(yaml_file):
+        print(f"Error: YAML file not found: {yaml_file}")
+        return False
+
     with open(yaml_file, 'r') as stream:
         schema = yaml.safe_load(stream)
         res_list = list(schema.keys())
-        tmp_node_list = []
         device = sdt.tree['/'].propval('device_id')
         if device != ['']:
             device_type_dict['device_id'] = device[0]
+
+        # Check if memory device type exists in schema before fetching memory ranges
+        has_memory_type = any(re.search("memory", schema[res]['device_type']) for res in res_list)
+        if has_memory_type:
+            mem_ranges, label_names = get_memranges(tgt_node, sdt, options)
+            memnode_list = sdt.tree.nodes('/memory@.*')
+
+        # Build device type mapping for non-processor/non-memory devices
+        device_type_map = {}
         for res in res_list:
             dev_type = schema[res]['device_type']
             if re.search("processor", dev_type):
@@ -95,39 +108,44 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
                     device_type_dict['processor'] = {label_name:ipname}
                     device_type_dict['processor'][label_name].update({"slaves_strings": " ".join(nodename_list)})
             elif re.search("memory", dev_type):
-                ### Memory Handling
-                mem_ranges, _ = get_memranges(tgt_node, sdt, options)
-                index = 0
-                memnode_list = sdt.tree.nodes('/memory@.*')
+                ### Memory Handling (using pre-fetched mem_ranges and label_names)
                 for mem_name,mem in mem_ranges.items():
+                    mem_label = label_names.get(mem_name, mem_name)
                     try:
                         mem_node = [node for node in memnode_list if re.search(mem_name[:-2], node.propval('xlnx,ip-name', list)[0])]
-                    except:
+                    except (IndexError, AttributeError, TypeError):
                         mem_node = None
-                    if index == 0:
-                        tmp_dict['slaves'] = {mem_name: "None"}
-                    else:
-                        tmp_dict['slaves'].update({mem_name: "None"})
-                    tmp_dict['slaves'][mem_name] = {"device_type":"memory"}
+                    tmp_dict['slaves'][mem_label] = {"device_type":"memory"}
                     if mem_node:
                         if mem_node[0].propval('memory_type') != ['']:
-                            tmp_dict['slaves'][mem_name] = {"device_type":mem_node[0].propval('memory_type', list)[0]}
-                    tmp_dict['slaves'][mem_name].update({"ip_name":mem_name[:-2]})
-                    tmp_dict['slaves'][mem_name].update({"baseaddr":hex(mem[0])})
-                    tmp_dict['slaves'][mem_name].update({"highaddr":hex(mem[0] + mem[1])})
-                    index += 1
+                            tmp_dict['slaves'][mem_label] = {"device_type":mem_node[0].propval('memory_type', list)[0]}
+                    tmp_dict['slaves'][mem_label].update({"ip_name":mem_name[:-2]})
+                    tmp_dict['slaves'][mem_label].update({"baseaddr":hex(mem[0])})
+                    tmp_dict['slaves'][mem_label].update({"highaddr":hex(mem[0] + mem[1])})
             else:
-                for node in mapped_nodelist:
-                    compatible_list = node["compatible"].value
-                    driver_compatlist = compat_list(schema[res])
-                    match = [compat for compat in compatible_list if compat in driver_compatlist]
-                    ipname = node.propval('xlnx,ip-name')
+                device_type_map[res] = {
+                    'dev_type': dev_type,
+                    'driver_compatlist': compat_list(schema[res])
+                }
+
+        for node in mapped_nodelist:
+            label_name = get_label(sdt, symbol_node, node)
+
+            try:
+                compatible_list = node["compatible"].value
+            except (KeyError, AttributeError):
+                compatible_list = None
+
+            matched = False
+            if compatible_list:
+                for res, info in device_type_map.items():
+                    match = [compat for compat in compatible_list if compat in info['driver_compatlist']]
                     if match:
-                        tmp_node_list.append(node)
-                        label_name = get_label(sdt, symbol_node, node)
+                        matched = True
+                        dev_type = info['dev_type']
+                        ipname = node.propval('xlnx,ip-name')
                         try:
                             if re.search("serial", dev_type):
-                                baud_rate = node.propval('xlnx,baudrate')
                                 addr,size = scan_reg_size(node, node['reg'].value, 0)
                                 tmp_dict['slaves'][label_name] = {"device_type":"serial"}
                                 tmp_dict['slaves'][label_name].update({"ip_name":ipname[0]})
@@ -135,19 +153,21 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
                             else:
                                 tmp_dict['slaves'][label_name] = {"device_type":dev_type}
                                 tmp_dict['slaves'][label_name].update({"ip_name":ipname[0]})
-                        except KeyError:
+                        except (KeyError, IndexError, TypeError):
                             pass
+                        break
 
-        mapped_nodelist = [node for node in mapped_nodelist if node not in tmp_node_list]
-        for node in mapped_nodelist:
-            label_name = get_label(sdt, symbol_node, node)
-            try:
+            # If no match found (or no compatible property), add with just ip_name
+            if not matched:
                 ipname = node.propval('xlnx,ip-name')
-                if ipname[0]:
-                    tmp_dict['slaves'][label_name] = {"ip_name":ipname[0]}
-            except:
-                pass
-        device_type_dict['processor'][proc_name].update(tmp_dict)
+                try:
+                    if ipname and ipname[0]:
+                        tmp_dict['slaves'][label_name] = {"ip_name": ipname[0]}
+                except (IndexError, TypeError):
+                    pass
+        # Only update if processor was configured
+        if 'processor' in device_type_dict and proc_name and proc_name in device_type_dict['processor']:
+            device_type_dict['processor'][proc_name].update(tmp_dict)
 
         with open("petalinux_config.yaml", "w") as fd:
             fd.write(yaml.dump(device_type_dict, Dumper=YamlDumper, default_flow_style=False, sort_keys=False, indent=4, width=32768))
