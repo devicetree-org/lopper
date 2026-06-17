@@ -354,7 +354,11 @@ def validate_and_parse_options(options, sdt):
 
 def validate_amba_pl_node(amba_node):
     """
-    Validate that amba_pl node has valid PL nodes with register properties.
+    Return True if /amba_pl has a PL node with a 'reg' or 'compatible' property.
+
+    'compatible' is checked so non-address-mapped nodes like zocl (compatible,
+    no reg) still count. The amba_pl node itself is skipped so its "simple-bus"
+    compatible does not falsely qualify.
 
     Args:
         amba_node: The /amba_pl node from the device tree
@@ -363,13 +367,13 @@ def validate_amba_pl_node(amba_node):
         bool: True if valid PL nodes exist, False otherwise
     """
     has_valid_pl = False
-    for subnode in amba_node.subnodes():
-        if subnode.propval('reg') != ['']:
+    for subnode in amba_node.subnodes(children_only=True):
+        if subnode.propval('reg') != [''] or subnode.propval('compatible') != ['']:
             has_valid_pl = True
             break
 
     if not has_valid_pl:
-        _error(f"No valid PL nodes found in amba_pl (no nodes with reg properties)")
+        _error(f"No valid PL nodes found in amba_pl (no child nodes with reg or compatible)")
 
     return has_valid_pl
 
