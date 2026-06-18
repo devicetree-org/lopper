@@ -132,14 +132,14 @@ builds.
 
 For an actual deployment you do **not** copy the template. Instead,
 write a small **overlay** file — name it whatever you like, put it
-wherever you like — containing only your edits, and pass its path
-with `--domains`. The pipeline deep-merges your overlay on top of
-the shipped template (your entries override the template's by `dev`
-key; new entries are added), so `git pull` keeps the template fresh
-underneath without disturbing your overlay. Use an absolute path:
-`build-board-sdt.py` runs lopper with its working directory set to
-the repo root, so a relative `--domains` path resolves against the
-repo root, not your shell's current directory.
+wherever you like (it never has to live under the lopper tree) —
+containing only your edits, and pass its path with `--domains`.
+`build-board-sdt.py` resolves the path against your current
+directory, so relative or absolute both work. The pipeline
+deep-merges your overlay on top of the shipped template (your
+entries override the template's by `dev` key; new entries are
+added), so `git pull` keeps the template fresh underneath without
+disturbing your overlay.
 
 ```bash
 # Your overlay holds only what differs from the template.

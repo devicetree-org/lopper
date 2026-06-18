@@ -372,11 +372,18 @@ def main():
 
     output_dir = args.output_dir or (Path.cwd() / f'{args.board}-build')
 
+    # Resolve the user's overlay against *their* cwd, not the repo root
+    # the lopper subprocess runs in. This lets --domains point anywhere
+    # on disk (relative or absolute) — the user is never forced to drop
+    # files into the lopper directory tree.
+    domains_overlay = (str(Path(args.domains).resolve())
+                       if args.domains else None)
+
     try:
         artifacts = build_board(args.board, output_dir,
                                 no_zephyr=args.no_zephyr,
                                 no_template=args.no_template,
-                                domains_overlay=args.domains,
+                                domains_overlay=domains_overlay,
                                 verbose=args.verbose)
     except PipelineError as e:
         print(f"error: {e}", file=sys.stderr)

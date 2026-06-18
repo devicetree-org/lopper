@@ -129,16 +129,15 @@ through without disturbing the overlay.
   Not meant to be edited in place (a `git pull` would clobber the
   edits).
 - **User's overlay** — a YAML file you create, name, and place
-  anywhere you like (it is not part of this repo and follows no
-  naming convention). It holds only the entries that differ from
-  the template: extra carve-outs, a resized region, refined
-  cpumasks, narrowed access lists. You point the pipeline at it with
-  `--domains <path>`, where `<path>` is the literal path to that
-  file — `compose_non_linux` just opens it directly. Use an absolute
-  path: `build-board-sdt.py` runs the lopper subprocess with its
-  working directory set to the repo root, so a relative `--domains`
-  path resolves against the repo root rather than your shell's
-  current directory.
+  anywhere you like (it is not part of this repo, follows no naming
+  convention, and never has to live under the lopper tree). It holds
+  only the entries that differ from the template: extra carve-outs,
+  a resized region, refined cpumasks, narrowed access lists. You
+  point the pipeline at it with `--domains <path>`;
+  `build-board-sdt.py` resolves that path against your current
+  directory (so relative or absolute both work) before handing the
+  absolute path to the lopper subprocess, where `compose_non_linux`
+  opens it directly.
 
 `compose_non_linux` loads both and deep-merges them with the shared
 `LopperYAML.deep_merge` (the same helper the core Lopper YAML path
