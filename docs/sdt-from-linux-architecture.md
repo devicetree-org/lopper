@@ -246,6 +246,27 @@ files. Reference SDTs and any internal hardware-description files
 are explicitly forbidden as sources — using internal information
 would defeat the purpose.
 
+**Keeping SoC files in your own repo.** You are not limited to the
+shipped `lopper/data/socs/` directory. The loader
+(`_devices_core._load_soc_data`) also scans every lopper include
+directory — the dirs you pass with `-I` / `--input-dirs`, plus
+`LOPPER_INPUT_DIRS` — looking for SoC YAML at the **same relative
+layout as the shipped tree**, i.e. `<include-dir>/data/socs/*.yaml`.
+The structure is enforced (files can't be just *anywhere* — they
+must sit at `data/socs/` under an include dir), and your include
+dirs are searched **before** the built-in location, so a file you
+supply can override a shipped SoC of the same `matches:` or add an
+entirely new one. For example, with
+`my-repo/data/socs/my-soc.yaml` present:
+
+```bash
+lopper -I my-repo ... -- sdt_devices -o devices.yaml
+```
+
+picks up `my-soc.yaml` without your ever editing the lopper tree.
+This mirrors the `domains.yaml` template+overlay story: the shipped
+files are a starting point, your repo carries the customisations.
+
 A starter file can be bootstrapped from a PM-ID dt-binding header via
 `scripts/extract-pm-ids.py`; the remainder (cluster templates, TCM
 addresses, etc.) is hand-curated from public docs.
@@ -274,6 +295,25 @@ script at the file — it is public kernel source, not an internal
 artifact. SoCs without a PM controller (e.g. the i.MX 8M Mini)
 have no such header; their SoC YAML simply ships an empty
 `pm_devices: {}` and the decode step is a no-op.
+
+**How the parser recognises the IDs.** `extract-pm-ids.py` does not
+infer the symbol convention — it matches `#define <SYMBOL> 0xVALUE`
+lines where `<SYMBOL>` begins with one of a fixed built-in set of
+prefixes: `PM_DEV` (AMD), `K3_DEV` (TI), `STM32MP1` (ST). A vendor
+whose header uses a different convention is handled without editing
+the script via two escape hatches:
+
+- `--prefix <P>` adds a literal prefix; the parser then also matches
+  `<P>_NAME` (e.g. `--prefix MTK_PD`).
+- `--prefix-regex <R>` splices a raw regex fragment into the
+  name-matching alternation, for conventions a fixed prefix can't
+  express — a number-variable family (`STM32MP\d+_[A-Za-z0-9_]+`)
+  or a suffix-discriminated one (`[A-Z0-9_]+_POWER_DOMAIN`).
+
+Both flags are repeatable and append to the built-in set. (They
+cover the *symbol-name* convention only; a header whose *value*
+syntax differs — not hex — still needs a tweak to the regex in
+`_build_define_re`.)
 
 #### Per-board configurations (`lopper/data/boards/<board>/`)
 

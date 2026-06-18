@@ -26,10 +26,30 @@ Examples:
         /path/to/linux/include/dt-bindings/power/xlnx-zynqmp-power.h \\
         --family zynqmp
 
-Recognised name prefixes:
+Recognised name prefixes (built in):
     PM_DEV_*    (Xilinx Versal, ZynqMP convention)
     K3_DEV_*    (TI K3 sysfw convention)
     STM32MP1_*  (STMicroelectronics — variable, may need regex tweaks)
+
+A vendor whose header uses a different convention can be handled
+without editing this script via two escape hatches that append to
+the built-in set:
+
+    # literal prefix(es) — matches "<PREFIX>_NAME"
+    scripts/extract-pm-ids.py <header.h> --family <name> \\
+        --prefix MTK_PD --prefix MTK_POWER
+
+    # raw regex(es) — for what a fixed prefix can't express, e.g. a
+    # number-variable family or a suffix-discriminated convention
+    scripts/extract-pm-ids.py <header.h> --family <name> \\
+        --prefix-regex 'STM32MP\\d+_[A-Za-z0-9_]+' \\
+        --prefix-regex '[A-Z0-9_]+_POWER_DOMAIN'
+
+A --prefix fragment is regex-escaped and gets `_NAME` appended; a
+--prefix-regex fragment is spliced in verbatim and must match the
+whole symbol name itself. (If a header's *value* format differs —
+not hex, say — _build_define_re still needs a tweak; both flags only
+cover the symbol-name convention, not the value syntax.)
 """
 
 import argparse
@@ -38,24 +58,54 @@ import re
 import sys
 from datetime import date
 
-# Patterns for "#define NAME (0xVALUE...)" or "#define NAME 0xVALUE".
-# We accept either parenthesised or bare hex, optional U/UL suffix.
-_DEFINE_RE = re.compile(
-    r'^\s*#\s*define\s+'
-    r'(?P<name>(?:PM_DEV|K3_DEV|STM32MP1)_[A-Za-z0-9_]+)'
-    r'\s+'
-    r'\(?\s*0x(?P<hex>[0-9a-fA-F]+)U?L?L?\s*\)?'
-    r'\s*(?:/\*.*?\*/|//.*)?\s*$'
-)
+# Vendor PM-ID symbol prefixes recognised out of the box. A new
+# vendor whose header uses a different convention can be handled
+# without editing this file via the --prefix escape hatch (see main).
+_DEFAULT_PREFIXES = ('PM_DEV', 'K3_DEV', 'STM32MP1')
 
 
-def extract(header_path):
-    """Return list of (name, int_value) tuples in source order."""
+def _build_define_re(prefixes, regexes=()):
+    """Compile the `#define <SYMBOL> 0xVALUE` matcher.
+
+    `prefixes` are literal symbol prefixes — each is regex-escaped and
+    matches `<prefix>_NAME` (so a literal prefix is matched even if it
+    contains regex metacharacters). `regexes` are raw regex fragments
+    spliced into the same name alternation un-escaped, for conventions
+    a fixed prefix can't express (e.g. `STM32MP\\d+`, `RK\\d+_PD`, or a
+    suffix-discriminated `[A-Z0-9_]+_POWER_DOMAIN`).
+
+    A prefix `P` contributes the alternative `P_[A-Za-z0-9_]+`; a regex
+    fragment is used verbatim, so it must match the *whole* symbol name
+    itself (including any trailing name characters). The value side
+    (parenthesised/hex/U-L-suffixed, optional trailing comment) is
+    shared by both.
+    """
+    alts = [re.escape(p) + r'_[A-Za-z0-9_]+' for p in prefixes]
+    alts += list(regexes)
+    alt = '|'.join(alts)
+    return re.compile(
+        r'^\s*#\s*define\s+'
+        r'(?P<name>(?:' + alt + r'))'
+        r'\s+'
+        r'\(?\s*0x(?P<hex>[0-9a-fA-F]+)U?L?L?\s*\)?'
+        r'\s*(?:/\*.*?\*/|//.*)?\s*$'
+    )
+
+
+def extract(header_path, prefixes=_DEFAULT_PREFIXES, regexes=()):
+    """Return list of (name, int_value) tuples in source order.
+
+    `prefixes` is the set of recognised literal symbol prefixes
+    (defaults to the built-in vendor set); `regexes` is an optional
+    set of raw name-matching regex fragments for conventions a fixed
+    prefix can't express.
+    """
+    define_re = _build_define_re(prefixes, regexes)
     entries = []
     seen = set()
     with open(header_path) as fh:
         for line in fh:
-            m = _DEFINE_RE.match(line)
+            m = define_re.match(line)
             if not m:
                 continue
             name = m.group('name')
@@ -110,18 +160,39 @@ def main():
                    help='Short SoC family name (versal, zynqmp, am62x, ...)')
     p.add_argument('-o', '--output',
                    help='Output YAML path (default: stdout)')
+    p.add_argument('--prefix', action='append', default=[], metavar='PREFIX',
+                   help='Additional literal PM-ID symbol prefix to '
+                        'recognise, on top of the built-in set (PM_DEV, '
+                        'K3_DEV, STM32MP1). The parser matches '
+                        '"<PREFIX>_NAME". Repeatable. Escape hatch for a '
+                        'vendor whose header uses a prefix this script '
+                        'does not ship with.')
+    p.add_argument('--prefix-regex', action='append', default=[],
+                   metavar='REGEX',
+                   help='Raw regex fragment matching a whole symbol name, '
+                        r'for conventions a fixed prefix cannot express '
+                        r'(e.g. "STM32MP\\d+_[A-Za-z0-9_]+" for a '
+                        'number-variable family). Repeatable. Spliced '
+                        'into the name alternation un-escaped.')
     args = p.parse_args()
 
     if not os.path.isfile(args.header):
         print(f"error: header not found: {args.header}", file=sys.stderr)
         sys.exit(1)
 
-    entries = extract(args.header)
+    prefixes = tuple(_DEFAULT_PREFIXES) + tuple(args.prefix)
+    regexes = tuple(args.prefix_regex)
+    entries = extract(args.header, prefixes, regexes)
     if not entries:
-        print(f"error: no PM_DEV_/K3_DEV_/STM32MP1_ defines found in {args.header}",
+        pretty = ', '.join(f'{p}_' for p in prefixes)
+        print(f"error: no matching defines found in {args.header}",
               file=sys.stderr)
-        print(f"       (recognised prefixes: PM_DEV_, K3_DEV_, STM32MP1_)",
-              file=sys.stderr)
+        print(f"       (recognised prefixes: {pretty}"
+              + (f"; regexes: {', '.join(regexes)}" if regexes else "")
+              + ")", file=sys.stderr)
+        print(f"       add another with --prefix <PREFIX> (literal) or "
+              f"--prefix-regex <REGEX> if this header uses a different "
+              f"convention", file=sys.stderr)
         sys.exit(2)
 
     yaml_text = emit_yaml(entries, args.family, args.header)

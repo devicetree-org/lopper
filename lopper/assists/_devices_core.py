@@ -210,31 +210,69 @@ class DevicesCore:
     # design §6.1.
     _SOC_FACTS_COMPATIBLE = 'openamp,domain-v1,soc-facts'
 
+    # Relative subpath, under each include/search directory, where the
+    # loader looks for SoC-facts YAML. Mirrors the shipped layout
+    # (`lopper/data/socs/`) so a user replicating the structure in
+    # their own repo and passing it via `-I` is found without dropping
+    # files into the lopper tree.
+    _SOC_SUBPATH = os.path.join('data', 'socs')
+
     @classmethod
-    def _load_soc_data(cls, compatibles):
+    def _soc_search_dirs(cls, extra_dirs=()):
+        """Ordered list of directories to scan for SoC-facts YAML.
+
+        Each `-I` / `--input-dirs` (and `LOPPER_INPUT_DIRS`) directory
+        contributes `<dir>/data/socs` — the same relative layout as the
+        shipped tree — and is searched *before* the built-in
+        `lopper/data/socs/`, so a user file can override or extend the
+        shipped set without editing the repo. Only existing directories
+        are returned, de-duplicated, order preserved.
+        """
+        candidates = [os.path.join(d, cls._SOC_SUBPATH) for d in extra_dirs]
+        candidates.append(_SOC_DATA_DIR)
+        seen = set()
+        dirs = []
+        for d in candidates:
+            if not d or not os.path.isdir(d):
+                continue
+            real = os.path.realpath(d)
+            if real in seen:
+                continue
+            seen.add(real)
+            dirs.append(d)
+        return dirs
+
+    @classmethod
+    def _load_soc_data(cls, compatibles, extra_dirs=()):
         """Find a SoC-facts domain block whose `matches:` list contains
         any of `compatibles` (the input tree's root compatible list).
 
-        Each YAML file under `lopper/data/socs/` follows the unified
+        Each YAML file under a SoC search directory follows the unified
         schema (§6.1) — a `domains:` map at the root, with named child
         blocks discriminated by `compatible:`. We pick the first block
         whose compatible is `openamp,domain-v1,soc-facts` AND whose
-        `matches:` overlaps with the caller's compatibles.
+        `matches:` overlaps with the caller's compatibles, scanning the
+        user's `-I` directories (at `<dir>/data/socs/`) before the
+        built-in `lopper/data/socs/`.
 
         Args:
             compatibles (list[str]): Root-level compatible strings, in
                                      priority order (most-specific first).
+            extra_dirs (iterable[str]): Include/search directories (from
+                                     `-I` etc.) to look under, before the
+                                     built-in location.
 
         Returns:
             dict: The matched soc-facts block (with its pm_devices etc.),
                   or {} if no file matches.
         """
-        key = tuple(compatibles)
+        soc_dirs = cls._soc_search_dirs(tuple(extra_dirs))
+        key = (tuple(compatibles), tuple(soc_dirs))
         if key in cls._soc_data_cache:
             return cls._soc_data_cache[key]
 
         result = {}
-        if not os.path.isdir(_SOC_DATA_DIR):
+        if not soc_dirs:
             cls._soc_data_cache[key] = result
             return result
 
@@ -246,27 +284,30 @@ class DevicesCore:
             cls._soc_data_cache[key] = result
             return result
 
-        for path in sorted(glob.glob(os.path.join(_SOC_DATA_DIR, '*.yaml'))):
-            try:
-                with open(path) as fh:
-                    data = yaml_loader.load(fh) or {}
-            except Exception as e:
-                lopper.log._warning(f"Failed to parse SoC data {path}: {e}")
-                continue
+        for soc_dir in soc_dirs:
+            for path in sorted(glob.glob(os.path.join(soc_dir, '*.yaml'))):
+                try:
+                    with open(path) as fh:
+                        data = yaml_loader.load(fh) or {}
+                except Exception as e:
+                    lopper.log._warning(f"Failed to parse SoC data {path}: {e}")
+                    continue
 
-            domains = data.get('domains') or {}
-            for block_name, block in domains.items():
-                if not isinstance(block, dict):
-                    continue
-                if block.get('compatible') != cls._SOC_FACTS_COMPATIBLE:
-                    continue
-                matches = block.get('matches') or []
-                if any(c in matches for c in compatibles):
-                    hits = [c for c in compatibles if c in matches]
-                    lopper.log._info(
-                        f"SoC data: matched {os.path.basename(path)} "
-                        f"domain '{block_name}' on {hits}")
-                    result = block
+                domains = data.get('domains') or {}
+                for block_name, block in domains.items():
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get('compatible') != cls._SOC_FACTS_COMPATIBLE:
+                        continue
+                    matches = block.get('matches') or []
+                    if any(c in matches for c in compatibles):
+                        hits = [c for c in compatibles if c in matches]
+                        lopper.log._info(
+                            f"SoC data: matched {path} "
+                            f"domain '{block_name}' on {hits}")
+                        result = block
+                        break
+                if result:
                     break
             if result:
                 break
@@ -306,7 +347,12 @@ class DevicesCore:
             compatibles.append(identity['board'])
         if 'soc_family' in identity and identity['soc_family'] not in compatibles:
             compatibles.append(identity['soc_family'])
-        self._soc_data = self._load_soc_data(compatibles) if compatibles else {}
+        # Honor lopper's include/search dirs (-I / --input-dirs /
+        # LOPPER_INPUT_DIRS) so a user can keep SoC-facts files in their
+        # own repo under <dir>/data/socs/ rather than editing the tree.
+        soc_search_dirs = getattr(self.sdt, 'load_paths', None) or []
+        self._soc_data = (self._load_soc_data(compatibles, soc_search_dirs)
+                          if compatibles else {})
         self._pm_devices = (self._soc_data.get('pm_devices') or {})
 
     def _build_active_patterns(self):
