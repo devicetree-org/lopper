@@ -558,12 +558,12 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
     if sdt.tree[tgt_node].propval('xlnx,ddrmc5-i2c-master') != ['']:
         val = sdt.tree[tgt_node].propval('xlnx,ddrmc5-i2c-master', list)[0]
         plat.buf(f"\n/* DDRMC5_I2C_MASTER */")
-        plat.buf(f'\n#define DDRMC5_I2C_MASTER "{val}"\n')
+        plat.buf(f'\n#define DDRMC5_I2C_MASTER {val}\n')
 
     if sdt.tree[tgt_node].propval('xlnx,ddrmc5-debug-elf') != ['']:
         val = sdt.tree[tgt_node].propval('xlnx,ddrmc5-debug-elf', list)[0]
         plat.buf(f"\n/* DDRMC5_DEBUG_ELF */")
-        plat.buf(f'\n#define DDRMC5_DEBUG_ELF "{val}"\n')
+        plat.buf(f'\n#define DDRMC5_DEBUG_ELF {val}\n')
 
     #Define for XSEM_CFRSCAN_EN
     if sdt.tree[tgt_node].propval('semmem-scan') != ['']:
