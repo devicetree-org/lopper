@@ -248,6 +248,15 @@ clones the maintainer provides via `LINUX_SRC`/`LINUX_XLNX_SRC`/
 `ZEPHYR_SRC` env vars — no network access. Refresh is a deliberate
 human action. The mechanism follows U-Boot's `dts/upstream/` pattern.
 
+The manifest is **board-scoped**: a `sources:` block holds the
+per-upstream metadata (env var, tag pattern, target subdir) and a
+`boards:` block lists each board's files grouped by source. Files
+shared across boards (e.g. the Versal `versal.dtsi` used by both
+vck190 and vek280) are listed under each board; `sync-upstream.py`
+flattens `board × source → file set` and dedups, so a shared file
+is copied once and one `.source` provenance record is written per
+upstream tree. The Versal material is pinned at `xilinx-v2026.1`.
+
 #### Per-SoC silicon-facts (`lopper/data/socs/<family>.yaml`)
 
 This directory holds one YAML per SoC family, each carrying the
@@ -341,6 +350,12 @@ syntax differs — not hex — still needs a tweak to the regex in
 `_build_define_re`.)
 
 #### Per-board configurations (`lopper/data/boards/<board>/`)
+
+Three reference boards ship today: **versal-vck190** (Versal AI
+Core) and **versal-vek280** (Versal AI Edge) — two generations of
+the same A72-APU + R5-RPU silicon, sharing the Versal SoC dtsi,
+the Zephyr R5 wrapper, and `versal.yaml` SoC-facts — plus
+**imx8mm-evk** (NXP i.MX 8M Mini, A53 + M4).
 
 Each per-board directory contains the following files:
 
@@ -640,10 +655,14 @@ same principles apply throughout):
 ### Adding a new board
 
 1. Vendor the relevant upstream Linux DT into
-   `lopper/data/upstream/linux/` (or the appropriate vendor fork
-   subdirectory) by adding it to `scripts/upstream-manifest.yaml`
-   and re-running `scripts/sync-upstream.py`.
-2. (Optional) Vendor the upstream Zephyr DT similarly.
+   `lopper/data/upstream/` by adding a `boards.<your-board>` entry
+   to `scripts/upstream-manifest.yaml` (list the board's files under
+   the source they come from — reuse the existing `sources:`
+   metadata), then re-run `scripts/sync-upstream.py`. Shared files
+   (e.g. a SoC `.dtsi` another board already vendors) can be listed
+   again under your board; the sync dedups them.
+2. (Optional) Vendor the upstream Zephyr DT similarly, under the
+   board's `zephyr:` file list.
 3. Create `lopper/data/boards/<your-board>/` with:
    - `source.yaml` declaring `linux:` and (optionally) `zephyr:`
      blocks pointing at the vendored files. Copy from a reference

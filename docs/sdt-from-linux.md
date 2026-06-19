@@ -120,8 +120,11 @@ sudo apt-get install -y cpp device-tree-compiler   # Debian/Ubuntu
 ### Build the SDT for a shipped board
 
 ```bash
-# AMD Versal VCK190
+# AMD Versal VCK190 (AI Core)
 scripts/build-board-sdt.py --board versal-vck190 -o /tmp/vck190-build
+
+# AMD Versal VEK280 (AI Edge)
+scripts/build-board-sdt.py --board versal-vek280 -o /tmp/vek280-build
 
 # NXP i.MX 8M Mini EVK
 scripts/build-board-sdt.py --board imx8mm-evk -o /tmp/imx8mm-build
@@ -156,7 +159,7 @@ dtc -I dts -O dtb -o /tmp/vck190-build/sdt.dtb \
     /tmp/vck190-build/versal-vck190-system-top.dts
 ```
 
-Goldens for both reference boards live at
+Goldens for each reference board live at
 `lopper/data/boards/<board>/expected-sdt.dts` and
 `lopper/data/boards/<board>/expected-non-linux.yaml`. To
 confirm the script reproduces them:
@@ -329,11 +332,15 @@ the same script. Single command:
 ./run_pytest.sh tests/test_sdt_from_linux.py
 ```
 
-Eight tests run end-to-end: `compose_non_linux`, `assemble_sdt`,
-and `sdt_domains` for each reference board, plus
-`sdt_devices` enumeration on the Versal SDT and a Linux-only SDT
-case for the `--no-zephyr` degradation path. All diff against
-committed goldens — drift in the pipeline fails the test.
+It runs `compose_non_linux`, `assemble_sdt`, and `sdt_domains` for
+each reference board (VCK190, VEK280, i.MX 8MM), plus `sdt_devices`
+enumeration and a Linux-only `--no-zephyr` degradation case. All
+diff against committed goldens — drift in the pipeline fails the
+test.
+
+`tests/test_sdt_roundtrip.py` goes one step further: it generates
+the SDT, partitions it back into per-OS device trees, and checks the
+slices (see [Per-OS device tree slicing](#per-os-device-tree-slicing)).
 
 ### Driving the stages manually (for reference)
 
@@ -391,6 +398,38 @@ the SDT into one device tree per OS context — one for Linux, one
 for the R5 firmware view, one for Zephyr, etc. Each output is
 dtc-compilable and contains the right reserved-memory carve-outs
 for that OS.
+
+This is the standard Lopper two-step domain flow. First expand the
+partition (and its globs) into the SDT, then run `domain_access`
+once per domain to filter the tree down to that OS's view:
+
+```bash
+# 1. Expand the partition into the SDT (resolve dev: "*" globs
+#    against the device enumeration).
+lopper -f --permissive --enhanced --auto \
+    -i versal-vck190-sdt-devices.yaml \
+    -i versal-vck190-sdt-domains.yaml \
+    versal-vck190-system-top.dts  expanded.dts
+
+# 2. Slice each domain out (paths are the expanded /domains/<...>
+#    node paths; multi-domain trees name them domain@0, domain@1, …).
+lopper -f --enhanced expanded.dts linux.dts \
+    -- domain_access -t /domains/default/domain@0     # APU / Linux
+lopper -f --enhanced expanded.dts rpu.dts \
+    -- domain_access -t /domains/default/domain@1     # RPU
+```
+
+`domain_access` refcounts the target domain's `cpus` and deletes the
+unreferenced `cpus,cluster` nodes, so the Linux slice drops the R5
+cluster (and the `/non_linux_soc` co-processor bus), while the RPU
+slice drops the A72 cluster and the Linux-only peripheral nodes.
+Both slices are dtc-clean. The full `/domains` block is retained in
+each slice by design — a breadcrumb of how the per-OS tree was
+produced.
+
+`tests/test_sdt_roundtrip.py` runs exactly this flow on the VCK190
+SDT and asserts the slices are dtc-clean with the correct cluster
+present and the foreign cluster/bus pruned.
 
 ### Baremetal / RTOS artifacts aligned with the kernel layout
 
@@ -455,8 +494,8 @@ for adding your own. The minimum input set for a new board:
    rpmsg shared regions, etc.). Copy from the closest reference
    board to start.
 
-Once those are in place, the four-stage flow above works
-unchanged with `--board <your-board>`.
+Once those are in place, the pipeline above works unchanged with
+`--board <your-board>`.
 
 ## References
 
@@ -466,8 +505,8 @@ unchanged with `--board <your-board>`.
   from a public PM-ID dt-binding header (a kernel
   `include/dt-bindings/power/<soc>.h` header of `#define PM_DEV_*`
   power-management IDs; see the architecture doc for details)
-- `scripts/upstream-manifest.yaml` — declarative list of files to
-  vendor from each upstream source
+- `scripts/upstream-manifest.yaml` — board-scoped list of files to
+  vendor (`sources:` metadata + per-board `files:` grouped by source)
 - `lopper/data/socs/README.md` — schema for SoC silicon-facts files
 - `lopper/data/boards/<board>/source.yaml` — declarative pipeline
   inputs for one board (header comments document the schema)
@@ -475,4 +514,6 @@ unchanged with `--board <your-board>`.
   integration decisions per board (header comments include
   inline examples)
 - `tests/test_sdt_from_linux.py` — integration tests that exercise
-  the four-stage flow end-to-end on both reference boards
+  the generation flow end-to-end on all three reference boards
+- `tests/test_sdt_roundtrip.py` — round-trip test: generate the SDT,
+  partition it back into per-OS device trees, check the slices
