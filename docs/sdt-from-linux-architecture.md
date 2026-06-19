@@ -483,14 +483,14 @@ saves the user from typing out the obvious split by hand.
 (described under [The user's domains.yaml](#the-users-domainsyaml))
 are **different files**:
 
-| | `sdt-domains.yaml` | the user's `domains.yaml` |
-|---|---|---|
-| Producer | `sdt_domains` assist (regenerated every pipeline run) | hand-edited by the user |
-| Lives where | output directory alongside the SDT | the user's deployment workspace |
-| Authoritative? | No — disposable reference / snapshot | Yes — the file downstream tools consume |
-| Carries integration declarations? | No — only mirrors the SDT's `/reserved-memory` it found | Yes — `no-map` memory entries the user wants injected |
-| Edited by the user? | No — read for ideas, copy fragments into the hand-edited file | Yes — both integration and partition |
-| Survives `git pull` / pipeline re-run? | Regenerated each run | Yes (it lives outside the repo) |
+|                                        | `sdt-domains.yaml`                                            | the user's `domains.yaml`                             |
+|----------------------------------------|---------------------------------------------------------------|-------------------------------------------------------|
+| Producer                               | `sdt_domains` assist (regenerated every pipeline run)         | hand-edited by the user                               |
+| Lives where                            | output directory alongside the SDT                            | the user's deployment workspace                       |
+| Authoritative?                         | No — disposable reference / snapshot                          | Yes — the file downstream tools consume               |
+| Carries integration declarations?      | No — only mirrors the SDT's `/reserved-memory` it found       | Yes — `no-map` memory entries the user wants injected |
+| Edited by the user?                    | No — read for ideas, copy fragments into the hand-edited file | Yes — both integration and partition                  |
+| Survives `git pull` / pipeline re-run? | Regenerated each run                                          | Yes (it lives outside the repo)                       |
 
 The intended workflow: after a pipeline run, read
 `sdt-domains.yaml` to see what the SDT actually contains and how

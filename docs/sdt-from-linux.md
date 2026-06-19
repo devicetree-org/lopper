@@ -193,14 +193,14 @@ default, then copy what you want into your own overlay.
 
 It is a different file from your hand-edited `domains.yaml`:
 
-| | `<board>-sdt-domains.yaml` | your `domains.yaml` |
-|---|---|---|
-| Producer | `sdt_domains` assist (regenerated every run) | hand-edited by you |
-| Lives where | output directory alongside the SDT | your deployment workspace |
-| Authoritative? | No — disposable reference / snapshot | Yes — downstream tools consume this |
-| Carries integration declarations? | No — only mirrors what's in the SDT | Yes — `no-map` memory entries you want injected |
-| Edited? | No — read for ideas, copy fragments out | Yes — both integration and partition |
-| Survives `git pull` / pipeline re-run? | Regenerated each run | Yes (lives outside the repo) |
+|                                        | `<board>-sdt-domains.yaml`                   | your `domains.yaml`                             |
+|----------------------------------------|----------------------------------------------|-------------------------------------------------|
+| Producer                               | `sdt_domains` assist (regenerated every run) | hand-edited by you                              |
+| Lives where                            | output directory alongside the SDT           | your deployment workspace                       |
+| Authoritative?                         | No — disposable reference / snapshot         | Yes — downstream tools consume this             |
+| Carries integration declarations?      | No — only mirrors what's in the SDT          | Yes — `no-map` memory entries you want injected |
+| Edited?                                | No — read for ideas, copy fragments out      | Yes — both integration and partition            |
+| Survives `git pull` / pipeline re-run? | Regenerated each run                         | Yes (lives outside the repo)                    |
 
 The intended workflow: after a pipeline run, read the regenerated
 `sdt-domains.yaml` to see what the SDT contains and how
