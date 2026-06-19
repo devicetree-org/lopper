@@ -109,6 +109,21 @@ content, both consumed by the pipeline:
   them, so the user declares them here and the pipeline injects
   them.
 
+  *Where these facts come from.* They are integration choices, not
+  silicon facts, so they live in the project's co-processor bring-up
+  plan rather than in any one upstream tree. In practice you source
+  them from: the board's OpenAMP / remoteproc integration plan or
+  reference demo (which fixes the firmware load address and the
+  rpmsg ring / shared-memory region — e.g. the addresses in the
+  vendor's `openamp`/`rpmsg` example DTs); the SoC TRM and board
+  memory map (to pick carve-outs that don't collide with the OS's
+  usable DRAM); and, for board-only peripherals, the board
+  schematic / datasheet (for a device the upstream Linux and Zephyr
+  trees simply don't describe). The shipped per-board
+  `domains.yaml` templates encode one known-good set of these
+  choices for the reference boards — a concrete worked example to
+  copy from.
+
 - **Partition intent** — which device / memory / cluster belongs to
   which OS, expressed in the standard domain-block shape (cpus,
   memory, access lists). Consumed by the downstream Lopper
@@ -204,10 +219,12 @@ partition) in that `sdt-domains.yaml` is a machine-derived *output*
 regenerated on every run from the finished SDT.
 
 How you use it: read it to see how `sdt_domains` would split the
-chip by default, then copy the useful bits into your own overlay
-(or use it as the starting point for a brand-new deployment). It is
-never edited in place (regenerated each run), is never the same
-file as your hand-edited `domains.yaml`, and is never consumed by
+chip by default, then copy the useful bits into your own
+`domains.yaml` (the hand-edited overlay you pass with `--domains` —
+"your overlay" and "your `domains.yaml`" are the same file), or use
+it as the starting point for a brand-new deployment. `sdt-domains.yaml`
+itself is never edited in place (it is regenerated on every run), is
+never the same file as your `domains.yaml`, and is never consumed by
 the downstream domain-processing tools — only your `domains.yaml`
 is. See
 [Relationship to the user's `domains.yaml`](#relationship-to-the-users-domainsyaml)
