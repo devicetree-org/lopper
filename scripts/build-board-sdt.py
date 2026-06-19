@@ -44,6 +44,11 @@ Options:
                            only --domains (or nothing) as the source
                            of integration declarations. Diagnostic /
                            bring-your-own-template use.
+    -I, --input-dirs DIR   Lopper include directory, forwarded to
+                           every lopper invocation in the run. Used to
+                           find SoC-facts YAML you keep in your own
+                           repo at <DIR>/data/socs/ (searched before
+                           the shipped lopper/data/socs/). Repeatable.
     -v, --verbose          Print each cpp/dtc/lopper invocation as
                            it runs.
 
@@ -75,6 +80,19 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LOPPER_PY = REPO_ROOT / 'lopper.py'
 BOARDS_ROOT = REPO_ROOT / 'lopper' / 'data' / 'boards'
+
+
+def _inc_args(include_dirs):
+    """Expand a list of include dirs into repeated `-I <dir>` lopper args.
+
+    These reach the assists as `sdt.load_paths`, so e.g. sdt_devices
+    can find SoC-facts YAML the user keeps in their own repo under
+    `<dir>/data/socs/`.
+    """
+    args = []
+    for d in (include_dirs or []):
+        args.extend(['-I', str(d)])
+    return args
 
 
 class PipelineError(RuntimeError):
@@ -144,7 +162,7 @@ def _flatten(block, board_name, label, outdir, verbose):
 
 
 def _run_compose_non_linux(zephyr_flat, linux_flat, board_name, outdir,
-                           overlay_path, no_template, verbose):
+                           overlay_path, no_template, include_dirs, verbose):
     """Invoke lopper.py with the compose_non_linux assist.
 
     Takes the Zephyr DT as the main lopper input; passes the Linux DT
@@ -158,6 +176,7 @@ def _run_compose_non_linux(zephyr_flat, linux_flat, board_name, outdir,
 
     cmd = [sys.executable, str(LOPPER_PY),
            '-O', str(outdir), '--permissive', '-f',
+           *_inc_args(include_dirs),
            str(zephyr_flat), str(lop_main_out),
            '--', 'compose_non_linux',
            '--linux-dt', str(linux_flat),
@@ -183,19 +202,23 @@ def _run_compose_non_linux(zephyr_flat, linux_flat, board_name, outdir,
     return non_linux_yaml
 
 
-def _run_sdt_devices(sdt, board_name, outdir, verbose):
+def _run_sdt_devices(sdt, board_name, outdir, include_dirs, verbose):
     """Enumerate every device in the assembled SDT into a YAML inventory.
 
     Output feeds the glob-driven domains workflow: a user writes a
     domains.yaml with `dev: "*pattern*"` access entries and loads
     sdt-devices.yaml as a parent so the patterns expand against the
     full enumeration.
+
+    Include dirs (-I) reach the SoC-facts loader, so PM-ID decode can
+    use a SoC YAML the user keeps in their own repo.
     """
     devices_yaml = outdir / f'{board_name}-sdt-devices.yaml'
     lop_main_out = outdir / f'{board_name}-sdt-devices-lopout.dts'
 
     cmd = [sys.executable, str(LOPPER_PY),
            '-O', str(outdir), '--permissive', '-f',
+           *_inc_args(include_dirs),
            str(sdt), str(lop_main_out),
            '--', 'sdt_devices',
            '-o', str(devices_yaml)]
@@ -213,7 +236,7 @@ def _run_sdt_devices(sdt, board_name, outdir, verbose):
     return devices_yaml
 
 
-def _run_sdt_domains(sdt, board_name, outdir, verbose):
+def _run_sdt_domains(sdt, board_name, outdir, include_dirs, verbose):
     """Produce a starter domains.yaml from the assembled SDT.
 
     Walks the SDT for cpus,cluster nodes and partitions devices /
@@ -226,6 +249,7 @@ def _run_sdt_domains(sdt, board_name, outdir, verbose):
 
     cmd = [sys.executable, str(LOPPER_PY),
            '-O', str(outdir), '--permissive', '-f',
+           *_inc_args(include_dirs),
            str(sdt), str(lop_main_out),
            '--', 'sdt_domains',
            '-o', str(domains_yaml)]
@@ -244,7 +268,8 @@ def _run_sdt_domains(sdt, board_name, outdir, verbose):
     return domains_yaml
 
 
-def _run_assemble(linux_flat, non_linux_yaml, board_name, outdir, verbose):
+def _run_assemble(linux_flat, non_linux_yaml, board_name, outdir,
+                  include_dirs, verbose):
     """Invoke lopper.py with the assemble_sdt assist.
 
     assemble_sdt ignores the main sdt input, but lopper.py still
@@ -256,6 +281,7 @@ def _run_assemble(linux_flat, non_linux_yaml, board_name, outdir, verbose):
 
     cmd = [sys.executable, str(LOPPER_PY),
            '-O', str(outdir), '--permissive', '-f',
+           *_inc_args(include_dirs),
            str(linux_flat), str(lop_main_out),
            '--', 'assemble_sdt',
            '--linux-dt', str(linux_flat),
@@ -283,7 +309,7 @@ def _have_tools():
 
 
 def build_board(board_name, output_dir, no_zephyr=False, no_template=False,
-                domains_overlay=None, verbose=False):
+                domains_overlay=None, include_dirs=None, verbose=False):
     """Run the four-stage pipeline end-to-end for one board.
 
     Returns a dict of artifact paths the script produced.
@@ -328,21 +354,23 @@ def build_board(board_name, output_dir, no_zephyr=False, no_template=False,
         non_linux_yaml = _run_compose_non_linux(
             zephyr_flat, linux_flat, board_name, output_dir,
             overlay_path=domains_overlay, no_template=no_template,
-            verbose=verbose)
+            include_dirs=include_dirs, verbose=verbose)
         artifacts['non_linux_yaml'] = non_linux_yaml
 
     # Stage 4: assemble_sdt.
     sdt = _run_assemble(linux_flat, non_linux_yaml, board_name, output_dir,
-                        verbose=verbose)
+                        include_dirs=include_dirs, verbose=verbose)
     artifacts['system_top_dts'] = sdt
 
     # Stage 5: post-SDT enumeration and partitioning starters. These
     # are independent of one another and only consume the assembled
     # SDT, but it's convenient to produce them in the same run.
     artifacts['sdt_devices_yaml'] = _run_sdt_devices(
-        sdt, board_name, output_dir, verbose=verbose)
+        sdt, board_name, output_dir, include_dirs=include_dirs,
+        verbose=verbose)
     artifacts['sdt_domains_yaml'] = _run_sdt_domains(
-        sdt, board_name, output_dir, verbose=verbose)
+        sdt, board_name, output_dir, include_dirs=include_dirs,
+        verbose=verbose)
 
     return artifacts
 
@@ -366,6 +394,13 @@ def main():
                    help="skip the shipped per-board template; use only "
                         "--domains (or nothing) as the source of "
                         "integration declarations")
+    p.add_argument('-I', '--input-dirs', action='append', default=[],
+                   metavar='DIR',
+                   help="lopper include directory, forwarded to every "
+                        "lopper invocation in the run. Used to find "
+                        "SoC-facts YAML you keep in your own repo at "
+                        "<DIR>/data/socs/ (searched before the shipped "
+                        "lopper/data/socs/). Repeatable.")
     p.add_argument('-v', '--verbose', action='store_true',
                    help="print each cpp/dtc/lopper invocation")
     args = p.parse_args()
@@ -379,11 +414,16 @@ def main():
     domains_overlay = (str(Path(args.domains).resolve())
                        if args.domains else None)
 
+    # Likewise resolve include dirs against the user's cwd before they
+    # reach the repo-root-cwd subprocess.
+    include_dirs = [str(Path(d).resolve()) for d in args.input_dirs]
+
     try:
         artifacts = build_board(args.board, output_dir,
                                 no_zephyr=args.no_zephyr,
                                 no_template=args.no_template,
                                 domains_overlay=domains_overlay,
+                                include_dirs=include_dirs,
                                 verbose=args.verbose)
     except PipelineError as e:
         print(f"error: {e}", file=sys.stderr)

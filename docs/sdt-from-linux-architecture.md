@@ -280,8 +280,17 @@ lopper -I my-repo ... -- sdt_devices -o devices.yaml
 ```
 
 picks up `my-soc.yaml` without your ever editing the lopper tree.
-This mirrors the `domains.yaml` template+overlay story: the shipped
-files are a starting point, your repo carries the customisations.
+The canonical runner forwards `-I` too, so the same works through
+the whole pipeline:
+
+```bash
+scripts/build-board-sdt.py --board my-board -I my-repo -o /tmp/build
+```
+
+`build-board-sdt.py` resolves each `-I` dir against your current
+directory and passes it to every lopper invocation in the run. This
+mirrors the `domains.yaml` template+overlay story: the shipped files
+are a starting point, your repo carries the customisations.
 
 A starter file can be bootstrapped from a PM-ID dt-binding header via
 `scripts/extract-pm-ids.py`; the remainder (cluster templates, TCM

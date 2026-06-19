@@ -100,6 +100,7 @@ Useful flags:
 | `--no-zephyr` | Skip the Zephyr-side flatten and `compose_non_linux` stage. Produces a Linux-only SDT (the Linux DT with `cpus,cluster` wrapping and no non-Linux overlay). |
 | `--domains PATH` | User's per-deployment domains.yaml overlay, deep-merged on top of the shipped per-board template (overlay wins by `dev` key; new entries added). See [Bringing your own domains.yaml](#bringing-your-own-domainsyaml). |
 | `--no-template` | Skip the shipped per-board template; use only `--domains` (or nothing) as the integration source. Diagnostic / bring-your-own-template use. |
+| `-I`, `--input-dirs DIR` | Lopper include directory, forwarded to every lopper invocation in the run. Used to find SoC-facts YAML you keep in your own repo at `<DIR>/data/socs/` (searched before the shipped `lopper/data/socs/`). Repeatable. See [Keeping SoC files in your own repo](#keeping-soc-files-in-your-own-repo). |
 | `-v`, `--verbose` | Print each cpp/dtc/lopper invocation as it runs. |
 
 ### Verify the result
@@ -242,6 +243,38 @@ the command line; without the `-i <board>-sdt-devices.yaml` input
 there is nothing for the patterns to expand against. (This is
 distinct from `sdt-domains.yaml`, which is a candidate partition,
 not a glob target.)
+
+### Keeping SoC files in your own repo
+
+The per-SoC silicon-facts files (PM device IDs, cluster shapes,
+TCM/OCM map — see [Concepts](#concepts)) normally ship under
+`lopper/data/socs/`. You are not limited to that in-tree directory:
+pass `-I <dir>` to `build-board-sdt.py` and the pipeline also looks
+for SoC YAML at the **same relative layout** under your directory,
+i.e. `<dir>/data/socs/*.yaml`. Your directory is searched **before**
+the shipped one, so a file you provide can override a shipped SoC
+(same `matches:`) or add a brand-new one — without ever editing the
+lopper tree:
+
+```bash
+# my-soc-repo/data/socs/my-soc.yaml describes a new/!customised SoC
+scripts/build-board-sdt.py --board my-board \
+    -I my-soc-repo \
+    -o /tmp/my-build
+```
+
+`-I` is repeatable, takes a relative or absolute path (resolved
+against your current directory), and is forwarded to every lopper
+invocation in the run. The enforced `data/socs/` subpath means
+files can't be just *anywhere* — they must mirror the shipped
+layout. This parallels the `domains.yaml` template+overlay story:
+shipped files are a starting point, your repo carries the
+customisations.
+
+To bootstrap a starter SoC YAML for a new family, see
+`scripts/extract-pm-ids.py` (it reads a public PM-ID dt-binding
+header; `--prefix` / `--prefix-regex` handle vendor conventions the
+built-in set doesn't cover).
 
 ### Running the integration tests
 
