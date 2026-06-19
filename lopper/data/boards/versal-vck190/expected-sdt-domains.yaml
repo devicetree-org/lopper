@@ -7,7 +7,7 @@ domains:
         compatible: openamp,domain-v1
         cpus:
           - cluster: cpus_a72
-            cpumask: 0x3
+            cpumask: '0x3'
             mode:
               el: 0x3
               secure: false
@@ -23,7 +23,7 @@ domains:
         compatible: openamp,domain-v1
         cpus:
           - cluster: cpus_r5
-            cpumask: 0x1
+            cpumask: '0x1'
             mode:
               secure: false
         memory:

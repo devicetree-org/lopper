@@ -331,7 +331,7 @@ def _build_linux_domain(sdt, cluster_node, reserved_mem):
         'compatible': 'openamp,domain-v1',
         'cpus': [{
             'cluster': _cluster_label(cluster_node),
-            'cpumask': HexInt(_cpumask(cluster_node)),
+            'cpumask': f'0x{_cpumask(cluster_node):x}',
             'mode': {'el': HexInt(0x3), 'secure': False},
         }],
         'memory': [_memory_entry(m) for m in _enumerate_root_memory(sdt)],
@@ -376,7 +376,7 @@ def _build_non_linux_domain(sdt, cluster_node, cluster_arch, cluster_source,
         'compatible': 'openamp,domain-v1',
         'cpus': [{
             'cluster': _cluster_label(cluster_node),
-            'cpumask': HexInt(_cpumask(cluster_node)),
+            'cpumask': f'0x{_cpumask(cluster_node):x}',
             'mode': {'secure': False},
         }],
         'memory': memory_entries,

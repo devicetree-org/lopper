@@ -363,7 +363,7 @@ def test_sdt_domains_versal_vck190(tmp_path):
 
     apu = root['APU']
     assert apu['cpus'][0]['cluster'] == 'cpus_a72'
-    assert apu['cpus'][0]['cpumask'] == 0x3
+    assert apu['cpus'][0]['cpumask'] == '0x3'
     # Linux starter uses a single wildcard glob for access.
     assert apu['access'] == [{'dev': '*'}]
     # Linux memory is the Linux DT's /memory@0 (untagged), not the
