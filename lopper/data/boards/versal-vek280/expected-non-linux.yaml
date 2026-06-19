@@ -1,0 +1,54 @@
+non_linux:
+  compatible: openamp,domain-v1,non-linux
+  source_summary:
+    clusters: 1
+    memory: 2
+    devices: 2
+  clusters:
+    cpus:
+      source: zephyr
+      properties:
+        '#address-cells': 0x1
+        '#size-cells': 0x0
+      cpus:
+        cpu@0:
+          source: zephyr
+          properties:
+            device_type: cpu
+            compatible: arm,cortex-r5f
+            reg: 0x0
+  memory:
+    memory@fffc0000:
+      source: zephyr
+      properties:
+        compatible: zephyr,memory-region
+        start: 0xfffc0000
+        size: 0x40000
+        zephyr,memory-region: OCM
+        status: disabled
+    rpu0_reserved:
+      source: domain
+      properties:
+        start: 0x3e000000
+        size: 0x4000000
+        no-map: true
+  devices:
+    pmc_gpio_bank@3:
+      source: zephyr
+      properties:
+        compatible: xlnx,ps-gpio-bank
+        reg: 0x3
+        gpio-controller: true
+        '#gpio-cells': 0x2
+        ngpios: 0x20
+        status: disabled
+    lpd_gpio_bank@3:
+      source: zephyr
+      properties:
+        compatible: xlnx,ps-gpio-bank
+        reg: 0x3
+        gpio-controller: true
+        '#gpio-cells': 0x2
+        ngpios: 0x20
+        status: disabled
+  board: versal-vek280

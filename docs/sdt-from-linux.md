@@ -12,8 +12,9 @@ consumes to produce per-OS device trees, baremetal/RTOS BSPs,
 OpenAMP / rpmsg configuration, hypervisor configs, FPGA overlays,
 and the like.
 
-The pipeline ships with two reference boards exercised end-to-end
-in CI: **AMD Versal VCK190** and **NXP i.MX 8M Mini EVK**.
+The pipeline ships with three reference boards exercised end-to-end
+in CI: **AMD Versal VCK190** (AI Core), **AMD Versal VEK280** (AI
+Edge — the newer Versal generation), and **NXP i.MX 8M Mini EVK**.
 
 ## Concepts
 

@@ -1,0 +1,22 @@
+/*
+ * Copyright (c) 2026 Advanced Micro Devices, Inc.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Zephyr-side wrapper for the sdt-from-linux pipeline (VEK280).
+ *
+ * Identical to the VCK190 wrapper — the Versal R5 (RPU) silicon is
+ * the same across Versal boards, so the upstream Zephyr Versal RPU
+ * SoC dtsi (amd/versal.dtsi + arm/xilinx/versal_rpu.dtsi) provides
+ * the same R5 cluster, TCM, OCM, and RPU-side peripheral view. We
+ * ship a per-board wrapper (rather than reusing the upstream board
+ * file directly) to keep the input declarations under our version
+ * control and consistent with the other reference boards.
+ */
+
+/dts-v1/;
+#include <arm/xilinx/versal_rpu.dtsi>
+
+/ {
+	model = "Zephyr Versal RPU view (Cortex-R5)";
+	compatible = "xlnx,versal-rpu", "xlnx,versal";
+};

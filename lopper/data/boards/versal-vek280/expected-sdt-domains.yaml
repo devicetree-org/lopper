@@ -1,0 +1,45 @@
+domains:
+  default:
+    compatible: openamp,domain-v1
+    id: 0
+    domains:
+      APU:
+        compatible: openamp,domain-v1
+        cpus:
+          - cluster: cpus_a72
+            cpumask: 0x3
+            mode:
+              el: 0x3
+              secure: false
+        memory:
+          - dev: memory@0
+            start: 0x0
+            size: 0x80000000
+          - dev: linux,cma
+        access:
+          - dev: '*'
+        id: 0
+      RPU:
+        compatible: openamp,domain-v1
+        cpus:
+          - cluster: cpus_r5
+            cpumask: 0x1
+            mode:
+              secure: false
+        memory:
+          - dev: memory@fffc0000
+            start: 0xfffc0000
+            size: 0x40000
+            source: zephyr
+          - dev: rpu0_reserved@3e000000
+            start: 0x3e000000
+            size: 0x4000000
+            source: domain
+        access:
+          - dev: pmc_gpio_bank@3
+            flags: {}
+            source: zephyr
+          - dev: lpd_gpio_bank@3
+            flags: {}
+            source: zephyr
+        id: 1

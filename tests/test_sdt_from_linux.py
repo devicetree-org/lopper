@@ -229,6 +229,72 @@ def test_assemble_versal_vck190_sdt(tmp_path):
                    label='assemble_sdt')
 
 
+def test_assemble_versal_vek280_sdt(tmp_path):
+    """VEK280 (Versal AI Edge) — the newer Versal reference. Same
+    A72-APU + R5-RPU pipeline as VCK190 on a different board DTS,
+    exercised end-to-end against xilinx-v2026.1 sources.
+    """
+    artifacts = _run_pipeline('versal-vek280', tmp_path)
+    sdt = artifacts['system_top_dts']
+
+    assert _dtc_parses(sdt), f"dtc failed to parse {sdt}"
+    text = sdt.read_text()
+
+    assert 'xlnx,versal-vek280-revB' in text
+    assert 'cpus_a72: cpus' in text, "A72 cluster label missing"
+    assert 'cpus_r5: cpus-r5@0' in text, "R5 cluster wrapper missing"
+    assert 'compatible = "cpus,cluster";' in text
+    assert 'rpu0_reserved' in text
+    assert 'lopper-source = "zephyr"' in text
+
+    _assert_golden(sdt,
+                   BOARDS_ROOT / 'versal-vek280' / 'expected-sdt.dts',
+                   label='assemble_sdt')
+
+
+def test_compose_non_linux_versal_vek280(tmp_path):
+    """VEK280 R5-side extraction mirrors VCK190 (shared Versal R5
+    silicon): an R5 cluster, the OCM region, and the domains.yaml
+    rpu0_reserved carve-out.
+    """
+    artifacts = _run_pipeline('versal-vek280', tmp_path)
+    out = artifacts['non_linux_yaml']
+
+    nl = yaml.safe_load(out.read_text())['non_linux']
+    assert nl['board'] == 'versal-vek280'
+    r5 = next(iter(nl['clusters'].values()))
+    compats = [c['properties']['compatible']
+               for c in (r5.get('cpus') or {}).values()]
+    assert any('cortex-r5' in c for c in compats), compats
+    rpu = nl['memory'].get('rpu0_reserved')
+    assert rpu and rpu['source'] == 'domain'
+
+    _assert_golden(out,
+                   BOARDS_ROOT / 'versal-vek280' / 'expected-non-linux.yaml',
+                   label='compose_non_linux')
+
+
+def test_sdt_domains_versal_vek280(tmp_path):
+    """VEK280 starter partition: APU gets the Linux CMA pool, RPU gets
+    the R5 cluster + its reserved-memory (the linux,cma ownership fix
+    applies here too).
+    """
+    artifacts = _run_pipeline('versal-vek280', tmp_path)
+    out = artifacts['sdt_domains_yaml']
+
+    root = yaml.safe_load(out.read_text())['domains']['default']['domains']
+    assert 'APU' in root and 'RPU' in root
+    apu_mem = [m['dev'] for m in root['APU']['memory']]
+    rpu_mem = [m['dev'] for m in root['RPU']['memory']]
+    assert 'linux,cma' in apu_mem, f"linux,cma should be in APU: {apu_mem}"
+    assert 'linux,cma' not in rpu_mem, f"linux,cma should not be in RPU: {rpu_mem}"
+    assert any('rpu0_reserved' in n for n in rpu_mem)
+
+    _assert_golden(out,
+                   BOARDS_ROOT / 'versal-vek280' / 'expected-sdt-domains.yaml',
+                   label='sdt_domains')
+
+
 def test_assemble_imx8mm_evk_sdt(tmp_path):
     """End-to-end: vendored upstream NXP Linux+Zephyr → system-top.dts.
 

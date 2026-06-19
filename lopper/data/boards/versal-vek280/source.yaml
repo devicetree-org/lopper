@@ -1,0 +1,54 @@
+# Versal VEK280 EVK — reference board configuration for the
+# sdt-from-linux pipeline.
+#
+# Declares which upstream Linux device tree feeds this target and
+# which directories to put on the cpp include path for flattening.
+# Paths are repo-relative; the pipeline resolves them against the
+# lopper repo root at runtime.
+#
+# This file is INPUT to the pipeline (compose_non_linux + assemble_sdt);
+# it never contains integration declarations or partitioning intent —
+# those are in domains.yaml (user-supplied, integration + partition).
+# Golden outputs the integration tests diff against live in expected-*
+# files alongside this one.
+#
+# VEK280 is the Versal AI Edge counterpart to the VCK190 (AI Core).
+# Same A72-APU + R5-RPU silicon, so the Zephyr R5 side and the SoC
+# silicon-facts are shared with VCK190; only the Linux board DTS
+# differs. revB needs no board-specific includes beyond the shared
+# Versal SoC dtsi chain.
+
+board:
+  name: versal-vek280
+  description: AMD Versal AI Edge VEK280 evaluation board (Cortex-A72 cluster)
+  soc_family: xlnx,versal
+  expected_root_compatible:
+    - xlnx,versal-vek280-revB
+    - xlnx,versal
+
+linux:
+  input: lopper/data/upstream/linux-xlnx/arch/arm64/boot/dts/xilinx/versal-vek280-revB.dts
+
+  include_paths:
+    # Versal-specific .dtsi + the xlnx-versal-* headers that
+    # versal-clk.dtsi pulls in via bare includes (they live here as of
+    # xilinx-v2026.1).
+    - lopper/data/upstream/linux-xlnx/arch/arm64/boot/dts/xilinx
+    # Standard dt-binding headers (gpio.h, etc.).
+    - lopper/data/upstream/linux-xlnx/include
+    - lopper/data/upstream/linux/include
+
+zephyr:
+  # Shared with VCK190 — the Versal R5 silicon is identical. The
+  # wrapper includes the upstream Zephyr Versal RPU SoC dtsi and adds
+  # minimum root metadata.
+  input: lopper/data/boards/versal-vek280/zephyr-input.dts
+
+  include_paths:
+    - lopper/data/boards/zephyr-shims
+    - lopper/data/boards/versal-vek280
+    - lopper/data/upstream/zephyr/dts
+    - lopper/data/upstream/zephyr/dts/arm
+    - lopper/data/upstream/zephyr/dts/vendor
+    - lopper/data/upstream/zephyr/dts/common
+    - lopper/data/upstream/zephyr/include
