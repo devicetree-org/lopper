@@ -75,6 +75,7 @@ domains:
     - dev: spi@ff050000
       pm_node: PM_DEV_SPI_1
       status: disabled
+    - dev: rng@f1230000
     - dev: sysmon@f1270000
       label: sysmonf1270000
     - dev: sysmon@109270000
@@ -107,6 +108,26 @@ domains:
       pm_node: PM_DEV_SWDT_LPD
       status: disabled
     - dev: edac@f2014050
+      status: disabled
+    - dev: fpd-funnel@f0b20000
+      status: disabled
+    - dev: fpd-etf@f0b30000
+      status: disabled
+    - dev: replicator@f0b40000
+      status: disabled
+    - dev: etr@f0b50000
+      status: disabled
+    - dev: funnel@f0c20000
+      status: disabled
+    - dev: etf@f0c30000
+      status: disabled
+    - dev: cpu0-debug@f0d00000
+      status: disabled
+    - dev: etm@f0d30000
+      status: disabled
+    - dev: cpu1-debug@f0d40000
+      status: disabled
+    - dev: etm@f0d70000
       status: disabled
     - dev: pmc_gpio_bank@3
       status: disabled
@@ -157,6 +178,7 @@ domains:
     - dev: memory@fffc0000
       size: 0x40000
       start: 0xfffc0000
+    - dev: linux,cma
     - dev: rpu0_reserved@3e000000
       size: 0x4000000
       start: 0x3e000000

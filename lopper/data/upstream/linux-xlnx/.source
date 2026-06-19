@@ -1,6 +1,6 @@
 repo:       Xilinx vendor kernel fork (Xilinx/linux-xlnx)
 source_dir: /home/bruce/git/linux-xlnx
-ref:        xlnx_rebase_v6.12_2025.2
-commit:     d25fdf9fee1c8707551f590540e46b3686b90099
+ref:        xilinx-v2026.1
+commit:     3128e0f044012bb39c8e24551d72e4a72e0808f0
 manifest:   scripts/upstream-manifest.yaml
-files:      8/8 copied
+files:      9/9 copied

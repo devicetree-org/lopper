@@ -163,25 +163,52 @@ def _domain_name_from_cluster(node):
 
 # --- memory / access enumeration ---------------------------------------
 
-_SHARED_AUGMENT_NAME_RE = re.compile(r'(rpmsg|shmem|vdev|ipc_share)',
-                                     re.IGNORECASE)
+_SHARED_CARVEOUT_RE = re.compile(r'(rpmsg|shmem|vdev|ipc_share)',
+                                 re.IGNORECASE)
+_CLUSTER_CARVEOUT_RE = re.compile(r'(rpu\d*|r5|m4|m7|mcu)[_\-]?',
+                                  re.IGNORECASE)
+_LINUX_CARVEOUT_PROPS = ('linux,cma-default', 'linux,dma-default')
 
 
-def _carveout_target_arch(name):
-    """Heuristic: which cluster arch does this reserved-memory carveout
-    belong to?
+def _node_has_prop(node, name):
+    return name in (getattr(node, '__props__', {}) or {})
 
-    Returns a short token like 'r5' or 'm4', or None if shared / unknown.
+
+def _carveout_owner(node):
+    """Classify a /reserved-memory carve-out by its likely owner.
+
+    Returns one of:
+      'linux'         — belongs to the Linux/APU domain
+      'shared'        — belongs to every co-processor domain (OpenAMP IPC)
+      '<arch>' token  — belongs to one cluster ('r5', 'm4', …)
+
+    Heuristics, in priority order:
+      1. Linux-owned pools — a `linux,*` node name, a `linux,cma-default`
+         / `linux,dma-default` flag, or a reusable `shared-dma-pool`
+         (the Linux CMA convention).
+      2. Shared OpenAMP regions — rpmsg / shmem / vdev / ipc_share.
+      3. Cluster-specific — name prefixed rpu* / m4 / m7 / mcu.
+      4. Anything else defaults to 'linux': the SDT base is the Linux
+         DT, so an unrecognised carve-out is far more likely Linux's
+         than a co-processor's. Co-processor carve-outs are the named
+         exceptions (rules 2–3), not the default.
     """
-    if _SHARED_AUGMENT_NAME_RE.search(name):
-        return None  # shared across non-Linux clusters
-    m = re.match(r'(rpu\d*|r5|m4|m7|mcu)[_\-]?', name, re.IGNORECASE)
-    if not m:
-        return None
-    token = m.group(1).lower()
-    if token.startswith('rpu'):
-        return 'r5'
-    return token
+    name = node.name or ''
+    if name.startswith('linux,') or \
+            any(_node_has_prop(node, p) for p in _LINUX_CARVEOUT_PROPS):
+        return 'linux'
+    compat = node.propval('compatible')
+    if isinstance(compat, list):
+        compat = compat[0] if compat else ''
+    if compat == 'shared-dma-pool' and _node_has_prop(node, 'reusable'):
+        return 'linux'
+    if _SHARED_CARVEOUT_RE.search(name):
+        return 'shared'
+    m = _CLUSTER_CARVEOUT_RE.match(name)
+    if m:
+        token = m.group(1).lower()
+        return 'r5' if token.startswith('rpu') else token
+    return 'linux'
 
 
 def _enumerate_root_memory(sdt, want_source=None):
@@ -293,7 +320,7 @@ def _access_entry(node):
 
 # --- domain construction ----------------------------------------------
 
-def _build_linux_domain(sdt, cluster_node):
+def _build_linux_domain(sdt, cluster_node, reserved_mem):
     """Domain block for the Linux-side cluster.
 
     Linux owns the bulk of the peripheral tree, so a single `*` glob
@@ -310,6 +337,11 @@ def _build_linux_domain(sdt, cluster_node):
         'memory': [_memory_entry(m) for m in _enumerate_root_memory(sdt)],
         'access': [{'dev': '*'}],
     }
+    # Linux-owned reserved-memory carve-outs (CMA/DMA pools, etc.)
+    # belong here, not in a co-processor domain.
+    for m in reserved_mem:
+        if _carveout_owner(m) == 'linux':
+            domain['memory'].append(_memory_entry(m))
     return domain
 
 
@@ -329,12 +361,13 @@ def _build_non_linux_domain(sdt, cluster_node, cluster_arch, cluster_source,
     #    (e.g. M4 DTCM / OCRAM, R5 OCM).
     for m in _enumerate_root_memory(sdt, want_source=cluster_source):
         memory_entries.append(_memory_entry(m))
-    # 2. Reserved-memory carve-outs matched to this cluster by name
-    #    heuristic (rpu*/m4*/...); shared carve-outs (rpmsg/shmem)
-    #    land in every non-Linux domain.
+    # 2. Reserved-memory carve-outs owned by this cluster (name
+    #    heuristic rpu*/m4*/...) plus shared OpenAMP regions
+    #    (rpmsg/shmem/vdev) that every co-processor domain maps.
+    #    Linux-owned pools (CMA etc.) are excluded — they go to APU.
     for m in reserved_mem:
-        target = _carveout_target_arch(m.name)
-        if target is None or target == cluster_arch:
+        owner = _carveout_owner(m)
+        if owner == cluster_arch or owner == 'shared':
             memory_entries.append(_memory_entry(m, source_hint='domain'))
 
     access_entries = [_access_entry(child) for child in bus_children]
@@ -378,7 +411,7 @@ def _build_domains_payload(sdt):
         name = candidate
 
         if not src:
-            domain = _build_linux_domain(sdt, cluster)
+            domain = _build_linux_domain(sdt, cluster, reserved_mem)
         else:
             domain = _build_non_linux_domain(
                 sdt, cluster, arch, src, reserved_mem, bus_children)

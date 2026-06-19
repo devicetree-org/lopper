@@ -18,7 +18,8 @@
                 #size-cells = <0x0>;
                 compatible = "cpus,cluster";
 
-                cpu@0 {
+                cpu0: cpu@0 {
+                        phandle = <0x20>;
                         compatible = "arm,cortex-a72";
                         device_type = "cpu";
                         enable-method = "psci";
@@ -35,7 +36,8 @@
                         clocks = <&clock_controller 0x4d>;
                 };
 
-                cpu@1 {
+                cpu1: cpu@1 {
+                        phandle = <0x22>;
                         compatible = "arm,cortex-a72";
                         device_type = "cpu";
                         enable-method = "psci";
@@ -220,7 +222,7 @@
                         interrupts = <0x1 0x9 0x4>;
 
                         msi-controller@f9020000 {
-                                phandle = <0x11>;
+                                phandle = <0x12>;
                                 compatible = "arm,gic-v3-its";
                                 status = "disabled";
                                 msi-controller;
@@ -546,7 +548,8 @@
                         reg = <0x0 0xf12a0000 0x0 0x100>;
                         interrupt-names = "alarm", "sec";
                         interrupts = <0x0 0x8e 0x4 0x0 0x8f 0x4>;
-                        calibration = <0x7fff>;
+                        clocks = <&rtc_clk>;
+                        clock-names = "rtc";
                         power-domains = <&versal_firmware 0x18224034>;
                 };
 
@@ -670,6 +673,11 @@
                         clocks = <&clock_controller 0x5f>,
                          <&clock_controller 0x52>;
                         power-domains = <&versal_firmware 0x1822401c>;
+                };
+
+                rng@f1230000 {
+                        compatible = "xlnx,versal-trng";
+                        reg = <0x0 0xf1230000 0x0 0x1000>;
                 };
 
                 sysmonf1270000: sysmon@f1270000 {
@@ -802,13 +810,13 @@
                         interrupts = <0x0 0x48 0x4>;
                         bus-range = <0x0 0xff>;
                         ranges = <0x2000000 0x0 0xe0010000 0x0 0xe0010000 0x0 0x10000000 0x43000000 0x80 0x0 0x80 0x0 0x0 0x80000000>;
-                        msi-map = <0x0 0x11 0x0 0x10000>;
-                        reg = <0x0 0xfca10000 0x0 0x1000 0x6 0x0 0x0 0x1000000 0x0 0xfca00000 0x0 0x10000>;
+                        msi-map = <0x0 0x12 0x0 0x10000>;
+                        reg = <0x0 0xfca10000 0x0 0x1000 0x6 0x0 0x0 0x10000000 0x0 0xfca00000 0x0 0x10000>;
                         reg-names = "cpm_slcr", "cfg", "cpm_crx";
                         reset-gpios = <&gpiof1020000 0x26 0x1>;
 
                         interrupt_controller: interrupt-controller {
-                                phandle = <0x10>;
+                                phandle = <0x11>;
                                 #address-cells = <0x0>;
                                 #interrupt-cells = <0x1>;
                                 interrupt-controller;
@@ -830,12 +838,12 @@
                         interrupts = <0x0 0x48 0x4>;
                         bus-range = <0x0 0xff>;
                         ranges = <0x2000000 0x0 0xe0000000 0x0 0xe0000000 0x0 0x10000000 0x43000000 0x80 0x0 0x80 0x0 0x0 0x80000000>;
-                        msi-map = <0x0 0x11 0x0 0x10000>;
-                        reg = <0x0 0xfcdd0000 0x0 0x1000 0x6 0x0 0x0 0x1000000 0x0 0xfce20000 0x0 0x10000 0x0 0xfcdc0000 0x0 0x10000>;
+                        msi-map = <0x0 0x12 0x0 0x10000>;
+                        reg = <0x0 0xfcdd0000 0x0 0x1000 0x6 0x0 0x0 0x10000000 0x0 0xfce20000 0x0 0x10000 0x0 0xfcdc0000 0x0 0x10000>;
                         reg-names = "cpm_slcr", "cfg", "cpm_csr", "cpm_crx";
 
                         interrupt_controller_1: interrupt-controller {
-                                phandle = <0x12>;
+                                phandle = <0x13>;
                                 #address-cells = <0x0>;
                                 #interrupt-cells = <0x1>;
                                 interrupt-controller;
@@ -865,10 +873,255 @@
                         status = "disabled";
                         reg = <0x0 0xf2014050 0x0 0xc4>;
                 };
+
+                fpd-funnel@f0b20000 {
+                        compatible = "arm,coresight-dynamic-funnel", "arm,primecell";
+                        reg = <0x0 0xf0b20000 0x0 0x1000>;
+                        clock-names = "apb_pclk";
+                        status = "disabled";
+                        clocks = <&clock_controller 0x52>;
+
+                        in-ports {
+                                #address-cells = <0x1>;
+                                #size-cells = <0x0>;
+
+                                port@1 {
+                                        reg = <0x1>;
+
+                                        endpoint_1_2_3_4: endpoint {
+                                                phandle = <0x1f>;
+                                                remote-endpoint = <&endpoint_1_2_3_4_5_6_7>;
+                                        };
+                                };
+                        };
+
+                        out-ports {
+
+                                port {
+
+                                        endpoint: endpoint {
+                                                phandle = <0x16>;
+                                                remote-endpoint = <&endpoint_1_2_3_4_5_6_7_8>;
+                                        };
+                                };
+                        };
+                };
+
+                fpd-etf@f0b30000 {
+                        compatible = "arm,coresight-tmc", "arm,primecell";
+                        reg = <0x0 0xf0b30000 0x0 0x1000>;
+                        clock-names = "apb_pclk";
+                        status = "disabled";
+                        clocks = <&clock_controller 0x52>;
+
+                        in-ports {
+
+                                port {
+
+                                        endpoint_1_2_3_4_5_6_7_8: endpoint {
+                                                phandle = <0x15>;
+                                                remote-endpoint = <&endpoint>;
+                                        };
+                                };
+                        };
+
+                        out-ports {
+
+                                port {
+
+                                        endpoint_1: endpoint {
+                                                phandle = <0x18>;
+                                                remote-endpoint = <&endpoint_1_2_3_4_5_6_7_8_9>;
+                                        };
+                                };
+                        };
+                };
+
+                replicator@f0b40000 {
+                        compatible = "arm,coresight-dynamic-replicator", "arm,primecell";
+                        reg = <0x0 0xf0b40000 0x0 0x1000>;
+                        clock-names = "apb_pclk";
+                        status = "disabled";
+                        clocks = <&clock_controller 0x52>;
+
+                        in-ports {
+
+                                port {
+
+                                        endpoint_1_2_3_4_5_6_7_8_9: endpoint {
+                                                phandle = <0x17>;
+                                                remote-endpoint = <&endpoint_1>;
+                                        };
+                                };
+                        };
+
+                        out-ports {
+                                #address-cells = <0x1>;
+                                #size-cells = <0x0>;
+
+                                port@0 {
+                                        reg = <0x0>;
+
+                                        endpoint_1_2: endpoint {
+                                                phandle = <0x1a>;
+                                                remote-endpoint = <&endpoint_1_2_3_4_5_6_7_8_9_10>;
+                                        };
+                                };
+                        };
+                };
+
+                etr@f0b50000 {
+                        compatible = "arm,coresight-tmc", "arm,primecell";
+                        reg = <0x0 0xf0b50000 0x0 0x1000>;
+                        clock-names = "apb_pclk";
+                        status = "disabled";
+                        clocks = <&clock_controller 0x52>;
+
+                        in-ports {
+
+                                port {
+
+                                        endpoint_1_2_3_4_5_6_7_8_9_10: endpoint {
+                                                phandle = <0x19>;
+                                                remote-endpoint = <&endpoint_1_2>;
+                                        };
+                                };
+                        };
+                };
+
+                funnel@f0c20000 {
+                        compatible = "arm,coresight-dynamic-funnel", "arm,primecell";
+                        reg = <0x0 0xf0c20000 0x0 0x1000>;
+                        clock-names = "apb_pclk";
+                        status = "disabled";
+                        clocks = <&clock_controller 0x52>;
+
+                        in-ports {
+                                #address-cells = <0x1>;
+                                #size-cells = <0x0>;
+
+                                port@0 {
+                                        reg = <0x0>;
+
+                                        endpoint_1_2_3_4_5: endpoint {
+                                                phandle = <0x21>;
+                                                remote-endpoint = <&endpoint_1_2_3_4_5_6_7_8_9_10_11>;
+                                        };
+                                };
+
+                                port@1 {
+                                        reg = <0x1>;
+
+                                        endpoint_1_2_3_4_5_6: endpoint {
+                                                phandle = <0x23>;
+                                                remote-endpoint = <&endpoint_1_2_3_4_5_6_7_8_9_10_11_12>;
+                                        };
+                                };
+                        };
+
+                        out-ports {
+
+                                port {
+
+                                        endpoint_1_2_3: endpoint {
+                                                phandle = <0x1e>;
+                                                remote-endpoint = <&endpoint_1_2_3_4_5_6_7_8_9_10_11_12_13>;
+                                        };
+                                };
+                        };
+                };
+
+                etf@f0c30000 {
+                        compatible = "arm,coresight-tmc", "arm,primecell";
+                        reg = <0x0 0xf0c30000 0x0 0x1000>;
+                        clock-names = "apb_pclk";
+                        status = "disabled";
+                        clocks = <&clock_controller 0x52>;
+
+                        in-ports {
+
+                                port {
+
+                                        endpoint_1_2_3_4_5_6_7_8_9_10_11_12_13: endpoint {
+                                                phandle = <0x1d>;
+                                                remote-endpoint = <&endpoint_1_2_3>;
+                                        };
+                                };
+                        };
+
+                        out-ports {
+
+                                port {
+
+                                        endpoint_1_2_3_4_5_6_7: endpoint {
+                                                phandle = <0x14>;
+                                                remote-endpoint = <&endpoint_1_2_3_4>;
+                                        };
+                                };
+                        };
+                };
+
+                cpu0-debug@f0d00000 {
+                        compatible = "arm,coresight-cpu-debug", "arm,primecell";
+                        reg = <0x0 0xf0d00000 0x0 0x1000>;
+                        clock-names = "apb_pclk";
+                        cpu = <&cpu0>;
+                        status = "disabled";
+                        clocks = <&clock_controller 0x52>;
+                };
+
+                etm@f0d30000 {
+                        compatible = "arm,coresight-etm4x", "arm,primecell";
+                        reg = <0x0 0xf0d30000 0x0 0x1000>;
+                        clock-names = "apb_pclk";
+                        cpu = <&cpu0>;
+                        status = "disabled";
+                        clocks = <&clock_controller 0x52>;
+
+                        out-ports {
+
+                                port {
+
+                                        endpoint_1_2_3_4_5_6_7_8_9_10_11: endpoint {
+                                                phandle = <0x1b>;
+                                                remote-endpoint = <&endpoint_1_2_3_4_5>;
+                                        };
+                                };
+                        };
+                };
+
+                cpu1-debug@f0d40000 {
+                        compatible = "arm,coresight-cpu-debug", "arm,primecell";
+                        reg = <0x0 0xf0d40000 0x0 0x1000>;
+                        clock-names = "apb_pclk";
+                        cpu = <&cpu1>;
+                        status = "disabled";
+                        clocks = <&clock_controller 0x52>;
+                };
+
+                etm@f0d70000 {
+                        compatible = "arm,coresight-etm4x", "arm,primecell";
+                        reg = <0x0 0xf0d70000 0x0 0x1000>;
+                        clock-names = "apb_pclk";
+                        cpu = <&cpu1>;
+                        status = "disabled";
+                        clocks = <&clock_controller 0x52>;
+
+                        out-ports {
+
+                                port {
+
+                                        endpoint_1_2_3_4_5_6_7_8_9_10_11_12: endpoint {
+                                                phandle = <0x1c>;
+                                                remote-endpoint = <&endpoint_1_2_3_4_5_6>;
+                                        };
+                                };
+                        };
+                };
         };
 
         pl_alt_ref: pl-alt-ref {
-                phandle = <0x14>;
+                phandle = <0x25>;
                 bootph-all;
                 compatible = "fixed-clock";
                 #clock-cells = <0x0>;
@@ -877,12 +1130,21 @@
         };
 
         ref: ref {
-                phandle = <0x13>;
+                phandle = <0x24>;
                 bootph-all;
                 compatible = "fixed-clock";
                 #clock-cells = <0x0>;
                 clock-frequency = <0x1fca055>;
                 clock-output-names = "ref_clk";
+        };
+
+        rtc_clk: rtc-clk {
+                phandle = <0xf>;
+                bootph-all;
+                compatible = "fixed-clock";
+                #clock-cells = <0x0>;
+                clock-frequency = <0x8000>;
+                clock-output-names = "rtc_clk";
         };
 
         can0_clk: can0-clk {
@@ -930,7 +1192,7 @@
                         };
 
                         reset_controller: reset-controller {
-                                phandle = <0xf>;
+                                phandle = <0x10>;
                                 compatible = "xlnx,versal-reset";
                                 #reset-cells = <0x1>;
                         };
@@ -1009,6 +1271,27 @@
                 stdout-path = "serial0:115200";
         };
 
+        reserved-memory {
+                #address-cells = <0x2>;
+                #size-cells = <0x2>;
+                ranges;
+
+                linux,cma {
+                        compatible = "shared-dma-pool";
+                        reusable;
+                        size = <0x0 0x10000000>;
+                        alignment = <0x0 0x10000000>;
+                        alloc-ranges = <0x0 0x0 0x0 0x80000000>;
+                        linux,cma-default;
+                };
+
+                rpu0_reserved@3e000000 {
+                        reg = <0x0 0x3e000000 0x0 0x4000000>;
+                        no-map;
+                        lopper-source = "domain";
+                };
+        };
+
         aliases {
                 serial0 = "/axi/serial@ff000000";
                 serial2 = "/dcc";
@@ -1043,18 +1326,6 @@
                 zephyr,memory-region = "OCM";
                 status = "disabled";
                 lopper-source = "zephyr";
-        };
-
-        reserved-memory {
-                #address-cells = <0x2>;
-                #size-cells = <0x2>;
-                ranges;
-
-                rpu0_reserved@3e000000 {
-                        reg = <0x0 0x3e000000 0x0 0x4000000>;
-                        no-map;
-                        lopper-source = "domain";
-                };
         };
 
         non_linux_soc: non_linux_soc {
