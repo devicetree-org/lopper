@@ -420,7 +420,7 @@ def create_fpga_node(platform, config, firmware_name, zynq_platforms, versal_pla
 
     Args:
         platform: Target platform (e.g., cortexa53-zynqmp, cortexa72-versal)
-        config: Configuration type (full, dfx, external-fpga-config)
+        config: Configuration type (full, segmented, dfx, external-fpga-config)
         firmware_name: Property containing firmware name value
         zynq_platforms: List of Zynq/ZynqMP platform identifiers
         versal_platforms: List of Versal/VersalNet platform identifiers
@@ -441,10 +441,10 @@ def create_fpga_node(platform, config, firmware_name, zynq_platforms, versal_pla
     fpga_node = LopperNode(name=fpga_node_name)
 
     # Configure fpga node based on platform and configuration:
-    # - "full" config: Uses firmware-name for all platforms
+    # - "full"/"segmented" config: Uses firmware-name for all platforms
     # - "dfx" config: Uses firmware-name for ZynqMP, external-fpga-config for Versal
     # - "external-fpga-config": Always uses external-fpga-config property
-    if config == "full":
+    if config in ("full", "segmented"):
         fpga_node["firmware-name"] = firmware_name.value
     elif config == "dfx":
         if platform in zynq_platforms:
@@ -511,7 +511,8 @@ def move_nodes_to_fpga(new_amba_node, fpga_node, node_collections, platform, con
     - misc_clk nodes (all platforms)
     - fpga_pr nodes (all platforms)
 
-    Conditionally moves (ZynqMP/Zynq platforms with "full" or "dfx" config only):
+    Conditionally moves (ZynqMP/Zynq platforms with non external-fpga-config,
+    i.e. "full", "segmented" or "dfx" config only):
     - clocking nodes
     - afi nodes
 
@@ -520,7 +521,7 @@ def move_nodes_to_fpga(new_amba_node, fpga_node, node_collections, platform, con
         fpga_node: The fpga node to add nodes to
         node_collections: Dictionary containing categorized node lists
         platform: Target platform identifier
-        config: Configuration type (full, dfx, external-fpga-config)
+        config: Configuration type (full, segmented, dfx, external-fpga-config)
         zynq_platforms: List of Zynq/ZynqMP platform identifiers
 
     Returns:
@@ -538,7 +539,7 @@ def move_nodes_to_fpga(new_amba_node, fpga_node, node_collections, platform, con
             new_amba_node = new_amba_node - pr_node
             fpga_node = fpga_node + pr_node
 
-    # For ZynqMP/Zynq platforms with "full" or "dfx" config, move AFI and clocking to fpga node
+    # For ZynqMP/Zynq platforms with "full", "segmented" or "dfx" config, move AFI and clocking to fpga node
     if (platform in zynq_platforms) and config != "external-fpga-config":
         if node_collections['clocking']:
             for clk_node in node_collections['clocking']:
