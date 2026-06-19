@@ -17,16 +17,59 @@ in CI: **AMD Versal VCK190** and **NXP i.MX 8M Mini EVK**.
 
 ## Concepts
 
-| Term | Meaning |
-|---|---|
-| **Linux DT** | The board's upstream Linux kernel device tree. Describes Linux's view: the cluster Linux runs on and the peripherals reachable from it. |
-| **Zephyr DT** | The board's upstream Zephyr RTOS device tree (when available). Describes the co-processor's view: M-core / R-core CPU, TCM/OCRAM, and the other side of the IPC mailbox. |
-| **SoC silicon-facts YAML** | A per-SoC file shipped under `lopper/data/socs/`. Public silicon facts (PM device IDs, cluster shapes, TCM/OCM map, IPI topology). Sourced from kernel headers and the public TRM. One per silicon family. |
-| **Board domains.yaml** | A hand-written `openamp,domain-v1` file under `lopper/data/boards/<board>/domains.yaml`, matching the existing system device tree domains.yaml conventions. Two roles in one file: (1) *integration declarations* — facts Linux and Zephyr don't carry that need to become first-class SDT nodes: reserved-memory carve-outs (memory entries with `no-map: true`) for co-processor firmware / rpmsg regions, and any board-only peripherals (access entries carrying their own properties) absent from both upstream trees; `assemble_sdt` injects each into the SDT; (2) *partition intent* — which device / memory / cluster belongs to which OS, consumed by downstream domain-processing tools after the SDT exists. |
-| **`compose_non_linux`** | Lopper assist that walks the Zephyr DT (and the per-board domains.yaml), captures every node not already present at the same address in the Linux DT, and emits an `openamp,domain-v1,non-linux` YAML carrying the full property set for each kept node. Phandle refs are encoded as canonical `"&label"` strings so they re-resolve against the merged tree at assembly time. |
-| **`assemble_sdt`** | Lopper assist that loads the Linux DT as the SDT base, marks `/cpus` with the `cpus,cluster` compatible the SDT spec uses, then overlays the non-linux YAML's clusters / memory / devices on top, producing the `system-top.dts`. |
-| **`sdt_devices`** | Existing Lopper assist run *post-SDT* to enumerate every device in the assembled SDT into a YAML inventory. This becomes the vocabulary a user-written `domains.yaml` can glob against. |
-| **`sdt_domains`** | Lopper assist that walks the assembled SDT, partitions devices / memory across one starter domain per `cpus,cluster` (using the `lopper-source` tags assemble_sdt attached), and emits a `sdt-domains.yaml` for the user to edit. |
+### Inputs
+
+- **Linux DT** — the board's upstream Linux kernel device tree.
+  Describes Linux's view: the cluster Linux runs on and the
+  peripherals reachable from it.
+
+- **Zephyr DT** — the board's upstream Zephyr RTOS device tree (when
+  available). Describes the co-processor's view: M-core / R-core CPU,
+  TCM/OCRAM, and the other side of the IPC mailbox.
+
+- **SoC silicon-facts YAML** — a per-SoC file shipped under
+  `lopper/data/socs/` (one per silicon family). Public silicon facts
+  — PM device IDs, cluster shapes, TCM/OCM map, IPI topology —
+  sourced from kernel headers and the public TRM.
+
+- **Board domains.yaml** — a hand-written `openamp,domain-v1` file
+  under `lopper/data/boards/<board>/domains.yaml`, matching the
+  existing system device tree `domains.yaml` conventions. It carries
+  two kinds of content:
+    - *Integration declarations* — facts Linux and Zephyr don't
+      carry that must become first-class SDT nodes: reserved-memory
+      carve-outs (memory entries with `no-map: true`) for
+      co-processor firmware / rpmsg regions, and board-only
+      peripherals (access entries with their own properties) absent
+      from both upstream trees. `assemble_sdt` injects each into the
+      SDT.
+    - *Partition intent* — which device / memory / cluster belongs to
+      which OS. Consumed by the downstream domain-processing tools
+      after the SDT exists.
+
+### Pipeline assists
+
+- **`compose_non_linux`** — walks the Zephyr DT (and the per-board
+  `domains.yaml`), captures every node not already present at the
+  same address in the Linux DT, and emits an
+  `openamp,domain-v1,non-linux` YAML carrying the full property set
+  for each kept node. Phandle refs are encoded as canonical
+  `"&label"` strings so they re-resolve against the merged tree at
+  assembly time.
+
+- **`assemble_sdt`** — loads the Linux DT as the SDT base, marks
+  `/cpus` with the `cpus,cluster` compatible the SDT spec uses, then
+  overlays the non-linux YAML's clusters / memory / devices on top —
+  producing the `system-top.dts`.
+
+- **`sdt_devices`** — run *post-SDT* to enumerate every device in the
+  assembled SDT into a YAML inventory. This becomes the vocabulary a
+  user-written `domains.yaml` can glob against.
+
+- **`sdt_domains`** — walks the assembled SDT and partitions devices
+  / memory across one starter domain per `cpus,cluster` (using the
+  `lopper-source` tags `assemble_sdt` attached), emitting a
+  `sdt-domains.yaml` for the user to edit.
 
 ```
    Linux DT       ────────────────────────────────────────────────┐
