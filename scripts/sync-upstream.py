@@ -186,6 +186,46 @@ def load_manifest():
         return yaml.load(fh)
 
 
+def assemble_sources(manifest):
+    """Flatten the board-scoped manifest into per-source sync units.
+
+    The manifest lists files per board, grouped by source. Sync,
+    however, operates per source (one target_subdir, one .source
+    provenance record). So we take the union of every board's files
+    for each source — a file shared by multiple boards is copied once.
+
+    Returns a list of source dicts (name, env_var, description,
+    tag_pattern, target_subdir, files), in manifest source order.
+    """
+    sources_meta = manifest.get('sources') or {}
+    boards = manifest.get('boards') or {}
+
+    per_source_files = {name: [] for name in sources_meta}
+    seen = {name: set() for name in sources_meta}
+    for bname, bdef in boards.items():
+        files_by_source = (bdef or {}).get('files') or {}
+        for sname, flist in files_by_source.items():
+            if sname not in sources_meta:
+                sys.exit(f"error: board {bname!r} references unknown "
+                         f"source {sname!r} (not in manifest 'sources:')")
+            for f in (flist or []):
+                if f not in seen[sname]:
+                    seen[sname].add(f)
+                    per_source_files[sname].append(f)
+
+    result = []
+    for name, meta in sources_meta.items():
+        result.append({
+            'name': name,
+            'env_var': meta['env_var'],
+            'description': meta.get('description', name),
+            'tag_pattern': meta.get('tag_pattern'),
+            'target_subdir': meta['target_subdir'],
+            'files': sorted(per_source_files[name]),
+        })
+    return result
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -196,7 +236,7 @@ def main():
     args = p.parse_args()
 
     manifest = load_manifest()
-    sources = manifest.get('sources') or []
+    sources = assemble_sources(manifest)
 
     if args.only:
         sources = [s for s in sources if s['name'] == args.only]

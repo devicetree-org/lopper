@@ -1,88 +1,146 @@
 # Upstream sync manifest
 #
-# Declares which files lopper/data/upstream/<source>/ mirrors from
-# upstream repos. Consumed by scripts/sync-upstream.py.
+# Declares which upstream files lopper/data/upstream/<source>/ mirrors,
+# scoped by board. Consumed by scripts/sync-upstream.py.
 #
-# Adding a new file: append to the appropriate source's `files:` list,
-# rerun sync-upstream.py with the right SRC env var pointed at a fresh
-# checkout, commit the result.
+# Structure:
+#   sources:  upstream-repo metadata (env var, tag pattern, target dir).
+#             One entry per upstream tree; no file lists here.
+#   boards:   per-board file lists, grouped by which source each file
+#             comes from. Files shared by several boards (e.g. the
+#             Versal versal.dtsi used by both vck190 and vek280) are
+#             listed under each board that needs them — the sync
+#             deduplicates per source, so a shared file is copied once.
 #
-# Adding a new upstream source: add a top-level entry with `env_var:`,
-# `tag_pattern:`, `target_subdir:` and `files:`.
+# Adding a file to a board: append it under the right
+# `boards.<board>.files.<source>` list.
+#
+# Adding a board: add a `boards.<name>` entry listing its files per
+# source. Reuse the existing `sources:` metadata.
+#
+# Adding an upstream source: add a `sources.<name>` entry with
+# `env_var:`, `tag_pattern:`, `target_subdir:` (and optional
+# `description:`), then reference it from boards.
+#
+# Note on granularity: sync operates per *source* (it wipes and
+# repopulates lopper/data/upstream/<target_subdir>/ with the union of
+# every board's files for that source, and records one `.source`
+# provenance file per source). There is intentionally no per-board
+# sync — provenance is tracked per upstream tree, not per board.
 
 sources:
 
-  - name: linux
+  linux:
     env_var: LINUX_SRC
     description: Mainline Linux kernel (torvalds/linux)
     # Restrict to stable release tags; refuse arbitrary branch tips.
     tag_pattern: "^v[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
     target_subdir: linux
-    files:
-      # dt-binding headers needed for cpp preprocessing of upstream DTSes
-      - include/dt-bindings/clock/imx8mm-clock.h
-      - include/dt-bindings/gpio/gpio.h
-      - include/dt-bindings/input/input.h
-      - include/dt-bindings/input/linux-event-codes.h
-      - include/dt-bindings/interrupt-controller/arm-gic.h
-      - include/dt-bindings/interrupt-controller/irq.h
-      - include/dt-bindings/phy/phy-imx8-pcie.h
-      - include/dt-bindings/power/imx8mm-power.h
-      - include/dt-bindings/reset/imx8mq-reset.h
-      - include/dt-bindings/thermal/thermal.h
-      - include/dt-bindings/usb/pd.h
-      # Per-target DTSes (NXP i.MX 8M Mini reference board)
-      - arch/arm64/boot/dts/freescale/imx8mm.dtsi
-      - arch/arm64/boot/dts/freescale/imx8mm-evk.dts
-      - arch/arm64/boot/dts/freescale/imx8mm-evk.dtsi
-      - arch/arm64/boot/dts/freescale/imx8mm-pinfunc.h
 
-  - name: linux-xlnx
+  linux-xlnx:
     env_var: LINUX_XLNX_SRC
     description: Xilinx vendor kernel fork (Xilinx/linux-xlnx)
-    # Xilinx uses xlnx_rebase_v6.X.X tag naming
-    tag_pattern: "^(xlnx_rebase_v|v)[0-9]+\\..*$"
+    # Xilinx uses xlnx_rebase_v6.X.X and xilinx-vYYYY.N tag naming
+    tag_pattern: "^(xlnx_rebase_v|xilinx-v|v)[0-9]+\\..*$"
     target_subdir: linux-xlnx
-    files:
-      # Versal board / SoC DTSes
-      - arch/arm64/boot/dts/xilinx/versal-vck190-revA.dts
-      - arch/arm64/boot/dts/xilinx/versal-vmk180-revA.dts
-      - arch/arm64/boot/dts/xilinx/versal.dtsi
-      - arch/arm64/boot/dts/xilinx/versal-clk.dtsi
-      # Versal clock/PM/reset binding headers — these used to live under
-      # arch/.../xilinx/ but moved into include/dt-bindings/ as Xilinx
-      # support went upstream (linux-xlnx tracks that move).
-      - include/dt-bindings/clock/xlnx-versal-clk.h
-      - include/dt-bindings/power/xlnx-versal-power.h
-      - include/dt-bindings/power/xlnx-versal-regnode.h
-      - include/dt-bindings/reset/xlnx-versal-resets.h
 
-  - name: zephyr
+  zephyr:
     env_var: ZEPHYR_SRC
     description: Zephyr RTOS (zephyrproject-rtos/zephyr) — LTS or release tag
     tag_pattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+(-rc[0-9]+)?$"
     target_subdir: zephyr
+
+boards:
+
+  versal-vck190:
+    description: AMD Versal AI Core VCK190 evaluation board
     files:
-      # Co-processor SoC DTSes — Zephyr reorganised dts/arm/nxp/ into
-      # per-family subdirs (imx/, imxrt/, lpc/, …) around v3.x; the i.MX
-      # M4 dtsi moved with it.
-      - dts/arm/nxp/imx/nxp_imx8m_m4.dtsi
-      - dts/arm/nxp/imx/nxp_imx8mm_m4.dtsi   # i.MX 8MM-specific overlay (pinctrl compatible)
-      - dts/arm/xilinx/versal_rpu.dtsi
-      - dts/vendor/amd/versal.dtsi
-      # ARM CPU profile dtsi files included by every co-processor SoC DT
-      - dts/arm/armv7-m.dtsi
-      - dts/arm/armv7-r.dtsi
-      # Common Zephyr DT helpers
-      - dts/common/freq.h
-      - dts/common/mem.h
-      - dts/common/skeleton.dtsi   # base / { ... } template included by armv7-{m,r}.dtsi
-      # Zephyr's own dt-binding headers (separate tree from Linux's)
-      - include/zephyr/dt-bindings/clock/imx_ccm.h
-      - include/zephyr/dt-bindings/gpio/gpio.h
-      - include/zephyr/dt-bindings/rdc/imx_rdc.h
-      - include/zephyr/dt-bindings/interrupt-controller/arm-gic.h
-      # Per-target co-processor board files
-      - boards/nxp/imx8mm_evk/imx8mm_evk_mimx8mm6_m4.dts
-      - boards/nxp/imx8mm_evk/imx8mm_evk-pinctrl.dtsi
-      - boards/amd/versal_rpu/versal_rpu.dts
+      linux-xlnx:
+        # Board DTS + the Versal SoC dtsi chain it pulls in.
+        - arch/arm64/boot/dts/xilinx/versal-vck190-revA.dts
+        - arch/arm64/boot/dts/xilinx/versal-vmk180-revA.dts   # vck190 #includes this
+        - arch/arm64/boot/dts/xilinx/versal.dtsi
+        - arch/arm64/boot/dts/xilinx/versal-clk.dtsi
+        # Versal clock/PM/reset binding headers. As of xilinx-v2026.1
+        # these live beside the DTS under arch/.../xilinx/ and are
+        # pulled in with bare `#include "xlnx-versal-*.h"` from
+        # versal-clk.dtsi, so they must be vendored into the same
+        # directory as the dtsi.
+        - arch/arm64/boot/dts/xilinx/xlnx-versal-power.h
+        - arch/arm64/boot/dts/xilinx/xlnx-versal-regnode.h
+        - arch/arm64/boot/dts/xilinx/xlnx-versal-clk.h
+        - arch/arm64/boot/dts/xilinx/xlnx-versal-resets.h
+      zephyr:
+        # R5 (RPU) side: the Versal Zephyr SoC dtsi + board wrapper,
+        # shared by every Versal board's co-processor view.
+        - dts/arm/xilinx/versal_rpu.dtsi
+        - dts/vendor/amd/versal.dtsi
+        - dts/arm/armv7-r.dtsi
+        - dts/common/freq.h
+        - dts/common/mem.h
+        - dts/common/skeleton.dtsi
+        - include/zephyr/dt-bindings/gpio/gpio.h
+        - include/zephyr/dt-bindings/interrupt-controller/arm-gic.h
+        - boards/amd/versal_rpu/versal_rpu.dts
+
+  versal-vek280:
+    description: AMD Versal AI Edge VEK280 evaluation board
+    files:
+      linux-xlnx:
+        # revB needs no board-specific includes beyond the shared
+        # Versal SoC dtsi chain (same files as vck190 — deduped on sync).
+        - arch/arm64/boot/dts/xilinx/versal-vek280-revB.dts
+        - arch/arm64/boot/dts/xilinx/versal.dtsi
+        - arch/arm64/boot/dts/xilinx/versal-clk.dtsi
+        - arch/arm64/boot/dts/xilinx/xlnx-versal-power.h
+        - arch/arm64/boot/dts/xilinx/xlnx-versal-regnode.h
+        - arch/arm64/boot/dts/xilinx/xlnx-versal-clk.h
+        - arch/arm64/boot/dts/xilinx/xlnx-versal-resets.h
+      zephyr:
+        # Same Versal R5 SoC dtsi as vck190 (the silicon is shared).
+        - dts/arm/xilinx/versal_rpu.dtsi
+        - dts/vendor/amd/versal.dtsi
+        - dts/arm/armv7-r.dtsi
+        - dts/common/freq.h
+        - dts/common/mem.h
+        - dts/common/skeleton.dtsi
+        - include/zephyr/dt-bindings/gpio/gpio.h
+        - include/zephyr/dt-bindings/interrupt-controller/arm-gic.h
+        - boards/amd/versal_rpu/versal_rpu.dts
+
+  imx8mm-evk:
+    description: NXP i.MX 8M Mini EVK
+    files:
+      linux:
+        # dt-binding headers needed for cpp preprocessing of the DTSes
+        - include/dt-bindings/clock/imx8mm-clock.h
+        - include/dt-bindings/gpio/gpio.h
+        - include/dt-bindings/input/input.h
+        - include/dt-bindings/input/linux-event-codes.h
+        - include/dt-bindings/interrupt-controller/arm-gic.h
+        - include/dt-bindings/interrupt-controller/irq.h
+        - include/dt-bindings/phy/phy-imx8-pcie.h
+        - include/dt-bindings/power/imx8mm-power.h
+        - include/dt-bindings/reset/imx8mq-reset.h
+        - include/dt-bindings/thermal/thermal.h
+        - include/dt-bindings/usb/pd.h
+        # Board DTS + SoC dtsi
+        - arch/arm64/boot/dts/freescale/imx8mm.dtsi
+        - arch/arm64/boot/dts/freescale/imx8mm-evk.dts
+        - arch/arm64/boot/dts/freescale/imx8mm-evk.dtsi
+        - arch/arm64/boot/dts/freescale/imx8mm-pinfunc.h
+      zephyr:
+        # M4 co-processor SoC dtsi (Zephyr reorganised dts/arm/nxp/
+        # into per-family subdirs around v3.x; the M4 dtsi moved with it).
+        - dts/arm/nxp/imx/nxp_imx8m_m4.dtsi
+        - dts/arm/nxp/imx/nxp_imx8mm_m4.dtsi   # i.MX 8MM-specific overlay
+        - dts/arm/armv7-m.dtsi
+        - dts/common/freq.h
+        - dts/common/mem.h
+        - dts/common/skeleton.dtsi
+        - include/zephyr/dt-bindings/clock/imx_ccm.h
+        - include/zephyr/dt-bindings/gpio/gpio.h
+        - include/zephyr/dt-bindings/rdc/imx_rdc.h
+        - include/zephyr/dt-bindings/interrupt-controller/arm-gic.h
+        - boards/nxp/imx8mm_evk/imx8mm_evk_mimx8mm6_m4.dts
+        - boards/nxp/imx8mm_evk/imx8mm_evk-pinctrl.dtsi
