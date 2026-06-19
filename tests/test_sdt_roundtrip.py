@@ -122,7 +122,12 @@ def test_roundtrip_versal_vck190(tmp_path):
     rtext = rpu.read_text()
 
     # Node-declaration matcher — avoids matching a device name that
-    # merely appears inside a leftover access-json metadata string.
+    # merely appears inside an access-json metadata string. domain_access
+    # retains the full /domains block in each per-OS slice by design (it
+    # leaves a breadcrumb of how the slice was produced), so the sibling
+    # domain's access-json — which lists the *other* OS's devices by name
+    # — is present as a string. We assert on actual node declarations,
+    # not substrings, so that metadata doesn't cause false matches.
     def has_node(text, node):
         return re.search(r'(^|\s)' + re.escape(node) + r'\s*\{', text) is not None
 
