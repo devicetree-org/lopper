@@ -94,7 +94,6 @@ from lopper import LopperSDT
 from lopper.yaml import LopperYAML
 import lopper
 import lopper.log
-import lopper.base
 from lopper.assists import lopper_lib
 
 
@@ -185,136 +184,64 @@ def _node_addr(node_name):
         return None
 
 
-def _resolve_phandle_label(sdt, phandle_int):
-    """Look up phandle int → node → label string.
-
-    Returns the label (without `&` prefix), or None if not resolvable.
-    """
-    try:
-        node = sdt.tree.pnode(phandle_int)
-    except Exception:
-        return None
-    if not node:
-        return None
-    return node.label or None
-
-
-def _phandle_props():
-    """Cache the Lopper phandle-property registry.
-
-    Maps property name → format string (e.g. 'phandle:#clock-cells').
-    """
-    raw = lopper.base.lopper_base.phandle_possible_properties()
-    out = {}
-    for k, v in raw.items():
-        if k in ('DEFAULT', '__phandle_exclude__'):
-            continue
-        if isinstance(v, list) and v:
-            out[k] = v[0]
-        else:
-            out[k] = str(v)
-    return out
-
-
-_PHANDLE_PROPS = None
-
-
-def _is_phandle_prop(prop_name):
-    """Quick check: does this property carry phandle references?"""
-    global _PHANDLE_PROPS
-    if _PHANDLE_PROPS is None:
-        _PHANDLE_PROPS = _phandle_props()
-    return prop_name in _PHANDLE_PROPS
-
-
-def _cell_count_after_phandle(prop_name, target_node):
-    """Given a phandle property and its target, return the number of
-    cells that follow the phandle in the parent's value.
-
-    e.g. for clocks pointing at a controller with #clock-cells = 1,
-    return 1. Falls back to 1 if we can't resolve the cell-count
-    property on the target.
-    """
-    if _PHANDLE_PROPS is None:
-        _phandle_props()
-    fmt = (_PHANDLE_PROPS or {}).get(prop_name, '')
-    # Format like 'phandle:#clock-cells' or 'phandle' (no extra cells)
-    m = re.search(r'#([a-zA-Z0-9-]+)', fmt)
-    if not m:
-        # No cell-count specified; default to 0 (the phandle alone)
-        return 0
-    cell_prop = '#' + m.group(1)
-    if target_node is None:
-        return 1
-    val = target_node.propval(cell_prop)
-    if isinstance(val, list) and val and isinstance(val[0], int):
-        return val[0]
-    return 1
-
-
-def _encode_phandle_property(sdt, prop_name, raw_value):
+def _encode_phandle_property(prop):
     """Encode a phandle-bearing property in Lopper's canonical YAML form.
 
-    Produces a flat list mixing `"&label"` strings (one per phandle
-    entry) with HexInt cells, matching what
-    `LopperTree.label_to_phandle()` accepts on the consumer side.
+    Uses lopper core's `LopperProp.phandle_map()` to locate the phandle
+    slots and their trailing cells — phandle_map walks the property
+    against the phandle_possible_properties registry and reads each
+    target node's #*-cells count itself, so we don't re-derive any cell
+    arithmetic here. It returns one entry per value cell: `0` for a plain
+    cell, the dereferenced node at a phandle slot, or `"#invalid"` for an
+    unresolvable phandle.
 
-    A property with a single phandle and no trailing cells collapses to
-    a bare `"&label"` string.
-
-    Falls back to the raw value if the input doesn't look like a packed
-    phandle/cells array.
+    Output is a flat list mixing `"&label"` strings with HexInt cells, as
+    `LopperTree.label_to_phandle()` expects; a lone phandle collapses to
+    a bare `"&label"` string. Non-phandle properties (empty phandle_map)
+    and shapes we don't recognise fall through to the raw value.
     """
-    if not isinstance(raw_value, list):
+    raw_value = prop.value
+    if not isinstance(raw_value, list) or not all(isinstance(v, int)
+                                                  for v in raw_value):
         return raw_value
-    if not all(isinstance(v, int) for v in raw_value):
+    pmap = prop.phandle_map()
+    if not pmap:
+        return raw_value
+    flat = [slot for record in pmap for slot in record]
+    if len(flat) != len(raw_value):
         return raw_value
 
     encoded = []
-    i = 0
-    while i < len(raw_value):
-        phandle_int = raw_value[i]
-        i += 1
-        target = None
-        try:
-            target = sdt.tree.pnode(phandle_int)
-        except Exception:
-            target = None
-        n_cells = _cell_count_after_phandle(prop_name, target)
-        cells = raw_value[i:i + n_cells]
-        i += n_cells
-        label = _resolve_phandle_label(sdt, phandle_int)
-        if label is None:
-            # Unresolvable — preserve the raw int so nothing is lost,
-            # plus the cells. label_to_phandle() will pass non-string
-            # values through unchanged.
-            encoded.append(HexInt(phandle_int))
+    for slot, val in zip(flat, raw_value):
+        # slot is 0 (plain cell), "#invalid" (unresolvable phandle), or
+        # the dereferenced target node at a phandle position.
+        if isinstance(slot, (int, str)) or slot is None:
+            label = None
         else:
-            encoded.append(f'&{label}')
-        encoded.extend(HexInt(c) for c in cells)
+            label = slot.label or None
+        encoded.append(f'&{label}' if label else HexInt(val))
 
-    # Collapse the common single-phandle-no-cells case to a scalar.
     if len(encoded) == 1 and isinstance(encoded[0], str):
         return encoded[0]
     return encoded
 
 
-def _encode_property(sdt, prop_name, raw_value):
+def _encode_property(prop):
     """Encode one property value for the YAML output.
 
-    Plain int / int-array / string-array values pass through with
-    HexInt wrapping for ints. Phandle-bearing properties get the
-    dict-encoded form.
+    Phandle-bearing properties (detected via core's phandle_map) get the
+    "&label"/cells form; plain int / int-array / string-array values pass
+    through with HexInt wrapping for ints.
     """
+    raw_value = prop.value
     # Boolean / present-empty properties: lopper returns [''] for
     # both absent (we won't call this then) and present-boolean.
     if raw_value == ['']:
         return True
 
-    if _is_phandle_prop(prop_name):
-        encoded = _encode_phandle_property(sdt, prop_name, raw_value)
-        if encoded is not raw_value:
-            return encoded
+    encoded = _encode_phandle_property(prop)
+    if encoded is not raw_value:
+        return encoded
 
     # String-typed properties: pass through.
     if isinstance(raw_value, list) and raw_value and \
@@ -345,8 +272,7 @@ def _extract_node_properties(sdt, node):
         # Skip lopper-internal properties.
         if prop_name in ('phandle', '__symbols__'):
             continue
-        raw = prop.value
-        out[prop_name] = _encode_property(sdt, prop_name, raw)
+        out[prop_name] = _encode_property(prop)
     return out
 
 
