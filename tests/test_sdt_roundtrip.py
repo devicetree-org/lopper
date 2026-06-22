@@ -100,19 +100,29 @@ def _domain_paths(expanded):
     return paths
 
 
-def test_roundtrip_versal_vck190(tmp_path):
-    """Build the VCK190 SDT, partition it into a Linux (APU) slice and
-    an RPU slice, and check each is dtc-clean and contains the right
-    cluster while excluding the other side's cluster/bus.
-    """
-    art = _build_sdt('versal-vck190', tmp_path)
-    expanded = _expand(art, tmp_path, 'versal-vck190')
+def _has_node(text, node):
+    """True if `node` is declared as an actual node (not just mentioned
+    inside an access-json metadata string). domain_access retains the
+    full /domains block in each slice by design, so the sibling domain's
+    access-json lists the other OS's devices by name; matching on a real
+    node declaration avoids those false positives."""
+    return re.search(r'(^|\s)' + re.escape(node) + r'\s*\{', text) is not None
+
+
+def _check_versal_roundtrip(board, tmp_path):
+    """Build a Versal SDT, partition it into a Linux (APU) slice and an
+    RPU slice, and check each is dtc-clean and contains the right cluster
+    while excluding the other side's cluster/bus. Both Versal reference
+    boards share the same A72/R5 topology and node names, so the
+    assertions are identical."""
+    art = _build_sdt(board, tmp_path)
+    expanded = _expand(art, tmp_path, board)
 
     dpaths = _domain_paths(expanded)
     assert 'APU' in dpaths and 'RPU' in dpaths, f"domain paths: {dpaths}"
 
-    linux = _slice(expanded, tmp_path, 'versal-vck190', dpaths['APU'], 'linux')
-    rpu = _slice(expanded, tmp_path, 'versal-vck190', dpaths['RPU'], 'rpu')
+    linux = _slice(expanded, tmp_path, board, dpaths['APU'], 'linux')
+    rpu = _slice(expanded, tmp_path, board, dpaths['RPU'], 'rpu')
 
     # Both slices must be compilable — the "could boot" bar.
     assert _dtc_clean(linux), f"APU/linux slice not dtc-clean: {linux}"
@@ -121,29 +131,27 @@ def test_roundtrip_versal_vck190(tmp_path):
     ltext = linux.read_text()
     rtext = rpu.read_text()
 
-    # Node-declaration matcher — avoids matching a device name that
-    # merely appears inside an access-json metadata string. domain_access
-    # retains the full /domains block in each per-OS slice by design (it
-    # leaves a breadcrumb of how the slice was produced), so the sibling
-    # domain's access-json — which lists the *other* OS's devices by name
-    # — is present as a string. We assert on actual node declarations,
-    # not substrings, so that metadata doesn't cause false matches.
-    def has_node(text, node):
-        return re.search(r'(^|\s)' + re.escape(node) + r'\s*\{', text) is not None
-
     # --- Linux (APU) slice: A72 in, R5 / co-processor bus out --------
     assert 'cpus_a72: cpus' in ltext, "APU slice lost the A72 cluster"
-    assert has_node(ltext, 'serial@ff000000'), "APU slice lost the console UART"
-    assert not has_node(ltext, 'cpus-r5@0'), \
+    assert _has_node(ltext, 'serial@ff000000'), "APU slice lost the console UART"
+    assert not _has_node(ltext, 'cpus-r5@0'), \
         "APU slice still contains the R5 cluster (domain_access should prune it)"
-    assert not has_node(ltext, 'non_linux_soc'), \
+    assert not _has_node(ltext, 'non_linux_soc'), \
         "APU slice still contains the co-processor bus (should be pruned)"
 
     # --- RPU slice: R5 in, A72 / Linux peripherals out ---------------
     assert 'cpus_r5: cpus-r5@0' in rtext, "RPU slice lost the R5 cluster"
-    assert has_node(rtext, 'rpu0_reserved@3e000000'), \
+    assert _has_node(rtext, 'rpu0_reserved@3e000000'), \
         "RPU slice lost its reserved-memory"
-    assert not has_node(rtext, 'cpus_a72: cpus') and 'cpus_a72: cpus' not in rtext, \
+    assert 'cpus_a72: cpus' not in rtext, \
         "RPU slice still contains the A72 cluster (should be pruned)"
-    assert not has_node(rtext, 'ethernet@ff0c0000'), \
+    assert not _has_node(rtext, 'ethernet@ff0c0000'), \
         "RPU slice still contains the Linux ethernet node (should be pruned)"
+
+
+def test_roundtrip_versal_vck190(tmp_path):
+    _check_versal_roundtrip('versal-vck190', tmp_path)
+
+
+def test_roundtrip_versal_vek280(tmp_path):
+    _check_versal_roundtrip('versal-vek280', tmp_path)
