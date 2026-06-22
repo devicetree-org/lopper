@@ -309,6 +309,10 @@ def test_sdt_domains_versal_vek280(tmp_path):
 
     root = yaml.safe_load(out.read_text())['domains']['default']['domains']
     assert 'APU' in root and 'RPU' in root
+    # The PMC and PSM microblaze clusters are NOT special-cased out: every
+    # cpus,cluster yields a starter domain for the user to keep or prune.
+    assert any('pmc' in k for k in root), f"PMC cluster got no domain: {list(root)}"
+    assert any('psm' in k for k in root), f"PSM cluster got no domain: {list(root)}"
     apu_mem = [m['dev'] for m in root['APU']['memory']]
     rpu_mem = [m['dev'] for m in root['RPU']['memory']]
     assert 'linux,cma' in apu_mem, f"linux,cma should be in APU: {apu_mem}"
