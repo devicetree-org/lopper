@@ -687,7 +687,7 @@ def _inject_soc_apertures(sdt, soc_facts):
     ipi_base = _first_int(ipi.get('buffer_base'))
     _emit(ipi_base, _first_int(ipi.get('buffer_size')),
           f"mailbox@{ipi_base:x}" if ipi_base is not None else 'mailbox',
-          compatible='xlnx,zynqmp-ipi-mailbox')
+          compatible=ipi.get('compatible'))
 
     for bank in (soc_facts.get('tcm_map') or []):
         g = _first_int(bank.get('global_addr'))

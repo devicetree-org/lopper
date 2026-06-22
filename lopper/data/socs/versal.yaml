@@ -224,6 +224,7 @@ domains:
     # agents in total (IPI_0..IPI_6 plus IPI_PMC), each with its own
     # PM device ID for power control.
     ipi:
+      compatible: xlnx,zynqmp-ipi-mailbox   # binding used for Versal IPI too
       buffer_base: 0xff3f0000
       buffer_size: 0x10000              # 64 KB per UG1304
       channel_count: 8
