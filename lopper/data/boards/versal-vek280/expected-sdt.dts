@@ -17,6 +17,76 @@
                 #address-cells = <0x1>;
                 #size-cells = <0x0>;
                 compatible = "cpus,cluster";
+                #ranges-address-cells = <0x2>;
+                #ranges-size-cells = <0x2>;
+                address-map = <0x0 0x0 &memory0 0x0 0x0 0x0 0x80000000>,
+                 <0x0 0xf0b20000 &fpd_funnelf0b20000 0x0 0xf0b20000 0x0 0x1000>,
+                 <0x0 0xf0b30000 &fpd_etff0b30000 0x0 0xf0b30000 0x0 0x1000>,
+                 <0x0 0xf0b40000 &replicatorf0b40000 0x0 0xf0b40000 0x0 0x1000>,
+                 <0x0 0xf0b50000 &etrf0b50000 0x0 0xf0b50000 0x0 0x1000>,
+                 <0x0 0xf0c20000 &funnelf0c20000 0x0 0xf0c20000 0x0 0x1000>,
+                 <0x0 0xf0c30000 &etff0c30000 0x0 0xf0c30000 0x0 0x1000>,
+                 <0x0 0xf0d00000 &cpu0_debugf0d00000 0x0 0xf0d00000 0x0 0x1000>,
+                 <0x0 0xf0d30000 &etmf0d30000 0x0 0xf0d30000 0x0 0x1000>,
+                 <0x0 0xf0d40000 &cpu1_debugf0d40000 0x0 0xf0d40000 0x0 0x1000>,
+                 <0x0 0xf0d70000 &etmf0d70000 0x0 0xf0d70000 0x0 0x1000>,
+                 <0x0 0xf1000000 &i2cf1000000 0x0 0xf1000000 0x0 0x1000>,
+                 <0x0 0xf1010000 &spif1010000 0x0 0xf1010000 0x0 0x10000>,
+                 <0x0 0xf1020000 &gpiof1020000 0x0 0xf1020000 0x0 0x1000>,
+                 <0x0 0xf1030000 &spif1030000 0x0 0xf1030000 0x0 0x1000>,
+                 <0x0 0xf1040000 &mmcf1040000 0x0 0xf1040000 0x0 0x10000>,
+                 <0x0 0xf1050000 &mmcf1050000 0x0 0xf1050000 0x0 0x10000>,
+                 <0x0 0xf1230000 &rngf1230000 0x0 0xf1230000 0x0 0x1000>,
+                 <0x0 0xf1270000 &sysmonf1270000 0x0 0xf1270000 0x0 0x4000>,
+                 <0x0 0xf12a0000 &rtcf12a0000 0x0 0xf12a0000 0x0 0x100>,
+                 <0x0 0xf2014050 &edacf2014050 0x0 0xf2014050 0x0 0xc4>,
+                 <0x0 0xf6150000 &memory_controllerf6150000 0x0 0xf6150000 0x0 0x2000>,
+                 <0x0 0xf62c0000 &memory_controllerf62c0000 0x0 0xf62c0000 0x0 0x2000>,
+                 <0x0 0xf6430000 &memory_controllerf6430000 0x0 0xf6430000 0x0 0x2000>,
+                 <0x0 0xf65a0000 &memory_controllerf65a0000 0x0 0xf65a0000 0x0 0x2000>,
+                 <0x0 0xf9000000 &interrupt_controllerf9000000 0x0 0xf9000000 0x0 0x80000>,
+                 <0x0 0xf9020000 &msi_controllerf9020000 0x0 0xf9020000 0x0 0x20000>,
+                 <0x0 0xfca10000 &pcifca10000 0x0 0xfca10000 0x0 0x1000>,
+                 <0x0 0xfcdd0000 &pciefcdd0000 0x0 0xfcdd0000 0x0 0x1000>,
+                 <0x0 0xfd000000 &ccifd000000 0x0 0xfd000000 0x0 0x10000>,
+                 <0x0 0xfd4d0000 &watchdogfd4d0000 0x0 0xfd4d0000 0x0 0x10000>,
+                 <0x0 0xfd800000 &iommufd800000 0x0 0xfd800000 0x0 0x40000>,
+                 <0x0 0xfe200000 &usbfe200000 0x0 0xfe200000 0x0 0x10000>,
+                 <0x0 0xff000000 &serialff000000 0x0 0xff000000 0x0 0x1000>,
+                 <0x0 0xff010000 &serialff010000 0x0 0xff010000 0x0 0x1000>,
+                 <0x0 0xff020000 &i2cff020000 0x0 0xff020000 0x0 0x1000>,
+                 <0x0 0xff030000 &i2cff030000 0x0 0xff030000 0x0 0x1000>,
+                 <0x0 0xff040000 &spiff040000 0x0 0xff040000 0x0 0x1000>,
+                 <0x0 0xff050000 &spiff050000 0x0 0xff050000 0x0 0x1000>,
+                 <0x0 0xff060000 &canff060000 0x0 0xff060000 0x0 0x6000>,
+                 <0x0 0xff070000 &canff070000 0x0 0xff070000 0x0 0x6000>,
+                 <0x0 0xff0b0000 &gpioff0b0000 0x0 0xff0b0000 0x0 0x1000>,
+                 <0x0 0xff0c0000 &ethernetff0c0000 0x0 0xff0c0000 0x0 0x1000>,
+                 <0x0 0xff0d0000 &ethernetff0d0000 0x0 0xff0d0000 0x0 0x1000>,
+                 <0x0 0xff0e0000 &timerff0e0000 0x0 0xff0e0000 0x0 0x1000>,
+                 <0x0 0xff0f0000 &timerff0f0000 0x0 0xff0f0000 0x0 0x1000>,
+                 <0x0 0xff100000 &timerff100000 0x0 0xff100000 0x0 0x1000>,
+                 <0x0 0xff110000 &timerff110000 0x0 0xff110000 0x0 0x1000>,
+                 <0x0 0xff120000 &watchdogff120000 0x0 0xff120000 0x0 0x10000>,
+                 <0x0 0xff3f0000 &mailboxff3f0000 0x0 0xff3f0000 0x0 0x10000>,
+                 <0x0 0xff960000 &memory_controllerff960000 0x0 0xff960000 0x0 0x1000>,
+                 <0x0 0xff9d0000 &usbff9d0000 0x0 0xff9d0000 0x0 0x100>,
+                 <0x0 0xffa80000 &dma_controllerffa80000 0x0 0xffa80000 0x0 0x1000>,
+                 <0x0 0xffa90000 &dma_controllerffa90000 0x0 0xffa90000 0x0 0x1000>,
+                 <0x0 0xffaa0000 &dma_controllerffaa0000 0x0 0xffaa0000 0x0 0x1000>,
+                 <0x0 0xffab0000 &dma_controllerffab0000 0x0 0xffab0000 0x0 0x1000>,
+                 <0x0 0xffac0000 &dma_controllerffac0000 0x0 0xffac0000 0x0 0x1000>,
+                 <0x0 0xffad0000 &dma_controllerffad0000 0x0 0xffad0000 0x0 0x1000>,
+                 <0x0 0xffae0000 &dma_controllerffae0000 0x0 0xffae0000 0x0 0x1000>,
+                 <0x0 0xffaf0000 &dma_controllerffaf0000 0x0 0xffaf0000 0x0 0x1000>,
+                 <0x0 0xffe00000 &memoryffe00000 0x0 0xffe00000 0x0 0x10000>,
+                 <0x0 0xffe20000 &memoryffe20000 0x0 0xffe20000 0x0 0x10000>,
+                 <0x0 0xffe90000 &memoryffe90000 0x0 0xffe90000 0x0 0x10000>,
+                 <0x0 0xffeb0000 &memoryffeb0000 0x0 0xffeb0000 0x0 0x10000>,
+                 <0x0 0xfffc0000 &memoryfffc0000 0x0 0xfffc0000 0x0 0x40000>,
+                 <0x1 0x9270000 &sysmon109270000 0x1 0x9270000 0x0 0x4000>,
+                 <0x1 0x11270000 &sysmon111270000 0x1 0x11270000 0x0 0x4000>,
+                 <0x1 0x19270000 &sysmon119270000 0x1 0x19270000 0x0 0x4000>;
 
                 cpu0: cpu@0 {
                         phandle = <0x1f>;
@@ -221,7 +291,7 @@
                         interrupt-controller;
                         interrupts = <0x1 0x9 0x4>;
 
-                        msi-controller@f9020000 {
+                        msi_controllerf9020000: msi-controller@f9020000 {
                                 phandle = <0x11>;
                                 compatible = "arm,gic-v3-its";
                                 status = "disabled";
@@ -231,7 +301,8 @@
                         };
                 };
 
-                can@ff060000 {
+                canff060000: can@ff060000 {
+                        phandle = <0x48>;
                         compatible = "xlnx,canfd-2.0";
                         status = "okay";
                         reg = <0x0 0xff060000 0x0 0x6000>;
@@ -244,7 +315,8 @@
                         power-domains = <&versal_firmware 0x1822401f>;
                 };
 
-                can@ff070000 {
+                canff070000: can@ff070000 {
+                        phandle = <0x49>;
                         compatible = "xlnx,canfd-2.0";
                         status = "disabled";
                         reg = <0x0 0xff070000 0x0 0x6000>;
@@ -257,7 +329,8 @@
                         power-domains = <&versal_firmware 0x18224020>;
                 };
 
-                cci@fd000000 {
+                ccifd000000: cci@fd000000 {
+                        phandle = <0x3e>;
                         compatible = "arm,cci-500";
                         status = "disabled";
                         reg = <0x0 0xfd000000 0x0 0x10000>;
@@ -272,7 +345,8 @@
                         };
                 };
 
-                dma-controller@ffa80000 {
+                dma_controllerffa80000: dma-controller@ffa80000 {
+                        phandle = <0x55>;
                         compatible = "xlnx,zynqmp-dma-1.0";
                         status = "okay";
                         reg = <0x0 0xffa80000 0x0 0x1000>;
@@ -285,7 +359,8 @@
                         power-domains = <&versal_firmware 0x18224035>;
                 };
 
-                dma-controller@ffa90000 {
+                dma_controllerffa90000: dma-controller@ffa90000 {
+                        phandle = <0x56>;
                         compatible = "xlnx,zynqmp-dma-1.0";
                         status = "okay";
                         reg = <0x0 0xffa90000 0x0 0x1000>;
@@ -298,7 +373,8 @@
                         power-domains = <&versal_firmware 0x18224036>;
                 };
 
-                dma-controller@ffaa0000 {
+                dma_controllerffaa0000: dma-controller@ffaa0000 {
+                        phandle = <0x57>;
                         compatible = "xlnx,zynqmp-dma-1.0";
                         status = "okay";
                         reg = <0x0 0xffaa0000 0x0 0x1000>;
@@ -311,7 +387,8 @@
                         power-domains = <&versal_firmware 0x18224037>;
                 };
 
-                dma-controller@ffab0000 {
+                dma_controllerffab0000: dma-controller@ffab0000 {
+                        phandle = <0x58>;
                         compatible = "xlnx,zynqmp-dma-1.0";
                         status = "okay";
                         reg = <0x0 0xffab0000 0x0 0x1000>;
@@ -324,7 +401,8 @@
                         power-domains = <&versal_firmware 0x18224038>;
                 };
 
-                dma-controller@ffac0000 {
+                dma_controllerffac0000: dma-controller@ffac0000 {
+                        phandle = <0x59>;
                         compatible = "xlnx,zynqmp-dma-1.0";
                         status = "okay";
                         reg = <0x0 0xffac0000 0x0 0x1000>;
@@ -337,7 +415,8 @@
                         power-domains = <&versal_firmware 0x18224039>;
                 };
 
-                dma-controller@ffad0000 {
+                dma_controllerffad0000: dma-controller@ffad0000 {
+                        phandle = <0x5a>;
                         compatible = "xlnx,zynqmp-dma-1.0";
                         status = "okay";
                         reg = <0x0 0xffad0000 0x0 0x1000>;
@@ -350,7 +429,8 @@
                         power-domains = <&versal_firmware 0x1822403a>;
                 };
 
-                dma-controller@ffae0000 {
+                dma_controllerffae0000: dma-controller@ffae0000 {
+                        phandle = <0x5b>;
                         compatible = "xlnx,zynqmp-dma-1.0";
                         status = "okay";
                         reg = <0x0 0xffae0000 0x0 0x1000>;
@@ -363,7 +443,8 @@
                         power-domains = <&versal_firmware 0x1822403b>;
                 };
 
-                dma-controller@ffaf0000 {
+                dma_controllerffaf0000: dma-controller@ffaf0000 {
+                        phandle = <0x5c>;
                         compatible = "xlnx,zynqmp-dma-1.0";
                         status = "okay";
                         reg = <0x0 0xffaf0000 0x0 0x1000>;
@@ -376,7 +457,8 @@
                         power-domains = <&versal_firmware 0x1822403c>;
                 };
 
-                ethernet@ff0c0000 {
+                ethernetff0c0000: ethernet@ff0c0000 {
+                        phandle = <0x4b>;
                         compatible = "xlnx,versal-gem", "cdns,gem";
                         status = "okay";
                         reg = <0x0 0xff0c0000 0x0 0x1000>;
@@ -410,7 +492,8 @@
                         };
                 };
 
-                ethernet@ff0d0000 {
+                ethernetff0d0000: ethernet@ff0d0000 {
+                        phandle = <0x4c>;
                         compatible = "xlnx,versal-gem", "cdns,gem";
                         status = "disabled";
                         reg = <0x0 0xff0d0000 0x0 0x1000>;
@@ -424,7 +507,8 @@
                         power-domains = <&versal_firmware 0x1822401a>;
                 };
 
-                gpio@ff0b0000 {
+                gpioff0b0000: gpio@ff0b0000 {
+                        phandle = <0x4a>;
                         compatible = "xlnx,versal-gpio-1.0";
                         status = "okay";
                         reg = <0x0 0xff0b0000 0x0 0x1000>;
@@ -451,7 +535,8 @@
                         power-domains = <&versal_firmware 0x1822402c>;
                 };
 
-                i2c@ff020000 {
+                i2cff020000: i2c@ff020000 {
+                        phandle = <0x44>;
                         compatible = "cdns,i2c-r1p14";
                         status = "okay";
                         reg = <0x0 0xff020000 0x0 0x1000>;
@@ -463,7 +548,8 @@
                         power-domains = <&versal_firmware 0x1822401d>;
                 };
 
-                i2c@ff030000 {
+                i2cff030000: i2c@ff030000 {
+                        phandle = <0x45>;
                         compatible = "cdns,i2c-r1p14";
                         status = "okay";
                         reg = <0x0 0xff030000 0x0 0x1000>;
@@ -482,7 +568,8 @@
                         };
                 };
 
-                i2c@f1000000 {
+                i2cf1000000: i2c@f1000000 {
+                        phandle = <0x30>;
                         compatible = "cdns,i2c-r1p14";
                         status = "disabled";
                         reg = <0x0 0xf1000000 0x0 0x1000>;
@@ -494,7 +581,8 @@
                         power-domains = <&versal_firmware 0x1822402d>;
                 };
 
-                memory-controller@f6150000 {
+                memory_controllerf6150000: memory-controller@f6150000 {
+                        phandle = <0x38>;
                         compatible = "xlnx,versal-ddrmc";
                         status = "disabled";
                         reg = <0x0 0xf6150000 0x0 0x2000 0x0 0xf6070000 0x0 0x20000>;
@@ -502,7 +590,8 @@
                         interrupts = <0x0 0x93 0x4>;
                 };
 
-                memory-controller@f62c0000 {
+                memory_controllerf62c0000: memory-controller@f62c0000 {
+                        phandle = <0x39>;
                         compatible = "xlnx,versal-ddrmc";
                         status = "disabled";
                         reg = <0x0 0xf62c0000 0x0 0x2000 0x0 0xf6210000 0x0 0x20000>;
@@ -510,7 +599,8 @@
                         interrupts = <0x0 0x93 0x4>;
                 };
 
-                memory-controller@f6430000 {
+                memory_controllerf6430000: memory-controller@f6430000 {
+                        phandle = <0x3a>;
                         compatible = "xlnx,versal-ddrmc";
                         status = "disabled";
                         reg = <0x0 0xf6430000 0x0 0x2000 0x0 0xf6380000 0x0 0x20000>;
@@ -518,7 +608,8 @@
                         interrupts = <0x0 0x93 0x4>;
                 };
 
-                memory-controller@f65a0000 {
+                memory_controllerf65a0000: memory-controller@f65a0000 {
+                        phandle = <0x3b>;
                         compatible = "xlnx,versal-ddrmc";
                         status = "disabled";
                         reg = <0x0 0xf65a0000 0x0 0x2000 0x0 0xf64f0000 0x0 0x20000>;
@@ -526,13 +617,15 @@
                         interrupts = <0x0 0x93 0x4>;
                 };
 
-                memory-controller@ff960000 {
+                memory_controllerff960000: memory-controller@ff960000 {
+                        phandle = <0x53>;
                         compatible = "xlnx,zynqmp-ocmc-1.0";
                         reg = <0x0 0xff960000 0x0 0x1000>;
                         interrupts = <0x0 0xa 0x4>;
                 };
 
-                rtc@f12a0000 {
+                rtcf12a0000: rtc@f12a0000 {
+                        phandle = <0x36>;
                         compatible = "xlnx,zynqmp-rtc";
                         status = "okay";
                         reg = <0x0 0xf12a0000 0x0 0x100>;
@@ -543,7 +636,8 @@
                         power-domains = <&versal_firmware 0x18224034>;
                 };
 
-                mmc@f1040000 {
+                mmcf1040000: mmc@f1040000 {
+                        phandle = <0x33>;
                         compatible = "xlnx,versal-8.9a", "arasan,sdhci-8.9a";
                         status = "disabled";
                         reg = <0x0 0xf1040000 0x0 0x10000>;
@@ -557,7 +651,8 @@
                         power-domains = <&versal_firmware 0x1822402e>;
                 };
 
-                mmc@f1050000 {
+                mmcf1050000: mmc@f1050000 {
+                        phandle = <0x34>;
                         compatible = "xlnx,versal-8.9a", "arasan,sdhci-8.9a";
                         status = "okay";
                         reg = <0x0 0xf1050000 0x0 0x10000>;
@@ -573,7 +668,8 @@
                         no-1-8-v;
                 };
 
-                serial@ff000000 {
+                serialff000000: serial@ff000000 {
+                        phandle = <0x42>;
                         compatible = "arm,pl011", "arm,primecell";
                         status = "okay";
                         reg = <0x0 0xff000000 0x0 0x1000>;
@@ -586,7 +682,8 @@
                         power-domains = <&versal_firmware 0x18224021>;
                 };
 
-                serial@ff010000 {
+                serialff010000: serial@ff010000 {
+                        phandle = <0x43>;
                         compatible = "arm,pl011", "arm,primecell";
                         status = "disabled";
                         reg = <0x0 0xff010000 0x0 0x1000>;
@@ -599,7 +696,8 @@
                         power-domains = <&versal_firmware 0x18224022>;
                 };
 
-                iommu@fd800000 {
+                iommufd800000: iommu@fd800000 {
+                        phandle = <0x40>;
                         compatible = "arm,mmu-500";
                         status = "disabled";
                         reg = <0x0 0xfd800000 0x0 0x40000>;
@@ -609,7 +707,8 @@
                         interrupts = <0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4 0x0 0x6b 0x4>;
                 };
 
-                spi@f1010000 {
+                spif1010000: spi@f1010000 {
+                        phandle = <0x31>;
                         compatible = "xlnx,versal-ospi-1.0", "cdns,qspi-nor";
                         status = "okay";
                         reg = <0x0 0xf1010000 0x0 0x10000 0x0 0xc0000000 0x0 0x20000000>;
@@ -655,7 +754,8 @@
                         };
                 };
 
-                spi@f1030000 {
+                spif1030000: spi@f1030000 {
+                        phandle = <0x32>;
                         compatible = "xlnx,versal-qspi-1.0";
                         status = "disabled";
                         reg = <0x0 0xf1030000 0x0 0x1000>;
@@ -668,7 +768,8 @@
                         power-domains = <&versal_firmware 0x1822402b>;
                 };
 
-                spi@ff040000 {
+                spiff040000: spi@ff040000 {
+                        phandle = <0x46>;
                         compatible = "cdns,spi-r1p6";
                         status = "disabled";
                         reg = <0x0 0xff040000 0x0 0x1000>;
@@ -681,7 +782,8 @@
                         power-domains = <&versal_firmware 0x1822401b>;
                 };
 
-                spi@ff050000 {
+                spiff050000: spi@ff050000 {
+                        phandle = <0x47>;
                         compatible = "cdns,spi-r1p6";
                         status = "disabled";
                         reg = <0x0 0xff050000 0x0 0x1000>;
@@ -694,7 +796,8 @@
                         power-domains = <&versal_firmware 0x1822401c>;
                 };
 
-                rng@f1230000 {
+                rngf1230000: rng@f1230000 {
+                        phandle = <0x35>;
                         compatible = "xlnx,versal-trng";
                         reg = <0x0 0xf1230000 0x0 0x1000>;
                 };
@@ -711,7 +814,8 @@
                         xlnx,nodeid = <0x18224055>;
                 };
 
-                sysmon@109270000 {
+                sysmon109270000: sysmon@109270000 {
+                        phandle = <0x62>;
                         compatible = "xlnx,versal-sysmon";
                         status = "disabled";
                         reg = <0x1 0x9270000 0x0 0x4000>;
@@ -722,7 +826,8 @@
                         xlnx,nodeid = <0x18225055>;
                 };
 
-                sysmon@111270000 {
+                sysmon111270000: sysmon@111270000 {
+                        phandle = <0x63>;
                         compatible = "xlnx,versal-sysmon";
                         status = "disabled";
                         reg = <0x1 0x11270000 0x0 0x4000>;
@@ -733,7 +838,8 @@
                         xlnx,nodeid = <0x18226055>;
                 };
 
-                sysmon@119270000 {
+                sysmon119270000: sysmon@119270000 {
+                        phandle = <0x64>;
                         compatible = "xlnx,versal-sysmon";
                         status = "disabled";
                         reg = <0x1 0x19270000 0x0 0x4000>;
@@ -744,7 +850,8 @@
                         xlnx,nodeid = <0x18227055>;
                 };
 
-                timer@ff0e0000 {
+                timerff0e0000: timer@ff0e0000 {
+                        phandle = <0x4d>;
                         compatible = "cdns,ttc";
                         status = "disabled";
                         interrupts = <0x0 0x25 0x4 0x0 0x26 0x4 0x0 0x27 0x4>;
@@ -754,7 +861,8 @@
                         power-domains = <&versal_firmware 0x18224024>;
                 };
 
-                timer@ff0f0000 {
+                timerff0f0000: timer@ff0f0000 {
+                        phandle = <0x4e>;
                         compatible = "cdns,ttc";
                         status = "disabled";
                         interrupts = <0x0 0x28 0x4 0x0 0x29 0x4 0x0 0x2a 0x4>;
@@ -764,7 +872,8 @@
                         power-domains = <&versal_firmware 0x18224025>;
                 };
 
-                timer@ff100000 {
+                timerff100000: timer@ff100000 {
+                        phandle = <0x4f>;
                         compatible = "cdns,ttc";
                         status = "disabled";
                         interrupts = <0x0 0x2b 0x4 0x0 0x2c 0x4 0x0 0x2d 0x4>;
@@ -774,7 +883,8 @@
                         power-domains = <&versal_firmware 0x18224026>;
                 };
 
-                timer@ff110000 {
+                timerff110000: timer@ff110000 {
+                        phandle = <0x50>;
                         compatible = "cdns,ttc";
                         status = "disabled";
                         interrupts = <0x0 0x2e 0x4 0x0 0x2f 0x4 0x0 0x30 0x4>;
@@ -784,7 +894,8 @@
                         power-domains = <&versal_firmware 0x18224027>;
                 };
 
-                usb@ff9d0000 {
+                usbff9d0000: usb@ff9d0000 {
+                        phandle = <0x54>;
                         compatible = "xlnx,versal-dwc3";
                         status = "okay";
                         reg = <0x0 0xff9d0000 0x0 0x100>;
@@ -797,7 +908,8 @@
                         power-domains = <&versal_firmware 0x18224018>;
                         resets = <&reset_controller 0xc104036>;
 
-                        usb@fe200000 {
+                        usbfe200000: usb@fe200000 {
+                                phandle = <0x41>;
                                 compatible = "snps,dwc3";
                                 status = "okay";
                                 reg = <0x0 0xfe200000 0x0 0x10000>;
@@ -814,7 +926,8 @@
                         };
                 };
 
-                pci@fca10000 {
+                pcifca10000: pci@fca10000 {
+                        phandle = <0x3c>;
                         device_type = "pci";
                         #address-cells = <0x3>;
                         #interrupt-cells = <0x1>;
@@ -841,7 +954,8 @@
                         };
                 };
 
-                pcie@fcdd0000 {
+                pciefcdd0000: pcie@fcdd0000 {
+                        phandle = <0x3d>;
                         device_type = "pci";
                         #address-cells = <0x3>;
                         #interrupt-cells = <0x1>;
@@ -868,7 +982,8 @@
                         };
                 };
 
-                watchdog@fd4d0000 {
+                watchdogfd4d0000: watchdog@fd4d0000 {
+                        phandle = <0x3f>;
                         compatible = "xlnx,versal-wwdt";
                         status = "okay";
                         reg = <0x0 0xfd4d0000 0x0 0x10000>;
@@ -877,7 +992,8 @@
                         power-domains = <&versal_firmware 0x18224029>;
                 };
 
-                watchdog@ff120000 {
+                watchdogff120000: watchdog@ff120000 {
+                        phandle = <0x51>;
                         compatible = "xlnx,versal-wwdt";
                         status = "disabled";
                         reg = <0x0 0xff120000 0x0 0x10000>;
@@ -886,13 +1002,15 @@
                         power-domains = <&versal_firmware 0x18224028>;
                 };
 
-                edac@f2014050 {
+                edacf2014050: edac@f2014050 {
+                        phandle = <0x37>;
                         compatible = "xlnx,versal-xilsem-edac";
                         status = "disabled";
                         reg = <0x0 0xf2014050 0x0 0xc4>;
                 };
 
-                fpd-funnel@f0b20000 {
+                fpd_funnelf0b20000: fpd-funnel@f0b20000 {
+                        phandle = <0x26>;
                         compatible = "arm,coresight-dynamic-funnel", "arm,primecell";
                         reg = <0x0 0xf0b20000 0x0 0x1000>;
                         clock-names = "apb_pclk";
@@ -925,7 +1043,8 @@
                         };
                 };
 
-                fpd-etf@f0b30000 {
+                fpd_etff0b30000: fpd-etf@f0b30000 {
+                        phandle = <0x27>;
                         compatible = "arm,coresight-tmc", "arm,primecell";
                         reg = <0x0 0xf0b30000 0x0 0x1000>;
                         clock-names = "apb_pclk";
@@ -955,7 +1074,8 @@
                         };
                 };
 
-                replicator@f0b40000 {
+                replicatorf0b40000: replicator@f0b40000 {
+                        phandle = <0x28>;
                         compatible = "arm,coresight-dynamic-replicator", "arm,primecell";
                         reg = <0x0 0xf0b40000 0x0 0x1000>;
                         clock-names = "apb_pclk";
@@ -988,7 +1108,8 @@
                         };
                 };
 
-                etr@f0b50000 {
+                etrf0b50000: etr@f0b50000 {
+                        phandle = <0x29>;
                         compatible = "arm,coresight-tmc", "arm,primecell";
                         reg = <0x0 0xf0b50000 0x0 0x1000>;
                         clock-names = "apb_pclk";
@@ -1007,7 +1128,8 @@
                         };
                 };
 
-                funnel@f0c20000 {
+                funnelf0c20000: funnel@f0c20000 {
+                        phandle = <0x2a>;
                         compatible = "arm,coresight-dynamic-funnel", "arm,primecell";
                         reg = <0x0 0xf0c20000 0x0 0x1000>;
                         clock-names = "apb_pclk";
@@ -1049,7 +1171,8 @@
                         };
                 };
 
-                etf@f0c30000 {
+                etff0c30000: etf@f0c30000 {
+                        phandle = <0x2b>;
                         compatible = "arm,coresight-tmc", "arm,primecell";
                         reg = <0x0 0xf0c30000 0x0 0x1000>;
                         clock-names = "apb_pclk";
@@ -1079,7 +1202,8 @@
                         };
                 };
 
-                cpu0-debug@f0d00000 {
+                cpu0_debugf0d00000: cpu0-debug@f0d00000 {
+                        phandle = <0x2c>;
                         compatible = "arm,coresight-cpu-debug", "arm,primecell";
                         reg = <0x0 0xf0d00000 0x0 0x1000>;
                         clock-names = "apb_pclk";
@@ -1088,7 +1212,8 @@
                         clocks = <&clock_controller 0x52>;
                 };
 
-                etm@f0d30000 {
+                etmf0d30000: etm@f0d30000 {
+                        phandle = <0x2d>;
                         compatible = "arm,coresight-etm4x", "arm,primecell";
                         reg = <0x0 0xf0d30000 0x0 0x1000>;
                         clock-names = "apb_pclk";
@@ -1108,7 +1233,8 @@
                         };
                 };
 
-                cpu1-debug@f0d40000 {
+                cpu1_debugf0d40000: cpu1-debug@f0d40000 {
+                        phandle = <0x2e>;
                         compatible = "arm,coresight-cpu-debug", "arm,primecell";
                         reg = <0x0 0xf0d40000 0x0 0x1000>;
                         clock-names = "apb_pclk";
@@ -1117,7 +1243,8 @@
                         clocks = <&clock_controller 0x52>;
                 };
 
-                etm@f0d70000 {
+                etmf0d70000: etm@f0d70000 {
+                        phandle = <0x2f>;
                         compatible = "arm,coresight-etm4x", "arm,primecell";
                         reg = <0x0 0xf0d70000 0x0 0x1000>;
                         clock-names = "apb_pclk";
@@ -1135,6 +1262,41 @@
                                         };
                                 };
                         };
+                };
+
+                mailboxff3f0000: mailbox@ff3f0000 {
+                        phandle = <0x52>;
+                        compatible = "xlnx,zynqmp-ipi-mailbox";
+                        reg = <0x0 0xff3f0000 0x0 0x10000>;
+                        lopper-source = "soc-facts";
+                };
+
+                memoryffe00000: memory@ffe00000 {
+                        phandle = <0x5d>;
+                        device_type = "memory";
+                        reg = <0x0 0xffe00000 0x0 0x10000>;
+                        lopper-source = "soc-facts";
+                };
+
+                memoryffe20000: memory@ffe20000 {
+                        phandle = <0x5e>;
+                        device_type = "memory";
+                        reg = <0x0 0xffe20000 0x0 0x10000>;
+                        lopper-source = "soc-facts";
+                };
+
+                memoryffe90000: memory@ffe90000 {
+                        phandle = <0x5f>;
+                        device_type = "memory";
+                        reg = <0x0 0xffe90000 0x0 0x10000>;
+                        lopper-source = "soc-facts";
+                };
+
+                memoryffeb0000: memory@ffeb0000 {
+                        phandle = <0x60>;
+                        device_type = "memory";
+                        reg = <0x0 0xffeb0000 0x0 0x10000>;
+                        lopper-source = "soc-facts";
                 };
         };
 
@@ -1279,7 +1441,8 @@
                 };
         };
 
-        memory@0 {
+        memory0: memory@0 {
+                phandle = <0x25>;
                 device_type = "memory";
                 reg = <0x0 0x0 0x0 0x80000000 0x8 0x0 0x1 0x80000000>;
         };
@@ -1327,6 +1490,76 @@
                 #size-cells = <0x0>;
                 compatible = "cpus,cluster";
                 lopper-source = "zephyr";
+                #ranges-address-cells = <0x2>;
+                #ranges-size-cells = <0x2>;
+                address-map = <0x0 0x0 &memory0 0x0 0x0 0x0 0x80000000>,
+                 <0x0 0xf0b20000 &fpd_funnelf0b20000 0x0 0xf0b20000 0x0 0x1000>,
+                 <0x0 0xf0b30000 &fpd_etff0b30000 0x0 0xf0b30000 0x0 0x1000>,
+                 <0x0 0xf0b40000 &replicatorf0b40000 0x0 0xf0b40000 0x0 0x1000>,
+                 <0x0 0xf0b50000 &etrf0b50000 0x0 0xf0b50000 0x0 0x1000>,
+                 <0x0 0xf0c20000 &funnelf0c20000 0x0 0xf0c20000 0x0 0x1000>,
+                 <0x0 0xf0c30000 &etff0c30000 0x0 0xf0c30000 0x0 0x1000>,
+                 <0x0 0xf0d00000 &cpu0_debugf0d00000 0x0 0xf0d00000 0x0 0x1000>,
+                 <0x0 0xf0d30000 &etmf0d30000 0x0 0xf0d30000 0x0 0x1000>,
+                 <0x0 0xf0d40000 &cpu1_debugf0d40000 0x0 0xf0d40000 0x0 0x1000>,
+                 <0x0 0xf0d70000 &etmf0d70000 0x0 0xf0d70000 0x0 0x1000>,
+                 <0x0 0xf1000000 &i2cf1000000 0x0 0xf1000000 0x0 0x1000>,
+                 <0x0 0xf1010000 &spif1010000 0x0 0xf1010000 0x0 0x10000>,
+                 <0x0 0xf1020000 &gpiof1020000 0x0 0xf1020000 0x0 0x1000>,
+                 <0x0 0xf1030000 &spif1030000 0x0 0xf1030000 0x0 0x1000>,
+                 <0x0 0xf1040000 &mmcf1040000 0x0 0xf1040000 0x0 0x10000>,
+                 <0x0 0xf1050000 &mmcf1050000 0x0 0xf1050000 0x0 0x10000>,
+                 <0x0 0xf1230000 &rngf1230000 0x0 0xf1230000 0x0 0x1000>,
+                 <0x0 0xf1270000 &sysmonf1270000 0x0 0xf1270000 0x0 0x4000>,
+                 <0x0 0xf12a0000 &rtcf12a0000 0x0 0xf12a0000 0x0 0x100>,
+                 <0x0 0xf2014050 &edacf2014050 0x0 0xf2014050 0x0 0xc4>,
+                 <0x0 0xf6150000 &memory_controllerf6150000 0x0 0xf6150000 0x0 0x2000>,
+                 <0x0 0xf62c0000 &memory_controllerf62c0000 0x0 0xf62c0000 0x0 0x2000>,
+                 <0x0 0xf6430000 &memory_controllerf6430000 0x0 0xf6430000 0x0 0x2000>,
+                 <0x0 0xf65a0000 &memory_controllerf65a0000 0x0 0xf65a0000 0x0 0x2000>,
+                 <0x0 0xf9000000 &interrupt_controllerf9000000 0x0 0xf9000000 0x0 0x80000>,
+                 <0x0 0xf9020000 &msi_controllerf9020000 0x0 0xf9020000 0x0 0x20000>,
+                 <0x0 0xfca10000 &pcifca10000 0x0 0xfca10000 0x0 0x1000>,
+                 <0x0 0xfcdd0000 &pciefcdd0000 0x0 0xfcdd0000 0x0 0x1000>,
+                 <0x0 0xfd000000 &ccifd000000 0x0 0xfd000000 0x0 0x10000>,
+                 <0x0 0xfd4d0000 &watchdogfd4d0000 0x0 0xfd4d0000 0x0 0x10000>,
+                 <0x0 0xfd800000 &iommufd800000 0x0 0xfd800000 0x0 0x40000>,
+                 <0x0 0xfe200000 &usbfe200000 0x0 0xfe200000 0x0 0x10000>,
+                 <0x0 0xff000000 &serialff000000 0x0 0xff000000 0x0 0x1000>,
+                 <0x0 0xff010000 &serialff010000 0x0 0xff010000 0x0 0x1000>,
+                 <0x0 0xff020000 &i2cff020000 0x0 0xff020000 0x0 0x1000>,
+                 <0x0 0xff030000 &i2cff030000 0x0 0xff030000 0x0 0x1000>,
+                 <0x0 0xff040000 &spiff040000 0x0 0xff040000 0x0 0x1000>,
+                 <0x0 0xff050000 &spiff050000 0x0 0xff050000 0x0 0x1000>,
+                 <0x0 0xff060000 &canff060000 0x0 0xff060000 0x0 0x6000>,
+                 <0x0 0xff070000 &canff070000 0x0 0xff070000 0x0 0x6000>,
+                 <0x0 0xff0b0000 &gpioff0b0000 0x0 0xff0b0000 0x0 0x1000>,
+                 <0x0 0xff0c0000 &ethernetff0c0000 0x0 0xff0c0000 0x0 0x1000>,
+                 <0x0 0xff0d0000 &ethernetff0d0000 0x0 0xff0d0000 0x0 0x1000>,
+                 <0x0 0xff0e0000 &timerff0e0000 0x0 0xff0e0000 0x0 0x1000>,
+                 <0x0 0xff0f0000 &timerff0f0000 0x0 0xff0f0000 0x0 0x1000>,
+                 <0x0 0xff100000 &timerff100000 0x0 0xff100000 0x0 0x1000>,
+                 <0x0 0xff110000 &timerff110000 0x0 0xff110000 0x0 0x1000>,
+                 <0x0 0xff120000 &watchdogff120000 0x0 0xff120000 0x0 0x10000>,
+                 <0x0 0xff3f0000 &mailboxff3f0000 0x0 0xff3f0000 0x0 0x10000>,
+                 <0x0 0xff960000 &memory_controllerff960000 0x0 0xff960000 0x0 0x1000>,
+                 <0x0 0xff9d0000 &usbff9d0000 0x0 0xff9d0000 0x0 0x100>,
+                 <0x0 0xffa80000 &dma_controllerffa80000 0x0 0xffa80000 0x0 0x1000>,
+                 <0x0 0xffa90000 &dma_controllerffa90000 0x0 0xffa90000 0x0 0x1000>,
+                 <0x0 0xffaa0000 &dma_controllerffaa0000 0x0 0xffaa0000 0x0 0x1000>,
+                 <0x0 0xffab0000 &dma_controllerffab0000 0x0 0xffab0000 0x0 0x1000>,
+                 <0x0 0xffac0000 &dma_controllerffac0000 0x0 0xffac0000 0x0 0x1000>,
+                 <0x0 0xffad0000 &dma_controllerffad0000 0x0 0xffad0000 0x0 0x1000>,
+                 <0x0 0xffae0000 &dma_controllerffae0000 0x0 0xffae0000 0x0 0x1000>,
+                 <0x0 0xffaf0000 &dma_controllerffaf0000 0x0 0xffaf0000 0x0 0x1000>,
+                 <0x0 0xffe00000 &memoryffe00000 0x0 0xffe00000 0x0 0x10000>,
+                 <0x0 0xffe20000 &memoryffe20000 0x0 0xffe20000 0x0 0x10000>,
+                 <0x0 0xffe90000 &memoryffe90000 0x0 0xffe90000 0x0 0x10000>,
+                 <0x0 0xffeb0000 &memoryffeb0000 0x0 0xffeb0000 0x0 0x10000>,
+                 <0x0 0xfffc0000 &memoryfffc0000 0x0 0xfffc0000 0x0 0x40000>,
+                 <0x1 0x9270000 &sysmon109270000 0x1 0x9270000 0x0 0x4000>,
+                 <0x1 0x11270000 &sysmon111270000 0x1 0x11270000 0x0 0x4000>,
+                 <0x1 0x19270000 &sysmon119270000 0x1 0x19270000 0x0 0x4000>;
 
                 cpu@0 {
                         device_type = "cpu";
@@ -1336,7 +1569,8 @@
                 };
         };
 
-        memory@fffc0000 {
+        memoryfffc0000: memory@fffc0000 {
+                phandle = <0x61>;
                 device_type = "memory";
                 reg = <0x0 0xfffc0000 0x0 0x40000>;
                 compatible = "zephyr,memory-region";

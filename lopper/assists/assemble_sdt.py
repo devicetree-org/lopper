@@ -591,6 +591,260 @@ def _inject_soc_clusters(sdt, soc_facts):
     sdt.tree.resolve()
 
 
+# --- baseline per-cluster address-map -----------------------------------
+
+def _first_int(val, default=None):
+    """Coerce a LopperProp value (scalar or list) to a single int."""
+    if isinstance(val, list):
+        val = val[0] if val else None
+    if val is None or val == '':
+        return default
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _node_cells(node, default_ac=2, default_sc=2):
+    """(#address-cells, #size-cells) declared on node, else the defaults."""
+    if node is None:
+        return default_ac, default_sc
+    ac = _first_int(node.propval('#address-cells'), default_ac)
+    sc = _first_int(node.propval('#size-cells'), default_sc)
+    return ac, sc
+
+
+def _combine_cells(cells, n, start):
+    """Fold n big-endian 32-bit cells (from index start) into one int."""
+    v = 0
+    for i in range(n):
+        try:
+            c = int(cells[start + i]) & 0xffffffff
+        except (IndexError, TypeError, ValueError):
+            c = 0
+        v = (v << 32) | c
+    return v
+
+
+def _is_identity_bus(node):
+    """True if node carries an empty `ranges` (1:1 child→parent mapping)."""
+    props = getattr(node, '__props__', {})
+    if 'ranges' not in props:
+        return False
+    v = props['ranges'].value
+    if not v:
+        return True
+    if isinstance(v, list) and all((e == '' or e is None) for e in v):
+        return True
+    return False
+
+
+def _abs_reg(node):
+    """(base, size) of node's first reg region in the root address space,
+    or None if it can't be translated 1:1 (an ancestor bus is not an
+    identity bus). reg cells are read at the immediate parent's
+    #address-cells/#size-cells."""
+    props = getattr(node, '__props__', {})
+    if 'reg' not in props:
+        return None
+    p = node.parent
+    while p is not None and p.abs_path != '/':
+        if not _is_identity_bus(p):
+            return None
+        p = p.parent
+    ac, sc = _node_cells(node.parent)
+    reg = props['reg'].value
+    if not reg or reg == ['']:
+        return None
+    base = _combine_cells(reg, ac, 0)
+    size = _combine_cells(reg, sc, ac) if len(reg) >= ac + sc else 0
+    return base, size
+
+
+_ADDRMAP_SKIP_PREFIXES = ('/cpus', '/non_linux_soc', '/reserved-memory')
+_ADDRMAP_SKIP_PATHS = ('/chosen', '/aliases')
+
+
+def _collect_addressable(sdt):
+    """Every reg-bearing device/memory node reachable 1:1 from the root,
+    as (node, base, size). Excludes cpu/cluster nodes, the non-Linux
+    bus subtree (bus-relative addrs), reserved-memory carveouts, and
+    chosen/aliases. Sorted by base address for stable output."""
+    out = []
+    for n in sdt.tree:
+        path = n.abs_path
+        if path == '/' or path in _ADDRMAP_SKIP_PATHS:
+            continue
+        if any(path == p or path.startswith(p + '/') or path.startswith(p + '@')
+               for p in _ADDRMAP_SKIP_PREFIXES):
+            continue
+        dt = n.propval('device_type')
+        dt = dt[0] if isinstance(dt, list) and dt else dt
+        if dt == 'cpu':
+            continue
+        ar = _abs_reg(n)
+        if ar is None:
+            continue
+        out.append((n, ar[0], ar[1]))
+    out.sort(key=lambda t: t[1])
+    return out
+
+
+def _existing_bases(sdt):
+    """Set of root-space base addresses already present in the tree."""
+    bases = set()
+    for n in sdt.tree:
+        ar = _abs_reg(n)
+        if ar is not None:
+            bases.add(ar[0])
+    return bases
+
+
+def _find_main_bus(sdt):
+    """The top-level identity simple-bus with the most reg-bearing
+    children — the bus the on-chip peripherals hang off."""
+    best, best_count = None, -1
+    for n in sdt.tree:
+        if n.parent is None or n.parent.abs_path != '/':
+            continue
+        compat = n.propval('compatible')
+        compat = compat if isinstance(compat, list) else [compat]
+        if 'simple-bus' not in [c for c in compat if isinstance(c, str)]:
+            continue
+        if not _is_identity_bus(n):
+            continue
+        count = sum(1 for c in n.child_nodes.values()
+                    if 'reg' in getattr(c, '__props__', {}))
+        if count > best_count:
+            best, best_count = n, count
+    return best
+
+
+def _inject_soc_apertures(sdt, soc_facts):
+    """Materialize the genuinely-absent fixed silicon apertures (OCM, IPI,
+    TCM) as real DT nodes on the main bus, from the SoC-facts reference
+    blocks. Once present they are ordinary nodes and get picked up by
+    address-map inference like any upstream node. Skips any aperture
+    whose base address is already in the tree (reference the existing
+    node instead of duplicating it)."""
+    if not soc_facts:
+        return
+    bus = _find_main_bus(sdt)
+    if bus is None:
+        lopper.log._warning(
+            "assemble_sdt: no main simple-bus found; skipping aperture injection")
+        return
+    bus_ac, bus_sc = _node_cells(bus)
+    existing = _existing_bases(sdt)
+
+    def _emit(base, size, node_name, *, device_type=None, compatible=None):
+        if base is None or size is None or base in existing:
+            return
+        path = f'{bus.abs_path}/{node_name}'
+        if path in sdt.tree.__nodes__:
+            return
+        node = LopperNode(-1, path)
+        sdt.tree.add(node)
+        if device_type:
+            node + LopperProp(name='device_type', value=device_type)
+        if compatible:
+            node + LopperProp(name='compatible', value=compatible)
+        node + LopperProp(name='reg',
+                          value=_start_size_to_reg(base, size, bus_ac, bus_sc))
+        node + LopperProp(name='lopper-source', value='soc-facts')
+        existing.add(base)
+
+    ocm = soc_facts.get('ocm_map') or {}
+    _emit(_first_int(ocm.get('base')), _first_int(ocm.get('total_size')),
+          f"memory@{_first_int(ocm.get('base'), 0):x}", device_type='memory')
+
+    ipi = soc_facts.get('ipi') or {}
+    ipi_base = _first_int(ipi.get('buffer_base'))
+    _emit(ipi_base, _first_int(ipi.get('buffer_size')),
+          f"mailbox@{ipi_base:x}" if ipi_base is not None else 'mailbox',
+          compatible='xlnx,zynqmp-ipi-mailbox')
+
+    for bank in (soc_facts.get('tcm_map') or []):
+        g = _first_int(bank.get('global_addr'))
+        _emit(g, _first_int(bank.get('size')),
+              f"memory@{g:x}" if g is not None else None,
+              device_type='memory')
+
+    sdt.tree.resolve()
+
+
+def _is_cluster(node):
+    compat = node.propval('compatible')
+    compat = compat if isinstance(compat, list) else [compat]
+    if 'cpus,cluster' in [c for c in compat if isinstance(c, str)]:
+        return True
+    return node.name == 'cpus'
+
+
+def _management_cluster(sdt, node):
+    """True if any cpu under this cluster is a microblaze (PMC/PSM) —
+    those management cores are not partition targets and get no map."""
+    prefix = node.abs_path.rstrip('/') + '/'
+    for c in sdt.tree:
+        if not c.abs_path.startswith(prefix):
+            continue
+        cc = c.propval('compatible')
+        cc = cc if isinstance(cc, list) else [cc]
+        if any(isinstance(x, str) and 'microblaze' in x for x in cc):
+            return True
+    return False
+
+
+def _attach_address_map(sdt, cluster, addressable):
+    """Emit an inferred identity address-map on a cluster: one
+    <child &node parent size> entry per addressable node, at 2/2 cells.
+    The phandle slot carries the target's phandle int; lopper renders it
+    as &label at output (auto-labelling unlabelled targets)."""
+    na, ns = 2, 2
+    value = []
+    for node, base, size in addressable:
+        ph = node.phandle_or_create()
+        value += _int_to_cells(base, na)
+        value.append(ph)
+        value += _int_to_cells(base, na)
+        value += _int_to_cells(size, ns)
+    if not value:
+        return
+    # Store the cell-count companions as single-element lists: the
+    # address-map phandle descriptor reads them via .value[0] when
+    # chunking records (tree.py phandle_map), and a scalar int there
+    # raises, collapsing every field width to 1 and mis-placing the
+    # phandle slot.
+    cluster + LopperProp(name='#ranges-address-cells', value=[na])
+    cluster + LopperProp(name='#ranges-size-cells', value=[ns])
+    cluster + LopperProp(name='address-map', value=value)
+
+
+def _emit_cluster_address_maps(sdt, soc_facts):
+    """Give every partitionable cluster (APU, RPU; not PMC/PSM) a baseline
+    address-map inferred from the fixed-silicon nodes present in the
+    merged tree. PMC/PSM management clusters are skipped.
+
+    Gated on the SoC-facts carrying `cluster_templates` (the same gate
+    Increment 1 uses for cluster injection): we only emit baseline maps
+    for SoCs whose facts describe their cluster topology (Versal today).
+    Generic multi-vendor map inference is deferred, so a SoC whose facts
+    file lacks cluster_templates (e.g. i.MX) stays untouched this
+    increment."""
+    if not (soc_facts or {}).get('cluster_templates'):
+        return
+    addressable = _collect_addressable(sdt)
+    if not addressable:
+        return
+    for n in list(sdt.tree):
+        if not _is_cluster(n):
+            continue
+        if _management_cluster(sdt, n):
+            continue
+        _attach_address_map(sdt, n, addressable)
+    sdt.tree.resolve()
+
+
 def _resolve_phandles(sdt):
     """Walk the merged tree and resolve "&label" string refs to phandle ints.
 
@@ -710,7 +964,14 @@ def assemble_sdt(tgt_node, sdt, options):
         # Inject the always-present silicon clusters (PMC/PSM, …) that
         # neither the Linux nor Zephyr inputs carry, from the per-SoC
         # cluster_templates. No-op for SoCs without that facts file.
-        _inject_soc_clusters(base, _load_soc_facts(base))
+        soc_facts = _load_soc_facts(base)
+        _inject_soc_clusters(base, soc_facts)
+        # Materialize the fixed silicon apertures (OCM/IPI/TCM) the inputs
+        # don't carry, then give each partitionable cluster a baseline
+        # address-map inferred from the nodes now present. No-op without
+        # a SoC-facts file.
+        _inject_soc_apertures(base, soc_facts)
+        _emit_cluster_address_maps(base, soc_facts)
         _resolve_phandles(base)
 
         out_dir = os.path.dirname(output_path)

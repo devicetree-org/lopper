@@ -252,6 +252,26 @@ def test_assemble_versal_vek280_sdt(tmp_path):
     assert 'psm-microblaze' in text, "PSM cluster not injected from soc-facts"
     assert 'lopper-source = "soc-facts"' in text
 
+    # Fixed silicon apertures the inputs don't carry are materialized
+    # from the versal.yaml reference blocks: IPI buffer + the four RPU
+    # TCM banks (global view). OCM already comes from Zephyr, so it is
+    # referenced in place rather than duplicated.
+    assert 'mailbox@ff3f0000' in text, "IPI aperture not injected from soc-facts"
+    assert 'memory@ffe00000' in text, "TCM bank not injected from soc-facts"
+
+    # Each partitionable cluster gets a baseline address-map inferred
+    # from the nodes present, at 2/2 ranges cells, with phandle refs
+    # that lopper auto-labelled (no &invalid_phandle, no raw &name@addr).
+    assert text.count('address-map = ') == 2, \
+        "expected exactly two cluster address-maps (APU + RPU)"
+    assert '#ranges-address-cells = <0x2>;' in text
+    assert '#ranges-size-cells = <0x2>;' in text
+    assert '&invalid_phandle' not in text, "unresolved phandle slot in address-map"
+    # The RPU cluster's map reaches its TCM; the APU map reaches DDR.
+    assert '&memoryffe00000' in text, "TCM not referenced from a cluster address-map"
+    # Exactly two maps (asserted above) on the two partitionable clusters
+    # means the PMC/PSM management clusters correctly got none.
+
     _assert_golden(sdt,
                    BOARDS_ROOT / 'versal-vek280' / 'expected-sdt.dts',
                    label='assemble_sdt')
