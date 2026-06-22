@@ -458,6 +458,139 @@ def _add_non_linux_devices(sdt, non_linux):
 
 # --- phandle resolution -------------------------------------------------
 
+def _load_soc_facts(sdt):
+    """Return the SoC-facts block matching the base tree's root compatible.
+
+    Reuses the shared DevicesCore loader, which scans the built-in
+    lopper/data/socs/ plus any `-I` include dirs (via sdt.load_paths)
+    for an `openamp,domain-v1,soc-facts` block whose `matches:`
+    overlaps the root compatible. Returns {} when no SoC file matches
+    (e.g. i.MX, which has no cluster_templates) — the caller then
+    no-ops.
+    """
+    try:
+        from lopper.assists._devices_core import DevicesCore
+    except Exception as e:
+        lopper.log._warning(f"assemble_sdt: cannot load SoC facts: {e}")
+        return {}
+    root = sdt.tree['/']
+    compat = root.propval('compatible')
+    if isinstance(compat, str):
+        compat = [compat]
+    compat = [c for c in (compat or []) if isinstance(c, str) and c]
+    if not compat:
+        return {}
+    search_dirs = getattr(sdt, 'load_paths', None) or []
+    try:
+        return DevicesCore._load_soc_data(compat, search_dirs) or {}
+    except Exception as e:
+        lopper.log._warning(f"assemble_sdt: SoC-facts lookup failed: {e}")
+        return {}
+
+
+def _present_cluster_cpu_compatibles(sdt):
+    """Set of cpu compatibles already present in the merged tree.
+
+    Used to decide which cluster_templates the Linux + Zephyr inputs
+    already supplied (so we only inject the genuinely missing ones).
+
+    Scans every `device_type = "cpu"` node directly rather than
+    walking cluster `child_nodes`, because a dynamically-added cluster
+    (the Zephyr R5 attached earlier in this run) can have stale
+    child-node linkage even after a resolve — but its cpu node is
+    still in the flat tree.
+    """
+    present = set()
+    for n in sdt.tree:
+        dt = n.propval('device_type')
+        if isinstance(dt, list):
+            dt = dt[0] if dt else ''
+        if dt != 'cpu':
+            continue
+        cc = n.propval('compatible')
+        cc = cc if isinstance(cc, list) else [cc]
+        for c in cc:
+            if isinstance(c, str) and c:
+                present.add(c)
+    return present
+
+
+def _template_role_present(template, present_compatibles):
+    """True if a cluster of this template's CPU type is already in the tree.
+
+    Matches on a prefix so the template's `arm,cortex-r5` covers the
+    Zephyr-supplied `arm,cortex-r5f`, and `arm,cortex-a72` covers
+    `arm,cortex-a72` / `…,armv8` enumerated by Linux.
+    """
+    tcompat = template.get('compatible') or ''
+    if not tcompat:
+        return False
+    for c in present_compatibles:
+        if c == tcompat or c.startswith(tcompat):
+            return True
+    return False
+
+
+def _inject_soc_clusters(sdt, soc_facts):
+    """Inject the fixed silicon clusters the upstream inputs don't carry.
+
+    The Linux DT supplies the APU cluster and the Zephyr DT supplies
+    the RPU cluster, but the PMC and PSM microblaze management cores
+    (and any other always-present cluster a SoC declares) come from
+    neither. They are stable silicon facts, so synthesise them from
+    the per-SoC `cluster_templates` block. Each injected cluster is
+    tagged `lopper-source = "soc-facts"`.
+
+    Only roles whose CPU type is absent from the merged tree are
+    injected; a role the Linux/Zephyr side already provided is left
+    untouched.
+    """
+    templates = (soc_facts or {}).get('cluster_templates') or []
+    if not templates:
+        return
+
+    present = _present_cluster_cpu_compatibles(sdt)
+    for tmpl in templates:
+        if _template_role_present(tmpl, present):
+            continue
+        role = (tmpl.get('role') or
+                _arch_label(tmpl.get('compatible') or '') or 'unknown')
+        path = f'/cpus-{role}@0'
+        if path in sdt.tree.__nodes__:
+            continue
+        node = LopperNode(-1, path)
+        node.label = f'cpus_{role}'
+        sdt.tree.add(node)
+        node + LopperProp(name='#address-cells', value=1)
+        node + LopperProp(name='#size-cells', value=0)
+        node + LopperProp(name='compatible',
+                          value=tmpl.get('cluster_compatible') or 'cpus,cluster')
+        node + LopperProp(name='lopper-source', value='soc-facts')
+
+        pm_ids = tmpl.get('per_cpu_pm_ids') or []
+        ncpus = int(tmpl.get('max_cpus') or len(pm_ids) or 1)
+        cpu_compat = tmpl.get('compatible') or ''
+        for i in range(ncpus):
+            cpu = LopperNode(-1, f'{path}/cpu@{i}')
+            sdt.tree.add(cpu)
+            cpu + LopperProp(name='device_type', value='cpu')
+            if cpu_compat:
+                cpu + LopperProp(name='compatible', value=cpu_compat)
+            cpu + LopperProp(name='reg', value=i)
+            if tmpl.get('enable_method'):
+                cpu + LopperProp(name='enable-method',
+                                 value=tmpl['enable_method'])
+            if i < len(pm_ids):
+                cpu + LopperProp(name='lopper-pm-node', value=pm_ids[i])
+            cpu + LopperProp(name='lopper-source', value='soc-facts')
+
+        lopper.log._info(
+            f"assemble_sdt: injected {role} cluster from soc-facts "
+            f"({ncpus} cpu(s), compatible {cpu_compat!r})")
+
+    sdt.tree.resolve()
+
+
 def _resolve_phandles(sdt):
     """Walk the merged tree and resolve "&label" string refs to phandle ints.
 
@@ -574,6 +707,10 @@ def assemble_sdt(tgt_node, sdt, options):
             _add_non_linux_clusters(base, non_linux)
             _add_non_linux_memory(base, non_linux)
             _add_non_linux_devices(base, non_linux)
+        # Inject the always-present silicon clusters (PMC/PSM, …) that
+        # neither the Linux nor Zephyr inputs carry, from the per-SoC
+        # cluster_templates. No-op for SoCs without that facts file.
+        _inject_soc_clusters(base, _load_soc_facts(base))
         _resolve_phandles(base)
 
         out_dir = os.path.dirname(output_path)

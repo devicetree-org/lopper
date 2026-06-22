@@ -246,6 +246,11 @@ def test_assemble_versal_vek280_sdt(tmp_path):
     assert 'compatible = "cpus,cluster";' in text
     assert 'rpu0_reserved' in text
     assert 'lopper-source = "zephyr"' in text
+    # Fixed management clusters the Linux/Zephyr inputs don't carry are
+    # synthesized from the versal.yaml cluster_templates (public TRM).
+    assert 'pmc-microblaze' in text, "PMC cluster not injected from soc-facts"
+    assert 'psm-microblaze' in text, "PSM cluster not injected from soc-facts"
+    assert 'lopper-source = "soc-facts"' in text
 
     _assert_golden(sdt,
                    BOARDS_ROOT / 'versal-vek280' / 'expected-sdt.dts',

@@ -168,6 +168,12 @@ domains:
     - compatible: arm,cortex-r5f
       cpumask: 0x1
       dev: cpus-r5@0
+    - compatible: pmc-microblaze
+      cpumask: 0x1
+      dev: cpus-pmc@0
+    - compatible: psm-microblaze
+      cpumask: 0x1
+      dev: cpus-psm@0
     id: 0
     memory:
     - dev: memory@0

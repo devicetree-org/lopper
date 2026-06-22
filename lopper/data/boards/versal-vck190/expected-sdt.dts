@@ -1354,4 +1354,36 @@
                         lopper-source = "zephyr";
                 };
         };
+
+        cpus_pmc: cpus-pmc@0 {
+                #address-cells = <0x1>;
+                #size-cells = <0x0>;
+                compatible = "cpus,cluster";
+                lopper-source = "soc-facts";
+
+                cpu@0 {
+                        device_type = "cpu";
+                        compatible = "pmc-microblaze";
+                        reg = <0x0>;
+                        enable-method = "bootrom";
+                        lopper-pm-node = "PM_DEV_PMC_PROC";
+                        lopper-source = "soc-facts";
+                };
+        };
+
+        cpus_psm: cpus-psm@0 {
+                #address-cells = <0x1>;
+                #size-cells = <0x0>;
+                compatible = "cpus,cluster";
+                lopper-source = "soc-facts";
+
+                cpu@0 {
+                        device_type = "cpu";
+                        compatible = "psm-microblaze";
+                        reg = <0x0>;
+                        enable-method = "bootrom";
+                        lopper-pm-node = "PM_DEV_PSM_PROC";
+                        lopper-source = "soc-facts";
+                };
+        };
 };
