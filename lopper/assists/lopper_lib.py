@@ -214,6 +214,150 @@ def cell_value_split( value, cell_size ):
     return ret_val
 
 
+# ---------------------------------------------------------------------------
+# Device-tree cell / node helpers shared by the SDT-building assists.
+#
+# These generalise cell_value_get / cell_value_split (which only handle 1- or
+# 2-cell values) to an arbitrary cell count, and add the small node-centric
+# lookups (parent cell sizes, reg start/size, arch label, cluster predicate)
+# that more than one assist needs. Keeping a single copy here avoids the drift
+# that crept in when each assist rolled its own (e.g. parent-cell defaults
+# disagreeing between assists).
+# ---------------------------------------------------------------------------
+
+def cells_to_int(cells, n=None, start=0):
+    """Fold `n` big-endian 32-bit cells (from index `start`) into one int.
+
+    `n=None` folds all remaining cells. Missing or non-integer cells are
+    treated as zero so a short/garbage `reg` never raises.
+    """
+    if n is None:
+        n = len(cells) - start
+    v = 0
+    for i in range(n):
+        try:
+            c = int(cells[start + i]) & 0xffffffff
+        except (IndexError, TypeError, ValueError):
+            c = 0
+        v = (v << 32) | c
+    return v
+
+
+def int_to_cells(value, n):
+    """Split an integer into `n` big-endian 32-bit cells."""
+    return [(int(value) >> (32 * i)) & 0xffffffff for i in range(n - 1, -1, -1)]
+
+
+def node_property_cells(node, ac_default=2, sc_default=1):
+    """(#address-cells, #size-cells) declared on `node` itself, else defaults."""
+    ac, sc = ac_default, sc_default
+    if node is not None:
+        v = node.propval('#address-cells')
+        if isinstance(v, list) and v and isinstance(v[0], int):
+            ac = v[0]
+        v = node.propval('#size-cells')
+        if isinstance(v, list) and v and isinstance(v[0], int):
+            sc = v[0]
+    return ac, sc
+
+
+def parent_cells(node, ac_default=2, sc_default=1):
+    """(#address-cells, #size-cells) declared on `node`'s parent, else defaults.
+
+    Defaults follow the devicetree spec (address=2, size=1); in practice SDT
+    bus nodes always declare both, so the defaults rarely trigger.
+    """
+    return node_property_cells(getattr(node, 'parent', None),
+                               ac_default, sc_default)
+
+
+def is_identity_bus(node):
+    """True if `node` carries an empty `ranges` (1:1 child→parent mapping)."""
+    props = getattr(node, '__props__', {})
+    if 'ranges' not in props:
+        return False
+    v = props['ranges'].value
+    if not v:
+        return True
+    return isinstance(v, list) and all((e == '' or e is None) for e in v)
+
+
+def node_reg_start_size(node):
+    """First (start, size) tuple from a node's `reg`, read at the parent's
+    cell sizes. Returns (None, None) when there is no usable reg. Only the
+    first range of a multi-range reg is returned."""
+    reg = node.propval('reg')
+    if not reg or reg == ['']:
+        return None, None
+    if isinstance(reg, int):
+        return reg, None
+    ac, sc = parent_cells(node)
+    pair = ac + sc
+    if pair == 0 or len(reg) < pair:
+        return (reg[0], None) if len(reg) >= 1 else (None, None)
+    return cells_to_int(reg, ac, 0), cells_to_int(reg, sc, ac)
+
+
+def source_tag(node):
+    """The `lopper-source` tag on `node` as a string, or '' if absent."""
+    v = node.propval('lopper-source')
+    if isinstance(v, list) and v:
+        return v[0] if isinstance(v[0], str) else ''
+    return v if isinstance(v, str) else ''
+
+
+_ARCH_PATTERNS = (
+    (re.compile(r'arm,cortex-(a\d+)'), lambda m: m.group(1)),
+    (re.compile(r'arm,cortex-(r\d+)f?'), lambda m: m.group(1)),
+    (re.compile(r'arm,cortex-(m\d+)'), lambda m: m.group(1)),
+    (re.compile(r'arm,armv8'), lambda m: 'a72'),
+    (re.compile(r'arm,armv7m'), lambda m: 'm'),
+)
+
+
+def arch_label(compatible):
+    """Short arch token from a cpu compatible: 'arm,cortex-a72' -> 'a72',
+    'arm,cortex-r5f' -> 'r5'. Unknown compatibles fall back to the
+    sanitised vendor-suffix (e.g. 'pmc-microblaze' -> 'pmc_microblaze')."""
+    if not compatible:
+        return 'unknown'
+    if isinstance(compatible, list):
+        compatible = compatible[0] if compatible else ''
+    for pat, fn in _ARCH_PATTERNS:
+        m = pat.search(compatible)
+        if m:
+            return fn(m)
+    return re.sub(r'[^a-zA-Z0-9]+', '_', compatible.split(',')[-1])
+
+
+def cluster_arch(node):
+    """Arch token for a cpus,cluster node, from its first cpu child."""
+    for child in (getattr(node, 'child_nodes', None) or {}).values():
+        dt = child.propval('device_type')
+        if isinstance(dt, list):
+            dt = dt[0] if dt else ''
+        if dt != 'cpu':
+            continue
+        compat = child.propval('compatible')
+        if compat:
+            return arch_label(compat)
+    return 'unknown'
+
+
+def is_cpu_cluster(node):
+    """True if `node` is a cpus,cluster wrapper: an `address-map` property,
+    a `cpus`/`cpus-cluster*` name, or a `cpus,cluster` compatible."""
+    if 'address-map' in getattr(node, '__props__', {}):
+        return True
+    name = getattr(node, 'name', '') or ''
+    if name == 'cpus' or name.startswith('cpus-cluster'):
+        return True
+    compat = node.propval('compatible')
+    if isinstance(compat, list):
+        return 'cpus,cluster' in compat
+    return compat == 'cpus,cluster'
+
+
 # =============================================================================
 # =============================================================================
 # Address-Map Parsing Utilities
