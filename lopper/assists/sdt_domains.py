@@ -59,6 +59,7 @@ from ruamel.yaml.scalarint import HexInt
 
 import lopper
 import lopper.log
+from lopper.assists import lopper_lib
 
 lopper.log._init(__name__)
 
@@ -87,41 +88,6 @@ def usage():
 
 # --- tree-walk helpers --------------------------------------------------
 
-def _is_cpus_cluster(node):
-    """True iff `node` is a cpus,cluster wrapper."""
-    compat = node.propval('compatible')
-    if not compat or compat == ['']:
-        return False
-    if isinstance(compat, list):
-        return 'cpus,cluster' in compat
-    return 'cpus,cluster' == compat
-
-
-def _source_tag(node):
-    """Return the lopper-source tag on `node`, or '' if absent."""
-    v = node.propval('lopper-source')
-    if isinstance(v, list) and v:
-        return v[0] if isinstance(v[0], str) else ''
-    if isinstance(v, str):
-        return v
-    return ''
-
-
-def _arch_from_cluster(node):
-    """Pick a short arch token from the first cpu child's compatible."""
-    for child in (node.child_nodes or {}).values():
-        if child.propval('device_type') == ['cpu']:
-            compat = child.propval('compatible')
-            if isinstance(compat, list):
-                compat = compat[0] if compat else ''
-            if not compat:
-                continue
-            m = re.search(r'cortex-([am]\d+|r\d+f?)', compat)
-            if m:
-                return m.group(1).rstrip('f')
-    return 'unknown'
-
-
 def _count_cpus(node):
     """Number of cpu@N children under a cpus,cluster node."""
     n = 0
@@ -141,7 +107,7 @@ def _cluster_label(node):
     """Stable label for the cluster — falls back to a synthesized one."""
     if node.label:
         return node.label
-    return f'cpus_{_arch_from_cluster(node)}'
+    return f'cpus_{lopper_lib.cluster_arch(node)}'
 
 
 def _domain_name_from_cluster(node):
@@ -151,7 +117,7 @@ def _domain_name_from_cluster(node):
     cluster label. Duplicate-name disambiguation happens in
     `_build_domains_payload`.
     """
-    arch = _arch_from_cluster(node)
+    arch = lopper_lib.cluster_arch(node)
     if re.match(r'a\d+', arch):
         return 'APU'
     if re.match(r'r\d+', arch):
@@ -223,7 +189,7 @@ def _enumerate_root_memory(sdt, want_source=None):
             continue
         if not n.name.startswith('memory@'):
             continue
-        src = _source_tag(n)
+        src = lopper_lib.source_tag(n)
         if want_source is None and not src:
             out.append(n)
         elif want_source is not None and src == want_source:
@@ -249,59 +215,15 @@ def _enumerate_non_linux_bus_children(sdt):
     return list((bus.child_nodes or {}).values())
 
 
-def _parent_cells(node):
-    """(#address-cells, #size-cells) from `node`'s parent, with DT defaults."""
-    ac, sc = 2, 1
-    parent = getattr(node, 'parent', None)
-    if parent is not None:
-        v = parent.propval('#address-cells')
-        if isinstance(v, list) and v and isinstance(v[0], int):
-            ac = v[0]
-        v = parent.propval('#size-cells')
-        if isinstance(v, list) and v and isinstance(v[0], int):
-            sc = v[0]
-    return ac, sc
-
-
-def _cells_to_int(cells):
-    v = 0
-    for c in cells:
-        v = (v << 32) | (int(c) & 0xffffffff)
-    return v
-
-
-def _node_reg_start_size(node):
-    """First-range (start, size) extraction from a node's `reg`.
-
-    Multi-range reg properties are common on memory nodes that span
-    discontinuous regions (DDR-low + DDR-high). The starter only
-    takes the first range — the user can extend if they need more.
-    """
-    reg = node.propval('reg')
-    if not reg or reg == ['']:
-        return None, None
-    if isinstance(reg, int):
-        return reg, None
-    ac, sc = _parent_cells(node)
-    pair = ac + sc
-    if pair == 0 or len(reg) < pair:
-        if len(reg) >= 1:
-            return reg[0], None
-        return None, None
-    start = _cells_to_int(reg[:ac])
-    size = _cells_to_int(reg[ac:ac + sc])
-    return start, size
-
-
 def _memory_entry(node, source_hint=None):
     """Build a memory list entry in domains.yaml shape."""
-    start, size = _node_reg_start_size(node)
+    start, size = lopper_lib.node_reg_start_size(node)
     entry = {'dev': node.name}
     if start is not None:
         entry['start'] = HexInt(start)
     if size is not None:
         entry['size'] = HexInt(size)
-    src = source_hint or _source_tag(node)
+    src = source_hint or lopper_lib.source_tag(node)
     if src:
         entry['source'] = src
     return entry
@@ -312,7 +234,7 @@ def _access_entry(node):
     entry = {'dev': node.name, 'flags': {}}
     if node.label:
         entry['label'] = node.label
-    src = _source_tag(node)
+    src = lopper_lib.source_tag(node)
     if src:
         entry['source'] = src
     return entry
@@ -404,7 +326,7 @@ def _is_management_cluster(node):
 def _build_domains_payload(sdt):
     """Walk the SDT, return the full {domains: ...} payload."""
     clusters = [n for n in sdt.tree
-                if _is_cpus_cluster(n) and not _is_management_cluster(n)]
+                if lopper_lib.is_cpu_cluster(n) and not _is_management_cluster(n)]
     if not clusters:
         raise RuntimeError(
             "no cpus,cluster nodes found in SDT — "
@@ -416,8 +338,8 @@ def _build_domains_payload(sdt):
     inner = {}
     domain_id = 0
     for cluster in clusters:
-        src = _source_tag(cluster)
-        arch = _arch_from_cluster(cluster)
+        src = lopper_lib.source_tag(cluster)
+        arch = lopper_lib.cluster_arch(cluster)
         name = _domain_name_from_cluster(cluster)
         # Avoid duplicate keys if two clusters resolve to the same name.
         candidate = name

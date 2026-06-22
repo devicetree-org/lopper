@@ -50,6 +50,7 @@ import lopper
 import lopper.log
 from lopper import LopperSDT
 from lopper.tree import LopperNode, LopperProp, LopperTreePrinter
+from lopper.assists import lopper_lib
 
 lopper.log._init(__name__)
 
@@ -77,30 +78,6 @@ def usage():
    devices from the YAML, resolves "&label" phandle refs against the
    merged tree, and writes the result as a system-top.dts.
     """)
-
-
-# --- arch label helper -----------------------------------------------------
-
-_ARCH_PATTERNS = (
-    (re.compile(r'arm,cortex-(a\d+)'), lambda m: m.group(1)),
-    (re.compile(r'arm,cortex-(r\d+)f?'), lambda m: m.group(1)),
-    (re.compile(r'arm,cortex-(m\d+)'), lambda m: m.group(1)),
-    (re.compile(r'arm,armv8'), lambda m: 'a72'),
-    (re.compile(r'arm,armv7m'), lambda m: 'm'),
-)
-
-
-def _arch_label(compatible):
-    """'arm,cortex-a72' → 'a72'; 'arm,cortex-r5f' → 'r5'; …"""
-    if not compatible:
-        return 'unknown'
-    if isinstance(compatible, list):
-        compatible = compatible[0]
-    for pat, fn in _ARCH_PATTERNS:
-        m = pat.search(compatible)
-        if m:
-            return fn(m)
-    return re.sub(r'[^a-zA-Z0-9]+', '_', compatible.split(',')[-1])
 
 
 # --- YAML loading ---------------------------------------------------------
@@ -209,7 +186,7 @@ def _wrap_linux_cpus(sdt):
         if child.propval('device_type') == ['cpu']:
             compat = child.propval('compatible')
             if compat:
-                arch = _arch_label(compat[0] if isinstance(compat, list) else compat)
+                arch = lopper_lib.arch_label(compat[0] if isinstance(compat, list) else compat)
                 break
 
     if not cpus.label:
@@ -230,7 +207,7 @@ def _arch_from_cluster_entry(entry):
         props = (cpu or {}).get('properties') or {}
         compat = props.get('compatible')
         if compat:
-            return _arch_label(compat)
+            return lopper_lib.arch_label(compat)
     return 'unknown'
 
 
@@ -308,29 +285,15 @@ def _root_cells(sdt):
     """Return (#address-cells, #size-cells) for the SDT root."""
     try:
         root = sdt.tree['/']
-        ac = root.propval('#address-cells')
-        sc = root.propval('#size-cells')
     except Exception:
-        ac, sc = [2], [2]
-    if isinstance(ac, list) and ac:
-        ac = ac[0]
-    if isinstance(sc, list) and sc:
-        sc = sc[0]
-    return int(ac or 2), int(sc or 2)
-
-
-def _int_to_cells(value, n_cells):
-    """Split a wide int into n_cells 32-bit cells, big-endian."""
-    cells = []
-    for i in range(n_cells - 1, -1, -1):
-        cells.append((int(value) >> (32 * i)) & 0xffffffff)
-    return cells
+        return 2, 2
+    return lopper_lib.node_property_cells(root, 2, 2)
 
 
 def _start_size_to_reg(start, size, ac, sc):
     """Build a reg cell-list from start/size at the given cell counts."""
-    cells = _int_to_cells(start or 0, ac) + _int_to_cells(size or 0, sc)
-    return cells
+    return (lopper_lib.int_to_cells(start or 0, ac)
+            + lopper_lib.int_to_cells(size or 0, sc))
 
 
 def _add_non_linux_memory(sdt, non_linux):
@@ -554,7 +517,7 @@ def _inject_soc_clusters(sdt, soc_facts):
         if _template_role_present(tmpl, present):
             continue
         role = (tmpl.get('role') or
-                _arch_label(tmpl.get('compatible') or '') or 'unknown')
+                lopper_lib.arch_label(tmpl.get('compatible') or '') or 'unknown')
         path = f'/cpus-{role}@0'
         if path in sdt.tree.__nodes__:
             continue
@@ -605,60 +568,22 @@ def _first_int(val, default=None):
         return default
 
 
-def _node_cells(node, default_ac=2, default_sc=2):
-    """(#address-cells, #size-cells) declared on node, else the defaults."""
-    if node is None:
-        return default_ac, default_sc
-    ac = _first_int(node.propval('#address-cells'), default_ac)
-    sc = _first_int(node.propval('#size-cells'), default_sc)
-    return ac, sc
-
-
-def _combine_cells(cells, n, start):
-    """Fold n big-endian 32-bit cells (from index start) into one int."""
-    v = 0
-    for i in range(n):
-        try:
-            c = int(cells[start + i]) & 0xffffffff
-        except (IndexError, TypeError, ValueError):
-            c = 0
-        v = (v << 32) | c
-    return v
-
-
-def _is_identity_bus(node):
-    """True if node carries an empty `ranges` (1:1 child→parent mapping)."""
-    props = getattr(node, '__props__', {})
-    if 'ranges' not in props:
-        return False
-    v = props['ranges'].value
-    if not v:
-        return True
-    if isinstance(v, list) and all((e == '' or e is None) for e in v):
-        return True
-    return False
-
-
 def _abs_reg(node):
     """(base, size) of node's first reg region in the root address space,
     or None if it can't be translated 1:1 (an ancestor bus is not an
     identity bus). reg cells are read at the immediate parent's
-    #address-cells/#size-cells."""
-    props = getattr(node, '__props__', {})
-    if 'reg' not in props:
+    #address-cells/#size-cells via lopper_lib.node_reg_start_size."""
+    if 'reg' not in getattr(node, '__props__', {}):
         return None
     p = node.parent
     while p is not None and p.abs_path != '/':
-        if not _is_identity_bus(p):
+        if not lopper_lib.is_identity_bus(p):
             return None
         p = p.parent
-    ac, sc = _node_cells(node.parent)
-    reg = props['reg'].value
-    if not reg or reg == ['']:
+    start, size = lopper_lib.node_reg_start_size(node)
+    if start is None:
         return None
-    base = _combine_cells(reg, ac, 0)
-    size = _combine_cells(reg, sc, ac) if len(reg) >= ac + sc else 0
-    return base, size
+    return start, (size or 0)
 
 
 _ADDRMAP_SKIP_PREFIXES = ('/cpus', '/non_linux_soc', '/reserved-memory')
@@ -711,7 +636,7 @@ def _find_main_bus(sdt):
         compat = compat if isinstance(compat, list) else [compat]
         if 'simple-bus' not in [c for c in compat if isinstance(c, str)]:
             continue
-        if not _is_identity_bus(n):
+        if not lopper_lib.is_identity_bus(n):
             continue
         count = sum(1 for c in n.child_nodes.values()
                     if 'reg' in getattr(c, '__props__', {}))
@@ -734,7 +659,7 @@ def _inject_soc_apertures(sdt, soc_facts):
         lopper.log._warning(
             "assemble_sdt: no main simple-bus found; skipping aperture injection")
         return
-    bus_ac, bus_sc = _node_cells(bus)
+    bus_ac, bus_sc = lopper_lib.node_property_cells(bus)
     existing = _existing_bases(sdt)
 
     def _emit(base, size, node_name, *, device_type=None, compatible=None):
@@ -804,10 +729,10 @@ def _attach_address_map(sdt, cluster, addressable):
     value = []
     for node, base, size in addressable:
         ph = node.phandle_or_create()
-        value += _int_to_cells(base, na)
+        value += lopper_lib.int_to_cells(base, na)
         value.append(ph)
-        value += _int_to_cells(base, na)
-        value += _int_to_cells(size, ns)
+        value += lopper_lib.int_to_cells(base, na)
+        value += lopper_lib.int_to_cells(size, ns)
     if not value:
         return
     # Store the cell-count companions as single-element lists: the

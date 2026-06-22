@@ -95,6 +95,7 @@ from lopper.yaml import LopperYAML
 import lopper
 import lopper.log
 import lopper.base
+from lopper.assists import lopper_lib
 
 
 lopper.log._init(__name__)
@@ -411,7 +412,7 @@ def _extract_non_linux(zephyr_sdt, linux_sdt):
         if name.startswith('memory@') or 'tcm' in name.lower() \
                 or 'ocram' in name.lower() or 'sram' in name.lower():
             entry = _extract_node(zephyr_sdt, node, source_tag='zephyr')
-            ac, sc = _parent_cells(node)
+            ac, sc = lopper_lib.parent_cells(node)
             entry['properties'] = _normalise_memory_properties(
                 entry['properties'], ac, sc)
             out['memory'][name] = entry
@@ -423,31 +424,6 @@ def _extract_non_linux(zephyr_sdt, linux_sdt):
                                                  source_tag='zephyr')
 
     return out
-
-
-def _parent_cells(node):
-    """Return (#address-cells, #size-cells) of node's parent.
-
-    DT spec default is (2, 1) when not specified on the parent.
-    """
-    ac, sc = 2, 1
-    parent = getattr(node, 'parent', None)
-    if parent is not None:
-        v = parent.propval('#address-cells')
-        if isinstance(v, list) and v and isinstance(v[0], int):
-            ac = v[0]
-        v = parent.propval('#size-cells')
-        if isinstance(v, list) and v and isinstance(v[0], int):
-            sc = v[0]
-    return ac, sc
-
-
-def _cells_to_int(cells):
-    """Combine a list of 32-bit cells into a single int (big-endian)."""
-    v = 0
-    for c in cells:
-        v = (v << 32) | (int(c) & 0xffffffff)
-    return v
 
 
 def _normalise_memory_properties(props, ac, sc):
@@ -467,8 +443,8 @@ def _normalise_memory_properties(props, ac, sc):
     pair = ac + sc
     if pair == 0 or len(reg) != pair:
         return props
-    start = _cells_to_int(reg[:ac])
-    size = _cells_to_int(reg[ac:ac + sc])
+    start = lopper_lib.cells_to_int(reg[:ac])
+    size = lopper_lib.cells_to_int(reg[ac:ac + sc])
     out = {}
     for k, v in props.items():
         if k == 'reg':
