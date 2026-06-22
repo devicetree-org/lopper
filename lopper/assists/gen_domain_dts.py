@@ -11,6 +11,7 @@ import yaml
 import sys
 import os
 import glob
+import argparse
 import lopper
 import re
 from lopper.tree import LopperProp
@@ -24,6 +25,66 @@ import common_utils as utils
 from domain_access import update_mem_node
 from zephyr_board_dt import process_overlay_with_lopper_api
 from openamp_xlnx import xlnx_openamp_keep_node
+
+
+def _extra_zephyr_comp_paths(options):
+    """Parse and memoize --extra-zephyr-comp arguments from options['args'].
+
+    Uses argparse via parse_known_args so the assist's positional arguments
+    are preserved. The flag may be repeated to merge multiple files. The
+    parsed flag is stripped from options['args'] so positional indexing in
+    this assist is unaffected, and the result is cached on options so
+    repeated calls are safe.
+    """
+    if not isinstance(options, dict):
+        return []
+    if '_extra_zephyr_comp_paths' in options:
+        return options['_extra_zephyr_comp_paths']
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--extra-zephyr-comp", action="append", default=[],
+                        help="Path to an additional zephyr_supported_comp.yaml "
+                             "to merge on top of the upstream one. May be "
+                             "repeated.")
+    parsed, remaining = parser.parse_known_args(options.get('args') or [])
+    options['args'] = remaining
+    options['_extra_zephyr_comp_paths'] = list(parsed.extra_zephyr_comp or [])
+    return options['_extra_zephyr_comp_paths']
+
+
+def _load_zephyr_compat_schema(options=None):
+    """Load the upstream Zephyr-supported-compatibles schema and merge any
+    user-provided schemas on top of it.
+
+    Additional YAML files can be supplied via the --extra-zephyr-comp CLI
+    argument (parsed from options['args']). Each file has the same top-level
+    shape as
+    zephyr_supported_comp.yaml:
+
+        my,compat-1.0:
+          required:
+            - compatible
+            - reg
+            - ...
+
+    Later files override earlier same-key entries; user files override the
+    upstream one. Returns {} if nothing can be loaded.
+    """
+    upstream = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                            "zephyr_supported_comp.yaml")
+    schema = {}
+    if utils.is_file(upstream):
+        schema.update(utils.load_yaml(upstream) or {})
+
+    for path in _extra_zephyr_comp_paths(options):
+        if not path:
+            continue
+        if utils.is_file(path):
+            schema.update(utils.load_yaml(path) or {})
+        else:
+            print(f"[WARNING] --extra-zephyr-comp entry not found: {path}")
+    return schema
+
 
 def delete_unused_props( node, driver_proplist , delete_child_nodes):
     if delete_child_nodes:
@@ -666,10 +727,9 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 sdt.tree + new_dst_node
         else:
             xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options)
-            zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
-            if utils.is_file(zephyr_supported_schema_file):
+            schema = _load_zephyr_compat_schema(options)
+            if schema:
                 match_cpunode = get_cpu_node(sdt, options)
-                schema = utils.load_yaml(zephyr_supported_schema_file)
                 proplist = schema["amd,mbv32"]["required"]
                 delete_unused_props( match_cpunode, proplist, False)
                 match_cpunode.parent.name = "cpus"
@@ -820,7 +880,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
             if "xlnx,zynqmp-rtc" in node["compatible"].value:
                 rtc_nodes.append(node)
 
-    xlnx_remove_unsupported_nodes(tgt_node, sdt, machine)
+    xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options)
 
     # Zephyr Watchdog samples/tests expects watchdog0 alias.
     # Add watchdog0 alias by referring it to the first occurence of the wwdt node
@@ -924,15 +984,14 @@ def _apply_pl_peripheral_transforms(node, schema, rename_timer=None, stdout_baud
     return None
 
 
-def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine):
+def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
     root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
     valid_alias_proplist = []
 
-    zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
+    schema = _load_zephyr_compat_schema(options)
     memnode_list = sdt.tree.nodes('/memory@.*')
-    if utils.is_file(zephyr_supported_schema_file):
-        schema = utils.load_yaml(zephyr_supported_schema_file)
+    if schema:
         for node in root_sub_nodes:
             if node.parent:
                 if node.propval("compatible") != ['']:
@@ -1654,8 +1713,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                     except Exception:
                         pass
                 if ps_ipi_data_to_recreate:
-                    _schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
-                    _schema = utils.load_yaml(_schema_file) if utils.is_file(_schema_file) else {}
+                    _schema = _load_zephyr_compat_schema(options)
                     ipi_parent_required = _schema.get('xlnx,versal-ipi-mailbox', {}).get('required', [])
                     ipi_child_required = _schema.get('xlnx,versal-ipi-dest-mailbox', {}).get('required', [])
 
@@ -1783,9 +1841,8 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                 phandle_val = intc_node.phandle_or_create()
                 intc_node + LopperProp(name="phandle", value=phandle_val)
 
-    zephyr_supported_schema_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "zephyr_supported_comp.yaml")
-    if utils.is_file(zephyr_supported_schema_file):
-        schema = utils.load_yaml(zephyr_supported_schema_file)
+    schema = _load_zephyr_compat_schema(options)
+    if schema:
         axi_wdt_nodes = []
         for node in root_sub_nodes:
             if node.parent:
