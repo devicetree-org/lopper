@@ -307,26 +307,15 @@ def _build_non_linux_domain(sdt, cluster_node, cluster_arch, cluster_source,
     return domain
 
 
-def _is_management_cluster(node):
-    """True for fixed management cores that aren't OS-partition targets.
-
-    The Versal PMC and PSM microblazes run AMD's PLM / PSM firmware,
-    not a user OS — they're in the SDT for completeness (and as
-    address-map targets) but should not become partition domains in
-    the starter.
-    """
-    for child in (node.child_nodes or {}).values():
-        cc = child.propval('compatible')
-        cc = cc if isinstance(cc, list) else [cc]
-        if any(isinstance(c, str) and 'microblaze' in c for c in cc):
-            return True
-    return False
-
-
 def _build_domains_payload(sdt):
-    """Walk the SDT, return the full {domains: ...} payload."""
-    clusters = [n for n in sdt.tree
-                if lopper_lib.is_cpu_cluster(n) and not _is_management_cluster(n)]
+    """Walk the SDT, return the full {domains: ...} payload.
+
+    Every cpus,cluster becomes one starter domain. No cluster is
+    special-cased out by its CPU type — the starter represents what the
+    SDT actually contains, and the user prunes the domains they don't
+    intend to partition.
+    """
+    clusters = [n for n in sdt.tree if lopper_lib.is_cpu_cluster(n)]
     if not clusters:
         raise RuntimeError(
             "no cpus,cluster nodes found in SDT — "

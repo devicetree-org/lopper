@@ -698,28 +698,6 @@ def _inject_soc_apertures(sdt, soc_facts):
     sdt.tree.resolve()
 
 
-def _is_cluster(node):
-    compat = node.propval('compatible')
-    compat = compat if isinstance(compat, list) else [compat]
-    if 'cpus,cluster' in [c for c in compat if isinstance(c, str)]:
-        return True
-    return node.name == 'cpus'
-
-
-def _management_cluster(sdt, node):
-    """True if any cpu under this cluster is a microblaze (PMC/PSM) —
-    those management cores are not partition targets and get no map."""
-    prefix = node.abs_path.rstrip('/') + '/'
-    for c in sdt.tree:
-        if not c.abs_path.startswith(prefix):
-            continue
-        cc = c.propval('compatible')
-        cc = cc if isinstance(cc, list) else [cc]
-        if any(isinstance(x, str) and 'microblaze' in x for x in cc):
-            return True
-    return False
-
-
 def _attach_address_map(sdt, cluster, addressable):
     """Emit an inferred identity address-map on a cluster: one
     <child &node parent size> entry per addressable node, at 2/2 cells.
@@ -746,9 +724,10 @@ def _attach_address_map(sdt, cluster, addressable):
 
 
 def _emit_cluster_address_maps(sdt, soc_facts):
-    """Give every partitionable cluster (APU, RPU; not PMC/PSM) a baseline
-    address-map inferred from the fixed-silicon nodes present in the
-    merged tree. PMC/PSM management clusters are skipped.
+    """Give every cpus,cluster a baseline address-map inferred from the
+    fixed-silicon nodes present in the merged tree. No cluster is
+    special-cased out by CPU type — the map describes each cluster's
+    reachability; access restriction is the domain layer's job.
 
     Gated on the SoC-facts carrying `cluster_templates` (the same gate
     Increment 1 uses for cluster injection): we only emit baseline maps
@@ -762,11 +741,8 @@ def _emit_cluster_address_maps(sdt, soc_facts):
     if not addressable:
         return
     for n in list(sdt.tree):
-        if not _is_cluster(n):
-            continue
-        if _management_cluster(sdt, n):
-            continue
-        _attach_address_map(sdt, n, addressable)
+        if lopper_lib.is_cpu_cluster(n):
+            _attach_address_map(sdt, n, addressable)
     sdt.tree.resolve()
 
 

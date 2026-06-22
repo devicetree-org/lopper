@@ -43,3 +43,35 @@ domains:
             flags: {}
             source: zephyr
         id: 1
+      cpus_pmc_microblaze:
+        compatible: openamp,domain-v1
+        cpus:
+          - cluster: cpus_pmc_microblaze
+            cpumask: '0x1'
+            mode:
+              secure: false
+        memory: []
+        access:
+          - dev: pmc_gpio_bank@3
+            flags: {}
+            source: zephyr
+          - dev: lpd_gpio_bank@3
+            flags: {}
+            source: zephyr
+        id: 2
+      cpus_psm_microblaze:
+        compatible: openamp,domain-v1
+        cpus:
+          - cluster: cpus_psm_microblaze
+            cpumask: '0x1'
+            mode:
+              secure: false
+        memory: []
+        access:
+          - dev: pmc_gpio_bank@3
+            flags: {}
+            source: zephyr
+          - dev: lpd_gpio_bank@3
+            flags: {}
+            source: zephyr
+        id: 3
