@@ -16,6 +16,10 @@ import copy
 import subprocess
 import textwrap
 
+sys.path.append( os.path.dirname(__file__) )
+import lopper_lib
+import xen_passthrough
+
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,image-builder", compat_string_to_test):
         return image_builder
@@ -25,6 +29,7 @@ def usage():
     print( """
    Usage: image-builder [--uboot] -o <output dir> --imagebuilder <path to imagebuilder>
           image-builder --gen-config <output-file> [--target <domain-path>]
+                                                   [--passthrough-dir <dir>]
                                                    [--invoke <imagebuilder-path> -o <outdir>]
 
     wrapper around imagebuilder (https://gitlab.com/xen-project/imagebuilder)
@@ -39,6 +44,9 @@ def usage():
       --target      restrict --gen-config to the named domain path (e.g.
                     /domains/APU_Linux); useful when the SDT has multiple Xen
                     domains. If omitted, the first Xen-shaped node is used.
+      --passthrough-dir  directory for generated <guest>-passthrough.dts
+                    fragments (dom0less guests with an access list). Defaults
+                    to the directory of the --gen-config output file.
       --invoke      after writing the cfg, run uboot-script-gen against it
       -i            path to imagebuilder clone (uboot mode only)
       -v            enable verbose debug/processing
@@ -171,7 +179,41 @@ def _emit_vm_section( lines, vm, idx ):
     lines.extend( _propagate_lines( vm ) )
 
 
-def _gen_xen_config( sdt, output_path, target_path, verbose ):
+def _emit_passthrough( sdt, guest, guest_name, idx, passthrough_dir, lines, verbose ):
+    """Generate a Xen passthrough DT fragment for a dom0less guest's access list.
+
+    For each device in the guest's `access` list, build a passthrough overlay
+    (base SDT untouched), write it as <guest_name>-passthrough.dts, mark the
+    source devices, and append DOMU_PASSTHROUGH_DTB[idx] to the cfg lines.
+
+    No-op (returns without emitting) if the guest has no access list.
+    """
+    device_nodes = lopper_lib.node_accesses( sdt.tree, guest )
+    if not device_nodes:
+        return
+
+    target_names = set( n.name for n in device_nodes )
+    overlay = xen_passthrough.build_passthrough_overlay(
+        sdt, device_nodes, guest_name, target_names=target_names )
+
+    dts_name = f"{guest_name}-passthrough.dts"
+    dts_path = os.path.join( passthrough_dir, dts_name )
+    sdt.write( overlay, dts_path, True, True )
+
+    # mark source devices in the base SDT
+    xen_passthrough.mark_source_passthrough(
+        sdt, [ n.abs_path for n in device_nodes ] )
+
+    # Xen loads the compiled .dtb at runtime; the .dts we emit is the source
+    dtb_name = f"{guest_name}-passthrough.dtb"
+    lines.append( f'DOMU_PASSTHROUGH_DTB[{idx}]="{dtb_name}"' )
+
+    if verbose:
+        print( f"[INFO][image-builder]: wrote passthrough fragment {dts_path}",
+               file=sys.stderr )
+
+
+def _gen_xen_config( sdt, output_path, target_path, passthrough_dir, verbose ):
     """Walk the SDT, build a Xen ImageBuilder config, write to output_path."""
     kind, entry = _find_xen_node( sdt, target_path )
     if entry is None:
@@ -256,8 +298,12 @@ def _gen_xen_config( sdt, output_path, target_path, verbose ):
 
     # DOMU sections (only meaningful in dom0less mode, but we already
     # gate by len(extras) which is 0 for Shape A and dom0-only Shape B)
+    if passthrough_dir is None:
+        passthrough_dir = os.path.dirname( os.path.abspath( output_path ) )
     for i, vm in enumerate( extras, start=1 ):
         _emit_vm_section( lines, vm, i )
+        guest_name = vm.label if vm.label else vm.name.split('@')[0]
+        _emit_passthrough( sdt, vm, guest_name, i, passthrough_dir, lines, verbose )
 
     # Constant footer
     lines.append( 'UBOOT_SOURCE="boot.source"' )
@@ -315,7 +361,7 @@ def image_builder( tgt_node, sdt, options ):
     opts, args2 = getopt.getopt(
         args, "vpt:o:i:c:",
         [ "uboot", "verbose", "imagebuilder=",
-          "gen-config=", "target=", "invoke=" ]
+          "gen-config=", "target=", "invoke=", "passthrough-dir=" ]
     )
 
     image_type = "uboot"
@@ -324,6 +370,7 @@ def image_builder( tgt_node, sdt, options ):
     target_path = None
     imagebuilder_path = None
     invoke_path = None
+    passthrough_dir = None
     for o, a in opts:
         if o in ('-o',):
             output = a
@@ -338,6 +385,8 @@ def image_builder( tgt_node, sdt, options ):
             target_path = a
         elif o in ("--invoke",):
             invoke_path = a
+        elif o in ("--passthrough-dir",):
+            passthrough_dir = a
         elif o in ("-t",):
             # legacy short -t in uboot mode is unused; keep accepted for compat
             pass
@@ -348,7 +397,7 @@ def image_builder( tgt_node, sdt, options ):
         if not cfg_path:
             print( "[ERROR][image-builder]: --gen-config requires an output path" )
             return False
-        ok = _gen_xen_config( sdt, cfg_path, target_path, verbose )
+        ok = _gen_xen_config( sdt, cfg_path, target_path, passthrough_dir, verbose )
         if not ok:
             return False
         if invoke_path:
