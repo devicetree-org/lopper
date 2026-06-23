@@ -5218,9 +5218,29 @@ class LopperTree:
             except Exception:
                 aliases_node = None
 
+            # Only properties whose *type* resolves to path-ref are eligible for
+            # pruning. A value starting with '/' is path-ref ONLY when the property
+            # name isn't already typed as something else (string / alias-ref /
+            # boolean) — mirror the schema resolver's name-based exclusions
+            # (lopper/schema learned.py _determine_property_type) so we never drop
+            # e.g. bootargs ("/dev/mmcblk0 ...") or a label that starts with '/'.
+            try:
+                _hints = lopper.schema.PROPERTY_TYPE_HINTS
+                non_path_ref_names = (
+                    set(_hints.get('string_properties', []))
+                    | set(_hints.get('alias_ref_properties', []))
+                    | set(_hints.get('boolean_properties', []))
+                )
+            except Exception:
+                non_path_ref_names = set()
+
             for n in self:
                 props_to_delete = []
                 for p in n:
+                    # Skip names typed as non-path-ref; their values are never
+                    # path-refs even when they start with '/'.
+                    if p.name in non_path_ref_names:
+                        continue
                     val = p.value
                     # String properties are stored as a list; extract single string value.
                     if not isinstance(val, list) or len(val) != 1 or not isinstance(val[0], str):
