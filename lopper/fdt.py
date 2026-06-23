@@ -1734,9 +1734,18 @@ class LopperFDT(lopper.base.lopper_base):
                     if comment:
                         comment = re.sub( r"^\n", '', comment )
                         comment = re.sub( r"\n$", '', comment )
+                        # Escape backslashes and double quotes so a comment that
+                        # contains either does not prematurely terminate the
+                        # generated DTS string property. Only matters when the
+                        # preprocessor preserves comments (e.g. pcpp); cpp strips
+                        # them before this code runs.
+                        comment = comment.replace( '\\', '\\\\' ).replace( '"', '\\"' )
                         comment = f"    lopper-preamble = \"{comment}\";"
 
-                    data = re.sub( preamble_regex, '/ {' + f'\n\n{comment}', data, count = 1 )
+                    # Use a function replacement: a plain string repl would have
+                    # its backslash escapes (\\, \g<n>) interpreted by re.sub and
+                    # corrupt the escaped comment text.
+                    data = re.sub( preamble_regex, lambda _m: '/ {' + f'\n\n{comment}', data, count = 1 )
 
             # put the dts start info back in
             data = re.sub( r'^', f'/dts-v1/;\n\n{memres_string}\n', data )
