@@ -4656,6 +4656,28 @@ class LopperTree:
                                 node_string="node:" + node_string
                                 lopper.log._warning( node_string )
 
+    def link_for_resolution( self, parent_tree ):
+        """Resolve this tree's references against parent_tree, without overlaying.
+
+        Registers parent_tree as an external tree so that phandle and label
+        references in this tree which aren't satisfied locally resolve against
+        parent_tree (see the trees_to_check list in the phandle resolver). This
+        is the resolution half of overlay_of(), factored out so callers that
+        need a *standalone* subtree copied out of a base — one whose
+        cross-references must still resolve against that base, but whose output
+        must remain a plain device tree rather than a dtc overlay — can get
+        just that behavior.
+
+        Unlike overlay_of(), this does NOT change self._type, does NOT register
+        self as a child overlay of parent_tree, does NOT strip local phandle
+        properties, and does NOT generate overlay fragments.
+
+        Args:
+            parent_tree (LopperTree): tree to resolve unresolved references against
+        """
+        if parent_tree not in self._metadata['external_trees']:
+            self._metadata['external_trees'].append( parent_tree )
+
     def overlay_of( self, parent_tree, name=None, exclude_props=None, exclude_nodes=None ):
         """Make this tree an overlay of parent_tree
 
@@ -4686,8 +4708,8 @@ class LopperTree:
             del n.__props__['phandle']
 
         # store the parent tree, this is used for resolving
-        # labels and phandles before printing
-        self._metadata['external_trees'].append(parent_tree)
+        # labels and phandles before printing (shared with link_for_resolution)
+        self.link_for_resolution( parent_tree )
 
         # Set metadata for this overlay
         if name is None:
