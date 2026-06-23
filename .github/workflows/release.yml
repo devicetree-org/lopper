@@ -97,6 +97,18 @@ jobs:
       - name: Build distributions
         run: python -m build
 
+      - name: Smoke-test built wheel
+        run: |
+          # Install the freshly built wheel in an isolated venv and import it
+          # from outside the repo root, so we exercise the INSTALLED package
+          # (not ./lopper). Catches subpackages missing from the wheel, e.g.
+          # a find_packages/MANIFEST gap dropping lopper.schema.
+          python -m venv /tmp/wheel-smoke
+          /tmp/wheel-smoke/bin/pip install --upgrade pip
+          /tmp/wheel-smoke/bin/pip install -r requirements.txt
+          /tmp/wheel-smoke/bin/pip install dist/*.whl
+          cd /tmp && /tmp/wheel-smoke/bin/python -c "import lopper; import lopper.schema; import lopper.audit; print('wheel import OK:', lopper.__file__)"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

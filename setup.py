@@ -32,7 +32,7 @@ setuptools.setup(
         'License :: OSI Approved :: BSD License',
         'Operating System :: POSIX :: Linux',
     ],
-    packages=setuptools.find_packages(include=('lopper',)),
+    packages=setuptools.find_packages(include=('lopper', 'lopper.*')),
     python_requires='>=3.8',
     include_package_data=True,
     install_requires=[ "humanfriendly","configparser" ],
