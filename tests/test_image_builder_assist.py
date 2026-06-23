@@ -420,6 +420,60 @@ class TestTargetSelector:
 
 
 # ----------------------------------------------------------------------
+# Device passthrough (SSW-9163) — single-pass fragment generation
+# ----------------------------------------------------------------------
+
+@pytest.fixture
+def xen_passthrough_sdt(test_outdir):
+    return _build_sdt(FIXTURES / "xen-sdt-passthrough.dts", test_outdir)
+
+
+class TestPassthrough:
+    def test_fragment_and_cfg_key(self, xen_passthrough_sdt, test_outdir):
+        if not _have_libfdt():
+            pytest.skip("libfdt not available")
+        out = Path(test_outdir) / "pt-xen.cfg"
+        ptdir = Path(test_outdir)
+        options = {"verbose": 0, "args": [
+            "--gen-config", str(out), "--passthrough-dir", str(ptdir)]}
+
+        result = image_builder.image_builder(None, xen_passthrough_sdt, options)
+        assert result is True
+
+        cfg = out.read_text()
+        # the dom0less guest's passthrough dtb is referenced
+        assert 'DOMU_PASSTHROUGH_DTB[1]="guest1-passthrough.dtb"' in cfg
+
+        # the fragment was written, as DTS source
+        frag = ptdir / "guest1-passthrough.dts"
+        assert frag.exists()
+        fc = frag.read_text()
+        assert 'xen,force-assign-without-iommu' in fc      # uart, no iommus
+        assert 'xen,smmu-stream-ids = <0x210>' in fc        # dma, with iommus
+        assert 'interrupt-parent = <0xfde8>' in fc          # guest GIC
+        assert 'smmu@fd800000' not in fc                    # host smmu pruned
+
+    def test_no_access_no_generated_fragment(self, xen_dom0less_sdt, test_outdir):
+        # the dom0less fixture's guest (zephyr_guest) has no `access` list, so
+        # the assist must NOT generate a passthrough fragment file for it.
+        # (That fixture does carry a manual DOMU_PASSTHROUGH_DTB line via the
+        # xen,propagate-config escape hatch — that's a verbatim user injection,
+        # not assist-generated, so we assert on the absence of the file.)
+        if not _have_libfdt():
+            pytest.skip("libfdt not available")
+        ptdir = Path(test_outdir) / "no-access-ptdir"
+        ptdir.mkdir()
+        out = ptdir / "no-pt-xen.cfg"
+        options = {"verbose": 0, "args": [
+            "--gen-config", str(out), "--passthrough-dir", str(ptdir)]}
+        result = image_builder.image_builder(None, xen_dom0less_sdt, options)
+        assert result is True
+        # no *-passthrough.dts fragment generated
+        frags = list(ptdir.glob("*-passthrough.dts"))
+        assert frags == [], f"unexpected fragments: {frags}"
+
+
+# ----------------------------------------------------------------------
 # Errors
 # ----------------------------------------------------------------------
 

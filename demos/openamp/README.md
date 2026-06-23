@@ -297,6 +297,23 @@ We can see that:
 
 ## 4) Xen extraction demo
 
+There are two ways to produce Xen passthrough device-tree fragments. Both
+share the same conversion logic (`lopper/assists/xen_passthrough.py`):
+
+1. **Standalone, two-pass** (`extract` then `extract-xen`) — shown below. Use
+   this to extract a specific device by path, independent of domains.yaml.
+2. **Single-pass, from domains.yaml** (`image-builder --gen-config`) — for a
+   dom0less guest with an `access` list, the assist generates a
+   `<guest>-passthrough.dts` per guest and references it as
+   `DOMU_PASSTHROUGH_DTB[N]` in the emitted `xen.cfg`, in one invocation:
+
+   ```
+   % $LOPPER_DIR/lopper.py -f --enhanced system-device-tree.dts out.dts -- \
+         image-builder --gen-config xen.cfg --passthrough-dir .
+   ```
+
+The standalone two-pass flow:
+
 ```
 % $LOPPER_DIR/lopper.py --permissive -f inputs/dt/host-device-tree.dts system-device-tree-out.dts  -- \
       extract -t /axi/serial@ff010000 -i zynqmp-firmware -x pinctrl-0 -x pinctrl-names -x power-domains -x current-speed -x resets -x 'interrupt-controller.*' -- \
