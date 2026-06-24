@@ -166,6 +166,8 @@ def usage():
     print('  --exclude-nodes=<node>[,<node>,...] - Comma-separated list of node paths/labels to exclude')
     print('                      These nodes will be removed from the generated overlay output.')
     print('                      Example: --exclude-nodes=/amba_pl/some_node')
+    print('  --exclude-overlays=<file>[,<file>,...] - Exclude specific *.dtso files from auto-discovery')
+    print('                      Supports glob patterns (e.g., --exclude-overlays=*.dtso to skip all)')
     print('\nExamples:')
     print(' With machine argument:')
     print(' lopper -O <output_dir>/ -f --enhanced <path_to_system_top>/system-top.dts <path_to_lopper_gen_dt>/lopper-gen.dts -- xlnx_overlay_pl_dt <machine> <config> <path_to_pl_dtsi>/pl.dtsi')
@@ -272,6 +274,7 @@ def validate_and_parse_options(options, sdt):
     node_specs = None
     exclude_props = None
     exclude_nodes = None
+    exclude_overlays = None
     for arg in optional_args:
         if arg.startswith("--firmware-name="):
             firmware_override = arg.split("=", 1)[1]
@@ -281,6 +284,11 @@ def validate_and_parse_options(options, sdt):
             exclude_props = [p.strip() for p in arg.split("=", 1)[1].split(",") if p.strip()]
         elif arg.startswith("--exclude-nodes="):
             exclude_nodes = [n.strip() for n in arg.split("=", 1)[1].split(",") if n.strip()]
+        elif arg.startswith("--exclude-overlays="):
+            exclude_overlays = [f.strip() for f in arg.split("=", 1)[1].split(",") if f.strip()]
+        elif arg == "--exclude-overlays":
+            _error("--exclude-overlays requires a value (e.g., --exclude-overlays=a.dtso,b.dtso)")
+            sys.exit(1)
 
     # Parse arguments based on count
     try:
@@ -350,7 +358,7 @@ def validate_and_parse_options(options, sdt):
         usage()
         sys.exit(1)
 
-    return platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs, exclude_props, exclude_nodes
+    return platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs, exclude_props, exclude_nodes, exclude_overlays
 
 def validate_amba_pl_node(amba_node):
     """
@@ -771,7 +779,7 @@ Output:
     Note: Modified system device tree (with /amba_pl node removed) is written by lopper itself
 """
 
-def discover_overlay_files(sdt):
+def discover_overlay_files(sdt, exclude_overlays=None):
     """Auto-discover *.dtso overlay files co-located with system-top.dts.
 
     Scans the directory containing the input SDT file for files matching
@@ -781,12 +789,20 @@ def discover_overlay_files(sdt):
 
     Args:
         sdt: LopperSDT object with .dts pointing to the input file
+        exclude_overlays: list of filename patterns to exclude (supports glob)
     """
     if not sdt.dts:
         return
 
     sdt_dir = Path(sdt.dts).resolve().parent
     overlay_files = sorted(sdt_dir.glob('*.dtso'))
+
+    if not overlay_files:
+        return
+
+    if exclude_overlays:
+        overlay_files = [f for f in overlay_files
+                         if not any(f.match(pat) for pat in exclude_overlays)]
 
     if not overlay_files:
         return
@@ -810,7 +826,7 @@ def discover_overlay_files(sdt):
 def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     _level(utils.log_setup(options), __name__)
     # Parse and validate options
-    platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs, exclude_props, exclude_nodes = validate_and_parse_options(options, sdt)
+    platform, config, zynq_platforms, versal_platforms, firmware_override, node_specs, exclude_props, exclude_nodes, exclude_overlays = validate_and_parse_options(options, sdt)
 
     # Remove SDT-specific properties from overlay automatically
     if exclude_props is None:
@@ -818,7 +834,7 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     elif 'address-map' not in exclude_props:
         exclude_props.append('address-map')
 
-    discover_overlay_files(sdt)
+    discover_overlay_files(sdt, exclude_overlays)
 
     overlay_tree = LopperTree()
 
