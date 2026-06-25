@@ -202,7 +202,7 @@ struct xtopology_t xtopology[] = {{'''
     }},'''
     topology_str += f'''
     {{
-        NULL
+        0
     }}
 }};'''
     topology_fd.write(topology_str)
