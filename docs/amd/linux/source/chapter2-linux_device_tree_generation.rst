@@ -94,7 +94,7 @@ gen_domain_dts
 **Arguments:**
 
 - Takes target processor as the first argument.
-- Possible second positional arguments are: 1) linux_dt 2) zephyr_dt
+- Possible second positional arguments are: ``linux_dt`` for Linux domain DTS (see Zephyr documentation for ``zephyr_domain_dts`` assist).
 - In absence of second positional argument, create the processor specific domain device tree for baremetal
 
 **List of available target processors:**

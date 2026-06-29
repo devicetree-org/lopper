@@ -155,7 +155,7 @@ location, and what naming conventions to follow.
 | Category | Purpose | Examples |
 |----------|---------|----------|
 | **baremetal** | Bare-metal BSP/config generation | `baremetalconfig_xlnx.py` |
-| **domain** | Domain extraction/isolation | `gen_domain_dts.py`, `domain_access.py` |
+| **domain** | Domain extraction/isolation | `gen_domain_dts.py`, `zephyr_domain_dts.py`, `domain_access.py` |
 | **openamp** | Multi-processing framework support | `openamp.py`, `openamp_xlnx.py` |
 | **output** | Non-DTS artifact generation | `baremetallinker_xlnx.py` (linker scripts) |
 | **utility** | Generic operations | `extract.py`, `grep.py`, `compare.py` |

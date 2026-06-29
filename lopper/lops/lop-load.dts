@@ -27,6 +27,10 @@
                         compatible = "system-device-tree-v1,lop,load";
                         load = "assists/gen_domain_dts.py";
                 };
+                lop_zephyr_domain_dts {
+                        compatible = "system-device-tree-v1,lop,load";
+                        load = "assists/zephyr_domain_dts.py";
+                };
 
         };
 };
