@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2020 Xilinx Inc. All rights reserved.
- * Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (c) 2023 - 2026 Advanced Micro Devices, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * @brief lop behavior summary
@@ -168,6 +168,9 @@
 
                                    flags = ''.join(archflags) 
                                    bsp_linkflags = ''.join(bsp_archflags)
+                                   mcmodel_flag = n.propval('xlnx,use-mcmodel')[0]
+                                   if mcmodel_flag:
+                                       flags += ' -mcmodel=' + mcmodel_flag
                                    cflags_data['cflags'] = flags
                                    cflags_data['linkflags'] = bsp_linkflags
 
