@@ -248,7 +248,6 @@ xlnx,zynqmp-dma-1.0:
     - interrupts
     - clocks
     - clock-names
-    - xlnx,bus-width
 
 amd,versal2-dma-1.0:
   required:
@@ -258,7 +257,6 @@ amd,versal2-dma-1.0:
     - interrupts
     - clocks
     - clock-names
-    - xlnx,bus-width
 
 xlnx,versal-gpio-1.0:
   required:
