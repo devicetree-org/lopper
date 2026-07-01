@@ -1235,8 +1235,6 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                                 node["clock-names"].value = desired_clock_names
                         if node.props("#dma-cells") != [] and node.propval("#dma-cells") != [1]:
                             node['#dma-cells'].value = [1]
-                        if node.props("xlnx,bus-width") != [] and node.propval("xlnx,bus-width") != [64]:
-                            node["xlnx,bus-width"].value = [64]
                     # GPIOPS
                     if any(version in node["compatible"].value for version in ("xlnx,pmc-gpio-1.0", "xlnx,versal-gpio-1.0")):
                         version = lambda x: x in node["compatible"].value
