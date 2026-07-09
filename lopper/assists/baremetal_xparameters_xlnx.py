@@ -512,6 +512,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         'xlnx,d-lmb':'XPAR_MICROBLAZE_RISCV_D_LMB',
         'xlnx,use-branch-target-cache':'XPAR_MICROBLAZE_RISCV_USE_BRANCH_TARGET_CACHE',
         'xlnx,branch-target-cache-size':'XPAR_MICROBLAZE_RISCV_BRANCH_TARGET_CACHE_SIZE',
+        'xlnx,addr-size':'XPAR_MICROBLAZE_RISCV_ADDR_SIZE',
         }
         ignore_else_part_lis = ['xlnx,freq','xlnx,dcache-byte-size','xlnx,icache-line-len',
                                 'xlnx,icache-byte-size','xlnx,use-fpu',]
