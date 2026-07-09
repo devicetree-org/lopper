@@ -1451,12 +1451,7 @@ def generate_board_kconfig_defconfig(isa_string, cpu_node, intc_node, num_interr
     # Track added extensions to avoid duplicates
     added_extensions = set()
 
-    # Base ISA configurations - always add RV32I for MicroBlaze RISC-V
-    content += "config RISCV_ISA_RV32I\n"
-    content += "\tdefault y\n\n"
-    added_extensions.add('RISCV_ISA_RV32I')  # Track it to avoid duplicates
-
-    # Process ISA string to generate configs in the exact order: RV32I, M, A, C, ZICSR, ZIFENCEI
+    # Process ISA string to generate configs in the exact order: RV32I/RV32E, M, A, C, ZICSR, ZIFENCEI
     if isa_string:
         # Define the exact order matching the existing board defconfig
         ordered_extensions = [
@@ -1469,6 +1464,13 @@ def generate_board_kconfig_defconfig(isa_string, cpu_node, intc_node, num_interr
 
         # Process base ISA part for M, A, C detection
         isa_base = isa_string.split('_')[0]  # Same as SOC level
+
+        # Base ISA configuration - RV32E for embedded (reduced register set) MB-V
+        # cores (xlnx,use-embedded), RV32I otherwise.
+        base_isa_config = 'RISCV_ISA_RV32E' if isa_base.startswith('rv32e') else 'RISCV_ISA_RV32I'
+        content += f"config {base_isa_config}\n"
+        content += "\tdefault y\n\n"
+        added_extensions.add(base_isa_config)  # Track it to avoid duplicates
 
         # Process each extension in the defined order
         for key, config_name in ordered_extensions:
@@ -1512,6 +1514,12 @@ def generate_board_kconfig_defconfig(isa_string, cpu_node, intc_node, num_interr
                 content += f"config {config_name}\n"
                 content += "\tdefault y\n\n"
                 added_extensions.add(config_name)
+    else:
+        # No ISA string available - fall back to the default RV32I base,
+        # matching the prior (pre-RV32E) unconditional behavior.
+        content += "config RISCV_ISA_RV32I\n"
+        content += "\tdefault y\n\n"
+        added_extensions.add('RISCV_ISA_RV32I')
 
     content += "endif\n"
     return content
@@ -2215,7 +2223,8 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
 
                     isa = isa.split('_')[0]
 
-                    data_dict={'rv32i':"\tselect RISCV_ISA_RV32I\n",
+                    data_dict={'rv32e':"\tselect RISCV_ISA_RV32E\n",
+                        'rv32i':"\tselect RISCV_ISA_RV32I\n",
                         'm':"\tselect RISCV_ISA_EXT_M\n",
                         'a':"\tselect RISCV_ISA_EXT_A\n",
                         'c':"\tselect RISCV_ISA_EXT_C\n",
