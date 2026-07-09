@@ -61,8 +61,6 @@ xlnx,zynqmp-uart:
     - interrupt-parent
     - current-speed
     - clock-frequency
-    - pinctrl-0
-    - pinctrl-names
 
 xlnx,xuartps:
     - compatible
@@ -434,6 +432,22 @@ arm,cortex-r5:
     - clock-frequency
 
 arm,gic-v1:
+  required:
+    - compatible
+    - reg
+    - status
+    - interrupt-controller
+    - '#interrupt-cells'
+
+arm,cortex-a53:
+  required:
+    - compatible
+    - device_type
+    - reg
+    - clock-frequency
+    - enable-method
+
+arm,gic-400:
   required:
     - compatible
     - reg
