@@ -52,7 +52,7 @@ This step transforms the domain-specific device-tree from Step 1 into a Zephyr-c
 **Command**:
 ::
 
-    lopper -f --enhanced -O {workspace} -i lop-microblaze-riscv.dts {workspace}/system-domain.dts {workspace}/system-zephyr.dts -- gen_domain_dts {proc} zephyr_dt {zephyr_board_dts}
+    lopper -f --enhanced -O {workspace} -i lop-microblaze-riscv.dts {workspace}/system-domain.dts {workspace}/system-zephyr.dts -- zephyr_domain_dts {proc} {zephyr_board_dts}
 
 Step 3: Generate MBV32 Generic Board-Specific Device-Tree
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -99,7 +99,7 @@ Basic Workflow (without board-specific device-tree):
     lopper -f --enhanced -O ./output -i lop-microblaze-riscv.dts system.dts ./output/system-domain.dts -- gen_domain_dts microblaze_0
 
     # Step 2: Generate Zephyr-specific device-tree  
-    lopper -f --enhanced -O ./output -i lop-microblaze-riscv.dts ./output/system-domain.dts ./output/system-zephyr.dts -- gen_domain_dts microblaze_0 zephyr_dt
+    lopper -f --enhanced -O ./output -i lop-microblaze-riscv.dts ./output/system-domain.dts ./output/system-zephyr.dts -- zephyr_domain_dts microblaze_0
 
     # Step 3: Generate MBV32 board-specific device-tree
     lopper -f --enhanced -O ./output -i lop-mbv-zephyr-intc.dts ./output/system-zephyr.dts ./output/mbv32.dts
@@ -113,7 +113,7 @@ Advanced Workflow (with board-specific device-tree optimization):
     lopper -f --enhanced -O ./output -i lop-microblaze-riscv.dts system.dts ./output/system-domain.dts -- gen_domain_dts microblaze_0
 
     # Step 2: Generate Zephyr-specific device-tree with board optimization
-    lopper -f --enhanced -O ./output -i lop-microblaze-riscv.dts ./output/system-domain.dts ./output/system-zephyr.dts -- gen_domain_dts microblaze_0 zephyr_dt board.dts
+    lopper -f --enhanced -O ./output -i lop-microblaze-riscv.dts ./output/system-domain.dts ./output/system-zephyr.dts -- zephyr_domain_dts microblaze_0 board.dts
 
     # Step 3: Generate MBV32 board-specific device-tree
     lopper -f --enhanced -O ./output -i lop-mbv-zephyr-intc.dts ./output/system-zephyr.dts ./output/mbv32.dts
