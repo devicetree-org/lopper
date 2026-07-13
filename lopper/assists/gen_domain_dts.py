@@ -532,7 +532,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     continue
             if node.propval('status') != ['']:
                 if linux_dt and ('disabled' in node.propval('status', list)[0] or "@" not in node.name):
-                    delete_pl_node_in_linux_dt = ["xlnx,afi-fpga", "xlnx,fclk"]
+                    delete_pl_node_in_linux_dt = ["xlnx,afi-fpga"]
                     if any(entry in node.propval('compatible', list) for entry in delete_pl_node_in_linux_dt):
                         sdt.tree.delete(node)
                     else:
