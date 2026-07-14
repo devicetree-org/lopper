@@ -832,7 +832,7 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
                 # Set clock frequency for RTC
                 # Revert this snippet once the clock support is added in sdtgen
                 if node.propval('clock-frequency') == ['']:
-                    node["clock-frequency"] = 32767
+                    node["clock-frequency"] = 32768
             elif compatible == "cdns,ttc":
                 # TTC: Convert 3-cell interrupts to 4-cell GIC format by adding 0xa0 priority
                 intr_list = node["interrupts"].value
@@ -891,9 +891,17 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
     if ufs_nodes:
         ufs_node = sdt.tree.pnode(ufs_nodes[0].phandle)
         sdt.tree['/aliases'] + LopperProp(name="ufs0", value = ufs_node.abs_path)
+    # Add a zephyr,rtc-counter child node for the RTC counter framework.
+    # update the "rtc" alias to reference the wrapper node used by RTC APIs.
     if rtc_nodes:
         rtc_node = sdt.tree.pnode(rtc_nodes[0].phandle)
-        sdt.tree['/aliases'] + LopperProp(name="rtc", value = rtc_node.abs_path)
+        sdt.tree['/aliases'] + LopperProp(name="rtc", value = rtc_node.abs_path + "/rtc-counter")
+        rtc_counter_node = LopperNode()
+        rtc_counter_node.name = "rtc-counter"
+        rtc_counter_node['compatible'] = "zephyr,rtc-counter"
+        rtc_counter_node['status'] = "okay"
+        rtc_counter_node['alarms-count'] = 1
+        rtc_node.add(rtc_counter_node)
 
     for node in root_sub_nodes:
         if node.propval("compatible") != ['']:
