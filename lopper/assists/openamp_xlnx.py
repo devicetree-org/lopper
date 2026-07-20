@@ -488,6 +488,7 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
     Returns:
         bool: True on successful file generation, False on failure.
     """
+    print(" ---> xlnx_libmetal_gen_output_file")
     platform = get_platform(tree, verbose)
     if platform == None:
         return False
@@ -498,8 +499,8 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
     suffix = "ipi" if platform == SOC_TYPE.ZYNQMP else "mailbox"
 
     parent_ipis = tree["/axi"].subnodes(children_only=True, name="%s@*" % suffix)
-    relevant_remote_ipi = [n for n in parent_ipis if n.propval("xlnx,ipi-bitmask")[0] == ipi_node.propval("xlnx,ipi-bitmask")[0] ]
     values = {  "SHM_IMAGE_BASE": hex(data["reg"][1]), "SHM_IMAGE_SIZE": hex(data["reg"][3]) }
+
     values.update({
                 "SHM_PAYLOAD_BASE": values["SHM_IMAGE_BASE"], "SHM_PAYLOAD_SIZE": values["SHM_IMAGE_SIZE"],
                 "SHM_PAYLOAD_HALF_SIZE": hex(data["reg"][3]//2),
@@ -511,7 +512,7 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
                 "TTC_BASE_ADDR": hex(timer_node["reg"][1]),
                 "IPI_DEV_NAME": "%s.%s" % (hex(ipi_node.parent["reg"][1])[2:], suffix), "IPI_BASE_ADDR": hex(ipi_node.parent["reg"][1]),
                 "IPI_MASK": hex(ipi_node['xlnx,ipi-bitmask'].value[0]),
-                "IPI_IRQ_VECT_ID": 0 if os == "linux_dt" else relevant_remote_ipi[0].propval("xlnx,int-id")[0],
+                "IPI_IRQ_VECT_ID": 0 if os == "linux_dt" else ipi_node.parent.propval("xlnx,int-id")[0],
                 "BUS_NAME": "platform" if os == "linux_dt" else "generic" })
     values.update({"SHM_PAYLOAD_TX_OFFSET": values["SHM_PAYLOAD_HALF_SIZE"]})
     values.update({"SHM_DEV_NAME": "%s.%s" % (data.name.split("@")[1].lower(), data.name.split("@")[0].lower())})
@@ -1126,12 +1127,12 @@ def get_platform(tree, verbose = 0):
     platform = None
     root_node = tree["/"]
 
-    inputs = root_node.propval("compatible") + root_node.propval("model")
+    inputs = root_node.propval("compatible") + root_node.propval("model") + root_node.propval("device_id")
 
     zynqmp = [ 'Xilinx ZynqMP',  "xlnx,zynqmp" ]
     versal = [ 'xlnx,versal', 'Xilinx Versal']
     versalnet = [ 'versal-net', 'Versal NET', "xlnx,versal-net", "Xilinx Versal NET" ]
-    versal2 = [ 'xlnx,versal2', 'amd,versal2', 'amd versal vek385 reva' ]
+    versal2 = [ 'xlnx,versal2', 'amd,versal2', 'amd versal vek385 reva', 'xc2ve3858' ]
 
     rpu_socs = [ versal2, zynqmp, versal, versalnet ]
     rpu_socs_enums = [ SOC_TYPE.VERSAL2, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]
