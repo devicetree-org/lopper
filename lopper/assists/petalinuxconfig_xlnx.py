@@ -81,25 +81,6 @@ def get_aliases_for_node(alias_map, node):
         return []
     return alias_map.get(node.abs_path, [])
 
-def extract_serial_port_from_aliases(alias_list):
-    """Extract serial port identifier from aliases.
-
-    Args:
-        alias_list: List of aliases for a node
-
-    Returns:
-        Serial port identifier (e.g., 'serial0', 'uart1') or None
-    """
-    if not alias_list:
-        return None
-
-    # Look for serial or uart aliases
-    for alias in alias_list:
-        if re.match(r'^(serial|uart)\d+$', alias):
-            return alias
-
-    return None
-
 def extract_chosen_node_properties(chosen_node):
     """Extract all properties from the /chosen node into a dictionary.
 
@@ -143,6 +124,104 @@ def add_device_tree_metadata(target_dict, key, alias_map, node):
     node_aliases = get_aliases_for_node(alias_map, node)
     if node_aliases:
         target_dict[key].update({"aliases": node_aliases})
+
+# How the kernel serial driver for a given console prefix allocates its line
+# (minor) number, i.e. the number appended to the tty prefix:
+#   'alias'   -> driver calls of_alias_get_id(np, "serial"); the serialN alias
+#                id becomes the tty line directly (e.g. ttyPS/xilinx_uartps,
+#                ttyAMA/amba-pl011). When a node has no serial alias the
+#                driver falls back to a free line.
+#   'dynamic' -> driver ignores the serial alias entirely and assigns a line
+#                from an explicit 'port-number' property, otherwise the next
+#                free slot in probe order (e.g. ttyUL/uartlite, ttyS/8250).
+# This mirrors the actual kernel drivers so the predicted tty_device matches
+# what Linux will create.
+SERIAL_ALLOC_METHODS = {
+    "ttyPS": "alias",
+    "ttyAMA": "alias",
+    "ttyUL": "dynamic",
+    "ttyS": "dynamic",
+}
+DEFAULT_SERIAL_ALLOC = "dynamic"
+
+def serial_alias_id(alias_list):
+    """Return the numeric id from a serialN alias (0 for 'serial0'), or None."""
+    if not alias_list:
+        return None
+    for alias in alias_list:
+        match = re.match(r'^serial(\d+)$', alias)
+        if match:
+            return int(match.group(1))
+    return None
+
+def build_serial_prefix_map(device_type_map):
+    """Build a compatible-string -> console_prefix lookup for serial controllers."""
+    compat_to_prefix = {}
+    for info in device_type_map.values():
+        if not re.search("serial", info['dev_type']):
+            continue
+        prefix = info.get('console_prefix')
+        if not prefix:
+            continue
+        for compat in info['driver_compatlist']:
+            compat_to_prefix.setdefault(compat, prefix)
+    return compat_to_prefix
+
+def compute_serial_tty_map(mapped_nodelist, alias_map, device_type_map):
+    """Predict each serial node's Linux tty name (e.g. 'ttyPS0'), the way the
+    kernel drivers allocate: alias-honoring drivers (ttyPS/ttyAMA) use the
+    serialN alias id; dynamic drivers (ttyUL/ttyS) ignore the alias and use
+    'port-number' or the next free line. Fixed lines are reserved first, then
+    the rest fill the lowest free line per prefix in probe order.
+
+    Returns a dict of node.abs_path -> tty name.
+    """
+    compat_to_prefix = build_serial_prefix_map(device_type_map)
+    fixed = {}       # node.abs_path -> (prefix, line)
+    dynamic = {}     # prefix -> list of nodes needing dynamic assignment
+    used = {}        # prefix -> set of taken line numbers
+
+    for node in mapped_nodelist:
+        try:
+            compatible_list = node["compatible"].value
+        except (KeyError, AttributeError):
+            continue
+        prefix = next((compat_to_prefix[c] for c in compatible_list
+                       if c in compat_to_prefix), None)
+        if not prefix:
+            continue
+        method = SERIAL_ALLOC_METHODS.get(prefix, DEFAULT_SERIAL_ALLOC)
+        used.setdefault(prefix, set())
+
+        line = None
+        if method == "alias":
+            # Alias-honoring driver: serialN alias id becomes the tty line
+            line = serial_alias_id(get_aliases_for_node(alias_map, node))
+        else:
+            # Dynamic driver ignores the alias; honour an explicit port-number
+            port_number = node.propval('port-number', list)
+            if port_number and port_number != ['']:
+                try:
+                    line = int(port_number[0])
+                except (ValueError, TypeError):
+                    line = None
+
+        if line is not None:
+            fixed[node.abs_path] = (prefix, line)
+            used[prefix].add(line)
+        else:
+            dynamic.setdefault(prefix, []).append(node)
+
+    # No fixed line: assign the next free line for that prefix (probe order)
+    for prefix, nodes in dynamic.items():
+        next_id = 0
+        for node in nodes:
+            while next_id in used[prefix]:
+                next_id += 1
+            used[prefix].add(next_id)
+            fixed[node.abs_path] = (prefix, next_id)
+
+    return {path: f"{prefix}{line}" for path, (prefix, line) in fixed.items()}
 
 class YamlDumper(yaml.Dumper):
     def increase_indent(self, flow=False, indentless=False):
@@ -273,8 +352,13 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
             else:
                 device_type_map[res] = {
                     'dev_type': dev_type,
-                    'driver_compatlist': compat_list(schema[res])
+                    'driver_compatlist': compat_list(schema[res]),
+                    'console_prefix': schema[res].get('console_prefix')
                 }
+
+        # Predict the Linux tty device name (ttyPS0, ttyUL0, ...) for serial
+        # nodes, using the console_prefix defined in the input schema.
+        serial_tty_map = compute_serial_tty_map(mapped_nodelist, alias_map, device_type_map)
 
         for node in mapped_nodelist:
             label_name = get_label(sdt, symbol_node, node)
@@ -300,11 +384,10 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
                                 tmp_dict['slaves'][label_name].update({"baseaddr":hex(addr)})
                                 # Add DT node path and aliases using helper function
                                 add_device_tree_metadata(tmp_dict['slaves'], label_name, alias_map, node)
-                                # Extract serial port identifier from aliases if available
-                                node_aliases = get_aliases_for_node(alias_map, node)
-                                serial_port = extract_serial_port_from_aliases(node_aliases)
-                                if serial_port:
-                                    tmp_dict['slaves'][label_name].update({"serial_port": serial_port})
+                                # Add the predicted Linux tty device name
+                                tty_name = serial_tty_map.get(node.abs_path)
+                                if tty_name:
+                                    tmp_dict['slaves'][label_name].update({"tty_device": tty_name})
                             else:
                                 tmp_dict['slaves'][label_name] = {"device_type":dev_type}
                                 tmp_dict['slaves'][label_name].update({"ip_name":ipname[0]})
