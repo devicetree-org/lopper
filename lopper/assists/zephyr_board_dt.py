@@ -306,3 +306,172 @@ def _check_subnodes_recursive(tree, node, ref_name, max_depth=5, current_depth=0
     
     return False
 
+
+ZEPHYR_BOARD_DTSI_SUFFIX = "_zephyr.dtsi"
+SDT_DTSI_GLOB = "*.dtsi"
+SDT_TOP_DTS = "system-top.dts"
+SDT_BOARD_PROP_RE = re.compile(r'board\s*=\s*"([^"]+)"')
+SDT_INCLUDE_RE = re.compile(r'#include\s+"([^"]+)"')
+
+
+def _sdt_included_dtsi_basenames(sdt_folder):
+    """Return basenames of .dtsi files #included from system-top.dts."""
+    system_top = os.path.join(sdt_folder, SDT_TOP_DTS)
+    if not os.path.isfile(system_top):
+        return frozenset()
+
+    included = set()
+    with open(system_top, "r", encoding="utf-8") as f:
+        for line in f:
+            match = SDT_INCLUDE_RE.match(line.strip())
+            if match:
+                included.add(os.path.basename(match.group(1)))
+    return frozenset(included)
+
+
+def _read_text_file(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def _write_text_file(path, content):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def get_board_name_from_sdt(main_tree, sdt_folder=None):
+    try:
+        root = main_tree["/"]
+        board = root.propval("board")
+        if isinstance(board, list):
+            board = board[0] if board else ""
+        if board:
+            return board
+    except Exception:
+        pass
+
+    if sdt_folder:
+        system_top = os.path.join(sdt_folder, SDT_TOP_DTS)
+        if os.path.isfile(system_top):
+            with open(system_top, "r", encoding="utf-8") as f:
+                match = SDT_BOARD_PROP_RE.search(f.read())
+            if match:
+                return match.group(1)
+
+    return None
+
+
+def discover_zephyr_board_files(sdt_folder, main_tree):
+    """
+    Discover Zephyr board and user DTS files in the SDT folder.
+
+    SDTGEN (gen_zephyr_board_info) copies files as follows:
+      - board (CONFIG.BOARD): {board}.dtsi -> {board}_zephyr.dtsi
+      - user (-user_zephyr_dts): copied with its original file name
+
+    Board DTSI is identified as {board}_zephyr.dtsi when the SDT root has a
+    matching board property. User Zephyr DTSI is any other .dtsi in the SDT
+    folder that is not #included from system-top.dts (for example pl.dtsi or
+    pcw.dtsi). SDTGEN rejects a user file whose basename equals
+    {board}_zephyr.dtsi, so board and user never share that name.
+    """
+    board_dtsi = None
+    board_name = get_board_name_from_sdt(main_tree, sdt_folder)
+    if board_name:
+        candidate = os.path.join(sdt_folder, f"{board_name}{ZEPHYR_BOARD_DTSI_SUFFIX}")
+        if os.path.isfile(candidate):
+            board_dtsi = os.path.abspath(candidate)
+
+    user_zephyr_dtsi = None
+    sdt_includes = _sdt_included_dtsi_basenames(sdt_folder)
+    for path in sorted(glob.glob(os.path.join(sdt_folder, SDT_DTSI_GLOB))):
+        abs_path = os.path.abspath(path)
+        if board_dtsi is not None and abs_path == board_dtsi:
+            continue
+        if os.path.basename(abs_path) in sdt_includes:
+            continue
+        user_zephyr_dtsi = abs_path
+        break
+
+    return {
+        "board_dtsi": board_dtsi,
+        "user_zephyr_dtsi": user_zephyr_dtsi,
+    }
+
+
+def resolve_sdt_folder(options, sdt):
+    """
+    Resolve SDT folder from gen_domain_dts assist args[2].
+
+    args[0] = processor
+    args[1] = zephyr_dt
+    args[2] = SDT folder path (SDTGEN output directory)
+    """
+    try:
+        candidate = options["args"][2]
+    except (IndexError, KeyError, TypeError):
+        return None
+
+    if not candidate:
+        return None
+
+    path = os.path.abspath(candidate)
+    if os.path.isdir(path):
+        return path
+
+    return None
+
+
+def generate_board_overlay_from_sdt(sdt, options):
+    """
+    Generate board.overlay from Zephyr board DTSI files in the SDT folder.
+
+    Called by gen_domain_dts when args[2] is a directory. Legacy callers that
+    pass a single board .dts/.dtsi file are handled directly in gen_domain_dts.
+
+    SDT-folder scenarios:
+      1. board DTS only -> validate/filter against SDT tree
+      2. board + user DTS -> filter board, append user unchanged
+      3. user DTS only -> copy user content unchanged
+    """
+    sdt_folder = resolve_sdt_folder(options, sdt)
+    if not sdt_folder:
+        print("[WARNING] SDT folder path was not provided to gen_domain_dts. Skipping Zephyr board overlay generation.")
+        return False
+
+    if not os.path.isdir(sdt_folder):
+        print(f"[WARNING] SDT folder '{sdt_folder}' was not found. Skipping Zephyr board overlay generation.")
+        return False
+
+    files = discover_zephyr_board_files(sdt_folder, sdt.tree)
+    board_dtsi = files.get("board_dtsi")
+    user_zephyr_dtsi = files.get("user_zephyr_dtsi")
+
+    if not board_dtsi and not user_zephyr_dtsi:
+        print(f"[INFO] No Zephyr board DTSI found in SDT folder '{sdt_folder}'. Skipping board overlay generation.")
+        return False
+
+    overlay_parts = []
+
+    if board_dtsi and user_zephyr_dtsi:
+        filtered_board = process_overlay_with_lopper_api(
+            _read_text_file(board_dtsi), sdt.tree
+        ).rstrip()
+        if filtered_board:
+            overlay_parts.append(filtered_board)
+        overlay_parts.append(_read_text_file(user_zephyr_dtsi).rstrip())
+        print(f"[INFO] Generated board.overlay from filtered '{os.path.basename(board_dtsi)}' and user '{os.path.basename(user_zephyr_dtsi)}'.")
+    elif board_dtsi:
+        overlay_parts.append(
+            process_overlay_with_lopper_api(
+                _read_text_file(board_dtsi), sdt.tree
+            ).rstrip()
+        )
+        print(f"[INFO] Generated board.overlay from filtered '{os.path.basename(board_dtsi)}'.")
+    else:
+        overlay_parts.append(_read_text_file(user_zephyr_dtsi).rstrip())
+        print(f"[INFO] Generated board.overlay from user DTSI '{os.path.basename(user_zephyr_dtsi)}'.")
+
+    output = "\n\n".join(part for part in overlay_parts if part.strip()) + "\n"
+    _write_text_file(os.path.join(sdt.outdir, "board.overlay"), output)
+    return True
