@@ -29,6 +29,25 @@ class VerboseSafeDumper(yaml.SafeDumper):
     def ignore_aliases(self, data):
         return True
 
+def os_yaml_to_bsp_key(os_name):
+    if os_name in ("freertos10_xilinx", "freertos"):
+        return "freertos"
+    return os_name
+
+def update_supported_os_dict(supported_dict, proc_name, supported_os_list, comp_dict):
+    for os_name in supported_os_list:
+        bsp_key = os_yaml_to_bsp_key(os_name)
+        if bsp_key in supported_dict[proc_name]:
+            supported_dict[proc_name][bsp_key].update(comp_dict)
+
+def get_os_bsp_keys(path_schema):
+    keys = ["standalone", "freertos"]
+    for os_pkg in path_schema.get("os", {}).keys():
+        bsp_key = os_yaml_to_bsp_key(os_pkg)
+        if bsp_key not in keys:
+            keys.append(bsp_key)
+    return keys
+
 def get_yaml_data(comp_name, comp_dir,proc_ip_name=None,family=None,variant=None):
     yaml_file = os.path.join(comp_dir, 'data', f'{comp_name}.yaml')
     schema = utils.load_yaml(yaml_file)
@@ -83,8 +102,6 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
     family = sdt.tree['/'].propval('family')
     family = family[0] if family else ""
     variant = sdt.tree['/'].propval('variant')
-    supported_app_dict = {proc_name: {'standalone': {}, 'freertos': {}}}
-    supported_libs_dict = {proc_name: {'standalone': {}, 'freertos': {}}}
 
     if utils.is_file(repo_path_data):
         path_schema = utils.load_yaml(repo_path_data)
@@ -118,6 +135,10 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
 
             path_schema[yaml_data['type']][comp_name] = {version : dir_path}
 
+    os_bsp_keys = get_os_bsp_keys(path_schema)
+    supported_app_dict = {proc_name: {key: {} for key in os_bsp_keys}}
+    supported_libs_dict = {proc_name: {key: {} for key in os_bsp_keys}}
+
     apps_dict = path_schema.get('apps', {})
     libs_dict = path_schema.get('library', {})
 
@@ -128,10 +149,9 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
             supported_proc_list, supported_os_list, description, dep_lib_list, _ = get_yaml_data(app_name, apps_dict[app_name]['path'][0])
         if proc_ip_name in supported_proc_list:
             app_dict = {app_name : {'description': description, 'depends_libs': dep_lib_list}}
-            if 'standalone' in supported_os_list:
-                supported_app_dict[proc_name]['standalone'].update(app_dict)
-            if "freertos10_xilinx" in supported_os_list:
-                supported_app_dict[proc_name]['freertos'].update(app_dict)
+            update_supported_os_dict(
+                supported_app_dict, proc_name, supported_os_list, app_dict
+            )
 
     for lib_name in list(libs_dict.keys()):
         cur_lib_dict = libs_dict[lib_name]
@@ -150,11 +170,9 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
                 lib_dict = {lib_name : {'description': description, 'depends_libs': dep_lib_list, 'path': sorted_lib_dict['path'],'examples':examples}}
             else:
                 lib_dict = {lib_name : {'description': description, 'depends_libs': dep_lib_list, 'versions': sorted_lib_dict,'examples':examples}}
-            if 'standalone' in supported_os_list:
-                supported_libs_dict[proc_name]['standalone'].update(lib_dict)
-            if "freertos10_xilinx" in supported_os_list:
-                supported_libs_dict[proc_name]['freertos'].update(lib_dict)
-
+            update_supported_os_dict(
+                supported_libs_dict, proc_name, supported_os_list, lib_dict
+            )
 
     with open(os.path.join(sdt.outdir, 'app_list.yaml'), 'w') as fd:
         fd.write(yaml.dump(supported_app_dict, sort_keys=False, indent=2, width=32768, Dumper=VerboseSafeDumper))
