@@ -23,7 +23,7 @@ from baremetalconfig_xlnx import compat_list, get_cpu_node, get_mapped_nodes, ge
 from common_utils import to_cmakelist
 import common_utils as utils
 from domain_access import update_mem_node
-from zephyr_board_dt import process_overlay_with_lopper_api
+from zephyr_board_dt import generate_board_overlay_from_sdt, process_overlay_with_lopper_api
 from openamp_xlnx import xlnx_openamp_keep_node
 
 
@@ -747,12 +747,14 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             pass
         if zephyr_board_dt and os.path.exists(zephyr_board_dt):
             try:
-                # Read the overlay file
-                with open(zephyr_board_dt, 'r') as f:
-                    overlay_content = f.read()
-                cleaned_content = process_overlay_with_lopper_api(overlay_content, sdt.tree)
-                with open(os.path.join(sdt.outdir, "board.overlay"), 'w') as f:
-                    f.write(cleaned_content)
+                if os.path.isdir(zephyr_board_dt):
+                    generate_board_overlay_from_sdt(sdt, options)
+                else:
+                    with open(zephyr_board_arg, 'r') as f:
+                        overlay_content = f.read()
+                    cleaned_content = process_overlay_with_lopper_api(overlay_content, sdt.tree)
+                    with open(os.path.join(sdt.outdir, "board.overlay"), 'w') as f:
+                        f.write(cleaned_content)
             except Exception as e:
                 print(f"[ERROR] Failed to process overlay file: {e}")
                 import traceback
