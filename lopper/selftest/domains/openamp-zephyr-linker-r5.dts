@@ -1,0 +1,100 @@
+/dts-v1/;
+
+/ {
+	compatible = "system-device-tree-v1";
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	aliases {
+	};
+
+	cpus_r5_0: cpus-r5@0 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#ranges-address-cells = <1>;
+		#ranges-size-cells = <1>;
+		compatible = "cpus,cluster";
+		address-map = <0x0 &psu_r5_0_atcm 0x0 0x10000>,
+			      <0x20000 &psu_r5_0_btcm 0x20000 0x10000>,
+			      <0x9800000 &rproc0 0x9800000 0x60000>;
+
+		psu_cortexr5_0: cpu@0 {
+			compatible = "arm,cortex-r5";
+			device_type = "cpu";
+			reg = <0>;
+		};
+	};
+
+	axi {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		gic_r5: interrupt-controller@f9000000 {
+			compatible = "arm,gic-400";
+			reg = <0x0 0xf9000000 0x0 0x1000>;
+			interrupt-controller;
+			#interrupt-cells = <3>;
+		};
+
+		imux: interrupt-multiplex {
+			compatible = "xlnx,interrupt-multiplex-1.0";
+		};
+
+		psu_r5_0_atcm: psu_r5_0_atcm@0 {
+			compatible = "xlnx,psu-r5-0-atcm-1.0", "mmio-sram";
+			reg = <0x0 0x0 0x0 0x10000>;
+			mpu-policy = "readable", "writable", "executable", "cacheable";
+		};
+
+		psu_r5_0_btcm: psu_r5_0_btcm@20000 {
+			compatible = "xlnx,psu-r5-0-btcm-1.0", "mmio-sram";
+			reg = <0x0 0x20000 0x0 0x10000>;
+			mpu-policy = "readable", "writable", "cacheable";
+		};
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		rproc0: memory@9800000 {
+			label = "rproc0";
+			reg = <0x0 0x9800000 0x0 0x60000>;
+			mpu-policy = "readable", "writable", "executable", "cacheable";
+		};
+	};
+
+	domains {
+		R5_0_ZEPHYR {
+			compatible = "openamp,domain-v1";
+			os,type = "zephyr";
+			cpus = <&psu_cortexr5_0 0 0>;
+			sram = <&psu_r5_0_atcm &psu_r5_0_btcm>;
+			reserved-memory = <&rproc0>;
+
+			linker_file_output_name = "/tmp/openamp-zephyr-linker-sanity.ld";
+			linker_memories = <&psu_r5_0_atcm &psu_r5_0_btcm &rproc0>;
+			linker-entry = "_vector_table";
+			linker-section-vector-table = <&psu_r5_0_atcm>;
+			linker-section-vector-table-offset = <0>;
+			linker-section-text = <&psu_r5_0_atcm>;
+			linker-section-rodata = <&psu_r5_0_atcm>;
+			linker-section-data = <&psu_r5_0_btcm>;
+			linker-section-bss = <&psu_r5_0_btcm>;
+			linker-section-noinit = <&psu_r5_0_btcm>;
+			linker-section-heap = <&psu_r5_0_btcm>;
+			linker-section-stack = <&psu_r5_0_btcm>;
+			linker-section-resource-table = <&rproc0>;
+			linker-section-resource-table-offset = <0x20000>;
+			linker-custom-sections = "openamp_test";
+			linker-custom-section-openamp_test-region = <&rproc0>;
+			linker-custom-section-openamp_test-input-sections =
+				".openamp_test", ".openamp_test.*";
+			linker-custom-section-openamp_test-alignment = <16>;
+			linker-custom-section-openamp_test-keep;
+		};
+	};
+};

@@ -1,0 +1,30 @@
+# Reference metadata for the Zephyr Cortex-R5 linker sanity test.
+axi:
+  psu_r5_0_atcm:
+    mpu-policy!zephyr!append: [ readable, writable, executable, cacheable ]
+  psu_r5_0_btcm:
+    mpu-policy!zephyr!append: [ readable, writable, cacheable ]
+
+reserved-memory:
+  rproc0@9800000:
+    mpu-policy!zephyr!append: [ readable, writable, executable, cacheable ]
+
+domains:
+  R5_0_ZEPHYR:
+    os,type: zephyr
+    sram: [ psu_r5_0_atcm, psu_r5_0_btcm ]
+    reserved-memory: [ rproc0@9800000 ]
+    linker:
+      linker_file_output_name: R5_0_ZEPHYR.ld
+      linker_memories: [ psu_r5_0_atcm, psu_r5_0_btcm, rproc0 ]
+      entry: _vector_table
+      sections:
+        vector_table: { region: psu_r5_0_atcm, offset: 0 }
+        text: { region: psu_r5_0_atcm }
+        rodata: { region: psu_r5_0_atcm }
+        data: { region: psu_r5_0_btcm }
+        bss: { region: psu_r5_0_btcm }
+        noinit: { region: psu_r5_0_btcm }
+        heap: { region: psu_r5_0_btcm }
+        stack: { region: psu_r5_0_btcm }
+        resource_table: { region: rproc0, offset: 0x20000 }
