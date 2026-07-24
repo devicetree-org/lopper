@@ -1,0 +1,8 @@
+zephyr-version: 4.3.0
+template-abi: amd-zephyr-linker-v2
+source:
+  path: include/zephyr/arch/arm/cortex_a_r/scripts/linker.ld
+  derived-from: Zephyr 4.3 Cortex-A/R linker script
+  nested-fragments:
+    - include/zephyr/linker/common-ram.ld
+license: Apache-2.0
