@@ -401,10 +401,19 @@ xlnx,versal-gem:
     - interrupts
     - local-mac-address
 
+zephyr,memory-region:
+  required:
+    - compatible
+    - reg
+    - status
+    - zephyr,memory-region
+    - zephyr,memory-attr
+
 mmio-sram:
   required:
     - compatible
     - reg
+    - status
 
 xlnx,zynqmp-rtc:
   required:
@@ -474,3 +483,38 @@ xlnx,iomodule-3.1:
     - compatible
     - interrupts
     - interrupt-parent
+
+zephyr,mbox-ipm:
+  required:
+    - status
+    - compatible
+    - mbox-names
+    - mboxes
+
+vnd,mbox-consumer:
+  required:
+    - compatible
+    - mbox-names
+    - mboxes
+
+xlnx,zynqmp-ipi-mailbox:
+  required:
+    - compatible
+    - status
+    - reg
+    - reg-names
+    - interrupts
+    - interrupt-parent
+    - xlnx,ipi-id
+    - '#address-cells'
+    - '#size-cells'
+    - local-ipi-id
+
+xlnx,zynqmp-ipi-dest-mailbox:
+  required:
+    - compatible
+    - reg
+    - reg-names
+    - xlnx,ipi-id
+    - '#mbox-cells'
+    - remote-ipi-id
