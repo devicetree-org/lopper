@@ -1,0 +1,84 @@
+/dts-v1/;
+
+/ {
+	compatible = "system-device-tree-v1";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	cpus_r52_0: cpus-r52@0 {
+		compatible = "cpus,cluster";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cortexr52_0: cpu@0 {
+			compatible = "arm,cortex-r52";
+			device_type = "cpu";
+			reg = <0>;
+		};
+	};
+
+	atcm: r52_0a_atcm_global@0 {
+		reg = <0x0 0x10000>;
+		label = "ATCM";
+		mpu-policy = "readable", "writable", "executable", "cacheable";
+	};
+	btcm: r52_0a_btcm_global@10000 {
+		reg = <0x10000 0x8000>;
+		label = "BTCM";
+		mpu-policy = "readable", "writable", "cacheable";
+	};
+	ctcm: r52_0a_ctcm_global@20000 {
+		reg = <0x20000 0x8000>;
+		label = "CTCM";
+		mpu-policy = "readable", "writable", "cacheable";
+	};
+	ddr: ddrboot@100000 {
+		reg = <0x100000 0x80000>;
+		label = "DDR";
+		mpu-policy = "readable", "writable", "executable", "cacheable";
+	};
+
+	domains {
+		R52_0_ZEPHYR_TCM {
+			compatible = "openamp,domain-v1";
+			os,type = "zephyr";
+			cpus = <&cortexr52_0 0 0>;
+			sram = <&atcm &btcm &ctcm &ddr>;
+			linker_file_output_name = "/tmp/openamp-zephyr-r52-tcm.ld";
+			linker_memories = <&atcm &btcm &ctcm &ddr>;
+			linker-entry = "_vector_table";
+			linker-section-vector-table = <&atcm>;
+			linker-section-vector-table-offset = <0>;
+			linker-section-text = <&ddr>;
+			linker-section-text-offset = <0x20>;
+			linker-section-rodata = <&ddr>;
+			linker-section-data = <&btcm>;
+			linker-section-bss = <&btcm>;
+			linker-section-noinit = <&btcm>;
+			linker-section-heap = <&btcm>;
+			linker-section-stack = <&btcm>;
+			linker-section-resource-table = <&ddr>;
+			linker-section-resource-table-offset = <0x20000>;
+		};
+
+		R52_0_ZEPHYR_DDR {
+			compatible = "openamp,domain-v1";
+			os,type = "zephyr";
+			cpus = <&cortexr52_0 0 0>;
+			sram = <&ddr>;
+			linker_file_output_name = "/tmp/openamp-zephyr-r52-ddr.ld";
+			linker_memories = <&ddr>;
+			linker-entry = "_vector_table";
+			linker-section-vector-table = <&ddr>;
+			linker-section-vector-table-offset = <0>;
+			linker-section-text = <&ddr>;
+			linker-section-rodata = <&ddr>;
+			linker-section-data = <&ddr>;
+			linker-section-bss = <&ddr>;
+			linker-section-noinit = <&ddr>;
+			linker-section-heap = <&ddr>;
+			linker-section-stack = <&ddr>;
+			linker-section-resource-table = <&ddr>;
+			linker-section-resource-table-offset = <0x20000>;
+		};
+	};
+};

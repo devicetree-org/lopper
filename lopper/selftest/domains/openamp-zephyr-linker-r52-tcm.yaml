@@ -1,0 +1,39 @@
+# Reference metadata for the Zephyr Cortex-R52 TCM-boot sanity test.
+axi:
+  r52_0a_atcm_global:
+    mpu-policy!zephyr!append: [ readable, writable, executable, cacheable ]
+  r52_0a_btcm_global:
+    mpu-policy!zephyr!append: [ readable, writable, cacheable ]
+  r52_0a_ctcm_global:
+    mpu-policy!zephyr!append: [ readable, writable, cacheable ]
+
+reserved-memory:
+  ddrboot@9800100:
+    start: 0x9800100
+    size: 0x5ef00
+  trace@985f000:
+    start: 0x985f000
+    size: 0x1000
+    mpu-policy!zephyr!append: [ readable, writable, shareable, userspace ]
+  rsctbl@9800000:
+    mpu-policy!zephyr!append: [ readable, writable, shareable, userspace ]
+
+domains:
+  RPU_Zephyr:
+    os,type: zephyr
+    sram: [ r52_0a_atcm_global, r52_0a_btcm_global, r52_0a_ctcm_global ]
+    reserved-memory: [ trace@985f000, rsctbl@9800000 ]
+    linker:
+      linker_file_output_name: RPU_ZEPHYR_TCM.ld
+      linker_memories: [ r52_0a_atcm_global, r52_0a_btcm_global, ddrboot, rsctbl ]
+      entry: _vector_table
+      sections:
+        vector_table: { region: r52_0a_atcm_global, offset: 0 }
+        text: { region: r52_0a_atcm_global }
+        rodata: { region: r52_0a_atcm_global }
+        data: { region: r52_0a_btcm_global }
+        bss: { region: r52_0a_btcm_global }
+        noinit: { region: r52_0a_btcm_global }
+        heap: { region: r52_0a_btcm_global }
+        stack: { region: r52_0a_btcm_global }
+        resource_table: { region: rsctbl, offset: 0 }

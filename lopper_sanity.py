@@ -2189,6 +2189,386 @@ def openamp_sanity_test_generic( nodes_to_check, output_sdt, demo_script, files_
 
     test_passed(test_str)
 
+def openamp_zephyr_linker_generator_sanity_test():
+    """Exercise the public R5 Zephyr linker-generator command.
+
+    Description:
+        Runs Lopper against the checked-in R5 fixture and verifies profile
+        inference, normalized memory names, YAML section placement, and the
+        fixed resource-table offset.
+
+    Args:
+        None.
+
+    Returns:
+        None. Results are reported through the sanity-test helpers.
+
+    Raises:
+        None. Command and artifact failures become test failures.
+    """
+    linker = "/tmp/openamp-zephyr-linker-sanity.ld"
+    command = [
+        sys.executable, "lopper.py", "-f", "--enhanced",
+        "lopper/selftest/domains/openamp-zephyr-linker-r5.dts",
+        "/tmp/openamp-zephyr-linker-sanity.dts", "--",
+        "openamp-zephyr-linker", "--domain=/domains/R5_0_ZEPHYR",
+        "--zephyr-version=4.3",
+    ]
+    environment = os.environ.copy()
+    environment["LOPPER_DTC_FLAGS"] = "-b 0 -@"
+    result = subprocess.run(command, env=environment, capture_output=True,
+                            text=True, check=False)
+    expected = {
+        linker: ["VECTOR_REGION PSU_R5_0_ATCM",
+                 "TEXT_REGION PSU_R5_0_ATCM",
+                 "DATA_REGION PSU_R5_0_BTCM",
+                 "HEAP_REGION PSU_R5_0_BTCM",
+                 "STACK_REGION PSU_R5_0_BTCM",
+                 ".openamp_test :",
+                 "KEEP(*(.openamp_test.*))",
+                 "} > RPROC0",
+                 ".resource_table ORIGIN(RPROC0) + 0x20000"],
+        linker + ".layout.txt": ["profile: r5-tcm",
+                                 "PSU_R5_0_ATCM: 0x0-0x10000",
+                                 "PSU_R5_0_BTCM: 0x20000-0x30000",
+                                 "openamp_test: RPROC0 (custom)",
+                                 "resource_table: RPROC0 + 0x20000"],
+    }
+    passed = result.returncode == 0
+    for path, patterns in expected.items():
+        if not os.path.isfile(path):
+            passed = False
+            continue
+        contents = Path(path).read_text(encoding="utf-8")
+        passed = passed and all(pattern in contents for pattern in patterns)
+    if passed:
+        test_passed("OpenAMP Zephyr R5 linker generator")
+    else:
+        print(result.stdout)
+        print(result.stderr)
+        test_failed("OpenAMP Zephyr R5 linker generator")
+
+    invalid_fixture = "/tmp/openamp-zephyr-linker-invalid-abi.dts"
+    invalid_contents = Path(command[4]).read_text(encoding="utf-8").replace(
+        'linker-custom-section-openamp_test-input-sections =\n'
+        '\t\t\t\t".openamp_test", ".openamp_test.*";',
+        'linker-custom-section-openamp_test-input-sections = ".text.*";')
+    Path(invalid_fixture).write_text(invalid_contents, encoding="utf-8")
+    invalid_command = command.copy()
+    invalid_command[4] = invalid_fixture
+    invalid_result = subprocess.run(
+        invalid_command, env=environment, capture_output=True, text=True,
+        check=False)
+    invalid_log = invalid_result.stdout + invalid_result.stderr
+    if "would consume a Zephyr ABI section" in invalid_log:
+        test_passed("OpenAMP Zephyr custom section ABI validation")
+    else:
+        print(invalid_log)
+        test_failed("OpenAMP Zephyr custom section ABI validation")
+
+    mpu_output = "/tmp/openamp-zephyr-mpu-sanity.dts"
+    mpu_command = [
+        sys.executable, "lopper.py", "-f", "--enhanced",
+        "lopper/selftest/domains/openamp-zephyr-linker-r5.dts",
+        mpu_output, "--", "openamp-zephyr-mpu",
+        "--domain=/domains/R5_0_ZEPHYR", "--zephyr-version=4.3",
+    ]
+    mpu_result = subprocess.run(mpu_command, env=environment,
+                                capture_output=True, text=True, check=False)
+    mpu_passed = mpu_result.returncode == 0 and os.path.isfile(mpu_output)
+    if mpu_passed:
+        contents = Path(mpu_output).read_text(encoding="utf-8")
+        required = [
+            'zephyr,memory-region = "PSU_R5_0_ATCM"',
+            'zephyr,memory-region = "PSU_R5_0_BTCM"',
+            'zephyr,memory-region = "RPROC0"',
+            'zephyr,memory-attr = <0x71>',
+            'zephyr,memory-attr = <0x31>',
+            'zephyr,sram = "/axi/psu_r5_0_atcm@0"',
+            'reg = <0x0 0x9800000 0x0 0x80000>',
+        ]
+        mpu_passed = all(pattern in contents for pattern in required)
+        mpu_passed = mpu_passed and \
+            "mpu-policy" not in contents
+    if mpu_passed:
+        test_passed("OpenAMP Zephyr R5 MPU generator")
+    else:
+        print(mpu_result.stdout)
+        print(mpu_result.stderr)
+        test_failed("OpenAMP Zephyr R5 MPU generator")
+
+    r52_cases = (
+        ("R52_0_ZEPHYR_TCM", "r52-tcm", "ATCM", "DDR", "BTCM"),
+        ("R52_0_ZEPHYR_DDR", "r52-ddr", "DDR", "DDR", "DDR"),
+    )
+    for domain, profile, vector_memory, text_memory, data_memory in r52_cases:
+        output = f"/tmp/openamp-zephyr-{profile}.ld"
+        r52_command = [
+            sys.executable, "lopper.py", "-f", "--enhanced",
+            "lopper/selftest/domains/openamp-zephyr-linker-r52.dts",
+            f"/tmp/openamp-zephyr-{profile}.dts", "--",
+            "openamp-zephyr-linker", f"--domain=/domains/{domain}",
+            "--zephyr-version=4.3",
+        ]
+        r52_result = subprocess.run(
+            r52_command, env=environment, capture_output=True,
+            text=True, check=False)
+        r52_passed = r52_result.returncode == 0 and os.path.isfile(output)
+        if r52_passed:
+            contents = Path(output).read_text(encoding="utf-8")
+            report = Path(output + ".layout.txt").read_text(encoding="utf-8")
+            r52_passed = all(pattern in contents for pattern in (
+                f"VECTOR_REGION {vector_memory}",
+                f"TEXT_REGION {text_memory}",
+                f"DATA_REGION {data_memory}",
+            )) and f"profile: {profile}" in report
+            if profile == "r52-tcm":
+                r52_passed = r52_passed and \
+                    "DATA_LOAD_REGION ATCM" in contents and \
+                    "TEXT_ADDRESS ORIGIN(DDR) + 0x20" in contents and \
+                    "SECTION_PROLOGUE(_TEXT_SECTION_NAME " \
+                    "TEXT_ADDRESS,,)" in contents
+        if r52_passed:
+            test_passed(f"OpenAMP Zephyr {profile} linker generator")
+        else:
+            print(r52_result.stdout)
+            print(r52_result.stderr)
+            test_failed(f"OpenAMP Zephyr {profile} linker generator")
+
+    r52_fixture = Path(
+        "lopper/selftest/domains/openamp-zephyr-linker-r52.dts").read_text(
+            encoding="utf-8")
+    vector_line = 'linker-section-vector-table-offset = <0>;'
+    aligned_fixture = "/tmp/openamp-zephyr-r52-vector-aligned.dts"
+    aligned_output = "/tmp/openamp-zephyr-r52-vector-aligned.ld"
+    Path(aligned_fixture).write_text(
+        r52_fixture.replace(vector_line,
+                            vector_line.replace("<0>", "<0x100>"), 1)
+        .replace("/tmp/openamp-zephyr-r52-tcm.ld", aligned_output),
+        encoding="utf-8")
+    aligned_command = [
+        sys.executable, "lopper.py", "-f", "--enhanced", aligned_fixture,
+        "/tmp/openamp-zephyr-r52-vector-aligned-unused.dts", "--",
+        "openamp-zephyr-linker", "--domain=/domains/R52_0_ZEPHYR_TCM",
+        "--zephyr-version=4.3",
+    ]
+    aligned_result = subprocess.run(
+        aligned_command, env=environment, capture_output=True, text=True,
+        check=False)
+    aligned_passed = aligned_result.returncode == 0 and \
+        os.path.isfile(aligned_output) and \
+        "VECTOR_ADDRESS ORIGIN(ATCM) + 0x100" in \
+        Path(aligned_output).read_text(encoding="utf-8")
+    if aligned_passed:
+        test_passed("OpenAMP Zephyr R52 aligned ATCM vector offset")
+    else:
+        print(aligned_result.stdout + aligned_result.stderr)
+        test_failed("OpenAMP Zephyr R52 aligned ATCM vector offset")
+
+    misaligned_fixture = "/tmp/openamp-zephyr-r52-vector-misaligned.dts"
+    Path(misaligned_fixture).write_text(
+        r52_fixture.replace(vector_line, vector_line.replace("<0>", "<4>"), 1),
+        encoding="utf-8")
+    misaligned_command = aligned_command.copy()
+    misaligned_command[4] = misaligned_fixture
+    misaligned_result = subprocess.run(
+        misaligned_command, env=environment, capture_output=True, text=True,
+        check=False)
+    misaligned_log = misaligned_result.stdout + misaligned_result.stderr
+    if "Cortex-R52 vector_table offset must be 32-byte aligned" in misaligned_log:
+        test_passed("OpenAMP Zephyr R52 vector alignment validation")
+    else:
+        print(misaligned_log)
+        test_failed("OpenAMP Zephyr R52 vector alignment validation")
+
+    r5_fixture = Path(
+        "lopper/selftest/domains/openamp-zephyr-linker-r5.dts").read_text(
+            encoding="utf-8")
+    missing_policy_fixture = "/tmp/openamp-zephyr-missing-mpu-policy.dts"
+    Path(missing_policy_fixture).write_text(
+        r5_fixture.replace(
+            'mpu-policy = "readable", "writable", "executable", '
+            '"cacheable";', "", 1),
+        encoding="utf-8")
+    missing_policy_command = [
+        sys.executable, "lopper.py", "-f", "--enhanced",
+        missing_policy_fixture, "/tmp/openamp-zephyr-missing-policy-output.dts",
+        "--", "openamp-zephyr-mpu", "--domain=/domains/R5_0_ZEPHYR",
+        "--zephyr-version=4.3",
+    ]
+    missing_policy_result = subprocess.run(
+        missing_policy_command, env=environment, capture_output=True,
+        text=True, check=False)
+    missing_policy_log = missing_policy_result.stdout + missing_policy_result.stderr
+    if "missing required 'mpu-policy' property" in missing_policy_log:
+        test_passed("OpenAMP Zephyr missing MPU policy validation")
+    else:
+        print(missing_policy_log)
+        test_failed("OpenAMP Zephyr missing MPU policy validation")
+
+    invalid_policy_fixture = "/tmp/openamp-zephyr-invalid-mpu-policy.dts"
+    Path(invalid_policy_fixture).write_text(
+        r5_fixture.replace('"cacheable";',
+                           '"cacheable", "invalid-option";', 1),
+        encoding="utf-8")
+    invalid_policy_command = missing_policy_command.copy()
+    invalid_policy_command[4] = invalid_policy_fixture
+    invalid_policy_result = subprocess.run(
+        invalid_policy_command, env=environment, capture_output=True,
+        text=True, check=False)
+    invalid_policy_log = invalid_policy_result.stdout + invalid_policy_result.stderr
+    if "unsupported MPU policy options: invalid-option" in invalid_policy_log:
+        test_passed("OpenAMP Zephyr invalid MPU option validation")
+    else:
+        print(invalid_policy_log)
+        test_failed("OpenAMP Zephyr invalid MPU option validation")
+
+    overlap_fixture = "/tmp/openamp-zephyr-overlapping-mpu.dts"
+    Path(overlap_fixture).write_text(
+        r52_fixture.replace("reg = <0x100000 0x80000>;",
+                            "reg = <0x21000 0x80000>;", 1),
+        encoding="utf-8")
+    overlap_command = [
+        sys.executable, "lopper.py", "-f", "--enhanced", overlap_fixture,
+        "/tmp/openamp-zephyr-overlap-output.dts", "--",
+        "openamp-zephyr-mpu", "--domain=/domains/R52_0_ZEPHYR_TCM",
+        "--zephyr-version=4.3",
+    ]
+    overlap_result = subprocess.run(
+        overlap_command, env=environment, capture_output=True, text=True,
+        check=False)
+    overlap_log = overlap_result.stdout + overlap_result.stderr
+    if "MPU regions overlap:" in overlap_log and \
+            "overlap [0x21000, 0x28000)" in overlap_log:
+        test_passed("OpenAMP Zephyr MPU overlap validation")
+    else:
+        print(overlap_log)
+        test_failed("OpenAMP Zephyr MPU overlap validation")
+
+    no_resource_fixture = "/tmp/openamp-zephyr-no-resource-table.dts"
+    no_resource_output = "/tmp/openamp-zephyr-no-resource-table.ld"
+    Path(no_resource_fixture).write_text(
+        r52_fixture.replace(
+            'linker-section-resource-table = <&ddr>;', "")
+        .replace('linker-section-resource-table-offset = <0x20000>;', "")
+        .replace('/tmp/openamp-zephyr-r52-ddr.ld', no_resource_output),
+        encoding="utf-8")
+    no_resource_command = [
+        sys.executable, "lopper.py", "-f", "--enhanced",
+        no_resource_fixture, "/tmp/openamp-zephyr-no-resource-unused.dts",
+        "--", "openamp-zephyr-linker",
+        "--domain=/domains/R52_0_ZEPHYR_DDR", "--zephyr-version=4.3",
+    ]
+    no_resource_result = subprocess.run(
+        no_resource_command, env=environment, capture_output=True, text=True,
+        check=False)
+    no_resource_passed = no_resource_result.returncode == 0 and \
+        os.path.isfile(no_resource_output) and \
+        ".resource_table" not in Path(no_resource_output).read_text(
+            encoding="utf-8")
+    if no_resource_passed:
+        test_passed("Zephyr optional resource table generation")
+    else:
+        print(no_resource_result.stdout + no_resource_result.stderr)
+        test_failed("Zephyr optional resource table generation")
+
+    missing_user_fixture = "/tmp/openamp-zephyr-missing-user-content.dts"
+    Path(missing_user_fixture).write_text(
+        r5_fixture.replace(
+            'linker_file_output_name = "/tmp/openamp-zephyr-linker-sanity.ld";',
+            'linker_file_output_name = "/tmp/openamp-zephyr-linker-sanity.ld";\n'
+            '            linker-user-content = '
+            '"/missing/user-fragment.ld";', 1),
+        encoding="utf-8")
+    missing_user_command = command.copy()
+    missing_user_command[4] = missing_user_fixture
+    missing_user_result = subprocess.run(
+        missing_user_command, env=environment, capture_output=True, text=True,
+        check=False)
+    missing_user_log = missing_user_result.stdout + missing_user_result.stderr
+    if "user linker content '/missing/user-fragment.ld' was not found" in \
+            missing_user_log:
+        test_passed("Zephyr missing user linker content validation")
+    else:
+        print(missing_user_log)
+        test_failed("Zephyr missing user linker content validation")
+
+
+def openamp_zephyr_pipeline_sanity_test():
+    """Verify policy survives the complete post-OpenAMP Zephyr pipeline.
+
+    Description:
+        Runs the MPU and linker assists from a checked-in policy-bearing
+        OpenAMP-stage fixture, then performs the R5 IMUX domain generation and
+        final Zephyr domain generation. Verifies conventional memory metadata,
+        chosen SRAM, and linker placement in the final artifacts.
+
+    Args:
+        None.
+
+    Returns:
+        None. Results are reported through the sanity-test helpers.
+
+    Raises:
+        None. Command and artifact failures become test failures.
+    """
+    fixture = "lopper/selftest/domains/openamp-zephyr-linker-r5.dts"
+    prefix = "/tmp/openamp-zephyr-pipeline-sanity"
+    environment = os.environ.copy()
+    environment["LOPPER_DTC_FLAGS"] = "-b 0 -@"
+    commands = (
+        [sys.executable, "lopper.py", "-f", "--enhanced", fixture,
+         prefix + "-mpu.dts", "--", "openamp-zephyr-mpu",
+         "--domain=/domains/R5_0_ZEPHYR",
+         "--zephyr-version=4.3"],
+        [sys.executable, "lopper.py", "-f", "--enhanced", fixture,
+         prefix + "-linker-unused.dts", "--", "openamp-zephyr-linker",
+         "--domain=/domains/R5_0_ZEPHYR",
+         "--zephyr-version=4.3"],
+        [sys.executable, "lopper.py", "-f", "--enhanced", "-i",
+         "lopper/lops/lop-r5-imux.dts", prefix + "-mpu.dts",
+         prefix + "-rpu.dts", "--", "gen_domain_dts",
+         "psu_cortexr5_0"],
+        [sys.executable, "lopper.py", "-f", "--enhanced",
+         prefix + "-rpu.dts", prefix + "-final.dts", "--",
+         "gen_domain_dts", "psu_cortexr5_0", "zephyr_dt"],
+    )
+    logs = []
+    passed = True
+    for command in commands:
+        result = subprocess.run(command, env=environment, capture_output=True,
+                                text=True, check=False)
+        logs.append(result.stdout + result.stderr)
+        passed = passed and result.returncode == 0
+        passed = passed and "the assist returned false" not in logs[-1]
+        passed = passed and "assist %" not in logs[-1]
+    expected = {
+        prefix + "-final.dts": [
+            'zephyr,memory-region = "PSU_R5_0_ATCM"',
+            'zephyr,memory-region = "PSU_R5_0_BTCM"',
+            'zephyr,memory-region = "RPROC0"',
+            'zephyr,memory-attr = <0x71>',
+            'zephyr,memory-attr = <0x31>',
+            'zephyr,sram = "/axi/psu_r5_0_atcm@0"',
+        ],
+        "/tmp/openamp-zephyr-linker-sanity.ld": [
+            "VECTOR_REGION PSU_R5_0_ATCM",
+            "DATA_REGION PSU_R5_0_BTCM",
+            ".resource_table ORIGIN(RPROC0) + 0x20000",
+        ],
+    }
+    for path, patterns in expected.items():
+        if not os.path.isfile(path):
+            passed = False
+            continue
+        contents = Path(path).read_text(encoding="utf-8")
+        passed = passed and all(pattern in contents for pattern in patterns)
+    if passed:
+        test_passed("OpenAMP Zephyr complete assist pipeline")
+    else:
+        print("\n".join(logs))
+        test_failed("OpenAMP Zephyr complete assist pipeline")
+
 def xlnx_gen_domain_sanity_test( verbose ):
     ws_area = os.getcwd()
     sdt =       os.path.join(ws_area, "device-trees", "system-device-tree-versal-vck190.dts")
@@ -2233,6 +2613,8 @@ def openamp_sanity_test( verbose ):
     openamp_sanity_test_generic(["/remoteproc@eba00000"] , "linux.dts", demo_area + "versal2_run.sh",
                                 [ "linux.dts", "out.dts", "APU_Linux.dts", "openamp_APU_Linux.dts"],
                                 "OpenAMP Versal2 Sanity Test", verbose )
+    openamp_zephyr_linker_generator_sanity_test()
+    openamp_zephyr_pipeline_sanity_test()
     #openamp_sanity_test_generie(sdt, overlay, output_sdt, , test_str, nodes_to_check, verbose)
 
 def lops_sanity_test( device_tree, lop_file, verbose ):
