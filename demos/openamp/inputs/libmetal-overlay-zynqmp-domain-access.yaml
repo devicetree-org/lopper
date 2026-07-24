@@ -1,0 +1,22 @@
+# Domain-specific node retention for the Libmetal demo.
+domains:
+  APU_Linux:
+    access:
+      - dev: psu_ddr_0_memory
+      - dev: ttc2
+      - dev: psu_ipi_8_2
+      - dev: libmetal_uio_desc0@99c8000
+      - dev: libmetal_uio_desc1@99cc000
+      - dev: libmetal_uio_data@99d0000
+
+  R5_1_BAREMETAL:
+    access:
+      - dev: psu_r5_ddr_0_memory
+      - dev: psu_r5_1_atcm
+      - dev: psu_r5_1_btcm
+      - dev: ttc2
+      - dev: psu_ipi_2_8
+      - dev: libmetal_elf@9968000
+      - dev: libmetal_uio_desc0@99c8000
+      - dev: libmetal_uio_desc1@99cc000
+      - dev: libmetal_uio_data@99d0000

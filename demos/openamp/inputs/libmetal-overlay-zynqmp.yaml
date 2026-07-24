@@ -1,0 +1,93 @@
+reserved-memory:
+  ranges: true
+  "#size-cells": 2
+  "#address-cells": 2
+
+  libmetal_elf@9968000:
+    start: 0x9968000
+    size: 0x60000
+    no-map: 1
+  libmetal_desc0@99c8000:
+    start: 0x99c8000
+    size: 0x4000
+    no-map: 1
+  libmetal_desc1@99cc000:
+    start: 0x99cc000
+    size: 0x4000
+    no-map: 1
+  libmetal_data@99d0000:
+    start: 0x99d0000
+    size: 0x40000
+    no-map: 1
+
+axi:
+  timer@ff130000:
+    compatible!linux: uio
+  ipi@ff350000:
+    compatible!linux: uio
+
+  libmetal_uio_desc0@99c8000:
+    start: 0x99c8000
+    size: 0x4000
+    compatible: uio
+  libmetal_uio_desc1@99cc000:
+    start: 0x99cc000
+    size: 0x4000
+    compatible: uio
+  libmetal_uio_data@99d0000:
+    start: 0x99d0000
+    size: 0x40000
+    compatible: uio
+
+domains:
+  APU_Linux:
+    compatible: openamp,domain-v1
+    lopper,activate: linux
+    cpus:
+      - cluster: cpus_a53
+        cpumask: 0xf
+        mode:
+          secure: true
+          el: 0x3
+    os,type: linux
+    domain-to-domain:
+      compatible: openamp,domain-to-domain-v1
+      libmetal-relation:
+        compatible: libmetal,ipc-v1
+        relation0:
+          remote: R5_1_BAREMETAL
+          carveouts: [libmetal_uio_desc0@99c8000,
+                      libmetal_uio_desc1@99cc000,
+                      libmetal_uio_data@99d0000]
+          mbox: psu_ipi_8_2
+          timer: ttc2
+
+  R5_1_BAREMETAL:
+    compatible: openamp,domain-v1
+    cpus:
+      - cluster: cpus_r5_1
+        cpumask: 0x2
+        mode:
+          secure: true
+          el: 0x3
+        cluster_cpu: psu_cortexr5_1
+    os,type: baremetal
+    domain-to-domain:
+      compatible: openamp,domain-to-domain-v1
+      libmetal-relation:
+        compatible: libmetal,ipc-v1
+        relation0:
+          host: APU_Linux
+          carveouts: [libmetal_uio_desc0@99c8000,
+                      libmetal_uio_desc1@99cc000,
+                      libmetal_uio_data@99d0000]
+          mbox: psu_ipi_2_8
+          timer: ttc2
+          elfload: [libmetal_elf@9968000]
+    sram:
+      - dev: libmetal_elf@9968000
+        start: 0x9968000
+        size: 0x60000
+      - dev: psu_r5_1_atcm_global
+        start: 0xffe90000
+        size: 64K
