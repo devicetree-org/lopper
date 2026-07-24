@@ -89,8 +89,14 @@
                                from pprint import pprint
                                for n in tree.__selected__:
                                    pprint(vars(n['xlnx,data-size']))
+                                   use_embedded = n.propval('xlnx,use-embedded')
+                                   is_embedded = use_embedded != [''] and use_embedded[0] == 1
                                    if n['xlnx,data-size'].value[0] == 64:
+                                       if is_embedded:
+                                           print('WARNING: {}: xlnx,use-embedded is set but xlnx,data-size is 64; RV32E is a 32-bit-only ISA. Ignoring xlnx,use-embedded and generating rv64i flags.'.format(n.abs_path))
                                        n['xlnx,data-size'].tunes = 'rv64i'
+                                   elif is_embedded:
+                                       n['xlnx,data-size'].tunes = 'rv32e'
                                    else:
                                        n['xlnx,data-size'].tunes = 'rv32i'
                           ";
@@ -108,7 +114,14 @@
                                import os
 
                                for n in tree.__selected__:
+                                   use_embedded = n.propval('xlnx,use-embedded')
+                                   is_embedded = use_embedded != [''] and use_embedded[0] == 1 and n['xlnx,data-size'].value[0] != 64
+                                   fpu_conflict = is_embedded and n['xlnx,use-fpu'].value[0] != 0
+
                                    proplist= ['xlnx,data-size', 'xlnx,use-muldiv', 'xlnx,use-atomic', 'xlnx,use-fpu', 'xlnx,use-compression']
+                                   if fpu_conflict:
+                                       print('WARNING: {}: RV32E has no hard-float ABI; ignoring xlnx,use-fpu={}'.format(n.abs_path, n['xlnx,use-fpu'].value[0]))
+                                       proplist.remove('xlnx,use-fpu')
 
                                    archflags = []
                                    bsp_archflags = []
@@ -153,15 +166,21 @@
                                        bsp_archflags.append('_zicbom')
 
                                    if n['xlnx,data-size'].value[0] == 64:
-                                       archflags.append(' -mabi=lp64') 
+                                       archflags.append(' -mabi=lp64')
+                                       bsp_archflags.append(' -mabi=lp64')
+                                   elif is_embedded:
+                                       archflags.append(' -mabi=ilp32e')
+                                       bsp_archflags.append(' -mabi=ilp32e')
                                    else:
-                                       archflags.append(' -mabi=ilp32') 
+                                       archflags.append(' -mabi=ilp32')
+                                       bsp_archflags.append(' -mabi=ilp32')
 
-                                   if n['xlnx,use-fpu'].value[0] == 1:
-                                       archflags.append('f') 
-                                   elif n['xlnx,use-fpu'].value[0] == 2:
-                                       archflags.append('d') 
-                                   
+                                   if not fpu_conflict:
+                                       if n['xlnx,use-fpu'].value[0] == 1:
+                                           archflags.append('f')
+                                       elif n['xlnx,use-fpu'].value[0] == 2:
+                                           archflags.append('d')
+
                                    archflags.insert(0, '-march=')
                                    bsp_archflags.insert(0, '-march=')
                                    n.tunes = archflags
