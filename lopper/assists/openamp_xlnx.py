@@ -29,11 +29,15 @@ import lopper
 from lopper.tree import *
 from re import *
 from string import Template
+from lopper.log import _init, _warning, _info, _error
 
 sys.path.append(os.path.dirname(__file__))
 from openamp_xlnx_common import *
 from baremetalconfig_xlnx import get_cpu_node
 from string import ascii_lowercase as alc
+
+_init(__name__)
+
 
 RPU_PATH = "/rpu@ff9a0000"
 REMOTEPROC_D_TO_D = "openamp,remoteproc-v1"
@@ -388,6 +392,108 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
     print("OPENAMP: XLNX: ERROR: unable to find elf load carveout")
     return False
 
+def xlnx_openamp_uses_direct_ipm(machine):
+    """Return True for ZynqMP R5 targets using the legacy direct-IPM driver."""
+    return "psu_cortexr5" in machine
+
+def xlnx_openamp_apply_legacy_zephyr_memories(tree, domain_node):
+    """Apply deprecated xlnx,zephyr,mems memory selection.
+
+    Description:
+        Preserves the original Zephyr domain-YAML behavior while MPU and
+        linker policy metadata is adopted. Every resolved legacy memory is
+        marked as memory and the first entry selects zephyr,sram only when a
+        newer transform has not already selected it.
+
+    Args:
+        tree (LopperTree): Device tree being updated.
+        domain_node (LopperNode): Domain containing legacy memory references.
+
+    Returns:
+        bool: True when the property is absent or every reference resolves;
+            False when one or more references cannot be resolved uniquely.
+
+    Raises:
+        None.
+    """
+    references = domain_node.propval("xlnx,zephyr,mems", list)
+    if not references or references == [""]:
+        return True
+
+    _warning("openamp_xlnx: xlnx,zephyr,mems is deprecated; use "
+             "amd,openamp-zephyr-memory-policy-v1")
+    memories = []
+    for reference in references:
+        matches = []
+        if isinstance(reference, int):
+            node = tree.pnode(reference)
+            matches = [node] if node else []
+        else:
+            reference = str(reference)
+            if reference.startswith("/"):
+                try:
+                    matches = [tree[reference]]
+                except KeyError:
+                    matches = []
+            if not matches:
+                for node in tree:
+                    aliases = {node.name, node.name.split("@")[0]}
+                    if node.label:
+                        aliases.add(node.label)
+                    for property_name in ("label", "xlnx,ip-name"):
+                        values = node.propval(property_name, list)
+                        if values and values != [""]:
+                            aliases.add(str(values[0]))
+                    if reference in aliases:
+                        matches.append(node)
+        if len(matches) != 1:
+            _error("openamp_xlnx: legacy Zephyr memory '%s' resolved to %d "
+                   "nodes" % (reference, len(matches)))
+            return False
+        matches[0]["device_type"] = "memory"
+        memories.append(matches[0])
+
+    chosen = tree["/chosen"]
+    if chosen.propval("zephyr,sram", list) == [""]:
+        chosen["zephyr,sram"] = memories[0].abs_path
+    return True
+
+def xlnx_openamp_configure_zephyr_ipc_shm(tree, ipc_nodes):
+    """Combine the OpenAMP vrings and buffer into one Zephyr IPC SRAM node."""
+    if len(ipc_nodes) != 3:
+        raise ValueError("OPENAMP: XLNX: Zephyr RPMsg requires three IPC "
+                         "carveouts; found %d" % len(ipc_nodes))
+
+    regions = []
+    for node in ipc_nodes:
+        reg = node.propval("reg", list)
+        if len(reg) < 4 or reg[3] <= 0:
+            raise ValueError("OPENAMP: XLNX: IPC carveout %s has invalid reg" %
+                             node.abs_path)
+        regions.append((reg[1], reg[1] + reg[3], node))
+    regions.sort(key=lambda region: region[0])
+
+    for previous, current in zip(regions, regions[1:]):
+        if previous[1] != current[0]:
+            raise ValueError("OPENAMP: XLNX: IPC carveouts are not contiguous: "
+                             "%s ends at %#x, %s starts at %#x" %
+                             (previous[2].abs_path, previous[1],
+                              current[2].abs_path, current[0]))
+
+    base = regions[0][0]
+    size = regions[-1][1] - base
+    for _, _, node in regions:
+        tree - node
+
+    ipc_node = LopperNode(-1, "/reserved-memory/ipc@%s" % hex(base)[2:])
+    ipc_node.label = "ipc_shm"
+    ipc_node + LopperProp(name="reg", value=[0, base, 0, size])
+    ipc_node + LopperProp(name="compatible", value=["mmio-sram"])
+    ipc_node + LopperProp(name="status", value="okay")
+    tree + ipc_node
+    tree['/chosen']['zephyr,ipc_shm'] = ipc_node.abs_path
+    return ipc_node
+
 # Inputs: openamp-processed SDT, target processor, ipi, ipc node
 def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_nodes, relation_compat):
     """Tailor the device tree for Zephyr RPMsg communication.
@@ -409,49 +515,37 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
         and clears flash/OCM choices that would clash with RPMsg shared memory.
     """
 
-    if len(ipc_nodes) != 3:
-        print("ERROR: zephyr: rpmsg: only length of 3 ipc node allowed. got: ", ipc_nodes)
-        return False
+    ipc_node = xlnx_openamp_configure_zephyr_ipc_shm(tree, ipc_nodes)
 
-    # have to now combine the 3 IPC nodes into one.
-    base = 0xFFFFFFFF
-    size = 0
-    for i in ipc_nodes:
-        reg = i['reg']
-        size += reg[3]
-        if reg[1] < base:
-            base = reg[1]
+    direct_ipm_target = xlnx_openamp_uses_direct_ipm(machine)
 
-    # remove current IPC nodes. Create combined one below.
-    [ tree - node for node in ipc_nodes ]
-
-    new_ipc_node = LopperNode(-1, "/reserved-memory/ipc@%s" % hex(base)[2:])
-    new_ipc_node + LopperProp(name="reg", value=[0, base, 0, size])
-    new_ipc_node + LopperProp(name="compatible", value="mmio-sram")
-
-    tree + new_ipc_node
-    tree['/chosen']['zephyr,ipc_shm'] = new_ipc_node.abs_path
-
-    if domain_node.propval("xlnx,ddr-boot") != []:
+    if domain_node.props("xlnx,ddr-boot"):
         elfload_nodes = [ tree.pnode(x) for x in domain_node.propval("reserved-memory") ]
         valid_elfload_node = [ node for node in elfload_nodes if node and node.propval("device_type") == ['memory'] ]
         if len(valid_elfload_node) > 0:
             tree['/chosen']['zephyr,sram'] = valid_elfload_node[0].abs_path
+
+    if not xlnx_openamp_apply_legacy_zephyr_memories(tree, domain_node):
+        return False
 
     # only create a node for this the first time. in the future this will go away as upstream wants use of ipm mbox node. this is here for bkwd compatibility
     try:
         # if here then mbox_consumer_node was already created.
         mbox_consumer_node = tree['/mbox-consumer']
     except KeyError:
-        mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
-        mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1], "mbox-names" : ['tx', 'rx'] }
-        [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
-        tree.add(mbox_consumer_node)
+        if not direct_ipm_target:
+            mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
+            mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1], "mbox-names" : ['tx', 'rx'] }
+            [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
+            tree.add(mbox_consumer_node)
 
-    mbox_ipm_node = LopperNode(-1, "/mbox_ipi_%s_%s" % (hex(ipi_node['reg'][1])[2:], hex(ipi_node.parent['reg'][1])[2:]))
-    mbox_ipm_props = { "compatible" : "zephyr,mbox-ipm", "mbox-names" : ['tx', 'rx'], "status": "okay", "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1] }
-    [mbox_ipm_node +  LopperProp(name=n, value=mbox_ipm_props[n]) for n in mbox_ipm_props.keys()]
-    tree.add(mbox_ipm_node)
+    if direct_ipm_target:
+        mbox_ipm_node = ipi_node
+    else:
+        mbox_ipm_node = LopperNode(-1, "/mbox_ipi_%s_%s" % (hex(ipi_node['reg'][1])[2:], hex(ipi_node.parent['reg'][1])[2:]))
+        mbox_ipm_props = { "compatible" : "zephyr,mbox-ipm", "mbox-names" : ['tx', 'rx'], "status": "okay", "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1] }
+        [mbox_ipm_node +  LopperProp(name=n, value=mbox_ipm_props[n]) for n in mbox_ipm_props.keys()]
+        tree.add(mbox_ipm_node)
 
     # do this for upstream compatibility for now
     if RPMSG_D_TO_D == relation_compat:
@@ -461,15 +555,6 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
         tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,flash'])
     if tree['/chosen'].propval('zephyr,ocm') != ['']:
         tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,ocm'])
-
-    # if user passes in xlnx,zephyr,mems - then update device_type for those referenced nodes.
-    xlnx_zeph_mems = domain_node.propval("xlnx,zephyr,mems")
-    if xlnx_zeph_mems != [''] and isinstance(xlnx_zeph_mems, list):
-        for i in domain_node.propval("xlnx,zephyr,mems"):
-            xlnx_zeph_mem_node = tree['/'].subnodes(children_only=True, name=domain_node.propval("xlnx,zephyr,mems")[0])
-            if xlnx_zeph_mem_node != []:
-                xlnx_zeph_mem_node[0]['device_type'] = "memory"
-                tree['/chosen']['zephyr,sram'] = xlnx_zeph_mem_node[0].abs_path
 
     return True
 
@@ -614,7 +699,8 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
         references, gathers carveouts, applies OS-specific tree rewrites, and
         optionally emits a header file via ``xlnx_openamp_gen_outputs_only``.
     """
-    print(" -> xlnx_rpmsg_parse", rpmsg_relation_node)
+    _info("openamp_xlnx: parsing RPMsg relation %s" %
+          rpmsg_relation_node.abs_path)
 
     platform = get_platform(tree, verbose)
     if platform == None:
@@ -624,16 +710,19 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
         pname = "remote" if os == "linux_dt" else "host"
         # check for remote property
         if node.props(pname) == []:
-            print("ERROR: ", node, "is missing remote property")
+            _error("openamp_xlnx: %s is missing %s property" %
+                   (node.abs_path, pname))
             return False
 
         remote_node = tree.pnode(node.propval(pname)[0])
         if remote_node == None:
-             print("ERROR: invalid rpmsg ", pname," for relation: ", rpmsg_relation_node)
-             return False
+            _error("openamp_xlnx: invalid RPMsg %s reference in %s" %
+                   (pname, rpmsg_relation_node.abs_path))
+            return False
 
         if os == "linux_dt" and remote_node.name not in channel_to_core_dict.keys():
-            print("ERROR: missing needed remoteproc core node for rpmsg parse to occur.")
+            _error("openamp_xlnx: remoteproc core is missing for RPMsg relation %s" %
+                   rpmsg_relation_node.abs_path)
             return False
 
         core_node = channel_to_core_dict[remote_node.name] if os == "linux_dt" else None
@@ -641,18 +730,19 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
         # first find host to remote IPI
         mbox_pval = node.propval("mbox")
         if mbox_pval == ['']:
-            print("ERROR: ", node, " is missing mbox property")
+            _error("openamp_xlnx: %s is missing mbox property" % node.abs_path)
             return False
 
         ipi_node = tree.pnode(mbox_pval[0])
         if ipi_node == None:
-            print("ERROR: Unable to find ipi")
+            _error("openamp_xlnx: cannot resolve IPI for %s" % node.abs_path)
             return False
 
         carveouts_node = tree[node.parent.parent.parent.abs_path + "/domain-to-domain/rpmsg-relation"]
         carveout_prop = node.propval("carveouts")
         if carveout_prop == ['']:
-            print("ERROR: ", node, " is missing carveouts property")
+            _error("openamp_xlnx: %s is missing carveouts property" %
+                   node.abs_path)
             return False
 
         rpmsg_carveouts = [ tree.pnode(phandle) for phandle in carveout_prop ]
@@ -665,7 +755,7 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
             res_mem_node = tree["/reserved-memory"]
             [ tree.delete(i) for i in res_mem_node.subnodes() if i.propval("compatible") == ['mmio-sram'] and os == "linux_dt" ]
         except KeyError:
-            print("ERROR: carveouts should be in reserved memory.")
+            _error("openamp_xlnx: RPMsg carveouts require /reserved-memory")
             return False
 
         if os == "zephyr_dt" and not xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, node.parent.parent.parent, rpmsg_carveouts, rpmsg_relation_node.propval("compatible")[0]):
@@ -1190,6 +1280,7 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
 
     domains = sdt.tree['/domains']
     relation_node = None
+    supported_targets = []
     relation_parent_search = True if openamp_args['relation_parent'] != None else False
     compatible_string_search = True if openamp_args['compatible_string'] != None else False
     for n in domains.subnodes():
@@ -1199,12 +1290,26 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
         if n.parent.parent.propval("cpus") == ['']:
             continue
 
-        # ensure target domain matches
-        if os != "linux_dt" and match_cpunode.parent != sdt.tree.pnode(n.parent.parent.propval("cpus")[0]):
-            continue
-
         # search based on compatible string of relation
         if compatible_string_search and n.propval("compatible") != [openamp_args['compatible_string']]:
+            continue
+
+        domain_node = n.parent.parent
+        domain_os = domain_node.propval("os,type")
+        domain_os = domain_os[0] if domain_os and domain_os != [''] else "unspecified"
+        domain_processor = n.parent.propval("cluster_cpu")
+        if domain_processor and domain_processor != ['']:
+            domain_processor = domain_processor[0]
+        else:
+            cpu_ref = domain_node.propval("cpus")
+            cpu_cluster = sdt.tree.pnode(cpu_ref[0]) if cpu_ref and cpu_ref != [''] else None
+            domain_processor = cpu_cluster.label if cpu_cluster and cpu_cluster.label else \
+                cpu_cluster.name if cpu_cluster else "unspecified"
+        supported_targets.append("%s (os=%s, processor=%s)" %
+                                 (domain_node.name, domain_os, domain_processor))
+
+        # ensure target domain matches
+        if os != "linux_dt" and match_cpunode.parent != sdt.tree.pnode(domain_node.propval("cpus")[0]):
             continue
 
         # filter based on name
@@ -1213,6 +1318,14 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
 
         relation_node = n
         break
+
+    if relation_node is None:
+        compatible = openamp_args['compatible_string'] or "any"
+        targets = ", ".join(supported_targets) if supported_targets else "none"
+        _error("openamp_xlnx: no %s relation found for processor '%s' and OS "
+               "'%s'; supported targets: %s" %
+               (compatible, machine, os, targets))
+        return False
 
     carveouts = None
     ipi_node = None
@@ -1431,7 +1544,7 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
     """
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
-    print(" -> xlnx_openamp_parse")
+    _info("openamp_xlnx: parsing OpenAMP metadata")
     openamp_args = parse_openamp_args(options['args'])
     if not openamp_args:
         return False
@@ -1442,7 +1555,7 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
 
     if not xlnx_openamp_find_compat_domains(tree):
         if verbose > 1:
-            print("OPENAMP: XLNX: WARNING: no openamp domains found")
+            _warning("openamp_xlnx: no OpenAMP domains found")
         return True
 
     if openamp_args["openamp_output_filename"]:
@@ -1456,4 +1569,3 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
             return False
 
     return True
-
