@@ -5891,6 +5891,23 @@ class LopperTree:
         return all_matching_kids
 
 
+    def compare( self, other, key = "path" ):
+        """Structurally compare this tree against another.
+
+        Returns a lopper.compare.Delta describing how ``other`` (the
+        target) differs from ``self`` (the source), at node and property
+        granularity. The delta is format-agnostic; renderers consume it.
+
+        Args:
+           other (LopperTree): the target tree to compare against.
+           key (string): node-matching key ("path" in Phase 1).
+
+        Returns:
+           lopper.compare.Delta
+        """
+        import lopper.compare
+        return lopper.compare.compare( self, other, key = key )
+
     def nodes( self, nodename, strict = False ):
         """Get nodes that match a given name or regex
 
