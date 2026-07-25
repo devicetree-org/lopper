@@ -159,6 +159,96 @@ def test_aliases_node_excluded(tmp_path):
     assert delta.equivalent(), repr(delta)
 
 
+# --- phandle normalization (Phase 2) -------------------------------------
+
+# Same topology in both trees; only the explicit phandle NUMBER on the
+# interrupt controller differs, which shifts the raw cell value of every
+# `interrupt-parent` referencing it. A correct diff normalizes phandle
+# references by resolved target and ignores the bookkeeping `phandle`
+# property, so these must compare equal.
+_PH_A = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    gic: intc@1000 {
+        phandle = <0x1>;
+        compatible = "arm,gic";
+        interrupt-controller;
+        #interrupt-cells = <1>;
+        reg = <0x1000 0x100>;
+    };
+    dev@2000 {
+        compatible = "vendor,dev";
+        reg = <0x2000 0x10>;
+        interrupt-parent = <&gic>;
+    };
+};
+"""
+
+_PH_B = _PH_A.replace("phandle = <0x1>;", "phandle = <0x5>;")
+
+
+def test_phandle_number_churn_is_equivalent(tmp_path):
+    a = _tree_from_dts(_PH_A, tmp_path, "a")
+    b = _tree_from_dts(_PH_B, tmp_path, "b")
+    delta = a.compare(b)
+    assert delta.equivalent(), repr([(nd.path, nd.changed_props)
+                                     for nd in delta.changed_nodes])
+
+
+def test_genuine_phandle_retarget_is_a_change(tmp_path):
+    # two controllers; move dev's interrupt-parent from gic0 to gic1
+    two_ctrl = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    gic0: intc@1000 {
+        phandle = <0x1>;
+        compatible = "arm,gic";
+        interrupt-controller;
+        #interrupt-cells = <1>;
+        reg = <0x1000 0x100>;
+    };
+    gic1: intc@1100 {
+        phandle = <0x2>;
+        compatible = "arm,gic";
+        interrupt-controller;
+        #interrupt-cells = <1>;
+        reg = <0x1100 0x100>;
+    };
+    dev@2000 {
+        compatible = "vendor,dev";
+        reg = <0x2000 0x10>;
+        interrupt-parent = <&gic0>;
+    };
+};
+"""
+    a = _tree_from_dts(two_ctrl, tmp_path, "a")
+    b = _tree_from_dts(two_ctrl.replace("interrupt-parent = <&gic0>;",
+                                        "interrupt-parent = <&gic1>;"),
+                       tmp_path, "b")
+    delta = a.compare(b)
+    changed = _changed_by_path(delta)
+    assert "/dev@2000" in changed, repr(delta)
+    names = [name for (name, _va, _vb) in changed["/dev@2000"].changed_props]
+    assert "interrupt-parent" in names
+
+
+def test_phandle_property_itself_excluded(tmp_path):
+    # nodes identical except the explicit phandle number -> the `phandle`
+    # bookkeeping property must never surface as a change
+    a = _tree_from_dts(_PH_A, tmp_path, "a")
+    b = _tree_from_dts(_PH_B, tmp_path, "b")
+    delta = a.compare(b)
+    for nd in delta.changed_nodes:
+        names = ([p.name for p in nd.added_props]
+                 + [p.name for p in nd.removed_props]
+                 + [name for (name, _a, _b) in nd.changed_props])
+        assert "phandle" not in names, f"{nd.path}: {names}"
+
+
 # --- unsupported key ------------------------------------------------------
 
 def test_nonpath_key_not_yet_supported(tmp_path):

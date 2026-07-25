@@ -10,11 +10,21 @@ Produces a :class:`Delta` describing how a *target* tree differs from a
 *source* tree, at node and property granularity. The delta is
 format-agnostic; renderers (overlay / unified / equivalence) consume it.
 
-Phase 1 (this module's initial form): path-keyed matching with literal
-property-value comparison. Phandle-value normalization (compare by
-resolved target, not raw number), alternate keys, and the output
-renderers land in later phases. See
+Implemented: path-keyed node matching; property add/remove/change with
+phandle-value normalization (phandle references compare by resolved
+target, not raw number). Not yet: alternate match keys and the output
+renderers (overlay / unified / equivalence file output). See
 ``agent-files/tree-compare-design.md``.
+
+Relationship to existing core comparison routines:
+
+* ``LopperNode.__eq__`` / ``__hash__`` define node identity by
+  ``abs_path``. This module's path keying is consistent with that.
+* ``LopperProp.compare()`` is a *fuzzy, asymmetric matcher* used by the
+  lop conditional-selection engine (single-in-list, string-as-regex).
+  It answers "does this property satisfy this condition?", NOT "are
+  these two properties equal?", so it is deliberately NOT used here --
+  a structural diff needs exact/semantic equality (see _values_equal).
 """
 
 import lopper.log
@@ -31,6 +41,15 @@ _COMPARE_EXCLUDE_NODES = frozenset({
     "/aliases",
     "/__lopper-overlays__",
     "/__lopper-phandles__",
+})
+
+# Auto-generated bookkeeping properties. Phandle *numbers* are assigned
+# per compile and differ between trees; the `phandle` property is the raw
+# number itself, so it churns and is excluded (phandle *references* are
+# instead normalized by resolved target, see _normalized_value).
+_COMPARE_EXCLUDE_PROPS = frozenset({
+    "phandle",
+    "linux,phandle",
 })
 
 
@@ -111,12 +130,49 @@ def _node_map(tree):
     return node_map
 
 
-def _values_equal(prop_a, prop_b):
-    """Phase 1: literal comparison of property values.
+def _normalized_value(prop):
+    """Return a comparison-normalized value for a property.
 
-    Phandle-aware comparison (by resolved target) is added in Phase 2.
+    For phandle-bearing properties, each phandle cell is replaced by a
+    stable token derived from its *resolved target* (the target node's
+    abs_path), so that a difference in phandle *numbers* between two
+    independently-compiled trees does not register as a change. Non-phandle
+    cells and non-integer values are returned as-is.
+
+    Mirrors the phandle_map() consumption pattern used elsewhere in lopper
+    (see assists/compose_non_linux.py): flatten the record map, align it
+    1:1 with the value cells, and swap phandle slots for their target.
     """
-    return prop_a.value == prop_b.value
+    raw = prop.value
+    if not isinstance(raw, list) or not all(isinstance(v, int) for v in raw):
+        return raw
+
+    try:
+        pmap = prop.phandle_map()
+    except Exception:
+        return raw
+    if not pmap:
+        return raw
+
+    flat = [slot for record in pmap for slot in record]
+    if len(flat) != len(raw):
+        return raw
+
+    normalized = []
+    for slot, val in zip(flat, raw):
+        target_path = getattr(slot, "abs_path", None)
+        if target_path is not None:
+            # phandle slot -> canonical, compile-stable target token
+            # (string can't collide with the integer cells it replaces)
+            normalized.append("@" + target_path)
+        else:
+            normalized.append(val)
+    return normalized
+
+
+def _values_equal(prop_a, prop_b):
+    """Compare two properties, normalizing phandle references by target."""
+    return _normalized_value(prop_a) == _normalized_value(prop_b)
 
 
 def _compare_node(node_a, node_b, path):
@@ -124,8 +180,10 @@ def _compare_node(node_a, node_b, path):
     NodeDelta, or None if the nodes' properties are identical."""
     delta = NodeDelta(path, node_a, node_b)
 
-    props_a = node_a.__props__
-    props_b = node_b.__props__
+    props_a = {n: p for n, p in node_a.__props__.items()
+               if n not in _COMPARE_EXCLUDE_PROPS}
+    props_b = {n: p for n, p in node_b.__props__.items()
+               if n not in _COMPARE_EXCLUDE_PROPS}
 
     for name, prop in props_b.items():
         if name not in props_a:
