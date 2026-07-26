@@ -1189,26 +1189,28 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                             rounded_clk = int(round(clk_freq[0] / 1000000.0)) * 1000000
                             node["clock-frequency"] = LopperProp("clock-frequency")
                             node["clock-frequency"].value = rounded_clk
+                            node.delete(node["timer-width"])
                             node.add(node["clock-frequency"])
                         else:
+                            node["compatible"] = "xlnx,ttc"
+                            node["clock-frequency"] = LopperProp("clock-frequency")
+                            node["clock-frequency"].value = node["xlnx,clock-freq"].value
+                            node.add(node["clock-frequency"])
+                            node + LopperProp(name="#address-cells", value=[1])
+                            node + LopperProp(name="#size-cells", value=[0])
                             for i in range(3):
-                                new_node = LopperNode()
-                                new_node["compatible"] = "xlnx,ttc-counter"
-                                new_node["clock-frequency"] = LopperProp("clock-frequency")
-                                new_node["clock-frequency"].value = node["xlnx,clock-freq"].value
-                                new_node.add(new_node["clock-frequency"])
-                                new_node["reg"] = node["reg"]
-                                new_node.label_set(f"{node.label}_timer{i}")
-                                new_node["interrupt-parent"] = node["interrupt-parent"]
-                                new_node.name = f"counter{i}@{node['reg'][1]:x}"
-                                new_node["timer-id"] = LopperProp("timer-id")
-                                new_node["timer-id"].value = i
-                                new_node["interrupts"] = LopperProp("interrupts")
-                                new_node["interrupts"].value = node["interrupts"].value[i * 4 : (i + 1) * 4]
-                                new_node["timer-width"] = node["timer-width"]
-                                new_node.parent = node.parent
-                                node.parent.add(new_node)
-                            sdt.tree.delete(node)
+                                child = LopperNode()
+                                child.name = f"counter@{i}"
+                                child.label_set(f"{node.label}_timer{i}")
+                                child + LopperProp(name="compatible", value=["xlnx,ttc-counter"])
+                                child + LopperProp(name="reg", value=[i])
+                                child["interrupts"] = LopperProp("interrupts")
+                                child["interrupts"].value = \
+                                node["interrupts"].value[i * 4:(i + 1) * 4]
+                                child["status"] = "disabled"
+                                node.add(child)
+                            node.delete("interrupts")
+                            node["status"] = "disabled"
                     # CANFD
                     if "xlnx,canfd-2.0" in node["compatible"].value:
                         node["compatible"] = "xlnx,canfd-2.0"

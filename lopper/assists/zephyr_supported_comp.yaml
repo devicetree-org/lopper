@@ -463,6 +463,9 @@ cdns,ttc:
     - interrupts
     - interrupt-names
     - clock-frequency
+    - timer-width
+    - '#address-cells'
+    - '#size-cells'
 
 xlnx,iomodule-3.1:
   required:
