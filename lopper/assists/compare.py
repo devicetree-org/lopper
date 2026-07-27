@@ -45,7 +45,7 @@ def usage():
    comparison tree (target) and emits the difference.
 
       -k <key> node match key: path (default), label, address, name
-      -o <fmt> emit the structural diff in <fmt>: unified, overlay, or
+      -o <fmt> emit the structural diff in <fmt>: unified, fragment, or
                equivalence. Written to <output file> if given, else stdout.
                With this option the diff core is used (see lopper.compare).
       -c       legacy name-existence comparison (used when -o is absent;
@@ -56,7 +56,7 @@ def usage():
 
    Examples:
       compare other.dts -o unified
-      compare target.dts -k label -o overlay board.overlay
+      compare target.dts -k label -o fragment board.overlay
       compare golden.dts -o equivalence      # exit 2 if they differ
 
     """)

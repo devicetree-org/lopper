@@ -419,7 +419,7 @@ def test_emit_unknown_format_raises(tmp_path):
         a.compare(b).emit("bogus")
 
 
-# --- overlay renderer (Phase 4c) -----------------------------------------
+# --- fragment renderer (Phase 4c) -----------------------------------------
 
 # labeled base + target exercising all delta kinds:
 #   uart: status changed, clock-frequency added, `extra` removed
@@ -462,25 +462,25 @@ _LTARGET = """\
 """
 
 
-def test_overlay_contains_all_delta_kinds(tmp_path):
+def test_fragment_contains_all_delta_kinds(tmp_path):
     a = _tree_from_dts(_LBASE, tmp_path, "a")
     b = _tree_from_dts(_LTARGET, tmp_path, "b")
-    overlay = a.compare(b).emit("overlay")
+    overlay = a.compare(b).emit("fragment")
     assert "&uart {" in overlay
     assert 'status = "okay";' in overlay
     assert "clock-frequency = <0x5f5e100>;" in overlay
     assert "/delete-property/ extra;" in overlay
     assert "/delete-node/ &gpio;" in overlay
     assert "timer@3000 {" in overlay
-    # no overlay wrapper markers -- it's an include fragment
+    # no /dts-v1/ or /plugin/ wrapper -- it is an include fragment
     assert "/dts-v1/" not in overlay
     assert "/plugin/" not in overlay
 
 
-def test_overlay_round_trip_reconstructs_target(tmp_path):
+def test_fragment_round_trip_reconstructs_target(tmp_path):
     a = _tree_from_dts(_LBASE, tmp_path, "a")
     b = _tree_from_dts(_LTARGET, tmp_path, "b")
-    overlay = a.compare(b).emit("overlay")
+    overlay = a.compare(b).emit("fragment")
 
     # source + overlay, concatenated and recompiled, must equal target
     combined = _LBASE + "\n" + overlay
@@ -490,7 +490,7 @@ def test_overlay_round_trip_reconstructs_target(tmp_path):
     assert delta.equivalent(), repr(delta.emit("unified"))
 
 
-def test_overlay_phandle_rendered_as_label(tmp_path):
+def test_fragment_phandle_rendered_as_label(tmp_path):
     base = """\
 /dts-v1/;
 / {
@@ -513,7 +513,7 @@ def test_overlay_phandle_rendered_as_label(tmp_path):
     )
     a = _tree_from_dts(base, tmp_path, "a")
     b = _tree_from_dts(target, tmp_path, "b")
-    overlay = a.compare(b).emit("overlay")
+    overlay = a.compare(b).emit("fragment")
     # the added phandle property must render as &gic, not a raw number
     assert "interrupt-parent = <&gic>;" in overlay
     # and it must round-trip
@@ -551,12 +551,12 @@ def test_assist_unified_to_file(tmp_path):
     assert "~ status:" in text
 
 
-def test_assist_overlay_round_trips(tmp_path):
+def test_assist_fragment_round_trips(tmp_path):
     sdt = _sdt_from_dts(_LBASE, tmp_path, "base")
     target_dts = tmp_path / "target.dts"
     target_dts.write_text(_LTARGET)
     out = tmp_path / "board.overlay"
-    compare_assist.compare(0, sdt, {"args": ["-o", "overlay", str(target_dts), str(out)]})
+    compare_assist.compare(0, sdt, {"args": ["-o", "fragment", str(target_dts), str(out)]})
 
     overlay = out.read_text()
     # gpio was removed; the ref form (&gpio vs &{/gpio@2000}) depends on

@@ -8,14 +8,14 @@
 
 Produces a :class:`Delta` describing how a *target* tree differs from a
 *source* tree, at node and property granularity. The delta is
-format-agnostic; renderers (overlay / unified / equivalence) consume it.
+format-agnostic; renderers (fragment / unified / equivalence) consume it.
 
 Implemented: node matching by path/label/address/name (non-path keys
 fall back to path for nodes lacking or sharing that key, and record a
 "moved" node when a matched pair's paths differ); property
 add/remove/change with phandle-value normalization (phandle references
 compare by resolved target, not raw number). Not yet: the output
-renderers (overlay / unified / equivalence file output). See
+renderers (fragment / unified / equivalence file output). See
 ``agent-files/tree-compare-design.md``.
 
 Relationship to existing core comparison routines:
@@ -105,7 +105,7 @@ class Delta:
 
     def __init__(self, key="path"):
         self.key = key
-        self.tree_a = None   # source tree (the overlay applies to this)
+        self.tree_a = None   # source tree (the fragment applies to this)
         self.tree_b = None   # target tree
         self.added_nodes = []
         self.removed_nodes = []
@@ -123,8 +123,8 @@ class Delta:
 
         Args:
             fmt (str): "equivalence" (one-line equivalent/differ),
-                "unified" (human/traceability +/- text), or "overlay"
-                (a device-tree overlay of the delta).
+                "unified" (human/traceability +/- text), or "fragment"
+                (a concatenated device-tree fragment of the delta).
             output (str, optional): path to write the rendered text to.
                 When given, the file is written and its path returned.
             as_string (bool): ignored when ``output`` is set; otherwise
@@ -137,8 +137,8 @@ class Delta:
             text = "equivalent" if self.equivalent() else "differ"
         elif fmt == "unified":
             text = _render_unified(self)
-        elif fmt == "overlay":
-            text = _render_overlay(self)
+        elif fmt == "fragment":
+            text = _render_fragment(self)
         else:
             raise NotImplementedError(f"unknown compare output format {fmt!r}")
         return _deliver(text, output, as_string)
@@ -411,12 +411,12 @@ def _render_unified(delta):
     return "\n".join(lines) + "\n"
 
 
-# --- overlay renderer -----------------------------------------------------
+# --- fragment renderer -----------------------------------------------------
 #
-# The overlay is an *include-fragment* (no /dts-v1/, no /plugin/): it is
+# The fragment is an *include-fragment* (no /dts-v1/, no /plugin/): it is
 # meant to be concatenated with the source tree and recompiled, which is
 # how dtc/Zephyr resolve `&label` and apply `/delete-*/`. Applying the
-# overlay to the source reproduces the target:  source + overlay == target.
+# fragment to the source reproduces the target:  source + fragment == target.
 #
 # Deletions have no in-memory tree representation in lopper, and
 # /delete-property/ must appear inside the target node's block, so this
@@ -425,7 +425,7 @@ def _render_unified(delta):
 
 def _node_ref(node):
     """DTS reference to an existing node: `&label` if it has one, else the
-    path-reference form `&{/abs/path}` (both are valid dtc overlay targets)."""
+    path-reference form `&{/abs/path}` (both are valid dtc node references)."""
     return ("&" + node.label) if node.label else ("&{" + node.abs_path + "}")
 
 
@@ -445,8 +445,8 @@ def _phandle_cells(prop, raw):
     return cells
 
 
-def _overlay_value(prop):
-    """Render a property value as overlay DTS, or None if unrenderable."""
+def _fragment_value(prop):
+    """Render a property value as fragment DTS, or None if unrenderable."""
     raw = prop.value
     if raw in ([], [""], "", None):
         return None  # boolean / present-empty -> caller emits `name;`
@@ -464,14 +464,14 @@ def _prop_lines(props, indent):
     for prop in props:
         if prop.name in _COMPARE_EXCLUDE_PROPS:
             continue
-        value = _overlay_value(prop)
+        value = _fragment_value(prop)
         if value is None and prop.value in ([], [""], "", None):
             lines.append(f"{indent}{prop.name};")
         elif value is not None:
             lines.append(f"{indent}{prop.name} = {value};")
         else:
             lopper.log._warning(
-                f"compare overlay: cannot render property {prop.name!r} "
+                f"compare fragment: cannot render property {prop.name!r} "
                 f"on {prop.node.abs_path if prop.node else '?'}; skipped")
     return lines
 
@@ -489,8 +489,8 @@ def _serialize_subtree(node, indent):
     return lines
 
 
-def _render_overlay(delta):
-    """Render the delta as an overlay fragment (source -> target)."""
+def _render_fragment(delta):
+    """Render the delta as a concatenated device-tree fragment (source -> target)."""
     blocks = []
 
     # changed nodes: override added/changed props, delete removed props
