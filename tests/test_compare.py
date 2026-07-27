@@ -418,6 +418,108 @@ def test_emit_unknown_format_raises(tmp_path):
         a.compare(b).emit("bogus")
 
 
+# --- overlay renderer (Phase 4c) -----------------------------------------
+
+# labeled base + target exercising all delta kinds:
+#   uart: status changed, clock-frequency added, `extra` removed
+#   gpio: removed entirely
+#   timer: added
+_LBASE = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    uart: serial@1000 {
+        compatible = "ns16550";
+        reg = <0x1000 0x100>;
+        status = "disabled";
+        extra = "removeme";
+    };
+    gpio: gpio@2000 {
+        compatible = "generic-gpio";
+        reg = <0x2000 0x100>;
+    };
+};
+"""
+
+_LTARGET = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    uart: serial@1000 {
+        compatible = "ns16550";
+        reg = <0x1000 0x100>;
+        status = "okay";
+        clock-frequency = <100000000>;
+    };
+    timer: timer@3000 {
+        compatible = "generic-timer";
+        reg = <0x3000 0x100>;
+    };
+};
+"""
+
+
+def test_overlay_contains_all_delta_kinds(tmp_path):
+    a = _tree_from_dts(_LBASE, tmp_path, "a")
+    b = _tree_from_dts(_LTARGET, tmp_path, "b")
+    overlay = a.compare(b).emit("overlay")
+    assert "&uart {" in overlay
+    assert 'status = "okay";' in overlay
+    assert "clock-frequency = <0x5f5e100>;" in overlay
+    assert "/delete-property/ extra;" in overlay
+    assert "/delete-node/ &gpio;" in overlay
+    assert "timer@3000 {" in overlay
+    # no overlay wrapper markers -- it's an include fragment
+    assert "/dts-v1/" not in overlay
+    assert "/plugin/" not in overlay
+
+
+def test_overlay_round_trip_reconstructs_target(tmp_path):
+    a = _tree_from_dts(_LBASE, tmp_path, "a")
+    b = _tree_from_dts(_LTARGET, tmp_path, "b")
+    overlay = a.compare(b).emit("overlay")
+
+    # source + overlay, concatenated and recompiled, must equal target
+    combined = _LBASE + "\n" + overlay
+    recompiled = _tree_from_dts(combined, tmp_path, "combined")
+
+    delta = b.compare(recompiled)
+    assert delta.equivalent(), repr(delta.emit("unified"))
+
+
+def test_overlay_phandle_rendered_as_label(tmp_path):
+    base = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    gic: intc@1000 {
+        phandle = <0x1>;
+        compatible = "arm,gic";
+        interrupt-controller;
+        #interrupt-cells = <1>;
+        reg = <0x1000 0x100>;
+    };
+    dev@2000 { compatible = "vendor,dev"; reg = <0x2000 0x10>; };
+};
+"""
+    target = base.replace(
+        'dev@2000 { compatible = "vendor,dev"; reg = <0x2000 0x10>; };',
+        'dev@2000 { compatible = "vendor,dev"; reg = <0x2000 0x10>; '
+        'interrupt-parent = <&gic>; };',
+    )
+    a = _tree_from_dts(base, tmp_path, "a")
+    b = _tree_from_dts(target, tmp_path, "b")
+    overlay = a.compare(b).emit("overlay")
+    # the added phandle property must render as &gic, not a raw number
+    assert "interrupt-parent = <&gic>;" in overlay
+    # and it must round-trip
+    recompiled = _tree_from_dts(base + "\n" + overlay, tmp_path, "combined")
+    assert b.compare(recompiled).equivalent()
+
+
 # --- unsupported key ------------------------------------------------------
 
 def test_unsupported_key_raises(tmp_path):

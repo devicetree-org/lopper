@@ -105,6 +105,8 @@ class Delta:
 
     def __init__(self, key="path"):
         self.key = key
+        self.tree_a = None   # source tree (the overlay applies to this)
+        self.tree_b = None   # target tree
         self.added_nodes = []
         self.removed_nodes = []
         self.changed_nodes = []
@@ -136,7 +138,7 @@ class Delta:
         elif fmt == "unified":
             text = _render_unified(self)
         elif fmt == "overlay":
-            raise NotImplementedError("overlay output lands in a later step")
+            text = _render_overlay(self)
         else:
             raise NotImplementedError(f"unknown compare output format {fmt!r}")
         return _deliver(text, output, as_string)
@@ -327,6 +329,8 @@ def compare(tree_a, tree_b, key="path"):
             f"{sorted(SUPPORTED_KEYS)}")
 
     delta = Delta(key=key)
+    delta.tree_a = tree_a
+    delta.tree_b = tree_b
 
     nodes_a = _user_nodes(tree_a)
     nodes_b = _user_nodes(tree_b)
@@ -405,3 +409,127 @@ def _render_unified(delta):
             lines.append(f"    ~ {name}: {_fmt_value(val_a)} -> {_fmt_value(val_b)}")
 
     return "\n".join(lines) + "\n"
+
+
+# --- overlay renderer -----------------------------------------------------
+#
+# The overlay is an *include-fragment* (no /dts-v1/, no /plugin/): it is
+# meant to be concatenated with the source tree and recompiled, which is
+# how dtc/Zephyr resolve `&label` and apply `/delete-*/`. Applying the
+# overlay to the source reproduces the target:  source + overlay == target.
+#
+# Deletions have no in-memory tree representation in lopper, and
+# /delete-property/ must appear inside the target node's block, so this
+# renderer serializes directly from the Delta rather than via the tree
+# writer -- reusing phandle_map() so phandle cells render as `&label`.
+
+def _node_ref(node):
+    """DTS reference to an existing node: `&label` if it has one, else the
+    path-reference form `&{/abs/path}` (both are valid dtc overlay targets)."""
+    return ("&" + node.label) if node.label else ("&{" + node.abs_path + "}")
+
+
+def _phandle_cells(prop, raw):
+    """Render an integer cell list, emitting phandle slots as `&label`."""
+    try:
+        pmap = prop.phandle_map()
+    except Exception:
+        pmap = []
+    flat = [slot for record in pmap for slot in record] if pmap else []
+    if len(flat) != len(raw):
+        return [hex(v) for v in raw]
+    cells = []
+    for slot, val in zip(flat, raw):
+        label = getattr(slot, "label", None)
+        cells.append("&" + label if label else hex(val))
+    return cells
+
+
+def _overlay_value(prop):
+    """Render a property value as overlay DTS, or None if unrenderable."""
+    raw = prop.value
+    if raw in ([], [""], "", None):
+        return None  # boolean / present-empty -> caller emits `name;`
+    if isinstance(raw, str):
+        return '"%s"' % raw
+    if isinstance(raw, list) and raw and all(isinstance(v, str) for v in raw):
+        return ", ".join('"%s"' % v for v in raw)
+    if isinstance(raw, list) and all(isinstance(v, int) for v in raw):
+        return "<" + " ".join(_phandle_cells(prop, raw)) + ">"
+    return None
+
+
+def _prop_lines(props, indent):
+    lines = []
+    for prop in props:
+        if prop.name in _COMPARE_EXCLUDE_PROPS:
+            continue
+        value = _overlay_value(prop)
+        if value is None and prop.value in ([], [""], "", None):
+            lines.append(f"{indent}{prop.name};")
+        elif value is not None:
+            lines.append(f"{indent}{prop.name} = {value};")
+        else:
+            lopper.log._warning(
+                f"compare overlay: cannot render property {prop.name!r} "
+                f"on {prop.node.abs_path if prop.node else '?'}; skipped")
+    return lines
+
+
+def _serialize_subtree(node, indent):
+    """Emit a node's body: its properties then its child node blocks."""
+    lines = _prop_lines(node.__props__.values(), indent)
+    for child in node.child_nodes.values():
+        if child.abs_path in _COMPARE_EXCLUDE_NODES:
+            continue
+        label = (child.label + ": ") if child.label else ""
+        lines.append(f"{indent}{label}{child.name} {{")
+        lines.extend(_serialize_subtree(child, indent + "\t"))
+        lines.append(f"{indent}}};")
+    return lines
+
+
+def _render_overlay(delta):
+    """Render the delta as an overlay fragment (source -> target)."""
+    blocks = []
+
+    # changed nodes: override added/changed props, delete removed props
+    for nd in delta.changed_nodes:
+        body = []
+        wanted = ([p.name for p in nd.added_props]
+                  + [name for (name, _a, _b) in nd.changed_props])
+        props = [nd.node_b.__props__[n] for n in wanted
+                 if n in nd.node_b.__props__]
+        body.extend(_prop_lines(props, "\t"))
+        for prop in nd.removed_props:
+            body.append(f"\t/delete-property/ {prop.name};")
+        if body:
+            blocks.append(_node_ref(nd.node_b) + " {\n"
+                          + "\n".join(body) + "\n};")
+
+    # added nodes: emit the top of each added subtree, targeting its parent.
+    # descendants that are also "added" come via the subtree recursion, so
+    # skip any added node whose parent is itself added.
+    added_paths = {n.abs_path for n in delta.added_nodes}
+    for node in delta.added_nodes:
+        parent = node.parent
+        if parent is not None and parent.abs_path in added_paths:
+            continue
+        label = (node.label + ": ") if node.label else ""
+        inner = _serialize_subtree(node, "\t\t")
+        child_block = (f"\t{label}{node.name} {{\n"
+                       + "\n".join(inner) + "\n\t};")
+        if parent is None or parent.abs_path == "/":
+            blocks.append("/ {\n" + child_block + "\n};")
+        else:
+            blocks.append(_node_ref(parent) + " {\n" + child_block + "\n};")
+
+    # removed nodes: delete by reference (top of each removed subtree only)
+    removed_paths = {n.abs_path for n in delta.removed_nodes}
+    for node in delta.removed_nodes:
+        parent = node.parent
+        if parent is not None and parent.abs_path in removed_paths:
+            continue
+        blocks.append(f"/delete-node/ {_node_ref(node)};")
+
+    return "\n\n".join(blocks) + "\n"
