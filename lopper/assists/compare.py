@@ -39,14 +39,25 @@ def is_compat( node, compat_string_to_test ):
 
 def usage():
     print( """
-   Usage: compare [OPTION] <device tree>
+   Usage: compare [OPTION] <comparison device tree> [<output file>]
 
+   Structurally compares the system device tree (source) against the
+   comparison tree (target) and emits the difference.
+
+      -k <key> node match key: path (default), label, address, name
+      -o <fmt> emit the structural diff in <fmt>: unified, overlay, or
+               equivalence. Written to <output file> if given, else stdout.
+               With this option the diff core is used (see lopper.compare).
+      -c       legacy name-existence comparison (used when -o is absent;
+               default "name")
+      -x       exclude nodes or properties (legacy name check)
       -p       permissive matching on target node (regex)
       -v       enable verbose debug/processing
-      -x       exclude nodes or properties
-      -o       output directory for files
-      -c       run a specific comparision (default is "all")
-               current options are: "name"
+
+   Examples:
+      compare other.dts -o unified
+      compare target.dts -k label -o overlay board.overlay
+      compare golden.dts -o equivalence      # exit 2 if they differ
 
     """)
 
@@ -77,7 +88,7 @@ def compare( tgt_node, sdt, options ):
 
     lopper.log._debug( f"cb: compare( {tgt_node}, {sdt}, {verbose}, {args} )", level=logging.DEBUG )
 
-    opts,args2 = getopt.getopt( args, "c:i:pvt:o:x:h", [ "help", "verbose", "permissive" ] )
+    opts,args2 = getopt.getopt( args, "c:i:k:pvt:o:x:h", [ "help", "verbose", "permissive" ] )
 
     if opts == [] and args2 == []:
         usage()
@@ -86,7 +97,8 @@ def compare( tgt_node, sdt, options ):
     exclude_list=[]
     include_list=[]
     compare_list=[]
-    output=None
+    key = "path"
+    output_format = None
     permissive = False
     for o,a in opts:
         # print( "o: %s a: %s" % (o,a))
@@ -94,8 +106,10 @@ def compare( tgt_node, sdt, options ):
             exclude_list.append( a )
         if o in ('-i'):
             include_list.append( a )
+        elif o in ('-k'):
+            key = a
         elif o in ('-o'):
-            output=a
+            output_format = a
         elif o in ('-v', "--verbose"):
             verbose = verbose + 1
         elif o in ('-c', "--compare"):
@@ -111,11 +125,7 @@ def compare( tgt_node, sdt, options ):
         sys.exit(1)
 
     compare_dts = args2[0]
-
-    if not compare_list:
-        compare_list = [ "name" ]
-
-    lopper.log._info( f"comparing: {compare_list}" )
+    output_file = args2[1] if len(args2) > 1 else None
 
     compiled_file, _ = Lopper.dt_compile( compare_dts, "", "", True, sdt.outdir,
                                           sdt.save_temps, verbose )
@@ -126,6 +136,32 @@ def compare( tgt_node, sdt, options ):
     compare_tree = LopperTree()
     fdt = Lopper.dt_to_fdt( compiled_file )
     compare_tree.load( Lopper.export( fdt ) )
+
+    # Structural-diff path: compare the SDT (source) against the comparison
+    # tree (target) via the shared diff core and emit in the chosen format.
+    if output_format:
+        try:
+            delta = sdt.tree.compare( compare_tree, key=key )
+            rendered = delta.emit( output_format, output=output_file )
+        except NotImplementedError as e:
+            lopper.log._error( str(e) )
+            sys.exit(1)
+
+        if output_file:
+            lopper.log._info( f"compare: {output_format} written to {rendered}" )
+        else:
+            sys.stdout.write( rendered )
+
+        # equivalence doubles as a regression gate: non-zero exit on differ
+        if output_format == "equivalence" and not delta.equivalent():
+            sys.exit(2)
+
+        return True
+
+    if not compare_list:
+        compare_list = [ "name" ]
+
+    lopper.log._info( f"comparing: {compare_list}" )
 
     if "name" in compare_list:
         lopper.log._info( "running name comparison ..." )

@@ -7,9 +7,10 @@ normalization, alternate keys and renderers are later phases.
 
 import pytest
 
-from lopper import Lopper
+from lopper import Lopper, LopperSDT
 from lopper.tree import LopperTree
 import lopper.compare
+import lopper.assists.compare as compare_assist
 
 
 # --- helpers --------------------------------------------------------------
@@ -518,6 +519,78 @@ def test_overlay_phandle_rendered_as_label(tmp_path):
     # and it must round-trip
     recompiled = _tree_from_dts(base + "\n" + overlay, tmp_path, "combined")
     assert b.compare(recompiled).equivalent()
+
+
+# --- compare assist / CLI wiring (Phase 5) -------------------------------
+
+def _sdt_from_dts(dts_text, tmp_path, name):
+    """Build a real LopperSDT (with a loaded .tree) for the assist tests."""
+    dts = tmp_path / f"{name}.dts"
+    dts.write_text(dts_text)
+    try:
+        import libfdt  # noqa: F401
+        libfdt_ok = True
+    except ImportError:
+        libfdt_ok = False
+    sdt = LopperSDT(str(dts))
+    sdt.dryrun = False
+    sdt.save_temps = False
+    sdt.outdir = str(tmp_path)
+    sdt.setup(sdt.dts, [], "", True, libfdt=libfdt_ok)
+    return sdt
+
+
+def test_assist_unified_to_file(tmp_path):
+    sdt = _sdt_from_dts(_LBASE, tmp_path, "base")
+    target = tmp_path / "target.dts"
+    target.write_text(_LTARGET)
+    out = tmp_path / "diff.txt"
+    compare_assist.compare(0, sdt, {"args": ["-o", "unified", str(target), str(out)]})
+    text = out.read_text()
+    assert "- /gpio@2000" in text
+    assert "~ status:" in text
+
+
+def test_assist_overlay_round_trips(tmp_path):
+    sdt = _sdt_from_dts(_LBASE, tmp_path, "base")
+    target_dts = tmp_path / "target.dts"
+    target_dts.write_text(_LTARGET)
+    out = tmp_path / "board.overlay"
+    compare_assist.compare(0, sdt, {"args": ["-o", "overlay", str(target_dts), str(out)]})
+
+    overlay = out.read_text()
+    # gpio was removed; the ref form (&gpio vs &{/gpio@2000}) depends on
+    # whether the source tree carries labels -- accept either.
+    assert ("/delete-node/ &gpio;" in overlay
+            or "/delete-node/ &{/gpio@2000};" in overlay)
+    # the real check: source + emitted overlay recompiles to the target
+    recompiled = _tree_from_dts(_LBASE + "\n" + overlay, tmp_path, "combined")
+    target_tree = _tree_from_dts(_LTARGET, tmp_path, "target_tree")
+    assert target_tree.compare(recompiled).equivalent()
+
+
+def test_assist_equivalence_gate(tmp_path):
+    sdt = _sdt_from_dts(_LBASE, tmp_path, "base")
+
+    same = tmp_path / "same.dts"
+    same.write_text(_LBASE)
+    # equivalent -> returns normally
+    assert compare_assist.compare(0, sdt, {"args": ["-o", "equivalence", str(same)]}) is True
+
+    diff = tmp_path / "diff.dts"
+    diff.write_text(_LTARGET)
+    # differ -> non-zero exit (regression gate)
+    with pytest.raises(SystemExit) as ei:
+        compare_assist.compare(0, sdt, {"args": ["-o", "equivalence", str(diff)]})
+    assert ei.value.code == 2
+
+
+def test_assist_legacy_name_check_runs(tmp_path):
+    # no -o: legacy name-existence comparison path still works
+    sdt = _sdt_from_dts(_LBASE, tmp_path, "base")
+    same = tmp_path / "same.dts"
+    same.write_text(_LBASE)
+    assert compare_assist.compare(0, sdt, {"args": ["-c", "name", str(same)]}) is True
 
 
 # --- unsupported key ------------------------------------------------------
