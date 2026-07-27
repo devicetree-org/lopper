@@ -353,6 +353,71 @@ def test_ambiguous_key_falls_back_to_path(tmp_path):
     assert delta.equivalent(), repr(delta)
 
 
+# --- emitters: equivalence + unified (Phase 4a/4b) -----------------------
+
+def test_emit_equivalence(tmp_path):
+    a = _tree_from_dts(BASE, tmp_path, "a")
+    same = _tree_from_dts(BASE, tmp_path, "same")
+    assert a.compare(same).emit("equivalence") == "equivalent\n"
+
+    b_text = BASE.replace('status = "disabled";', 'status = "okay";')
+    b = _tree_from_dts(b_text, tmp_path, "b")
+    assert a.compare(b).emit("equivalence") == "differ\n"
+
+
+def test_emit_unified_content(tmp_path):
+    b_text = BASE.replace(
+        '        status = "disabled";\n',
+        '        status = "okay";\n        clock-frequency = <100000000>;\n',
+    )
+    # also drop gpio and add a timer to exercise removed/added node lines
+    b_text = b_text.replace(
+        "    gpio@2000 {\n"
+        "        compatible = \"generic-gpio\";\n"
+        "        reg = <0x2000 0x100>;\n"
+        "    };\n",
+        "",
+    )
+    b_text = b_text[:-3] + (
+        "    timer@3000 { compatible = \"generic-timer\"; reg = <0x3000 0x100>; };\n};\n"
+    )
+    a = _tree_from_dts(BASE, tmp_path, "a")
+    b = _tree_from_dts(b_text, tmp_path, "b")
+    text = a.compare(b).emit("unified")
+
+    assert "- /gpio@2000" in text          # removed node
+    assert "+ /timer@3000" in text         # added node
+    assert "  /serial@1000" in text        # changed node header
+    assert "+ clock-frequency" in text     # added property
+    assert "~ status:" in text             # changed property
+    assert '"disabled"' in text and '"okay"' in text
+
+
+def test_emit_unified_deterministic(tmp_path):
+    b_text = BASE.replace('status = "disabled";', 'status = "okay";')
+    a = _tree_from_dts(BASE, tmp_path, "a")
+    b = _tree_from_dts(b_text, tmp_path, "b")
+    delta = a.compare(b)
+    assert delta.emit("unified") == delta.emit("unified")
+
+
+def test_emit_unified_to_file(tmp_path):
+    b_text = BASE.replace('status = "disabled";', 'status = "okay";')
+    a = _tree_from_dts(BASE, tmp_path, "a")
+    b = _tree_from_dts(b_text, tmp_path, "b")
+    out = tmp_path / "diff.txt"
+    ret = a.compare(b).emit("unified", output=str(out))
+    assert ret == str(out)
+    assert out.read_text().splitlines()[0] == "--- a"
+
+
+def test_emit_unknown_format_raises(tmp_path):
+    a = _tree_from_dts(BASE, tmp_path, "a")
+    b = _tree_from_dts(BASE, tmp_path, "b")
+    with pytest.raises(NotImplementedError):
+        a.compare(b).emit("bogus")
+
+
 # --- unsupported key ------------------------------------------------------
 
 def test_unsupported_key_raises(tmp_path):

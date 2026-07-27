@@ -116,6 +116,31 @@ class Delta:
         """Return True if the two trees are structurally equivalent."""
         return not bool(self)
 
+    def emit(self, fmt="unified", output=None, as_string=False):
+        """Render this delta.
+
+        Args:
+            fmt (str): "equivalence" (one-line equivalent/differ),
+                "unified" (human/traceability +/- text), or "overlay"
+                (a device-tree overlay of the delta).
+            output (str, optional): path to write the rendered text to.
+                When given, the file is written and its path returned.
+            as_string (bool): ignored when ``output`` is set; otherwise
+                the rendered text is returned (this is also the default).
+
+        Returns:
+            str: the rendered text, or the output path when ``output`` set.
+        """
+        if fmt == "equivalence":
+            text = "equivalent" if self.equivalent() else "differ"
+        elif fmt == "unified":
+            text = _render_unified(self)
+        elif fmt == "overlay":
+            raise NotImplementedError("overlay output lands in a later step")
+        else:
+            raise NotImplementedError(f"unknown compare output format {fmt!r}")
+        return _deliver(text, output, as_string)
+
     def __repr__(self):
         return (f"Delta(key={self.key!r}: added={len(self.added_nodes)} "
                 f"removed={len(self.removed_nodes)} "
@@ -316,3 +341,67 @@ def compare(tree_a, tree_b, key="path"):
             delta.changed_nodes.append(node_delta)
 
     return delta
+
+
+# --------------------------------------------------------------------------
+# Renderers
+# --------------------------------------------------------------------------
+
+def _deliver(text, output, as_string):
+    """Return the rendered text, or write it to ``output`` and return the
+    path. ``as_string`` is retained for API symmetry; returning the text
+    is the default when no output file is requested."""
+    if not text.endswith("\n"):
+        text += "\n"
+    if output:
+        with open(output, "w", encoding="utf-8") as f:
+            f.write(text)
+        return output
+    return text
+
+
+def _fmt_value(value):
+    """Render a property value compactly for the unified format."""
+    if value in ([], [""], "", None):
+        return ""  # boolean / present-empty property
+    if isinstance(value, list) and value and all(isinstance(v, int) for v in value):
+        return "<" + " ".join(hex(v) for v in value) + ">"
+    if isinstance(value, list) and all(isinstance(v, str) for v in value):
+        return ", ".join('"%s"' % v for v in value)
+    return repr(value)
+
+
+def _fmt_prop(name, value):
+    rendered = _fmt_value(value)
+    return name if rendered == "" else f"{name} = {rendered}"
+
+
+def _render_unified(delta):
+    """Deterministic, path-sorted +/- rendering of a Delta.
+
+    Removed nodes are prefixed '-', added '+', changed nodes are listed
+    with their property changes indented ('+ ' added, '- ' removed,
+    '~ ' changed). Output ordering is fully sorted so re-runs on the same
+    inputs are byte-identical.
+    """
+    lines = ["--- a", "+++ b"]
+
+    for node in delta.removed_nodes:
+        lines.append(f"- {node.abs_path}")
+
+    for node in delta.added_nodes:
+        lines.append(f"+ {node.abs_path}")
+
+    for nd in delta.changed_nodes:
+        if nd.moved:
+            lines.append(f"  {nd.path} (moved from {nd.moved[0]})")
+        else:
+            lines.append(f"  {nd.path}")
+        for prop in sorted(nd.added_props, key=lambda p: p.name):
+            lines.append(f"    + {_fmt_prop(prop.name, prop.value)}")
+        for prop in sorted(nd.removed_props, key=lambda p: p.name):
+            lines.append(f"    - {_fmt_prop(prop.name, prop.value)}")
+        for name, val_a, val_b in sorted(nd.changed_props, key=lambda c: c[0]):
+            lines.append(f"    ~ {name}: {_fmt_value(val_a)} -> {_fmt_value(val_b)}")
+
+    return "\n".join(lines) + "\n"
