@@ -10,9 +10,11 @@ Produces a :class:`Delta` describing how a *target* tree differs from a
 *source* tree, at node and property granularity. The delta is
 format-agnostic; renderers (overlay / unified / equivalence) consume it.
 
-Implemented: path-keyed node matching; property add/remove/change with
-phandle-value normalization (phandle references compare by resolved
-target, not raw number). Not yet: alternate match keys and the output
+Implemented: node matching by path/label/address/name (non-path keys
+fall back to path for nodes lacking or sharing that key, and record a
+"moved" node when a matched pair's paths differ); property
+add/remove/change with phandle-value normalization (phandle references
+compare by resolved target, not raw number). Not yet: the output
 renderers (overlay / unified / equivalence file output). See
 ``agent-files/tree-compare-design.md``.
 
@@ -57,9 +59,14 @@ class NodeDelta:
     """Property-level differences for a node present in both trees.
 
     Attributes:
-        path (str): the node's absolute path (the match key in Phase 1).
+        path (str): the target node's absolute path (source path if the
+            node was removed). With a non-path match key this is the
+            target's location even if it moved.
         node_a (LopperNode): the node in the source tree.
         node_b (LopperNode): the node in the target tree.
+        moved (tuple or None): (source_path, target_path) when the two
+            nodes were matched by a non-path key and their paths differ;
+            None otherwise.
         added_props (list): LopperProp objects present in B, absent in A.
         removed_props (list): LopperProp objects present in A, absent in B.
         changed_props (list): (name, value_a, value_b) tuples for
@@ -70,15 +77,18 @@ class NodeDelta:
         self.path = path
         self.node_a = node_a
         self.node_b = node_b
+        self.moved = None
         self.added_props = []
         self.removed_props = []
         self.changed_props = []
 
     def __bool__(self):
-        return bool(self.added_props or self.removed_props or self.changed_props)
+        return bool(self.moved or self.added_props
+                    or self.removed_props or self.changed_props)
 
     def __repr__(self):
-        return (f"NodeDelta({self.path!r}: +{len(self.added_props)} "
+        moved = " moved" if self.moved else ""
+        return (f"NodeDelta({self.path!r}:{moved} +{len(self.added_props)} "
                 f"-{len(self.removed_props)} ~{len(self.changed_props)})")
 
 
@@ -112,22 +122,93 @@ class Delta:
                 f"changed={len(self.changed_nodes)})")
 
 
-def _node_map(tree):
-    """Map abs_path -> LopperNode for user-facing nodes of a tree.
+SUPPORTED_KEYS = frozenset({"path", "label", "address", "name"})
+
+
+def _user_nodes(tree):
+    """List of user-facing nodes of a tree.
 
     Excludes derived/bookkeeping nodes (and their descendants) that would
     otherwise add noise to the diff.
     """
-    node_map = {}
+    nodes = []
     for node in tree:
         path = node.abs_path
         if path in _COMPARE_EXCLUDE_NODES:
             continue
-        # skip descendants of excluded nodes too
         if any(path.startswith(ex + "/") for ex in _COMPARE_EXCLUDE_NODES):
             continue
-        node_map[path] = node
-    return node_map
+        nodes.append(node)
+    return nodes
+
+
+def _node_key(node, key):
+    """The value used to match a node under the given key, or None if the
+    node has no value for that key (e.g. no label)."""
+    if key == "path":
+        return node.abs_path
+    if key == "label":
+        return node.label or None
+    name = node.name
+    if key == "address":
+        return name.split("@", 1)[1] if "@" in name else None
+    if key == "name":
+        return name.split("@", 1)[0] if "@" in name else name
+    raise NotImplementedError(f"compare key {key!r} is not supported")
+
+
+def _unique_key_index(nodes, key):
+    """Map key_value -> node for values that are non-None and *unique*
+    within ``nodes``. Ambiguous (duplicate) or absent key values are
+    omitted, so those nodes fall through to path matching."""
+    counts = {}
+    first = {}
+    for node in nodes:
+        value = _node_key(node, key)
+        if value is None:
+            continue
+        counts[value] = counts.get(value, 0) + 1
+        first.setdefault(value, node)
+    return {v: first[v] for v, c in counts.items() if c == 1}
+
+
+def _match(nodes_a, nodes_b, key):
+    """Correlate nodes of two trees under a match key.
+
+    Returns (pairs, only_a, only_b) where pairs is a list of
+    (node_a, node_b). Matching is two-pass: first by the requested key
+    (unique values present in both trees), then the remainder by abs_path.
+    For key="path" only the path pass runs. Nodes matched by a non-path
+    key whose paths differ are "moved" (recorded on the NodeDelta).
+    """
+    pairs = []
+    consumed_a = set()
+    consumed_b = set()
+
+    if key != "path":
+        index_a = _unique_key_index(nodes_a, key)
+        index_b = _unique_key_index(nodes_b, key)
+        for value, node_a in index_a.items():
+            node_b = index_b.get(value)
+            if node_b is not None:
+                pairs.append((node_a, node_b))
+                consumed_a.add(id(node_a))
+                consumed_b.add(id(node_b))
+
+    remaining_b_by_path = {n.abs_path: n for n in nodes_b
+                           if id(n) not in consumed_b}
+    for node_a in nodes_a:
+        if id(node_a) in consumed_a:
+            continue
+        node_b = remaining_b_by_path.get(node_a.abs_path)
+        if node_b is not None and id(node_b) not in consumed_b:
+            pairs.append((node_a, node_b))
+            consumed_a.add(id(node_a))
+            consumed_b.add(id(node_b))
+
+    only_a = [n for n in nodes_a if id(n) not in consumed_a]
+    only_b = [n for n in nodes_b if id(n) not in consumed_b]
+    return pairs, only_a, only_b
 
 
 def _normalized_value(prop):
@@ -175,10 +256,13 @@ def _values_equal(prop_a, prop_b):
     return _normalized_value(prop_a) == _normalized_value(prop_b)
 
 
-def _compare_node(node_a, node_b, path):
-    """Diff the properties of two nodes at the same key. Returns a
-    NodeDelta, or None if the nodes' properties are identical."""
-    delta = NodeDelta(path, node_a, node_b)
+def _compare_node(node_a, node_b):
+    """Diff a matched pair of nodes. Returns a NodeDelta, or None if the
+    nodes are identical (same path and properties)."""
+    delta = NodeDelta(node_b.abs_path, node_a, node_b)
+
+    if node_a.abs_path != node_b.abs_path:
+        delta.moved = (node_a.abs_path, node_b.abs_path)
 
     props_a = {n: p for n, p in node_a.__props__.items()
                if n not in _COMPARE_EXCLUDE_PROPS}
@@ -205,30 +289,29 @@ def compare(tree_a, tree_b, key="path"):
     Args:
         tree_a (LopperTree): the source / base tree.
         tree_b (LopperTree): the target tree.
-        key (str): node-matching key. Phase 1 supports only "path".
+        key (str): node-matching key, one of SUPPORTED_KEYS ("path",
+            "label", "address", "name"). Non-path keys fall back to path
+            matching for nodes that lack (or share) that key value.
 
     Returns:
         Delta: the structural difference (B relative to A).
     """
-    if key != "path":
+    if key not in SUPPORTED_KEYS:
         raise NotImplementedError(
-            f"compare key {key!r} not supported yet (Phase 3); use 'path'")
+            f"compare key {key!r} not supported; use one of "
+            f"{sorted(SUPPORTED_KEYS)}")
 
     delta = Delta(key=key)
 
-    map_a = _node_map(tree_a)
-    map_b = _node_map(tree_b)
-    paths_a = set(map_a)
-    paths_b = set(map_b)
+    nodes_a = _user_nodes(tree_a)
+    nodes_b = _user_nodes(tree_b)
+    pairs, only_a, only_b = _match(nodes_a, nodes_b, key)
 
-    for path in sorted(paths_b - paths_a):
-        delta.added_nodes.append(map_b[path])
+    delta.added_nodes = sorted(only_b, key=lambda n: n.abs_path)
+    delta.removed_nodes = sorted(only_a, key=lambda n: n.abs_path)
 
-    for path in sorted(paths_a - paths_b):
-        delta.removed_nodes.append(map_a[path])
-
-    for path in sorted(paths_a & paths_b):
-        node_delta = _compare_node(map_a[path], map_b[path], path)
+    for node_a, node_b in sorted(pairs, key=lambda pr: pr[1].abs_path):
+        node_delta = _compare_node(node_a, node_b)
         if node_delta:
             delta.changed_nodes.append(node_delta)
 

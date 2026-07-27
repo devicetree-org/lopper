@@ -5900,7 +5900,8 @@ class LopperTree:
 
         Args:
            other (LopperTree): the target tree to compare against.
-           key (string): node-matching key ("path" in Phase 1).
+           key (string): node-matching key -- "path" (default), "label",
+                         "address", or "name".
 
         Returns:
            lopper.compare.Delta

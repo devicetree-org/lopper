@@ -249,10 +249,114 @@ def test_phandle_property_itself_excluded(tmp_path):
         assert "phandle" not in names, f"{nd.path}: {names}"
 
 
+# --- alternate match keys (Phase 3) --------------------------------------
+
+# A labeled node whose unit-address (and thus path) changes between trees,
+# with its properties otherwise identical. Under key="path" this is a
+# remove+add; under key="label"/"address"... it is the same node, moved.
+_MOVE_A = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    uart: serial@1100 {
+        compatible = "ns16550";
+        reg = <0x1100 0x10>;
+    };
+};
+"""
+# same label "uart", different node name/address -> different path;
+# reg kept identical so the ONLY difference is the move.
+_MOVE_B = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    uart: serial@2200 {
+        compatible = "ns16550";
+        reg = <0x1100 0x10>;
+    };
+};
+"""
+
+
+def test_path_key_sees_move_as_add_remove(tmp_path):
+    a = _tree_from_dts(_MOVE_A, tmp_path, "a")
+    b = _tree_from_dts(_MOVE_B, tmp_path, "b")
+    delta = a.compare(b, key="path")
+    removed = [n.abs_path for n in delta.removed_nodes]
+    added = [n.abs_path for n in delta.added_nodes]
+    assert "/serial@1100" in removed
+    assert "/serial@2200" in added
+    assert delta.changed_nodes == []
+
+
+def test_label_key_sees_move_as_changed(tmp_path):
+    a = _tree_from_dts(_MOVE_A, tmp_path, "a")
+    b = _tree_from_dts(_MOVE_B, tmp_path, "b")
+    delta = a.compare(b, key="label")
+    assert delta.added_nodes == []
+    assert delta.removed_nodes == []
+    assert len(delta.changed_nodes) == 1
+    nd = delta.changed_nodes[0]
+    assert nd.moved == ("/serial@1100", "/serial@2200")
+    # reg is identical, so no property changes -- the move is the difference
+    assert nd.changed_props == []
+
+
+def test_address_key_matches_moved_node(tmp_path):
+    # keep the same address but change the label -> path stays the same
+    # here, so use a differing-parent construction for address matching
+    a_text = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    old_label: serial@1100 { compatible = "ns16550"; reg = <0x1100 0x10>; };
+};
+"""
+    b_text = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    new_label: serial@1100 { compatible = "ns16550"; reg = <0x1100 0x10>; status = "okay"; };
+};
+"""
+    a = _tree_from_dts(a_text, tmp_path, "a")
+    b = _tree_from_dts(b_text, tmp_path, "b")
+    # same path here, so even key="address" matches; verify the property
+    # change is picked up (label is not a property, so not a change)
+    delta = a.compare(b, key="address")
+    changed = _changed_by_path(delta)
+    assert "/serial@1100" in changed
+    names = [p.name for p in changed["/serial@1100"].added_props]
+    assert "status" in names
+
+
+def test_ambiguous_key_falls_back_to_path(tmp_path):
+    # two nodes share the same name-part ("serial") -> under key="name"
+    # the value is ambiguous, so matching falls back to path and the trees
+    # (identical) compare equal rather than mis-pairing the two serials.
+    text = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    serial@1000 { compatible = "ns16550"; reg = <0x1000 0x10>; };
+    serial@2000 { compatible = "ns16550"; reg = <0x2000 0x10>; };
+};
+"""
+    a = _tree_from_dts(text, tmp_path, "a")
+    b = _tree_from_dts(text, tmp_path, "b")
+    delta = a.compare(b, key="name")
+    assert delta.equivalent(), repr(delta)
+
+
 # --- unsupported key ------------------------------------------------------
 
-def test_nonpath_key_not_yet_supported(tmp_path):
+def test_unsupported_key_raises(tmp_path):
     a = _tree_from_dts(BASE, tmp_path, "a")
     b = _tree_from_dts(BASE, tmp_path, "b")
     with pytest.raises(NotImplementedError):
-        a.compare(b, key="label")
+        a.compare(b, key="compatible")
