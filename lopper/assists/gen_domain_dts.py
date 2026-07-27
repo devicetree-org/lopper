@@ -1223,6 +1223,11 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                             node["#size-cells"] = LopperProp("#size-cells")
                             node["#size-cells"].value = 0
                             node.add(node["#size-cells"])
+
+                        if node.propval("xlnx,clock-freq") != ['']:
+                            node + LopperProp(name="clock-frequency",
+                                              value=node["xlnx,clock-freq"].value)
+
                     # SPIPS
                     if "cdns,spi-r1p6" in node["compatible"].value:
                         node["compatible"] = "cdns,spi"
