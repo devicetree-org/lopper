@@ -1547,6 +1547,23 @@ def generate_board_kconfig_defconfig(isa_string, cpu_node, intc_node, num_interr
                 content += "\tdefault y\n\n"
                 added_extensions.add(config_name)
 
+    # Design-specific defaults: NUM_IRQS and PMP only.
+    if cpu_node is not None and cpu_node.propval('xlnx,pmp-entries') != ['']:
+        pmp_entries = cpu_node.propval('xlnx,pmp-entries', list)[0]
+        if pmp_entries % 8 == 0 and pmp_entries != 0:
+            content += "config RISCV_PMP\n"
+            content += "\tdefault y\n\n"
+            content += "config PMP_SLOTS\n"
+            content += f"\tdefault {pmp_entries}\n\n"
+            if cpu_node.propval('xlnx,pmp-granularity') != ['']:
+                pmp_granularity = cpu_node.propval('xlnx,pmp-granularity', list)[0]
+                content += "config PMP_GRANULARITY\n"
+                content += f"\tdefault {pow(pmp_granularity + 2, 2)}\n\n"
+
+    if num_interrupts:
+        content += "config NUM_IRQS\n"
+        content += f"\tdefault {num_interrupts}\n\n"
+
     content += "endif\n"
     return content
 
