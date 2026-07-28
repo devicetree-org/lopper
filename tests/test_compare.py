@@ -1,4 +1,4 @@
-"""Tests for lopper.compare — structural tree comparison (Phase 1).
+"""Tests for lopper.tree_compare — structural tree comparison.
 
 Phase 1 scope: path-keyed node matching, literal property-value
 comparison, exclusion of derived/bookkeeping nodes. Phandle
@@ -9,7 +9,7 @@ import pytest
 
 from lopper import Lopper, LopperSDT
 from lopper.tree import LopperTree
-import lopper.compare
+import lopper.tree_compare
 import lopper.assists.compare as compare_assist
 
 

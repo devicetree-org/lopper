@@ -5894,7 +5894,7 @@ class LopperTree:
     def compare( self, other, key = "path" ):
         """Structurally compare this tree against another.
 
-        Returns a lopper.compare.Delta describing how ``other`` (the
+        Returns a lopper.tree_compare.Delta describing how ``other`` (the
         target) differs from ``self`` (the source), at node and property
         granularity. The delta is format-agnostic; renderers consume it.
 
@@ -5904,10 +5904,10 @@ class LopperTree:
                          "address", or "name".
 
         Returns:
-           lopper.compare.Delta
+           lopper.tree_compare.Delta
         """
-        import lopper.compare
-        return lopper.compare.compare( self, other, key = key )
+        import lopper.tree_compare
+        return lopper.tree_compare.compare( self, other, key = key )
 
     def nodes( self, nodename, strict = False ):
         """Get nodes that match a given name or regex
