@@ -47,7 +47,7 @@ def usage():
       -k <key> node match key: path (default), label, address, name
       -o <fmt> emit the structural diff in <fmt>: unified, fragment, or
                equivalence. Written to <output file> if given, else stdout.
-               With this option the diff core is used (see lopper.compare).
+               With this option the diff core is used (see lopper.tree_compare).
       -c       legacy name-existence comparison (used when -o is absent;
                default "name")
       -x       exclude nodes or properties (legacy name check)
@@ -88,7 +88,10 @@ def compare( tgt_node, sdt, options ):
 
     lopper.log._debug( f"cb: compare( {tgt_node}, {sdt}, {verbose}, {args} )", level=logging.DEBUG )
 
-    opts,args2 = getopt.getopt( args, "c:i:k:pvt:o:x:h", [ "help", "verbose", "permissive" ] )
+    # gnu_getopt permutes: options may appear before or after the positional
+    # comparison-tree argument, so "compare B.dts -o unified" and
+    # "compare -o unified B.dts" both work.
+    opts,args2 = getopt.gnu_getopt( args, "c:i:k:pvt:o:x:h", [ "help", "verbose", "permissive" ] )
 
     if opts == [] and args2 == []:
         usage()
