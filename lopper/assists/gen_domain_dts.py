@@ -1878,7 +1878,7 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                             if val == "axi_intc":
                                 num_intr = node.propval('xlnx,num-intr-inputs', list)[0]
                                 num_intr += 12
-                            else:
+                            elif val == "iomodule":
                                 num_intr = 32
                         is_supported_periph = [value for key,value in schema.items() if key in node["compatible"].value]
                         result = _apply_pl_peripheral_transforms(node, schema,
