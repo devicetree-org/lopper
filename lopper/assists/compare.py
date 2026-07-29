@@ -71,27 +71,20 @@ def usage():
       it), that node falls back to path matching so nothing is mis-paired.
       When no nodes have moved, every key gives the same result.
 
-      NOTE: -k only takes effect together with -o (the structural diff).
-      Without -o the legacy name-existence check runs and -k is ignored.
-
-      -o <fmt> emit the structural diff in <fmt>:
+      -o <fmt> emit the difference in <fmt> (default: unified):
                  unified     - true diff style: each change a '-'/'+' pair
                  compact     - one line per change ('~ name: old -> new')
                  fragment    - a concatenated dtsi patch (source + it = target)
                  equivalence - one-line 'equivalent'/'differ' (exit 2 on differ)
                Written to <output file> if given, else stdout.
-               With this option the diff core is used (see lopper.tree_compare).
-      -c       legacy name-existence comparison (used when -o is absent;
-               default "name")
-      -x       exclude nodes or properties (legacy name check)
-      -p       permissive matching on target node (regex)
       -v       enable verbose debug/processing
 
    Examples:
-      compare other.dts -o unified                  # human-readable diff
+      compare other.dts                             # unified diff (default)
       compare target.dts -k address -o unified      # treat renames as moves
       compare target.dts -k label -o fragment out.dtsi   # emit a patch
       compare golden.dts -o equivalence             # exit 2 if they differ
+      compare A.dts B.dts -o compact                # no SDT: two peer trees
 
     """)
 
@@ -135,36 +128,28 @@ def compare( tgt_node, sdt, options ):
     lopper.log._debug( f"cb: compare( {tgt_node}, {sdt}, {verbose}, {args} )", level=logging.DEBUG )
 
     # gnu_getopt permutes: options may appear before or after the positional
-    # comparison-tree argument, so "compare B.dts -o unified" and
+    # tree arguments, so "compare B.dts -o unified" and
     # "compare -o unified B.dts" both work.
-    opts,args2 = getopt.gnu_getopt( args, "c:i:k:pvt:o:x:h", [ "help", "verbose", "permissive" ] )
+    try:
+        opts,args2 = getopt.gnu_getopt( args, "k:o:vh", [ "help", "verbose" ] )
+    except getopt.GetoptError as e:
+        lopper.log._error( str(e) )
+        usage()
+        sys.exit(1)
 
     if opts == [] and args2 == []:
         usage()
         sys.exit(1)
 
-    exclude_list=[]
-    include_list=[]
-    compare_list=[]
     key = "path"
-    output_format = None
-    permissive = False
+    output_format = "unified"   # default when -o is omitted
     for o,a in opts:
-        # print( "o: %s a: %s" % (o,a))
-        if o in ('-x'):
-            exclude_list.append( a )
-        if o in ('-i'):
-            include_list.append( a )
-        elif o in ('-k'):
+        if o in ('-k'):
             key = a
         elif o in ('-o'):
             output_format = a
         elif o in ('-v', "--verbose"):
             verbose = verbose + 1
-        elif o in ('-c', "--compare"):
-            compare_list.append( a )
-        elif o in ('-p', "--permissive"):
-            permissive = True
         elif o in ('-h', "--help"):
             usage()
             sys.exit(1)
@@ -196,52 +181,22 @@ def compare( tgt_node, sdt, options ):
 
     compare_tree = _load_tree( compare_dts, outdir, save_temps, verbose )
 
-    # Structural-diff path: compare the SDT (source) against the comparison
-    # tree (target) via the shared diff core and emit in the chosen format.
-    if output_format:
-        try:
-            delta = source_tree.compare( compare_tree, key=key )
-            rendered = delta.emit( output_format, output=output_file )
-        except NotImplementedError as e:
-            lopper.log._error( str(e) )
-            sys.exit(1)
+    # Compare the source tree against the target via the shared diff core
+    # and emit in the chosen format (see lopper.tree_compare).
+    try:
+        delta = source_tree.compare( compare_tree, key=key )
+        rendered = delta.emit( output_format, output=output_file )
+    except NotImplementedError as e:
+        lopper.log._error( str(e) )
+        sys.exit(1)
 
-        if output_file:
-            lopper.log._info( f"compare: {output_format} written to {rendered}" )
-        else:
-            sys.stdout.write( rendered )
+    if output_file:
+        lopper.log._info( f"compare: {output_format} written to {rendered}" )
+    else:
+        sys.stdout.write( rendered )
 
-        # equivalence doubles as a regression gate: non-zero exit on differ
-        if output_format == "equivalence" and not delta.equivalent():
-            sys.exit(2)
-
-        return True
-
-    if not compare_list:
-        compare_list = [ "name" ]
-
-    lopper.log._info( f"comparing: {compare_list}" )
-
-    if "name" in compare_list:
-        lopper.log._info( "running name comparison ..." )
-        name_pass = True
-        for node_tree_one in source_tree:
-            # print( "n: %s" % node_tree_one.name )
-            try:
-                if node_tree_one.name:
-                    other_tree_node = compare_tree.nodes( ".*/" + node_tree_one.name + "$" )
-                    if not other_tree_node and not node_tree_one.name in exclude_list:
-                        other_tree_node_fuzzy = compare_tree.nodes( node_tree_one.name )
-                        lopper.log._error( f"node with name '{node_tree_one.name}' does not exist in comparison tree" )
-                        if other_tree_node_fuzzy:
-                            lopper.log._error( "closest matches were:" )
-                            for o in other_tree_node_fuzzy:
-                                lopper.log._error( f"            {o.name}" )
-                        name_pass = False
-                    else:
-                        True
-
-            except Exception as e:
-                sys.exit(1)
+    # equivalence doubles as a regression gate: non-zero exit on differ
+    if output_format == "equivalence" and not delta.equivalent():
+        sys.exit(2)
 
     return True

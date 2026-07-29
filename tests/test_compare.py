@@ -619,12 +619,16 @@ def test_assist_equivalence_gate(tmp_path):
     assert ei.value.code == 2
 
 
-def test_assist_legacy_name_check_runs(tmp_path):
-    # no -o: legacy name-existence comparison path still works
+def test_assist_default_format_is_unified(tmp_path):
+    # no -o: defaults to the unified structural diff (legacy -c is gone)
     sdt = _sdt_from_dts(_LBASE, tmp_path, "base")
-    same = tmp_path / "same.dts"
-    same.write_text(_LBASE)
-    assert compare_assist.compare(0, sdt, {"args": ["-c", "name", str(same)]}) is True
+    target = tmp_path / "target.dts"
+    target.write_text(_LTARGET)
+    out = tmp_path / "diff.txt"
+    compare_assist.compare(0, sdt, {"args": [str(target), str(out)]})
+    text = out.read_text()
+    assert text.startswith("--- a")
+    assert '-     status = "disabled"' in text
 
 
 # --- two-tree mode: no system device tree loaded ------------------------
