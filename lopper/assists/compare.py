@@ -64,8 +64,8 @@ def usage():
                   kept its address but changed name/parent is reported as
                   one node that MOVED, not remove+add.
       -k label    match by devicetree label (&foo). Same idea, keyed on the
-                  label instead of the address.
-      -k name     match by node name without the unit-address (e.g. 'uart').
+                  label instead of the address; the reliable way to track a
+                  specific node across a move, since labels are unique.
 
       If a key value is missing (no label) or ambiguous (two nodes share
       it), that node falls back to path matching so nothing is mis-paired.

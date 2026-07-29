@@ -336,21 +336,21 @@ def test_address_key_matches_moved_node(tmp_path):
 
 
 def test_ambiguous_key_falls_back_to_path(tmp_path):
-    # two nodes share the same name-part ("serial") -> under key="name"
-    # the value is ambiguous, so matching falls back to path and the trees
-    # (identical) compare equal rather than mis-pairing the two serials.
+    # two nodes share the same unit-address ("100") under different parents
+    # -> under key="address" the value is ambiguous, so matching falls back
+    # to path and the (identical) trees compare equal rather than mis-pairing.
     text = """\
 /dts-v1/;
 / {
     #address-cells = <1>;
     #size-cells = <1>;
-    serial@1000 { compatible = "ns16550"; reg = <0x1000 0x10>; };
-    serial@2000 { compatible = "ns16550"; reg = <0x2000 0x10>; };
+    bus@1 { #address-cells = <1>; #size-cells = <1>; dev@100 { reg = <0x100 0x10>; }; };
+    bus@2 { #address-cells = <1>; #size-cells = <1>; dev@100 { reg = <0x100 0x10>; }; };
 };
 """
     a = _tree_from_dts(text, tmp_path, "a")
     b = _tree_from_dts(text, tmp_path, "b")
-    delta = a.compare(b, key="name")
+    delta = a.compare(b, key="address")
     assert delta.equivalent(), repr(delta)
 
 

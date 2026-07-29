@@ -10,7 +10,7 @@ Produces a :class:`Delta` describing how a *target* tree differs from a
 *source* tree, at node and property granularity. The delta is
 format-agnostic; renderers (fragment / unified / compact / equivalence) consume it.
 
-Implemented: node matching by path/label/address/name (non-path keys
+Implemented: node matching by path/label/address (non-path keys
 fall back to path for nodes lacking or sharing that key, and record a
 "moved" node when a matched pair's paths differ); property
 add/remove/change with phandle-value normalization (phandle references
@@ -153,7 +153,7 @@ class Delta:
                 f"changed={len(self.changed_nodes)})")
 
 
-SUPPORTED_KEYS = frozenset({"path", "label", "address", "name"})
+SUPPORTED_KEYS = frozenset({"path", "label", "address"})
 
 
 def _user_nodes(tree):
@@ -180,11 +180,9 @@ def _node_key(node, key):
         return node.abs_path
     if key == "label":
         return node.label or None
-    name = node.name
     if key == "address":
+        name = node.name
         return name.split("@", 1)[1] if "@" in name else None
-    if key == "name":
-        return name.split("@", 1)[0] if "@" in name else name
     raise NotImplementedError(f"compare key {key!r} is not supported")
 
 
@@ -321,8 +319,8 @@ def compare(tree_a, tree_b, key="path"):
         tree_a (LopperTree): the source / base tree.
         tree_b (LopperTree): the target tree.
         key (str): node-matching key, one of SUPPORTED_KEYS ("path",
-            "label", "address", "name"). Non-path keys fall back to path
-            matching for nodes that lack (or share) that key value.
+            "label", "address"). Non-path keys fall back to path matching
+            for nodes that lack (or share) that key value.
 
     Returns:
         Delta: the structural difference (B relative to A).
