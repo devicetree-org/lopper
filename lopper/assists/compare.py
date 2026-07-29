@@ -39,11 +39,17 @@ def is_compat( node, compat_string_to_test ):
 
 def usage():
     print( """
-   Usage: compare [OPTION] <comparison device tree> [<output file>]
+   Usage: compare [OPTION] <target device tree> [<output file>]
+              (with a system device tree loaded: it is the source)
+          compare [OPTION] <source device tree> <target device tree> [<output file>]
+              (with NO system device tree: both trees passed as peers)
 
-   Structurally compares any two device trees (system device tree or
-   not): the tree loaded by lopper as its input (source) against the
-   comparison tree passed here (target), and emits the difference.
+   Structurally compares two device trees (system device tree or not) and
+   emits the difference. If lopper loaded a system device tree, it is the
+   source and the single positional argument is the target. If lopper was
+   run with no system device tree, pass both trees as positional arguments
+   (source then target), e.g.:
+       lopper.py -- compare A.dts B.dts -o unified
 
    The diff runs in two steps: first each node in the source is *matched*
    to its counterpart in the target, then the matched pair is diffed. -k
@@ -85,8 +91,20 @@ def usage():
 
     """)
 
+def _load_tree( dts_path, outdir, save_temps, verbose ):
+    """Compile a dts/dtb and load it into a LopperTree."""
+    compiled_file, _ = Lopper.dt_compile( dts_path, "", "", True, outdir,
+                                          save_temps, verbose )
+    if not compiled_file:
+        lopper.log._error( f"could not compile file {dts_path}" )
+        sys.exit(1)
+    tree = LopperTree()
+    tree.load( Lopper.export( Lopper.dt_to_fdt( compiled_file ) ) )
+    return tree
+
+
 # tgt_node: is the openamp domain node number
-# sdt: is the system device tree
+# sdt: is the system device tree (may be absent -- see the two-tree form)
 def compare( tgt_node, sdt, options ):
     try:
         verbose = options['verbose']
@@ -147,28 +165,38 @@ def compare( tgt_node, sdt, options ):
             usage()
             sys.exit(1)
 
-    if len(args2) < 1:
-        lopper.log._error( "comparison tree not passed" )
-        sys.exit(1)
+    # Two ways to supply the source tree:
+    #   with a system device tree loaded ->  compare <target>
+    #       source = the SDT, target = the single positional arg
+    #   with NO system device tree        ->  compare <source> <target>
+    #       both trees are peers passed as positional args
+    have_sdt = sdt is not None and getattr( sdt, "tree", None ) is not None
+    outdir = getattr( sdt, "outdir", "." )
+    save_temps = getattr( sdt, "save_temps", False )
 
-    compare_dts = args2[0]
-    output_file = args2[1] if len(args2) > 1 else None
+    if have_sdt:
+        if len(args2) < 1:
+            lopper.log._error( "comparison tree not passed" )
+            sys.exit(1)
+        source_tree = sdt.tree
+        compare_dts = args2[0]
+        output_file = args2[1] if len(args2) > 1 else None
+    else:
+        if len(args2) < 2:
+            lopper.log._error( "without a system device tree, compare needs two "
+                               "device trees: compare <source> <target>" )
+            sys.exit(1)
+        source_tree = _load_tree( args2[0], outdir, save_temps, verbose )
+        compare_dts = args2[1]
+        output_file = args2[2] if len(args2) > 2 else None
 
-    compiled_file, _ = Lopper.dt_compile( compare_dts, "", "", True, sdt.outdir,
-                                          sdt.save_temps, verbose )
-    if not compiled_file:
-        lopper.log._error( f"could not compile file {compare_dts}" )
-        sys.exit(1)
-
-    compare_tree = LopperTree()
-    fdt = Lopper.dt_to_fdt( compiled_file )
-    compare_tree.load( Lopper.export( fdt ) )
+    compare_tree = _load_tree( compare_dts, outdir, save_temps, verbose )
 
     # Structural-diff path: compare the SDT (source) against the comparison
     # tree (target) via the shared diff core and emit in the chosen format.
     if output_format:
         try:
-            delta = sdt.tree.compare( compare_tree, key=key )
+            delta = source_tree.compare( compare_tree, key=key )
             rendered = delta.emit( output_format, output=output_file )
         except NotImplementedError as e:
             lopper.log._error( str(e) )
@@ -193,7 +221,7 @@ def compare( tgt_node, sdt, options ):
     if "name" in compare_list:
         lopper.log._info( "running name comparison ..." )
         name_pass = True
-        for node_tree_one in sdt.tree:
+        for node_tree_one in source_tree:
             # print( "n: %s" % node_tree_one.name )
             try:
                 if node_tree_one.name:

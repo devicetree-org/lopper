@@ -593,6 +593,30 @@ def test_assist_legacy_name_check_runs(tmp_path):
     assert compare_assist.compare(0, sdt, {"args": ["-c", "name", str(same)]}) is True
 
 
+# --- two-tree mode: no system device tree loaded ------------------------
+
+def test_assist_two_tree_mode_no_sdt(tmp_path):
+    # lopper run with no SDT: sdt.tree is None; compare two peer trees
+    import types
+    a = tmp_path / "a.dts"; a.write_text(_LBASE)
+    b = tmp_path / "b.dts"; b.write_text(_LTARGET)
+    out = tmp_path / "diff.txt"
+    no_sdt = types.SimpleNamespace(tree=None, outdir=str(tmp_path), save_temps=False)
+    compare_assist.compare(0, no_sdt,
+                           {"args": ["-o", "unified", str(a), str(b), str(out)]})
+    text = out.read_text()
+    assert "- /gpio@2000" in text
+    assert "~ status:" in text
+
+
+def test_assist_two_tree_mode_requires_two_trees(tmp_path):
+    import types
+    a = tmp_path / "a.dts"; a.write_text(_LBASE)
+    no_sdt = types.SimpleNamespace(tree=None, outdir=str(tmp_path), save_temps=False)
+    with pytest.raises(SystemExit):
+        compare_assist.compare(0, no_sdt, {"args": ["-o", "unified", str(a)]})
+
+
 # --- unsupported key ------------------------------------------------------
 
 def test_unsupported_key_raises(tmp_path):
