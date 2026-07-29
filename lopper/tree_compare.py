@@ -8,14 +8,14 @@
 
 Produces a :class:`Delta` describing how a *target* tree differs from a
 *source* tree, at node and property granularity. The delta is
-format-agnostic; renderers (fragment / unified / equivalence) consume it.
+format-agnostic; renderers (fragment / unified / compact / equivalence) consume it.
 
 Implemented: node matching by path/label/address/name (non-path keys
 fall back to path for nodes lacking or sharing that key, and record a
 "moved" node when a matched pair's paths differ); property
 add/remove/change with phandle-value normalization (phandle references
 compare by resolved target, not raw number). Not yet: the output
-renderers (fragment / unified / equivalence file output). See
+renderers (fragment / unified / compact / equivalence file output). See
 ``agent-files/tree-compare-design.md``.
 
 Relationship to existing core comparison routines:
@@ -123,7 +123,9 @@ class Delta:
 
         Args:
             fmt (str): "equivalence" (one-line equivalent/differ),
-                "unified" (human/traceability +/- text), or "fragment"
+                "unified" (true diff-style +/- lines; a changed property is
+                a '-' old then '+' new), "compact" (one line per change,
+                changes shown as '~ name: old -> new'), or "fragment"
                 (a concatenated device-tree fragment of the delta).
             output (str, optional): path to write the rendered text to.
                 When given, the file is written and its path returned.
@@ -137,6 +139,8 @@ class Delta:
             text = "equivalent" if self.equivalent() else "differ"
         elif fmt == "unified":
             text = _render_unified(self)
+        elif fmt == "compact":
+            text = _render_compact(self)
         elif fmt == "fragment":
             text = _render_fragment(self)
         else:
@@ -364,49 +368,110 @@ def _deliver(text, output, as_string):
     return text
 
 
-def _fmt_value(value):
-    """Render a property value compactly for the unified format."""
-    if value in ([], [""], "", None):
-        return ""  # boolean / present-empty property
-    if isinstance(value, list) and value and all(isinstance(v, int) for v in value):
-        return "<" + " ".join(hex(v) for v in value) + ">"
-    if isinstance(value, list) and all(isinstance(v, str) for v in value):
-        return ", ".join('"%s"' % v for v in value)
-    return repr(value)
+def _diff_cells(prop, raw):
+    """Integer cell list; phandle slots rendered as their resolved target
+    path (&{/path}) so a phandle retarget shows up even when the raw cell
+    number is unchanged."""
+    try:
+        pmap = prop.phandle_map()
+    except Exception:
+        pmap = []
+    flat = [slot for record in pmap for slot in record] if pmap else []
+    if len(flat) != len(raw):
+        return [hex(v) for v in raw]
+    cells = []
+    for slot, val in zip(flat, raw):
+        path = getattr(slot, "abs_path", None)
+        cells.append("&{" + path + "}" if path else hex(val))
+    return cells
 
 
-def _fmt_prop(name, value):
-    rendered = _fmt_value(value)
-    return name if rendered == "" else f"{name} = {rendered}"
+def _diff_value(prop):
+    """Render a property value for unified/compact output. Phandle cells
+    resolve to their target path (so a retarget is visible). Returns None
+    for a boolean/present-empty property."""
+    raw = prop.value
+    if raw in ([], [""], "", None):
+        return None
+    if isinstance(raw, str):
+        return '"%s"' % raw
+    if isinstance(raw, list) and raw and all(isinstance(v, str) for v in raw):
+        return ", ".join('"%s"' % v for v in raw)
+    if isinstance(raw, list) and all(isinstance(v, int) for v in raw):
+        return "<" + " ".join(_diff_cells(prop, raw)) + ">"
+    return repr(raw)
+
+
+def _diff_prop(prop):
+    """`name = value` (or bare `name` for a boolean) for one property."""
+    value = _diff_value(prop)
+    return prop.name if value is None else f"{prop.name} = {value}"
+
+
+def _changed_pair(nd, name):
+    """(old_prop, new_prop) LopperProps for a changed property."""
+    return nd.node_a.__props__.get(name), nd.node_b.__props__.get(name)
+
+
+def _diff_node_header(nd):
+    header = f"  {nd.path}"
+    if nd.moved:
+        header += f" (moved from {nd.moved[0]})"
+    return header
 
 
 def _render_unified(delta):
-    """Deterministic, path-sorted +/- rendering of a Delta.
-
-    Removed nodes are prefixed '-', added '+', changed nodes are listed
-    with their property changes indented ('+ ' added, '- ' removed,
-    '~ ' changed). Output ordering is fully sorted so re-runs on the same
-    inputs are byte-identical.
+    """True unified-diff rendering: every change is a '-'/'+' line and node
+    headers are context lines. A changed property is a '-' (old) then a '+'
+    (new); an added/removed property is a single '+'/'-'. Phandle cells
+    render as their resolved target. Fully sorted for byte-stable output.
     """
     lines = ["--- a", "+++ b"]
 
     for node in delta.removed_nodes:
         lines.append(f"- {node.abs_path}")
-
     for node in delta.added_nodes:
         lines.append(f"+ {node.abs_path}")
 
     for nd in delta.changed_nodes:
-        if nd.moved:
-            lines.append(f"  {nd.path} (moved from {nd.moved[0]})")
-        else:
-            lines.append(f"  {nd.path}")
+        lines.append(_diff_node_header(nd))
         for prop in sorted(nd.added_props, key=lambda p: p.name):
-            lines.append(f"    + {_fmt_prop(prop.name, prop.value)}")
+            lines.append(f"+     {_diff_prop(prop)}")
         for prop in sorted(nd.removed_props, key=lambda p: p.name):
-            lines.append(f"    - {_fmt_prop(prop.name, prop.value)}")
-        for name, val_a, val_b in sorted(nd.changed_props, key=lambda c: c[0]):
-            lines.append(f"    ~ {name}: {_fmt_value(val_a)} -> {_fmt_value(val_b)}")
+            lines.append(f"-     {_diff_prop(prop)}")
+        for name, _va, _vb in sorted(nd.changed_props, key=lambda c: c[0]):
+            old, new = _changed_pair(nd, name)
+            if old is not None:
+                lines.append(f"-     {_diff_prop(old)}")
+            if new is not None:
+                lines.append(f"+     {_diff_prop(new)}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _render_compact(delta):
+    """Compact rendering: one line per change. Node adds/removes as '+'/'-';
+    within a changed node, added/removed properties as '+ '/'- ' and a
+    changed property as a single '~ name: old -> new' line. Phandle cells
+    resolve to their target."""
+    lines = ["--- a", "+++ b"]
+
+    for node in delta.removed_nodes:
+        lines.append(f"- {node.abs_path}")
+    for node in delta.added_nodes:
+        lines.append(f"+ {node.abs_path}")
+
+    for nd in delta.changed_nodes:
+        lines.append(_diff_node_header(nd))
+        for prop in sorted(nd.added_props, key=lambda p: p.name):
+            lines.append(f"    + {_diff_prop(prop)}")
+        for prop in sorted(nd.removed_props, key=lambda p: p.name):
+            lines.append(f"    - {_diff_prop(prop)}")
+        for name, _va, _vb in sorted(nd.changed_props, key=lambda c: c[0]):
+            old, new = _changed_pair(nd, name)
+            ov = (_diff_value(old) if old is not None else None) or ""
+            nv = (_diff_value(new) if new is not None else None) or ""
+            lines.append(f"    ~ {name}: {ov} -> {nv}")
 
     return "\n".join(lines) + "\n"
 

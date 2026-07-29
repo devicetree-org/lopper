@@ -74,8 +74,12 @@ def usage():
       NOTE: -k only takes effect together with -o (the structural diff).
       Without -o the legacy name-existence check runs and -k is ignored.
 
-      -o <fmt> emit the structural diff in <fmt>: unified, fragment, or
-               equivalence. Written to <output file> if given, else stdout.
+      -o <fmt> emit the structural diff in <fmt>:
+                 unified     - true diff style: each change a '-'/'+' pair
+                 compact     - one line per change ('~ name: old -> new')
+                 fragment    - a concatenated dtsi patch (source + it = target)
+                 equivalence - one-line 'equivalent'/'differ' (exit 2 on differ)
+               Written to <output file> if given, else stdout.
                With this option the diff core is used (see lopper.tree_compare).
       -c       legacy name-existence comparison (used when -o is absent;
                default "name")

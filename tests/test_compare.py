@@ -388,10 +388,43 @@ def test_emit_unified_content(tmp_path):
 
     assert "- /gpio@2000" in text          # removed node
     assert "+ /timer@3000" in text         # added node
-    assert "  /serial@1000" in text        # changed node header
-    assert "+ clock-frequency" in text     # added property
-    assert "~ status:" in text             # changed property
-    assert '"disabled"' in text and '"okay"' in text
+    assert "  /serial@1000" in text        # changed node header (context)
+    # true diff style: no '~'; a changed property is a '-' old then '+' new
+    assert "~" not in text
+    assert '-     status = "disabled"' in text
+    assert '+     status = "okay"' in text
+    assert "+     clock-frequency" in text  # added property
+
+
+def test_emit_compact_content(tmp_path):
+    b_text = BASE.replace('status = "disabled";', 'status = "okay";')
+    a = _tree_from_dts(BASE, tmp_path, "a")
+    b = _tree_from_dts(b_text, tmp_path, "b")
+    text = a.compare(b).emit("compact")
+    # compact keeps the one-line shorthand
+    assert '~ status: "disabled" -> "okay"' in text
+
+
+def test_unified_resolves_phandle_targets(tmp_path):
+    # interrupt-parent retargeted &gic0 -> &gic1: the unified diff must show
+    # the differing resolved target paths, not identical raw phandle numbers
+    two_ctrl = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    gic0: intc@1000 { phandle = <0x1>; interrupt-controller; #interrupt-cells = <1>; reg = <0x1000 0x100>; };
+    gic1: intc@1100 { phandle = <0x2>; interrupt-controller; #interrupt-cells = <1>; reg = <0x1100 0x100>; };
+    dev@2000 { compatible = "vendor,dev"; reg = <0x2000 0x10>; interrupt-parent = <&gic0>; };
+};
+"""
+    a = _tree_from_dts(two_ctrl, tmp_path, "a")
+    b = _tree_from_dts(two_ctrl.replace("interrupt-parent = <&gic0>;",
+                                        "interrupt-parent = <&gic1>;"),
+                       tmp_path, "b")
+    text = a.compare(b).emit("unified")
+    assert "-     interrupt-parent = <&{/intc@1000}>" in text
+    assert "+     interrupt-parent = <&{/intc@1100}>" in text
 
 
 def test_emit_unified_deterministic(tmp_path):
@@ -548,7 +581,8 @@ def test_assist_unified_to_file(tmp_path):
     compare_assist.compare(0, sdt, {"args": ["-o", "unified", str(target), str(out)]})
     text = out.read_text()
     assert "- /gpio@2000" in text
-    assert "~ status:" in text
+    assert '-     status = "disabled"' in text
+    assert '+     status = "okay"' in text
 
 
 def test_assist_fragment_round_trips(tmp_path):
@@ -606,7 +640,8 @@ def test_assist_two_tree_mode_no_sdt(tmp_path):
                            {"args": ["-o", "unified", str(a), str(b), str(out)]})
     text = out.read_text()
     assert "- /gpio@2000" in text
-    assert "~ status:" in text
+    assert '-     status = "disabled"' in text
+    assert '+     status = "okay"' in text
 
 
 def test_assist_two_tree_mode_requires_two_trees(tmp_path):
