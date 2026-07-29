@@ -223,7 +223,9 @@
                                     if __selected__ == []:
                                         return
 
-                                    for n in __selected__[0].subnodes():
+                                    for n in __selected__[0].subnodes(children_only=True):
+                                        yaml_to_dts_expansion.zephyr_linker_expand( tree, n, 0 )
+
                                         if n.propval('access') != [''] and 'flags' not in n.abs_path:
                                             yaml_to_dts_expansion.access_expand( tree, n, 0 )
 
