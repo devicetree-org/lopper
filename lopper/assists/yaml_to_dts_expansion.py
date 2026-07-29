@@ -34,8 +34,137 @@ import json
 
 from .lopper_lib import check_bit_set, clear_bit, chunks, property_set, set_bit, expand_start_size_to_reg
 from lopper.log import _init, _warning, _info, _error, _debug
+from .zephyr_memory import (
+    LINKER_SCALAR_PROPERTIES,
+    SUPPORTED_SECTIONS,
+    LayoutError,
+    linker_section_property,
+    resolve_memory_node,
+)
 
 sys.path.append(os.path.dirname(__file__))
+
+
+def zephyr_linker_expand(tree, domain_node, verbose=0):
+    """Flatten readable Zephyr linker YAML before domain pruning.
+
+    Description:
+        Converts a domain-local linker/sections hierarchy into properties on
+        the selected domain. Physical-memory references become phandles so
+        the metadata survives domain-access pruning without special handling.
+
+    Args:
+        tree (LopperTree): Device tree containing physical memories.
+        domain_node (LopperNode): Domain that may contain a linker child.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        bool: True when linker metadata was expanded, otherwise False.
+
+    Raises:
+        LayoutError: If the hierarchy, keys, or references are invalid.
+    """
+    linker_nodes = [node for node in domain_node.subnodes(children_only=True)
+                    if node.name == "linker"]
+    if not linker_nodes:
+        return False
+    if len(linker_nodes) != 1:
+        raise LayoutError(
+            f"{domain_node.abs_path}: expected at most one linker child")
+    if domain_node.propval("os,type", list) != ["zephyr"]:
+        raise LayoutError(
+            f"{domain_node.abs_path}: linker metadata requires os,type "
+            "'zephyr'")
+
+    linker = linker_nodes[0]
+    unknown = set(linker.__props__) - set(LINKER_SCALAR_PROPERTIES) - {
+        "linker_memories",
+    }
+    if unknown:
+        raise LayoutError(
+            f"{linker.abs_path}: unsupported properties: " +
+            ", ".join(sorted(unknown)))
+
+    for source_name, output_name in LINKER_SCALAR_PROPERTIES.items():
+        values = linker.propval(source_name, list)
+        if not values or values == [""]:
+            continue
+        if len(values) != 1:
+            raise LayoutError(
+                f"{linker.abs_path}: '{source_name}' must contain one value")
+        if output_name in domain_node.__props__:
+            domain_node[output_name].value = [values[0]]
+        else:
+            domain_node + LopperProp(name=output_name, value=[values[0]])
+    if linker.propval("linker_file_output_name", list) in ([], [""]):
+        raise LayoutError(
+            f"{linker.abs_path}: missing required "
+            "linker_file_output_name property")
+
+    memory_references = linker.propval("linker_memories", list)
+    if not memory_references or memory_references == [""]:
+        raise LayoutError(
+            f"{linker.abs_path}: missing required linker_memories property")
+    memory_phandles = []
+    for reference in memory_references:
+        memory = resolve_memory_node(tree, reference)
+        memory_phandles.append(memory.phandle_or_create())
+    if "linker_memories" in domain_node.__props__:
+        domain_node["linker_memories"].value = memory_phandles
+    else:
+        domain_node + LopperProp(
+            name="linker_memories", value=memory_phandles)
+
+    section_parents = [node for node in linker.subnodes(children_only=True)
+                       if node.name == "sections"]
+    if len(section_parents) != 1:
+        raise LayoutError(
+            f"{linker.abs_path}: expected exactly one sections child")
+    sections = section_parents[0]
+    seen = set()
+    for section in sections.subnodes(children_only=True):
+        name = section.name
+        if name not in SUPPORTED_SECTIONS:
+            raise LayoutError(
+                f"{section.abs_path}: unsupported linker section '{name}'")
+        if name in seen:
+            raise LayoutError(
+                f"{sections.abs_path}: duplicate linker section '{name}'")
+        seen.add(name)
+        unknown = set(section.__props__) - {"region", "offset"}
+        if unknown:
+            raise LayoutError(
+                f"{section.abs_path}: unsupported properties: " +
+                ", ".join(sorted(unknown)))
+        regions = section.propval("region", list)
+        if len(regions) != 1:
+            raise LayoutError(
+                f"{section.abs_path}: region must contain one reference")
+        memory = resolve_memory_node(tree, regions[0])
+        property_name = linker_section_property(name)
+        if property_name in domain_node.__props__:
+            domain_node[property_name].value = [memory.phandle_or_create()]
+        else:
+            domain_node + LopperProp(
+                name=property_name, value=[memory.phandle_or_create()])
+        offsets = section.propval("offset", list)
+        if offsets and offsets != [""]:
+            if len(offsets) != 1 or not isinstance(offsets[0], int) or \
+                    offsets[0] < 0:
+                raise LayoutError(
+                    f"{section.abs_path}: offset must be one non-negative "
+                    "integer")
+            offset_name = f"{property_name}-offset"
+            if offset_name in domain_node.__props__:
+                domain_node[offset_name].value = [offsets[0]]
+            else:
+                domain_node + LopperProp(
+                    name=offset_name, value=[offsets[0]])
+
+    if verbose:
+        _info(f"expanded Zephyr linker metadata for {domain_node.abs_path}")
+    tree - linker
+    return True
 
 # tests for a bit that is set, going fro 31 -> 0 from MSB to LSB
 def is_glob_pattern(string):
