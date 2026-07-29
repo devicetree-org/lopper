@@ -41,10 +41,33 @@ def usage():
     print( """
    Usage: compare [OPTION] <comparison device tree> [<output file>]
 
-   Structurally compares the system device tree (source) against the
-   comparison tree (target) and emits the difference.
+   Structurally compares any two device trees (system device tree or
+   not): the tree loaded by lopper as its input (source) against the
+   comparison tree passed here (target), and emits the difference.
 
-      -k <key> node match key: path (default), label, address, name
+   The diff runs in two steps: first each node in the source is *matched*
+   to its counterpart in the target, then the matched pair is diffed. -k
+   selects the matching key -- i.e. what makes a node in one tree "the
+   same node" as one in the other. This only matters when nodes may have
+   been renamed or moved between the two trees:
+
+      -k path     (default) match by absolute path (/bus@x/uart@y). A node
+                  that was renamed or reparented has a different path, so
+                  it appears as a removal + an addition.
+      -k address  match by unit-address (the part after '@'). A node that
+                  kept its address but changed name/parent is reported as
+                  one node that MOVED, not remove+add.
+      -k label    match by devicetree label (&foo). Same idea, keyed on the
+                  label instead of the address.
+      -k name     match by node name without the unit-address (e.g. 'uart').
+
+      If a key value is missing (no label) or ambiguous (two nodes share
+      it), that node falls back to path matching so nothing is mis-paired.
+      When no nodes have moved, every key gives the same result.
+
+      NOTE: -k only takes effect together with -o (the structural diff).
+      Without -o the legacy name-existence check runs and -k is ignored.
+
       -o <fmt> emit the structural diff in <fmt>: unified, fragment, or
                equivalence. Written to <output file> if given, else stdout.
                With this option the diff core is used (see lopper.tree_compare).
@@ -55,9 +78,10 @@ def usage():
       -v       enable verbose debug/processing
 
    Examples:
-      compare other.dts -o unified
-      compare target.dts -k label -o fragment board.overlay
-      compare golden.dts -o equivalence      # exit 2 if they differ
+      compare other.dts -o unified                  # human-readable diff
+      compare target.dts -k address -o unified      # treat renames as moves
+      compare target.dts -k label -o fragment out.dtsi   # emit a patch
+      compare golden.dts -o equivalence             # exit 2 if they differ
 
     """)
 
