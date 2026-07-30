@@ -1,3 +1,11 @@
+axi:
+  r52_0a_atcm_global:
+    mpu-policy!zephyr!append: [ readable, writable, executable, cacheable, static ]
+  r52_0a_btcm_global:
+    mpu-policy!zephyr!append: [ readable, writable, cacheable, static ]
+  r52_0a_ctcm_global:
+    mpu-policy!zephyr!append: [ readable, writable, cacheable, static ]
+
 reserved-memory:
   ranges: true
   "#size-cells": 2
@@ -6,8 +14,14 @@ reserved-memory:
   ddrboot@9800100:
     no-map: 1
     start: 0x9800100
-    size: 0x5FF00
+    size: 0x5EF00
     device_type: "memory"
+    mpu-policy!zephyr!append: [ readable, writable, executable, cacheable, static ]
+  trace@985f000:
+    start: 0x985F000
+    size: 0x1000
+    no-map: 1
+    mpu-policy!zephyr!append: [ readable, writable, shareable, userspace ]
   rpu0vdev0vring0@9860000:
     start: 0x9860000
     size: 0x4000
@@ -24,6 +38,7 @@ reserved-memory:
     start: 0x9800000
     size: 0x100
     no-map: 1
+    mpu-policy!zephyr!append: [ readable, writable, shareable, userspace ]
   ipc@9860000:
     start: 0x9860000
     size: 0x48000
@@ -89,6 +104,7 @@ domains:
       - rpu0vdev0vring1@9864000
       - rpu0vdev0buffer@9868000
       - ddrboot@9800100
+      - trace@985f000
       - rsctbl@9800000
       - rproc6@c000000
       - rproc7@1082A000
@@ -99,7 +115,7 @@ domains:
         compatible: openamp,remoteproc-v2
         relation0:
             remote: RPU_Zephyr
-            elfload: [ r52_0a_atcm_global, r52_0a_btcm_global, r52_0a_ctcm_global, ddrboot@9800100, rsctbl@9800000 ]
+            elfload: [ r52_0a_atcm_global, r52_0a_btcm_global, r52_0a_ctcm_global, ddrboot@9800100, trace@985f000, rsctbl@9800000 ]
         relation1:
             remote: RPU_ISP0
             elfload: [ r52_0d_atcm_global, r52_0d_btcm_global, r52_0d_ctcm_global, rproc6@c000000 ]
@@ -339,10 +355,12 @@ domains:
           secure: true
           el: 0x3  
     os,type: zephyr
+    chosen:
+      zephyr,ram-console: /reserved-memory/trace@985f000
     sram:
       - dev: ddrboot@9800100
         start: 0x9800100
-        size: 0x5FF00
+        size: 0x5EF00
       - dev: r52_0a_atcm_global@eba00000
         label: r52_0a_atcm_global
         size: 64K
@@ -361,6 +379,23 @@ domains:
     reserved-memory:
         - ipc@9860000
         - ddrboot@9800100
+        - trace@985f000
+        - rsctbl@9800000
+
+    linker:
+      linker_file_output_name: openamp-zephyr.ld
+      linker_memories: [ r52_0a_atcm_global, r52_0a_btcm_global, r52_0a_ctcm_global, ddrboot, rsctbl ]
+      entry: _vector_table
+      sections:
+        vector_table: { region: r52_0a_atcm_global, offset: 0 }
+        text: { region: r52_0a_atcm_global }
+        rodata: { region: r52_0a_atcm_global }
+        data: { region: r52_0a_btcm_global }
+        bss: { region: r52_0a_btcm_global }
+        noinit: { region: r52_0a_btcm_global }
+        heap: { region: r52_0a_btcm_global }
+        stack: { region: r52_0a_btcm_global }
+        resource_table: { region: rsctbl, offset: 0 }
 
     domain-to-domain:
       compatible: openamp,domain-to-domain-v1
@@ -460,4 +495,3 @@ domains:
           secure: true
           el: 0x3  
     os,type: baremetal
-
