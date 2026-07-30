@@ -1,11 +1,11 @@
 # Reference metadata for the Zephyr Cortex-R52 TCM-boot sanity test.
 axi:
   r52_0a_atcm_global:
-    mpu-policy!zephyr!append: [ readable, writable, executable, cacheable ]
+    mpu-policy!zephyr!append: [ readable, writable, executable, cacheable, static ]
   r52_0a_btcm_global:
-    mpu-policy!zephyr!append: [ readable, writable, cacheable ]
+    mpu-policy!zephyr!append: [ readable, writable, cacheable, static ]
   r52_0a_ctcm_global:
-    mpu-policy!zephyr!append: [ readable, writable, cacheable ]
+    mpu-policy!zephyr!append: [ readable, writable, cacheable, static ]
 
 reserved-memory:
   ddrboot@9800100:
