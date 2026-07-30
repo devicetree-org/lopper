@@ -96,6 +96,22 @@ from .schema import (
 # Also export Constraint directly for code using the new unified name
 from lopper.schema.core import Constraint
 
+# Data-driven DRC assertion language (importing registers DRCValidator and the
+# check handlers via their decorators).
+from .checks import (
+    CheckHandler,
+    CheckHandlerRegistry,
+    register_collector,
+    get_collector,
+)
+from .assertions import (
+    Rule,
+    AssertionRegistry,
+    DRCValidator,
+    get_drc_registry,
+    reset_drc_registry,
+)
+
 # Define what is exported when using `from lopper.audit import *`
 __all__ = [
     # Base framework classes
@@ -152,4 +168,14 @@ __all__ = [
     # Schema validator
     'SchemaValidator',
     'validate_schema',
+    # DRC assertion language
+    'CheckHandler',
+    'CheckHandlerRegistry',
+    'register_collector',
+    'get_collector',
+    'Rule',
+    'AssertionRegistry',
+    'DRCValidator',
+    'get_drc_registry',
+    'reset_drc_registry',
 ]

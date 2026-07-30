@@ -1,0 +1,83 @@
+# Domains YAML baseline DRCs (§3.1) + selected cross-domain DRCs (§3.2).
+#
+# These rules are DATA. Each names a reusable check handler (lopper/audit/checks.py)
+# and passes typed parameters. Adding a rule here that fits an existing handler
+# needs no Python.
+#
+# Source: "SHEL work flow - DRCs and Error handling" (open DRC catalog).
+# Owner of the §3.1 baseline set: Bruce.
+#
+# NOTE: DRC-DOM-001 (YAML syntax) and DRC-DOM-002 (undefined namespace) are
+# parse-time / schema concerns handled before this layer; they are intentionally
+# not encoded as node checks here.
+
+drc:
+  - id: DRC-DOM-003
+    severity: error
+    phase: post-yaml
+    select:
+      - "/domains/.*"
+    # Domains are identified here by path (direct entries under /domains). A
+    # nested/hierarchical layout will need a refined selector -- that is the
+    # documented selector-model follow-up, not a per-rule code change.
+    check: compatible-contains
+    params:
+      token: "openamp,domain-v1"
+    message: "domain node compatible must include 'openamp,domain-v1'"
+
+  - id: DRC-DOM-004
+    severity: error
+    phase: post-yaml
+    select:
+      - "/domains/.*"
+    check: required
+    params:
+      properties: ["id"]
+    message: "every domain must have a unique 32-bit 'id' property"
+
+  - id: DRC-DOM-005
+    severity: error
+    phase: post-yaml
+    select:
+      - "/domains/.*"
+    check: enum
+    params:
+      property: "os,type"
+      values: ["linux", "zephyr", "baremetal", "xen", "freertos"]
+    message: "domain 'os,type' must be a recognized OS type"
+
+  - id: DRC-DOM-006
+    severity: error
+    phase: post-processing
+    group-by: "/domains/.*"
+    collect: "property:id"
+    check: exclusive-across
+    message: "domain 'id' must be unique across all domains"
+
+  - id: DRC-DOM-007
+    severity: error
+    phase: post-processing
+    select:
+      - "/domains/.*:parent"
+    check: ref-exists
+    params:
+      property: "parent"
+    message: "domain 'parent' must reference an existing domain"
+
+  - id: DRC-DOM-012
+    severity: error
+    phase: post-processing
+    group-by: "/domains/.*"
+    collect: "cpu-cores"
+    check: exclusive-across
+    message: "a CPU core must not be assigned to more than one domain (no hypervisor)"
+
+  - id: DRC-DOM-034
+    severity: error
+    phase: post-processing
+    group-by: "/domains/.*"
+    collect: "property:access"
+    check: exclusive-across
+    params:
+      unless-flag: shared
+    message: "a device assigned to multiple domains requires the 'shared' flag"
