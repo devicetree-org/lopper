@@ -1,0 +1,53 @@
+/dts-v1/;
+
+/ {
+	compatible = "system-device-tree-v1";
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	psu_cortexr5_0: cpu@0 {
+		compatible = "arm,cortex-r5";
+		device_type = "cpu";
+		reg = <0>;
+	};
+
+	axi {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		atcm: sram@0 {
+			compatible = "xlnx,psu-r5-0-atcm-1.0", "mmio-sram";
+			reg = <0x0 0x0 0x0 0x10000>;
+			mpu-policy = "readable", "writable", "executable", "cacheable";
+		};
+
+		btcm: sram@20000 {
+			compatible = "xlnx,psu-r5-0-btcm-1.0", "mmio-sram";
+			reg = <0x0 0x20000 0x0 0x10000>;
+			mpu-policy = "readable", "writable", "cacheable";
+		};
+	};
+
+	domains {
+		R5_ZEPHYR {
+			os,type = "zephyr";
+			cpus = <&psu_cortexr5_0 0 0>;
+			sram = <&atcm &btcm>;
+
+			linker_file_output_name = "/tmp/zephyr-linker-standalone.ld";
+			linker_memories = <&atcm &btcm>;
+			linker-entry = "_vector_table";
+			linker-section-vector-table = <&atcm>;
+			linker-section-vector-table-offset = <0>;
+			linker-section-text = <&atcm>;
+			linker-section-rodata = <&atcm>;
+			linker-section-data = <&btcm>;
+			linker-section-bss = <&btcm>;
+			linker-section-noinit = <&btcm>;
+			linker-section-heap = <&btcm>;
+			linker-section-stack = <&btcm>;
+		};
+	};
+};

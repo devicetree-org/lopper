@@ -465,12 +465,14 @@ def xlnx_openamp_configure_zephyr_ipc_shm(tree, ipc_nodes):
                          "carveouts; found %d" % len(ipc_nodes))
 
     regions = []
+    ipc_phandles = set()
     for node in ipc_nodes:
         reg = node.propval("reg", list)
         if len(reg) < 4 or reg[3] <= 0:
             raise ValueError("OPENAMP: XLNX: IPC carveout %s has invalid reg" %
                              node.abs_path)
         regions.append((reg[1], reg[1] + reg[3], node))
+        ipc_phandles.add(node.phandle)
     regions.sort(key=lambda region: region[0])
 
     for previous, current in zip(regions, regions[1:]):
@@ -491,6 +493,28 @@ def xlnx_openamp_configure_zephyr_ipc_shm(tree, ipc_nodes):
     ipc_node + LopperProp(name="compatible", value=["mmio-sram"])
     ipc_node + LopperProp(name="status", value="okay")
     tree + ipc_node
+    ipc_phandle = ipc_node.phandle_or_create()
+
+    try:
+        domains = tree["/domains"].subnodes(children_only=True)
+    except KeyError:
+        domains = []
+    for domain in domains:
+        references = domain.propval("reserved-memory", list)
+        if not references or references == [""]:
+            continue
+        replaced = []
+        added_ipc = False
+        for reference in references:
+            if reference in ipc_phandles:
+                if not added_ipc:
+                    replaced.append(ipc_phandle)
+                    added_ipc = True
+                continue
+            replaced.append(reference)
+        if added_ipc:
+            domain["reserved-memory"] = replaced
+
     tree['/chosen']['zephyr,ipc_shm'] = ipc_node.abs_path
     return ipc_node
 

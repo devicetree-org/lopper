@@ -15,8 +15,6 @@ import sys
 
 sys.path.append(os.path.dirname(__file__))
 
-from baremetalconfig_xlnx import scan_reg_size
-
 try:
     from .openamp_zephyr_resource import (
         FIXED_OFFSET_SECTIONS as OPENAMP_FIXED_OFFSET_SECTIONS,
@@ -297,7 +295,27 @@ def _memory_range(node):
         LayoutError: If reg is absent or cannot be decoded.
     """
     try:
-        return scan_reg_size(node, node["reg"].value, 0)
+        if not node.props("reg"):
+            starts = node.propval("start", list)
+            sizes = node.propval("size", list)
+            if starts and sizes and starts != [""] and sizes != [""]:
+                return int(starts[0]), int(sizes[0])
+            raise ValueError("neither reg nor start/size is present")
+        address_cells = int(node.parent["#address-cells"].value[0])
+        size_cells = int(node.parent["#size-cells"].value[0])
+        cells = node["reg"].value
+        if len(cells) < address_cells + size_cells:
+            raise ValueError("reg does not contain one complete tuple")
+
+        def fold(values):
+            result = 0
+            for value in values:
+                result = (result << 32) | int(value)
+            return result
+
+        origin = fold(cells[:address_cells])
+        length = fold(cells[address_cells:address_cells + size_cells])
+        return origin, length
     except Exception as exc:
         raise LayoutError(
             f"{node.abs_path}: cannot resolve first reg entry: {exc}") from exc
@@ -778,6 +796,17 @@ def _domain_memory_nodes(tree, domain):
         LayoutError: If either property is absent or a reference is invalid.
     """
     nodes = []
+    core_index = None
+    cpus = domain.propval("cpus", list)
+    cpu_node = tree.pnode(cpus[0]) if cpus and isinstance(cpus[0], int) else None
+    if cpu_node is not None:
+        identity = " ".join(
+            [cpu_node.name, cpu_node.label or ""] +
+            [str(value) for value in cpu_node.propval("compatible", list)] +
+            [str(value) for value in cpu_node.propval("xlnx,ip-name", list)])
+        match = re.search(r"r(?:5|52)[_-]?(\d+)", identity.lower())
+        if match:
+            core_index = int(match.group(1))
     sram = domain.propval("sram", list)
     if sram and sram != [""]:
         phandle_nodes = [tree.pnode(value) for value in sram
@@ -785,13 +814,21 @@ def _domain_memory_nodes(tree, domain):
         if len(phandle_nodes) == len(sram) and all(phandle_nodes):
             nodes.extend(phandle_nodes)
         else:
-            if len(sram) % 4:
+            if len(sram) % 4 == 0:
+                tuple_cells = 4
+            elif len(sram) % 3 == 0:
+                tuple_cells = 3
+            else:
                 raise LayoutError(
                     f"{domain.abs_path}: sram must contain phandles or "
-                    "four-cell address/size tuples")
-            for index in range(0, len(sram), 4):
+                    "three- or four-cell address/size tuples")
+            for index in range(0, len(sram), tuple_cells):
                 origin = (int(sram[index]) << 32) | int(sram[index + 1])
-                length = (int(sram[index + 2]) << 32) | int(sram[index + 3])
+                if tuple_cells == 4:
+                    length = ((int(sram[index + 2]) << 32) |
+                              int(sram[index + 3]))
+                else:
+                    length = int(sram[index + 2])
                 candidates = []
                 for path in ("/axi", "/reserved-memory"):
                     try:
@@ -801,7 +838,8 @@ def _domain_memory_nodes(tree, domain):
                     candidates.extend(parent.subnodes())
                 matches = []
                 for node in candidates:
-                    if node.props("reg"):
+                    if (node.props("reg") or
+                            (node.props("start") and node.props("size"))):
                         try:
                             if _memory_range(node) == (origin, length):
                                 matches.append(node)
@@ -812,6 +850,19 @@ def _domain_memory_nodes(tree, domain):
                                _memory_kind(node) in ("ATCM", "BTCM", "CTCM")]
                 if tcm_matches:
                     matches = tcm_matches
+                if len(matches) > 1 and core_index is not None:
+                    core_pattern = re.compile(
+                        rf"r(?:5|52)[_-]?{core_index}(?:\D|$)")
+                    core_matches = [
+                        node for node in matches
+                        if core_pattern.search(" ".join(
+                            [node.name, node.label or ""] +
+                            [str(value) for value in node.propval(
+                                "compatible", list)] +
+                            [str(value) for value in node.propval(
+                                "xlnx,ip-name", list)]).lower())]
+                    if len(core_matches) == 1:
+                        matches = core_matches
                 if len(matches) != 1:
                     paths = ", ".join(node.abs_path for node in matches)
                     raise LayoutError(

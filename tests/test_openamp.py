@@ -123,6 +123,43 @@ def test_legacy_zephyr_memories_do_not_override_sram():
         "/reserved-memory/ddr@9800000"]
 
 
+def test_zephyr_ipc_shm_replaces_domain_carveout_references():
+    """Consolidated IPC memory replaces deleted domain phandles."""
+    tree = LopperTree()
+    tree + LopperNode(-1, "/chosen")
+    tree + LopperNode(-1, "/reserved-memory")
+    tree + LopperNode(-1, "/domains")
+    carveouts = []
+    for name, address, size in (
+            ("vring0", 0x9860000, 0x4000),
+            ("vring1", 0x9864000, 0x4000),
+            ("buffer", 0x9868000, 0x40000)):
+        node = LopperNode(-1, f"/reserved-memory/{name}@{address:x}")
+        node["reg"] = [0, address, 0, size]
+        tree + node
+        node.phandle_or_create()
+        carveouts.append(node)
+    firmware = LopperNode(-1, "/reserved-memory/rproc@9800000")
+    firmware["reg"] = [0, 0x9800000, 0, 0x60000]
+    tree + firmware
+    firmware.phandle_or_create()
+    domain = LopperNode(-1, "/domains/R5_0_ZEPHYR")
+    domain["reserved-memory"] = [
+        carveouts[0].phandle, carveouts[1].phandle,
+        carveouts[2].phandle, firmware.phandle,
+    ]
+    tree + domain
+    tree.sync()
+
+    ipc = openamp_xlnx.xlnx_openamp_configure_zephyr_ipc_shm(
+        tree, carveouts)
+
+    assert domain.propval("reserved-memory", list) == [
+        ipc.phandle, firmware.phandle]
+    assert tree["/chosen"].propval("zephyr,ipc_shm", list) == [
+        ipc.abs_path]
+
+
 def test_libmetal_missing_processor_lists_supported_targets(monkeypatch, caplog):
     """A processor without a Libmetal relation gets an actionable error."""
     apu_cluster = _FakeNode("cpus-a53@0", label="cpus_a53")
