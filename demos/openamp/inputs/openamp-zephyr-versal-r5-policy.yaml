@@ -1,0 +1,50 @@
+axi:
+  "#address-cells": 2
+  "#size-cells": 1
+  CIPS_0_pspmc_0_psv_r5_0_atcm@0:
+    label: CIPS_0_pspmc_0_psv_r5_0_atcm
+    start: 0x0
+    size: 0x10000
+    mpu-policy: [ readable, writable, executable, cacheable ]
+  CIPS_0_pspmc_0_psv_r5_0_btcm@20000:
+    label: CIPS_0_pspmc_0_psv_r5_0_btcm
+    start: 0x20000
+    size: 0x10000
+    mpu-policy: [ readable, writable, cacheable ]
+reserved-memory:
+  ranges: true
+  "#address-cells": 2
+  "#size-cells": 1
+  rproc0@9800000:
+    label: rproc0
+    start: 0x9800000
+    size: 0x5f000
+    mpu-policy: [ readable, writable, executable, cacheable ]
+  trace@985f000:
+    label: trace_buffer
+    start: 0x985f000
+    size: 0x1000
+    mpu-policy: [ readable, writable, shareable, userspace ]
+domains:
+  R5_0_ZEPHYR:
+    os,type: zephyr
+    reserved-memory: [ rproc0@9800000, trace@985f000 ]
+    sram:
+      - { dev: rproc0@9800000, start: 0x9800000, size: 0x5f000 }
+      - { dev: CIPS_0_pspmc_0_psv_r5_0_atcm@0, start: 0x0, size: 64K }
+      - { dev: CIPS_0_pspmc_0_psv_r5_0_btcm@20000, start: 0x20000, size: 64K }
+    linker:
+      linker_file_output_name: versal-r5-openamp.ld
+      linker_memories: [ CIPS_0_pspmc_0_psv_r5_0_atcm,
+                         CIPS_0_pspmc_0_psv_r5_0_btcm, rproc0 ]
+      entry: _vector_table
+      sections:
+        vector_table: { region: CIPS_0_pspmc_0_psv_r5_0_atcm, offset: 0 }
+        text: { region: rproc0 }
+        rodata: { region: rproc0 }
+        data: { region: CIPS_0_pspmc_0_psv_r5_0_btcm }
+        bss: { region: CIPS_0_pspmc_0_psv_r5_0_btcm }
+        noinit: { region: CIPS_0_pspmc_0_psv_r5_0_btcm }
+        heap: { region: CIPS_0_pspmc_0_psv_r5_0_btcm }
+        stack: { region: CIPS_0_pspmc_0_psv_r5_0_btcm }
+        resource_table: { region: rproc0, offset: 0x20000 }
