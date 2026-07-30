@@ -93,6 +93,17 @@ Each entry has an explicit target and read, write, execute, cache, share, and
 userspace policy. Linker metadata assigns Zephyr section groups to those
 logical memories and selects `_vector_table` as the entry.
 
+The optional `static` policy flag describes MPU ownership, not storage
+duration. It means that Zephyr's linker and architecture code create the
+precise MPU regions for sections placed in that memory. The MPU assist still
+emits `compatible = "zephyr,memory-region"` and `zephyr,memory-region`, so the
+memory remains available to the linker, but it omits the broad
+`zephyr,memory-attr` region. Use `static` for boot memories such as ATCM, BTCM,
+CTCM, and DDRBOOT whose vector, text, data, and BSS permissions are derived
+from linker boundaries. Do not use it for shared regions such as resource
+tables and trace buffers that need an explicit DT MPU override of a broad SoC
+mapping.
+
 ### MPU generation
 
 The MPU assist emits standard Zephyr properties:
@@ -106,6 +117,11 @@ memory@... {
 ```
 
 It also selects the boot memory through an absolute `zephyr,sram` path.
+
+For a memory marked `static`, only the linker metadata above is emitted; the
+architecture-managed section mappings remain authoritative. This prevents a
+single high-priority DT MPU entry from hiding the more precise executable and
+writable regions generated for the image.
 
 R5 regions obey ARMv7-R power-of-two size and natural-alignment rules. A DDR
 firmware carveout is expanded to the smallest representable window that

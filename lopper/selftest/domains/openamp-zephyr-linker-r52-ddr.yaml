@@ -3,7 +3,7 @@ reserved-memory:
   ddrboot@9800100:
     start: 0x9800100
     size: 0x5ef00
-    mpu-policy!zephyr!append: [ readable, writable, executable, cacheable ]
+    mpu-policy!zephyr!append: [ readable, writable, executable, cacheable, static ]
   trace@985f000:
     start: 0x985f000
     size: 0x1000

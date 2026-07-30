@@ -19,22 +19,22 @@
 	atcm: r52_0a_atcm_global@0 {
 		reg = <0x0 0x10000>;
 		label = "ATCM";
-		mpu-policy = "readable", "writable", "executable", "cacheable";
+		mpu-policy = "readable", "writable", "executable", "cacheable", "static";
 	};
 	btcm: r52_0a_btcm_global@10000 {
 		reg = <0x10000 0x8000>;
 		label = "BTCM";
-		mpu-policy = "readable", "writable", "cacheable";
+		mpu-policy = "readable", "writable", "cacheable", "static";
 	};
 	ctcm: r52_0a_ctcm_global@20000 {
 		reg = <0x20000 0x8000>;
 		label = "CTCM";
-		mpu-policy = "readable", "writable", "cacheable";
+		mpu-policy = "readable", "writable", "cacheable", "static";
 	};
 	ddr: ddrboot@100000 {
 		reg = <0x100000 0x80000>;
 		label = "DDR";
-		mpu-policy = "readable", "writable", "executable", "cacheable";
+		mpu-policy = "readable", "writable", "executable", "cacheable", "static";
 	};
 
 	domains {

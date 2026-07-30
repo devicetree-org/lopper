@@ -41,7 +41,7 @@ LINKER_SCALAR_PROPERTIES = {
 }
 MPU_POLICY_PROPERTIES = {
     "readable", "writable", "executable", "cacheable", "shareable",
-    "userspace",
+    "userspace", "static",
 }
 
 
@@ -525,6 +525,7 @@ def _memory_policy(node, kind):
         raise LayoutError(
             f"{node.abs_path}: unsupported MPU policy options: " +
             ", ".join(sorted(unknown)))
+    values = [value for value in values if value != "static"]
     fields = (
         (MemoryPolicy.READABLE, "readable"),
         (MemoryPolicy.WRITABLE, "writable"),

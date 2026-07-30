@@ -2211,7 +2211,7 @@ def zephyr_linker_generator_sanity_test():
         sys.executable, "lopper.py", "-f", "--enhanced",
         "lopper/selftest/domains/openamp-zephyr-linker-r5.dts",
         "/tmp/openamp-zephyr-linker-sanity.dts", "--",
-        "zephyr-linker", "--domain=/domains/R5_0_ZEPHYR",
+        "zephyr_linker", "--domain=/domains/R5_0_ZEPHYR",
         "--zephyr-version=4.3",
     ]
     environment = os.environ.copy()
@@ -2223,10 +2223,10 @@ def zephyr_linker_generator_sanity_test():
     standalone_commands = (
         [sys.executable, "lopper.py", "-f", "--enhanced",
          standalone_fixture, "/tmp/zephyr-linker-standalone-unused.dts",
-         "--", "zephyr-linker", "--domain=/domains/R5_ZEPHYR",
+         "--", "zephyr_linker", "--domain=/domains/R5_ZEPHYR",
          "--zephyr-version=4.3"],
         [sys.executable, "lopper.py", "-f", "--enhanced",
-         standalone_fixture, standalone_mpu, "--", "zephyr-mpu",
+         standalone_fixture, standalone_mpu, "--", "zephyr_mpu",
          "--domain=/domains/R5_ZEPHYR", "--zephyr-version=4.3"],
     )
     standalone_results = [
@@ -2309,7 +2309,7 @@ def zephyr_linker_generator_sanity_test():
     mpu_command = [
         sys.executable, "lopper.py", "-f", "--enhanced",
         "lopper/selftest/domains/openamp-zephyr-linker-r5.dts",
-        mpu_output, "--", "zephyr-mpu",
+        mpu_output, "--", "zephyr_mpu",
         "--domain=/domains/R5_0_ZEPHYR", "--zephyr-version=4.3",
     ]
     mpu_result = subprocess.run(mpu_command, env=environment,
@@ -2346,7 +2346,7 @@ def zephyr_linker_generator_sanity_test():
             sys.executable, "lopper.py", "-f", "--enhanced",
             "lopper/selftest/domains/openamp-zephyr-linker-r52.dts",
             f"/tmp/openamp-zephyr-{profile}.dts", "--",
-            "zephyr-linker", f"--domain=/domains/{domain}",
+            "zephyr_linker", f"--domain=/domains/{domain}",
             "--zephyr-version=4.3",
         ]
         r52_result = subprocess.run(
@@ -2374,6 +2374,33 @@ def zephyr_linker_generator_sanity_test():
             print(r52_result.stderr)
             test_failed(f"OpenAMP Zephyr {profile} linker generator")
 
+    r52_mpu_output = "/tmp/openamp-zephyr-r52-static-mpu.dts"
+    r52_mpu_command = [
+        sys.executable, "lopper.py", "-f", "--enhanced",
+        "lopper/selftest/domains/openamp-zephyr-linker-r52.dts",
+        r52_mpu_output, "--", "zephyr_mpu",
+        "--domain=/domains/R52_0_ZEPHYR_TCM", "--zephyr-version=4.3",
+    ]
+    r52_mpu_result = subprocess.run(
+        r52_mpu_command, env=environment, capture_output=True,
+        text=True, check=False)
+    r52_mpu_passed = r52_mpu_result.returncode == 0 and \
+        os.path.isfile(r52_mpu_output)
+    if r52_mpu_passed:
+        contents = Path(r52_mpu_output).read_text(encoding="utf-8")
+        r52_mpu_passed = all(pattern in contents for pattern in (
+            'zephyr,memory-region = "ATCM"',
+            'zephyr,memory-region = "BTCM"',
+            'zephyr,memory-region = "CTCM"',
+            'zephyr,memory-region = "DDR"',
+        )) and "zephyr,memory-attr" not in contents and \
+            "mpu-policy" not in contents
+    if r52_mpu_passed:
+        test_passed("OpenAMP Zephyr R52 static MPU policy")
+    else:
+        print(r52_mpu_result.stdout + r52_mpu_result.stderr)
+        test_failed("OpenAMP Zephyr R52 static MPU policy")
+
     r52_fixture = Path(
         "lopper/selftest/domains/openamp-zephyr-linker-r52.dts").read_text(
             encoding="utf-8")
@@ -2388,7 +2415,7 @@ def zephyr_linker_generator_sanity_test():
     aligned_command = [
         sys.executable, "lopper.py", "-f", "--enhanced", aligned_fixture,
         "/tmp/openamp-zephyr-r52-vector-aligned-unused.dts", "--",
-        "zephyr-linker", "--domain=/domains/R52_0_ZEPHYR_TCM",
+        "zephyr_linker", "--domain=/domains/R52_0_ZEPHYR_TCM",
         "--zephyr-version=4.3",
     ]
     aligned_result = subprocess.run(
@@ -2432,7 +2459,7 @@ def zephyr_linker_generator_sanity_test():
     missing_policy_command = [
         sys.executable, "lopper.py", "-f", "--enhanced",
         missing_policy_fixture, "/tmp/openamp-zephyr-missing-policy-output.dts",
-        "--", "zephyr-mpu", "--domain=/domains/R5_0_ZEPHYR",
+        "--", "zephyr_mpu", "--domain=/domains/R5_0_ZEPHYR",
         "--zephyr-version=4.3",
     ]
     missing_policy_result = subprocess.run(
@@ -2465,12 +2492,13 @@ def zephyr_linker_generator_sanity_test():
     overlap_fixture = "/tmp/openamp-zephyr-overlapping-mpu.dts"
     Path(overlap_fixture).write_text(
         r52_fixture.replace("reg = <0x100000 0x80000>;",
-                            "reg = <0x21000 0x80000>;", 1),
+                            "reg = <0x21000 0x80000>;", 1)
+        .replace(', "static";', ';'),
         encoding="utf-8")
     overlap_command = [
         sys.executable, "lopper.py", "-f", "--enhanced", overlap_fixture,
         "/tmp/openamp-zephyr-overlap-output.dts", "--",
-        "zephyr-mpu", "--domain=/domains/R52_0_ZEPHYR_TCM",
+        "zephyr_mpu", "--domain=/domains/R52_0_ZEPHYR_TCM",
         "--zephyr-version=4.3",
     ]
     overlap_result = subprocess.run(
@@ -2495,7 +2523,7 @@ def zephyr_linker_generator_sanity_test():
     no_resource_command = [
         sys.executable, "lopper.py", "-f", "--enhanced",
         no_resource_fixture, "/tmp/openamp-zephyr-no-resource-unused.dts",
-        "--", "zephyr-linker",
+        "--", "zephyr_linker",
         "--domain=/domains/R52_0_ZEPHYR_DDR", "--zephyr-version=4.3",
     ]
     no_resource_result = subprocess.run(
@@ -2557,11 +2585,11 @@ def openamp_zephyr_demo_yaml_sanity_test():
             [sys.executable, str(repo / "lopper.py"), "-f", "--enhanced",
              "-x", "yaml", str(yaml_path), str(expanded)],
             [sys.executable, str(repo / "lopper.py"), "-f", "--enhanced",
-             str(expanded), str(mpu), "--", "zephyr-mpu",
+             str(expanded), str(mpu), "--", "zephyr_mpu",
              "--domain=/domains/R5_0_ZEPHYR", "--zephyr-version=4.3"],
             [sys.executable, str(repo / "lopper.py"), "-f", "--enhanced",
              str(expanded), str(prefix) + "-linker-unused.dts", "--",
-             "zephyr-linker", "--domain=/domains/R5_0_ZEPHYR",
+             "zephyr_linker", "--domain=/domains/R5_0_ZEPHYR",
              "--zephyr-version=4.3"],
         )
         for index, command in enumerate(commands):
@@ -2621,11 +2649,11 @@ def openamp_zephyr_pipeline_sanity_test():
     environment["LOPPER_DTC_FLAGS"] = "-b 0 -@"
     commands = (
         [sys.executable, "lopper.py", "-f", "--enhanced", fixture,
-         prefix + "-mpu.dts", "--", "zephyr-mpu",
+         prefix + "-mpu.dts", "--", "zephyr_mpu",
          "--domain=/domains/R5_0_ZEPHYR",
          "--zephyr-version=4.3"],
         [sys.executable, "lopper.py", "-f", "--enhanced", fixture,
-         prefix + "-linker-unused.dts", "--", "zephyr-linker",
+         prefix + "-linker-unused.dts", "--", "zephyr_linker",
          "--domain=/domains/R5_0_ZEPHYR",
          "--zephyr-version=4.3"],
         [sys.executable, "lopper.py", "-f", "--enhanced", "-i",
