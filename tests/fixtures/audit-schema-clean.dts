@@ -1,0 +1,28 @@
+/dts-v1/;
+
+/* Clean counterpart to audit-schema-reserved-memory.dts: a valid /memory node
+ * and a reserved-memory child with no forbidden properties. Used to assert the
+ * schema audit produces no forbidden-property findings on a correct tree.
+ */
+
+/ {
+	#address-cells = <0x2>;
+	#size-cells = <0x2>;
+	compatible = "lopper,audit-test";
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x80000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <0x2>;
+		#size-cells = <0x2>;
+		ranges;
+
+		good_region@10000000 {
+			no-map;
+			reg = <0x0 0x10000000 0x0 0x1000>;
+		};
+	};
+};

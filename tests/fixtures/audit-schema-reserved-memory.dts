@@ -1,0 +1,40 @@
+/dts-v1/;
+
+/* Fixture for schema-audit CLI tests (CR-1261898).
+ *
+ * Drives:  lopper.py -f -W schema_forbidden_props <this> out.dts
+ *
+ * Contains:
+ *   - memory@0          : valid /memory node (device_type required, present)
+ *   - bad_region        : reserved-memory child with device_type = "memory"
+ *                         (FORBIDDEN - the exact property that broke Xen boot)
+ *   - good_region       : clean reserved-memory child (must NOT be flagged)
+ */
+
+/ {
+	#address-cells = <0x2>;
+	#size-cells = <0x2>;
+	compatible = "lopper,audit-test";
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x80000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <0x2>;
+		#size-cells = <0x2>;
+		ranges;
+
+		bad_region@9800100 {
+			device_type = "memory";
+			no-map;
+			reg = <0x0 0x9800100 0x0 0x5ff00>;
+		};
+
+		good_region@10000000 {
+			no-map;
+			reg = <0x0 0x10000000 0x0 0x1000>;
+		};
+	};
+};
