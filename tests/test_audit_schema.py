@@ -12,6 +12,9 @@ Tests validation rules for reserved-memory nodes where device_type="memory"
 incorrectly applied can cause Xen boot failures.
 """
 
+import os
+import textwrap
+
 import pytest
 from unittest.mock import MagicMock
 
@@ -842,3 +845,99 @@ class TestSchemaValidatorLearnedChecks:
         check_names = {r.check_name for r in results}
         assert 'schema_learned_types' in check_names
         assert 'schema_type_frequency' in check_names
+
+
+class TestExternalSchemaLoading:
+    """Tests that constraints can be loaded from an external (non-vendored)
+    schema directory and are honored by the check functions.
+
+    This exercises the load_constraints_from_schemas(schema_dir=...) path,
+    proving lopper can validate against user/external schemas rather than
+    only the vendored dt-schema bindings shipped in the tree.
+    """
+
+    @staticmethod
+    def _write_schema(directory, filename, body):
+        path = os.path.join(directory, filename)
+        with open(path, 'w') as f:
+            f.write(textwrap.dedent(body))
+        return path
+
+    def test_external_forbidden_constraint_loaded_and_enforced(self, tmp_path):
+        """A forbidden constraint defined in an external schema dir must be
+        loaded and cause the offending property to be flagged."""
+        ext_dir = str(tmp_path)
+        self._write_schema(ext_dir, 'reserved-memory.yaml', """\
+            $id: reserved-memory.yaml
+            title: External test schema
+            not:
+              required:
+                - custom-forbidden-prop
+        """)
+
+        constraints = load_constraints_from_schemas(schema_dir=ext_dir)
+
+        # The external schema directory was actually read
+        assert constraints, "no constraints loaded from external schema dir"
+        assert '/reserved-memory/*' in {nc.node_pattern for nc in constraints.values()}
+        forbidden = [
+            c for nc in constraints.values() for c in nc.constraints
+            if c.constraint_type == ConstraintType.FORBIDDEN
+            and 'custom-forbidden-prop' in c.properties
+        ]
+        assert forbidden, "external forbidden constraint not parsed"
+
+        # A node carrying the externally-forbidden property is flagged
+        tree = MockTree([
+            MockNode('/reserved-memory/region', {'custom-forbidden-prop': True}),
+        ])
+        failed = [r for r in check_forbidden_properties(tree, constraints)
+                  if not r.passed]
+        assert len(failed) == 1
+        assert 'custom-forbidden-prop' in failed[0].message
+        assert failed[0].source_path == '/reserved-memory/region'
+
+    def test_external_constraint_distinct_from_vendored(self, tmp_path):
+        """The externally-defined property is only enforced when the external
+        constraints are passed - proving the external schema drives the check,
+        not the vendored default."""
+        ext_dir = str(tmp_path)
+        self._write_schema(ext_dir, 'reserved-memory.yaml', """\
+            $id: reserved-memory.yaml
+            not:
+              required:
+                - custom-forbidden-prop
+        """)
+        constraints = load_constraints_from_schemas(schema_dir=ext_dir)
+
+        tree = MockTree([
+            MockNode('/reserved-memory/region', {'custom-forbidden-prop': True}),
+        ])
+        # Vendored defaults do not know this property -> not flagged
+        assert not [r for r in check_forbidden_properties(tree) if not r.passed]
+        # The external schema does -> flagged
+        assert len([r for r in check_forbidden_properties(tree, constraints)
+                    if not r.passed]) == 1
+
+    def test_external_required_constraint_enforced(self, tmp_path):
+        """A required constraint from an external schema flags nodes missing it."""
+        ext_dir = str(tmp_path)
+        self._write_schema(ext_dir, 'memory.yaml', """\
+            $id: memory.yaml
+            required:
+              - custom-required-prop
+        """)
+        constraints = load_constraints_from_schemas(schema_dir=ext_dir)
+        required = [
+            c for nc in constraints.values() for c in nc.constraints
+            if c.constraint_type == ConstraintType.REQUIRED
+            and 'custom-required-prop' in c.properties
+        ]
+        assert required, "external required constraint not parsed"
+
+        tree = MockTree([
+            MockNode('/memory@0', {'reg': [0, 0x1000]}),  # missing required prop
+        ])
+        failed = [r for r in check_required_properties(tree, constraints)
+                  if not r.passed]
+        assert any('custom-required-prop' in r.message for r in failed)
