@@ -187,10 +187,11 @@ class TestRelationalChecks:
         assert len(fails) == 1
 
     def test_device_exclusivity_conflict(self):
-        # DRC-DOM-034: device 100 in two domains' access lists
+        # DRC-DOM-034: device 100 in two domains' access lists, neither shared.
+        # access is (phandle, flags-cell) pairs; flags 0 = not shared.
         tree = _tree_with_domains()
-        _domain(tree, "/domains/d1", access=[100, 101])
-        _domain(tree, "/domains/d2", access=[100, 102])
+        _domain(tree, "/domains/d1", access=[100, 0, 101, 0])
+        _domain(tree, "/domains/d2", access=[100, 0, 102, 0])
         tree.sync()
         v = _run(["DRC-DOM-034"], tree, ValidationPhase.POST_PROCESSING)
         fails = [r for r in v.results if not r.passed]
@@ -199,11 +200,31 @@ class TestRelationalChecks:
 
     def test_device_exclusivity_clean(self):
         tree = _tree_with_domains()
-        _domain(tree, "/domains/d1", access=[100, 101])
-        _domain(tree, "/domains/d2", access=[102, 103])
+        _domain(tree, "/domains/d1", access=[100, 0, 101, 0])
+        _domain(tree, "/domains/d2", access=[102, 0, 103, 0])
         tree.sync()
         v = _run(["DRC-DOM-034"], tree, ValidationPhase.POST_PROCESSING)
         assert [r for r in v.results if not r.passed] == []
+
+    def test_device_exclusivity_shared_exempt(self):
+        # Both domains mark device 100 shared (flags bit 0) -> exempt, no fail.
+        tree = _tree_with_domains()
+        _domain(tree, "/domains/d1", access=[100, 0x1, 101, 0])
+        _domain(tree, "/domains/d2", access=[100, 0x1, 102, 0])
+        tree.sync()
+        v = _run(["DRC-DOM-034"], tree, ValidationPhase.POST_PROCESSING)
+        assert [r for r in v.results if not r.passed] == []
+
+    def test_device_exclusivity_partial_shared_fails(self):
+        # One domain marks shared, the other does not -> still a conflict.
+        tree = _tree_with_domains()
+        _domain(tree, "/domains/d1", access=[100, 0x1, 101, 0])
+        _domain(tree, "/domains/d2", access=[100, 0x0, 102, 0])
+        tree.sync()
+        v = _run(["DRC-DOM-034"], tree, ValidationPhase.POST_PROCESSING)
+        fails = [r for r in v.results if not r.passed]
+        assert len(fails) == 1
+        assert "100" in fails[0].message
 
     def test_cpu_core_conflict(self):
         # DRC-DOM-012: cluster 1 core 0 claimed by both domains
@@ -272,6 +293,12 @@ class TestSeverityAndFlags:
         v = DRCValidator(warnings=["drc_all"])
         assert v.is_enabled() is True
 
+    def test_w_all_does_not_enable_drc(self):
+        # R0: DRCs are opt-in only; '-W all' must NOT sweep them in while the
+        # catalog is incomplete.
+        v = DRCValidator(warnings=["all"])
+        assert v.is_enabled() is False
+
 
 # --------------------------------------------------------------------------
 # End-to-end through the registry
@@ -280,10 +307,10 @@ class TestSeverityAndFlags:
 class TestEndToEnd:
     def test_run_phase_via_registry(self):
         tree = _tree_with_domains()
-        _domain(tree, "/domains/d1", id_=1, os_type="linux", access=[100])
-        _domain(tree, "/domains/d2", id_=1, os_type="bad", access=[100])  # dup id, bad os, shared dev
+        _domain(tree, "/domains/d1", id_=1, os_type="linux", access=[100, 0])
+        _domain(tree, "/domains/d2", id_=1, os_type="bad", access=[100, 0])  # dup id, dev 100 in both (not shared)
         tree.sync()
         errs = A.run_audit_phase(ValidationPhase.POST_PROCESSING, tree,
                                  warnings=["drc_all"], werror=True)
-        # DOM-006 (dup id) + DOM-034 (shared device) both fire here
+        # DOM-006 (dup id) + DOM-034 (unshared device in two domains) both fire
         assert errs >= 2

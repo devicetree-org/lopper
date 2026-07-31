@@ -248,16 +248,24 @@ class AssertionRegistry:
                 seen[node.abs_path] = node
         return list(seen.values())
 
-    def build_groups(self, tree, rule: Rule) -> Dict[str, set]:
-        """Build the relational ``{context_path: set(elements)}`` map.
+    def build_groups(self, tree, rule: Rule) -> Dict[str, Dict[object, frozenset]]:
+        """Build the relational ``{context_path: {element: frozenset(flags)}}`` map.
 
         ``group-by`` selects one node per context; ``collect`` turns each into a
-        set of comparable elements.
+        set of comparable elements. Collectors may return either a bare set of
+        elements (no flags) or a ``{element: flags}`` mapping (flag-aware, e.g.
+        the ``access`` collector); both are normalized to the flagged form so
+        relational handlers can consult per-element flags uniformly.
         """
         collector = get_collector(rule.collect)
         groups = {}
         for node in _eval_selector(tree, rule.group_by):
-            groups[node.abs_path] = collector(node)
+            raw = collector(node)
+            if isinstance(raw, dict):
+                elem_map = {el: frozenset(flags) for el, flags in raw.items()}
+            else:
+                elem_map = {el: frozenset() for el in raw}
+            groups[node.abs_path] = elem_map
         return groups
 
 
@@ -327,8 +335,11 @@ class DRCValidator(BaseValidator):
                            if w.startswith("drc:")}
 
     def is_enabled(self) -> bool:
-        if "all" in self._raw_warnings:
-            return True
+        # DRCs are intentionally NOT part of the '-W all' sweep while the rule
+        # set is incomplete: a partial catalog firing on real SDTs would emit
+        # spurious results and erode trust in '-W all'. They run only via the
+        # explicit drc / drc_all / drc:<id> flags. Re-add 'all' here once the
+        # catalog is complete and validated.
         if {"drc", "drc_all"}.intersection(self._raw_warnings):
             return True
         return bool(self._id_filter)

@@ -78,6 +78,51 @@ def _collect_property_values(node, prop: str) -> Set:
     return {v for v in val if v != ""}
 
 
+# Access flags-cell bit map, mirroring the set_bit() encoding in
+# lopper/assists/yaml_to_dts_expansion.py. Bit 0 ("timeshare") is the
+# time-shared / shared-access flag; the domains-spec `shared` flag is carried as
+# this bit in the expanded `access` cell, so we surface it under both names.
+# NOTE: the precise `shared` bit is pending confirmation in the language review
+# (refinement R1). Keep this map as the single source of truth.
+_ACCESS_FLAG_BITS = {
+    0: "timeshare",
+    2: "allow-secure",
+    4: "read-only",
+    6: "requested",
+}
+
+
+@register_collector("access")
+def _collect_access(node) -> Dict:
+    """Decode a domain ``access`` property into ``{device: frozenset(flags)}``.
+
+    The expanded form is ``access = <&dev flags>, ...`` -- (phandle, flags-cell)
+    pairs. The device phandle is the element identity (so the same device across
+    two domains collides); the flags cell is decoded to named flags so a
+    relational handler can honor an exemption such as DOM-034's ``shared``.
+
+    Only the low 32 bits of the flags cell are decoded; multi-cell (>32-bit)
+    flag encodings are a documented follow-up.
+    """
+    val = node.propval("access")
+    if val == [""] or not isinstance(val, list):
+        return {}
+
+    out: Dict[int, set] = {}
+    for i in range(0, len(val) - 1, 2):
+        try:
+            dev = int(val[i])
+            flags_cell = int(val[i + 1])
+        except (TypeError, ValueError):
+            continue
+        names = {name for bit, name in _ACCESS_FLAG_BITS.items()
+                 if flags_cell & (1 << bit)}
+        if flags_cell & (1 << 0):   # timeshare == shared (see note above)
+            names.add("shared")
+        out[dev] = out.get(dev, set()) | names
+    return out
+
+
 @register_collector("cpu-cores")
 def _collect_cpu_cores(node) -> Set:
     """Decode a domain ``cpus`` triplet into per-core identity elements.
@@ -303,17 +348,30 @@ class ExclusiveAcrossCheck(CheckHandler):
     RELATIONAL = True
 
     def execute(self, tree, rule, selection):
-        # selection: {context_path: set(elements)}
-        owners: Dict[object, List[str]] = {}
-        for context, elements in selection.items():
-            for el in elements:
-                owners.setdefault(el, []).append(context)
+        # selection: {context_path: {element: frozenset(flags)}}
+        unless = rule.params.get("unless-flag")
+
+        # element -> {context: flags}
+        owners: Dict[object, Dict[str, frozenset]] = {}
+        for context, elem_map in selection.items():
+            for el, flags in elem_map.items():
+                owners.setdefault(el, {})[context] = flags
 
         results = []
-        for el, contexts in owners.items():
-            if len(contexts) > 1:
-                results.append(self._fail(
-                    rule,
-                    f"{el!r} is claimed by multiple groups: {sorted(contexts)}",
-                    None))
+        for el, ctx_flags in owners.items():
+            if len(ctx_flags) <= 1:
+                continue
+            # Exempt only when EVERY claiming context marks the element with the
+            # exemption flag (e.g. a device shared by all its domains).
+            if unless and all(unless in flags for flags in ctx_flags.values()):
+                continue
+            contexts = sorted(ctx_flags.keys())
+            detail = ""
+            if unless:
+                missing = sorted(c for c, f in ctx_flags.items() if unless not in f)
+                detail = f" (missing '{unless}' flag in: {missing})"
+            results.append(self._fail(
+                rule,
+                f"{el!r} is claimed by multiple groups: {contexts}{detail}",
+                None))
         return results

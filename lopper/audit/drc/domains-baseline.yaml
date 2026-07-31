@@ -76,7 +76,7 @@ drc:
     severity: error
     phase: post-processing
     group-by: "/domains/.*"
-    collect: "property:access"
+    collect: "access"
     check: exclusive-across
     params:
       unless-flag: shared
