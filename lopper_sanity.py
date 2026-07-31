@@ -1149,6 +1149,72 @@ def setup_schema_types_tree( outdir ):
 
     return outdir + "/schema-types.dts"
 
+def setup_audit_schema_tree( outdir ):
+    # A tree exercising schema-based property validation (CR-1261898):
+    #  - a valid memory node (device_type required, present)
+    #  - a reserved-memory child with device_type = "memory" (forbidden -> the
+    #    exact property that broke Xen boot)
+    #  - a clean reserved-memory child (must not be flagged)
+    #  - a reserved-memory child carrying a property only an *external* schema
+    #    forbids (see setup_audit_external_schema)
+    with open( outdir + "/audit-schema.dts", "w") as w:
+            w.write("""\
+/dts-v1/;
+
+/ {
+        #address-cells = <0x2>;
+        #size-cells = <0x2>;
+        compatible = "lopper,audit-test";
+
+        memory@0 {
+                device_type = "memory";
+                reg = <0x0 0x0 0x0 0x80000000>;
+        };
+
+        reserved-memory {
+                #address-cells = <0x2>;
+                #size-cells = <0x2>;
+                ranges;
+
+                bad_region@9800100 {
+                        device_type = "memory";
+                        no-map;
+                        reg = <0x0 0x9800100 0x0 0x5ff00>;
+                };
+
+                good_region@10000000 {
+                        no-map;
+                        reg = <0x0 0x10000000 0x0 0x1000>;
+                };
+
+                ext_region@20000000 {
+                        custom-forbidden-prop;
+                        no-map;
+                        reg = <0x0 0x20000000 0x0 0x1000>;
+                };
+        };
+};
+""")
+
+    return outdir + "/audit-schema.dts"
+
+def setup_audit_external_schema( outdir ):
+    # An external (non-vendored) dt-schema directory, to prove the audit
+    # framework can load and enforce constraints supplied outside the tree.
+    schema_root = outdir + "/audit-external-schemas"
+    os.makedirs( schema_root, exist_ok=True )
+    with open( schema_root + "/reserved-memory.yaml", "w" ) as w:
+            w.write("""\
+$id: reserved-memory.yaml
+title: External test schema for the lopper audit self-test
+description: forbids a custom property to prove external schema loading
+not:
+  required:
+    - custom-forbidden-prop
+""")
+
+    return schema_root
+
 def setup_format_tree( outdir ):
     with open( outdir + "/format-tester.dts", "w") as w:
             w.write("""\
@@ -2448,6 +2514,57 @@ def schema_type_sanity_test( outdir, verbose ):
 
     device_tree.cleanup()
 
+def audit_schema_sanity_test( outdir, verbose ):
+    from lopper.audit.schema import (
+        load_constraints_from_schemas,
+        check_forbidden_properties,
+        check_required_properties,
+    )
+
+    dt = setup_audit_schema_tree( outdir )
+    fdt = setup_fdt( dt, outdir )
+    tree = LopperTree()
+    tree.load( Lopper.export( fdt ) )
+
+    print( "[TEST]: running audit schema validation" )
+
+    # 1. vendored dt-schema: device_type is forbidden on reserved-memory children
+    #    (the exact CR-1261898 case that broke Xen boot)
+    forbidden = [ r for r in check_forbidden_properties( tree ) if not r.passed ]
+    if any( 'bad_region' in (r.source_path or '') and 'device_type' in r.message
+            for r in forbidden ):
+        test_passed( "audit: device_type on reserved-memory child flagged (vendored schema)" )
+    else:
+        test_failed( "audit: device_type on reserved-memory child was not flagged" )
+
+    if not any( 'good_region' in (r.source_path or '') for r in forbidden ):
+        test_passed( "audit: clean reserved-memory child not flagged" )
+    else:
+        test_failed( "audit: clean reserved-memory child was wrongly flagged" )
+
+    # 2. vendored dt-schema: required properties present on the memory node
+    required = [ r for r in check_required_properties( tree ) if not r.passed ]
+    if not any( 'memory@0' in (r.source_path or '') for r in required ):
+        test_passed( "audit: valid memory node passes required-property check" )
+    else:
+        test_failed( "audit: valid memory node failed required-property check" )
+
+    # 3. external schema: load constraints from a non-vendored directory and
+    #    confirm a property only that schema forbids is flagged
+    ext_dir = setup_audit_external_schema( outdir )
+    ext = load_constraints_from_schemas( schema_dir = ext_dir )
+    if ext:
+        test_passed( "audit: external schema directory loaded" )
+    else:
+        test_failed( "audit: external schema directory produced no constraints" )
+
+    ext_forbidden = [ r for r in check_forbidden_properties( tree, ext ) if not r.passed ]
+    if any( 'ext_region' in (r.source_path or '') and 'custom-forbidden-prop' in r.message
+            for r in ext_forbidden ):
+        test_passed( "audit: property forbidden by external schema flagged" )
+    else:
+        test_failed( "audit: external-schema forbidden property was not flagged" )
+
 
 def fdt_sanity_test( device_tree, verbose ):
 
@@ -2618,6 +2735,7 @@ def usage():
     print('  -a, --assists       run assist tests' )
     print('  -f, --format        run format tests (dts/yaml)' )
     print('  -s, --schema_types  run schema coverage tests' )
+    print('  -A, --audit         run audit schema validation tests' )
     print('  -d, --fdt           run fdt abstraction tests' )
     print('    , --werror        treat warnings as errors' )
     print('    , --all           run all sanity tests' )
@@ -2636,6 +2754,7 @@ def main():
     global assists
     global format
     global schema_types
+    global audit
     global continue_on_error
     global fdttest
     global libfdt
@@ -2651,11 +2770,12 @@ def main():
     assists = False
     format = False
     schema_types = False
+    audit = False
     fdttest = False
     continue_on_error = False
     libfdt = True
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "avtlhoxds", [ "generate_domain", "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "openamp", "werror","verbose", "help", "schema_types"])
+        opts, args = getopt.getopt(sys.argv[1:], "avtlhoxdsA", [ "generate_domain", "no-libfdt", "all", "fdt", "continue", "format", "assists", "tree", "lops", "openamp", "werror","verbose", "help", "schema_types", "audit"])
     except getopt.GetoptError as err:
         print(f'{str(err)}')
         usage()
@@ -2691,6 +2811,8 @@ def main():
             format=True
         elif o in ( '-s', '--schema_types'):
             schema_types = True
+        elif o in ( '-A', '--audit'):
+            audit = True
         elif o in ( '-d', '--fdt' ):
             fdttest = True
         elif o in ( '--no-libfdt' ):
@@ -2704,6 +2826,7 @@ def main():
             format = True
             generate_domain_test = True
             schema_types = True
+            audit = True
         elif o in ( '--continue' ):
             continue_on_error = True
         elif o in ('--version'):
@@ -2772,6 +2895,9 @@ if __name__ == "__main__":
 
     if schema_types:
         schema_type_sanity_test( outdir, verbose )
+
+    if audit:
+        audit_schema_sanity_test( outdir, verbose )
 
     if openamp_tests:
         openamp_sanity_test( verbose )
