@@ -576,6 +576,9 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         val = sdt.tree[tgt_node].propval('semnpi-scan', list)[0]
         plat.buf(f'\n#define XSEM_NPISCAN_EN {val}\n')
 
+    #Define for new properties added under misc_props in pcw.dtsi
+    utils.gen_misc_props_macros(plat, sdt)
+
     if is_fpd_coherent:
         plat.buf("\n#define XPAR_FPD_IS_CACHE_COHERENT \n")
     if is_lpd_coherent:

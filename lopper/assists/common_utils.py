@@ -222,3 +222,67 @@ def run_exec(yaml_condition, proc_ip_name, family, variant=None, return_list="ex
         _warning(f"The condition in the {yaml_file} file has failed. -> {e}")
     finally:
         return local_scope[return_list]
+
+def _misc_prop_var_name(prop_name):
+    """Map a DT property name to a valid C/CMake identifier."""
+    name = prop_name.replace('xlnx,', '').replace('amd,', '')
+    name = re.sub(r'[^A-Za-z0-9_]', '_', name)
+    if name and name[0].isdigit():
+        name = f'_{name}'
+    return name.upper()
+
+def _iter_misc_props(sdt):
+    """Yield (prop_name, var_name, value) tuples from the misc_props node."""
+    for node in sdt.tree['/'].subnodes():
+        if node.name != "misc_props":
+            continue
+        for prop_name in node.__props__:
+            prop_val = node.propval(prop_name, list)
+            var_name = _misc_prop_var_name(prop_name)
+            if prop_val == [''] or prop_val == []:
+                yield prop_name, var_name, None
+            elif len(prop_val) == 1:
+                yield prop_name, var_name, prop_val[0]
+            else:
+                yield prop_name, var_name, prop_val
+        return
+
+def gen_misc_props_macros(plat, sdt):
+    """Generate xparameters macros for properties under misc_props."""
+    for prop_name, var_name, val in _iter_misc_props(sdt):
+        plat.buf(f"\n/* {prop_name} */\n")
+        if val is None:
+            plat.buf(f"#define {var_name}\n")
+        elif isinstance(val, int):
+            plat.buf(f"#define {var_name} {hex(val)}\n")
+        elif isinstance(val, str):
+            bool_val = str(val).lower()
+            if bool_val in ("true", "false"):
+                plat.buf(f"#define {var_name} {bool_val}\n")
+            else:
+                plat.buf(f"#define {var_name} {val}\n")
+        elif isinstance(val, list):
+            formatted = ' '.join(hex(v) if isinstance(v, int) else str(v) for v in val)
+            plat.buf(f"#define {var_name} {formatted}\n")
+        else:
+            plat.buf(f"#define {var_name} {val}\n")
+
+def gen_misc_props_cmake_vars(fd, sdt):
+    """Generate CMake variables for properties under misc_props."""
+    for prop_name, var_name, val in _iter_misc_props(sdt):
+        if val is None:
+            fd.write(f'set({var_name} "ON" CACHE STRING "{prop_name}")\n')
+        elif isinstance(val, int):
+            fd.write(f'set({var_name} {hex(val)} CACHE STRING "{prop_name}")\n')
+        elif isinstance(val, str):
+            bool_val = str(val).lower()
+            if bool_val in ("true", "false"):
+                cmake_val = "ON" if bool_val == "true" else "OFF"
+                fd.write(f'set({var_name} "{cmake_val}" CACHE STRING "{prop_name}")\n')
+            else:
+                fd.write(f'set({var_name} "{val}" CACHE STRING "{prop_name}")\n')
+        elif isinstance(val, list):
+            items = [hex(v) if isinstance(v, int) else str(v) for v in val]
+            fd.write(f'set({var_name} {to_cmakelist(items)} CACHE STRING "{prop_name}")\n')
+        else:
+            fd.write(f'set({var_name} "{val}" CACHE STRING "{prop_name}")\n')
