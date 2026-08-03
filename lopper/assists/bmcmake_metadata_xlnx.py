@@ -319,6 +319,8 @@ def generate_hwtocmake_medata(sdt, node_list, src_path, repo_path_data, options,
             if sdt.tree['/'].propval('speed_grade') != ['']:
                 val = sdt.tree['/'].propval('speed_grade', list)[0]
                 fd.write(f'set(SPEED_GRADE "{val}" CACHE STRING "Speed Grade")\n')
+            #Generate cmake variable for the properties added under misc_props in pcw.dtsi
+            utils.gen_misc_props_cmake_vars(fd, sdt)
             if sdt.tree['/'].propval('board') != ['']:
                 val = sdt.tree['/'].propval('board', list)[0]
                 fd.write(f'set(BOARD "{val}" CACHE STRING "BOARD")\n')
