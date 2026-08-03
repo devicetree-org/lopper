@@ -1513,6 +1513,8 @@ def parse_openamp_args(arg_inputs):
     parser.add_argument("--os", type=str, help="OS arg")
     parser.add_argument("--relation-parent", type=str, help="parent of relation")
     parser.add_argument("--relation", type=str, help="target relation")
+    parser.add_argument("--report-valid-ipis", type=str, metavar="PROCESSOR",
+                        help="report supported and configured IPI mappings for PROCESSOR")
 
     config = {}
     if len(arg_inputs) == 2 and arg_inputs[1] in ["linux_dt", "zephyr_dt"]:
@@ -1530,6 +1532,10 @@ def parse_openamp_args(arg_inputs):
         config = vars(args)
         config["dt_type"] = config["os"]
         config["machine"] = False
+
+        if config["report_valid_ipis"]:
+            config["machine"] = config["report_valid_ipis"]
+            config["dt_type"] = "report"
 
         if config["processor"] and not config["machine"]:
             config["machine"] = config["processor"]
@@ -1576,6 +1582,9 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
     tree = sdt.tree
     ret = -1
     machine = openamp_args["machine"]
+
+    if openamp_args.get("report_valid_ipis"):
+        return xlnx_openamp_report_valid_ipis(sdt, machine)
 
     if not xlnx_openamp_find_compat_domains(tree):
         if verbose > 1:
