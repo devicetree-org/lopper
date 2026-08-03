@@ -287,7 +287,7 @@ Example:
 
 
 Conditional Properties and ``lopper,activate``
----------------------------------------------
+----------------------------------------------
 
 A single YAML file can describe multiple OS or configuration variants using
 **conditional property sigils**.  A sigil is appended to a property name or
@@ -369,6 +369,176 @@ Example:
      os,type: zephyr
      xlnx,ddr-boot: true
      xlnx,zephyr,mems: [ ddrboot@9800100 ]
+
+
+Zephyr Linker and MPU Policy
+----------------------------
+
+Zephyr Cortex-R execution domains may describe linker placement and MPU
+permissions directly in domain YAML.  This policy is a Zephyr build policy;
+it does not require an OpenAMP relation, remoteproc, RPMsg, reserved-memory,
+or an ``openamp,domain-v1`` compatible.  The selected domain shall have
+``os,type: zephyr``, a resolvable Cortex-R5 or Cortex-R52 CPU reference, and
+owned memories in ``sram`` and, when needed, ``reserved-memory``.
+
+The standalone assists are invoked after the YAML has been expanded to a
+system devicetree::
+
+   lopper input.dts output.dts -- zephyr_mpu \
+       --domain=/domains/RPU_Zephyr --zephyr-version=4.3
+
+   lopper input.dts unused.dts -- zephyr_linker \
+       --domain=/domains/RPU_Zephyr --zephyr-version=4.3
+
+Memory policy
+~~~~~~~~~~~~~
+
+Each physical memory selected by the Zephyr domain carries an ``mpu-policy``
+string list.  The accepted values are:
+
+``readable``
+   Permit reads from the region.
+
+``writable``
+   Permit writes to the region.
+
+``executable``
+   Permit instruction execution from the region.
+
+``cacheable``
+   Use the normal cacheable memory type.  If omitted, the generated Zephyr
+   metadata marks the memory explicitly non-cacheable.
+
+``shareable``
+   Use architecture-defined shareability.
+
+``userspace``
+   Permit unprivileged access.  This is normally used with readable,
+   writable, and shareable IPC memory.
+
+``static``
+   The SoC's static MPU table already maps the region.  The Zephyr MPU assist
+   still emits linker memory metadata but does not emit a
+   ``zephyr,memory-attr`` property for that region.  Thus ``static`` means
+   "retain the static MPU mapping"; it does not mean that the memory or linker
+   placement is immutable.
+
+The supported permission combinations are read/write cacheable, read-only
+cacheable, read/execute cacheable, read/write/execute cacheable, and
+read/write/shareable/userspace non-cacheable.  The assist rejects unsupported
+combinations and overlapping dynamic MPU regions.  Cortex-R5 DDR ranges are
+expanded to a naturally aligned power-of-two MPU aperture; Cortex-R52 uses
+base/limit regions and does not require that expansion.
+
+Example physical-memory policy:
+
+.. code-block:: YAML
+
+   axi:
+     r52_0a_atcm_global:
+       mpu-policy!zephyr!append:
+         [ readable, writable, executable, cacheable, static ]
+
+     r52_0a_btcm_global:
+       mpu-policy!zephyr!append:
+         [ readable, writable, cacheable, static ]
+
+   reserved-memory:
+     ipc_shm@9860000:
+       start: 0x9860000
+       size: 0x80000
+       mpu-policy!zephyr!append:
+         [ readable, writable, shareable, userspace ]
+
+The MPU assist converts this policy to conventional Zephyr properties:
+``compatible = "zephyr,memory-region"``, ``zephyr,memory-region``, and, for
+non-static entries, ``zephyr,memory-attr``.  It selects the vector-table
+memory as ``/chosen/zephyr,sram`` and selects an IPC shared-memory node as
+``/chosen/zephyr,ipc_shm`` when one is present.  Transformation-only
+``mpu-policy`` properties are removed from the output.
+
+Linker policy
+~~~~~~~~~~~~~
+
+The ``linker`` mapping is a child of the Zephyr domain in YAML.  It has the
+following keys:
+
+``linker_file_output_name``
+   Required output path for the generated primary linker script.
+
+``linker_memories``
+   Required list of domain-owned memory references available to the linker.
+   References may use a node name, label, path, phandle, or vendor IP name.
+   If otherwise identical fallback names collide, the processor-visible
+   ``reg`` origin is appended to form a unique GNU linker memory name.
+
+``entry``
+   Optional ELF entry symbol.  The current Cortex-R profiles require
+   ``_vector_table`` and use it by default.
+
+``user_content``
+   Optional path to linker content appended after the generated script.
+
+``sections``
+   Required mapping of Zephyr logical section groups to memory regions.
+
+The required logical groups are ``vector_table``, ``text``, ``rodata``,
+``data``, ``bss``, ``noinit``, ``heap``, and ``stack``.  Each group contains a
+``region`` reference.  ``vector_table`` and ``text`` may additionally contain
+an ``offset``.  The selected permissions must allow each section's use, and
+``stack`` and ``noinit`` shall use the same memory for the Zephyr 4.3 linker
+ABI.
+
+Example standalone Zephyr linker policy:
+
+.. code-block:: YAML
+
+   domains:
+     RPU_Zephyr:
+       os,type: zephyr
+       sram: [ r52_0a_atcm_global, r52_0a_btcm_global ]
+       linker:
+         linker_file_output_name: RPU_ZEPHYR.ld
+         linker_memories: [ r52_0a_atcm_global, r52_0a_btcm_global ]
+         entry: _vector_table
+         sections:
+           vector_table: { region: r52_0a_atcm_global, offset: 0 }
+           text:         { region: r52_0a_atcm_global }
+           rodata:       { region: r52_0a_atcm_global }
+           data:         { region: r52_0a_btcm_global }
+           bss:          { region: r52_0a_btcm_global }
+           noinit:       { region: r52_0a_btcm_global }
+           heap:         { region: r52_0a_btcm_global }
+           stack:        { region: r52_0a_btcm_global }
+
+YAML expansion flattens this hierarchy into domain properties such as
+``linker_memories``, ``linker-entry``, ``linker-section-text``, and
+``linker-section-vector-table-offset``.  The flattened representation is an
+intermediate Lopper ABI; authors should use the hierarchical YAML form.
+
+The generator supports Cortex-R5 TCM boot, Cortex-R52 TCM boot, and
+Cortex-R52 DDR boot.  It validates local TCM addresses and Cortex-R52 vector
+alignment, then emits a versioned Zephyr primary linker script and a
+``.layout.txt`` report.
+
+OpenAMP resource-table extension
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+OpenAMP firmware may add a ``resource_table`` entry to ``sections``.  It has a
+``region`` and optional ``offset`` and causes the linker generator to emit an
+explicit ``.resource_table`` output section with
+``__resource_table_start`` and ``__resource_table_end`` symbols.
+
+.. code-block:: YAML
+
+   linker:
+     linker_memories: [ atcm, btcm, rsctbl ]
+     sections:
+       resource_table: { region: rsctbl, offset: 0x0 }
+
+This entry is the only OpenAMP-specific logical section.  It is optional and
+shall be omitted for standalone Zephyr firmware that does not contain an
+OpenAMP resource table.
 
 
 Flags
@@ -532,4 +702,3 @@ Full Example
                - start: 0xfffc0000
                  size: 0x1000
                  flags: { read-only: true }
-
