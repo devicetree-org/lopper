@@ -312,6 +312,9 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
 
         # Build device type mapping for non-processor/non-memory devices
         device_type_map = {}
+        # Serial driver compatibles, accumulated in the same pass; used below
+        # to detect disabled UARTs the same way as enabled devices.
+        serial_compat = set()
         for res in res_list:
             dev_type = schema[res]['device_type']
             if re.search("processor", dev_type):
@@ -355,13 +358,32 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
                     'driver_compatlist': compat_list(schema[res]),
                     'console_prefix': schema[res].get('console_prefix')
                 }
+                if re.search("serial", dev_type):
+                    serial_compat.update(device_type_map[res]['driver_compatlist'])
 
         # Predict the Linux tty device name (ttyPS0, ttyUL0, ...) for serial
         # nodes, using the console_prefix defined in the input schema.
         serial_tty_map = compute_serial_tty_map(mapped_nodelist, alias_map, device_type_map)
 
-        for node in mapped_nodelist:
+        # Disabled UARTs are detected the same way as enabled devices (by
+        # compatible) and reuse the serial handling below, but are routed to a
+        # dedicated 'disabled_slaves' section so the QEMU serial slot numbering
+        # stays complete without affecting anything that reads 'slaves'.
+        disabled_serials = []
+        for node in root_sub_nodes:
+            status_val = node.propval('status', list)
+            if not (status_val and status_val != [''] and 'disabled' in status_val[0]):
+                continue
+            compat = node.propval('compatible', list)
+            if compat and compat != [''] and any(c in serial_compat for c in compat):
+                disabled_serials.append(node)
+        disabled_slaves = {}
+
+        for node in mapped_nodelist + disabled_serials:
             label_name = get_label(sdt, symbol_node, node)
+            status_val = node.propval('status', list)
+            is_disabled = bool(status_val and status_val != [''] and 'disabled' in status_val[0])
+            target = disabled_slaves if is_disabled else tmp_dict['slaves']
 
             try:
                 compatible_list = node["compatible"].value
@@ -379,15 +401,19 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
                         try:
                             if re.search("serial", dev_type):
                                 addr,size = scan_reg_size(node, node['reg'].value, 0)
-                                tmp_dict['slaves'][label_name] = {"device_type":"serial"}
-                                tmp_dict['slaves'][label_name].update({"ip_name":ipname[0]})
-                                tmp_dict['slaves'][label_name].update({"baseaddr":hex(addr)})
+                                target[label_name] = {"device_type":"serial"}
+                                # Disabled UARTs carry no 'xlnx,ip-name' in the
+                                # SDT (only enabled peripherals are annotated),
+                                # so emit ip_name only when it is present.
+                                if ipname and ipname[0]:
+                                    target[label_name].update({"ip_name":ipname[0]})
+                                target[label_name].update({"baseaddr":hex(addr)})
                                 # Add DT node path and aliases using helper function
-                                add_device_tree_metadata(tmp_dict['slaves'], label_name, alias_map, node)
+                                add_device_tree_metadata(target, label_name, alias_map, node)
                                 # Add the predicted Linux tty device name
                                 tty_name = serial_tty_map.get(node.abs_path)
                                 if tty_name:
-                                    tmp_dict['slaves'][label_name].update({"tty_device": tty_name})
+                                    target[label_name].update({"tty_device": tty_name})
                             else:
                                 tmp_dict['slaves'][label_name] = {"device_type":dev_type}
                                 tmp_dict['slaves'][label_name].update({"ip_name":ipname[0]})
@@ -407,6 +433,10 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
                         add_device_tree_metadata(tmp_dict['slaves'], label_name, alias_map, node)
                 except (IndexError, TypeError):
                     pass
+
+        if disabled_slaves:
+            tmp_dict['disabled_slaves'] = disabled_slaves
+
         # Only update if processor was configured
         if 'processor' in device_type_dict and proc_name and proc_name in device_type_dict['processor']:
             device_type_dict['processor'][proc_name].update(tmp_dict)
