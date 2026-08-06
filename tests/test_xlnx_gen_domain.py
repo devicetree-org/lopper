@@ -17,6 +17,42 @@ Author:
 import os
 import pytest
 
+from lopper.assists import gen_domain_dts
+from lopper.tree import LopperNode, LopperTree
+
+
+def test_rpu_memory_rename_refreshes_path_and_phandle_references():
+    """RPU local-view renames preserve chosen, symbol, and phandle refs."""
+    tree = LopperTree()
+    chosen = LopperNode(-1, "/chosen")
+    old_path = "/memory@ffe00000"
+    chosen["zephyr,ipc_shm"] = old_path
+    tree + chosen
+
+    symbols = LopperNode(-1, "/__symbols__")
+    symbols["r5_tcm"] = old_path
+    tree + symbols
+
+    memory = LopperNode(-1, old_path)
+    memory.label = "r5_tcm"
+    memory["reg"] = [0, 0, 0, 0x10000]
+    tree + memory
+    memory.phandle_or_create()
+
+    consumer = LopperNode(-1, "/consumer")
+    tree + consumer
+    consumer["memory-region"] = [memory.phandle]
+
+    gen_domain_dts.xlnx_zephyr_fixup_rpu_memory_names(
+        tree, "psu_cortexr5_0", [memory])
+
+    renamed = tree["/memory@0"]
+    assert renamed is memory
+    assert not tree.nodes("/memory@ffe00000", strict=True)
+    assert chosen.propval("zephyr,ipc_shm", list) == [renamed.abs_path]
+    assert symbols.propval("r5_tcm", list) == [renamed.abs_path]
+    assert tree.pnode(consumer.propval("memory-region", list)[0]) is renamed
+
 
 class TestXilinxDomainGeneration:
     """Test Xilinx domain generation integration.
