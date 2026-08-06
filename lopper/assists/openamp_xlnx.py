@@ -90,7 +90,7 @@ def xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, tree):
         "zephyr,mbox-ipm" in node.propval('compatible', list),
     ]
 
-    return any(c for c in conditions if c)
+    return any(conditions)
 
 
 def xlnx_openamp_trim_timers(sdt, target_os, machine):
@@ -121,11 +121,13 @@ def xlnx_openamp_trim_timers(sdt, target_os, machine):
         match_cpunode = get_cpu_node(sdt, {'args':[machine]})
         domains = [ n for n in tree["/domains"].subnodes(children_only=True) if match_cpunode.parent == sdt.tree.pnode(n.parent.parent.propval("cpus")[0]) ]
 
+    if not domains:
+        return False
 
     timer_pvals = [ n.propval("timer") for n in domains[0].subnodes(children_only=True) if n.propval("timer") != [''] ]
 
     # only do trim if timer prop is provided
-    if timer_pvals == []:
+    if not timer_pvals:
         return False
 
     flattend_timer_pvals = [item for sublist in timer_pvals for item in sublist]
@@ -139,8 +141,11 @@ def xlnx_openamp_trim_timers(sdt, target_os, machine):
     all_timer_nodes = [ n for n in tree["/axi"].subnodes(children_only=True, name="timer@*") if n.propval("compatible") == ["cdns,ttc"] ]
 
     # remove UIO timers from stripping
-    if os == "linux_dt":
-        [ all_timer_nodes.remove(timer_node) for timer_node in all_timer_nodes if "uio" in timer_node.propval("compatible") ]
+    if target_os == "linux_dt":
+        all_timer_nodes = [
+            timer_node for timer_node in all_timer_nodes
+            if "uio" not in timer_node.propval("compatible")
+        ]
 
     # delete irrelevant timer nodes
     [ tree.delete(timer_node) for timer_node in all_timer_nodes if timer_node not in relevant_timer_nodes ]
@@ -280,7 +285,7 @@ def xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveout
     # If DDRBOOT, ensure that it is after RPMSG carveouts
     # # save ddrboot node and add to end of list
     ddrboot_node_index = [ index for index, phandle in enumerate(new_mem_region_prop_val) if "ddrboot" in tree.pnode(phandle).name ]
-    if ddrboot_node_index != []:
+    if ddrboot_node_index:
         new_mem_region_prop_val.append( new_mem_region_prop_val.pop(ddrboot_node_index[0]) )
 
     # update property with new values
@@ -327,7 +332,7 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
              target_node = n
              break
 
-    if target_node == None:
+    if target_node is None:
         print("OPENAMP: XLNX: ERROR: unable to map machine", machine, "to relation")
         return False
 
@@ -340,12 +345,12 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
         return False
 
     rpmsg_rel = rpmsg_rels[0]
-    if rpmsg_rel.propval("host") == [''] and len(rpmsg_rel.propval("host")) != 1:
+    host = rpmsg_rel.propval("host")
+    if host == [''] or len(host) != 1:
         print("OPENAMP: XLNX: ERROR: expected host prop for", target_node)
         return False
 
-    host = rpmsg_rel.propval("host")
-    host_node = sdt.tree.pnode(rpmsg_rel.propval("host")[0])
+    host_node = sdt.tree.pnode(host[0])
     if not isinstance(host_node, LopperNode):
         print("OPENAMP: XLNX: ERROR: expected host node ref in host prop for", rpmsg_rel)
         return False
@@ -355,6 +360,7 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
             elfload = rel.propval("elfload")
             if elfload == ['']:
                 print("OPENAMP: XLNX: ERROR: libmetal remote domain needs elfload property.")
+                return False
             elfload_node = sdt.tree.pnode(elfload[0])
             reg_val = elfload_node.propval("reg")
             return (reg_val[1], reg_val[3], "LIBMETAL_DDR")
@@ -363,20 +369,21 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
 
     # look through host for matching remoteproc relation. If found then return the relation's elfload property reg value
     for rel in host_node.subnodes(children_only=True):
-        if rel.propval("remote") != [''] and ['openamp,remoteproc-v2'] == rel.parent.propval("compatible"):
-            if rel.propval("remote") == ['']:
+        if ['openamp,remoteproc-v2'] == rel.parent.propval("compatible"):
+            remote = rel.propval("remote")
+            if remote == ['']:
                 print("OPENAMP: XLNX: ERROR: elfload needs remoteproc host to describe elfload region")
                 return False
 
             #  check that the referenced remote matches
-            referenced_remote_domain = sdt.tree.pnode(rel.propval("remote")[0])
-            if referenced_remote_domain == None or referenced_remote_domain != target_node.parent.parent:
+            referenced_remote_domain = sdt.tree.pnode(remote[0])
+            if referenced_remote_domain is None or referenced_remote_domain != target_node.parent.parent:
                 print("OPENAMP: XLNX: ERROR: referenced remote is invalid for host", rel)
                 return False
 
             elfload_nodes = [ sdt.tree.pnode(i) for i in rel.propval("elfload") ]
-            relevant_elfload_nodes = [ i for i in elfload_nodes if i != None and 'mmio-sram' not in i.propval('compatible')]
-            if relevant_elfload_nodes == []:
+            relevant_elfload_nodes = [ i for i in elfload_nodes if i is not None and 'mmio-sram' not in i.propval('compatible')]
+            if not relevant_elfload_nodes:
                 print("OPENAMP: XLNX: ERROR: expected at least one ELFLOAD node for case of generating openamp linker script using DDR.")
                 return False
 
@@ -545,7 +552,7 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
     if domain_node.props("xlnx,ddr-boot"):
         elfload_nodes = [ tree.pnode(x) for x in domain_node.propval("reserved-memory") ]
         valid_elfload_node = [ node for node in elfload_nodes if node and node.propval("device_type") == ['memory'] ]
-        if len(valid_elfload_node) > 0:
+        if valid_elfload_node:
             tree['/chosen']['zephyr,sram'] = valid_elfload_node[0].abs_path
 
     if not xlnx_openamp_apply_legacy_zephyr_memories(tree, domain_node):
@@ -559,7 +566,7 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
         if not direct_ipm_target:
             mbox_consumer_node = LopperNode(-1, "/mbox-consumer")
             mbox_consumer_props = { "compatible" : 'vnd,mbox-consumer', "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1], "mbox-names" : ['tx', 'rx'] }
-            [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props.keys()]
+            [mbox_consumer_node + LopperProp(name=n, value=mbox_consumer_props[n]) for n in mbox_consumer_props]
             tree.add(mbox_consumer_node)
 
     if direct_ipm_target:
@@ -567,7 +574,7 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
     else:
         mbox_ipm_node = LopperNode(-1, "/mbox_ipi_%s_%s" % (hex(ipi_node['reg'][1])[2:], hex(ipi_node.parent['reg'][1])[2:]))
         mbox_ipm_props = { "compatible" : "zephyr,mbox-ipm", "mbox-names" : ['tx', 'rx'], "status": "okay", "mboxes" : [ipi_node.phandle, 0, ipi_node.phandle, 1] }
-        [mbox_ipm_node +  LopperProp(name=n, value=mbox_ipm_props[n]) for n in mbox_ipm_props.keys()]
+        [mbox_ipm_node +  LopperProp(name=n, value=mbox_ipm_props[n]) for n in mbox_ipm_props]
         tree.add(mbox_ipm_node)
 
     # do this for upstream compatibility for now
@@ -575,9 +582,9 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
         tree['/chosen']['zephyr,ipc'] = mbox_ipm_node.abs_path
 
     if tree['/chosen'].propval('zephyr,flash') != ['']:
-        tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,flash'])
+        tree['/chosen'].delete(tree['/chosen']['zephyr,flash'])
     if tree['/chosen'].propval('zephyr,ocm') != ['']:
-        tree['/chosen'].delete(sdt.tree['/chosen']['zephyr,ocm'])
+        tree['/chosen'].delete(tree['/chosen']['zephyr,ocm'])
 
     return True
 
@@ -598,7 +605,7 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
     """
     print(" ---> xlnx_libmetal_gen_output_file")
     platform = get_platform(tree, verbose)
-    if platform == None:
+    if platform is None:
         return False
     desc0 = carveouts[0]
     desc1 = carveouts[1]
@@ -662,8 +669,8 @@ def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_node
         header to the requested output path.
     """
     vrings = [n for n in memory_region_nodes if 'vring' in n.name]
-    vring_total_sz = hex(sum([n.propval("reg")[3] for n in vrings]))
-    shm_pa = hex(min([n.propval("reg")[1] for n in vrings]))
+    vring_total_sz = hex(sum(n.propval("reg")[3] for n in vrings))
+    shm_pa = hex(min(n.propval("reg")[1] for n in vrings))
     shbuf_sz = hex([n.propval("reg")[1] for n in memory_region_nodes if 'vdev0buffer' in n.name][0])
 
     remote_ipi = host_ipi.parent
@@ -766,24 +773,24 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
           rpmsg_relation_node.abs_path)
 
     platform = get_platform(tree, verbose)
-    if platform == None:
+    if platform is None:
         return False
 
     for node in rpmsg_relation_node.subnodes(children_only=True):
         pname = "remote" if os == "linux_dt" else "host"
         # check for remote property
-        if node.props(pname) == []:
+        if not node.props(pname):
             _error("openamp_xlnx: %s is missing %s property" %
                    (node.abs_path, pname))
             return False
 
         remote_node = tree.pnode(node.propval(pname)[0])
-        if remote_node == None:
+        if remote_node is None:
             _error("openamp_xlnx: invalid RPMsg %s reference in %s" %
                    (pname, rpmsg_relation_node.abs_path))
             return False
 
-        if os == "linux_dt" and remote_node.name not in channel_to_core_dict.keys():
+        if os == "linux_dt" and remote_node.name not in channel_to_core_dict:
             _error("openamp_xlnx: remoteproc core is missing for RPMsg relation %s" %
                    rpmsg_relation_node.abs_path)
             return False
@@ -797,7 +804,7 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
             return False
 
         ipi_node = tree.pnode(mbox_pval[0])
-        if ipi_node == None:
+        if ipi_node is None:
             _error("openamp_xlnx: cannot resolve IPI for %s" % node.abs_path)
             return False
 
@@ -1051,7 +1058,7 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
 
     except KeyError:
         cluster_node = LopperNode(-1, cluster_node_path)
-        for key in cluster_node_props.keys():
+        for key in cluster_node_props:
             cluster_node + LopperProp(name=key, value = cluster_node_props[key])
 
         tree.add(cluster_node)
@@ -1093,10 +1100,10 @@ def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, power_domains, core_
       "memory-region": [ n.phandle for n in openamp_channel_info["new_ddr_nodes"] ]
     }
 
-    if openamp_channel_info["new_ddr_nodes"] == []:
+    if not openamp_channel_info["new_ddr_nodes"]:
         core_node_props.pop("memory-region")
 
-    for key in core_node_props.keys():
+    for key in core_node_props:
         core_node + LopperProp(name=key, value = core_node_props[key])
 
     tree.add(core_node)
@@ -1199,11 +1206,11 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
         cluster_ranges_val.extend(memory_nodes[pd[1]]["system_view"])
 
         # map TCM node name to binding compliant TCM name
-        if not any(tcm_name_substr in n.name.lower() for tcm_name_substr in core_reg_names_mappings.keys()):
+        if not any(tcm_name_substr in n.name.lower() for tcm_name_substr in core_reg_names_mappings):
             print(f"ERROR: Unable to map %s to proper TCM spec name" % n.name)
             return False
 
-        for tcm_substr in core_reg_names_mappings.keys():
+        for tcm_substr in core_reg_names_mappings:
             if tcm_substr in n.name:
                 core_reg_names.append(core_reg_names_mappings[tcm_substr])
 
@@ -1300,8 +1307,8 @@ def get_platform(tree, verbose = 0):
                 if i == soc_str:
                     return rpu_socs_enums[index]
 
-    if platform == None:
-        print("Unable to find data for platform: ", root_model, root_compat)
+    if platform is None:
+        print("Unable to find data for platform: ", inputs)
 
     return platform
 
@@ -1327,7 +1334,7 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
     """
     print(" --> openamp_nontree_outputs_handler")
     platform = get_platform(sdt.tree, verbose)
-    if platform == None:
+    if platform is None:
         return False
 
     # get_cpu_node expects dictionary where first arg first element is machine
@@ -1344,10 +1351,10 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
     domains = sdt.tree['/domains']
     relation_node = None
     supported_targets = []
-    relation_parent_search = True if openamp_args['relation_parent'] != None else False
-    compatible_string_search = True if openamp_args['compatible_string'] != None else False
+    relation_parent_search = bool(openamp_args['relation_parent'] is not None)
+    compatible_string_search = bool(openamp_args['compatible_string'] is not None)
     for n in domains.subnodes():
-        if n.parent == None or n.parent.parent == None:
+        if n.parent is None or n.parent.parent is None:
             continue
 
         if n.parent.parent.propval("cpus") == ['']:
@@ -1392,14 +1399,14 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
 
     carveouts = None
     ipi_node = None
-    relation_node_search = True if openamp_args['relation'] != None else False
+    relation_node_search = bool(openamp_args['relation'] is not None)
     for node in relation_node.subnodes(children_only=True):
         if relation_node_search and openamp_args['relation'] != node.name:
             continue
 
         pname = "remote" if os == "linux_dt" else "host"
         # check for remote property
-        if node.props(pname) == []:
+        if not node.props(pname):
             print("ERROR: ", node, "is missing ", pname, " property")
             return False
 
@@ -1410,7 +1417,7 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
             return False
 
         ipi_node = sdt.tree.pnode(mbox_pval[0])
-        if ipi_node == None:
+        if ipi_node is None:
             print("ERROR: Unable to find ipi")
             return False
 
@@ -1458,7 +1465,7 @@ def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_ar
     print(" -> xlnx_remoteproc_parse", remoteproc_relation_node)
 
     # Xilinx OpenAMP subroutine to collect Remoteproc information from relation node in tree
-    if get_platform(tree, verbose) == None:
+    if get_platform(tree, verbose) is None:
         print("Unsupported platform")
         return False
 
@@ -1474,7 +1481,7 @@ def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_ar
         openamp_channel_info = { "remote_node": remote_node }
 
         # check for elfload prop
-        if node.props("elfload") == []:
+        if not node.props("elfload"):
             print("ERROR: ", node, " is missing elfload property")
             return False
 

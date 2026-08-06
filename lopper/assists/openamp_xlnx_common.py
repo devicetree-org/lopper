@@ -8,8 +8,7 @@ can be surfaced by documentation tooling.
 """
 
 from lopper.tree import *
-from enum import Enum
-from enum import IntEnum
+from enum import Enum, IntEnum
 import ast
 import re
 import sys
@@ -40,14 +39,12 @@ def _openamp_ipi_sort_key(node):
 def _openamp_ipi_cpu_name(machine):
     """Translate a Lopper processor name to the mailbox ``xlnx,cpu-name``."""
     name = machine.lower()
-    match = re.search(r"cortexa(?:53|72|78)_(\d+)", name)
-    if match:
+    if match := re.search(r"cortexa(?:53|72|78)_(\d+)", name):
         if "cortexa53" in name:
             return "APU"
         core = "A72" if "cortexa72" in name else "A78"
         return "%s_%s" % (core, match.group(1))
-    match = re.search(r"cortexr52?_(\d+)", name)
-    if match:
+    if match := re.search(r"cortexr52?_(\d+)", name):
         if "cortexr5_" in name and "cortexr52" not in name:
             return "RPU%s" % match.group(1)
         return "R52_%s" % match.group(1)
@@ -56,12 +53,12 @@ def _openamp_ipi_cpu_name(machine):
 
 def _openamp_enabled(node):
     status = node.propval("status")
-    return status == [''] or status[0] in ("okay", "ok")
+    return status == [""] or status[0] in ("okay", "ok")
 
 
 def _openamp_buffering(node):
     buf_index = node.propval("xlnx,ipi-buf-index")
-    if buf_index != ['']:
+    if buf_index != [""]:
         return "unbuffered" if buf_index[0] == 0xffff else "buffered"
     return ("buffered" if "msg" in node.propval("reg-names", list)
             else "unbuffered")
@@ -78,8 +75,8 @@ def _openamp_ipi_controllers(tree):
             or "xlnx,zynqmp-ipi-dest-mailbox" in child.propval("compatible", list)
             for child in node.subnodes(children_only=True))
         if ((native or destination_children)
-                and node.propval("xlnx,cpu-name") != ['']
-                and node.propval("xlnx,ipi-id") != ['']
+                and node.propval("xlnx,cpu-name") != [""]
+                and node.propval("xlnx,ipi-id") != [""]
                 and _openamp_enabled(node)):
             controllers.append(node)
     return controllers
@@ -88,10 +85,10 @@ def _openamp_ipi_controllers(tree):
 def _openamp_domain_processor(tree, domain):
     dtd = next((n for n in domain.subnodes(children_only=True)
                 if n.name == "domain-to-domain"), None)
-    if dtd and dtd.propval("cluster_cpu") != ['']:
+    if dtd and dtd.propval("cluster_cpu") != [""]:
         return dtd.propval("cluster_cpu")[0]
     cpus = domain.propval("cpus")
-    cluster = tree.pnode(cpus[0]) if cpus != [''] else None
+    cluster = tree.pnode(cpus[0]) if cpus != [""] else None
     return (cluster.label or cluster.name) if cluster else "unspecified"
 
 
@@ -108,16 +105,22 @@ def _openamp_configured_relations(tree):
             continue
         dtd = next((n for n in domain.subnodes(children_only=True)
                     if n.name == "domain-to-domain"), None)
-        if not dtd or dtd.propval("cluster_cpu") == ['']:
+        if not dtd or dtd.propval("cluster_cpu") == [""]:
             continue
         for relation in dtd.subnodes(children_only=True):
             compatible = relation.propval("compatible")
-            if compatible == [''] or compatible[0] not in _IPI_RELATION_COMPATIBLES:
+            if compatible == [""] or compatible[0] not in _IPI_RELATION_COMPATIBLES:
                 continue
             for endpoint in relation.subnodes(children_only=True):
                 mbox = endpoint.propval("mbox")
-                mailbox = tree.pnode(mbox[0]) if mbox != [''] else None
+                if len(mbox) != 1 or mbox == [""]:
+                    continue
+                mailbox = tree.pnode(mbox[0])
                 if not mailbox or not mailbox.parent:
+                    continue
+                source_cpu = mailbox.parent.propval("xlnx,cpu-name")
+                destination_cpu = mailbox.propval("xlnx,cpu-name")
+                if source_cpu == [""] or destination_cpu == [""]:
                     continue
                 configured[mailbox.phandle] = (domain.name, compatible[0])
                 rows.append({
@@ -133,7 +136,7 @@ def _openamp_configured_relations(tree):
 def xlnx_openamp_report_valid_ipis(sdt, machine):
     """Report supported, configured, and bidirectional IPIs for a processor."""
     tree = sdt.tree
-    get_cpu_node(sdt, {'args': [machine]})
+    get_cpu_node(sdt, {"args": [machine]})
     cpu_name = _openamp_ipi_cpu_name(machine)
     controllers = _openamp_ipi_controllers(tree)
     owned = [n for n in controllers
@@ -174,7 +177,7 @@ def xlnx_openamp_report_valid_ipis(sdt, machine):
             if not _openamp_enabled(child):
                 continue
             dest_cpu = child.propval("xlnx,cpu-name")
-            dest_is_processor = (dest_cpu != [''] and
+            dest_is_processor = (dest_cpu != [""] and
                                  re.match(r"^(A\d|R\d|APU$|RPU\d+$)",
                                           dest_cpu[0]) and
                                  tuple(child.propval("xlnx,ipi-id")) in
@@ -182,7 +185,7 @@ def xlnx_openamp_report_valid_ipis(sdt, machine):
             if controller in owned and dest_cpu != [cpu_name] and dest_is_processor:
                 outgoing.append((controller, child))
             source_cpu = controller.propval("xlnx,cpu-name")
-            source_is_processor = source_cpu != [''] and re.match(
+            source_is_processor = source_cpu != [""] and re.match(
                 r"^(A\d|R\d|APU$|RPU\d+$)", source_cpu[0])
             if (dest_cpu == [cpu_name] and source_cpu != [cpu_name]
                     and source_is_processor):
