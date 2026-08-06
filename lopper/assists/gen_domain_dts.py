@@ -1170,14 +1170,10 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                     elif "xlnx,versal-ipi-dest-mailbox" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,mbox-versal-ipi-dest-mailbox"]
                         node.name = f"child@{hex(node.propval('reg')[1])[2:]}"
-                    if "xlnx,zynqmp-ipi-dest-mailbox" in node["compatible"].value:
-                        node + LopperProp(name="remote-ipi-id",value=node["xlnx,ipi-id"].value)
-                        node.delete("xlnx,ipi-id")
+                    _xlnx_zephyr_convert_zynqmp_ipi_id(node)
                     if "xlnx,zynqmp-ipi-mailbox" in node["compatible"].value:
-                        node + LopperProp(name="local-ipi-id",value=node["xlnx,ipi-id"].value)
                         node + LopperProp(name="reg-names", value="host_ipi_reg")
                         node + LopperProp(name="status", value="okay")
-                        node.delete("xlnx,ipi-id")
                     # PS-IIC
                     if "cdns,i2c-r1p14" in node["compatible"].value:
                         node["compatible"].value = ["cdns,i2c"]
