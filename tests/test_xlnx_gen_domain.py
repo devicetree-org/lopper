@@ -21,6 +21,69 @@ from lopper.assists import gen_domain_dts
 from lopper.tree import LopperNode, LopperTree
 
 
+def _ttc_tree(*labels, compatible="xlnx,ttcps"):
+    """Create a minimal tree containing TTC nodes with optional labels."""
+    tree = LopperTree()
+    tree + LopperNode(-1, "/__symbols__")
+    nodes = []
+    for index, label in enumerate(labels):
+        node = LopperNode(-1, f"/axi/timer@ff1{index}0000")
+        node["compatible"] = [compatible]
+        if label:
+            node.label = label
+        tree + node
+        nodes.append(node)
+    return tree, nodes
+
+
+def test_zephyr_r5_labels_sole_selected_ttc_as_ttc0():
+    """A sole domain-selected TTC gets Zephyr's stable ttc0 label."""
+    tree, nodes = _ttc_tree("ttc2")
+
+    gen_domain_dts._xlnx_zephyr_assign_ttc0(tree, "psu_cortexr5_0")
+
+    assert nodes[0].label == "ttc0"
+    assert tree["/__symbols__"].propval("ttc0", list) == [nodes[0].abs_path]
+
+
+def test_zephyr_r5_preserves_explicit_ttc0_with_multiple_ttcs():
+    """An explicitly selected ttc0 wins without relying on tree order."""
+    tree, nodes = _ttc_tree("ttc1", "ttc0")
+
+    gen_domain_dts._xlnx_zephyr_assign_ttc0(tree, "psv_cortexr5_0")
+
+    assert [node.label for node in nodes] == ["ttc1", "ttc0"]
+
+
+def test_zephyr_r5_labels_first_domain_ttc_when_no_ttc0_exists():
+    """The first domain-retained TTC becomes ttc0 when none is explicit."""
+    tree, _ = _ttc_tree("ttc1", "ttc2")
+
+    gen_domain_dts._xlnx_zephyr_assign_ttc0(tree, "psu_cortexr5_0")
+
+    assert tree["/axi/timer@ff100000"].label == "ttc0"
+    assert tree["/axi/timer@ff110000"].label == "ttc2"
+
+
+def test_zephyr_r5_accepts_sdt_cdns_ttc_compatible():
+    """ZynqMP's SDT-side cdns,ttc node participates in label selection."""
+    tree, nodes = _ttc_tree("ttc1", compatible="cdns,ttc")
+
+    gen_domain_dts._xlnx_zephyr_assign_ttc0(tree, "psu_cortexr5_0")
+
+    assert nodes[0].label == "ttc0"
+
+
+def test_ttc_label_normalization_is_r5_platform_specific():
+    """Other Zephyr processor families retain their original TTC labels."""
+    tree, nodes = _ttc_tree("ttc2")
+
+    gen_domain_dts._xlnx_zephyr_assign_ttc0(tree, "cortexr52_0")
+
+    assert nodes[0].label == "ttc2"
+    assert tree["/__symbols__"].propval("ttc0") == ['']
+
+
 def test_rpu_memory_rename_refreshes_path_and_phandle_references():
     """RPU local-view renames preserve chosen, symbol, and phandle refs."""
     tree = LopperTree()
