@@ -789,6 +789,59 @@ class TestTwoPassSubprocess:
         assert "cdns,ttc" not in content, \
             f"cdns,ttc still present in APU_Linux.dts — replace overlay not applied\n{content[:2000]}"
 
+    def test_standalone_activation_does_not_prune_tree(self, tmp_path):
+        """conditional_properties applies the overlay but keeps unrelated nodes."""
+        result, intermediate = self._setup_pass1(tmp_path)
+        assert result.returncode == 0, f"Pass 1 failed: {result.stderr}"
+
+        output = tmp_path / "linux-complete.dts"
+        result2 = self._run([
+            "./lopper.py", "-f", "--permissive",
+            str(intermediate), str(output),
+            "--", "conditional_properties", "-c", "linux",
+        ])
+        assert result2.returncode == 0, \
+            f"Standalone activation failed:\nstdout: {result2.stdout}\nstderr: {result2.stderr}"
+
+        content = output.read_text()
+        assert 'compatible = "uio"' in content
+        assert "APU_Linux" in content
+        assert "RPU1_BM" in content
+        assert "__lopper-overlays__" not in content
+
+    def test_standalone_activation_can_read_target_property(self, tmp_path):
+        """The standalone assist accepts the same lopper,activate convention."""
+        result, intermediate = self._setup_pass1(tmp_path)
+        assert result.returncode == 0, f"Pass 1 failed: {result.stderr}"
+
+        output = tmp_path / "linux-from-target.dts"
+        result2 = self._run([
+            "./lopper.py", "-f", "--permissive",
+            str(intermediate), str(output),
+            "--", "conditional_properties", "-t", "/domains/APU_Linux",
+        ])
+        assert result2.returncode == 0, \
+            f"Target activation failed:\nstdout: {result2.stdout}\nstderr: {result2.stderr}"
+        assert 'compatible = "uio"' in output.read_text()
+
+    def test_standalone_non_linux_target_keeps_base_binding(self, tmp_path):
+        """A target without Linux activation must not receive its overlay."""
+        result, intermediate = self._setup_pass1(tmp_path)
+        assert result.returncode == 0, f"Pass 1 failed: {result.stderr}"
+
+        output = tmp_path / "baremetal-from-target.dts"
+        result2 = self._run([
+            "./lopper.py", "-f", "--permissive",
+            str(intermediate), str(output),
+            "--", "conditional_properties", "-t", "/domains/RPU1_BM",
+        ])
+        assert result2.returncode == 0, \
+            f"Target activation failed:\nstdout: {result2.stdout}\nstderr: {result2.stderr}"
+
+        content = output.read_text()
+        assert 'compatible = "cdns,ttc"' in content
+        assert 'compatible = "uio"' not in content
+
     def test_pass2_output_has_no_lopper_overlays(self, tmp_path):
         """Final APU_Linux.dts must not contain /__lopper-overlays__."""
         result, intermediate = self._setup_pass1(tmp_path)

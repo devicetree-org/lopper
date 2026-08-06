@@ -81,7 +81,34 @@ If no overlay has been registered for the given name, `overlay_tree()` returns
 
 ---
 
-## Automatic Activation via `lopper,activate`
+## Activating Conditions Without Tree Pruning
+
+Use the standalone `conditional_properties` assist when conditional
+properties are wanted without the domain filtering performed by
+`domain_access`:
+
+```bash
+# Select a condition directly; no /domains node is required.
+lopper system-top.dts linux.dts -- conditional_properties -c linux
+
+# Or read lopper,activate from a node (with os,type as a fallback).
+lopper system-top.dts linux.dts -- \
+    conditional_properties -t /domains/linux-domain
+```
+
+The assist replaces the current working tree with the fully merged result of
+`overlay_tree(name)`. It does not ref-count, filter memory, inject a chosen
+node, or prune anything. Use `--no-os-fallback` if only an explicit
+`lopper,activate` property should be accepted.
+
+This also makes it possible to activate a condition before another assist:
+
+```bash
+lopper system-top.dts output.dts -- \
+    conditional_properties -c linux -- some_transform
+```
+
+## Automatic Domain Activation via `lopper,activate`
 
 When using the `domain_access` assist, add a `lopper,activate` property to
 the domain node to automatically select the correct overlay tree before any
@@ -102,8 +129,8 @@ domains:
     memory: ...
 ```
 
-`core_domain_access()` reads `lopper,activate`, calls
-`sdt.tree.overlay_tree(name)`, and uses the merged result for all subsequent
+`core_domain_access()` delegates to the same activation helper used by the
+standalone assist, and uses the merged result for all subsequent
 ref-counting, memory filtering, chosen node injection, and pruning.  If
 `lopper,activate` is absent, `os,type` is used as a fallback so existing
 domain YAML files work without modification.

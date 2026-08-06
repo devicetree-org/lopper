@@ -28,6 +28,7 @@ from lopper import LopperFmt
 from lopper.tree import LopperAction
 import lopper
 import lopper_lib
+import conditional_properties
 from lopper_lib import chunks
 from lopper.log import _init, _warning, _info, _error, _debug
 import logging
@@ -296,24 +297,11 @@ def core_domain_access( tgt_node, sdt, options ):
 
     _info( f"cb: core_domain_access( {domain_node}, {sdt}, {verbose} )")
 
-    # If the domain node carries a 'lopper,activate' property, use the named
-    # overlay tree so that conditional properties (sigil syntax) are visible
-    # during processing.  Fall back to 'os,type' if lopper,activate is absent.
-    _activate = domain_node.propval('lopper,activate')
-    if not _activate or _activate == ['']:
-        _activate = domain_node.propval('os,type')
-    # propval may return a bare string or a list; normalise to list so the
-    # for-loop below iterates over names, not characters.
-    if isinstance(_activate, str):
-        _activate = [_activate]
-    for _ov_name in (_activate or []):
-        if _ov_name and _ov_name.strip():
-            _ov_tree = sdt.tree.overlay_tree(_ov_name.strip())
-            if _ov_tree is not None:
-                _info( f"domain_access: activating overlay tree '{_ov_name.strip()}'" )
-                sdt.tree = _ov_tree
-                domain_node = sdt.tree[tgt_node]
-            break
+    # Conditional-property activation is shared with the standalone
+    # conditional_properties assist.  domain_access retains this call for
+    # backwards compatibility, then continues with its domain pruning.
+    if conditional_properties.activate(sdt, target_node=domain_node):
+        domain_node = sdt.tree[tgt_node]
 
     direct_node_refs = []
 
