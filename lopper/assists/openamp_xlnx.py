@@ -178,11 +178,12 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None):
         print("xlnx_handle_relations: unable to find machine: ", machine)
         return False
 
-    parse_routines = { REMOTEPROC_D_TO_D_v2: xlnx_remoteproc_parse, RPMSG_D_TO_D: xlnx_rpmsg_parse, LIBMETAL_D_TO_D : xlnx_rpmsg_parse }
-
     # first collect all relevant openamp domains
     remoteproc_relations = []
     rpmsg_relations = []
+    libmetal_relations = []
+
+    parse_arrs = { REMOTEPROC_D_TO_D_v2: remoteproc_relations, RPMSG_D_TO_D: rpmsg_relations, LIBMETAL_D_TO_D: libmetal_relations }
 
     for n in sdt.tree["/domains"].subnodes():
         node_compat = n.propval("compatible")[0]
@@ -196,15 +197,9 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None):
         if match_cpunode.parent == sdt.tree.pnode(n.parent.parent.propval("cpus")[0]):
             if find_only:
                  return n
-            else: # do processing on found ndoes
-                if node_compat in parse_routines.keys():
-                    arr = remoteproc_relations if node_compat == REMOTEPROC_D_TO_D_v2 else rpmsg_relations
-
-                    # skip libmetal relations for Linux
-                    if os == "linux_dt" and node_compat == LIBMETAL_D_TO_D:
-                        continue
-
-                    arr.append(n)
+            else: # do processing on found nodes
+                if node_compat in parse_arrs:
+                    parse_arrs[node_compat].append(n)
 
     # As the RPMsg relation will be appending nodes to a remoteproc node, link the rpmsg
     # relation to its corresponding remoteproc relation so the remoteproc relation can pass along
@@ -224,6 +219,10 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None):
 
     for rel in rpmsg_relations:
         if not xlnx_rpmsg_parse(tree, rel, machine, carveout_validation_arr, remoteproc_core_mapping_to_rpmsg_relation, os, 1):
+            return False
+
+    for rel in libmetal_relations:
+        if not xlnx_libmetal_linux_setup_ipi(tree, rel, machine, 1):
             return False
 
     # check if conflicts in ELFLOAD and IPC carveouts
@@ -700,6 +699,46 @@ def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_node
         return False
 
     return True
+
+def xlnx_libmetal_linux_setup_ipi(tree, relation_node, machine, verbose = 0 ):
+    """Parse RPMsg relations and update the device tree accordingly.
+
+    Args:
+        tree (LopperTree): Device tree being modified.
+        relation_node (LopperNode): Domain relation describing Libmetal channels.
+        machine (str): Remote machine identifier (used for logging and lookups).
+        verbose (int): Verbosity flag for diagnostic messages.
+
+    Returns:
+        bool: True when parsing succeeds, False if required metadata is missing.
+
+    Algorithm:
+        Find IPI from relation. Set it for parent.
+    """
+    _info("openamp_xlnx: Set up IPI for Libmetal Linux relation %s" %
+          relation_node.abs_path)
+
+    platform = get_platform(tree, verbose)
+    if platform is None:
+        return False
+
+    for node in relation_node.subnodes(children_only=True):
+        # first find host to remote IPI
+        mbox_pval = node.propval("mbox")
+        if mbox_pval == ['']:
+            _error("openamp_xlnx: libmetal: %s is missing mbox property" % node.abs_path)
+            return False
+
+        ipi_node = tree.pnode(mbox_pval[0])
+        if ipi_node is None:
+            _error("openamp_xlnx: libmetal: cannot resolve IPI for %s" % node.abs_path)
+            return False
+
+        # setup IPI mask so UIO device's corresponding DT node has the remote's bitmask set.
+        ipi_node.parent + LopperProp(name="libmetal,uio-ipi-bitmask", value=ipi_node.propval("xlnx,ipi-bitmask"))
+
+    return True
+
 
 def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr, channel_to_core_dict = None, os = None, verbose = 0 ):
     """Parse RPMsg relations and update the device tree accordingly.
