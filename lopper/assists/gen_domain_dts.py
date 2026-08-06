@@ -27,6 +27,39 @@ from zephyr_board_dt import merge_board_overlay_from_sdt, merge_board_overlay_co
 from openamp_xlnx import xlnx_openamp_keep_node
 
 
+def _xlnx_zephyr_assign_ttc0(tree, machine):
+    """Give the Zephyr-selected ZynqMP/Versal R5 TTC a stable label.
+
+    Domain access has already removed devices that are not assigned to the
+    target. Preserve an explicit ``ttc0`` selection. If none exists, promote
+    the first TTC retained for this domain so Zephyr has its conventional
+    timer label.
+    """
+    if not ("psu_cortexr5" in machine or "psv_cortexr5" in machine):
+        return
+
+    ttc_compatibles = {"cdns,ttc", "xlnx,ttcps"}
+    ttc_nodes = []
+    for node in tree.nodes('.*'):
+        compatibles = set(node.propval("compatible", list))
+        if compatibles & ttc_compatibles:
+            ttc_nodes.append(node)
+
+    if any(node.label == "ttc0" for node in ttc_nodes):
+        return
+    if not ttc_nodes:
+        return
+
+    ttc = ttc_nodes[0]
+    ttc.label_set("ttc0")
+    try:
+        symbols = tree["/__symbols__"]
+    except KeyError:
+        symbols = LopperNode(-1, "/__symbols__")
+        tree + symbols
+    symbols["ttc0"] = ttc.abs_path
+
+
 def xlnx_zephyr_fixup_rpu_memory_names(tree, machine, memory_nodes):
     """Match R5/R52 Zephyr memory unit addresses to their local reg view."""
     if not ("cortexr5" in machine or "cortexr52" in machine):
@@ -801,6 +834,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
     if zephyr_dt:
         if "r52" in machine or "a78" in machine or "a72" in machine or "r5" in machine or "a53" in machine:
             xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine)
+            _xlnx_zephyr_assign_ttc0(sdt.tree, machine)
             if "a78" in machine or "a72" in machine:
                 new_dst_node = LopperNode()
                 new_dst_node['compatible'] = "arm,psci-1.1"
