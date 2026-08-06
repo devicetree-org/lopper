@@ -54,6 +54,37 @@ def test_rpu_memory_rename_refreshes_path_and_phandle_references():
     assert tree.pnode(consumer.propval("memory-region", list)[0]) is renamed
 
 
+@pytest.mark.parametrize("compatible", [
+    "xlnx,zynqmp-ipi-mailbox",
+    "xlnx,zynqmp-ipi-dest-mailbox",
+])
+def test_zynqmp_mailbox_without_ipi_id_is_ignored(compatible):
+    """Missing optional IPI identifiers do not abort mailbox conversion."""
+    node = LopperNode(-1, "/mailbox")
+    node["compatible"] = [compatible]
+
+    gen_domain_dts._xlnx_zephyr_convert_zynqmp_ipi_id(node)
+
+    assert not node.props("local-ipi-id")
+    assert not node.props("remote-ipi-id")
+
+
+@pytest.mark.parametrize(("compatible", "converted_name"), [
+    ("xlnx,zynqmp-ipi-mailbox", "local-ipi-id"),
+    ("xlnx,zynqmp-ipi-dest-mailbox", "remote-ipi-id"),
+])
+def test_zynqmp_mailbox_converts_present_ipi_id(compatible, converted_name):
+    """Existing IPI identifiers retain the mailbox conversion behavior."""
+    node = LopperNode(-1, "/mailbox")
+    node["compatible"] = [compatible]
+    node["xlnx,ipi-id"] = [7]
+
+    gen_domain_dts._xlnx_zephyr_convert_zynqmp_ipi_id(node)
+
+    assert node.propval(converted_name, list) == [7]
+    assert not node.props("xlnx,ipi-id")
+
+
 class TestXilinxDomainGeneration:
     """Test Xilinx domain generation integration.
 
