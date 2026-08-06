@@ -34,9 +34,9 @@ def xlnx_zephyr_fixup_rpu_memory_names(tree, machine, memory_nodes):
 
     chosen = tree['/chosen']
     chosen_refs = {
-        name: chosen.propval(name, list)[0]
-        for name in ("zephyr,sram",)
-        if chosen.propval(name, list) != ['']
+        prop.name: chosen.propval(prop.name, list)[0]
+        for prop in chosen
+        if len(chosen.propval(prop.name, list)) == 1
     }
 
     local_tcm_nodes = []
@@ -46,21 +46,54 @@ def xlnx_zephyr_fixup_rpu_memory_names(tree, machine, memory_nodes):
                 any("TCM" in region for region in regions)):
             local_tcm_nodes.append(node)
 
+    renamed = False
     for node in list(memory_nodes) + local_tcm_nodes:
         reg = node.propval("reg", list)
         if len(reg) < 4:
             continue
         old_path = node.abs_path
         stem = node.name.split('@', 1)[0]
+        # RPU local TCM addresses use a zero high cell, so reg[1] is the
+        # unit address visible to the processor.
         new_name = "%s@%x" % (stem, reg[1])
         new_path = "%s/%s" % (node.parent.abs_path.rstrip('/'), new_name)
+        if new_path == old_path:
+            continue
         tree.delete(node)
         node.abs_path = new_path
         node.name = new_name
         tree.add(node)
+        renamed = True
         for prop_name, path in chosen_refs.items():
             if path == old_path:
                 chosen[prop_name] = new_path
+
+        try:
+            symbols = tree['/__symbols__']
+            for prop in symbols:
+                if symbols.propval(prop.name, list) == [old_path]:
+                    symbols[prop.name] = new_path
+        except KeyError:
+            pass
+
+    if renamed:
+        tree.resolve()
+        tree.sync()
+
+
+def _xlnx_zephyr_convert_zynqmp_ipi_id(node):
+    """Convert a ZynqMP mailbox IPI identifier when one is present."""
+    if not node.props("xlnx,ipi-id"):
+        return
+
+    if "xlnx,zynqmp-ipi-dest-mailbox" in node["compatible"].value:
+        node + LopperProp(name="remote-ipi-id",
+                          value=node["xlnx,ipi-id"].value)
+        node.delete("xlnx,ipi-id")
+    elif "xlnx,zynqmp-ipi-mailbox" in node["compatible"].value:
+        node + LopperProp(name="local-ipi-id",
+                          value=node["xlnx,ipi-id"].value)
+        node.delete("xlnx,ipi-id")
 
 
 def _extra_zephyr_comp_paths(options):
