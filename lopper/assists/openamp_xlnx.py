@@ -127,28 +127,29 @@ def xlnx_openamp_trim_timers(sdt, target_os, machine):
     timer_pvals = [ n.propval("timer") for n in domains[0].subnodes(children_only=True) if n.propval("timer") != [''] ]
 
     # only do trim if timer prop is provided
-    if not timer_pvals:
+    if timer_pvals == []:
         return False
-
-    flattend_timer_pvals = [item for sublist in timer_pvals for item in sublist]
-    relevant_timer_nodes = [ tree.pnode(phandle) for phandle in flattend_timer_pvals ]
-
-    # enable UIO timers
-    for i in relevant_timer_nodes:
-        if "uio" in i.propval("compatible"):
-            i['status'] = 'okay'
-
-    all_timer_nodes = [ n for n in tree["/axi"].subnodes(children_only=True, name="timer@*") if n.propval("compatible") == ["cdns,ttc"] ]
 
     # remove UIO timers from stripping
     if target_os == "linux_dt":
-        all_timer_nodes = [
-            timer_node for timer_node in all_timer_nodes
-            if "uio" not in timer_node.propval("compatible")
-        ]
+        flattend_timer_pvals = [item for sublist in timer_pvals for item in sublist]
+        relevant_timer_nodes = [ tree.pnode(phandle) for phandle in flattend_timer_pvals ]
 
-    # delete irrelevant timer nodes
-    [ tree.delete(timer_node) for timer_node in all_timer_nodes if timer_node not in relevant_timer_nodes ]
+        for node in tree["/axi"].subnodes(children_only=True, name="timer@*"):
+            if node not in relevant_timer_nodes:
+                tree.delete(node)
+            elif "uio" in node.propval("compatible"):
+                node["status"] = "okay"
+
+        return True
+
+    # baremetal / freertos / zephyr case: TTC nodes must use the
+    # cdns,ttc binding rather than the Linux UIO binding.
+    # NOTE once sigils and conditional property usge is beefed up
+    # this whole routine can go away. Until then this is a holdover
+    # to ensure that UIO / linux is there if needed.
+    for n in tree["/axi"].subnodes(children_only=True, name="timer@*"):
+        n["compatible"] = "cdns,ttc"
 
     return True
 
