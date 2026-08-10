@@ -274,6 +274,45 @@ domains:
         assert "serialff000000" in zephyr_access, \
             "serial@ff000000 should be in zephyr (explicit claim)"
 
+    def test_star_no_parent_pool_keeps_all(self, tmp_path):
+        """An unscoped '*' (no parent device pool) means "everything": it must
+        not error, and domain_access must keep the tree (no device pruning)
+        while removing the transient keep-all marker."""
+        import subprocess
+        import os
+
+        domains_yaml = tmp_path / "keepall.yaml"
+        domains_yaml.write_text("""
+domains:
+  keepall:
+    compatible: openamp,domain-v1
+    id: 0
+    os,type: linux
+    access:
+    - dev: "*"
+""")
+
+        output_dts = tmp_path / "output.dts"
+        cmd = [
+            "./lopper.py", "-f", "--permissive", "--auto",
+            "-i", str(domains_yaml),
+            "./lopper/selftest/system-top.dts",
+            str(output_dts),
+            "--", "domain_access", "-t", "/domains/keepall",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.getcwd())
+
+        # Previously fatal ("no parent domain found"); now succeeds.
+        assert result.returncode == 0, f"Lopper failed: {result.stderr}"
+
+        content = output_dts.read_text()
+        # The whole tree is kept (a scoped domain would have pruned most of these).
+        assert content.count("@") > 10, \
+            "keep-all should retain the system's device nodes, not prune them"
+        # The transient marker must not leak into the output.
+        assert "access-keep-all" not in content, \
+            "lopper,access-keep-all marker leaked into the output"
+
     def test_peer_exclusion_multiple_explicit(self, tmp_path):
         """Test multiple explicit refs are all excluded from glob."""
         import subprocess

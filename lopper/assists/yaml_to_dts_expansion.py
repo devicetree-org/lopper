@@ -482,12 +482,23 @@ def wildcard_devices( tree, domains_node ):
                         # The yaml input validation should have found any misses, but
                         # dts inputs are also possible, so we double check here
                         parent_domain = resolve_parent( domain )
+                        parent_access = domain_access( parent_domain ) if parent_domain else None
+
+                        # An unscoped "*" (no parent device pool to match against)
+                        # means "everything": mark the domain keep-all so that
+                        # core_domain_access skips device pruning, instead of
+                        # failing.  This is a transient, lopper-derived marker
+                        # (removed by core_domain_access), not authored spec data.
+                        if dev == "*" and not parent_access:
+                            _info( f"glob '*' in {domain.abs_path}: no parent device pool; marking keep-all (device pruning skipped)" )
+                            domain + LopperProp( name="lopper,access-keep-all", value=[1] )
+                            remove_list.append( a )
+                            continue
 
                         if not parent_domain:
                             _error( f"glob in {domain.abs_path}: no parent domain found (use parent: property or add domain with compatible containing ',devices')", True )
 
                         # Get parent's access list and verify it has devices
-                        parent_access = domain_access( parent_domain )
                         if not parent_access:
                             _error( f"glob in {domain.abs_path}: parent domain ({parent_domain.abs_path}) has no devices to match", True )
 

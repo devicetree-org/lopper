@@ -315,6 +315,19 @@ def core_domain_access( tgt_node, sdt, options ):
                 domain_node = sdt.tree[tgt_node]
             break
 
+    # A domain marked keep-all (an unscoped "*" access glob with no parent
+    # device pool, set during YAML expansion) activates its overlays but keeps
+    # the whole tree: skip device pruning.  Remove the transient marker so it
+    # does not leak into the output.
+    _keep_all = domain_node.propval('lopper,access-keep-all')
+    device_prune = not (_keep_all and _keep_all != [''])
+    if not device_prune:
+        _info( "core_domain_access: lopper,access-keep-all set; skipping device pruning" )
+        try:
+            domain_node.delete('lopper,access-keep-all')
+        except Exception:
+            pass
+
     direct_node_refs = []
 
     # 1) direct access = <> nodes
@@ -509,7 +522,7 @@ def core_domain_access( tgt_node, sdt, options ):
 
     if cpu_prop:
         refd_cpus, unrefd_cpus = lopper_lib.cpu_refs( sdt.tree, cpu_prop, verbose )
-        if refd_cpus:
+        if refd_cpus and device_prune:
             ref_nodes = sdt.tree.refd( "/cpus.*/cpu.*" )
 
             # now we do two types of refcount delete
@@ -594,9 +607,11 @@ def core_domain_access( tgt_node, sdt, options ):
                return False
            """
 
-    _info( f"core_domain_access: filtering on:\n------{code}\n-------\n" )
-
-    sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
+    if device_prune:
+        _info( f"core_domain_access: filtering on:\n------{code}\n-------\n" )
+        sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
+    else:
+        _info( "core_domain_access: device pruning disabled (keep-all)" )
 
     # filter #2:
     #    - starting at simple-bus nodes
@@ -606,7 +621,7 @@ def core_domain_access( tgt_node, sdt, options ):
     #    - starting at reserved memory parent
     #    - drop any unreferenced elements
 
-    for n in nodes_to_filter:
+    for n in (nodes_to_filter if device_prune else []):
         code = """
                p = node.ref
                if p <= 0:
