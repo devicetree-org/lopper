@@ -108,6 +108,18 @@ ref-counting, memory filtering, chosen node injection, and pruning.  If
 `lopper,activate` is absent, `os,type` is used as a fallback so existing
 domain YAML files work without modification.
 
+To retain devices outside the selected domain while still activating its
+conditional properties, disable only the device-pruning phase:
+
+```bash
+lopper system-top.dts output.dts -- \
+    domain_access -t /domains/linux-domain --no-device-prune
+```
+
+This option skips refcount-based CPU, bus, and device removal. Domain memory
+processing and chosen-node handling still run. Without the option,
+`domain_access` retains its normal domain-scoped output behavior.
+
 ---
 
 ## Per-Domain Driver Binding ("OpenAMP Pattern")

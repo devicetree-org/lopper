@@ -789,6 +789,27 @@ class TestTwoPassSubprocess:
         assert "cdns,ttc" not in content, \
             f"cdns,ttc still present in APU_Linux.dts — replace overlay not applied\n{content[:2000]}"
 
+    def test_no_device_prune_activates_overlay_and_keeps_other_domains(self, tmp_path):
+        """--no-device-prune resolves sigils without cropping the device tree."""
+        result, intermediate = self._setup_pass1(tmp_path)
+        assert result.returncode == 0, f"Pass 1 failed: {result.stderr}"
+
+        output = tmp_path / "APU_Linux-complete.dts"
+        result2 = self._run([
+            "./lopper.py", "-f", "--permissive",
+            str(intermediate), str(output),
+            "--", "domain_access", "-t", "/domains/APU_Linux",
+            "--no-device-prune",
+        ])
+        assert result2.returncode == 0, \
+            f"Pass 2 failed:\nstdout: {result2.stdout}\nstderr: {result2.stderr}"
+
+        content = output.read_text()
+        assert 'compatible = "uio"' in content
+        assert "APU_Linux" in content
+        assert "RPU1_BM" in content
+        assert "__lopper-overlays__" not in content
+
     def test_pass2_output_has_no_lopper_overlays(self, tmp_path):
         """Final APU_Linux.dts must not contain /__lopper-overlays__."""
         result, intermediate = self._setup_pass1(tmp_path)

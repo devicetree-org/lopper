@@ -179,8 +179,10 @@ def usage():
     print( """
    Usage: domain_access [OPTION]
 
-      -p       permissive matching on target node (regex)
-      -v       enable verbose debug/processing
+      -p, --permissive       permissive matching on target node (regex)
+      -t, --target NODE      apply the specified domain
+      --no-device-prune      retain devices outside the selected domain
+      -v, --verbose          enable verbose debug/processing
 
     """)
 
@@ -223,9 +225,14 @@ def core_domain_access( tgt_node, sdt, options ):
         args = []
 
     # --permissive means that non-SMID devices/memory will be consulted
-    opts,args2 = getopt.getopt( args, "vt:p", [ "verbose", "target=", "permissive" ] )
+    opts,args2 = getopt.getopt(
+        args,
+        "vt:p",
+        ["verbose", "target=", "permissive", "no-device-prune"],
+    )
 
     permissive = False
+    device_prune = True
     command_line_target=""
     for o,a in opts:
         if o in ('-v', "--verbose"):
@@ -234,6 +241,8 @@ def core_domain_access( tgt_node, sdt, options ):
             permissive = True
         elif o in ("-t", "--target"):
             command_line_target = a
+        elif o == "--no-device-prune":
+            device_prune = False
         elif o in ('-h', "--help"):
             # usage()
             sys.exit(1)
@@ -509,7 +518,7 @@ def core_domain_access( tgt_node, sdt, options ):
 
     if cpu_prop:
         refd_cpus, unrefd_cpus = lopper_lib.cpu_refs( sdt.tree, cpu_prop, verbose )
-        if refd_cpus:
+        if refd_cpus and device_prune:
             ref_nodes = sdt.tree.refd( "/cpus.*/cpu.*" )
 
             # now we do two types of refcount delete
@@ -594,9 +603,11 @@ def core_domain_access( tgt_node, sdt, options ):
                return False
            """
 
-    _info( f"core_domain_access: filtering on:\n------{code}\n-------\n" )
-
-    sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
+    if device_prune:
+        _info( f"core_domain_access: filtering on:\n------{code}\n-------\n" )
+        sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
+    else:
+        _info("core_domain_access: device pruning disabled")
 
     # filter #2:
     #    - starting at simple-bus nodes
@@ -606,7 +617,7 @@ def core_domain_access( tgt_node, sdt, options ):
     #    - starting at reserved memory parent
     #    - drop any unreferenced elements
 
-    for n in nodes_to_filter:
+    for n in nodes_to_filter if device_prune else []:
         code = """
                p = node.ref
                if p <= 0:
