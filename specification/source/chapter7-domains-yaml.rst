@@ -201,6 +201,19 @@ Example:
          size: 0x1000
          flags: {read-only: true}
 
+Instead of a start/size pair, a GLOB pattern matching string may be given as a
+``memory`` entry. It is matched against the physical memory present in the
+system; ``"*"`` selects all physical memory, so the domain keeps the full
+memory map rather than a specific allocation. Please refer to [GLOB]_ for more
+details.
+
+Example:
+
+.. code-block:: YAML
+
+   memory:
+       - "*"
+
 
 Cpus
 ----
