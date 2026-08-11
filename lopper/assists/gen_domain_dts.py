@@ -1134,6 +1134,25 @@ def _apply_pl_peripheral_transforms(node, schema, rename_timer=None, stdout_baud
     return None
 
 
+def _rename_node_preserve_path_refs(node, name, sdt):
+    """Rename a node and preserve properties that reference its old path."""
+    old_path = node.abs_path
+    parent_path = node.parent.abs_path.rstrip('/')
+    new_path = f"{parent_path}/{name}" if parent_path else f"/{name}"
+
+    root = sdt.tree['/']
+    for ref_node in [root] + root.subnodes():
+        for prop in ref_node:
+            values = prop.value if isinstance(prop.value, list) else [prop.value]
+            updated = [new_path if value == old_path else value for value in values]
+            if updated != values:
+                prop.value = updated
+
+    node.name = name
+    node.sync()
+    sdt.tree.sync()
+
+
 def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
     root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
@@ -1203,11 +1222,15 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                         node["compatible"].value = ["xlnx,mbox-versal-ipi-mailbox"]
                     elif "xlnx,versal-ipi-dest-mailbox" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,mbox-versal-ipi-dest-mailbox"]
-                        node.name = f"child@{hex(node.propval('reg')[1])[2:]}"
+                        _rename_node_preserve_path_refs(
+                            node, f"child@{node.propval('reg')[1]:x}", sdt)
                     _xlnx_zephyr_convert_zynqmp_ipi_id(node)
                     if "xlnx,zynqmp-ipi-mailbox" in node["compatible"].value:
                         node + LopperProp(name="reg-names", value="host_ipi_reg")
                         node + LopperProp(name="status", value="okay")
+                        for remote_node in node.subnodes(children_only=True):
+                            _rename_node_preserve_path_refs(
+                                remote_node, "ipi@%x" % remote_node["reg"][1], sdt)
                     # PS-IIC
                     if "cdns,i2c-r1p14" in node["compatible"].value:
                         node["compatible"].value = ["cdns,i2c"]
