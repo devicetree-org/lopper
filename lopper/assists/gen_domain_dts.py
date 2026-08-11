@@ -1208,6 +1208,9 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                     if "xlnx,zynqmp-ipi-mailbox" in node["compatible"].value:
                         node + LopperProp(name="reg-names", value="host_ipi_reg")
                         node + LopperProp(name="status", value="okay")
+                        for remote_node in node.subnodes(children_only=True):
+                            remote_node.name = "ipi@%x" % (remote_node["reg"][1])
+                            remote_node.sync()
                     # PS-IIC
                     if "cdns,i2c-r1p14" in node["compatible"].value:
                         node["compatible"].value = ["cdns,i2c"]
