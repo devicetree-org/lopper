@@ -223,10 +223,16 @@ def core_domain_access( tgt_node, sdt, options ):
         args = []
 
     # --permissive means that non-SMID devices/memory will be consulted
-    opts,args2 = getopt.getopt( args, "vt:p", [ "verbose", "target=", "permissive" ] )
+    opts,args2 = getopt.getopt( args, "vt:p", [ "verbose", "target=", "permissive", "no-device-prune", "no-memory-prune" ] )
 
     permissive = False
     command_line_target=""
+    # Command-line overrides for the prune phases. These are equivalent to a
+    # domain carrying access: "*" (devices) / memory: "*" (memory); they exist
+    # so the same behaviour is reachable when invoking domain_access explicitly,
+    # but they are not the primary mechanism (a domain's own data is).
+    cli_no_device_prune = False
+    cli_no_memory_prune = False
     for o,a in opts:
         if o in ('-v', "--verbose"):
             verbose = verbose + 1
@@ -234,6 +240,10 @@ def core_domain_access( tgt_node, sdt, options ):
             permissive = True
         elif o in ("-t", "--target"):
             command_line_target = a
+        elif o == "--no-device-prune":
+            cli_no_device_prune = True
+        elif o == "--no-memory-prune":
+            cli_no_memory_prune = True
         elif o in ('-h', "--help"):
             # usage()
             sys.exit(1)
@@ -317,16 +327,28 @@ def core_domain_access( tgt_node, sdt, options ):
 
     # A domain marked keep-all (an unscoped "*" access glob with no parent
     # device pool, set during YAML expansion) activates its overlays but keeps
-    # the whole tree: skip device pruning.  Remove the transient marker so it
-    # does not leak into the output.
+    # the whole tree: skip device pruning.  The marker is a persisted "lopper,"
+    # property and is intentionally NOT deleted: it is the keep-all equivalent
+    # of a scoped domain's access list, so it must survive into the output for
+    # staged/re-consumed processing to remain idempotent (a second domain_access
+    # pass would otherwise see no access and no marker, and bare-prune the
+    # domain).  Strip it at finalize with a delete lop if a clean deliverable is
+    # required.  It is not OS-interpreted.
     _keep_all = domain_node.propval('lopper,access-keep-all')
-    device_prune = not (_keep_all and _keep_all != [''])
+    device_prune = not ((_keep_all and _keep_all != ['']) or cli_no_device_prune)
     if not device_prune:
         _info( "core_domain_access: lopper,access-keep-all set; skipping device pruning" )
-        try:
-            domain_node.delete('lopper,access-keep-all')
-        except Exception:
-            pass
+
+    # A domain marked keep-all-sram (an sram "*" glob, set during YAML
+    # expansion) means "all sram".  domain_access derives node retention only
+    # from 'access' and 'memory' (there is no sram prune), so the mmio-sram
+    # device nodes are kept via access.  The persisted marker is intentionally
+    # left in place (provenance / idempotent re-consumption, like the access
+    # keep-all marker above) and is the hook for any future sram-specific
+    # keep-all handling.  Strip at finalize if a clean deliverable is required.
+    _sram_keep_all = domain_node.propval('lopper,sram-keep-all')
+    if _sram_keep_all and _sram_keep_all != ['']:
+        _info( "core_domain_access: lopper,sram-keep-all set; sram nodes retained via access" )
 
     direct_node_refs = []
 
@@ -650,15 +672,14 @@ def core_domain_access( tgt_node, sdt, options ):
     # A domain marked keep-all-memory (a "*" memory glob, set during YAML
     # expansion) keeps the full physical memory: skip both the reg-shrinking
     # below and the unreferenced-memory prune at the end of this routine.
-    # Remove the transient marker so it does not leak into the output.
+    # The marker is a persisted "lopper," property and is intentionally NOT
+    # deleted (provenance / idempotent re-consumption, like the access keep-all
+    # marker); strip it at finalize with a delete lop if a clean deliverable is
+    # required.  It is not OS-interpreted.
     _mem_keep_all = domain_node.propval('lopper,memory-keep-all')
-    memory_prune = not (_mem_keep_all and _mem_keep_all != [''])
+    memory_prune = not ((_mem_keep_all and _mem_keep_all != ['']) or cli_no_memory_prune)
     if not memory_prune:
         _info( "core_domain_access: lopper,memory-keep-all set; preserving full physical memory" )
-        try:
-            domain_node.delete('lopper,memory-keep-all')
-        except Exception:
-            pass
         memory_nodes = []
     else:
         # Get all top level memory nodes, we'll be checking them for any

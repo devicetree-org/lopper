@@ -309,13 +309,16 @@ domains:
         # The whole tree is kept (a scoped domain would have pruned most of these).
         assert content.count("@") > 10, \
             "keep-all should retain the system's device nodes, not prune them"
-        # The transient marker must not leak into the output.
-        assert "access-keep-all" not in content, \
-            "lopper,access-keep-all marker leaked into the output"
+        # The keep-all marker is persisted as provenance (the keep-all
+        # equivalent of a scoped domain's access list), so it stays in the
+        # output for idempotent re-consumption; strip at finalize if unwanted.
+        assert "lopper,access-keep-all" in content, \
+            "keep-all marker should persist in the output as provenance"
 
     def test_memory_star_keeps_all_physical_memory(self, tmp_path):
         """memory: '*' keeps all physical memory nodes with their full reg (not
-        shrunk to a domain allocation), and removes the transient marker."""
+        shrunk to a domain allocation); the keep-all markers persist as
+        provenance."""
         import subprocess
         import os
 
@@ -350,9 +353,172 @@ domains:
         # Full DDR reg preserved (a scoped domain would shrink it).
         assert "0x7ff00000" in content.lower(), \
             "memory: '*' should preserve full physical memory reg, not shrink it"
-        # Transient markers must not leak into the output.
-        assert "memory-keep-all" not in content and "access-keep-all" not in content, \
-            "keep-all markers leaked into the output"
+        # Markers persist as provenance (idempotent re-consumption).
+        assert "lopper,access-keep-all" in content and "lopper,memory-keep-all" in content, \
+            "keep-all markers should persist in the output as provenance"
+
+    def test_cli_overrides_equivalent_to_star_domain(self, tmp_path):
+        """The command-line overrides (--no-device-prune --no-memory-prune) on a
+        plain domain produce the same *functional* output as expressing keep-all
+        as data (access: '*' + memory: '*') on the same domain. The data form
+        additionally persists provenance markers (which the flag form has no
+        reason to emit), so equality is checked after normalizing those lines
+        out. Data is the primary mechanism (works auto-fired/in pipelines); the
+        flags are an override."""
+        import subprocess
+        import os
+
+        cli_yaml = tmp_path / "cli.yaml"
+        cli_yaml.write_text("""
+domains:
+  d:
+    compatible: openamp,domain-v1
+    id: 0
+    os,type: linux
+""")
+        data_yaml = tmp_path / "data.yaml"
+        data_yaml.write_text("""
+domains:
+  d:
+    compatible: openamp,domain-v1
+    id: 0
+    os,type: linux
+    access:
+    - dev: "*"
+    memory:
+    - "*"
+""")
+
+        def run(inp, extra):
+            out = tmp_path / (os.path.basename(str(inp)) + ".out.dts")
+            cmd = ["./lopper.py", "-f", "--permissive", "--auto",
+                   "-i", str(inp), "./lopper/selftest/system-top.dts", str(out),
+                   "--", "domain_access", "-t", "/domains/d"] + extra
+            r = subprocess.run(cmd, capture_output=True, text=True, cwd=os.getcwd())
+            assert r.returncode == 0, f"lopper failed: {r.stderr}"
+            return out.read_text()
+
+        cli_out = run(cli_yaml, ["--no-device-prune", "--no-memory-prune"])
+        data_out = run(data_yaml, [])
+
+        def strip_markers(text):
+            return "\n".join(l for l in text.splitlines()
+                             if "keep-all" not in l)
+
+        assert strip_markers(cli_out) == strip_markers(data_out), \
+            "CLI overrides and access/memory '*' data must produce the same " \
+            "functional output (ignoring the data form's provenance markers)"
+        # And the data form does carry the provenance markers.
+        assert "lopper,access-keep-all" in data_out and "lopper,memory-keep-all" in data_out, \
+            "the data form should persist keep-all markers"
+        assert cli_out.count('device_type = "memory"') >= 5, \
+            "both approaches should keep the full physical memory"
+
+    def test_sram_star_no_garbage_reg(self, tmp_path):
+        """sram: '*' is handled symmetrically to memory: '*' — no specific
+        carveout is assigned and, crucially, the old garbage-reg fallback
+        (sram = <0xdead 0xffff>, from the string '*' hitting m.keys()) is gone.
+        sram *node* retention is access's job, so access: '*' keeps the
+        mmio-sram devices; the sram marker only suppresses the carveout."""
+        import subprocess
+        import os
+
+        domains_yaml = tmp_path / "sramall.yaml"
+        domains_yaml.write_text("""
+domains:
+  sramall:
+    compatible: openamp,domain-v1
+    id: 0
+    os,type: linux
+    access:
+    - dev: "*"
+    sram:
+    - "*"
+""")
+
+        output_dts = tmp_path / "output.dts"
+        cmd = [
+            "./lopper.py", "-f", "--permissive", "--auto",
+            "-i", str(domains_yaml),
+            "./lopper/selftest/system-top.dts",
+            str(output_dts),
+            "--", "domain_access", "-t", "/domains/sramall",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.getcwd())
+        assert result.returncode == 0, f"Lopper failed: {result.stderr}"
+
+        content = output_dts.read_text()
+        # The garbage fallback reg must not appear.
+        assert "0xdead" not in content.lower(), \
+            "sram: '*' produced the garbage-reg fallback (0xdead ...)"
+        # The sram keep-all marker persists as provenance.
+        assert "lopper,sram-keep-all" in content, \
+            "sram keep-all marker should persist in the output as provenance"
+        # access: '*' keeps the mmio-sram device nodes.
+        assert "mmio-sram" in content, \
+            "access: '*' should retain the mmio-sram device nodes"
+
+    def test_keepall_survives_roundtrip_and_is_idempotent(self, tmp_path):
+        """The keep-all marker is a persisted 'lopper,' property, so:
+          1) it survives a DTS round-trip (expand -> write -> domain_access on
+             the written DTS still keeps everything); a non-persistent name
+             (e.g. '__'-prefixed, stripped on reload) would silently prune the
+             domain to bare and drop all memory, and
+          2) it makes domain_access idempotent on its own output: re-consuming
+             the result in a further stage keeps everything again, instead of
+             bare-pruning a domain that no longer carries access/memory data.
+        Guards against re-introducing a non-persistent name or re-adding the
+        marker-delete."""
+        import subprocess
+        import os
+
+        domains_yaml = tmp_path / "ka.yaml"
+        domains_yaml.write_text("""
+domains:
+  ka:
+    compatible: openamp,domain-v1
+    id: 0
+    os,type: linux
+    access:
+    - dev: "*"
+    memory:
+    - "*"
+""")
+
+        def domain_access_on(inp):
+            out = tmp_path / (os.path.basename(str(inp)) + ".da.dts")
+            r = subprocess.run(
+                ["./lopper.py", "-f", "--enhanced", str(inp), str(out),
+                 "--", "domain_access", "-t", "/domains/ka"],
+                capture_output=True, text=True, cwd=os.getcwd())
+            assert r.returncode == 0, f"domain_access failed: {r.stderr}"
+            return out
+
+        # Step 1: expand YAML into a written DTS (the round-trip boundary).
+        expanded = tmp_path / "expanded.dts"
+        r1 = subprocess.run(
+            ["./lopper.py", "-f", "--permissive", "--enhanced", "--auto",
+             "-i", str(domains_yaml), "./lopper/selftest/system-top.dts", str(expanded)],
+            capture_output=True, text=True, cwd=os.getcwd())
+        assert r1.returncode == 0, f"expand failed: {r1.stderr}"
+        assert "lopper,access-keep-all" in expanded.read_text(), \
+            "keep-all marker did not persist into the expanded DTS (non-persistent name?)"
+
+        # Step 2: domain_access on the reloaded DTS must still keep everything,
+        # and the marker must persist for the next stage.
+        out2 = domain_access_on(expanded)
+        c2 = out2.read_text()
+        assert c2.count('device_type = "memory"') >= 5, \
+            "keep-all lost across the DTS round-trip (memory nodes pruned)"
+        assert "lopper,access-keep-all" in c2 and "lopper,memory-keep-all" in c2, \
+            "keep-all markers must persist for idempotent re-consumption"
+
+        # Step 3: re-consume the previous output. Because the markers persist,
+        # this is idempotent (a deleted-marker design would bare-prune here).
+        out3 = domain_access_on(out2)
+        c3 = out3.read_text()
+        assert c3.count('device_type = "memory"') >= 5, \
+            "re-consuming the keep-all output pruned it (markers not idempotent)"
 
     def test_peer_exclusion_multiple_explicit(self, tmp_path):
         """Test multiple explicit refs are all excluded from glob."""

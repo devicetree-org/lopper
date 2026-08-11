@@ -487,8 +487,11 @@ def wildcard_devices( tree, domains_node ):
                         # An unscoped "*" (no parent device pool to match against)
                         # means "everything": mark the domain keep-all so that
                         # core_domain_access skips device pruning, instead of
-                        # failing.  This is a transient, lopper-derived marker
-                        # (removed by core_domain_access), not authored spec data.
+                        # failing.  This is a persisted property (a "lopper,"
+                        # name, not "__..__") so it survives a DTS round-trip and
+                        # works in multi-step pipelines; core_domain_access always
+                        # deletes it, which is what keeps it out of the final
+                        # output.  Not authored spec data.
                         if dev == "*" and not parent_access:
                             _info( f"glob '*' in {domain.abs_path}: no parent device pool; marking keep-all (device pruning skipped)" )
                             domain + LopperProp( name="lopper,access-keep-all", value=[1] )
@@ -1101,13 +1104,18 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
         for i in range(0,len(prop)):
             mem.append( prop[i] )
 
-        # A "*" memory entry means "all physical memory": mark the domain
-        # keep-all-memory so core_domain_access preserves the full memory reg
-        # rather than shrinking it to a domain allocation.  Transient,
-        # lopper-derived marker (removed by core_domain_access).  Only meaningful
-        # for the 'memory' property, not reserved-memory.
-        if prop_name == 'memory' and any( isinstance(m, str) and m.strip() == "*" for m in mem ):
-            subnode + LopperProp( name="lopper,memory-keep-all", value=[1] )
+        # A "*" entry means "all physical memory/sram": mark the domain
+        # keep-all so the specific carveout is not assigned.  For 'memory'
+        # this also tells core_domain_access to preserve the full memory reg
+        # (skip section-6 shrinking); 'sram' has no domain_access prune (sram
+        # nodes are mmio-sram *devices* kept via access), so the marker only
+        # suppresses the carveout here.  These are persisted "lopper," names
+        # (not "__..__") so they survive a DTS round-trip / pipeline;
+        # core_domain_access always deletes them, keeping them out of the final
+        # output.  Not for reserved-memory (handled elsewhere).
+        if prop_name in ('memory', 'sram') and any( isinstance(m, str) and m.strip() == "*" for m in mem ):
+            marker = "lopper,memory-keep-all" if prop_name == 'memory' else "lopper,sram-keep-all"
+            subnode + LopperProp( name=marker, value=[1] )
             if subnode.props( prop_name ):
                 subnode.delete( prop_name )
             return
