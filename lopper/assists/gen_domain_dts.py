@@ -128,6 +128,9 @@ def _xlnx_zephyr_convert_zynqmp_ipi_id(node):
                           value=node["xlnx,ipi-id"].value)
         node.delete("xlnx,ipi-id")
 
+    node.resolve()
+    node.sync()
+
 
 def _extra_zephyr_comp_paths(options):
     """Parse and memoize --extra-zephyr-comp arguments from options['args'].
@@ -1203,11 +1206,21 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                         node["compatible"].value = ["xlnx,mbox-versal-ipi-mailbox"]
                     elif "xlnx,versal-ipi-dest-mailbox" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,mbox-versal-ipi-dest-mailbox"]
-                        node.name = f"child@{hex(node.propval('reg')[1])[2:]}"
+                        sdt.tree.rename(node, f"child@{node.propval('reg')[1]:x}")
                     _xlnx_zephyr_convert_zynqmp_ipi_id(node)
                     if "xlnx,zynqmp-ipi-mailbox" in node["compatible"].value:
                         node + LopperProp(name="reg-names", value="host_ipi_reg")
                         node + LopperProp(name="status", value="okay")
+                        for remote_node in node.subnodes(children_only=True):
+                            _xlnx_zephyr_convert_zynqmp_ipi_id(remote_node)
+                            child_schema = [entry for compatible, entry in schema.items()
+                                            if compatible in remote_node.propval(
+                                                "compatible", list)]
+                            if child_schema:
+                                child_required = list(child_schema[0].get("required", []))
+                                child_required.extend(("phandle", "linux,phandle"))
+                                delete_unused_props(remote_node, child_required, False)
+                            sdt.tree.rename(remote_node, "ipi@%x" % remote_node["reg"][1])
                     # PS-IIC
                     if "cdns,i2c-r1p14" in node["compatible"].value:
                         node["compatible"].value = ["cdns,i2c"]
@@ -1530,13 +1543,7 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                             sdt.tree.delete(node)
 
     for node in root_sub_nodes:
-        if (node.props("remote-ipi-id") and node.parent and
-                "xlnx,zynqmp-ipi-mailbox" in
-                node.parent.propval("compatible", list)):
-            if node.props("compatible"):
-                node.delete("compatible")
-            if node.props("#mbox-cells"):
-                node.delete("#mbox-cells")
+        _xlnx_zephyr_convert_zynqmp_ipi_id(node)
 
     for node in memnode_list:
         if node.propval('ranges') != ['']:
