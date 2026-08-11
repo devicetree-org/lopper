@@ -1101,6 +1101,17 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
         for i in range(0,len(prop)):
             mem.append( prop[i] )
 
+        # A "*" memory entry means "all physical memory": mark the domain
+        # keep-all-memory so core_domain_access preserves the full memory reg
+        # rather than shrinking it to a domain allocation.  Transient,
+        # lopper-derived marker (removed by core_domain_access).  Only meaningful
+        # for the 'memory' property, not reserved-memory.
+        if prop_name == 'memory' and any( isinstance(m, str) and m.strip() == "*" for m in mem ):
+            subnode + LopperProp( name="lopper,memory-keep-all", value=[1] )
+            if subnode.props( prop_name ):
+                subnode.delete( prop_name )
+            return
+
         mem_list = []
         for m in mem:
 

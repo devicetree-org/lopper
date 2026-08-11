@@ -537,7 +537,7 @@ def core_domain_access( tgt_node, sdt, options ):
                      p = node.propval('compatible')
                      if p and "{prop}" in p:
                          if node.ref <= 0:
-                             return True
+    return True
 
                      return False
                    """
@@ -647,9 +647,23 @@ def core_domain_access( tgt_node, sdt, options ):
     # ranges <>, etc, and modify them accordingly.
     _info( f"core_domain_access: domain memory values: {memory_hex}" )
 
-    # Get all top level memory nodes, we'll be checking them for any
-    # required size adjustments
-    memory_nodes = sdt.tree.nodes("/memory@.*")
+    # A domain marked keep-all-memory (a "*" memory glob, set during YAML
+    # expansion) keeps the full physical memory: skip both the reg-shrinking
+    # below and the unreferenced-memory prune at the end of this routine.
+    # Remove the transient marker so it does not leak into the output.
+    _mem_keep_all = domain_node.propval('lopper,memory-keep-all')
+    memory_prune = not (_mem_keep_all and _mem_keep_all != [''])
+    if not memory_prune:
+        _info( "core_domain_access: lopper,memory-keep-all set; preserving full physical memory" )
+        try:
+            domain_node.delete('lopper,memory-keep-all')
+        except Exception:
+            pass
+        memory_nodes = []
+    else:
+        # Get all top level memory nodes, we'll be checking them for any
+        # required size adjustments
+        memory_nodes = sdt.tree.nodes("/memory@.*")
 
     # Get address-cells and size-cells from root node (standard DT inheritance)
     # These must match what memory_expand() used when creating the property
@@ -926,9 +940,11 @@ def core_domain_access( tgt_node, sdt, options ):
                return False
            """
 
-    _info( f"domain_access: core_domain_access: deleting unreferenced memory:\n------{code}\n-------\n" )
-
-    sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
+    if memory_prune:
+        _info( f"domain_access: core_domain_access: deleting unreferenced memory:\n------{code}\n-------\n" )
+        sdt.tree.filter( "/", LopperAction.DELETE, code, None, verbose )
+    else:
+        _info( "domain_access: core_domain_access: memory pruning disabled (keep-all)" )
 
     # final) deal with unreferenced nodes
     refd_nodes = sdt.tree.refd()

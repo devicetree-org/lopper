@@ -313,6 +313,47 @@ domains:
         assert "access-keep-all" not in content, \
             "lopper,access-keep-all marker leaked into the output"
 
+    def test_memory_star_keeps_all_physical_memory(self, tmp_path):
+        """memory: '*' keeps all physical memory nodes with their full reg (not
+        shrunk to a domain allocation), and removes the transient marker."""
+        import subprocess
+        import os
+
+        domains_yaml = tmp_path / "memall.yaml"
+        domains_yaml.write_text("""
+domains:
+  memall:
+    compatible: openamp,domain-v1
+    id: 0
+    os,type: linux
+    access:
+    - dev: "*"
+    memory:
+    - "*"
+""")
+
+        output_dts = tmp_path / "output.dts"
+        cmd = [
+            "./lopper.py", "-f", "--permissive", "--auto",
+            "-i", str(domains_yaml),
+            "./lopper/selftest/system-top.dts",
+            str(output_dts),
+            "--", "domain_access", "-t", "/domains/memall",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.getcwd())
+        assert result.returncode == 0, f"Lopper failed: {result.stderr}"
+
+        content = output_dts.read_text()
+        # All physical memory nodes retained (system-top.dts ships several).
+        assert content.count('device_type = "memory"') >= 5, \
+            "memory: '*' should keep all physical memory nodes"
+        # Full DDR reg preserved (a scoped domain would shrink it).
+        assert "0x7ff00000" in content.lower(), \
+            "memory: '*' should preserve full physical memory reg, not shrink it"
+        # Transient markers must not leak into the output.
+        assert "memory-keep-all" not in content and "access-keep-all" not in content, \
+            "keep-all markers leaked into the output"
+
     def test_peer_exclusion_multiple_explicit(self, tmp_path):
         """Test multiple explicit refs are all excluded from glob."""
         import subprocess
