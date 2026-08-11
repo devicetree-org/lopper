@@ -214,6 +214,20 @@ Example:
    memory:
        - "*"
 
+A ``sram`` entry may use the same ``"*"`` pattern to select all sram rather
+than a specific carveout. Note that the sram nodes themselves are ordinary
+devices, so they are retained through the domain's ``access`` list (for
+example ``access: - dev: "*"``); ``sram: "*"`` only indicates that no specific
+sram allocation should be carved out for the domain. Please refer to [GLOB]_
+for more details.
+
+Example:
+
+.. code-block:: YAML
+
+   sram:
+       - "*"
+
 
 Cpus
 ----
