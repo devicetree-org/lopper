@@ -974,3 +974,96 @@ class TestPathRefPruning:
         remaining_chosen = [p.name for p in chosen]
         assert "stdout-path" not in remaining_chosen, \
             "stdout-path referencing pruned alias must itself be pruned"
+
+
+class TestRenameFollowsRefs:
+    """LopperTree.rename() / update_path_refs() / sync(follow_renames=True):
+    when a node is renamed in place, path references to it (and its
+    descendants) follow to the new path instead of being dropped as dangling.
+    Renames only -- moves never follow (a path-ref addresses a location;
+    phandles follow identity)."""
+
+    OLD = "/axi/serial@f1920000"
+    NEW_NAME = "uart@f1920000"
+    NEW = "/axi/uart@f1920000"
+
+    def _tree(self):
+        from lopper.tree import LopperTree, LopperNode, LopperProp
+
+        tree = LopperTree()
+        root = LopperNode(-1, "/"); root.abs_path = "/"; tree + root
+        axi = LopperNode(-1, "axi"); axi.abs_path = "/axi"; tree + axi
+        ser = LopperNode(-1, "serial@f1920000"); ser.abs_path = self.OLD; tree + ser
+        foo = LopperNode(-1, "foo"); foo.abs_path = self.OLD + "/foo"; tree + foo
+
+        aliases = LopperNode(-1, "aliases"); aliases.abs_path = "/aliases"; tree + aliases
+        a0 = LopperProp("serial0", -1, aliases, [self.OLD]); a0.pclass = "string"; aliases + a0
+        # a reference to a *descendant* of the node being renamed
+        ad = LopperProp("serial0foo", -1, aliases, [self.OLD + "/foo"]); ad.pclass = "string"; aliases + ad
+        tree.resolve()
+        return tree, ser, aliases
+
+    def test_rename_follows_path_refs(self):
+        """rename() rewrites refs to the node and to its descendants."""
+        tree, ser, aliases = self._tree()
+        tree.rename(ser, self.NEW_NAME)
+        assert ser.abs_path == self.NEW
+        assert aliases.propval("serial0") == [self.NEW], \
+            "path-ref to the renamed node should follow the rename"
+        assert aliases.propval("serial0foo") == [self.NEW + "/foo"], \
+            "path-ref to a descendant of the renamed node should follow too"
+
+    def test_rename_rejects_move(self):
+        """rename() takes a leaf name, not a path -- reparenting is a move."""
+        import pytest
+        tree, ser, _ = self._tree()
+        with pytest.raises(ValueError):
+            tree.rename(ser, "soc/uart@f1920000")
+
+    def test_sync_follow_renames_is_opt_in(self):
+        """A raw `node.name = ...; tree.sync()` (default) must NOT rewrite refs;
+        `sync(follow_renames=True)` must."""
+        # default off: refs unchanged
+        tree, ser, aliases = self._tree()
+        ser.name = self.NEW_NAME
+        tree.sync()
+        assert aliases.propval("serial0") == [self.OLD], \
+            "default sync must not follow renames (opt-in only)"
+
+        # opt-in on: refs follow
+        tree, ser, aliases = self._tree()
+        ser.name = self.NEW_NAME
+        tree.sync(follow_renames=True)
+        assert aliases.propval("serial0") == [self.NEW], \
+            "sync(follow_renames=True) should follow the rename"
+
+    def test_update_path_refs_skips_symbols(self):
+        """/__symbols__ is rebuilt from abs_path on resolve(); update_path_refs
+        must not touch it."""
+        from lopper.tree import LopperNode, LopperProp
+        tree, ser, aliases = self._tree()
+        sym = LopperNode(-1, "__symbols__"); sym.abs_path = "/__symbols__"; tree + sym
+        ps = LopperProp("ser", -1, sym, [self.OLD]); ps.pclass = "string"; sym + ps
+        tree.update_path_refs(self.OLD, self.NEW)
+        assert tree["/__symbols__"].propval("ser") == [self.OLD], \
+            "update_path_refs must skip /__symbols__ (resolve rebuilds it)"
+        assert aliases.propval("serial0") == [self.NEW], \
+            "non-symbols path-refs should still be rewritten"
+
+    def test_update_path_refs_excludes_non_path_typed_names(self):
+        """A property whose *name* the schema types as string/alias-ref/boolean
+        is never treated as a path-ref, even if its value starts with '/'."""
+        import pytest
+        import lopper.schema
+        from lopper.tree import LopperProp
+        string_names = list(
+            lopper.schema.PROPERTY_TYPE_HINTS.get("string_properties", []))
+        if not string_names:
+            pytest.skip("no string_properties hints available to exercise exclusion")
+        name = string_names[0]
+
+        tree, ser, aliases = self._tree()
+        sp = LopperProp(name, -1, aliases, [self.OLD]); sp.pclass = "string"; aliases + sp
+        tree.update_path_refs(self.OLD, self.NEW)
+        assert aliases.propval(name) == [self.OLD], \
+            f"schema-typed non-path-ref '{name}' must not be rewritten"

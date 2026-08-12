@@ -5246,39 +5246,24 @@ class LopperTree:
             # boolean) — mirror the schema resolver's name-based exclusions
             # (lopper/schema learned.py _determine_property_type) so we never drop
             # e.g. bootargs ("/dev/mmcblk0 ...") or a label that starts with '/'.
-            try:
-                _hints = lopper.schema.PROPERTY_TYPE_HINTS
-                non_path_ref_names = (
-                    set(_hints.get('string_properties', []))
-                    | set(_hints.get('alias_ref_properties', []))
-                    | set(_hints.get('boolean_properties', []))
-                )
-            except Exception:
-                non_path_ref_names = set()
+            non_path_ref_names = self._non_path_ref_names()
 
             for n in self:
                 props_to_delete = []
                 for p in n:
-                    # Skip names typed as non-path-ref; their values are never
-                    # path-refs even when they start with '/'.
-                    if p.name in non_path_ref_names:
+                    raw = self._prop_path_ref_value( p.name, p.value, non_path_ref_names )
+                    if raw is None:
                         continue
-                    val = p.value
-                    # String properties are stored as a list; extract single string value.
-                    if not isinstance(val, list) or len(val) != 1 or not isinstance(val[0], str):
-                        continue
-                    raw = val[0].strip().strip('"')
-                    if raw.startswith('/'):
-                        try:
-                            self[raw]
-                        except Exception:
-                            props_to_delete.append(p)
-                            # Suppress noise for comment nodes — they disappear
-                            # with their parent by design, not a real dangling ref.
-                            if not p.name.startswith('lopper-comment-'):
-                                lopper.log._warning(
-                                    f"strict: dropping dangling path-ref "
-                                    f"'{n.abs_path}/{p.name}' -> '{raw}' (node gone)")
+                    try:
+                        self[raw]
+                    except Exception:
+                        props_to_delete.append(p)
+                        # Suppress noise for comment nodes — they disappear
+                        # with their parent by design, not a real dangling ref.
+                        if not p.name.startswith('lopper-comment-'):
+                            lopper.log._warning(
+                                f"strict: dropping dangling path-ref "
+                                f"'{n.abs_path}/{p.name}' -> '{raw}' (node gone)")
                 for p in props_to_delete:
                     n - p
 
@@ -5369,7 +5354,7 @@ class LopperTree:
         self.__check__ = False
 
 
-    def sync( self, fdt = None, only_if_required = False ):
+    def sync( self, fdt = None, only_if_required = False, follow_renames = False ):
         """Sync a tree to a backing FDT
 
         This routine walks the FDT, and sync's changes from any LopperTree nodes
@@ -5383,6 +5368,13 @@ class LopperTree:
                                passed, the stored FDT is use for sync.
            only_if_required(boolean,optional): flag to indicate that we should only
                                                sync if something is dirty
+           follow_renames(boolean,optional): if True, follow path references to
+                                             nodes renamed in place during this
+                                             sync (same-parent leaf changes),
+                                             rewriting /aliases, chosen, and other
+                                             path-ref values to the new path.
+                                             Default False preserves prior
+                                             behavior. Moves are never followed.
 
         Returns:
            Nothing
@@ -5407,7 +5399,29 @@ class LopperTree:
         #
         new_dct = self.export()
 
+        # If asked, capture in-place renames so we can follow path references to
+        # the renamed nodes after the reload. At this point __nodes__ is still
+        # keyed by the OLD paths while each node's abs_path already holds the NEW
+        # path (export() adjusted it). The dirname-equality gate admits only
+        # same-parent leaf renames and excludes every move (and the descendants
+        # of a move), whose references deliberately do not follow.
+        rename_map = None
+        if follow_renames:
+            rename_map = {
+                old_p: node.abs_path
+                for old_p, node in self.__nodes__.items()
+                if old_p != node.abs_path
+                and os.path.dirname( old_p ) == os.path.dirname( node.abs_path )
+            }
+
         self.load( new_dct )
+
+        # Apply the rewrites AFTER load() so they land on the reloaded tree
+        # (load() would otherwise overwrite edits made before it). Longest old
+        # path first so nested renames rewrite correctly.
+        if rename_map:
+            for old_p in sorted( rename_map, key=len, reverse=True ):
+                self.update_path_refs( old_p, rename_map[old_p] )
 
         lopper.log._debug( f"[{fdt}]: tree sync end: {self}" )
 
@@ -5565,6 +5579,114 @@ class LopperTree:
             return False
 
         return True
+
+    @staticmethod
+    def _non_path_ref_names():
+        """Property names that are never path-refs even if their value starts
+        with '/'. Built from the learned schema hints (string / alias-ref /
+        boolean), so classification stays in sync with the schema resolver."""
+        try:
+            _hints = lopper.schema.PROPERTY_TYPE_HINTS
+            return (
+                set(_hints.get('string_properties', []))
+                | set(_hints.get('alias_ref_properties', []))
+                | set(_hints.get('boolean_properties', []))
+            )
+        except Exception:
+            return set()
+
+    @staticmethod
+    def _prop_path_ref_value(name, value, non_path_ref_names):
+        """Return the absolute path a property references, or None.
+
+        A property is a path-ref when its name is not typed as something else
+        (string / alias-ref / boolean) and its single string value, stripped of
+        surrounding quotes/whitespace, starts with '/'. Mirrors the schema
+        resolver's name-based exclusions so we never treat e.g. bootargs
+        ("/dev/mmcblk0 ...") as a path-ref."""
+        if name in non_path_ref_names:
+            return None
+        if not isinstance(value, list) or len(value) != 1 or not isinstance(value[0], str):
+            return None
+        raw = value[0].strip().strip('"')
+        if raw.startswith('/'):
+            return raw
+        return None
+
+    def update_path_refs( self, old_path, new_path ):
+        """Follow path references when a node is renamed.
+
+        Rewrites path-bearing property values (schema path-ref values, e.g.
+        /aliases entries and any absolute-path property) from old_path to
+        new_path: a value equal to old_path, or under old_path + '/', has that
+        prefix rewritten. The '/' prefix rule follows references to a descendant
+        of the renamed node via the ancestor's mapping.
+
+        The /__symbols__ node is skipped -- it is rebuilt from each node's
+        current abs_path on resolve(). alias-ref properties (e.g. stdout-path)
+        reference an alias *name*, which is stable across the target's rename;
+        they are handled transitively when the /aliases/<name> value is
+        rewritten here.
+
+        This intentionally follows renames only. Callers use it after an
+        in-place rename; it is not a move (path-refs do not follow a reparent).
+
+        Args:
+           old_path (str): the node's path before the rename
+           new_path (str): the node's path after the rename
+        """
+        if not old_path or not new_path or old_path == new_path:
+            return
+        non_path_ref_names = self._non_path_ref_names()
+        prefix = old_path + "/"
+        for n in self:
+            if n.abs_path == "/__symbols__":
+                continue
+            for p in n:
+                raw = self._prop_path_ref_value( p.name, p.value, non_path_ref_names )
+                if raw is None:
+                    continue
+                if raw == old_path:
+                    new_raw = new_path
+                elif raw.startswith( prefix ):
+                    new_raw = new_path + raw[len(old_path):]
+                else:
+                    continue
+                # Preserve any surrounding quotes/whitespace in the stored value.
+                p.value = [ p.value[0].replace( raw, new_raw, 1 ) ]
+                p.resolve()
+
+    def rename( self, node, new_name ):
+        """Rename a node in place and follow path references to it.
+
+        Changes the node's leaf name (same parent) and rewrites path-bearing
+        properties that referenced the node -- /aliases, chosen, and other
+        path-ref values -- to the new path, so they are preserved across the
+        rename instead of being dropped as dangling by strict output.
+
+        This is a rename, not a move: new_name is a leaf name, not a path.
+        Reparenting is out of scope, and path-refs deliberately do not follow a
+        move (use a phandle for identity references).
+
+        Args:
+           node (LopperNode): the node to rename
+           new_name (str): the new leaf name (must not contain '/')
+
+        Returns:
+           LopperNode: the renamed node
+        """
+        if "/" in new_name:
+            raise ValueError(
+                f"rename: new_name '{new_name}' must be a leaf name, not a path "
+                f"(reparenting is a move, not a rename)" )
+        old_path = node.abs_path
+        new_path = ( os.path.dirname( old_path ) + "/" + new_name ).replace( "//", "/" )
+        if old_path == new_path:
+            return node
+        node.name = new_name
+        self.sync()
+        self.update_path_refs( old_path, new_path )
+        return node
 
     def _register_node(self, node):
         """Insert a node into all tree index dicts atomically.
