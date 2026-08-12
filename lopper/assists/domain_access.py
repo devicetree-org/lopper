@@ -559,7 +559,7 @@ def core_domain_access( tgt_node, sdt, options ):
                      p = node.propval('compatible')
                      if p and "{prop}" in p:
                          if node.ref <= 0:
-    return True
+                             return True
 
                      return False
                    """
