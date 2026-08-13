@@ -835,7 +835,13 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             delete_unused_props( sdt.tree[match_cpunode] , driver_proplist, False)
 
     if zephyr_dt:
-        if "r52" in machine or "a78" in machine or "a72" in machine or "r5" in machine or "a53" in machine:
+        is_arm = "r52" in machine or "a78" in machine or "a72" in machine or "r5" in machine or "a53" in machine
+        board_symbol = board_symbol_for_machine(machine) if is_arm else "BOARD_MBV32"
+
+        if board_symbol:
+            _reset_board_kconfig_scratch(sdt.outdir)
+
+        if is_arm:
             xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine)
             _xlnx_zephyr_assign_ttc0(sdt.tree, machine)
             if "a78" in machine or "a72" in machine:
@@ -883,6 +889,12 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 print(f"[ERROR] Failed to process overlay file: {e}")
                 import traceback
                 traceback.print_exc()
+
+        # Peripheral Kconfig detection must run after the board overlay merge
+        # above -- that's what actually adds nodes like the I2C EEPROM/mux or
+        # UFS controller to sdt.tree for carrier-board-specific designs.
+        if board_symbol:
+            _append_dt_peripheral_kconfig(sdt, board_symbol)
 
     return True
 
@@ -1058,6 +1070,19 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
         if node.name == 'reserved-memory' and 'r52' in machine:
             node.delete('ranges')
             node + LopperProp(name='ranges')
+
+    board_symbol = board_symbol_for_machine(machine)
+    if board_symbol:
+        default_entries = _ARM_BOARD_DEFAULT_KCONFIG.get(board_symbol, [])
+        if default_entries:
+            content = _KCONFIG_LICENSE_HEADER
+            content += f"if {board_symbol}\n\n"
+            content += _render_kconfig_entries(default_entries)
+            content += f"endif # {board_symbol}\n"
+
+            board_defconfig_file = os.path.join(sdt.outdir, "board_Kconfig.defconfig")
+            with open(board_defconfig_file, 'w') as board_defconfig:
+                board_defconfig.write(content)
 
     return True
 
@@ -1602,6 +1627,272 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
         sdt.tree['/chosen'] + LopperProp(name="zephyr,sram", value = sram_node)
 
     return True
+
+_KCONFIG_LICENSE_HEADER = '''#
+# Copyright (c) 2026, Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+'''
+
+# Devicetree-node-presence -> board-level Kconfig defaults.
+#
+# Each rule is (compat_substrings, entries): if any node in the (fully
+# merged, post board-overlay) SDT has a `compatible` value containing one of
+# compat_substrings and is enabled (no `status` property, or `status =
+# "okay"`), the paired (config_name, default_value) entries are emitted.
+#
+# Only "subsystem-level" configs that Zephyr does NOT auto-select from
+# devicetree presence belong here (menuconfig symbols with no `default`,
+# e.g. I2C, EEPROM, UFSHC, DISK_ACCESS). Leaf drivers (EEPROM_AT24,
+# I2C_TCA954X, UFS_AMD_VERSAL2, DISK_DRIVER_UFS, ...) already carry their own
+# `default y if DT_HAS_..._ENABLED` and cascade automatically once their
+# parent subsystem is on -- don't duplicate those here.
+DT_NODE_KCONFIG_RULES = [
+    # I2C controller present (Xilinx AXI IIC on PL/RISC-V designs, Cadence
+    # I2C on ARM SoCs) -- I2C menuconfig has no default of its own.
+    (("xlnx,axi-iic", "xlnx,xps-iic", "cdns,i2c"), [
+        ("I2C", "y"),
+    ]),
+    # I2C-attached EEPROM (Atmel AT24/AT25-compatible) -- EEPROM menuconfig
+    # has no default; EEPROM_AT2X/AT24 auto-select once EEPROM=y.
+    (("atmel,at24", "atmel,at25"), [
+        ("EEPROM", "y"),
+    ]),
+    # UFS host controller -- UFSHC and DISK_ACCESS menuconfigs have no
+    # default; DISK_ACCESS selects DISK_DRIVERS, and the leaf drivers
+    # (UFS_AMD_VERSAL2, DISK_DRIVER_UFS, which pulls in SCSI/UFS_STACK)
+    # auto-select once their parent subsystems are on. subsys/ufs and
+    # subsys/scsi call k_malloc/k_aligned_alloc unconditionally, so a
+    # configured heap is required too (matches the value already hand-set in
+    # every board-extensions board that enables UFSHC today) -- without it,
+    # boards whose default heap size is 0 fail to link.
+    (("amd,versal2-ufs",), [
+        ("UFSHC", "y"),
+        ("DISK_ACCESS", "y"),
+        ("HEAP_MEM_POOL_SIZE", "16384"),
+    ]),
+]
+
+
+# I2C mux (TCA954x-family) root/channel init-priority overrides. These are
+# board-specific tuning values (not derivable from the mux node itself --
+# I2C_TCA954X already auto-selects via DT_HAS_..._ENABLED, but its two
+# init-priority ints both default to the plain I2C_INIT_PRIORITY, which
+# breaks the required root-before-channel init ordering), so this stays
+# keyed by carrier-board identity (SDT root `compatible` substring), matching
+# exactly what's already hand-set in each board's board-extensions
+# `_defconfig` today. Boards not listed here get no override -- add a board
+# here only once its board-extensions `_defconfig` actually sets these.
+_I2C_MUX_PRIO_KCONFIG = [
+    ("I2C_TCA954X_ROOT_INIT_PRIO", "61"),
+    ("I2C_TCA954X_CHANNEL_INIT_PRIO", "62"),
+]
+BOARD_I2C_MUX_PRIO = {
+    'kcu105': _I2C_MUX_PRIO_KCONFIG,
+    'scu200': _I2C_MUX_PRIO_KCONFIG,
+    'scu35': _I2C_MUX_PRIO_KCONFIG,
+}
+
+
+def detect_board_i2c_mux_prio(compatible_list):
+    """Match SDT root `compatible` strings against boards with a known,
+    hand-tuned I2C mux root/channel init-priority pair. Returns the entries
+    for the first matching board, or an empty list.
+    """
+    if not compatible_list:
+        return []
+    for compat in compatible_list:
+        if not isinstance(compat, str):
+            continue
+        for key, entries in BOARD_I2C_MUX_PRIO.items():
+            if key in compat:
+                return entries
+    return []
+
+
+def _node_enabled(node):
+    status = node.propval('status', list)
+    return not status or status in ([''], ['okay'])
+
+
+def detect_dt_peripherals(tree):
+    """Scan every node in *tree* for known peripheral compatibles and return
+    the board-level Kconfig entries they require, deduplicated and in rule
+    order. Only nodes with status "okay" (or no status property) count.
+    """
+    found = []
+    seen = set()
+    try:
+        nodes = tree['/'].subnodes()
+    except Exception:
+        return found
+
+    for compats, entries in DT_NODE_KCONFIG_RULES:
+        for node in nodes:
+            node_compat = node.propval('compatible', list)
+            if node_compat == ['']:
+                continue
+            if not _node_enabled(node):
+                continue
+            if any(isinstance(c, str) and any(sub in c for sub in compats) for c in node_compat):
+                for name, value in entries:
+                    if name not in seen:
+                        seen.add(name)
+                        found.append((name, value))
+                break
+    return found
+
+
+def _reset_board_kconfig_scratch(outdir):
+    """Remove any pre-existing board_Kconfig.defconfig scratch file in *outdir*.
+
+    Lopper's scratch workspace (sdt.outdir) is reused across west
+    lopper-command invocations, and every write path for this file is
+    conditional (each only (re)writes it when the current run actually has
+    something to contribute). Without this reset, a prior run's leftover
+    content for the same board could silently survive into -- and get
+    copied out of -- a later run that adds nothing. Call this once,
+    unconditionally, before either write path runs.
+    """
+    board_defconfig_file = os.path.join(outdir, "board_Kconfig.defconfig")
+    if os.path.isfile(board_defconfig_file):
+        os.remove(board_defconfig_file)
+
+
+def _append_kconfig_entries_before_endif(file_path, board_symbol, entries):
+    """Append (name, value) Kconfig entries into *file_path*'s `if board_symbol
+    ... endif` block, before its closing `endif`. Creates the file (with a
+    fresh `if/endif` wrapper) if it doesn't already exist.
+
+    *file_path* lives in Lopper's scratch workspace, which is reused across
+    unrelated `west lopper-command` invocations for different boards -- a
+    board with no baked-in default entries (see _ARM_BOARD_DEFAULT_KCONFIG)
+    never overwrites this file at the start of its own run, so a stale
+    `board_Kconfig.defconfig` from a *different* board's earlier run can
+    still be sitting there. Guard against silently appending onto that: only
+    treat the file as belonging to the current board if it actually opens
+    with `if board_symbol`; otherwise start fresh. Entries whose `config
+    NAME` already appears in the (correctly-scoped) file are skipped.
+    """
+    existing_text = open(file_path).read() if os.path.isfile(file_path) else None
+    belongs_to_this_board = existing_text is not None and re.match(
+        rf"(?:#.*\n|\s*\n)*if\s+{re.escape(board_symbol)}\b", existing_text
+    )
+    if belongs_to_this_board:
+        text = existing_text
+        needs_write = False
+    else:
+        text = _KCONFIG_LICENSE_HEADER + f"if {board_symbol}\n\nendif # {board_symbol}\n"
+        needs_write = True  # always (re)write: replaces any stale/unrelated content
+
+    new_entries = [
+        (name, value) for name, value in entries
+        if not re.search(rf"^config\s+{re.escape(name)}\b", text, re.MULTILINE)
+    ]
+    if not new_entries:
+        if needs_write:
+            with open(file_path, 'w') as f:
+                f.write(text)
+        return
+
+    endif_matches = list(re.finditer(r"^endif\b.*$", text, re.MULTILINE))
+    insert_at = endif_matches[-1].start() if endif_matches else len(text)
+    addition = "".join(f"config {name}\n\tdefault {value}\n\n" for name, value in new_entries)
+    text = text[:insert_at] + addition + text[insert_at:]
+
+    with open(file_path, 'w') as f:
+        f.write(text)
+
+
+def _append_dt_peripheral_kconfig(sdt, board_symbol):
+    """Detect DT-node-driven peripheral Kconfig defaults, plus any
+    board-identity-keyed I2C mux priority tuning, for the fully merged *sdt*
+    and append them into its board_Kconfig.defconfig scratch file.
+    """
+    entries = detect_dt_peripherals(sdt.tree)
+    root_compatible = sdt.tree['/'].propval('compatible', list)
+    for name, value in detect_board_i2c_mux_prio(root_compatible):
+        if name not in dict(entries):
+            entries.append((name, value))
+    if not entries:
+        return
+    board_defconfig_file = os.path.join(sdt.outdir, "board_Kconfig.defconfig")
+    _append_kconfig_entries_before_endif(board_defconfig_file, board_symbol, entries)
+
+
+# ARM processor-id -> in-tree board name. Mirrors _PROCESSOR_RULES in
+# zephyr/scripts/west_commands/lopper_command.py -- keep the two in sync.
+_ARM_MACHINE_TO_BOARD = [
+    ("psx_cortexr52", "versalnet_rpu"),
+    ("cortexr52", "versal2_rpu"),
+    ("psu_cortexr5", "zynqmp_rpu"),
+    ("psv_cortexr5", "versal_rpu"),
+    ("psx_cortexa78", "versalnet_apu"),
+    ("cortexa78", "versal2_apu"),
+    ("psu_cortexa53", "zynqmp_apu"),
+    ("psv_cortexa72", "versal_apu"),
+]
+
+
+def board_symbol_for_machine(machine):
+    """Map a Lopper processor-id string (e.g. "psu_cortexa53_0") to its
+    in-tree Kconfig board guard (e.g. "BOARD_ZYNQMP_APU"). Returns None if
+    the processor-id doesn't match a known ARM board.
+    """
+    if not machine:
+        return None
+    for key, board in _ARM_MACHINE_TO_BOARD:
+        if key in machine:
+            return "BOARD_" + board.upper()
+    return None
+
+
+# Existing hand-authored boards/amd/<board>/Kconfig.defconfig content for the
+# ARM boards, so Lopper's generated file can fully replace (blind-copy) the
+# in-tree file without losing anything. Each entry is (config_name, default,
+# condition) -- condition is the enclosing `if COND` guard name, or None for
+# a top-level entry. Keep this in sync with the boards/amd/<board>/Kconfig.defconfig
+# files committed in the Zephyr tree.
+_ARM_BOARD_DEFAULT_KCONFIG = {
+    "BOARD_VERSAL_APU": [
+        ("BUILD_OUTPUT_BIN", "y", None),
+    ],
+    "BOARD_VERSAL_RPU": [
+        ("BUILD_OUTPUT_BIN", "y", None),
+        ("COMPILER_ISA_THUMB2", "n", "USERSPACE"),
+    ],
+    "BOARD_ZYNQMP_APU": [
+        ("BUILD_OUTPUT_BIN", "y", None),
+    ],
+    "BOARD_ZYNQMP_RPU": [
+        ("BUILD_OUTPUT_BIN", "y", None),
+        ("COMPILER_ISA_THUMB2", "n", "USERSPACE"),
+    ],
+}
+
+
+def _render_kconfig_entries(entries):
+    """Render (name, default, condition) triples to Kconfig text, wrapping
+    consecutive entries that share the same non-None condition in their own
+    `if COND ... endif` block."""
+    out = []
+    i = 0
+    n = len(entries)
+    while i < n:
+        name, value, cond = entries[i]
+        if cond is None:
+            out.append(f"config {name}\n\tdefault {value}\n\n")
+            i += 1
+        else:
+            out.append(f"if {cond}\n\n")
+            while i < n and entries[i][2] == cond:
+                out.append(f"config {entries[i][0]}\n\tdefault {entries[i][1]}\n\n")
+                i += 1
+            out.append("endif\n\n")
+    return "".join(out)
+
 
 def generate_board_kconfig_defconfig(isa_string, cpu_node, intc_node, num_interrupts):
     """
