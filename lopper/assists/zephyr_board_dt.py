@@ -15,7 +15,7 @@ import sys
 import tempfile
 
 from lopper import Lopper, LopperSDT, compile_overlay_standalone, _unwrap_overlay_tree
-from lopper.tree import _merge_node_into_tree, _resolve_overlay_fixups
+from lopper.tree import _merge_node_into_tree, _resolve_overlay_fixups, _apply_overlay_symbol_labels
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -128,13 +128,16 @@ def _merge_plugin_overlay(content, main_tree, sdt, sdt_folder, work_dir):
     if overlay_tree is None:
         return False
 
-    nodes, fixups, local_fixups = _unwrap_overlay_tree(overlay_tree, main_tree)
+    nodes, fixups, local_fixups, symbol_labels = _unwrap_overlay_tree(overlay_tree, main_tree)
     for node in nodes:
         _merge_node_into_tree(main_tree, node)
     if fixups or local_fixups:
         # One call resolves both global and in-overlay (__local_fixups__)
         # references, so this path can't silently drop the local ones.
         _resolve_overlay_fixups(main_tree, fixups, local_fixups)
+    if symbol_labels:
+        # Carry overlay node labels (/__symbols__) onto the merged nodes.
+        _apply_overlay_symbol_labels(main_tree, symbol_labels)
 
     fragment_map = _fragment_overlay_to_real(overlay_tree, main_tree)
     _merge_root_plugin_nodes(overlay_tree, main_tree, fragment_map)

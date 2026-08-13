@@ -255,6 +255,31 @@ def _resolve_overlay_local_fixups(tree, local_fixups):
             pass
 
 
+def _apply_overlay_symbol_labels(tree, symbol_labels):
+    """Register overlay __symbols__ labels on the merged tree nodes.
+
+    Args:
+        tree:  the merged result LopperTree (base + overlay nodes)
+        symbol_labels: list of (real_path, label) produced by
+                       _unwrap_overlay_tree() from the overlay's /__symbols__.
+
+    dtc records the label of each labelled overlay node separately under
+    /__symbols__. The phandle/local-fixup resolution above rebinds cell values
+    but does not carry labels, so a labelled overlay node (e.g.
+    storage_partition:) would otherwise lose its label on merge. Register it on
+    the corresponding merged node so references and DTS output keep the label.
+    """
+    for real_path, label in symbol_labels:
+        try:
+            node = tree.__nodes__.get(real_path)
+            if node is None:
+                continue
+            node.label = label
+            tree.__lnodes__[label] = node
+        except Exception:
+            pass
+
+
 # Lopper-internal nodes that must be skipped during DTS output.
 # Add any new internal node paths here rather than adding per-path checks.
 _LOPPER_INTERNAL_NODES = frozenset({
@@ -4424,6 +4449,12 @@ class LopperTree:
         local_fixups = self._metadata.get('overlay_local_fixups', {}).get(name)
         if local_fixups:
             _resolve_overlay_local_fixups(result, local_fixups)
+
+        # Register overlay __symbols__ labels on the merged nodes (labels are
+        # not carried by phandle/fixup resolution).
+        symbol_labels = self._metadata.get('overlay_symbol_labels', {}).get(name)
+        if symbol_labels:
+            _apply_overlay_symbol_labels(result, symbol_labels)
 
         return result
 

@@ -153,6 +153,9 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
                     target_real_path) for in-overlay (__local_fixups__)
                     references; empty list if none. Resolved by
                     _resolve_overlay_local_fixups() at build time.
+      symbol_labels list of (real_path, label) from the overlay's __symbols__;
+                    empty list if none. Applied by _apply_overlay_symbol_labels()
+                    at build time so labelled overlay nodes keep their label.
 
     Nodes whose target label cannot be resolved against base_tree are skipped
     with a warning.
@@ -335,7 +338,24 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
                         continue
                     local_fixups.append((holder_real, prop_name, byte_off, target_real))
 
-    return result_nodes, rewritten_fixups, local_fixups
+    # --- step 5: read __symbols__ (overlay node labels) ---
+    # dtc records the label of each labelled overlay node under /__symbols__
+    # (label -> overlay path). Core only labels the fragment *target* nodes
+    # (from __fixups__); nested labelled nodes lose their label on merge. Map
+    # each symbol to its real domain path so _apply_overlay_symbol_labels() can
+    # register the label on the merged node (e.g. storage_partition:).
+    symbol_labels = []
+    if ov_tree.nodes('/__symbols__'):
+        sym_node = ov_tree.nodes('/__symbols__')[0]
+        for label, prop in sym_node.__props__.items():
+            sym_path = prop.value[0] if isinstance(prop.value, list) else prop.value
+            if not isinstance(sym_path, str):
+                continue
+            real_path = _frag_to_real(sym_path)
+            if real_path:
+                symbol_labels.append((real_path, label))
+
+    return result_nodes, rewritten_fixups, local_fixups, symbol_labels
 
 
 def compile_overlay_standalone(overlay_file, include_paths="", tmpdir=None, save_temps=False):
@@ -755,12 +775,14 @@ class LopperSDT:
             # (0xffffffff) are left intact; fixups are stored for deferred
             # resolution at overlay_tree() build time against the final merged
             # tree via _resolve_overlay_fixups().
-            nodes, fixups, local_fixups = _unwrap_overlay_tree(ov_tree, self.tree)
+            nodes, fixups, local_fixups, symbol_labels = _unwrap_overlay_tree(ov_tree, self.tree)
             self.tree._metadata.setdefault('overlay_subtrees', {})[stem] = nodes
             if fixups:
                 self.tree._metadata.setdefault('overlay_fixups', {})[stem] = fixups
             if local_fixups:
                 self.tree._metadata.setdefault('overlay_local_fixups', {})[stem] = local_fixups
+            if symbol_labels:
+                self.tree._metadata.setdefault('overlay_symbol_labels', {})[stem] = symbol_labels
 
             lopper.log._debug(f"Registered {len(nodes)} overlay nodes for '{stem}'")
 

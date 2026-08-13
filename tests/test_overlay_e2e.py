@@ -1061,7 +1061,7 @@ class TestOverlayFixupsTupleFormat:
 
         ov_tree = self._make_fixup_tree()
         base_tree = self._make_base_tree()
-        _, fixups, _ = _unwrap_overlay_tree(ov_tree, base_tree)
+        _, fixups, _, _ = _unwrap_overlay_tree(ov_tree, base_tree)
 
         assert fixups, "no fixups returned — fixture may be wrong"
         for label, refs in fixups.items():
@@ -1077,7 +1077,7 @@ class TestOverlayFixupsTupleFormat:
 
         ov_tree = self._make_fixup_tree()
         base_tree = self._make_base_tree()
-        _, fixups, _ = _unwrap_overlay_tree(ov_tree, base_tree)
+        _, fixups, _, _ = _unwrap_overlay_tree(ov_tree, base_tree)
 
         for label, refs in fixups.items():
             for frag_label, relative_path, prop_name, byte_off in refs:
@@ -1090,7 +1090,7 @@ class TestOverlayFixupsTupleFormat:
 
         ov_tree = self._make_fixup_tree()
         base_tree = self._make_base_tree()
-        _, fixups, _ = _unwrap_overlay_tree(ov_tree, base_tree)
+        _, fixups, _, _ = _unwrap_overlay_tree(ov_tree, base_tree)
 
         # cma_reserved fixup is on /zyxclmm_drm (child of target), not the target itself
         assert 'cma_reserved' in fixups, "expected cma_reserved fixup"
@@ -1104,7 +1104,7 @@ class TestOverlayFixupsTupleFormat:
 
         ov_tree = self._make_fixup_tree()
         base_tree = self._make_base_tree()
-        _, fixups, _ = _unwrap_overlay_tree(ov_tree, base_tree)
+        _, fixups, _, _ = _unwrap_overlay_tree(ov_tree, base_tree)
 
         for label, refs in fixups.items():
             for frag_label, relative_path, prop_name, byte_off in refs:
@@ -1341,10 +1341,30 @@ class TestLocalFixups:
         lfcons = mknode("consumer", "/__local_fixups__/fragment@0/__overlay__/consumer")
         mkprop(lfcons, "link", [0])
         lfovl.add(lfcons)
+        # /__symbols__ : producer carries a label
+        sym = mknode("__symbols__", "/__symbols__")
+        mkprop(sym, "producer", "/fragment@0/__overlay__/producer")
+        ov.add(sym)
         # ensure pnode() can resolve the local phandle -> producer
         ov.__pnodes__[1] = ov["/fragment@0/__overlay__/producer"]
 
-        _, _, local_fixups = _unwrap_overlay_tree(ov, base)
+        _, _, local_fixups, symbol_labels = _unwrap_overlay_tree(ov, base)
 
         assert local_fixups == [("/amba_pl/consumer", "link", 0, "/amba_pl/producer")], \
             f"unexpected local_fixups: {local_fixups}"
+        assert symbol_labels == [("/amba_pl/producer", "producer")], \
+            f"unexpected symbol_labels: {symbol_labels}"
+
+    def test_apply_symbol_labels_registers_label(self):
+        """_apply_overlay_symbol_labels sets node.label and registers it in
+        __lnodes__ so the merged node keeps its overlay label."""
+        from lopper.tree import LopperTree, _apply_overlay_symbol_labels
+
+        t = LopperTree()
+        self._reg(t, "/", "/")
+        node = self._reg(t, "producer", "/amba_pl/producer")
+
+        _apply_overlay_symbol_labels(t, [("/amba_pl/producer", "producer")])
+
+        assert node.label == "producer"
+        assert t.__lnodes__.get("producer") is node
