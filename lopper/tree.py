@@ -150,7 +150,7 @@ def chunks_variable(lst, chunk_sizes):
         yield chunk
         start = end
 
-def _resolve_overlay_fixups(tree, fixups):
+def _resolve_overlay_fixups(tree, fixups, local_fixups=None):
     """Patch 0xffffffff phandle placeholders left by dtc plugin compilation.
 
     Called at overlay_tree() build time, after all overlay nodes have been
@@ -204,6 +204,55 @@ def _resolve_overlay_fixups(tree, fixups):
                         pass
             except Exception:
                 pass
+
+    # Resolving both fixup kinds through this one entry means a caller that has
+    # unwrapped an overlay cannot forget the local fixups (the #800 footgun).
+    if local_fixups:
+        _resolve_overlay_local_fixups(tree, local_fixups)
+
+
+def _resolve_overlay_local_fixups(tree, local_fixups):
+    """Patch in-overlay (__local_fixups__) phandle references by byte offset.
+
+    Args:
+        tree:  the merged result LopperTree (base + overlay nodes)
+        local_fixups: list of (holder_real_path, prop_name, byte_offset,
+                      target_real_path) produced by _unwrap_overlay_tree().
+
+    Unlike global __fixups__ (which substitute an *external* label's phandle
+    into a 0xffffffff placeholder), a local fixup references a node defined
+    *inside* the same overlay. Both holder and target were grafted into the
+    result tree; the target's phandle there (after any renumbering on merge) is
+    authoritative, so we write that into the exact cell dtc flagged. The cell is
+    located by offset (idx = byte_offset // 4) — never by value-matching, which
+    would mis-bind specifier cells in multi-cell properties.
+    """
+    for holder_path, prop_name, byte_offset, target_path in local_fixups:
+        try:
+            holder = tree.__nodes__.get(holder_path)
+            target = tree.__nodes__.get(target_path)
+            if holder is None or target is None:
+                lopper.log._warning(
+                    f"local fixup: holder '{holder_path}' or target "
+                    f"'{target_path}' not in merged tree, skipping")
+                continue
+            if prop_name not in holder.__props__:
+                continue
+            target_phandle = target.phandle
+            if not target_phandle or target_phandle < 0:
+                continue
+            prop = holder.__props__[prop_name]
+            val = list(prop.__dict__.get('value', []))
+            idx = int(byte_offset) // 4
+            if idx < len(val):
+                val[idx] = target_phandle
+                prop.__dict__['value'] = val
+                try:
+                    prop.resolve()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
 
 # Lopper-internal nodes that must be skipped during DTS output.
@@ -4368,6 +4417,14 @@ class LopperTree:
 
         # Re-resolve the whole tree so string_val is current for DTS output
         result.resolve()
+
+        # In-overlay (__local_fixups__) references point at overlay nodes whose
+        # phandles are only final after the merge + resolve above, so resolve
+        # them here against the finalized tree.
+        local_fixups = self._metadata.get('overlay_local_fixups', {}).get(name)
+        if local_fixups:
+            _resolve_overlay_local_fixups(result, local_fixups)
+
         return result
 
     def __iter__(self):

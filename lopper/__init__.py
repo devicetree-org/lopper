@@ -141,7 +141,7 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
       so _resolve_overlay_fixups() can patch nodes by their actual paths
       in the merged result tree at overlay_tree() build time
 
-    Returns (result_nodes, fixups) where:
+    Returns (result_nodes, fixups, local_fixups) where:
       result_nodes  list of LopperNode ready for overlay_subtrees storage
       fixups        dict {phandle_target_label:
                            [(fragment_label, relative_path, prop_name, byte_off), ...]}
@@ -149,6 +149,10 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
                     Labels are used throughout — no abs_paths — so the dict
                     remains correct if an assist renames a target node between
                     registration and overlay_tree() build time.
+      local_fixups  list of (holder_real_path, prop_name, byte_offset,
+                    target_real_path) for in-overlay (__local_fixups__)
+                    references; empty list if none. Resolved by
+                    _resolve_overlay_local_fixups() at build time.
 
     Nodes whose target label cannot be resolved against base_tree are skipped
     with a warning.
@@ -266,7 +270,72 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
         if rewritten:
             rewritten_fixups[fix_label] = rewritten
 
-    return result_nodes, rewritten_fixups
+    # --- step 4: read __local_fixups__ (in-overlay phandle references) ---
+    # dtc records references to labels defined *inside* the same overlay under
+    # /__local_fixups__, mirroring the fragment tree:
+    #   /__local_fixups__/fragment@0/__overlay__/<node> { <prop> = <byte_off ...>; }
+    # where <prop> is the referencing property and the value is the byte
+    # offset(s) of the local-phandle cell(s) within that same property. The
+    # cell already holds a dtc-assigned local phandle pointing at another node
+    # in the overlay. We resolve each to (holder_real_path, prop, offset,
+    # target_real_path) so _resolve_overlay_local_fixups() can rebind the cell
+    # to the target's phandle in the merged result tree, by offset (never by
+    # value-matching cells).
+    def _frag_to_real(p):
+        for prefix, real in fragment_overlay_to_real.items():
+            if p == prefix:
+                return real
+            if p.startswith(prefix + '/'):
+                return real + p[len(prefix):]
+        return None
+
+    local_fixups = []
+    marker = '/__local_fixups__'
+    if ov_tree.nodes(marker):
+        for lf_node in ov_tree:
+            if not lf_node.abs_path.startswith(marker) or lf_node.abs_path == marker:
+                continue
+            if not lf_node.__props__:
+                continue                       # structural (fragment@N / __overlay__)
+            holder_frag_path = lf_node.abs_path[len(marker):]   # /fragment@N/__overlay__/...
+            holder_real = _frag_to_real(holder_frag_path)
+            if holder_real is None:
+                continue
+            try:
+                ov_holder = ov_tree[holder_frag_path]
+            except Exception:
+                ov_holder = None
+            if ov_holder is None:
+                continue
+            for prop_name, off_prop in lf_node.__props__.items():
+                offsets = off_prop.value if isinstance(off_prop.value, list) else [off_prop.value]
+                hv = None
+                if prop_name in ov_holder.__props__:
+                    hv = ov_holder.__props__[prop_name].value
+                    hv = hv if isinstance(hv, list) else [hv]
+                for off in offsets:
+                    try:
+                        byte_off = int(off)
+                    except Exception:
+                        continue
+                    idx = byte_off // 4
+                    if hv is None or idx >= len(hv) or not isinstance(hv[idx], int):
+                        lopper.log._warning(
+                            f"overlay: local fixup {holder_frag_path}:{prop_name} "
+                            f"offset {byte_off} has no phandle cell, skipping")
+                        continue
+                    tgt = ov_tree.pnode(hv[idx])
+                    if tgt is None:
+                        lopper.log._warning(
+                            f"overlay: local fixup phandle {hv[idx]} not found in "
+                            f"overlay, skipping")
+                        continue
+                    target_real = _frag_to_real(tgt.abs_path)
+                    if target_real is None:
+                        continue
+                    local_fixups.append((holder_real, prop_name, byte_off, target_real))
+
+    return result_nodes, rewritten_fixups, local_fixups
 
 
 def compile_overlay_standalone(overlay_file, include_paths="", tmpdir=None, save_temps=False):
@@ -686,10 +755,12 @@ class LopperSDT:
             # (0xffffffff) are left intact; fixups are stored for deferred
             # resolution at overlay_tree() build time against the final merged
             # tree via _resolve_overlay_fixups().
-            nodes, fixups = _unwrap_overlay_tree(ov_tree, self.tree)
+            nodes, fixups, local_fixups = _unwrap_overlay_tree(ov_tree, self.tree)
             self.tree._metadata.setdefault('overlay_subtrees', {})[stem] = nodes
             if fixups:
                 self.tree._metadata.setdefault('overlay_fixups', {})[stem] = fixups
+            if local_fixups:
+                self.tree._metadata.setdefault('overlay_local_fixups', {})[stem] = local_fixups
 
             lopper.log._debug(f"Registered {len(nodes)} overlay nodes for '{stem}'")
 

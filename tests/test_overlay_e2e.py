@@ -1061,7 +1061,7 @@ class TestOverlayFixupsTupleFormat:
 
         ov_tree = self._make_fixup_tree()
         base_tree = self._make_base_tree()
-        _, fixups = _unwrap_overlay_tree(ov_tree, base_tree)
+        _, fixups, _ = _unwrap_overlay_tree(ov_tree, base_tree)
 
         assert fixups, "no fixups returned — fixture may be wrong"
         for label, refs in fixups.items():
@@ -1077,7 +1077,7 @@ class TestOverlayFixupsTupleFormat:
 
         ov_tree = self._make_fixup_tree()
         base_tree = self._make_base_tree()
-        _, fixups = _unwrap_overlay_tree(ov_tree, base_tree)
+        _, fixups, _ = _unwrap_overlay_tree(ov_tree, base_tree)
 
         for label, refs in fixups.items():
             for frag_label, relative_path, prop_name, byte_off in refs:
@@ -1090,7 +1090,7 @@ class TestOverlayFixupsTupleFormat:
 
         ov_tree = self._make_fixup_tree()
         base_tree = self._make_base_tree()
-        _, fixups = _unwrap_overlay_tree(ov_tree, base_tree)
+        _, fixups, _ = _unwrap_overlay_tree(ov_tree, base_tree)
 
         # cma_reserved fixup is on /zyxclmm_drm (child of target), not the target itself
         assert 'cma_reserved' in fixups, "expected cma_reserved fixup"
@@ -1104,7 +1104,7 @@ class TestOverlayFixupsTupleFormat:
 
         ov_tree = self._make_fixup_tree()
         base_tree = self._make_base_tree()
-        _, fixups = _unwrap_overlay_tree(ov_tree, base_tree)
+        _, fixups, _ = _unwrap_overlay_tree(ov_tree, base_tree)
 
         for label, refs in fixups.items():
             for frag_label, relative_path, prop_name, byte_off in refs:
@@ -1244,3 +1244,107 @@ class TestOverlayFixupsTupleFormat:
         val = child.__props__['xlnx,memory-region'].__dict__['value']
         assert val[0] == 42, \
             f"phandle not resolved after rename: got {val[0]!r}, expected 42"
+
+
+class TestLocalFixups:
+    """__local_fixups__ (in-overlay phandle references) resolution.
+
+    Global __fixups__ patch an external label's phandle into a 0xffffffff
+    placeholder; __local_fixups__ reference a label defined inside the same
+    overlay. Core must rewrite the referring cell to the target's phandle in the
+    merged tree, located strictly by the dtc byte offset — never by value-
+    matching cells, which mis-binds specifier cells in multi-cell properties.
+    """
+
+    def _reg(self, tree, name, path, phandle=0, props=None):
+        from lopper.tree import LopperNode, LopperProp
+        n = LopperNode(name=name)
+        n.__dict__['abs_path'] = path
+        if phandle:
+            n.__dict__['phandle'] = phandle
+        for pname, pval in (props or {}).items():
+            p = LopperProp(name=pname)
+            p.__dict__['value'] = list(pval)
+            p.node = n
+            n.__props__[pname] = p
+        tree._register_node(n)
+        return n
+
+    def test_local_fixup_rewrites_only_phandle_cell_by_offset(self):
+        """The referring cell at the dtc offset is rewritten to the target
+        phandle; every other cell (specifiers) is left untouched — even when a
+        specifier's value coincides with a phandle-looking number."""
+        from lopper.tree import LopperTree, _resolve_overlay_local_fixups
+
+        t = LopperTree()
+        self._reg(t, "/", "/")
+        self._reg(t, "clk", "/clk", phandle=42)
+        # clocks: phandle at offset 0 (cell 0); specifier 5 at cell 1.
+        # gpios:  phandle at offset 4 (cell 1); specifiers 5 and 0 at cells 0/2.
+        dev = self._reg(t, "dev", "/dev",
+                        props={"clocks": [7, 5], "gpios": [5, 7, 0]})
+
+        _resolve_overlay_local_fixups(t, [
+            ("/dev", "clocks", 0, "/clk"),
+            ("/dev", "gpios", 4, "/clk"),
+        ])
+
+        assert dev.__props__["clocks"].value == [42, 5], \
+            "only the phandle cell (offset 0) should change; specifier 5 must remain"
+        assert dev.__props__["gpios"].value == [5, 42, 0], \
+            "only the phandle cell (offset 4 -> idx 1) should change; 5 and 0 must remain"
+
+    def test_unwrap_parses_local_fixups(self):
+        """_unwrap_overlay_tree extracts (holder, prop, offset, target) from a
+        __local_fixups__ node, resolving the dtc local phandle to the target's
+        real path via pnode() (no __symbols__ needed)."""
+        from lopper import _unwrap_overlay_tree
+        from lopper.tree import LopperTree, LopperNode, LopperProp
+
+        def mknode(name, path, phandle=0):
+            n = LopperNode(name=name)
+            n.__dict__['abs_path'] = path
+            if phandle:
+                n.__dict__['phandle'] = phandle
+            return n
+
+        def mkprop(node, name, value):
+            p = LopperProp(name=name)
+            p.__dict__['value'] = value
+            p.node = node
+            node.__props__[name] = p
+
+        # base tree: the fragment target label must be resolvable
+        base = LopperTree()
+        base.add(mknode("/", "/"))
+        amba = mknode("amba_pl", "/amba_pl"); amba.label = "amba_pl"
+        base._register_node(amba)
+
+        # overlay tree (dtc plugin layout), built with parent.add() so
+        # child_nodes is populated the way _unwrap_overlay_tree walks it.
+        ov = LopperTree()
+        ov.add(mknode("/", "/"))
+        fx = mknode("__fixups__", "/__fixups__")
+        mkprop(fx, "amba_pl", "/fragment@0:target:0")
+        ov.add(fx)
+        frag = mknode("fragment@0", "/fragment@0"); ov.add(frag)
+        ovl = mknode("__overlay__", "/fragment@0/__overlay__"); frag.add(ovl)
+        ovl.add(mknode("producer", "/fragment@0/__overlay__/producer", phandle=1))
+        consumer = mknode("consumer", "/fragment@0/__overlay__/consumer")
+        mkprop(consumer, "link", [1])           # references local phandle 1 (producer)
+        ovl.add(consumer)
+        # /__local_fixups__ mirror: consumer.link has a phandle cell at byte offset 0
+        lf = mknode("__local_fixups__", "/__local_fixups__"); ov.add(lf)
+        lffrag = mknode("fragment@0", "/__local_fixups__/fragment@0"); lf.add(lffrag)
+        lfovl = mknode("__overlay__", "/__local_fixups__/fragment@0/__overlay__")
+        lffrag.add(lfovl)
+        lfcons = mknode("consumer", "/__local_fixups__/fragment@0/__overlay__/consumer")
+        mkprop(lfcons, "link", [0])
+        lfovl.add(lfcons)
+        # ensure pnode() can resolve the local phandle -> producer
+        ov.__pnodes__[1] = ov["/fragment@0/__overlay__/producer"]
+
+        _, _, local_fixups = _unwrap_overlay_tree(ov, base)
+
+        assert local_fixups == [("/amba_pl/consumer", "link", 0, "/amba_pl/producer")], \
+            f"unexpected local_fixups: {local_fixups}"
