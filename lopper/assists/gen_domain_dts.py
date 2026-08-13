@@ -1372,10 +1372,8 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                                 child["interrupts"] = LopperProp("interrupts")
                                 child["interrupts"].value = \
                                 node["interrupts"].value[i * 4:(i + 1) * 4]
-                                child["status"] = "disabled"
                                 node.add(child)
                             node.delete("interrupts")
-                            node["status"] = "disabled"
                     # CANFD
                     if "xlnx,canfd-2.0" in node["compatible"].value:
                         node["compatible"] = "xlnx,canfd-2.0"
