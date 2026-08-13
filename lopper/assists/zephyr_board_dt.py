@@ -113,6 +113,26 @@ def _merge_root_plugin_nodes(overlay_tree, main_tree, fragment_overlay_to_real):
                 pass
 
 
+def _apply_overlay_symbol_labels(main_tree, overlay_tree, fragment_map):
+    """Register overlay /__symbols__ labels on merged domain-tree nodes."""
+    try:
+        symbols = overlay_tree["/__symbols__"]
+    except (KeyError, Exception):
+        return
+
+    for label, prop in symbols.__props__.items():
+        sym_path = prop.value[0] if isinstance(prop.value, list) else prop.value
+        real_path = _rewrite_fragment_path(sym_path, fragment_map)
+        if not real_path:
+            continue
+        try:
+            node = main_tree[real_path]
+        except (KeyError, Exception):
+            continue
+        node.label = label
+        main_tree.__lnodes__[label] = node
+
+
 def _merge_plugin_overlay(content, main_tree, sdt, sdt_folder, work_dir):
     """Merge &label { } board fragments via plugin compile + unwrap (optional HW safe)."""
     dtso_path = os.path.join(work_dir, "board_zephyr.dtso")
@@ -137,6 +157,7 @@ def _merge_plugin_overlay(content, main_tree, sdt, sdt_folder, work_dir):
         _resolve_overlay_fixups(main_tree, fixups, local_fixups)
 
     fragment_map = _fragment_overlay_to_real(overlay_tree, main_tree)
+    _apply_overlay_symbol_labels(main_tree, overlay_tree, fragment_map)
     _merge_root_plugin_nodes(overlay_tree, main_tree, fragment_map)
 
     labels = sorted({n.label for n in nodes if getattr(n, "label", None)})
