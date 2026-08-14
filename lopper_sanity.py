@@ -2244,7 +2244,7 @@ def zephyr_linker_generator_sanity_test():
             "VECTOR_REGION ATCM", "DATA_REGION BTCM",
         )) and ".resource_table" not in linker_contents and \
             'zephyr,memory-attr = <0x71>' in mpu_contents and \
-            'zephyr,memory-attr = <0x31>' in mpu_contents and \
+            'zephyr,memory-attr = <0x100000>' in mpu_contents and \
             "openamp," not in mpu_contents
     else:
         standalone_passed = False
@@ -2322,7 +2322,7 @@ def zephyr_linker_generator_sanity_test():
             'zephyr,memory-region = "PSU_R5_0_BTCM"',
             'zephyr,memory-region = "RPROC0"',
             'zephyr,memory-attr = <0x71>',
-            'zephyr,memory-attr = <0x31>',
+            'zephyr,memory-attr = <0x100000>',
             'zephyr,sram = "/axi/psu_r5_0_atcm@0"',
             'reg = <0x0 0x9800000 0x0 0x80000>',
         ]
@@ -2679,7 +2679,7 @@ def openamp_zephyr_pipeline_sanity_test():
             'zephyr,memory-region = "PSU_R5_0_BTCM"',
             'zephyr,memory-region = "RPROC0"',
             'zephyr,memory-attr = <0x71>',
-            'zephyr,memory-attr = <0x31>',
+            'zephyr,memory-attr = <0x100000>',
             'zephyr,sram = "/axi/psu_r5_0_atcm@0"',
         ],
         "/tmp/openamp-zephyr-linker-sanity.ld": [

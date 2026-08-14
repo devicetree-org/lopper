@@ -8,7 +8,7 @@ axi:
   psu_r5_0_btcm:
     start: 0x20000
     size: 0x10000
-    mpu-policy!zephyr!append: [ readable, writable, cacheable, static ]
+    mpu-policy!zephyr!append: [ readable, writable, cacheable ]
 
 reserved-memory:
   ranges: true

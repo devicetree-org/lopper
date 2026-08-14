@@ -16,7 +16,15 @@ from zephyr_memory import (
 )
 
 
+DT_MEM_ARM_MPU_RAM = (1 << 0) << 20
 DT_MEM_ARM_MPU_RAM_NOCACHE = (1 << 1) << 20
+DT_MEM_CACHEABLE = 1 << 0
+DT_MEM_READABLE = 1 << 4
+DT_MEM_WRITABLE = 1 << 5
+DT_MEM_EXECUTABLE = 1 << 6
+DT_MEM_SHAREABLE = 1 << 7
+DT_MEM_NON_CACHEABLE = 1 << 8
+DT_MEM_USERSPACE = 1 << 9
 
 
 def is_compat(node, compat_string_to_test):
@@ -41,11 +49,13 @@ def is_compat(node, compat_string_to_test):
 
 
 def _memory_attributes(memory):
-    """Encode shared-memory policy using Zephyr's legacy ARM attribute.
+    """Encode dynamic memory policy using a legacy ARM RAM attribute.
 
     Description:
-        Uses the existing R-profile non-cacheable RAM type. Static linker-owned
-        memories do not call this helper.
+        Uses the existing cacheable or non-cacheable R-profile RAM types for
+        privileged data memory and retains generic attributes for other
+        supported policies. Static linker-owned memories do not call this
+        helper.
 
     Args:
         memory (Memory): Normalized memory policy.
@@ -54,17 +64,28 @@ def _memory_attributes(memory):
         int: Value for the conventional zephyr,memory-attr property.
 
     Raises:
-        LayoutError: If a dynamic memory policy cannot be represented by the
-            legacy privileged, non-cacheable, execute-never ARM RAM type.
+        None.
     """
-    required = MemoryPolicy.READABLE | MemoryPolicy.WRITABLE
-    unsupported = (MemoryPolicy.EXECUTABLE | MemoryPolicy.CACHEABLE |
-                   MemoryPolicy.SHAREABLE | MemoryPolicy.USERSPACE)
-    if not memory.has_policy(required) or memory.policy & unsupported:
-        raise LayoutError(
-            f"{memory.node.abs_path}: non-static R-profile memory must be "
-            "privileged read/write, non-cacheable, and execute-never")
-    return DT_MEM_ARM_MPU_RAM_NOCACHE
+    data_policy = MemoryPolicy.READABLE | MemoryPolicy.WRITABLE
+    if memory.policy == data_policy | MemoryPolicy.CACHEABLE:
+        return DT_MEM_ARM_MPU_RAM
+    if memory.policy == data_policy:
+        return DT_MEM_ARM_MPU_RAM_NOCACHE
+
+    value = 0
+    translations = ((MemoryPolicy.READABLE, DT_MEM_READABLE),
+                    (MemoryPolicy.WRITABLE, DT_MEM_WRITABLE),
+                    (MemoryPolicy.EXECUTABLE, DT_MEM_EXECUTABLE),
+                    (MemoryPolicy.SHAREABLE, DT_MEM_SHAREABLE),
+                    (MemoryPolicy.USERSPACE, DT_MEM_USERSPACE))
+    for policy, attribute in translations:
+        if memory.has_policy(policy):
+            value |= attribute
+    if memory.has_policy(MemoryPolicy.CACHEABLE):
+        value |= DT_MEM_CACHEABLE
+    else:
+        value |= DT_MEM_NON_CACHEABLE
+    return value
 
 
 def _apply_memory(memory, emit_mpu=True):
