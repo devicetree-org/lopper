@@ -8,7 +8,7 @@ axi:
   CIPS_0_pspmc_0_psv_r5_0_btcm:
     start: 0x20000
     size: 0x10000
-    mpu-policy: [ readable, writable, cacheable, static ]
+    mpu-policy: [ readable, writable, cacheable ]
 
 reserved-memory:
   ranges: true
