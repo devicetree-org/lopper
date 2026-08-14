@@ -21,7 +21,7 @@ reserved-memory:
     start: 0x985F000
     size: 0x1000
     no-map: 1
-    mpu-policy!zephyr!append: [ readable, writable, shareable, userspace ]
+    mpu-policy!zephyr!append: [ readable, writable ]
   rpu0vdev0vring0@9860000:
     start: 0x9860000
     size: 0x4000
@@ -38,7 +38,7 @@ reserved-memory:
     start: 0x9800000
     size: 0x100
     no-map: 1
-    mpu-policy!zephyr!append: [ readable, writable, shareable, userspace ]
+    mpu-policy!zephyr!append: [ readable, writable ]
   ipc@9860000:
     start: 0x9860000
     size: 0x48000

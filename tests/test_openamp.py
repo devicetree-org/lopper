@@ -131,9 +131,9 @@ def test_zephyr_ipc_shm_replaces_domain_carveout_references():
     tree + LopperNode(-1, "/domains")
     carveouts = []
     for name, address, size in (
-            ("vring0", 0x9860000, 0x4000),
-            ("vring1", 0x9864000, 0x4000),
-            ("buffer", 0x9868000, 0x40000)):
+            ("vring0", 0x9880000, 0x4000),
+            ("vring1", 0x9884000, 0x4000),
+            ("buffer", 0x9888000, 0x78000)):
         node = LopperNode(-1, f"/reserved-memory/{name}@{address:x}")
         node["reg"] = [0, address, 0, size]
         tree + node
@@ -158,6 +158,7 @@ def test_zephyr_ipc_shm_replaces_domain_carveout_references():
         ipc.phandle, firmware.phandle]
     assert tree["/chosen"].propval("zephyr,ipc_shm", list) == [
         ipc.abs_path]
+    assert ipc.propval("reg", list) == [0, 0x9880000, 0, 0x80000]
 
 
 def test_libmetal_missing_processor_lists_supported_targets(monkeypatch, caplog):
