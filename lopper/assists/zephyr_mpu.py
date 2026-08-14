@@ -16,13 +16,7 @@ from zephyr_memory import (
 )
 
 
-DT_MEM_CACHEABLE = 1 << 0
-DT_MEM_READABLE = 1 << 4
-DT_MEM_WRITABLE = 1 << 5
-DT_MEM_EXECUTABLE = 1 << 6
-DT_MEM_SHAREABLE = 1 << 7
-DT_MEM_NON_CACHEABLE = 1 << 8
-DT_MEM_USERSPACE = 1 << 9
+DT_MEM_ARM_MPU_RAM_NOCACHE = (1 << 1) << 20
 
 
 def is_compat(node, compat_string_to_test):
@@ -47,11 +41,11 @@ def is_compat(node, compat_string_to_test):
 
 
 def _memory_attributes(memory):
-    """Encode normalized policy as zephyr,memory-attr flags.
+    """Encode shared-memory policy using Zephyr's legacy ARM attribute.
 
     Description:
-        Converts the architecture-independent execution-domain memory policy to
-        the generic Zephyr memory attribute bit field.
+        Uses the existing R-profile non-cacheable RAM type. Static linker-owned
+        memories do not call this helper.
 
     Args:
         memory (Memory): Normalized memory policy.
@@ -60,22 +54,17 @@ def _memory_attributes(memory):
         int: Value for the conventional zephyr,memory-attr property.
 
     Raises:
-        None.
+        LayoutError: If a dynamic memory policy cannot be represented by the
+            legacy privileged, non-cacheable, execute-never ARM RAM type.
     """
-    value = 0
-    translations = ((MemoryPolicy.READABLE, DT_MEM_READABLE),
-                    (MemoryPolicy.WRITABLE, DT_MEM_WRITABLE),
-                    (MemoryPolicy.EXECUTABLE, DT_MEM_EXECUTABLE),
-                    (MemoryPolicy.SHAREABLE, DT_MEM_SHAREABLE),
-                    (MemoryPolicy.USERSPACE, DT_MEM_USERSPACE))
-    for policy, attribute in translations:
-        if memory.has_policy(policy):
-            value |= attribute
-    if not memory.has_policy(MemoryPolicy.CACHEABLE):
-        value |= DT_MEM_NON_CACHEABLE
-    else:
-        value |= DT_MEM_CACHEABLE
-    return value
+    required = MemoryPolicy.READABLE | MemoryPolicy.WRITABLE
+    unsupported = (MemoryPolicy.EXECUTABLE | MemoryPolicy.CACHEABLE |
+                   MemoryPolicy.SHAREABLE | MemoryPolicy.USERSPACE)
+    if not memory.has_policy(required) or memory.policy & unsupported:
+        raise LayoutError(
+            f"{memory.node.abs_path}: non-static R-profile memory must be "
+            "privileged read/write, non-cacheable, and execute-never")
+    return DT_MEM_ARM_MPU_RAM_NOCACHE
 
 
 def _apply_memory(memory, emit_mpu=True):
@@ -123,11 +112,11 @@ def _uses_static_mpu(memory):
                         memory.node.propval("mpu-policy", list)]
 
 
-def _r5_ddr_aperture(memory, local_memories):
-    """Calculate a representable ARMv7-R DDR MPU aperture.
+def _r5_mpu_aperture(memory, local_memories):
+    """Calculate a representable ARMv7-R MPU aperture.
 
     Description:
-        Expands the policy DDR range to the smallest naturally aligned
+        Expands the policy range to the smallest naturally aligned
         power-of-two window that contains it. Rejects an expansion that would
         cover a configured local TCM range.
 
@@ -155,13 +144,13 @@ def _r5_ddr_aperture(memory, local_memories):
         origin = memory.origin & ~(length - 1)
     if origin + length > 1 << 32:
         raise LayoutError(
-            f"DDR memory '{memory.name}' cannot be represented in the "
+            f"memory '{memory.name}' cannot be represented in the "
             "32-bit R5 MPU address space")
     for local in local_memories:
         local_end = local.origin + local.length
         if origin < local_end and local.origin < origin + length:
             raise LayoutError(
-                f"R5 DDR MPU aperture 0x{origin:x}-"
+                f"R5 MPU aperture 0x{origin:x}-"
                 f"0x{origin + length:x} overlaps {local.name} at "
                 f"0x{local.origin:x}-0x{local_end:x}")
     return origin, length
@@ -197,17 +186,18 @@ def _set_memory_range(memory, origin, length):
     memory.node["reg"] = reg
 
 
-def _prepare_r5_ddr(processor, memories):
-    """Make R5 DDR policy ranges representable by the ARMv7-R MPU.
+def _prepare_r5_mpu_ranges(processor, memories, dynamic_memories):
+    """Make R5 DT policy ranges representable by the ARMv7-R MPU.
 
     Description:
-        Rounds each DDR policy node before conventional Zephyr MPU metadata is
-        emitted. R52 ranges are unchanged because ARMv8-R uses base/limit
-        regions instead of power-of-two regions.
+        Rounds each dynamic DDR or consolidated IPC policy node before
+        conventional Zephyr MPU metadata is emitted. R52 ranges are unchanged
+        because ARMv8-R uses base/limit regions.
 
     Args:
         processor (str): Canonical processor class.
-        memories (tuple[Memory]): Normalized domain-owned memories.
+        memories (tuple[Memory]): All normalized domain-owned memories.
+        dynamic_memories (tuple[Memory]): Memories requiring DT MPU regions.
 
     Returns:
         None.
@@ -220,10 +210,15 @@ def _prepare_r5_ddr(processor, memories):
         return
     local = tuple(memory for memory in memories
                   if memory.kind in ("ATCM", "BTCM", "CTCM"))
-    for memory in memories:
-        if memory.kind != "DDR":
+    for memory in dynamic_memories:
+        if memory.kind not in ("DDR", "IPC_SHM"):
             continue
-        origin, length = _r5_ddr_aperture(memory, local)
+        origin, length = _r5_mpu_aperture(memory, local)
+        if (memory.kind == "IPC_SHM" and
+                (origin != memory.origin or length != memory.length)):
+            raise LayoutError(
+                f"{memory.node.abs_path}: consolidated R5 IPC range must "
+                "already be naturally aligned and power-of-two sized")
         _set_memory_range(memory, origin, length)
         _info(
             f"zephyr_mpu: {memory.name} R5 MPU aperture "
@@ -310,9 +305,9 @@ def generate_mpu_tree(root_node, sdt, options):
             options.get("args", []))
         layout = parse_layout(sdt.tree, args.domain, args.zephyr_version)
         _, processor, memories = parse_mpu_memories(sdt.tree, args.domain)
-        _prepare_r5_ddr(processor, memories)
         dynamic_memories = tuple(memory for memory in memories
                                  if not _uses_static_mpu(memory))
+        _prepare_r5_mpu_ranges(processor, memories, dynamic_memories)
         _validate_memory_overlaps(dynamic_memories)
         for memory in memories:
             _apply_memory(memory, emit_mpu=not _uses_static_mpu(memory))

@@ -514,8 +514,7 @@ def _memory_policy(node, kind):
     """
     values = node.propval("mpu-policy", list)
     if (not values or values == [""]) and kind == "IPC_SHM":
-        return (MemoryPolicy.READABLE | MemoryPolicy.WRITABLE |
-                MemoryPolicy.SHAREABLE | MemoryPolicy.USERSPACE)
+        return MemoryPolicy.READABLE | MemoryPolicy.WRITABLE
     if not values or values == [""]:
         raise LayoutError(
             f"{node.abs_path}: missing required 'mpu-policy' property")
@@ -539,6 +538,7 @@ def _memory_policy(node, kind):
         if property_name in values:
             policy |= policy_bit
     supported = {
+        MemoryPolicy.READABLE | MemoryPolicy.WRITABLE,
         MemoryPolicy.READABLE | MemoryPolicy.WRITABLE | MemoryPolicy.CACHEABLE,
         MemoryPolicy.READABLE | MemoryPolicy.CACHEABLE,
         MemoryPolicy.READABLE | MemoryPolicy.EXECUTABLE | MemoryPolicy.CACHEABLE,
