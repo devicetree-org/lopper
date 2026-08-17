@@ -1348,33 +1348,30 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                         if 'psv_cortexr5' in machine or 'psu_cortexr5' in machine:
                             node["compatible"] = "xlnx,ttcps"
                             if node.propval('interrupt-names') == ['']:
-                                ttc_irq_names = ["irq_0", "irq_1", "irq_2"]
-                                node["interrupt-names"] = LopperProp("interrupt-names")
-                                node["interrupt-names"].value = ttc_irq_names
-                                node.add(node["interrupt-names"])
+                                node["interrupt-names"] = ["irq_0", "irq_1", "irq_2"]
                             clk_freq = node.propval('xlnx,clock-freq')
                             # Round to nearest MHz (optional but clean)
                             rounded_clk = int(round(clk_freq[0] / 1000000.0)) * 1000000
-                            node["clock-frequency"] = LopperProp("clock-frequency")
-                            node["clock-frequency"].value = rounded_clk
-                            node.delete(node["timer-width"])
-                            node.add(node["clock-frequency"])
+                            node["clock-frequency"] = rounded_clk
+                            node.delete("timer-width")
                         else:
                             node["compatible"] = "xlnx,ttc"
-                            node["clock-frequency"] = LopperProp("clock-frequency")
-                            node["clock-frequency"].value = node["xlnx,clock-freq"].value
-                            node.add(node["clock-frequency"])
-                            node + LopperProp(name="#address-cells", value=[1])
-                            node + LopperProp(name="#size-cells", value=[0])
+                            node["clock-frequency"] = node["xlnx,clock-freq"].value
+                            node["#address-cells"] = 1
+                            node["#size-cells"] = 0
+                            reg = node.propval("reg", list)
+                            base_address = reg[-3] if len(reg) >= 4 else reg[0]
                             for i in range(3):
                                 child = LopperNode()
-                                child.name = f"counter@{i}"
+                                child.name = f"counter{i}@{base_address:x}"
                                 child.label_set(f"{node.label}_timer{i}")
-                                child + LopperProp(name="compatible", value=["xlnx,ttc-counter"])
-                                child + LopperProp(name="reg", value=[i])
-                                child["interrupts"] = LopperProp("interrupts")
-                                child["interrupts"].value = \
-                                node["interrupts"].value[i * 4:(i + 1) * 4]
+                                child["compatible"] = "xlnx,ttc-counter"
+                                child["reg"] = base_address
+                                child["timer-id"] = i
+                                child["clock-frequency"] = node["clock-frequency"].value
+                                child["timer-width"] = node["timer-width"].value
+                                child["interrupts"] = \
+                                    node["interrupts"].value[i * 4:(i + 1) * 4]
                                 node.add(child)
                             node.delete("interrupts")
                     # CANFD

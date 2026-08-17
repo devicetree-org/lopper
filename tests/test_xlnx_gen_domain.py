@@ -16,6 +16,7 @@ Author:
 
 import os
 import pytest
+from types import SimpleNamespace
 
 from lopper.assists import gen_domain_dts
 from lopper.tree import LopperNode, LopperTree
@@ -34,6 +35,83 @@ def _ttc_tree(*labels, compatible="xlnx,ttcps"):
         tree + node
         nodes.append(node)
     return tree, nodes
+
+
+def _sdt_ttc_node():
+    """Create a TTC block with the inputs consumed by Zephyr conversion."""
+    tree = LopperTree()
+    for path in ("/aliases", "/chosen", "/axi"):
+        tree + LopperNode(-1, path)
+    node = LopperNode(-1, "/axi/timer@ff110000")
+    node.label = "ttc0"
+    node["compatible"] = ["cdns,ttc"]
+    node["status"] = ["okay"]
+    node["reg"] = [0, 0xff110000, 0, 0x10000]
+    node["interrupts"] = [
+        0, 36, 4, 0xa0,
+        0, 37, 4, 0xa0,
+        0, 38, 4, 0xa0,
+    ]
+    node["xlnx,clock-freq"] = [100000000]
+    node["clock-frequency"] = [100000000]
+    node["timer-width"] = [32]
+    node["interrupt-names"] = ["irq_0", "irq_1", "irq_2"]
+    node["#address-cells"] = [1]
+    node["#size-cells"] = [0]
+    tree + node
+    return tree, node
+
+
+def _assert_ttcps_binding(machine):
+    tree, node = _sdt_ttc_node()
+
+    gen_domain_dts.xlnx_remove_unsupported_nodes(
+        None, SimpleNamespace(tree=tree), machine)
+
+    assert node.propval("compatible", list) == ["xlnx,ttcps"]
+    assert node.propval("reg", list) == [0, 0xff110000, 0, 0x10000]
+    assert node.propval("clock-frequency", list) == [100000000]
+    assert node.propval("timer-width") == ['']
+
+
+def _assert_ttc_counter_binding(machine):
+    tree, node = _sdt_ttc_node()
+
+    gen_domain_dts.xlnx_remove_unsupported_nodes(
+        None, SimpleNamespace(tree=tree), machine)
+
+    counters = node.subnodes(children_only=True)
+    assert len(counters) == 3
+    for counter_id, counter in enumerate(counters):
+        assert counter.propval("compatible", list) == ["xlnx,ttc-counter"]
+        # The binding and driver require every counter to map the shared TTC
+        # block base; timer-id selects the counter within that block.
+        assert counter.propval("reg", list) == [0xff110000]
+        assert counter.propval("interrupts", list) == \
+            [0, 36 + counter_id, 4, 0xa0]
+        assert counter.propval("timer-id", list) == [counter_id]
+        assert counter.propval("clock-frequency", list) == [100000000]
+        assert counter.propval("timer-width", list) == [32]
+
+
+def test_zephyr_zynqmp_r5_ttc_follows_xlnx_ttcps_binding():
+    """ZynqMP R5 TTC output follows Zephyr's timer binding."""
+    _assert_ttcps_binding("psu_cortexr5_0")
+
+
+def test_zephyr_versal_r5_ttc_follows_xlnx_ttcps_binding():
+    """Versal R5 TTC output follows Zephyr's timer binding."""
+    _assert_ttcps_binding("psv_cortexr5_0")
+
+
+def test_zephyr_versalnet_r52_ttc_follows_xlnx_ttc_counter_binding():
+    """Versal Net R52 TTC output follows Zephyr's counter binding."""
+    _assert_ttc_counter_binding("psx_cortexr52_0")
+
+
+def test_zephyr_versal2_r52_ttc_follows_xlnx_ttc_counter_binding():
+    """Versal2 R52 TTC output follows Zephyr's counter binding."""
+    _assert_ttc_counter_binding("cortexr52_0")
 
 
 def test_zephyr_r5_labels_sole_selected_ttc_as_ttc0():
