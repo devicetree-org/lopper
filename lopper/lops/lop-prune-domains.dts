@@ -1,0 +1,28 @@
+/*
+ * Copyright (c) 2026 Advanced Micro Devices, Inc. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1";
+        lops {
+                lop_0 {
+                        // Delete the /domains node so it does not leak into the final DTS.
+                        // Done via a code lop so it is a no-op when /domains is absent.
+                        compatible = "system-device-tree-v1,lop,code-v1";
+                        code = "
+                            try:
+                                domains_node = tree['/domains']
+                            except:
+                                domains_node = None
+
+                            if domains_node:
+                                tree.delete(domains_node)
+                                tree.sync()
+                        ";
+                };
+        };
+};
