@@ -4230,6 +4230,10 @@ class LopperTree:
         self.__lnodes__ = OrderedDict()
         # nodes. indexed by aliases
         self.__aliases__ = OrderedDict()
+        # aliases bound to a node by alias_set(), rather than authored as a
+        # path in the input. these follow their node through a rename or a
+        # move, and are dropped when it is deleted. indexed by alias name.
+        self.__alias_identity__ = OrderedDict()
         # nodes. selected. default/fallback for some operations
         self.__selected__ = []
 
@@ -6369,27 +6373,133 @@ class LopperTree:
                 except:
                     pass
                 self.__aliases__.pop( name, None )
+                self.__alias_identity__.pop( name, None )
 
         return dropped
 
 
-    def _alias_refresh( self ):
-        """Rebuild the alias lookup from the current /aliases values
+    def alias_set( self, name, node ):
+        """Bind an alias to a node
 
-        The lookup that alias_node() reads is otherwise resolved once, when
-        the tree is loaded, and never revisited -- so it goes on reporting a
-        node that has since been deleted, and never learns about an alias
-        added afterwards.
+        An alias that arrives in the input is a path: it is honoured as
+        authored, and is dropped if that path stops resolving. An alias bound
+        here is an identity reference to a node instead. It follows the node
+        through a rename and through a move, and is dropped when the node is
+        deleted -- without a warning, since the caller named a node and the
+        node is gone.
 
-        The /aliases values themselves are not rewritten here. They are the
-        user's, and a path that stops resolving is reported and removed by
-        the strict output pass (or alias_prune()).
+        An existing alias of the same name is overwritten.
+
+        Args:
+           name (string): the alias name. The devicetree specification limits
+                          /aliases property names to lowercase letters,
+                          digits and '-'.
+           node (LopperNode): the node the alias designates
+
+        Returns:
+           LopperNode: the /aliases node
+
+        Raises:
+           ValueError: on an invalid alias name, or no node
         """
+        if not name or not re.match( r'^[0-9a-z-]+$', name ):
+            raise ValueError(
+                f"alias_set: invalid alias name '{name}': /aliases names may "
+                "contain only lowercase letters, digits and '-'" )
+
+        if node is None:
+            raise ValueError( f"alias_set: no node passed for alias '{name}'" )
+
+        try:
+            alias_node = self['/aliases']
+        except:
+            self.add( LopperNode( -1, "/aliases" ) )
+            alias_node = self['/aliases']
+
+        if name in alias_node.__props__:
+            lopper.log._debug(
+                f"alias_set: overwriting alias '{name}': "
+                f"'{self._alias_value( alias_node.__props__[name] )}' -> "
+                f"'{node.abs_path}'" )
+
+        alias_node[name] = [ node.abs_path ]
+        self.__alias_identity__[name] = node
+        self.__aliases__[name] = node
+
+        return alias_node
+
+
+    def _alias_refresh( self ):
+        """Bring alias state back in step with the tree
+
+        Two things are done here:
+
+          - aliases bound with alias_set() have their value re-derived from
+            the node they designate, so they follow a rename or a move. If
+            that node has left the tree, the alias is dropped.
+          - the lookup that alias_node() reads is rebuilt from the current
+            /aliases values. It is otherwise resolved once, when the tree is
+            loaded, and never revisited -- so it goes on reporting a node
+            that has since been deleted, and never learns about an alias
+            added afterwards.
+
+        Authored alias values are not rewritten here. They are the user's,
+        and a path that stops resolving is reported and removed by the strict
+        output pass (or alias_prune()).
+        """
+        if self.__alias_identity__:
+            self._alias_identity_refresh()
+
         self.__aliases__ = OrderedDict()
 
         for name, target in self.aliases( resolve = True ):
             if target:
                 self.__aliases__[name] = target
+
+
+    def _alias_identity_refresh( self ):
+        """Re-derive the aliases that were bound to a node
+
+        See alias_set(). Called from _alias_refresh() when there is anything
+        bound.
+        """
+        try:
+            alias_node = self['/aliases']
+        except:
+            self.__alias_identity__ = OrderedDict()
+            return
+
+        for name, node in list(self.__alias_identity__.items()):
+            if name not in alias_node.__props__:
+                # removed by other means, stop tracking it
+                del self.__alias_identity__[name]
+                continue
+
+            # is the bound node still in the tree, at whatever path it holds
+            # now ? move() carries the same object across to the new path, so
+            # this is what lets a bound alias follow a reparent.
+            if self.__nodes__.get( node.abs_path ) is node:
+                if self._alias_value( alias_node.__props__[name] ) != node.abs_path:
+                    alias_node[name] = [ node.abs_path ]
+                continue
+
+            # rename() replaces the tree's object for that path, but it also
+            # rewrites the path references to it -- so re-resolve through the
+            # alias value, which is already correct, and re-bind to the node
+            # that is there now.
+            target = self._alias_target(
+                         self._alias_value( alias_node.__props__[name] ) )
+            if target is not None:
+                self.__alias_identity__[name] = target
+                continue
+
+            # the node is gone. drop the alias, without a warning: the caller
+            # named a node, and that node no longer exists.
+            try:
+                alias_node.delete( name )
+            except:
+                pass
+            del self.__alias_identity__[name]
 
 
     def lnodes( self, label, exact = True ):

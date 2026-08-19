@@ -99,6 +99,61 @@ def test_alias_prune_drops_only_the_dangling_entry(tree):
     assert {n for n, _ in tree.aliases()} == {"serial0", "i2c0"}
 
 
+# --- alias_set() name validation -----------------------------------------
+
+@pytest.mark.parametrize("name", ["Serial0", "watchdog_0", "thing.x", "", "UPPER"])
+def test_alias_set_rejects_invalid_names(tree, name):
+    with pytest.raises(ValueError):
+        tree.alias_set(name, tree[SPI])
+
+
+@pytest.mark.parametrize("name", ["spi0", "my-thing", "rtc", "watchdog0"])
+def test_alias_set_accepts_valid_names(tree, name):
+    tree.alias_set(name, tree[SPI])
+    assert dict(tree.aliases())[name] == SPI
+
+
+def test_alias_set_rejects_a_missing_node(tree):
+    with pytest.raises(ValueError):
+        tree.alias_set("nonode", None)
+
+
+# --- alias_set() binding --------------------------------------------------
+
+def test_alias_set_overwrites_an_existing_alias(tree):
+    tree.alias_set("spi0", tree[SPI])
+    tree.alias_set("spi0", tree[I2C])
+    assert dict(tree.aliases())["spi0"] == I2C
+
+
+def test_bound_alias_follows_a_rename(tree):
+    tree.alias_set("spi0", tree[SPI])
+    tree.rename(tree[SPI], "spi@deadbeef")
+    tree.resolve()
+    assert dict(tree.aliases())["spi0"] == "/axi/spi@deadbeef"
+
+
+def test_bound_alias_follows_a_move(tree):
+    node = tree[SPI]
+    tree.alias_set("spi0", node)
+    tree.move(node, SPI, "/newbus/spi@f1010000")
+    tree.resolve()
+    assert dict(tree.aliases())["spi0"] == "/newbus/spi@f1010000"
+
+
+def test_bound_alias_is_dropped_when_its_node_is_deleted(tree):
+    tree.alias_set("spi0", tree[SPI])
+    tree.delete(tree[SPI])
+    tree.resolve()
+    assert "spi0" not in {n for n, _ in tree.aliases()}
+
+
+def test_authored_alias_value_is_not_rewritten(tree):
+    before = dict(tree.aliases())["serial0"]
+    tree.resolve()
+    tree.resolve()
+    assert dict(tree.aliases())["serial0"] == before
+
 
 # --- alias_node() staying in step with the tree ---------------------------
 
@@ -110,6 +165,6 @@ def test_alias_node_drops_a_deleted_node(tree):
 
 
 def test_alias_node_sees_an_alias_added_after_load(tree):
-    tree["/aliases"]["spi0"] = [SPI]
+    tree.alias_set("spi0", tree[SPI])
     tree.resolve()
     assert tree.alias_node("spi0").abs_path == SPI
