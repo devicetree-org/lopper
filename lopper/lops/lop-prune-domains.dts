@@ -1,0 +1,17 @@
+/*
+ * Copyright (c) 2026 Advanced Micro Devices, Inc. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1";
+        lops {
+                lop_0 {
+                        compatible = "system-device-tree-v1,lop,modify";
+                        modify = "/domains::";
+                };
+        };
+};
