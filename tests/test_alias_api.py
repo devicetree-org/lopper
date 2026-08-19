@@ -98,3 +98,18 @@ def test_alias_prune_drops_only_the_dangling_entry(tree):
     assert [n for n, _ in tree.alias_prune()] == ["dead0"]
     assert {n for n, _ in tree.aliases()} == {"serial0", "i2c0"}
 
+
+
+# --- alias_node() staying in step with the tree ---------------------------
+
+def test_alias_node_drops_a_deleted_node(tree):
+    assert tree.alias_node("i2c0") is not None
+    tree.delete(tree[I2C])
+    tree.resolve()
+    assert tree.alias_node("i2c0") is None
+
+
+def test_alias_node_sees_an_alias_added_after_load(tree):
+    tree["/aliases"]["spi0"] = [SPI]
+    tree.resolve()
+    assert tree.alias_node("spi0").abs_path == SPI

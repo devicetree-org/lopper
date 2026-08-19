@@ -5429,6 +5429,10 @@ class LopperTree:
             for p in n:
                 p.resolve()
 
+        # the alias lookup is resolved against the tree, so it has to be
+        # rebuilt here or alias_node() keeps reporting nodes that are gone
+        self._alias_refresh()
+
         # Check for invalid phandle references if warning is enabled
         # This fires regardless of --permissive since user explicitly requested it
         if "invalid_phandle" in self.warnings or "all" in self.warnings:
@@ -6367,6 +6371,25 @@ class LopperTree:
                 self.__aliases__.pop( name, None )
 
         return dropped
+
+
+    def _alias_refresh( self ):
+        """Rebuild the alias lookup from the current /aliases values
+
+        The lookup that alias_node() reads is otherwise resolved once, when
+        the tree is loaded, and never revisited -- so it goes on reporting a
+        node that has since been deleted, and never learns about an alias
+        added afterwards.
+
+        The /aliases values themselves are not rewritten here. They are the
+        user's, and a path that stops resolving is reported and removed by
+        the strict output pass (or alias_prune()).
+        """
+        self.__aliases__ = OrderedDict()
+
+        for name, target in self.aliases( resolve = True ):
+            if target:
+                self.__aliases__[name] = target
 
 
     def lnodes( self, label, exact = True ):
