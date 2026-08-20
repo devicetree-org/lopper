@@ -1098,11 +1098,30 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
     if verbose:
         print(f"memory_expand: using #address-cells={root_ac}, #size-cells={root_sc}")
 
+    mem = []
+    prop = subnode[prop_name]
+    for i in range(0, len(prop)):
+        mem.append(prop[i])
+
+    # SRAM descriptions carry an explicit device identity because local
+    # processor address spaces can overlap.  Resolve that identity before
+    # flattening YAML so downstream domain pruning and memory-policy assists
+    # do not have to rediscover the node from an ambiguous address range.
+    if prop_name == 'sram' and mem and all(
+            isinstance(entry, dict) and entry.get('dev') for entry in mem):
+        phandles = []
+        for entry in mem:
+            reference = entry['dev']
+            node = resolve_memory_node(tree, reference)
+            if not node.props('reg'):
+                raise LayoutError(
+                    f"{node.abs_path}: SRAM device '{reference}' is missing "
+                    "required 'reg' property")
+            phandles.append(node.phandle_or_create())
+        property_set(prop_name, phandles, subnode)
+        return
+
     try:
-        mem = []
-        prop = subnode[prop_name]
-        for i in range(0,len(prop)):
-            mem.append( prop[i] )
 
         # A "*" entry means "all physical memory/sram": mark the domain
         # keep-all so the specific carveout is not assigned.  For 'memory'

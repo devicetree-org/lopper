@@ -245,7 +245,7 @@ def resolve_memory_node(tree, reference):
         matches.append(alias)
     for node in tree:
         aliases = {node.name, node.name.split("@", 1)[0]}
-        for property_name in ("label", "xlnx,ip-name"):
+        for property_name in ("label", "xlnx,ip-name", "xlnx,name"):
             value = node.propval(property_name, list)
             if value and value != [""]:
                 aliases.add(str(value[0]))

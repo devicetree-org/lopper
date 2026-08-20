@@ -3,8 +3,74 @@
 # Copyright (c) 2026 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from lopper.assists.zephyr_memory import _domain_memory_nodes, _normalized_memories
+import pytest
+
+from lopper.assists.yaml_to_dts_expansion import memory_expand
+from lopper.assists.zephyr_memory import (
+    LayoutError,
+    _domain_memory_nodes,
+    _normalized_memories,
+    resolve_memory_node,
+)
 from lopper.tree import LopperNode, LopperTree
+
+
+def test_yaml_sram_device_references_expand_to_phandles():
+    """Explicit SRAM devices retain identity across YAML expansion."""
+    tree = LopperTree()
+    tree + LopperNode(-1, "/axi")
+    tree + LopperNode(-1, "/domains")
+    bank = LopperNode(-1, "/axi/psv_r5_0_atcm@0")
+    bank.label = "psv_r5_0_atcm"
+    bank["reg"] = [0, 0, 0, 0x10000]
+    tree + bank
+    domain = LopperNode(-1, "/domains/R5_0_ZEPHYR")
+    domain["sram"] = [{
+        "dev": "psv_r5_0_atcm@0",
+        "start": 0,
+        "size": 0x10000,
+    }]
+    tree + domain
+    tree.sync()
+
+    memory_expand(tree, domain, prop_name="sram")
+
+    assert domain.propval("sram", list) == [bank.phandle]
+
+
+def test_yaml_sram_device_requires_registers():
+    """Synthetic SRAM nodes without registers are rejected immediately."""
+    tree = LopperTree()
+    tree + LopperNode(-1, "/axi")
+    tree + LopperNode(-1, "/domains")
+    bank = LopperNode(-1, "/axi/psv_r5_0_atcm")
+    bank.label = "psv_r5_0_atcm"
+    tree + bank
+    domain = LopperNode(-1, "/domains/R5_0_ZEPHYR")
+    domain["sram"] = [{
+        "dev": "psv_r5_0_atcm",
+        "start": 0,
+        "size": 0x10000,
+    }]
+    tree + domain
+    tree.sync()
+
+    with pytest.raises(LayoutError, match="missing required 'reg'"):
+        memory_expand(tree, domain, prop_name="sram")
+
+
+def test_canonical_memory_name_resolves_existing_node():
+    """A stable SDT name can alias an implementation-derived TCM node."""
+    tree = LopperTree()
+    tree + LopperNode(-1, "/axi")
+    bank = LopperNode(
+        -1, "/axi/ps_wizard_0_pmcps_0_psv_r5_0_atcm@0")
+    bank["reg"] = [0, 0, 0, 0x10000]
+    bank["xlnx,name"] = ["psv_r5_0_atcm"]
+    tree + bank
+    tree.sync()
+
+    assert resolve_memory_node(tree, "psv_r5_0_atcm") is bank
 
 
 def test_split_r5_local_tcm_range_uses_domain_core():
