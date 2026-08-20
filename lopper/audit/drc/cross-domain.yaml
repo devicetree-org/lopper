@@ -1,0 +1,192 @@
+# Cross-domain integrity.
+#
+# How domains relate to each other and to the rest of the system device tree:
+# CPU assignment, memory and SRAM, device access, identity and hierarchy.
+# See README.md in this directory for how rules are written and how domains
+# are selected.
+#
+# Rules are in id order. Only those expressible with the handlers that exist
+# today are encoded; cpumask-within-cluster (cpumask width against the core count of the
+# referenced cluster) still needs one.
+
+drc:
+  # ---------------------------------------------------------------- CPUs ---
+
+  # `cpus` must point at an actual CPU cluster. A phandle that resolves to
+  # some other node still resolves, so this catches a reference that looks
+  # valid but names the wrong kind of thing. Entries are triplets of
+  # (cluster, cpumask, execution level), so only every third cell is a
+  # reference.
+  - id: cpus-reference-cluster
+    severity: error
+    phase: post-processing
+    select:
+      - "/domains/.*:compatible:openamp,domain-v1"
+    check: phandle-type
+    params:
+      property: cpus
+      compatible: "cpus,cluster"
+      index: 0
+      stride: 3
+    message: "a domain's cpus must reference a CPU cluster node"
+
+  # Two domains must not be given the same CPU core, because nothing would
+  # decide which of them runs on it.
+  #
+  # Unless something arbitrates: a hypervisor exists precisely to let several
+  # domains share a core, so the rule only applies when there is none. A
+  # domain and a domain nested inside it are not competing claims either, and
+  # are not reported.
+  - id: cpu-core-exclusive
+    severity: error
+    phase: post-processing
+    guard:
+      select: ["/domains/.*:compatible:openamp,hypervisor-v1"]
+      count: { max: 0 }
+    group-by: "/domains/.*:compatible:openamp,domain-v1"
+    collect: "cpu-cores"
+    check: exclusive-across
+    message: "a CPU core must not be assigned to more than one domain"
+
+  # In lockstep, a cluster's two cores execute as one: the second does not run
+  # independently, so only core 0 may be claimed. Applies to lockstep clusters
+  # only, which is what the condition on the execution-level bit selects.
+  - id: lockstep-single-core
+    severity: error
+    phase: post-processing
+    select:
+      - "/domains/.*:compatible:openamp,domain-v1"
+      - check: bitmask
+        params: { property: cpus, field: exec_level, bit: 30, set: true }
+    check: bitmask
+    params:
+      property: cpus
+      field: cpumask
+      equals: 0x1
+    message: "in lockstep mode the cpumask must be 0x1 (core 1 does not run)"
+
+  # The execution-level word carries only lockstep (bit 30) and secure
+  # (bit 31) on RPU. Any other bit set means the value was miscomputed, and
+  # would be silently misread rather than rejected.
+  #
+  # A-profile encoding (exception level in the low bits) is not covered here.
+  - id: execution-level-encoding
+    severity: error
+    phase: post-processing
+    select:
+      - "/domains/.*:compatible:openamp,domain-v1"
+      - check: bitmask
+        params: { property: cpus, field: exec_level, bit: 30, set: true }
+    check: bitmask
+    params:
+      property: cpus
+      field: exec_level
+      mask: 0xc0000000
+    message: "execution-level encoding sets bits with no defined meaning"
+
+  # -------------------------------------------------------------- memory ---
+
+  # A domain cannot be given memory the machine does not have. Compares what
+  # each domain claims against the physical memory the tree describes.
+  - id: memory-within-physical
+    severity: error
+    phase: post-processing
+    group-by:
+      claimed: ["/domains/.*:compatible:openamp,domain-v1"]
+      physical: ["/memory@.*"]
+    collect:
+      claimed: { property: memory, kind: range }
+      physical: { property: reg, kind: range }
+    check: contained-in
+    params:
+      container: physical
+    message: "a domain's memory must fall within physical memory"
+
+  # Two domains must not be given overlapping memory unless the overlap is
+  # deliberate, marked shared. Otherwise each will assume it owns the region
+  # and corrupt the other.
+  #
+  # Regions are compared for intersection, not equality, so a partial overlap
+  # is caught. A domain nested inside another is not a competing claim.
+  - id: memory-no-overlap
+    severity: error
+    phase: post-processing
+    group-by: "/domains/.*:compatible:openamp,domain-v1"
+    collect: { property: memory, kind: range }
+    check: no-overlap
+    params:
+      unless-flag: shared
+    message: "memory assigned to different domains must not overlap unless shared"
+
+  # As memory-within-physical, for SRAM: TCM, OCM and similar on-chip memories.
+  #
+  # NOTE: not exercised by the reference trees, none of which assign `sram`.
+  - id: sram-within-physical
+    severity: error
+    phase: post-processing
+    group-by:
+      claimed: ["/domains/.*:compatible:openamp,domain-v1"]
+      physical: ["/.*:compatible:mmio-sram"]
+    collect:
+      claimed: { property: sram, kind: range }
+      physical: { property: reg, kind: range }
+    check: contained-in
+    params:
+      container: physical
+    message: "a domain's sram must fall within SRAM present in the system"
+
+  # ------------------------------------------------------- device access ---
+
+  # A device given to more than one domain is a conflict unless every domain
+  # holding it agrees it is shared. Without that, two domains will each drive
+  # the same hardware believing they own it.
+  - id: device-exclusive
+    severity: error
+    phase: post-processing
+    group-by: "/domains/.*:compatible:openamp,domain-v1"
+    collect: "access"
+    check: exclusive-across
+    params:
+      unless-flag: shared
+    message: "a device assigned to multiple domains requires the 'shared' flag"
+
+  # --------------------------------------------- identity and hierarchy ---
+
+  # Domain names must be unique, so that a name identifies one domain. This is
+  # the name; domain-id-unique covers the numeric `id`.
+  - id: domain-name-unique
+    severity: error
+    phase: post-processing
+    group-by: "/domains/.*:compatible:openamp,domain-v1"
+    collect: "property:name"
+    check: exclusive-across
+    message: "domain names must be unique within the system"
+
+  # Parent relationships must not form a loop. A cycle would make resource
+  # inheritance non-terminating.
+  - id: domain-parent-acyclic
+    severity: error
+    phase: post-processing
+    select:
+      - "/domains/.*:parent"
+    check: acyclic
+    params:
+      edge: parent
+    message: "domain parent relationships must not form a cycle"
+
+  # A domain nested inside another may only use CPUs the enclosing domain
+  # holds: a guest cannot run on a core its hypervisor was never given.
+  #
+  # This follows tree nesting, which is how the hypervisor/guest relationship
+  # is expressed; domain-access-within-parent follows the `parent` property instead.
+  - id: nested-domain-cpus-within-parent
+    severity: error
+    phase: post-processing
+    select:
+      - "/domains/.*:compatible:openamp,domain-v1"
+    check: subset-of
+    params:
+      of: cpus
+      kind: cpu-cores
+      relative: ancestor-domain
+    message: "a nested domain's CPUs must be a subset of its parent's"

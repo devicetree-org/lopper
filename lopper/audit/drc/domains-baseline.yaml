@@ -1,60 +1,79 @@
-# Domains YAML baseline DRCs (§3.1) + selected cross-domain DRCs (§3.2).
+# Domain definition: syntax, semantics and integrity.
 #
-# These rules are DATA. Each names a reusable check handler (lopper/audit/checks.py)
-# and passes typed parameters. Adding a rule here that fits an existing handler
-# needs no Python.
+# Baseline checks that apply to every domain, whatever kind of domain it is.
+# See README.md in this directory for how rules are written, how domains are
+# selected, and how to run these.
 #
-# Source: "SHEL work flow - DRCs and Error handling" (open DRC catalog).
-# Owner of the §3.1 baseline set: Bruce.
-#
-# NOTE: DRC-DOM-001 (YAML syntax) and DRC-DOM-002 (undefined namespace) are
-# parse-time / schema concerns handled before this layer; they are intentionally
-# not encoded as node checks here.
+# Malformed YAML, and use of keys the specification does not define, are
+# caught before this layer by parsing and schema validation, so they are not
+# repeated as node checks here.
 
 drc:
-  - id: DRC-DOM-003
+  # Every domain must declare itself as one, with "openamp,domain-v1" in its
+  # compatible. A domain missing it will be ignored by everything downstream
+  # that looks for domains, silently doing nothing.
+  #
+  # Selection cannot use `compatible`, since that is what is being checked; a
+  # node is taken to be a domain if it carries `cpus` or `os,type`, excluding
+  # the grouping nodes that also live under /domains.
+  - id: domain-compatible
     severity: error
     phase: post-yaml
     select:
-      - "/domains/.*"
-    # Domains are identified here by path (direct entries under /domains). A
-    # nested/hierarchical layout will need a refined selector -- that is the
-    # documented selector-model follow-up, not a per-rule code change.
+      - "/domains/.*:cpus"
+      - "/domains/.*:os,type"
+      - check: compatible-contains
+        params: { token: "openamp,group-v1" }
+        negate: true
     check: compatible-contains
     params:
       token: "openamp,domain-v1"
     message: "domain node compatible must include 'openamp,domain-v1'"
 
-  - id: DRC-DOM-004
+  # Every domain must have an `id`. It is how firmware refers to the domain,
+  # so a domain without one cannot be addressed at runtime.
+  #
+  # Selection cannot use `id`, since that is what is being checked.
+  - id: domain-id-present
     severity: error
     phase: post-yaml
     select:
-      - "/domains/.*"
+      - "/domains/.*:cpus"
+      - "/domains/.*:os,type"
+      - check: compatible-contains
+        params: { token: "openamp,group-v1" }
+        negate: true
     check: required
     params:
       properties: ["id"]
     message: "every domain must have a unique 32-bit 'id' property"
 
-  - id: DRC-DOM-005
+  # `os,type` must name an OS the tooling knows how to generate for. An
+  # unrecognised value produces no output for that domain.
+  - id: domain-os-type
     severity: error
     phase: post-yaml
     select:
-      - "/domains/.*"
+      - "/domains/.*:compatible:openamp,domain-v1"
     check: enum
     params:
       property: "os,type"
       values: ["linux", "zephyr", "baremetal", "xen", "freertos"]
     message: "domain 'os,type' must be a recognized OS type"
 
-  - id: DRC-DOM-006
+  # No two domains may share an `id`. Duplicates make the domain that firmware
+  # resolves an `id` to ambiguous.
+  - id: domain-id-unique
     severity: error
     phase: post-processing
-    group-by: "/domains/.*"
+    group-by: "/domains/.*:compatible:openamp,domain-v1"
     collect: "property:id"
     check: exclusive-across
     message: "domain 'id' must be unique across all domains"
 
-  - id: DRC-DOM-007
+  # A domain naming a `parent` must name one that exists. A dangling parent
+  # means the intended resource inheritance never happens.
+  - id: domain-parent-exists
     severity: error
     phase: post-processing
     select:
@@ -64,20 +83,15 @@ drc:
       property: "parent"
     message: "domain 'parent' must reference an existing domain"
 
-  - id: DRC-DOM-012
+  # A child domain may only be given devices its parent already has. Claiming
+  # more would grant access the parent was never entitled to delegate.
+  - id: domain-access-within-parent
     severity: error
     phase: post-processing
-    group-by: "/domains/.*"
-    collect: "cpu-cores"
-    check: exclusive-across
-    message: "a CPU core must not be assigned to more than one domain (no hypervisor)"
-
-  - id: DRC-DOM-034
-    severity: error
-    phase: post-processing
-    group-by: "/domains/.*"
-    collect: "access"
-    check: exclusive-across
+    select:
+      - "/domains/.*:parent"
+    check: subset-of
     params:
-      unless-flag: shared
-    message: "a device assigned to multiple domains requires the 'shared' flag"
+      of: access
+      relative: parent-domain
+    message: "a domain's access must be a subset of its parent's"
