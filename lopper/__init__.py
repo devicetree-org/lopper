@@ -3064,13 +3064,18 @@ class LopperSDT:
                     except:
                         node = None
 
-                    if not node:
-                        lopper.log._error( f"no nodes found for {modify_path}", True )
-
                     # node operation
                     # in case /<name>/ was passed as the new name, we need to drop them
                     # since they aren't valid in set_name()
                     if modify_val:
+                        # a rename/move needs an existing source node, so a
+                        # non-matching selector here is a real error. a node
+                        # *delete* (the else branch below) is tolerant of a
+                        # selector that matches nothing: it is a no-op, per the
+                        # match-or-skip contract of the modify operand.
+                        if not node:
+                            lopper.log._error( f"no nodes found for {modify_path}", True )
+
                         modify_source_path = Path(node.abs_path)
 
                         if modify_val.startswith( "/" ):
@@ -3125,7 +3130,7 @@ class LopperSDT:
                         node_to_remove = node
 
                         if not node_to_remove:
-                            lopper.log._warning( f"Cannot find node {node.abs_path} for delete operation"  )
+                            lopper.log._warning( f"Cannot find node {modify_path} for delete operation"  )
                             if self.werror:
                                 sys.exit(1)
                         else:
