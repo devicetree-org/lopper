@@ -247,6 +247,59 @@ class SchemaManager:
             self.checker = DTSTypeChecker(schema_dict)
             self.validator = DTSValidator(schema_dict) if 'DTSValidator' in globals() else None
 
+    def merge_schema(self, schema_dict):
+        """Fold newly learned property definitions into the active schema
+
+        A schema is learned from the input tree when it is compiled. Anything
+        that arrives later -- an overlay merged into the tree, for instance --
+        was never scanned, so its properties have no learned type. They fall
+        through to the name-based heuristics, which guess: a zero-length
+        boolean whose name carries a vendor prefix matches the ".*,.*" rule,
+        is typed as a string, and is written back out as `prop = ""` rather
+        than `prop`.
+
+        The merge is deliberately conservative. Only names the active schema
+        does not already know are added, so a property that already resolved
+        keeps the type it was first learned with. Folding in a later schema
+        can add knowledge; it cannot re-type anything.
+
+        Only property_definitions is merged. The path and node-pattern
+        sections are keyed by paths meaningful in the tree they were learned
+        from -- an overlay's are its fragment paths, which no longer exist
+        once it has been merged.
+
+        Args:
+           schema_dict (dict): a schema, as returned by dt_compile()
+
+        Returns:
+           int: the number of property definitions added
+        """
+        if not schema_dict:
+            return 0
+
+        incoming = schema_dict.get('property_definitions', {})
+        if not incoming:
+            return 0
+
+        if self.schema is None:
+            self.update_schema(schema_dict)
+            return len(incoming)
+
+        known = self.schema.get('property_definitions', {})
+        new_props = { name: definition for name, definition in incoming.items()
+                      if name not in known }
+        if not new_props:
+            return 0
+
+        merged = dict(self.schema)
+        merged['property_definitions'] = { **known, **new_props }
+        self.update_schema(merged)
+
+        _debug( f"schema merge: added {len(new_props)} property definition(s): "
+                f"{sorted(new_props)[:8]}" )
+
+        return len(new_props)
+
     def get_resolver(self):
         """Get resolver, creating if needed"""
         if self.resolver is None and self.schema is not None:
