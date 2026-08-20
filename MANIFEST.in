@@ -2,6 +2,7 @@ graft lopper/assists
 graft lopper/lops
 graft lopper/vendor
 recursive-include lopper/schema *.yaml
+recursive-include lopper/audit/drc *.yaml
 include lopper/VERSION
 include lopper/lopper.ini
 

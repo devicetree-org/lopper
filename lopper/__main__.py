@@ -91,6 +91,8 @@ def usage():
     print('                          schema_all (enable all schema checks)' )
     print('                          all (enable all warnings)' )
     print('    , --memmap        output file for memory map visualization (use - for stdout)' )
+    print('    , --drc           load DRC rules from a .yaml file or directory (repeatable).' )
+    print('                      Rules still only run when enabled with -W drc (or drc:<id>)' )
     print('    , --cpumap        output file for CPU access map visualization (use - for stdout)' )
     print('    , --cpumap-expand expand bus nodes to show child devices in cpumap' )
     print('    , --symbols       generate (and maintain) the __symbols__ node during processing' )
@@ -143,6 +145,7 @@ def main():
     usage_flag = False
     schema = None
     memmap_file = None
+    drc_paths = []
     cpumap_file = None
     cpumap_expand = False
     overlay_emit = set()
@@ -154,7 +157,7 @@ def main():
                                      "force","verbose","help","input=","output=","dryrun",
                                      "assist=","server", "auto", "permissive", 'symbols', "xlate=",
                                      "no-libfdt", "overlay", "cfgfile=", "cfgval=", "input-dirs",
-                                     "memmap=", "cpumap=", "cpumap-expand",
+                                     "memmap=", "cpumap=", "cpumap-expand", "drc=",
                                      "emit-overlay-sidecar", "emit-overlay-dtso",
                                      "emit-embedded-overlays"] )
     except getopt.GetoptError as err:
@@ -225,6 +228,8 @@ def main():
             warnings.append(a)
         elif o in ('--memmap'):
             memmap_file = a
+        elif o in ('--drc'):
+            drc_paths.append(a)
         elif o in ('--cpumap'):
             cpumap_file = a
         elif o in ('--cpumap-expand'):
@@ -548,14 +553,47 @@ def main():
     else:
         device_tree.perform_lops()
 
+    # Collect DRC rules from the sources beyond the shipped catalog: files or
+    # directories named with --drc, and any rules carried in the tree itself
+    # under /__assertions__. Both are additive to the shipped catalog, and
+    # neither runs unless a -W drc flag also enables it.
+    if warnings:
+        from lopper.audit.assertions import get_drc_registry
+        _drc_registry = get_drc_registry()
+        for _p in drc_paths:
+            try:
+                if os.path.isdir(_p):
+                    _n = _drc_registry.load_dir(_p)
+                else:
+                    _n = _drc_registry.load_yaml_file(_p)
+                _info(f"loaded {_n} DRC rule(s) from {_p}")
+            except Exception as _e:
+                _error(f"could not load DRC rules from {_p}: {_e}", also_exit=1)
+        try:
+            _n = _drc_registry.collect_from_tree(device_tree.tree)
+            if _n:
+                _info(f"loaded {_n} DRC rule(s) from the tree (/__assertions__)")
+        except Exception as _e:
+            _warning(f"could not collect in-tree DRC rules: {_e}")
+    elif drc_paths:
+        _warning("--drc given, but no DRC checks are enabled; add -W drc")
+
     # Run audit validation phases if any warnings are enabled
     if warnings:
         from lopper.audit.base import run_audit_phase, ValidationPhase
         # Run EARLY and POST_YAML phases (POST_PROCESSING runs after domain processing)
-        error_count = run_audit_phase(ValidationPhase.EARLY, device_tree.tree, warnings, werror)
-        error_count += run_audit_phase(ValidationPhase.POST_YAML, device_tree.tree, warnings, werror)
+        # named trees a DRC rule can target with `tree:`; sync first so
+        # extracted trees and overlays are reachable by name
+        try:
+            device_tree.subtrees_sync()
+        except Exception as _e:
+            _debug(f"subtrees_sync: {_e}")
+        _audit_kw = {"subtrees": getattr(device_tree, "subtrees", {})}
+
+        error_count = run_audit_phase(ValidationPhase.EARLY, device_tree.tree, warnings, werror, **_audit_kw)
+        error_count += run_audit_phase(ValidationPhase.POST_YAML, device_tree.tree, warnings, werror, **_audit_kw)
         # Run POST_PROCESSING phase (final consistency checks)
-        error_count += run_audit_phase(ValidationPhase.POST_PROCESSING, device_tree.tree, warnings, werror)
+        error_count += run_audit_phase(ValidationPhase.POST_PROCESSING, device_tree.tree, warnings, werror, **_audit_kw)
         if error_count > 0 and werror:
             _error(f"audit validation failed with {error_count} error(s)", also_exit=1)
 
