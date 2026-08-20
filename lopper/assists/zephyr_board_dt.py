@@ -175,6 +175,17 @@ def _merge_include_fragment(content, main_tree, sdt, work_dir, include_paths):
     )
     if not result[0]:
         return False
+
+    # The fragment brings in properties the domain tree never had, and the
+    # loader below will not learn them: a LopperSDT constructed here has no
+    # schema set, and setup() only learns when it has been asked to. Without
+    # this their type is guessed from the property name, which turns a
+    # vendor prefixed boolean into an empty string. Compiling the combined
+    # file has just produced a schema that covers them, so fold it in before
+    # the tree is loaded and typed.
+    import lopper.schema
+    lopper.schema._schema_manager.merge_schema( result[1] )
+
     loader = LopperSDT(combined_path)
     loader.tmpdir = work_dir
     loader.setup(combined_path, [], include_paths or work_dir, force=True)
