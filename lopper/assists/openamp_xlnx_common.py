@@ -82,13 +82,71 @@ def _openamp_ipi_controllers(tree):
     return controllers
 
 
-def _openamp_domain_processor(tree, domain):
+def _openamp_cpu_index(cpu):
+    """Return the cluster-local index represented by a CPU node."""
+    reg = cpu.propval("reg")
+    if reg != [""] and reg:
+        try:
+            return int(reg[0])
+        except (TypeError, ValueError):
+            pass
+    match = re.search(r"@([0-9a-fA-F]+)$", cpu.name)
+    if match:
+        return int(match.group(1), 16)
+    return None
+
+
+def _openamp_domain_cpu_assignment(tree, domain):
+    """Resolve a domain's cluster and cores from the standard cpus tuple."""
+    cpus = domain.propval("cpus")
+    if cpus == [""] or not cpus:
+        return None, None, []
+    cluster = tree.pnode(cpus[0])
+    if len(cpus) < 2:
+        return cluster, None, []
+    try:
+        mask = int(cpus[1])
+    except (TypeError, ValueError):
+        return cluster, None, []
+    if cluster is None:
+        return None, mask, []
+    selected = []
+    for cpu in cluster.subnodes(children_only=True):
+        index = _openamp_cpu_index(cpu)
+        if index is not None and mask & (1 << index):
+            selected.append(cpu)
+    return cluster, mask, selected
+
+
+def _openamp_legacy_domain_processor(domain):
+    """Read the historical OpenAMP core label, when present."""
     dtd = next((n for n in domain.subnodes(children_only=True)
                 if n.name == "domain-to-domain"), None)
-    if dtd and dtd.propval("cluster_cpu") != [""]:
-        return dtd.propval("cluster_cpu")[0]
-    cpus = domain.propval("cpus")
-    cluster = tree.pnode(cpus[0]) if cpus != [""] else None
+    value = dtd.propval("cluster_cpu") if dtd else [""]
+    return value[0] if value != [""] and value else None
+
+
+def _openamp_domain_selects_cpu(tree, domain, cpu):
+    """Test CPU membership, preferring the SDT mask over the legacy label."""
+    cluster, mask, _ = _openamp_domain_cpu_assignment(tree, domain)
+    if cluster is not None and mask is not None:
+        index = _openamp_cpu_index(cpu)
+        return (cpu.parent == cluster and index is not None
+                and bool(mask & (1 << index)))
+
+    legacy = _openamp_legacy_domain_processor(domain)
+    if legacy:
+        return legacy in (cpu.label, cpu.name)
+    return cluster is not None and cpu.parent == cluster
+
+
+def _openamp_domain_processor(tree, domain):
+    cluster, _, selected = _openamp_domain_cpu_assignment(tree, domain)
+    if selected:
+        return ", ".join(cpu.label or cpu.name for cpu in selected)
+    legacy = _openamp_legacy_domain_processor(domain)
+    if legacy:
+        return legacy
     return (cluster.label or cluster.name) if cluster else "unspecified"
 
 
@@ -105,7 +163,7 @@ def _openamp_configured_relations(tree):
             continue
         dtd = next((n for n in domain.subnodes(children_only=True)
                     if n.name == "domain-to-domain"), None)
-        if not dtd or dtd.propval("cluster_cpu") == [""]:
+        if not dtd:
             continue
         for relation in dtd.subnodes(children_only=True):
             compatible = relation.propval("compatible")
