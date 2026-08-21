@@ -21,7 +21,6 @@ sys.path.append(os.path.dirname(__file__))
 
 OVERLAY_REF_RE = re.compile(r"&\w+\s*{")
 ZEPHYR_BOARD_DTSI_SUFFIX = "_zephyr.dtsi"
-SDT_DTSI_GLOB = "*.dtsi"
 SDT_TOP_DTS = "system-top.dts"
 SDT_BOARD_PROP_RE = re.compile(r'board\s*=\s*"([^"]+)"')
 SDT_INCLUDE_RE = re.compile(r'#include\s+"([^"]+)"')
@@ -250,12 +249,38 @@ def _sdt_included_dtsi_basenames(sdt_folder):
     system_top = os.path.join(sdt_folder, SDT_TOP_DTS)
     if not os.path.isfile(system_top):
         return frozenset()
+
     included = set()
-    with open(system_top, "r", encoding="utf-8") as fh:
-        for line in fh:
-            match = SDT_INCLUDE_RE.match(line.strip())
-            if match:
-                included.add(os.path.basename(match.group(1)))
+    visited = set()
+
+    def collect_includes(path):
+        real_path = os.path.realpath(path)
+        if real_path in visited or not os.path.isfile(real_path):
+            return
+        visited.add(real_path)
+
+        with open(real_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                match = SDT_INCLUDE_RE.match(line.strip())
+                if not match:
+                    continue
+
+                include = match.group(1)
+                included.add(os.path.basename(include))
+
+                # CPP resolves quoted includes relative to the including file
+                # before consulting include directories. Mirror that behavior
+                # for files copied into the SDT directory.
+                candidates = (
+                    os.path.join(os.path.dirname(real_path), include),
+                    os.path.join(sdt_folder, include),
+                )
+                for candidate in candidates:
+                    if os.path.isfile(candidate):
+                        collect_includes(candidate)
+                        break
+
+    collect_includes(system_top)
     return frozenset(included)
 
 
@@ -269,7 +294,8 @@ def discover_zephyr_board_files(sdt_folder, main_tree):
 
     user_zephyr_dtsi = None
     sdt_includes = _sdt_included_dtsi_basenames(sdt_folder)
-    for path in sorted(glob.glob(os.path.join(sdt_folder, SDT_DTSI_GLOB))):
+    zephyr_glob = f"*{ZEPHYR_BOARD_DTSI_SUFFIX}"
+    for path in sorted(glob.glob(os.path.join(sdt_folder, zephyr_glob))):
         abs_path = os.path.abspath(path)
         if board_dtsi is not None and abs_path == board_dtsi:
             continue
@@ -307,6 +333,7 @@ def merge_board_overlay_from_sdt(sdt, options):
         return False
 
     for path in (p for p in (board_dtsi, user_zephyr_dtsi) if p):
+        print(f"[INFO] Merging Zephyr board content from '{path}'.")
         with open(path, encoding="utf-8") as fh:
             if not merge_board_overlay_content(fh.read(), sdt.tree, sdt=sdt, sdt_folder=sdt_folder):
                 return False
