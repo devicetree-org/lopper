@@ -48,11 +48,11 @@ def test_discover_board_and_user_by_naming(tmp_path):
     sdt_folder.mkdir()
     (sdt_folder / "system-top.dts").write_text('/ { board = "kcu105"; };', encoding="utf-8")
     (sdt_folder / "kcu105_zephyr.dtsi").write_text("/ { };", encoding="utf-8")
-    (sdt_folder / "custom.dtsi").write_text("/ { };", encoding="utf-8")
+    (sdt_folder / "custom_zephyr.dtsi").write_text("/ { };", encoding="utf-8")
 
     files = discover_zephyr_board_files(str(sdt_folder), _make_tree("kcu105"))
     assert files["board_dtsi"].endswith("kcu105_zephyr.dtsi")
-    assert files["user_zephyr_dtsi"].endswith("custom.dtsi")
+    assert files["user_zephyr_dtsi"].endswith("custom_zephyr.dtsi")
 
 
 def test_discover_ignores_sdt_included_dtsi(tmp_path):
@@ -70,7 +70,7 @@ def test_discover_ignores_sdt_included_dtsi(tmp_path):
     assert files["user_zephyr_dtsi"] is None
 
 
-def test_discover_user_only(tmp_path):
+def test_discover_ignores_unrelated_dtsi(tmp_path):
     sdt_folder = tmp_path / "sdt"
     sdt_folder.mkdir()
     (sdt_folder / "system-top.dts").write_text("/ { };", encoding="utf-8")
@@ -78,10 +78,10 @@ def test_discover_user_only(tmp_path):
 
     files = discover_zephyr_board_files(str(sdt_folder), _make_tree())
     assert files["board_dtsi"] is None
-    assert files["user_zephyr_dtsi"].endswith("vek385.dtsi")
+    assert files["user_zephyr_dtsi"] is None
 
 
-def test_discover_user_override_without_board_zephyr_file(tmp_path):
+def test_discover_user_zephyr_override_without_board_zephyr_file(tmp_path):
     sdt_folder = tmp_path / "sdt"
     sdt_folder.mkdir()
     (sdt_folder / "system-top.dts").write_text(
@@ -89,11 +89,45 @@ def test_discover_user_override_without_board_zephyr_file(tmp_path):
         encoding="utf-8",
     )
     (sdt_folder / "pl.dtsi").write_text("/ { };", encoding="utf-8")
-    (sdt_folder / "kcu105.dtsi").write_text("/ { };", encoding="utf-8")
+    (sdt_folder / "custom_zephyr.dtsi").write_text("/ { };", encoding="utf-8")
 
     files = discover_zephyr_board_files(str(sdt_folder), _make_tree("kcu105"))
     assert files["board_dtsi"] is None
-    assert files["user_zephyr_dtsi"].endswith("kcu105.dtsi")
+    assert files["user_zephyr_dtsi"].endswith("custom_zephyr.dtsi")
+
+
+def test_discover_ignores_transitively_included_dtsi(tmp_path):
+    sdt_folder = tmp_path / "sdt"
+    sdt_folder.mkdir()
+    (sdt_folder / "system-top.dts").write_text(
+        '#include "board.dtsi"\n/ { };', encoding="utf-8"
+    )
+    (sdt_folder / "board.dtsi").write_text(
+        '#include "soc_zephyr.dtsi"\n/ { };', encoding="utf-8"
+    )
+    (sdt_folder / "soc_zephyr.dtsi").write_text("/ { };", encoding="utf-8")
+
+    files = discover_zephyr_board_files(str(sdt_folder), _make_tree())
+    assert files["board_dtsi"] is None
+    assert files["user_zephyr_dtsi"] is None
+
+
+def test_discover_include_cycle(tmp_path):
+    sdt_folder = tmp_path / "sdt"
+    sdt_folder.mkdir()
+    (sdt_folder / "system-top.dts").write_text(
+        '#include "first.dtsi"\n/ { };', encoding="utf-8"
+    )
+    (sdt_folder / "first.dtsi").write_text(
+        '#include "second_zephyr.dtsi"\n/ { };', encoding="utf-8"
+    )
+    (sdt_folder / "second_zephyr.dtsi").write_text(
+        '#include "first.dtsi"\n/ { };', encoding="utf-8"
+    )
+    (sdt_folder / "user_zephyr.dtsi").write_text("/ { };", encoding="utf-8")
+
+    files = discover_zephyr_board_files(str(sdt_folder), _make_tree())
+    assert files["user_zephyr_dtsi"].endswith("user_zephyr.dtsi")
 
 
 def test_resolve_sdt_folder_from_args(tmp_path):
@@ -120,7 +154,7 @@ def test_merge_overlay_user_only(tmp_path):
         """
     )
     (sdt_folder / "system-top.dts").write_text("/ { };", encoding="utf-8")
-    (sdt_folder / "custom.dtsi").write_text(user_content, encoding="utf-8")
+    (sdt_folder / "custom_zephyr.dtsi").write_text(user_content, encoding="utf-8")
 
     tree = _make_tree()
     sdt = SimpleNamespace(outdir=str(outdir), tree=tree, tmpdir=str(outdir))
@@ -198,7 +232,7 @@ def test_merge_overlay_board_and_user_merge(tmp_path):
 
     (sdt_folder / "system-top.dts").write_text('/ { board = "kcu105"; };', encoding="utf-8")
     (sdt_folder / "kcu105_zephyr.dtsi").write_text(board_content, encoding="utf-8")
-    (sdt_folder / "custom.dtsi").write_text(user_content, encoding="utf-8")
+    (sdt_folder / "custom_zephyr.dtsi").write_text(user_content, encoding="utf-8")
 
     tree = _make_tree("kcu105")
     existing = LopperNode()
