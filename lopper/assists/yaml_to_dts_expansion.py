@@ -1167,28 +1167,60 @@ def openamp_remote_cpu_expand( tree, subnode, cluster_cpu, cluster_node, verbose
     Args:
         tree (LopperTree): Device tree being modified.
         subnode (LopperNode): Node describing CPU resources to attach.
-        cluster_cpu (arr): None or array to check for cluster CPU information
+        cluster_cpu (arr): Optional legacy core label used as a fallback.
         cluster_node (LopperNode): Node for core CPU information
         verbose (int): Verbosity level for diagnostic output.
 
     Returns:
         None
     """
-    if cluster_cpu == None:
-        return
+    # Preserve the historical property for inputs that still provide it, but
+    # derive core-specific data from the standard cpus mask first.
+    if cluster_cpu is not None:
+        for n in subnode.subnodes():
+            if n.name == "domain-to-domain":
+                n + LopperProp(name="cluster_cpu", value=cluster_cpu)
 
-    for n in subnode.subnodes():
-        if n.name == "domain-to-domain":
-            n + LopperProp(name="cluster_cpu", value=cluster_cpu)
+    cpus = subnode.propval("cpus")
+    cpu_mask = cpus[1] if cpus != [''] and len(cpus) > 1 else None
+    selected_cores = []
+    if cluster_node is not None and cpu_mask is not None:
+        for cpu in cluster_node.subnodes(children_only=True):
+            reg = cpu.propval("reg")
+            if reg == [''] or not reg:
+                continue
+            try:
+                if int(cpu_mask) & (1 << int(reg[0])):
+                    selected_cores.append(cpu)
+            except (TypeError, ValueError):
+                pass
 
-    if cluster_node is not None:
-        pd_prop_node = [ n for n in cluster_node.subnodes() if n.propval("power-domains") != [''] ]
-        if len(pd_prop_node) == 1:
-            subnode + LopperProp(name="rpu_pd_val", value=pd_prop_node[0].propval("power-domains"))
+    # Fall back to the legacy label only when the mask did not resolve a core.
+    if not selected_cores and cluster_cpu is not None:
+        legacy_label = (cluster_cpu[0]
+                        if isinstance(cluster_cpu, list) else cluster_cpu)
+        try:
+            selected_cores = [tree.lnodes(legacy_label)[0]]
+        except (IndexError, KeyError):
+            selected_cores = []
 
-    if cluster_node != None and "r5" in cluster_node.name:
+    if len(selected_cores) == 1:
+        power_domains = selected_cores[0].propval("power-domains")
+        if power_domains != ['']:
+            subnode + LopperProp(name="rpu_pd_val", value=power_domains)
+
+    if cluster_node is not None and "r5" in cluster_node.name:
         subnode + LopperProp(name="cpu_config_str", value="lockstep" if check_bit_set(subnode.propval("cpus")[2], 30) else "split")
-        subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
+        if len(selected_cores) == 1:
+            subnode + LopperProp(name="core_num", value=selected_cores[0].propval("reg")[0])
+        elif cluster_cpu is not None:
+            # Compatibility for legacy trees whose CPU child cannot be resolved.
+            subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
+
+
+def _cpu_mask_value(mask):
+    """Parse either a YAML-native integer or a string CPU mask."""
+    return int(mask, 0) if isinstance(mask, str) else int(mask)
 
 
 def cpu_expand( tree, subnode, verbose = 0):
@@ -1292,7 +1324,7 @@ def cpu_expand( tree, subnode, verbose = 0):
 
             try:
                 mask = c['cpumask']
-                mask = int(mask,16)
+                mask = _cpu_mask_value(mask)
             except:
                 mask = 0
         else:
@@ -1310,7 +1342,7 @@ def cpu_expand( tree, subnode, verbose = 0):
     if cpus_list:
         cpus[0].value = cpus_list
 
-    # This is a no-op if cluster_cpu and cluster_node are not set up.
+    # Derive OpenAMP CPU metadata from the mask, with cluster_cpu as fallback.
     openamp_remote_cpu_expand(tree, subnode, cluster_cpu, cluster_node, verbose)
 
 # sdt: is the system device tree
