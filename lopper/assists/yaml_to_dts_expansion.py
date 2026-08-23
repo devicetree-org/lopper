@@ -1191,6 +1191,11 @@ def openamp_remote_cpu_expand( tree, subnode, cluster_cpu, cluster_node, verbose
         subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
 
 
+def _cpu_mask_value(mask):
+    """Parse either a YAML-native integer or a string CPU mask."""
+    return int(mask, 0) if isinstance(mask, str) else int(mask)
+
+
 def cpu_expand( tree, subnode, verbose = 0):
     """Expand compact CPU descriptors into fully fledged domain properties.
 
@@ -1292,7 +1297,7 @@ def cpu_expand( tree, subnode, verbose = 0):
 
             try:
                 mask = c['cpumask']
-                mask = int(mask,16)
+                mask = _cpu_mask_value(mask)
             except:
                 mask = 0
         else:
