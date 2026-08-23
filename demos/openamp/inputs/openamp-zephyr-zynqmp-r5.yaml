@@ -116,6 +116,6 @@ domains:
     os,type: baremetal
     cpus:
       - cluster: cpus_r5_1
-        cpumask: 0x2
+        cpumask: 0x1
         mode: { secure: true, el: 0x3 }
         cluster_cpu: psu_cortexr5_1
