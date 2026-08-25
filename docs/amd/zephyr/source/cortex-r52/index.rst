@@ -66,7 +66,7 @@ This step transforms the domain-specific device-tree from Step 1 into a Zephyr-c
 **Command**:
 ::
 
-    lopper -f --enhanced -O {workspace} {workspace}/system-domain.dts {workspace}/system-zephyr.dts -- gen_domain_dts {proc} zephyr_dt {zephyr_board_dts}
+    lopper -f --enhanced -O {workspace} {workspace}/system-domain.dts {workspace}/system-zephyr.dts -- zephyr_domain_dts {proc} {zephyr_board_dts}
 
 Platform-Specific Processor Names
 ---------------------------------
@@ -109,7 +109,7 @@ Basic Workflow (without board-specific device-tree):
     lopper -f --enhanced -O ./output -i lop-r52-imux.dts system-top.dts ./output/system-domain.dts -- gen_domain_dts cortexr52_0
 
     # Step 2: Generate Zephyr-specific device-tree
-    lopper -f --enhanced -O ./output ./output/system-domain.dts ./output/system-zephyr.dts -- gen_domain_dts cortexr52_0 zephyr_dt
+    lopper -f --enhanced -O ./output ./output/system-domain.dts ./output/system-zephyr.dts -- zephyr_domain_dts cortexr52_0
 
 Advanced Workflow (with board-specific device-tree optimization):
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -120,7 +120,7 @@ Advanced Workflow (with board-specific device-tree optimization):
     lopper -f --enhanced -O ./output -i lop-r52-imux.dts system-top.dts ./output/system-domain.dts -- gen_domain_dts cortexr52_0
 
     # Step 2: Generate Zephyr-specific device-tree with board optimization
-    lopper -f --enhanced -O ./output ./output/system-domain.dts ./output/system-zephyr.dts -- gen_domain_dts cortexr52_0 zephyr_dt board.dts
+    lopper -f --enhanced -O ./output ./output/system-domain.dts ./output/system-zephyr.dts -- zephyr_domain_dts cortexr52_0 board.dts
 
 For Versal Net Platform:
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -134,7 +134,7 @@ Basic Workflow (without board-specific device-tree):
     lopper -f --enhanced -O ./output -i lop-r52-imux.dts system-top.dts ./output/system-domain.dts -- gen_domain_dts psx_cortexr52_0
 
     # Step 2: Generate Zephyr-specific device-tree
-    lopper -f --enhanced -O ./output ./output/system-domain.dts ./output/system-zephyr.dts -- gen_domain_dts psx_cortexr52_0 zephyr_dt
+    lopper -f --enhanced -O ./output ./output/system-domain.dts ./output/system-zephyr.dts -- zephyr_domain_dts psx_cortexr52_0
 
 Advanced Workflow (with board-specific device-tree optimization):
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -145,7 +145,7 @@ Advanced Workflow (with board-specific device-tree optimization):
     lopper -f --enhanced -O ./output -i lop-r52-imux.dts system-top.dts ./output/system-domain.dts -- gen_domain_dts psx_cortexr52_0
 
     # Step 2: Generate Zephyr-specific device-tree with board optimization
-    lopper -f --enhanced -O ./output ./output/system-domain.dts ./output/system-zephyr.dts -- gen_domain_dts psx_cortexr52_0 zephyr_dt board.dts
+    lopper -f --enhanced -O ./output ./output/system-domain.dts ./output/system-zephyr.dts -- zephyr_domain_dts psx_cortexr52_0 board.dts
 
 Output Files
 ------------
