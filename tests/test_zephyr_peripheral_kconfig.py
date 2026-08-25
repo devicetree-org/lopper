@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-3-Clause
 """
-Unit tests for the carrier-board peripheral Kconfig auto-detection added to
-gen_domain_dts.py: board_symbol_for_machine, detect_board_i2c_mux_prio,
+Unit tests for the carrier-board peripheral Kconfig auto-detection in
+zephyr_domain_dts.py: board_symbol_for_machine, detect_board_i2c_mux_prio,
 detect_dt_peripherals, _append_kconfig_entries_before_endif, and the
 _reset_board_kconfig_scratch guard against stale scratch-file bleed across
 unrelated west lopper-command runs.
 """
 
-from lopper.assists import gen_domain_dts
+from lopper.assists import zephyr_domain_dts as gen_domain_dts
 from lopper.tree import LopperNode, LopperTree
 
 

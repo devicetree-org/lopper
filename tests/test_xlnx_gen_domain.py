@@ -17,7 +17,7 @@ Author:
 import os
 import pytest
 
-from lopper.assists import gen_domain_dts
+from lopper.assists import zephyr_domain_dts as gen_domain_dts
 from lopper.tree import LopperNode, LopperTree
 
 
@@ -146,6 +146,97 @@ def test_zynqmp_mailbox_converts_present_ipi_id(compatible, converted_name):
 
     assert node.propval(converted_name, list) == [7]
     assert not node.props("xlnx,ipi-id")
+
+
+def test_zynqmp_mailbox_ipi_id_without_compatible_is_ignored():
+    """IPI child nodes lacking compatible must not abort conversion."""
+    node = LopperNode(-1, "/mailbox/child")
+    node["xlnx,ipi-id"] = [3]
+
+    gen_domain_dts._xlnx_zephyr_convert_zynqmp_ipi_id(node)
+
+    assert node.propval("xlnx,ipi-id", list) == [3]
+    assert not node.props("local-ipi-id")
+    assert not node.props("remote-ipi-id")
+
+
+def test_zynqmp_ipi_child_promoted_from_sdt_buffers():
+    """Raw SDT IPI children gain Zephyr mailbox child-binding properties."""
+    tree = LopperTree()
+    parent = LopperNode(-1, "/axi/mailbox@ff340000")
+    parent["compatible"] = ["xlnx,zynqmp-ipi-mailbox"]
+    child = LopperNode(-1, "/axi/mailbox@ff340000/child@0")
+    child["xlnx,ipi-id"] = [2]
+    child["xlnx,ipi-req-msg-buf"] = [0xff3f0680]
+    child["xlnx,ipi-rsp-msg-buf"] = [0xff3f06a0]
+    parent.add(child)
+    tree + parent
+
+    schema = {
+        "xlnx,zynqmp-ipi-dest-mailbox": {
+            "required": ["reg", "reg-names", "remote-ipi-id"],
+        },
+    }
+    sdt = type("Sdt", (), {"tree": tree})()
+
+    gen_domain_dts._xlnx_zephyr_fixup_zynqmp_ipi_child(child, sdt, schema)
+
+    assert child.name == "ipi@ff3f0680"
+    assert not child.props("compatible")
+    assert child.propval("remote-ipi-id", list) == [2]
+    assert child.propval("reg-names", list) == [
+        "local_request_region", "local_response_region",
+    ]
+
+
+def test_zynqmp_ipi_child_with_reg_strips_compatible():
+    """Fully-formed ZynqMP IPI children keep child-binding props only (04eb83c)."""
+    tree = LopperTree()
+    parent = LopperNode(-1, "/axi/mailbox@ff990000")
+    parent["compatible"] = ["xlnx,zynqmp-ipi-mailbox"]
+    child = LopperNode(-1, "/axi/mailbox@ff990000/ipi@ff990480")
+    child["compatible"] = ["xlnx,zynqmp-ipi-dest-mailbox"]
+    child["reg"] = [
+        0, 0xff990480, 0, 0x20, 0, 0xff9904a0, 0, 0x20,
+        0, 0xff990480, 0, 0x20, 0, 0xff9904a0, 0, 0x20,
+    ]
+    child["reg-names"] = [
+        "local_request_region", "local_response_region",
+        "remote_request_region", "remote_response_region",
+    ]
+    child["xlnx,ipi-id"] = [4]
+    parent.add(child)
+    tree + parent
+
+    schema = {
+        "xlnx,zynqmp-ipi-dest-mailbox": {
+            "required": ["reg", "reg-names", "remote-ipi-id"],
+        },
+    }
+    sdt = type("Sdt", (), {"tree": tree})()
+
+    gen_domain_dts._xlnx_zephyr_fixup_zynqmp_ipi_child(child, sdt, schema)
+
+    assert not child.props("compatible")
+    assert child.propval("remote-ipi-id", list) == [4]
+    assert not child.props("xlnx,ipi-id")
+
+
+def test_zynqmp_ipi_child_without_buffers_is_dropped():
+    """Bufferless SDT IPI placeholders are removed from the domain tree."""
+    tree = LopperTree()
+    parent = LopperNode(-1, "/axi/mailbox@ff340000")
+    parent["compatible"] = ["xlnx,zynqmp-ipi-mailbox"]
+    child = LopperNode(-1, "/axi/mailbox@ff340000/child@6")
+    child["xlnx,ipi-id"] = [9]
+    child["xlnx,ipi-bitmask"] = [0x200]
+    parent.add(child)
+    tree + parent
+
+    sdt = type("Sdt", (), {"tree": tree})()
+    gen_domain_dts._xlnx_zephyr_fixup_zynqmp_ipi_child(child, sdt, {})
+
+    assert not list(parent.subnodes(children_only=True))
 
 
 class TestXilinxDomainGeneration:
