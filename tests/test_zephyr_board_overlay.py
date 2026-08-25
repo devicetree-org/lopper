@@ -134,7 +134,7 @@ def test_resolve_sdt_folder_from_args(tmp_path):
     sdt_folder = tmp_path / "sdt"
     sdt_folder.mkdir()
 
-    options = {"args": ["microblaze_riscv_0", "zephyr_dt", str(sdt_folder)]}
+    options = {"args": ["psv_cortexr5_0", str(sdt_folder)]}
     sdt = SimpleNamespace(outdir=str(tmp_path / "out"))
     assert resolve_sdt_folder(options, sdt) == str(sdt_folder)
 
@@ -158,7 +158,7 @@ def test_merge_overlay_user_only(tmp_path):
 
     tree = _make_tree()
     sdt = SimpleNamespace(outdir=str(outdir), tree=tree, tmpdir=str(outdir))
-    options = {"args": ["microblaze_riscv_0", "zephyr_dt", str(sdt_folder)]}
+    options = {"args": ["microblaze_riscv_0", str(sdt_folder)]}
 
     assert merge_board_overlay_from_sdt(sdt, options) is True
     merged = _tree_text(sdt.tree)
@@ -194,7 +194,7 @@ def test_merge_overlay_board_only(tmp_path):
     tree + existing
 
     sdt = SimpleNamespace(outdir=str(outdir), tree=tree, tmpdir=str(outdir))
-    options = {"args": ["microblaze_riscv_0", "zephyr_dt", str(sdt_folder)]}
+    options = {"args": ["microblaze_riscv_0", str(sdt_folder)]}
 
     assert merge_board_overlay_from_sdt(sdt, options) is True
     merged = _tree_text(sdt.tree)
@@ -242,7 +242,7 @@ def test_merge_overlay_board_and_user_merge(tmp_path):
     tree + existing
 
     sdt = SimpleNamespace(outdir=str(outdir), tree=tree, tmpdir=str(outdir))
-    options = {"args": ["microblaze_riscv_0", "zephyr_dt", str(sdt_folder)]}
+    options = {"args": ["microblaze_riscv_0", str(sdt_folder)]}
 
     assert merge_board_overlay_from_sdt(sdt, options) is True
     merged = _tree_text(sdt.tree)

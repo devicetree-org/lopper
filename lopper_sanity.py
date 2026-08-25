@@ -2662,7 +2662,7 @@ def openamp_zephyr_pipeline_sanity_test():
          "psu_cortexr5_0"],
         [sys.executable, "lopper.py", "-f", "--enhanced",
          prefix + "-rpu.dts", prefix + "-final.dts", "--",
-         "gen_domain_dts", "psu_cortexr5_0", "zephyr_dt"],
+         "zephyr_domain_dts", "psu_cortexr5_0"],
     )
     logs = []
     passed = True
