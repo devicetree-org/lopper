@@ -1396,6 +1396,9 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                     # CANFD
                     if "xlnx,canfd-2.0" in node["compatible"].value:
                         node["compatible"] = "xlnx,canfd-2.0"
+                    # TRNG
+                    if "xlnx,pmcl-trng-11.0" in node["compatible"].value:
+                        node["compatible"].value = ["xlnx,pmcl-trng-11.0"]
                     # OSPI
                     if "xlnx,versal-ospi-1.0" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,versal-ospi-1.0"]
