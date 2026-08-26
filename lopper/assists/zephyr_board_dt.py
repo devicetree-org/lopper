@@ -308,8 +308,9 @@ def discover_zephyr_board_files(sdt_folder, main_tree):
 
 
 def resolve_sdt_folder(options, sdt):
+    # zephyr_domain_dts: args = [proc, sdt_folder|overlay_file]
     try:
-        candidate = options["args"][2]
+        candidate = options["args"][1]
     except (IndexError, KeyError, TypeError):
         return None
     if not candidate:
@@ -344,3 +345,4 @@ def merge_board_overlay_from_sdt(sdt, options):
 
 generate_board_overlay_from_sdt = merge_board_overlay_from_sdt
 process_board_overlay = merge_board_overlay_content
+process_overlay_with_lopper_api = merge_board_overlay_content
