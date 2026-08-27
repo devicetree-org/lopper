@@ -20,6 +20,8 @@ sys.path.append(os.path.dirname(__file__))
 
 _init(__name__)
 
+NATIVE_OS = frozenset(("standalone", "freertos"))
+
 def is_compat( node, compat_string_to_test ):
     if re.search( "module,baremetal_getsupported_comp_xlnx", compat_string_to_test):
         return xlnx_baremetal_getsupported_comp
@@ -176,6 +178,13 @@ def xlnx_baremetal_getsupported_comp(tgt_node, sdt, options):
 
     with open(os.path.join(sdt.outdir, 'app_list.yaml'), 'w') as fd:
         fd.write(yaml.dump(supported_app_dict, sort_keys=False, indent=2, width=32768, Dumper=VerboseSafeDumper))
+
+    # Add xiltimer as a dependency to all thirdparty OS entries.
+    xiltimer_entry = supported_libs_dict[proc_name]["standalone"].get("xiltimer")
+    if xiltimer_entry:
+        for os_key in os_bsp_keys:
+            if os_key not in NATIVE_OS:
+                supported_libs_dict[proc_name][os_key]["xiltimer"] = dict(xiltimer_entry)
 
     with open(os.path.join(sdt.outdir, 'lib_list.yaml'), 'w') as fd:
         fd.write(yaml.dump(supported_libs_dict, sort_keys=False, indent=2, width=32768, Dumper=VerboseSafeDumper))
