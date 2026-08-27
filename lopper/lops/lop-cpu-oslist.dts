@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Advanced Micro Devices, Inc.  All rights reserved.
+ * Copyright (C) 2024 - 2026 Advanced Micro Devices, Inc.  All rights reserved.
  *
  * Author:
  *     Dhriti Sree Rompicharla <DhritiSree.Rompicharla@amd.com>
@@ -9,14 +9,21 @@
  * @brief lop behavior summary
  *
  * Description:
- * - Builds a CPU-to-OS support list for downstream tools by scanning CPU/device
- *   capabilities and emitting YAML-oriented data.
+ * - Builds a CPU-to-OS support list for downstream tools by scanning CPU and
+ *   AI engine nodes and emitting cpulist.yaml under -O outdir.
+ * - Without --cfgval, emit legacy standalone/freertos lists.
+ * - With --cfgval cpulist.repo_yaml=<path>, discover OS keys from that
+ *   manifest; fail if the path is missing or lacks an os: section.
  *
  * Key Operations:
  * - select-v1, code-v1
  *
  * Notable Targets:
  * - /.*:device_type:cpu, /.*:xlnx,ip-name:ai_engine
+ *
+ * Usage:
+ *   lopper --enhanced --werror -f -O <outdir> --cfgval cpulist.repo_yaml=.repo.yaml \
+ *   -i lop-cpu-oslist.dts <system-top.dts>
  */
 
 /dts-v1/;
@@ -29,42 +36,74 @@
                       compatible = "system-device-tree-v1,lop,select-v1";
                       select_1;
                       select_2 = "/.*:device_type:cpu";
+                      select_3 = "/.*:xlnx,ip-name:ai_engine";
                       lop_0_1 {
                               compatible = "system-device-tree-v1,lop,code-v1";
+                              inherit = "baremetal_getsupported_comp_xlnx,common_utils";
                               code = "
+                                     import os
                                      import yaml
+                                     os_proc_map = {}
+
+                                     try:
+                                         repo_yaml = config['cpulist']['repo_yaml']
+                                     except KeyError:
+                                         use_proc_filter = False
+                                         cortex_os_list = ['standalone', 'freertos']
+                                     else:
+                                         use_proc_filter = True
+                                         repo_path = common_utils.get_abs_path(repo_yaml)
+                                         if not common_utils.is_file(repo_path):
+                                             raise RuntimeError(f'lop-cpu-oslist: repo manifest not found: {repo_path}')
+                                         schema = common_utils.load_yaml(repo_path)
+                                         if not schema or not schema.get('os'):
+                                             raise RuntimeError(f'lop-cpu-oslist: invalid repo manifest (missing os: section): {repo_path}')
+                                         cortex_os_list = baremetal_getsupported_comp_xlnx.get_os_bsp_keys(schema)
+                                         for os_pkg, os_info in schema['os'].items():
+                                            os_key = baremetal_getsupported_comp_xlnx.os_yaml_to_bsp_key(os_pkg)
+                                            os_paths = os_info.get('path') or []
+                                            if not os_paths:
+                                                os_proc_map[os_key] = []
+                                                continue
+                                            procs = baremetal_getsupported_comp_xlnx.get_yaml_data(os_pkg, os_paths[0])[0]
+                                            os_proc_map[os_key] = procs or []
+                                     non_cortex_cpu = ('cortexa78', 'cortexr52')
                                      yaml_dict = {}
+
                                      for node in __selected__:
-                                        cpu_ip_name =  node.propval('xlnx,ip-name')[0]
-                                        if not cpu_ip_name:
-                                            continue
-                                        yaml_dict[node.label] = {'ip_name' : '','supported_os' : []}
-                                        yaml_dict[node.label]['ip_name'] = cpu_ip_name
-                                        if ('cortex' in cpu_ip_name or cpu_ip_name == 'microblaze') and cpu_ip_name not in ('cortexa78', 'cortexr52'):
-                                            yaml_dict[node.label]['supported_os'] = ['standalone','freertos']
-                                        else:
-                                            yaml_dict[node.label]['supported_os'] = ['standalone']
-                                     with open('cpulist.yaml', 'w') as fd:
-                                         fd.write(yaml.dump(yaml_dict, indent = 4))
+                                         if not node.label:
+                                             continue
+
+                                         device_type = node.propval('device_type')
+                                         if device_type and device_type[0] == 'cpu':
+                                             ip_name = node.propval('xlnx,ip-name')
+                                             if not ip_name or not ip_name[0]:
+                                                 continue
+                                             cpu_ip_name = ip_name[0]
+                                             if use_proc_filter:
+                                                 supported_os = [os_key for os_key in cortex_os_list if cpu_ip_name in os_proc_map.get(os_key, [])]
+                                             elif (('cortex' in cpu_ip_name or cpu_ip_name == 'microblaze')
+                                                     and cpu_ip_name not in non_cortex_cpu):
+                                                 supported_os = list(cortex_os_list)
+                                             else:
+                                                 supported_os = ['standalone']
+                                             yaml_dict[node.label] = {
+                                                 'ip_name': cpu_ip_name,
+                                                 'supported_os': supported_os,
+                                             }
+                                             continue
+
+                                         ip_name = node.propval('xlnx,ip-name')
+                                         if ip_name and ip_name[0] == 'ai_engine':
+                                             yaml_dict[node.label] = {
+                                                 'ip_name': 'ai_engine',
+                                                 'supported_os': ['aie_runtime'],
+                                             }
+
+                                     with open(os.path.join(outdir, 'cpulist.yaml'), 'w') as fd:
+                                         fd.write(yaml.dump(yaml_dict, indent=4))
                                      ";
                       };
-                };
-                lop_1 {
-                       compatible = "system-device-tree-v1,lop,select-v1";
-                       select_1;
-                       select_2 = "/.*:xlnx,ip-name:ai_engine";
-                       lop_1_1 {
-                               compatible = "system-device-tree-v1,lop,code-v1";
-                               code = "
-                                      import yaml
-                                      with open('cpulist.yaml', 'r') as fd:
-                                        yaml_data = yaml.safe_load(fd)
-                                      for node in __selected__:
-                                         yaml_data[node.label] = {'ip_name' : 'ai_engine','supported_os' : ['aie_runtime']}
-                                      with open('cpulist.yaml', 'w') as fd:
-                                          fd.write(yaml.dump(yaml_data, indent = 4))
-                                      ";
-                               };
                 };
         };
 };
