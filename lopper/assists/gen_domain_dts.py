@@ -438,6 +438,10 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 elif (xlnx_openamp_keep_node(linux_dt, False, node, sdt.tree) or
                       _node_must_be_preserved(node, sdt.tree)):
                     continue
+                # dual-mapped 8-cell reg won't match either domain's address-map; preserve here so
+                # zephyr_domain_dts.py's xlnx_remove_unsupported_nodes can slice it
+                elif node.propval('compatible') != [''] and any('clkx5-wiz' in c for c in node.propval('compatible', list)) and len(node.propval('reg', list)) == 8:
+                    continue
                 else:
                     sdt.tree.delete(node)
         elif node.propval('compatible') != [''] and linux_dt:
