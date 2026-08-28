@@ -580,6 +580,57 @@ def _apply_pl_peripheral_transforms(node, schema, rename_timer=None, stdout_baud
         return [value for key, value in schema.items() if key in node["compatible"].value]
     return None
 
+def _compact_clk_wiz_node(node, machine, sdt):
+    from lopper.tree import LopperProp
+
+    reg_val = node.propval('reg', list)
+    if not reg_val or reg_val == ['']:
+        return
+
+    n = len(reg_val)
+    # n==8 paired with the 8-cell preserve guard in xlnx_generate_domain_dts; both must stay in sync
+    if n == 8:
+        # [APU 4-cell][RPU 4-cell]; amba_pl uses #address-cells=2, #size-cells=2
+        # APU/RPU split uses the same "a78"/"a72" substring convention as the rest of this file
+        if "a78" in machine or "a72" in machine:
+            final_reg = reg_val[0:4]
+        else:
+            final_reg = reg_val[4:8]
+        addr_hex = (f"{final_reg[0]:x}{final_reg[1]:08x}".lstrip('0') or '0')
+    elif n == 4:
+        final_reg = reg_val
+        addr_hex = (f"{reg_val[0]:x}{reg_val[1]:08x}".lstrip('0') or '0')
+    else:
+        return
+
+    phandle_val  = node.propval('phandle', list)
+    compatible   = node.propval('compatible', list)
+    clocks_val   = node.propval('clocks', list)
+    clk_cells    = node.propval('#clock-cells', list)
+    num_out_clks = node.propval('xlnx,num-out-clks', list)
+    status_val   = node.propval('status', list)
+
+    # Zephyr's clock-controller binding only permits these properties; drop everything
+    # else the Vivado-generated node carries (power-domains, resets, xlnx,* vendor props, etc.)
+    for prop in list(node.__props__.keys()):
+        node.delete(prop)
+
+    if phandle_val and phandle_val != ['']:
+        node + LopperProp(name="phandle", value=phandle_val)
+    node + LopperProp(name="compatible", value=compatible)
+    node + LopperProp(name="reg", value=final_reg)
+    if clocks_val and clocks_val != ['']:
+        node + LopperProp(name="clocks", value=clocks_val)
+    if clk_cells and clk_cells != ['']:
+        node + LopperProp(name="#clock-cells", value=clk_cells)
+    if num_out_clks and num_out_clks != ['']:
+        node + LopperProp(name="xlnx,num-out-clks", value=num_out_clks)
+    if status_val and status_val != ['']:
+        node + LopperProp(name="status", value=status_val)
+
+    node.name = f"clock-controller@{addr_hex}"
+    sdt.tree.sync()
+
 def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
     root_node = sdt.tree['/']
     root_sub_nodes = root_node.subnodes()
@@ -604,6 +655,13 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                             num_intr += 12
 
                     is_supported_periph = [value for key,value in schema.items() if key in node["compatible"].value]
+                    # clkx5-wiz needs domain-specific reg slicing; bypass the standard peripheral pipeline.
+                    # Unsupported clk-wiz compatibles fall through to the normal deletion path below.
+                    if (any('clkx5-wiz' in c for c in node.propval('compatible', list))
+                            and is_supported_periph):
+                        _compact_clk_wiz_node(node, machine, sdt)
+                        valid_alias_proplist.append(node.name)
+                        continue
                     # UARTNS550
                     if "xlnx,axi-uart16550-2.0" in node["compatible"].value:
                         node["compatible"].value = ["ns16550"]
