@@ -528,3 +528,12 @@ xlnx,versal-sysmon:
     - status
     - interrupts
     - xlnx,numchannels
+
+xlnx,clkx5-wiz-1.0:
+  required:
+    - compatible
+    - reg
+    - clocks
+    - '#clock-cells'
+    - xlnx,num-out-clks
+    - status
