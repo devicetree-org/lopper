@@ -63,22 +63,6 @@ def chunks(l, n):
         yield l[i:i+n]
 
 
-def cpu_nodes_from_mask(cluster, mask):
-    """Return CPU children selected by a cluster-relative CPU mask."""
-    if cluster is None or mask is None:
-        return []
-
-    try:
-        mask = int(mask)
-    except (TypeError, ValueError):
-        return []
-
-    cpus = [node for node in cluster.subnodes(children_only=True)
-            if re.match(r"cpu@.*", node.name)]
-    return [cpu for index, cpu in enumerate(cpus)
-            if check_bit_set(mask, index)]
-
-
 def json_expand( node ):
     lopper.log._debug( f"========> json expanding node: {node.name}", level=lopper.log.TRACE )
     for p in node:
@@ -958,10 +942,20 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
         lopper.log._info( f"cpu node: {cpu_node}" )
         lopper.log._info( f"sub cpus: {sub_cpus}" )
 
-        for sub_cpu_node in cpu_nodes_from_mask(cpu_node, cpu_mask):
-            # refcount it AND the parent
-            tree.ref_all(sub_cpu_node, True)
-            refd_cpus.append(sub_cpu_node)
+        # we'll now walk from 0 -> 31. Checking the mask to see if access is
+        # allowed. If it is allowed, we'll check to see if there's a sub-cpu at
+        # the same offset. If so, we refcount it AND the parent. For sub-cpus
+        # that are available, but have no access, we log them to be delete later
+        # (we don't delete them now, since it will shift node numbers.
+        for idx in range( 0, 32 ):
+            if check_bit_set( cpu_mask, idx ):
+                try:
+                    sub_cpu_node = sub_cpus[idx]
+                    # refcount it AND the parent
+                    tree.ref_all( sub_cpu_node, True )
+                    refd_cpus.append( sub_cpu_node )
+                except:
+                    pass
 
     unrefd_cpus = []
     for s in sub_cpus_all:
