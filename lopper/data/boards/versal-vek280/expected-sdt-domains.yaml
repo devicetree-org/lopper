@@ -75,3 +75,19 @@ domains:
             flags: {}
             source: zephyr
         id: 3
+      unassigned:
+        compatible: openamp,domain-v1
+        sram:
+          - dev: bbram-zeroize@4
+            start: 0x4
+            size: 0x4
+          - dev: bbram-key@10
+            start: 0x10
+            size: 0x20
+          - dev: bbram-usr@30
+            start: 0x30
+            size: 0x4
+          - dev: bbram-lock@48
+            start: 0x48
+            size: 0x4
+        id: 4
