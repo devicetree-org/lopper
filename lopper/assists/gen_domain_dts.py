@@ -119,6 +119,22 @@ def filter_ipi_nodes_for_cpu(sdt, machine):
 
 
 def xlnx_generate_domain_dts(tgt_node, sdt, options):
+    # Zephyr generation used to be selected by passing ``zephyr_dt`` to this
+    # assist.  It now lives in zephyr_domain_dts, but external generators may
+    # still use the established command line.  Delegate before generic domain
+    # pruning so those callers receive the complete Zephyr transformation.
+    args = options.get("args", [])
+    if len(args) > 1 and args[1] == "zephyr_dt":
+        from zephyr_domain_dts import xlnx_zephyr_domain_dts
+
+        zephyr_options = dict(options)
+        zephyr_options["args"] = [args[0], *args[2:]]
+        lopper.log._warning(
+            "gen_domain_dts: 'zephyr_dt' is deprecated; delegating to "
+            "the zephyr_domain_dts assist"
+        )
+        return xlnx_zephyr_domain_dts(tgt_node, sdt, zephyr_options)
+
     root_node = sdt.tree[tgt_node]
     root_sub_nodes = root_node.subnodes()
   
