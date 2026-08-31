@@ -67,9 +67,9 @@ Edge — the newer Versal generation), and **NXP i.MX 8M Mini EVK**.
   assembled SDT into a YAML inventory. This becomes the vocabulary a
   user-written `domains.yaml` can glob against.
 
-- **`sdt_domains`** — walks the assembled SDT and partitions devices
-  / memory across one starter domain per `cpus,cluster` (using the
-  `lopper-source` tags `assemble_sdt` attached), emitting a
+- **`sdt_domains`** — walks the assembled SDT and partitions devices,
+  memory and SRAM across one starter domain per `cpus,cluster` (using
+  the `lopper-source` tags `assemble_sdt` attached), emitting a
   `sdt-domains.yaml` for the user to edit.
 
 ```
@@ -239,6 +239,18 @@ per-device enumeration you glob *against* is the separate
 `sdt-devices.yaml`.) Read it to see how the chip would split by
 default, then copy what you want into your own overlay.
 
+SRAM regions — TCM, OCM — are attributed the same way, by matching
+the region name against a cluster: cluster `cpus_r52_0` claims
+`r52_0a_atcm_global`. A design that does not name its regions after
+their cluster gets no attribution, which is a naming question rather
+than a missing region.
+
+Regions that claim no cluster are collected in an **`unassigned`**
+domain rather than dropped, so a region is never silently absent from
+the template. It carries no `cpus` and no `access`, so it is inert
+unless you target it — it exists to be read, redistributed into the
+domains you keep, or deleted. A part's `bbram` typically lands here.
+
 It is a different file from your hand-edited `domains.yaml`:
 
 |                                        | `<board>-sdt-domains.yaml`                   | your `domains.yaml`                             |
@@ -367,6 +379,52 @@ integrate with another build system), the breakdown is:
 6. **`sdt_domains`** Lopper assist on the assembled SDT
    with `-o <board>-sdt-domains.yaml`, producing the starter
    partition the user edits.
+
+#### Trying `sdt_domains` on its own
+
+It runs against any SDT, so the sample tree in this repo is enough to
+see the shape of what it produces — no board build required:
+
+```bash
+source venv-lopper/bin/activate
+
+python3 lopper.py -f --enhanced -O /tmp/out \
+    device-trees/system-device-tree.dts /tmp/out/unused.dts \
+    -- sdt_domains -o /tmp/out/sdt-domains.yaml
+```
+
+That sample has an `a72` and an `r5` cluster, so it produces an `APU`
+and an `RPU` domain, plus:
+
+```yaml
+      unassigned:
+        compatible: openamp,domain-v1
+        sram:
+          - dev: tcm@ffe90000
+            start: 0xffe90000
+            size: 0x10000
+        id: 2
+```
+
+The TCM is held rather than assigned because it is named `tcm@...`
+with nothing tying it to either cluster. On a design whose regions
+carry their cluster's name — `r52_0a_atcm_global` alongside a
+`cpus_r52_0` cluster — the same run puts them in that cluster's
+domain instead, and `unassigned` holds only what genuinely matches
+nothing.
+
+Add `--single-domain` to emit only the primary A-profile cluster
+rather than one domain per cluster:
+
+```bash
+python3 lopper.py -f --enhanced -O /tmp/out \
+    device-trees/system-device-tree.dts /tmp/out/unused.dts \
+    -- sdt_domains --single-domain -o /tmp/out/sdt-domains-single.yaml
+```
+
+The clusters that are dropped take their SRAM with them — it moves to
+`unassigned`, so the regions are still listed and you can see what a
+single-domain starting point is leaving out.
 
 Run `scripts/build-board-sdt.py --board <name> -v` to see the exact
 commands the script executes for any given board. The script's
