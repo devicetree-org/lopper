@@ -79,6 +79,8 @@ def usage():
 
       -v, --verbose       Enable verbose output
       -o, --output PATH   Output domains YAML path (required)
+      --single-domain     Emit only the primary A-profile cluster,
+                          instead of one domain per cluster
 
    Walks the SDT for cpus,cluster nodes and emits a starter
    domains.yaml partitioning resources across one domain per
@@ -397,19 +399,39 @@ def _build_non_linux_domain(sdt, cluster_node, cluster_arch, cluster_source,
     return domain
 
 
-def _build_domains_payload(sdt):
+def _primary_cluster(clusters):
+    """The A-profile cluster a single-domain template starts from.
+
+    Falls back to the first cluster found, so a design with no
+    application-class CPUs still produces a template.
+    """
+    for cluster in clusters:
+        if re.match(r'a\d+', lopper_lib.cluster_arch(cluster) or ''):
+            return cluster
+    return clusters[0]
+
+
+def _build_domains_payload(sdt, single_domain=False):
     """Walk the SDT, return the full {domains: ...} payload.
 
     Every cpus,cluster becomes one starter domain. No cluster is
     special-cased out by its CPU type — the starter represents what the
     SDT actually contains, and the user prunes the domains they don't
     intend to partition.
+
+    With `single_domain`, only the primary A-profile cluster is emitted,
+    leaving the user to add the rest by hand. That is a smaller starting
+    point than the design contains, so it is not the default; it exists
+    for flows that specify a single-domain template.
     """
     clusters = [n for n in sdt.tree if lopper_lib.is_cpu_cluster(n)]
     if not clusters:
         raise RuntimeError(
             "no cpus,cluster nodes found in SDT — "
             "did assemble_sdt run first?")
+
+    if single_domain:
+        clusters = [_primary_cluster(clusters)]
 
     reserved_mem = _enumerate_reserved_memory(sdt)
     bus_children = _enumerate_non_linux_bus_children(sdt)
@@ -493,17 +515,21 @@ def sdt_domains(tgt_node, sdt, options):
 
     try:
         opts, _ = getopt.getopt(args, "hvo:",
-                                ["help", "verbose", "output="])
+                                ["help", "verbose", "output=",
+                                 "single-domain"])
     except getopt.GetoptError as e:
         lopper.log._error(f"sdt_domains: invalid option: {e}")
         usage()
         return False
 
     output_path = None
+    single_domain = False
     for o, a in opts:
         if o in ('-h', '--help'):
             usage()
             return True
+        elif o in ('--single-domain',):
+            single_domain = True
         elif o in ('-v', '--verbose'):
             verbose += 1
         elif o in ('-o', '--output'):
@@ -520,7 +546,7 @@ def sdt_domains(tgt_node, sdt, options):
         return False
 
     try:
-        payload = _build_domains_payload(sdt)
+        payload = _build_domains_payload(sdt, single_domain=single_domain)
     except Exception as e:
         lopper.log._error(f"sdt_domains: failed: {e}")
         import traceback
