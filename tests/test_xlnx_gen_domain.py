@@ -15,10 +15,81 @@ Author:
 """
 
 import os
+import shutil
+import subprocess
+import sys
+from types import SimpleNamespace
 import pytest
 
+from lopper.assists import gen_domain_dts as legacy_gen_domain_dts
 from lopper.assists import zephyr_domain_dts as gen_domain_dts
 from lopper.tree import LopperNode, LopperTree
+
+
+def test_legacy_zephyr_entry_point_delegates(monkeypatch, caplog):
+    """The historical gen_domain_dts Zephyr CLI remains functional."""
+    calls = []
+
+    def record_call(tgt_node, sdt, options):
+        calls.append((tgt_node, sdt, options))
+        return True
+
+    shim = SimpleNamespace(xlnx_zephyr_domain_dts=record_call)
+    monkeypatch.setitem(sys.modules, "zephyr_domain_dts", shim)
+    sdt = SimpleNamespace(tree=object())
+    options = {
+        "args": ["psu_cortexr5_0", "zephyr_dt", "/tmp/hardware"],
+        "verbose": 0,
+    }
+
+    assert legacy_gen_domain_dts.xlnx_generate_domain_dts(
+        "/", sdt, options)
+    assert calls == [
+        (
+            "/",
+            sdt,
+            {"args": ["psu_cortexr5_0", "/tmp/hardware"], "verbose": 0},
+        )
+    ]
+    assert "delegating to the zephyr_domain_dts assist" in caplog.text
+
+
+@pytest.mark.skipif(shutil.which("dtc") is None, reason="dtc is required")
+def test_legacy_zephyr_entry_point_matches_dedicated_assist(tmp_path):
+    """Old machine-conf syntax performs the complete Zephyr conversion."""
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    lopper_cli = os.path.join(repo, "lopper.py")
+    input_dts = os.path.join(repo, "demos", "openamp", "inputs",
+                             "openamp_zu.dts")
+    imux = os.path.join(repo, "lopper", "lops", "lop-r5-imux.dts")
+    legacy_output = tmp_path / "legacy-zephyr.dts"
+    direct_output = tmp_path / "direct-zephyr.dts"
+    environment = os.environ.copy()
+    environment["LOPPER_DTC_FLAGS"] = "-b 0 -@"
+
+    common = [sys.executable, lopper_cli, "-f", "--enhanced", "-i", imux,
+              input_dts]
+    legacy = subprocess.run(
+        common + [str(legacy_output), "--", "gen_domain_dts",
+                  "psu_cortexr5_0", "zephyr_dt"],
+        cwd=repo,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    direct = subprocess.run(
+        common + [str(direct_output), "--", "zephyr_domain_dts",
+                  "psu_cortexr5_0"],
+        cwd=repo,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+
+    assert legacy.returncode == 0, legacy.stdout + legacy.stderr
+    assert direct.returncode == 0, direct.stdout + direct.stderr
+    assert legacy_output.read_text() == direct_output.read_text()
+    assert "power-domains" not in legacy_output.read_text()
 
 
 def _ttc_tree(*labels, compatible="xlnx,ttcps"):
