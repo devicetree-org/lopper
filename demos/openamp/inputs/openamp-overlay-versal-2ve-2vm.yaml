@@ -425,7 +425,7 @@ domains:
     cpus:
       - cluster: cpus_r52_1
         cluster_cpu: cortexr52_1
-        cpumask: 0x1
+        cpumask: 0x2
         mode:
           secure: true
           el: 0x3  
@@ -479,7 +479,7 @@ domains:
     compatible: openamp,domain-v1
     cpus:
       - cluster: cpus_r52_8
-        cluster_cpu: cortexr52_8
+        cluster_cpu: cortexr52_9
         cpumask: 0x1
         mode:
           secure: true

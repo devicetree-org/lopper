@@ -109,7 +109,7 @@ domains:
             - "openamp,domain-v1"
         cpus:
             - cluster: cpus_r5_1
-              cpumask: 0x1
+              cpumask: 0x2
               mode: 0x1
               secure: true
         access:
