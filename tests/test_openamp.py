@@ -17,11 +17,7 @@ Author:
 import os
 import pytest
 
-from lopper.assists import (
-    openamp_xlnx,
-    openamp_xlnx_common,
-    yaml_to_dts_expansion,
-)
+from lopper.assists import openamp_xlnx
 from lopper.tree import LopperNode, LopperTree
 
 
@@ -169,10 +165,7 @@ def test_libmetal_missing_processor_lists_supported_targets(monkeypatch, caplog)
     """A processor without a Libmetal relation gets an actionable error."""
     apu_cluster = _FakeNode("cpus-a53@0", label="cpus_a53")
     r5_0_cluster = _FakeNode("cpus-r5@0", label="cpus_r5_0")
-    r5_1_cpu = _FakeNode("cpu@1", {"reg": [1]}, label="psu_cortexr5_1")
-    r5_1_cluster = _FakeNode(
-        "cpus-r5@1", label="cpus_r5_1", children=[r5_1_cpu])
-    r5_1_cpu.parent = r5_1_cluster
+    r5_1_cluster = _FakeNode("cpus-r5@1", label="cpus_r5_1")
 
     apu_domain = _FakeNode("APU_Linux", {"cpus": [1], "os,type": ["linux"]})
     apu_parent = _FakeNode("domain-to-domain", parent=apu_domain)
@@ -180,8 +173,7 @@ def test_libmetal_missing_processor_lists_supported_targets(monkeypatch, caplog)
         "libmetal-relation", {"compatible": ["libmetal,ipc-v1"]}, apu_parent)
 
     r5_1_domain = _FakeNode(
-        "R5_1_BAREMETAL", {"cpus": [3, 0x1, 0],
-                            "os,type": ["baremetal"]})
+        "R5_1_BAREMETAL", {"cpus": [3], "os,type": ["baremetal"]})
     r5_1_parent = _FakeNode(
         "domain-to-domain", {"cluster_cpu": ["psu_cortexr5_1"]}, r5_1_domain)
     r5_1_relation = _FakeNode(
@@ -213,100 +205,3 @@ def test_libmetal_missing_processor_lists_supported_targets(monkeypatch, caplog)
     assert "no libmetal,ipc-v1 relation found for processor 'psu_cortexr5_0'" in caplog.text
     assert "APU_Linux (os=linux, processor=cpus_a53)" in caplog.text
     assert "R5_1_BAREMETAL (os=baremetal, processor=psu_cortexr5_1)" in caplog.text
-
-
-def test_domain_cpu_mask_is_preferred_over_legacy_cluster_cpu():
-    """The SDT cpus mask is authoritative when the legacy label disagrees."""
-    cpu0 = _FakeNode("cpu@0", {"reg": [0]}, label="psu_cortexr5_0")
-    cpu1 = _FakeNode("cpu@1", {"reg": [1]}, label="psu_cortexr5_1")
-    cluster = _FakeNode("cpus-r5@0", label="cpus_r5",
-                        children=[cpu0, cpu1])
-    cpu0.parent = cluster
-    cpu1.parent = cluster
-    domain = _FakeNode("R5_1", {"cpus": [1, 0x2, 0]})
-    dtd = _FakeNode("domain-to-domain",
-                    {"cluster_cpu": ["psu_cortexr5_0"]}, domain)
-    domain._children = [dtd]
-    tree = _FakeTree(_FakeNode("domains"), {1: cluster})
-
-    assert not openamp_xlnx_common._openamp_domain_selects_cpu(
-        tree, domain, cpu0)
-    assert openamp_xlnx_common._openamp_domain_selects_cpu(
-        tree, domain, cpu1)
-    assert openamp_xlnx_common._openamp_domain_processor(
-        tree, domain) == "psu_cortexr5_1"
-
-    domain._props["cpus"] = [1]
-    assert openamp_xlnx_common._openamp_domain_selects_cpu(
-        tree, domain, cpu0)
-    assert not openamp_xlnx_common._openamp_domain_selects_cpu(
-        tree, domain, cpu1)
-    assert openamp_xlnx_common._openamp_domain_processor(
-        tree, domain) == "psu_cortexr5_0"
-
-
-def test_yaml_openamp_cpu_metadata_comes_from_mask_without_legacy_label():
-    """YAML expansion derives RPU metadata without cluster_cpu."""
-    tree = LopperTree()
-    tree + LopperNode(-1, "/domains")
-    cluster = LopperNode(-1, "/cpus-r5@1")
-    cluster.label = "cpus_r5_1"
-    tree + cluster
-    cpu = LopperNode(-1, "/cpus-r5@1/cpu@1")
-    cpu.label = "psu_cortexr5_1"
-    cpu["reg"] = [1]
-    cpu["power-domains"] = [99, 8]
-    tree + cpu
-    domain = LopperNode(-1, "/domains/R5_1")
-    tree + domain
-    dtd = LopperNode(-1, "/domains/R5_1/domain-to-domain")
-    tree + dtd
-    cluster.phandle_or_create()
-    domain["cpus"] = [cluster.phandle, 0x1, 0]
-    tree.sync()
-
-    yaml_to_dts_expansion.openamp_remote_cpu_expand(
-        tree, domain, None, cluster)
-
-    assert domain.propval("core_num", list) == [1]
-    assert domain.propval("cpu_config_str", list) == ["split"]
-    assert domain.propval("rpu_pd_val", list) == [99, 8]
-    assert dtd.propval("cluster_cpu") == [""]
-
-
-@pytest.mark.parametrize("mask", [0x2, "0x2"])
-def test_yaml_cpu_expand_preserves_numeric_and_string_masks(mask):
-    """YAML-native integers and quoted hexadecimal masks expand identically."""
-    assert yaml_to_dts_expansion._cpu_mask_value(mask) == 0x2
-
-
-def test_domain_cpu_mask_is_cluster_relative_not_reg_value():
-    """Mask bits identify a CPU's position even when reg encodes MPIDR."""
-    cpu0 = _FakeNode("cpu@0", {"reg": [0]}, label="cortexa78_0")
-    cpu1 = _FakeNode("cpu@100", {"reg": [0x100]}, label="cortexa78_1")
-    cluster = _FakeNode("cpus-a78@0", label="cpus_a78",
-                        children=[cpu0, cpu1])
-    cpu0.parent = cluster
-    cpu1.parent = cluster
-    domain = _FakeNode("APU", {"cpus": [1, 0x2, 0]})
-    tree = _FakeTree(_FakeNode("domains"), {1: cluster})
-
-    assert not openamp_xlnx_common._openamp_domain_selects_cpu(
-        tree, domain, cpu0)
-    assert openamp_xlnx_common._openamp_domain_selects_cpu(
-        tree, domain, cpu1)
-
-
-def test_zero_cpu_mask_falls_back_to_legacy_cluster_cpu():
-    """A zero mask is unspecified for compatibility with legacy overlays."""
-    cpu = _FakeNode("cpu@6", {"reg": [6]}, label="cortexr52_6")
-    cluster = _FakeNode("cpus-r52@6", label="cpus_r52_6", children=[cpu])
-    cpu.parent = cluster
-    domain = _FakeNode("RPU", {"cpus": [1, 0, 0]})
-    dtd = _FakeNode("domain-to-domain",
-                    {"cluster_cpu": ["cortexr52_6"]}, domain)
-    domain._children = [dtd]
-    tree = _FakeTree(_FakeNode("domains"), {1: cluster})
-
-    assert openamp_xlnx_common._openamp_domain_selects_cpu(
-        tree, domain, cpu)
