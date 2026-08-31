@@ -166,6 +166,7 @@ required:
   - riscv,isa-base
   - clock-frequency
   - bootph-all
+  - riscv,cbom-block-size
 
 unevaluatedProperties: false
 
