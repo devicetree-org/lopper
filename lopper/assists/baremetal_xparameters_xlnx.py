@@ -471,7 +471,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
         srcdir = os.path.join(repo_path_data, "lib", "bsp", "standalone")
     datadir = os.path.join(srcdir, "data")
     yaml_paths = glob.glob(f"{datadir}/*/*.yaml")
-    if re.search("microblaze", match_cpunode.propval('compatible')[0]):
+    if any("microblaze" in comp for comp in match_cpunode.propval('compatible', list)):
         for yamlfile in yaml_paths:
             name = os.path.basename(os.path.dirname(yamlfile))
             schema = utils.load_yaml(yamlfile)
@@ -496,7 +496,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                         prop = prop.replace("xlnx,", "")
                         plat.buf(f'#define XPAR_{ip_name.upper()}_{prop.upper()} {prop_val}\n')
 
-    if re.search("microblaze-riscv", match_cpunode.propval('compatible')[0]):
+    if any("microblaze-riscv" in comp for comp in match_cpunode.propval('compatible', list)):
         cpu_parameters={
         'xlnx,freq':"XPAR_CPU_CORE_CLOCK_FREQ_HZ",
         'xlnx,use-dcache':'XPAR_MICROBLAZE_RISCV_USE_DCACHE',
@@ -518,7 +518,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                                 'xlnx,icache-byte-size','xlnx,use-fpu',]
         add_multi_buf(plat,match_cpunode,cpu_parameters,ignore_else_part_lis)
 
-    elif re.search("microblaze", match_cpunode.propval('compatible')[0]):
+    elif any("microblaze" in comp for comp in match_cpunode.propval('compatible', list)):
         mic_cpu = {'xlnx,freq':'XPAR_CPU_CORE_CLOCK_FREQ_HZ',
                    'xlnx,ddr-reserve-sa':'XPAR_MICROBLAZE_DDR_RESERVE_SA',
                    'xlnx,addr-size':'XPAR_MICROBLAZE_ADDR_SIZE'}
