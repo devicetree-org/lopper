@@ -488,8 +488,9 @@ def xlnx_generate_zephyr_domain_dts_arm(tgt_node, sdt, options, machine):
             if compatible == "arm,armv8-timer" and ('psv_cortexr5' in machine or 'psu_cortexr5' in machine):
                 sdt.tree.delete(node)
         if node.name == 'reserved-memory' and 'r52' in machine:
-            node.delete('ranges')
-            node + LopperProp(name='ranges')
+            if node.propval('ranges') != ['']:
+                node.delete('ranges')
+                node + LopperProp(name='ranges')
 
     board_symbol = board_symbol_for_machine(machine)
     if board_symbol:
