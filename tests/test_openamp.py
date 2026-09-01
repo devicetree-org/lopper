@@ -17,7 +17,12 @@ Author:
 import os
 import pytest
 
-from lopper.assists import openamp_xlnx
+from lopper.assists import (
+    lopper_lib,
+    openamp_xlnx,
+    openamp_xlnx_common,
+    yaml_to_dts_expansion,
+)
 from lopper.tree import LopperNode, LopperTree
 
 
@@ -69,17 +74,175 @@ class _FakeNode:
 
 
 class _FakeTree:
-    def __init__(self, domains, phandles):
+    def __init__(self, domains, phandles, symbols=None):
         self._domains = domains
         self._phandles = phandles
+        self._symbols = symbols
 
     def __getitem__(self, path):
         if path == "/domains":
             return self._domains
+        if path == "/__symbols__" and self._symbols is not None:
+            return self._symbols
         raise KeyError(path)
 
     def pnode(self, phandle):
         return self._phandles.get(phandle)
+
+
+def _cpu_selection_fixture(mask, cpu_count=1, first_reg=0):
+    cpus = [
+        _FakeNode(
+            f"cpu@{first_reg + index:x}",
+            {"reg": [first_reg + index]},
+            label=f"cpu_{first_reg + index}",
+        )
+        for index in range(cpu_count)
+    ]
+    cluster = _FakeNode("cpus-r5@0", label="cpus_r5", children=cpus)
+    for cpu in cpus:
+        cpu.parent = cluster
+    domain = _FakeNode("RPU", {"cpus": [1, mask, 0]})
+    tree = _FakeTree(_FakeNode("domains"), {1: cluster})
+    return tree, domain, cpus
+
+
+@pytest.mark.parametrize(
+    "mask, expected",
+    [(0x1, [0]), (0x2, [1]), (0x3, [0, 1])],
+)
+def test_domain_cpu_resolver_uses_cluster_relative_masks(mask, expected):
+    tree, domain, cpus = _cpu_selection_fixture(mask, cpu_count=2)
+
+    selection = lopper_lib.resolve_domain_cpus(tree, domain)
+
+    assert selection.source == lopper_lib.CpuSelectionSource.CLUSTER_RELATIVE
+    assert selection.cpus == [cpus[index] for index in expected]
+
+
+def test_domain_cpu_resolver_accepts_legacy_label_for_split_cluster():
+    tree, domain, cpus = _cpu_selection_fixture(0x2, first_reg=1)
+
+    selection = lopper_lib.resolve_domain_cpus(tree, domain, "cpu_1")
+
+    assert selection.source == lopper_lib.CpuSelectionSource.LEGACY_CLUSTER_CPU
+    assert selection.cpus == cpus
+    assert "use 0x1" not in selection.diagnostic
+
+
+def test_domain_cpu_resolver_accepts_unambiguous_legacy_core_mask():
+    tree, domain, cpus = _cpu_selection_fixture(0x2, first_reg=1)
+
+    selection = lopper_lib.resolve_domain_cpus(tree, domain)
+
+    assert selection.source == lopper_lib.CpuSelectionSource.LEGACY_CORE_INDEX
+    assert selection.cpus == cpus
+    assert "use 0x1" in selection.diagnostic
+
+
+@pytest.mark.parametrize("mask", [0, 0x4])
+def test_domain_cpu_resolver_rejects_ambiguous_masks(mask):
+    tree, domain, _ = _cpu_selection_fixture(mask, first_reg=1)
+
+    selection = lopper_lib.resolve_domain_cpus(tree, domain)
+
+    assert selection.source == lopper_lib.CpuSelectionSource.UNRESOLVED
+    assert selection.cpus == []
+
+
+def test_domain_cpu_resolver_uses_legacy_label_for_zero_mask():
+    tree, domain, cpus = _cpu_selection_fixture(0, first_reg=1)
+
+    selection = lopper_lib.resolve_domain_cpus(tree, domain, "cpu_1")
+
+    assert selection.source == lopper_lib.CpuSelectionSource.LEGACY_CLUSTER_CPU
+    assert selection.cpus == cpus
+
+
+def test_domain_cpu_resolver_rejects_missing_legacy_label_sentinel():
+    tree, domain, cpus = _cpu_selection_fixture(0, first_reg=1)
+    cpus[0].label = ""
+
+    selection = lopper_lib.resolve_domain_cpus(tree, domain, [""])
+
+    assert selection.source == lopper_lib.CpuSelectionSource.UNRESOLVED
+    assert selection.cpus == []
+
+
+def test_domain_cpu_resolver_resolves_legacy_symbol_for_zero_mask():
+    tree, domain, cpus = _cpu_selection_fixture(0, first_reg=1)
+    cpus[0].label = None
+    cpus[0].abs_path = "/cpus-r5@0/cpu@1"
+    tree._symbols = _FakeNode(
+        "__symbols__", {"psu_cortexr5_1": [cpus[0].abs_path]})
+
+    selection = lopper_lib.resolve_domain_cpus(
+        tree, domain, "psu_cortexr5_1")
+
+    assert selection.source == lopper_lib.CpuSelectionSource.LEGACY_CLUSTER_CPU
+    assert selection.cpus == cpus
+
+
+def test_openamp_legacy_processor_falls_back_to_referenced_cluster():
+    tree, domain, cpus = _cpu_selection_fixture(0, first_reg=1)
+    cpus[0].label = "psx_cortexr52_1"
+    dtd = _FakeNode(
+        "domain-to-domain", {"cluster_cpu": ["cortexr52_1"]})
+    domain._children = [dtd]
+
+    assert openamp_xlnx_common._openamp_domain_selects_cpu(
+        tree, domain, cpus[0])
+
+    other_cpu = _FakeNode("cpu@1", parent=_FakeNode("cpus-r52@0"))
+    assert not openamp_xlnx_common._openamp_domain_selects_cpu(
+        tree, domain, other_cpu)
+
+
+def test_openamp_legacy_processor_does_not_widen_within_cluster():
+    tree, domain, cpus = _cpu_selection_fixture(0x4, cpu_count=2)
+    cpus[0].label = "psx_cortexr52_0"
+    cpus[1].label = "psx_cortexr52_1"
+    dtd = _FakeNode(
+        "domain-to-domain", {"cluster_cpu": ["cortexr52_1"]})
+    domain._children = [dtd]
+
+    assert not openamp_xlnx_common._openamp_domain_selects_cpu(
+        tree, domain, cpus[0])
+    assert openamp_xlnx_common._openamp_domain_selects_cpu(
+        tree, domain, cpus[1])
+
+
+def test_domain_cpu_resolver_prefers_valid_mask_over_legacy_label():
+    tree, domain, cpus = _cpu_selection_fixture(0x2, cpu_count=2)
+
+    selection = lopper_lib.resolve_domain_cpus(tree, domain, "cpu_0")
+
+    assert selection.source == lopper_lib.CpuSelectionSource.CLUSTER_RELATIVE
+    assert selection.cpus == [cpus[1]]
+    assert "disagrees" in selection.diagnostic
+
+
+def test_domain_cpu_resolver_rejects_unknown_cluster():
+    domain = _FakeNode("RPU", {"cpus": [99, 0x1, 0]})
+    tree = _FakeTree(_FakeNode("domains"), {})
+
+    selection = lopper_lib.resolve_domain_cpus(tree, domain)
+
+    assert selection.source == lopper_lib.CpuSelectionSource.UNRESOLVED
+    assert selection.cpus == []
+    assert "unknown cluster" in selection.diagnostic
+
+
+def test_domain_cpu_resolver_rejects_cluster_without_cpus():
+    cluster = _FakeNode("cpus-r5@1", label="cpus_r5_1")
+    domain = _FakeNode("RPU", {"cpus": [1, 0x1, 0]})
+    tree = _FakeTree(_FakeNode("domains"), {1: cluster})
+
+    selection = lopper_lib.resolve_domain_cpus(tree, domain)
+
+    assert selection.source == lopper_lib.CpuSelectionSource.UNRESOLVED
+    assert selection.cpus == []
+    assert "selects no CPU" in selection.diagnostic
 
 
 def test_legacy_zephyr_memories_remain_compatible(caplog):
