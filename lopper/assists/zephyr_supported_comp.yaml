@@ -6,6 +6,12 @@ amd,mbv32:
     - riscv,isa
     - clock-frequency
 
+xlnx,pmcl-trng-11.0:
+  required:
+    - compatible
+    - status
+    - reg
+
 xlnx,xps-intc-1.00.a:
   required:
     - compatible
