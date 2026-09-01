@@ -93,63 +93,79 @@ def xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, tree):
     return any(conditions)
 
 
-def xlnx_openamp_trim_timers(sdt, target_os, machine):
-    """Trim tree of timers based on OS.
+def xlnx_openamp_update_relation_timers(sdt, target_os, machine):
+    """Update timers selected by an OpenAMP or Libmetal relation.
 
     Args:
         sdt(LopperTree): Tree for lopper nodes.
-        target_os (str): OS for this lopper run
-        machine (str): machien coresponding to the domain.
+        target_os (str): OS for this lopper run.
+        machine (str): Machine corresponding to the domain.
     Returns:
         True if success. Else False.
 
     Algorithm:
-        Find domains matching target OS.
-        For each relation, look for timer property.
-        Based on timer property trim irrelevant timers.
+        Enable relation-selected UIO timers for Linux. For non-Linux output,
+        restore the native TTC binding only on relation-selected UIO timers.
     """
     tree = sdt.tree
 
     if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ]:
         return False
 
-    # first filter by linux domain
-    if target_os == "linux_dt":
-        domains = [ n for n in tree["/domains"].subnodes(children_only=True) if n.propval("os,type") == [target_os.replace("_dt","")] ]
-    else:
-        # otherwise filter by machine
-        match_cpunode = get_cpu_node(sdt, {'args':[machine]})
-        domains = [ n for n in tree["/domains"].subnodes(children_only=True) if match_cpunode.parent == sdt.tree.pnode(n.parent.parent.propval("cpus")[0]) ]
+    # Relations have this shape:
+    #
+    #   /domains/<domain>/domain-to-domain/<relation-type>/<relation>
+    #
+    # Find relation-type containers belonging to the requested CPU's domain.
+    # Lopper's subnodes() walk includes descendants, despite the historical
+    # children_only argument name, so explicitly validate the parent shape.
+    match_cpu = get_cpu_node(sdt, {"args": [machine]})
+    relation_groups = []
+    for node in tree["/domains"].subnodes(children_only=True):
+        relation_parent = node.parent
+        if relation_parent is None or relation_parent.name != "domain-to-domain":
+            continue
 
-    if not domains:
+        domain = relation_parent.parent
+        if domain is None:
+            continue
+
+        domain_cpus = domain.propval("cpus")
+        domain_cluster = (
+            tree.pnode(domain_cpus[0]) if domain_cpus != [''] else None
+        )
+        if match_cpu.parent == domain_cluster:
+            relation_groups.append(node)
+
+    if not relation_groups:
         return False
 
-    timer_pvals = [ n.propval("timer") for n in domains[0].subnodes(children_only=True) if n.propval("timer") != [''] ]
+    # A relation's timer property names only the timer assigned to that
+    # OpenAMP/Libmetal channel.  It is not an allow-list for all system timers.
+    timer_phandles = []
+    for relation_group in relation_groups:
+        for relation in relation_group.subnodes(children_only=True):
+            timer_value = relation.propval("timer")
+            if timer_value != ['']:
+                timer_phandles.extend(timer_value)
 
-    # only do trim if timer prop is provided
-    if timer_pvals == []:
+    if not timer_phandles:
         return False
 
-    # remove UIO timers from stripping
-    if target_os == "linux_dt":
-        flattend_timer_pvals = [item for sublist in timer_pvals for item in sublist]
-        relevant_timer_nodes = [ tree.pnode(phandle) for phandle in flattend_timer_pvals ]
-
-        for node in tree["/axi"].subnodes(children_only=True, name="timer@*"):
-            if node not in relevant_timer_nodes:
-                tree.delete(node)
-            elif "uio" in node.propval("compatible"):
-                node["status"] = "okay"
-
-        return True
-
-    # baremetal / freertos / zephyr case: TTC nodes must use the
-    # cdns,ttc binding rather than the Linux UIO binding.
-    # NOTE once sigils and conditional property usge is beefed up
-    # this whole routine can go away. Until then this is a holdover
-    # to ensure that UIO / linux is there if needed.
-    for n in tree["/axi"].subnodes(children_only=True, name="timer@*"):
-        n["compatible"] = "cdns,ttc"
+    # The shared source tree may contain Linux's UIO override. Non-Linux
+    # consumers use the native TTC binding, so undo that override only for the
+    # timers explicitly named by their relation. Do not touch other timers.
+    for timer_phandle in timer_phandles:
+        timer_node = tree.pnode(timer_phandle)
+        is_uio_timer = (
+            timer_node is not None
+            and "uio" in timer_node.propval("compatible", list)
+        )
+        if is_uio_timer:
+            if target_os == "linux_dt":
+                timer_node["status"] = "okay"
+            else:
+                timer_node["compatible"] = "cdns,ttc"
 
     return True
 
@@ -1641,7 +1657,8 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
     if openamp_args["openamp_output_filename"]:
         return openamp_nontree_outputs_handler(sdt, openamp_args["openamp_output_filename"], openamp_args, 1 )
 
-    xlnx_openamp_trim_timers(sdt, openamp_args["dt_type"], machine)
+    xlnx_openamp_update_relation_timers(
+        sdt, openamp_args["dt_type"], machine)
 
     if openamp_args["dt_type"] in ["zephyr_dt", "linux_dt"] or openamp_args["openamp_output_filename"]:
         # if find_only is False, then processing will also occur.
