@@ -26,8 +26,8 @@
 		label = "BTCM";
 		mpu-policy = "readable", "writable", "cacheable", "static";
 	};
-	ctcm: r52_0a_ctcm_global@20000 {
-		reg = <0x20000 0x8000>;
+	ctcm: r52_0a_ctcm_global@18000 {
+		reg = <0x18000 0x8000>;
 		label = "CTCM";
 		mpu-policy = "readable", "writable", "cacheable", "static";
 	};

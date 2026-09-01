@@ -3,6 +3,7 @@
 # Copyright (c) 2026 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
+from lopper.assists import zephyr_memory
 from lopper.assists.zephyr_memory import _domain_memory_nodes, _normalized_memories
 from lopper.tree import LopperNode, LopperTree
 
@@ -79,3 +80,27 @@ def test_linker_name_retains_unit_address_without_label():
     memories = _normalized_memories((first, second), "cortexr5")
 
     assert tuple(memory.name for memory in memories) == ("SRAM_0", "SRAM_20000")
+
+
+def test_r52_tcm_origin_normalization_warns(monkeypatch):
+    """An SDT/local-address mismatch is visible while retaining normalization."""
+    tree = LopperTree()
+    axi = LopperNode(-1, "/axi")
+    tree + axi
+    axi["#address-cells"] = [1]
+    axi["#size-cells"] = [1]
+    ctcm = LopperNode(-1, "/axi/ctcm@20000")
+    tree + ctcm
+    ctcm["reg"] = [0x20000, 0x8000]
+    ctcm["zephyr,memory-region"] = ["CTCM"]
+    ctcm["mpu-policy"] = ["readable", "writable", "static"]
+    warnings = []
+    monkeypatch.setattr(zephyr_memory, "_warning", warnings.append)
+
+    memory = zephyr_memory._normalized_memory(ctcm, "cortexr52")
+
+    assert memory.origin == 0x18000
+    assert warnings == [
+        "/axi/ctcm@20000: SDT declares CTCM at 0x20000; "
+        "normalizing to 0x18000 for cortexr52"
+    ]
