@@ -2365,6 +2365,13 @@ def zephyr_linker_generator_sanity_test():
                 r52_passed = r52_passed and \
                     "DATA_LOAD_REGION ATCM" in contents and \
                     "TEXT_ADDRESS ORIGIN(DDR) + 0x20" in contents and \
+                    ". = ALIGN(4);" in contents and \
+                    "z_arm_tcm_a_region = .;" in contents and \
+                    "LONG(0x00000000)" in contents and \
+                    "z_arm_tcm_b_region = .;" in contents and \
+                    "LONG(0x00010001)" in contents and \
+                    "z_arm_tcm_c_region = .;" in contents and \
+                    "LONG(0x00018001)" in contents and \
                     "SECTION_PROLOGUE(_TEXT_SECTION_NAME " \
                     "TEXT_ADDRESS,,)" in contents
         if r52_passed:
@@ -2492,7 +2499,7 @@ def zephyr_linker_generator_sanity_test():
     overlap_fixture = "/tmp/openamp-zephyr-overlapping-mpu.dts"
     Path(overlap_fixture).write_text(
         r52_fixture.replace("reg = <0x100000 0x80000>;",
-                            "reg = <0x21000 0x80000>;", 1)
+                            "reg = <0x19000 0x80000>;", 1)
         .replace(', "static";', ';'),
         encoding="utf-8")
     overlap_command = [
@@ -2506,7 +2513,7 @@ def zephyr_linker_generator_sanity_test():
         check=False)
     overlap_log = overlap_result.stdout + overlap_result.stderr
     if "MPU regions overlap:" in overlap_log and \
-            "overlap [0x21000, 0x28000)" in overlap_log:
+            "overlap [0x19000, 0x20000)" in overlap_log:
         test_passed("OpenAMP Zephyr MPU overlap validation")
     else:
         print(overlap_log)
