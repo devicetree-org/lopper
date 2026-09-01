@@ -32,7 +32,10 @@ from lopper.yaml import LopperYAML
 import lopper
 import json
 
-from .lopper_lib import check_bit_set, clear_bit, chunks, property_set, set_bit, expand_start_size_to_reg
+from .lopper_lib import (check_bit_set, clear_bit, chunks,
+                         CpuSelectionSource, property_set,
+                         resolve_domain_cpus, set_bit,
+                         expand_start_size_to_reg)
 from lopper.log import _init, _warning, _info, _error, _debug
 from .zephyr_memory import (
     LINKER_SCALAR_PROPERTIES,
@@ -1174,21 +1177,38 @@ def openamp_remote_cpu_expand( tree, subnode, cluster_cpu, cluster_node, verbose
     Returns:
         None
     """
-    if cluster_cpu == None:
-        return
-
+    # Preserve the legacy property for old consumers while deriving metadata
+    # from the canonical CPU assignment below.
     for n in subnode.subnodes():
-        if n.name == "domain-to-domain":
+        if cluster_cpu is not None and n.name == "domain-to-domain":
             n + LopperProp(name="cluster_cpu", value=cluster_cpu)
 
-    if cluster_node is not None:
-        pd_prop_node = [ n for n in cluster_node.subnodes() if n.propval("power-domains") != [''] ]
-        if len(pd_prop_node) == 1:
-            subnode + LopperProp(name="rpu_pd_val", value=pd_prop_node[0].propval("power-domains"))
+    # Resolve the standard cluster-relative mask first.  Older domain YAML
+    # used cluster_cpu, or encoded a split RPU's global core number in the
+    # mask.  The shared resolver accepts only validated legacy forms so YAML
+    # expansion and later OpenAMP matching cannot disagree about the CPU.
+    selection = resolve_domain_cpus(tree, subnode, cluster_cpu)
+    selected_cores = selection.cpus
+    if selection.diagnostic:
+        if selection.source == CpuSelectionSource.CLUSTER_RELATIVE:
+            _warning(f"{subnode.abs_path}: {selection.diagnostic}")
+        elif selection.source != CpuSelectionSource.UNRESOLVED:
+            _warning(f"{subnode.abs_path}: {selection.diagnostic}; "
+                     "migrate the domain to a cluster-relative mask")
 
-    if cluster_node != None and "r5" in cluster_node.name:
+    if len(selected_cores) == 1:
+        power_domains = selected_cores[0].propval("power-domains")
+        if power_domains != ['']:
+            subnode + LopperProp(name="rpu_pd_val", value=power_domains)
+
+    if cluster_node is not None and "r5" in cluster_node.name:
         subnode + LopperProp(name="cpu_config_str", value="lockstep" if check_bit_set(subnode.propval("cpus")[2], 30) else "split")
-        subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
+        if len(selected_cores) == 1:
+            subnode + LopperProp(
+                name="core_num", value=selected_cores[0].propval("reg")[0])
+        elif cluster_cpu is not None:
+            # Preserve legacy behavior when no CPU node can be resolved.
+            subnode + LopperProp(name="core_num", value=cluster_node.name[-1])
 
 
 def _cpu_mask_value(mask):
