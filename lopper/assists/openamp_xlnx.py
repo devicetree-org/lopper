@@ -1364,8 +1364,11 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
 
     match_cpunode = get_cpu_node(sdt, {'args':[machine]}) if os != "linux_dt" else None
     if not match_cpunode and os != "linux_dt":
-        print("openamp_nontree_outputs_handler: unable to find machine: ", machine)
-        return False
+        _error(
+            "openamp_xlnx: cannot generate '%s': processor '%s' was not "
+            "found in the system device tree" % (output_file_name, machine),
+            1,
+        )
 
     domains = sdt.tree['/domains']
     relation_node = None
@@ -1413,10 +1416,12 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
     if relation_node is None:
         compatible = openamp_args['compatible_string'] or "any"
         targets = ", ".join(supported_targets) if supported_targets else "none"
-        _error("openamp_xlnx: no %s relation found for processor '%s' and OS "
-               "'%s'; supported targets: %s" %
-               (compatible, machine, os, targets))
-        return False
+        _error(
+            "openamp_xlnx: cannot generate '%s': no %s relation found for "
+            "processor '%s' and OS '%s'; supported targets: %s" %
+            (output_file_name, compatible, machine, os, targets),
+            1,
+        )
 
     carveouts = None
     ipi_node = None

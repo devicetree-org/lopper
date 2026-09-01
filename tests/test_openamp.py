@@ -483,19 +483,22 @@ def test_libmetal_missing_processor_lists_supported_targets(monkeypatch, caplog)
     monkeypatch.setattr(openamp_xlnx, "get_cpu_node",
                         lambda sdt, options: requested_cpu)
 
-    result = openamp_xlnx.openamp_nontree_outputs_handler(
-        sdt,
-        "unused.cmake",
-        {
-            "machine": "psu_cortexr5_0",
-            "dt_type": "baremetal_dt",
-            "relation_parent": None,
-            "relation": None,
-            "compatible_string": "libmetal,ipc-v1",
-        },
-    )
+    with pytest.raises(SystemExit) as error:
+        openamp_xlnx.openamp_nontree_outputs_handler(
+            sdt,
+            "unused.cmake",
+            {
+                "machine": "psu_cortexr5_0",
+                "dt_type": "baremetal_dt",
+                "relation_parent": None,
+                "relation": None,
+                "compatible_string": "libmetal,ipc-v1",
+            },
+        )
 
-    assert result is False
-    assert "no libmetal,ipc-v1 relation found for processor 'psu_cortexr5_0'" in caplog.text
+    assert error.value.code == 1
+    assert "cannot generate 'unused.cmake'" in caplog.text
+    assert "no libmetal,ipc-v1 relation found" in caplog.text
+    assert "processor 'psu_cortexr5_0'" in caplog.text
     assert "APU_Linux (os=linux, processor=cpus_a53)" in caplog.text
     assert "R5_1_BAREMETAL (os=baremetal, processor=psu_cortexr5_1)" in caplog.text
