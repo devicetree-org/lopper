@@ -178,8 +178,10 @@
                                    if not fpu_conflict:
                                        if n['xlnx,use-fpu'].value[0] == 1:
                                            archflags.append('f')
+                                           bsp_archflags.append('f')
                                        elif n['xlnx,use-fpu'].value[0] == 2:
                                            archflags.append('d')
+                                           bsp_archflags.append('d')
 
                                    archflags.insert(0, '-march=')
                                    bsp_archflags.insert(0, '-march=')
