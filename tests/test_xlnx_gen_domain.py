@@ -155,6 +155,56 @@ def test_ttc_label_normalization_is_r5_platform_specific():
     assert tree["/__symbols__"].propval("ttc0") == ['']
 
 
+def _minimal_r52_tree(reserved_memory_props=None):
+    """Minimal Versal2 R52 tree with SCMI-style /reserved-memory."""
+    tree = LopperTree()
+    root = tree["/"]
+    root["compatible"] = ["amd,versal2"]
+    for name in ("cpus", "chosen", "aliases", "axi"):
+        tree + LopperNode(-1, f"/{name}")
+    resmem = LopperNode(-1, "/reserved-memory")
+    resmem["#address-cells"] = [2]
+    resmem["#size-cells"] = [2]
+    if reserved_memory_props:
+        for prop_name, prop_value in reserved_memory_props.items():
+            resmem[prop_name] = prop_value
+    buffer_node = LopperNode(-1, "/reserved-memory/memory@20000000")
+    buffer_node["no-map"] = []
+    buffer_node["reg"] = [0, 0x20000000, 0, 0x20000]
+    resmem.add(buffer_node)
+    tree + resmem
+    tree.sync()
+    return tree
+
+
+def test_r52_reserved_memory_without_ranges_does_not_raise(tmp_path):
+    """SCMI /reserved-memory without ranges must not abort R52 domain generation."""
+    tree = _minimal_r52_tree()
+    sdt = SimpleNamespace(tree=tree, outdir=str(tmp_path))
+    options = {"args": ["cortexr52_0"], "verbose": 0}
+
+    assert gen_domain_dts.xlnx_generate_zephyr_domain_dts_arm(
+        "/", sdt, options, "cortexr52_0")
+
+    resmem = tree["/reserved-memory"]
+    assert resmem.propval("ranges") == ['']
+
+
+def test_r52_reserved_memory_malformed_ranges_is_normalized(tmp_path):
+    """Malformed ranges values are rewritten as an empty ranges flag."""
+    tree = _minimal_r52_tree(reserved_memory_props={"ranges": [1]})
+    sdt = SimpleNamespace(tree=tree, outdir=str(tmp_path))
+    options = {"args": ["cortexr52_0"], "verbose": 0}
+
+    gen_domain_dts.xlnx_generate_zephyr_domain_dts_arm(
+        "/", sdt, options, "cortexr52_0")
+
+    ranges_prop = tree["/reserved-memory"].props("ranges")[0]
+    ranges_prop.resolve()
+    assert ranges_prop.value in ([], [''])
+    assert "0x1" not in ranges_prop.string_val
+
+
 def test_rpu_memory_rename_refreshes_path_and_phandle_references():
     """RPU local-view renames preserve chosen, symbol, and phandle refs."""
     tree = LopperTree()
