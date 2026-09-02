@@ -2910,6 +2910,16 @@ class LopperSDT:
             if self.target_domain:
                 options['target_domain'] = self.target_domain
 
+            # make the runtime configuration (--cfgfile / --cfgval) available to
+            # code lops. without this, a lop can only be parameterized by static
+            # properties written into the lop file itself, which forces anything
+            # needing an invocation time value (a workspace path, a manifest) to
+            # become an assist. the attribute is only set when lopper is driven
+            # from the command line, so a library constructed sdt has none.
+            sdt_config = getattr( self, "config", None )
+            if sdt_config:
+                options['config'] = sdt_config
+
             try:
                 start_node = options['start_node']
             except:
