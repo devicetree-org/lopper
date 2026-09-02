@@ -62,15 +62,37 @@ def _assert_node_compatible(dts, unit_name, compatible):
     assert f'compatible = "{compatible}";' in match.group(1)
 
 
-def test_zynqmp_libmetal_linux_and_baremetal_outputs(tmp_path):
-    """Generate domain slices and Libmetal CMake data for both endpoints."""
+@pytest.mark.parametrize(
+    "r5_mask, include_legacy_cpu",
+    [("0x1", False), ("0x2", True)],
+)
+def test_zynqmp_libmetal_linux_and_baremetal_outputs(
+        tmp_path, r5_mask, include_legacy_cpu):
+    """Generate both endpoints from canonical and legacy R5 masks."""
+    domain_yaml = tmp_path / "libmetal-overlay-zynqmp.yaml"
+    yaml_text = LIBMETAL_YAML.read_text()
+    mask_pattern = r"(cluster: cpus_r5_1\n\s+cpumask:) 0x[12]"
+    yaml_text, replacements = re.subn(
+        mask_pattern,
+        rf"\g<1> {r5_mask}",
+        yaml_text,
+        count=1,
+    )
+    assert replacements == 1
+    if not include_legacy_cpu:
+        yaml_text = yaml_text.replace(
+            "        cluster_cpu: psu_cortexr5_1\n", "", 1)
+    domain_yaml.write_text(yaml_text)
+
     expanded = tmp_path / "libmetal-zynqmp-expanded.dts"
-    _run([
+    output = _run([
         "-f", "--permissive", "--enhanced", "--auto",
-        "-i", LIBMETAL_YAML,
+        "-i", domain_yaml,
         "-i", DOMAIN_ACCESS_YAML,
         SDT, expanded,
     ])
+    if r5_mask == "0x2":
+        assert "using legacy cluster_cpu psu_cortexr5_1" in output
     expanded_text = expanded.read_text()
     assert "__lopper-overlays__" in expanded_text
     assert 'lopper,activate = "linux";' in expanded_text

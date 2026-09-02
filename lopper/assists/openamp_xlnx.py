@@ -33,6 +33,10 @@ from lopper.log import _init, _warning, _info, _error
 
 sys.path.append(os.path.dirname(__file__))
 from openamp_xlnx_common import *
+from openamp_xlnx_common import (
+    _openamp_domain_processor,
+    _openamp_domain_selects_cpu,
+)
 from baremetalconfig_xlnx import get_cpu_node
 from string import ascii_lowercase as alc
 
@@ -130,11 +134,7 @@ def xlnx_openamp_update_relation_timers(sdt, target_os, machine):
         if domain is None:
             continue
 
-        domain_cpus = domain.propval("cpus")
-        domain_cluster = (
-            tree.pnode(domain_cpus[0]) if domain_cpus != [''] else None
-        )
-        if match_cpu.parent == domain_cluster:
+        if _openamp_domain_selects_cpu(tree, domain, match_cpu):
             relation_groups.append(node)
 
     if not relation_groups:
@@ -216,7 +216,8 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None):
             continue
 
         # ensure target domain matches
-        if match_cpunode.parent == sdt.tree.pnode(n.parent.parent.propval("cpus")[0]):
+        if _openamp_domain_selects_cpu(
+                tree, n.parent.parent, match_cpunode):
             if find_only:
                  return n
             else: # do processing on found nodes
@@ -345,7 +346,8 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
             continue
 
         # ensure target domain matches
-        if match_cpunode.parent == sdt.tree.pnode(n.parent.parent.propval("cpus")[0]):
+        if _openamp_domain_selects_cpu(
+                sdt.tree, n.parent.parent, match_cpunode):
              target_node = n
              break
 
@@ -1362,8 +1364,11 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
 
     match_cpunode = get_cpu_node(sdt, {'args':[machine]}) if os != "linux_dt" else None
     if not match_cpunode and os != "linux_dt":
-        print("openamp_nontree_outputs_handler: unable to find machine: ", machine)
-        return False
+        _error(
+            "openamp_xlnx: cannot generate '%s': processor '%s' was not "
+            "found in the system device tree" % (output_file_name, machine),
+            1,
+        )
 
     domains = sdt.tree['/domains']
     relation_node = None
@@ -1396,7 +1401,9 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
                                  (domain_node.name, domain_os, domain_processor))
 
         # ensure target domain matches
-        if os != "linux_dt" and match_cpunode.parent != sdt.tree.pnode(domain_node.propval("cpus")[0]):
+        if (os != "linux_dt"
+                and not _openamp_domain_selects_cpu(
+                    sdt.tree, domain_node, match_cpunode)):
             continue
 
         # filter based on name
@@ -1409,10 +1416,12 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
     if relation_node is None:
         compatible = openamp_args['compatible_string'] or "any"
         targets = ", ".join(supported_targets) if supported_targets else "none"
-        _error("openamp_xlnx: no %s relation found for processor '%s' and OS "
-               "'%s'; supported targets: %s" %
-               (compatible, machine, os, targets))
-        return False
+        _error(
+            "openamp_xlnx: cannot generate '%s': no %s relation found for "
+            "processor '%s' and OS '%s'; supported targets: %s" %
+            (output_file_name, compatible, machine, os, targets),
+            1,
+        )
 
     carveouts = None
     ipi_node = None

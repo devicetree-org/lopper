@@ -18,6 +18,7 @@ import subprocess
 import shutil
 import ast
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from pathlib import PurePath
 from io import StringIO
@@ -37,6 +38,30 @@ from itertools import chain
 import humanfriendly
 
 lopper.log._init(__name__)
+
+
+class CpuSelectionSource(Enum):
+    """How a domain CPU selection was resolved."""
+
+    CLUSTER_RELATIVE = "cluster-relative"
+    LEGACY_CLUSTER_CPU = "legacy-cluster-cpu"
+    LEGACY_CORE_INDEX = "legacy-core-index"
+    UNRESOLVED = "unresolved"
+
+
+@dataclass
+class CpuSelection:
+    """Result of resolving a domain CPU mask against an SDT cluster."""
+
+    cluster: object = None
+    mask: object = None
+    cpus: list = None
+    source: CpuSelectionSource = CpuSelectionSource.UNRESOLVED
+    diagnostic: str = ""
+
+    def __post_init__(self):
+        if self.cpus is None:
+            self.cpus = []
 
 # utility function to return true or false if a number
 # is 32 bit, or not.
@@ -61,6 +86,155 @@ def chunks(l, n):
     for i in range(0, len(l), n):
         # Create an index range for l of n items:
         yield l[i:i+n]
+
+
+def cpu_nodes_from_mask(cluster, mask):
+    """Return CPU children selected by a cluster-relative CPU mask."""
+    if cluster is None or mask is None:
+        return []
+
+    try:
+        mask = int(mask)
+    except (TypeError, ValueError):
+        return []
+
+    cpus = [node for node in cluster.subnodes(children_only=True)
+            if re.match(r"cpu@.*", node.name)]
+    return [cpu for index, cpu in enumerate(cpus)
+            if check_bit_set(mask, index)]
+
+
+def _cpu_matches_legacy_label(tree, cpu, legacy_cpu_label):
+    """Return whether a CPU is named by an SDT symbol or node label."""
+    if legacy_cpu_label in (cpu.label, cpu.name):
+        return True
+
+    # Parsed DTS nodes do not necessarily retain their source label on the
+    # LopperNode.  In that case, resolve the label through /__symbols__, just
+    # as baremetalconfig_xlnx.get_cpu_node() does for processor arguments.
+    try:
+        symbol_path = tree["/__symbols__"].propval(legacy_cpu_label)
+    except (KeyError, TypeError, AttributeError):
+        return False
+    if isinstance(symbol_path, list):
+        symbol_path = symbol_path[0] if symbol_path else None
+    return bool(symbol_path and symbol_path == getattr(cpu, "abs_path", None))
+
+
+def resolve_domain_cpus(tree, domain, legacy_cpu_label=None):
+    """Resolve a domain CPU tuple while accepting unambiguous legacy masks.
+
+    CPU masks are defined relative to the CPU children of their referenced
+    cluster.  Existing domain files may instead encode a system-wide core
+    number, such as mask 0x2 for the sole ``cpu@1`` child of ``cpus-r5@1``.
+
+    Resolution follows these rules in order:
+
+    1. Resolve the cluster and interpret the mask as cluster-relative.
+    2. Use that result only when the mask contains no out-of-range bits.
+    3. If it is invalid or empty, accept ``legacy_cpu_label`` only when that
+       label names a direct CPU child of the referenced cluster.
+    4. Without a label, accept a legacy mask for a one-CPU cluster only when
+       it is the one-hot bit corresponding to that child's small ``reg`` ID.
+    5. Otherwise report the selection as unresolved; never guess a CPU.
+
+    A valid cluster-relative mask is authoritative.  The legacy label is not
+    allowed to override it when the two disagree.
+    """
+    if isinstance(legacy_cpu_label, list):
+        legacy_cpu_label = (
+            legacy_cpu_label[0] if legacy_cpu_label else None)
+    if not legacy_cpu_label:
+        legacy_cpu_label = None
+
+    cpus_property = domain.propval("cpus")
+    if cpus_property == [""] or not cpus_property:
+        return CpuSelection(diagnostic="domain has no cpus property")
+
+    cluster = tree.pnode(cpus_property[0])
+    if cluster is None:
+        return CpuSelection(diagnostic="cpus references an unknown cluster")
+
+    mask = None
+    mask_diagnostic = "cpus property has no mask"
+    if len(cpus_property) >= 2:
+        try:
+            mask = int(cpus_property[1])
+            mask_diagnostic = f"cpumask {mask:#x} selects no CPU"
+        except (TypeError, ValueError):
+            mask = cpus_property[1]
+            mask_diagnostic = "cpus mask is not an integer"
+
+    cpu_nodes = [
+        node for node in cluster.subnodes(children_only=True)
+        if re.match(r"cpu@.*", node.name)
+    ]
+    valid_mask = (1 << len(cpu_nodes)) - 1
+    selected = cpu_nodes_from_mask(cluster, mask)
+    if (isinstance(mask, int) and mask > 0
+            and not (mask & ~valid_mask) and selected):
+        selected_names = {
+            name for cpu in selected for name in (cpu.label, cpu.name) if name
+        }
+        diagnostic = ""
+        if legacy_cpu_label and legacy_cpu_label not in selected_names:
+            diagnostic = (
+                f"cluster_cpu {legacy_cpu_label} disagrees with cpumask "
+                f"{mask:#x}; using the cluster-relative mask"
+            )
+        return CpuSelection(
+            cluster=cluster,
+            mask=mask,
+            cpus=selected,
+            source=CpuSelectionSource.CLUSTER_RELATIVE,
+            diagnostic=diagnostic,
+        )
+
+    if legacy_cpu_label:
+        legacy_cpu = next(
+            (cpu for cpu in cpu_nodes
+             if _cpu_matches_legacy_label(tree, cpu, legacy_cpu_label)),
+            None,
+        )
+        if legacy_cpu is not None:
+            return CpuSelection(
+                cluster=cluster,
+                mask=mask,
+                cpus=[legacy_cpu],
+                source=CpuSelectionSource.LEGACY_CLUSTER_CPU,
+                diagnostic=(
+                    f"{mask_diagnostic} relative to "
+                    f"{cluster.label or cluster.name}; using legacy "
+                    f"cluster_cpu {legacy_cpu_label}"
+                ),
+            )
+
+    if len(cpu_nodes) == 1 and isinstance(mask, int) and mask > 0:
+        reg = cpu_nodes[0].propval("reg")
+        try:
+            core_id = int(reg[0])
+        except (IndexError, TypeError, ValueError):
+            core_id = -1
+        if 0 <= core_id < 32 and mask == (1 << core_id):
+            return CpuSelection(
+                cluster=cluster,
+                mask=mask,
+                cpus=cpu_nodes,
+                source=CpuSelectionSource.LEGACY_CORE_INDEX,
+                diagnostic=(
+                    f"cpumask {mask:#x} uses the legacy core index for "
+                    f"{cpu_nodes[0].label or cpu_nodes[0].name}; use 0x1"
+                ),
+            )
+
+    return CpuSelection(
+        cluster=cluster,
+        mask=mask,
+        diagnostic=(
+            f"{mask_diagnostic} in "
+            f"{cluster.label or cluster.name}"
+        ),
+    )
 
 
 def json_expand( node ):
@@ -942,20 +1116,34 @@ def cpu_refs( tree, cpu_prop, verbose = 0 ):
         lopper.log._info( f"cpu node: {cpu_node}" )
         lopper.log._info( f"sub cpus: {sub_cpus}" )
 
-        # we'll now walk from 0 -> 31. Checking the mask to see if access is
-        # allowed. If it is allowed, we'll check to see if there's a sub-cpu at
-        # the same offset. If so, we refcount it AND the parent. For sub-cpus
-        # that are available, but have no access, we log them to be delete later
-        # (we don't delete them now, since it will shift node numbers.
-        for idx in range( 0, 32 ):
-            if check_bit_set( cpu_mask, idx ):
-                try:
-                    sub_cpu_node = sub_cpus[idx]
-                    # refcount it AND the parent
-                    tree.ref_all( sub_cpu_node, True )
-                    refd_cpus.append( sub_cpu_node )
-                except:
-                    pass
+        selected_cpus = cpu_nodes_from_mask(cpu_node, cpu_mask)
+
+        # OpenAMP domains created by older YAML may use an absolute RPU bit
+        # with a split, one-CPU cluster.  Resolve that single tuple with the
+        # same compatibility rules used by OpenAMP relation matching.
+        if not selected_cpus and len(cpu_prop_list) == 1 and cpu_prop.node:
+            domain = cpu_prop.node
+            dtd = next(
+                (node for node in domain.subnodes(children_only=True)
+                 if node.name == "domain-to-domain"),
+                None,
+            )
+            legacy_cpu = dtd.propval("cluster_cpu") if dtd else None
+            if legacy_cpu == [""]:
+                legacy_cpu = None
+            selection = resolve_domain_cpus(tree, domain, legacy_cpu)
+            selected_cpus = selection.cpus
+            if (selection.diagnostic
+                    and selection.source != CpuSelectionSource.UNRESOLVED):
+                lopper.log._warning(
+                    f"{domain.abs_path}: {selection.diagnostic}; migrate the "
+                    "domain to a cluster-relative mask"
+                )
+
+        for sub_cpu_node in selected_cpus:
+            # refcount it AND the parent
+            tree.ref_all(sub_cpu_node, True)
+            refd_cpus.append(sub_cpu_node)
 
     unrefd_cpus = []
     for s in sub_cpus_all:
