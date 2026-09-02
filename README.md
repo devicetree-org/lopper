@@ -148,7 +148,8 @@ Usage: lopper [OPTION] <system device tree> [<output file>]...
     , --werror        treat warnings as errors
   -S, --save-temps    don't remove temporary files
     , --cfgfile       specify a lopper configuration file to use (configparser format)
-    , --cfgval        specify a configuration value to use (in configparser section format). Can be specified multiple times
+    , --cfgval        specify a configuration value to use (in configparser section format). Can be specified multiple times.
+                      values are readable by code lops via "config", allowing a lop to be parameterized per invocation
     , --schema        one of: "path to a dts schema", "learn" or "none"
   -h, --help          display this help and exit
   -O, --outdir        directory to use for output files

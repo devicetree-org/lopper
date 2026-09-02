@@ -132,6 +132,78 @@ when adding custom transformations are:
 For complete documentation of all lop types including `conditional`, `exec`,
 `tree`, `xlate`, and `meta`, see [README-architecture.md](../README-architecture.md).
 
+### The Code Lop Environment
+
+A `code` lop runs its `code` property as Python against a bounded environment.
+Nothing else is in scope: there are no module level globals and no imports
+beyond what is asked for explicitly, which is what keeps a lop a tree
+transformation rather than a program.
+
+These names are always available:
+
+| Name | Value |
+|------|-------|
+| `tree` | the `LopperTree` being processed |
+| `node` | the current `LopperNode` (the selection's first node, or `/`) |
+| `node_name`, `node_number` | the current node's path and number |
+| `__selected__` | the nodes matched by the preceding `select` lop |
+| `verbose` | the active debug level |
+| `len`, `print` | the only builtins provided |
+
+These appear when the run supplies them:
+
+| Name | Supplied by |
+|------|-------------|
+| `outdir` | the output directory; always use it when writing a file |
+| `target_domain` | the `-t` / `--target` argument |
+| `config` | `--cfgfile` and `--cfgval` (see below) |
+
+Two lop properties extend the environment further. `options` adds arbitrary
+static values, one name per entry:
+
+```dts
+options = "flavour:production", "retries:3";
+```
+
+and `inherit` binds assist modules by name, which is the supported way to reach
+one from inside a code block. A bare `import` of a sibling assist will not
+resolve:
+
+```dts
+inherit = "baremetal_getsupported_comp_xlnx,common_utils";
+```
+
+#### Parameterizing a Lop at Invocation Time
+
+`options` is written into the lop file, so it cannot carry a value that is only
+known when lopper runs — a workspace path, a manifest location. Use `--cfgval`
+for those. Each `--cfgval` populates `config`, a standard `configparser` object,
+and the same values can be supplied in bulk with `--cfgfile`:
+
+```bash
+lopper --cfgval mylop.manifest=/ws/build/.repo.yaml \
+       -i lop-example.dts system-top.dts out.dts
+```
+
+```dts
+lop_0 {
+        compatible = "system-device-tree-v1,lop,code-v1";
+        inherit = "common_utils";
+        code = "
+               manifest = config['mylop']['manifest']
+               data = common_utils.load_yaml( manifest )
+               ";
+};
+```
+
+Only the `section.option` part of a `--cfgval` argument is split on `.`, so a
+value may contain dots freely; paths and version strings do not need escaping.
+
+Needing a runtime value is therefore not a reason to convert a lop into an
+assist. Reach for an assist when the work genuinely needs program structure —
+shared state, real error handling, its own module surface — and keep declarative
+tree transformations as lops.
+
 ### Classification and Organization
 
 Lops and assists are organized by purpose. Understanding the categories helps
