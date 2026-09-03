@@ -520,3 +520,11 @@ xlnx,zynqmp-ipi-dest-mailbox:
     - reg
     - reg-names
     - remote-ipi-id
+
+xlnx,versal-sysmon:
+  required:
+    - compatible
+    - reg
+    - status
+    - interrupts
+    - xlnx,numchannels
