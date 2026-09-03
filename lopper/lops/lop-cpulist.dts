@@ -10,8 +10,7 @@
  *
  * Description:
  * - Generates a compact CPU type list from cluster nodes for YAML/reporting
- *   consumers, ignores ai-engine specific checks done in lop-cpu-oslist for
- *   vendor specific tools.
+ *   consumers. For per-CPU supported OS lists, use the cpu_oslist_xlnx assist.
  *
  * Key Operations:
  * - select-v1, code-v1
