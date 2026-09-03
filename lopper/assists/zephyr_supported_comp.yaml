@@ -520,3 +520,12 @@ xlnx,zynqmp-ipi-dest-mailbox:
     - reg
     - reg-names
     - remote-ipi-id
+
+xlnx,clkx5-wiz-1.0:
+  required:
+    - compatible
+    - reg
+    - clocks
+    - '#clock-cells'
+    - xlnx,num-out-clks
+    - status
