@@ -13,6 +13,8 @@ import os
 import re
 import sys
 
+from lopper.log import _warning
+
 sys.path.append(os.path.dirname(__file__))
 
 try:
@@ -42,6 +44,10 @@ LINKER_SCALAR_PROPERTIES = {
 MPU_POLICY_PROPERTIES = {
     "readable", "writable", "executable", "cacheable", "shareable",
     "userspace", "static",
+}
+TCM_LOCAL_ORIGINS = {
+    "cortexr5": {"ATCM": 0x0, "BTCM": 0x20000},
+    "cortexr52": {"ATCM": 0x0, "BTCM": 0x10000, "CTCM": 0x18000},
 }
 
 
@@ -598,14 +604,6 @@ def _infer_profile(processor, memories, sections, entry):
         if is_r52 and vector_offset % 32:
             raise LayoutError(
                 "Cortex-R52 vector_table offset must be 32-byte aligned")
-        expected = ({"BTCM": 0x10000, "CTCM": 0x20000} if is_r52
-                    else {"BTCM": 0x20000})
-        for kind, origin in expected.items():
-            memory = next((item for item in memories if item.kind == kind), None)
-            if memory and memory.origin != origin:
-                raise LayoutError(
-                    f"{kind} must use local address 0x{origin:x} for "
-                    f"processor '{processor}'")
         return "r52-tcm" if is_r52 else "r5-tcm"
     if vector_memory.kind == "DDR" and is_r52:
         return "r52-ddr"
@@ -753,11 +751,12 @@ def _normalized_memory(node, processor):
     name = _linker_name(node)
     kind = _memory_kind(node)
     origin, length = _memory_range(node)
-    if processor == "cortexr52":
-        origin = {"ATCM": 0x0, "BTCM": 0x10000,
-                  "CTCM": 0x20000}.get(kind, origin)
-    elif processor == "cortexr5":
-        origin = {"ATCM": 0x0, "BTCM": 0x20000}.get(kind, origin)
+    local_origin = TCM_LOCAL_ORIGINS.get(processor, {}).get(kind)
+    if local_origin is not None and origin != local_origin:
+        _warning(
+            f"{node.abs_path}: SDT declares {kind} at 0x{origin:x}; "
+            f"normalizing to 0x{local_origin:x} for {processor}")
+        origin = local_origin
     return Memory(name, node, origin, length, _memory_policy(node, kind), kind)
 
 
