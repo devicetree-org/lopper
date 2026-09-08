@@ -597,8 +597,6 @@ def _infer_profile(processor, memories, sections, entry):
         raise LayoutError(f"unsupported RPU processor '{processor}'")
     if vector_memory.kind == "ATCM":
         vector_offset = vector.offset or 0
-        if vector_memory.origin != 0:
-            raise LayoutError("ATCM must use local address 0x0")
         if is_r5 and vector_offset != 0:
             raise LayoutError("Cortex-R5 ATCM vector_table offset must be 0")
         if is_r52 and vector_offset % 32:
