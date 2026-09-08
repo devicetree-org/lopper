@@ -1189,8 +1189,10 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
     Algorithm:
         Validates platform support, merges power-domain data from carveouts, derives
-        ranges for TCM and DDR nodes, ensures the cluster node exists with correct
-        configuration, tracks newly added DDR regions, and finally inserts the core
+        ranges for TCM and DDR nodes, and ensures the cluster node exists with the
+        correct configuration. Versal2 TCM addresses are selected by their SCMI
+        power-domain IDs; older firmware IDs and ``xlnx,power-domain`` remain
+        compatibility paths. Finally, tracks new DDR regions and inserts the core
         node using ``xlnx_remoteproc_v2_add_core``.
     """
     print(" -> xlnx_remoteproc_v2_construct_cluster")
@@ -1203,8 +1205,6 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
     core_reg_names = []
     power_domains = []
     core_reg_val = []
-
-    global memory_nodes
 
     if not platform_validate(platform):
         return False
@@ -1219,10 +1219,52 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
     # loop through TCM nodes
     for n in [ n for n in channel_elfload_nodes if n.propval("xlnx,ip-name") != [''] ]:
-        pd = n.propval("power-domains")
+        # Preserve the complete provider/specifier tuple for the generated
+        # remoteproc node. It is also the primary source for selecting the TCM
+        # address mapping below.
+        pd = n.propval("power-domains", list)
+        node_path = getattr(n, "abs_path", n.name)
+        if not pd or pd == [""] or len(pd) < 2:
+            print(f"ERROR: TCM node {node_path} is missing a valid "
+                  "power-domains property")
+            return False
         power_domains.extend(pd)
-        core_reg_val.extend(memory_nodes[pd[1]]["rpu_view"])
-        cluster_ranges_val.extend(memory_nodes[pd[1]]["system_view"])
+
+        pd_id = pd[1]
+        legacy_pd_id = None
+
+        # Versal2 uses SCMI IDs in power-domains. Translate a supported SCMI
+        # TCM ID to the existing legacy address-table key.
+        if platform == SOC_TYPE.VERSAL2:
+            legacy_pd_id = versal2_scmi_to_legacy_pd.get(pd_id)
+
+        # Older ZynqMP and Versal SDTs, plus some Versal NET TCMs, put the
+        # legacy address-table ID directly in power-domains.
+        if legacy_pd_id is None and pd_id in legacy_memory_nodes:
+            legacy_pd_id = pd_id
+
+        # Transitional SDTs may carry the legacy key separately. This remains
+        # a compatibility fallback; modern Versal2 mapping does not require it.
+        legacy_pd = n.propval("xlnx,power-domain", list)
+        if (legacy_pd_id is None and legacy_pd and
+                legacy_pd != [""]):
+            legacy_pd_id = legacy_pd[0]
+
+        mapping = legacy_memory_nodes.get(legacy_pd_id)
+        if mapping is None:
+            pd_id_string = hex(pd_id) if isinstance(pd_id, int) else str(pd_id)
+            legacy_id_string = ""
+            if legacy_pd and legacy_pd != [""]:
+                legacy_id = legacy_pd[0]
+                if isinstance(legacy_id, int):
+                    legacy_id = hex(legacy_id)
+                legacy_id_string = f", legacy ID {legacy_id}"
+            print(f"ERROR: TCM node {node_path} has no address mapping for "
+                  f"power-domains ID {pd_id_string}{legacy_id_string}")
+            return False
+
+        core_reg_val.extend(mapping["rpu_view"])
+        cluster_ranges_val.extend(mapping["system_view"])
 
         # map TCM node name to binding compliant TCM name
         if not any(tcm_name_substr in n.name.lower() for tcm_name_substr in core_reg_names_mappings):

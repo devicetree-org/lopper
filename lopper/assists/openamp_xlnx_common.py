@@ -300,7 +300,7 @@ class CLUSTER_CONFIG(Enum):
     RPU_0 = 1
     RPU_1 = 2
 
-memory_nodes = {
+legacy_memory_nodes = {
     15: {  # psu_r5_0_atcm_global
         "system_view": [0x0, 0x0, 0x0, 0xffe00000, 0x0, 0x10000],
         "rpu_view": [0x0, 0x0, 0x0, 0x10000]
@@ -406,8 +406,45 @@ memory_nodes = {
         "rpu_view": [0x1, 0x18000, 0x0, 0x8000]
     },
 }
-"""dict[int, dict[str, list[int]]]: Mapping of power-domain identifiers to
-system-view and RPU-view memory descriptors used for remoteproc construction."""
+"""dict[int, dict[str, list[int]]]: Legacy firmware power-domain IDs mapped to
+system-view and RPU-view memory descriptors used for remoteproc construction.
+
+Older SDTs place these IDs directly in ``power-domains``. Transitional Versal2
+SDTs may expose them separately through ``xlnx,power-domain``.
+"""
+
+# The direct legacy-ID fallback relies on the SCMI and legacy key spaces
+# remaining disjoint. The supported Versal2 SCMI TCM IDs fall within
+# 0x44-0x61, while legacy_memory_nodes uses 0x0f-0x12 and 0x1831xxxx.
+# Nothing enforces this separation: if a future SCMI ID overlaps a legacy
+# key, the fallback will silently select the wrong address descriptor.
+# Reassess or explicitly guard the fallback whenever SCMI IDs are extended.
+#
+# Versal2's SCMI binding assigns new power-domain IDs to the TCM banks. Keep
+# this translation separate from the legacy address table so ``power-domains``
+# can be the authoritative input without duplicating the address descriptors.
+# Only TCMs already supported by legacy_memory_nodes are listed here.
+versal2_scmi_to_legacy_pd = {
+    0x44: 0x183180cb,  # r52_0a_atcm_global
+    0x45: 0x183180cc,  # r52_0a_btcm_global
+    0x46: 0x183180cd,  # r52_0a_ctcm_global
+    0x4a: 0x183180ce,  # r52_0b_atcm_global
+    0x4b: 0x183180cf,  # r52_0b_btcm_global
+    0x4c: 0x183180d0,  # r52_0b_ctcm_global
+    0x56: 0x18318106,  # r52_0d_atcm_global
+    0x57: 0x18318107,  # r52_0d_btcm_global
+    0x58: 0x18318108,  # r52_0d_ctcm_global
+    0x59: 0x18318109,  # r52_1d_atcm_global
+    0x5a: 0x1831810a,  # r52_1d_btcm_global
+    0x5b: 0x1831810b,  # r52_1d_ctcm_global
+    0x5c: 0x1831810c,  # r52_0e_atcm_global
+    0x5d: 0x1831810d,  # r52_0e_btcm_global
+    0x5e: 0x1831810e,  # r52_0e_ctcm_global
+    0x5f: 0x1831810f,  # r52_1e_atcm_global
+    0x60: 0x18318110,  # r52_1e_btcm_global
+    0x61: 0x18318111,  # r52_1e_ctcm_global
+}
+"""dict[int, int]: Versal2 SCMI TCM IDs mapped to legacy address-table IDs."""
 
 openamp_linux_hosts = [ "psv_cortexa72_0", "psx_cortexa78_0", "psu_cortexa53_0", "cortexa78_0" ]
 """list[str]: Names of processor nodes recognized as OpenAMP Linux hosts."""
