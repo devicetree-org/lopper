@@ -356,3 +356,83 @@ class TestExistingSystemTopProperties:
                 return
 
         pytest.skip("No phys property found in system-top.dts")
+
+
+class TestNodeConditionalDescriptions:
+    """A property whose layout depends on the node carrying it.
+
+    gpios is 'phandle:#gpio-cells' when a device points at a controller,
+    and <id flags ..> sized by the parent when it is a gpio hog inside
+    the controller. See Documentation/devicetree/bindings/gpio/gpio.txt.
+    """
+
+    @staticmethod
+    def _hog_tree(gpio_cells):
+        """Controller with a hog child, and a consumer with a real reference."""
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+
+        tree.add(LopperNode(-1, "/gpio@20"))
+        controller = tree["/gpio@20"]
+        controller["#gpio-cells"] = [gpio_cells]
+        controller["gpio-controller"] = [""]
+
+        tree.add(LopperNode(-1, "/gpio@20/line-hog"))
+        hog = tree["/gpio@20/line-hog"]
+        hog["gpio-hog"] = [""]
+        hog["gpios"] = [0] * gpio_cells
+
+        tree.resolve()
+        return tree
+
+    def test_gpios_entry_carries_a_hog_variant(self):
+        """The table describes the hog case, not just the common one."""
+        props = lopper_base.phandle_possible_properties()
+        entry = props["gpios"]
+
+        assert "#gpio-cells" in entry[0]
+        assert len(entry) >= 3, "gpios has no conditional variants"
+
+        conditions = [v.get("node-has") for v in entry[2]]
+        assert "gpio-hog" in conditions
+
+    def test_description_selected_by_node(self):
+        """The node decides which description applies."""
+        entry = ["phandle:#gpio-cells", 0,
+                 [{"node-has": "gpio-hog", "description": "^:#gpio-cells"}]]
+
+        tree = self._hog_tree(2)
+        hog = tree["/gpio@20/line-hog"]
+        controller = tree["/gpio@20"]
+
+        assert lopper_base.phandle_description(entry, hog) == "^:#gpio-cells"
+        assert lopper_base.phandle_description(entry, controller) == \
+            "phandle:#gpio-cells"
+        # no node to test against, so the entry's own description stands
+        assert lopper_base.phandle_description(entry) == "phandle:#gpio-cells"
+
+    @pytest.mark.parametrize("gpio_cells", [1, 2, 3])
+    def test_hog_cells_come_from_the_parent(self, gpio_cells):
+        """Cell count is the parent's #gpio-cells, and none of it is a phandle."""
+        tree = self._hog_tree(gpio_cells)
+        prop = tree["/gpio@20/line-hog"].__props__["gpios"]
+
+        assert prop.phandle_map(tag_invalid=True) == [[0] * gpio_cells]
+        assert prop.resolve_phandles(tag_invalid=True) == []
+
+    def test_hog_is_not_an_invalid_phandle(self):
+        """A valid hog must not be reported, but a dangling one still is."""
+        import lopper.audit
+
+        tree = self._hog_tree(2)
+        tree.add(LopperNode(-1, "/consumer"))
+        # 0xffffffff is what dtc leaves behind for an unresolved <&label>
+        tree["/consumer"]["gpios"] = [0xFFFFFFFF, 1, 0]
+        tree.resolve()
+
+        reported = lopper.audit.check_invalid_phandles(
+            tree, warn_only_modified=False)
+        paths = [path for path, _prop in reported]
+
+        assert "/gpio@20/line-hog" not in paths
+        assert "/consumer" in paths
