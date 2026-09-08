@@ -1682,9 +1682,13 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
     Returns:
         bool: True when processing succeeds or no domains exist, False on errors.
 
+    Raises:
+        SystemExit: If a requested OpenAMP relation cannot be processed.
+
     Algorithm:
         Parses assist arguments, checks for OpenAMP-compatible domains, delegates
-        relation handling when appropriate.
+        relation handling when appropriate. Relation-processing failures are
+        fatal because continuing would write an incomplete OpenAMP device tree.
     """
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
@@ -1714,6 +1718,11 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
     if openamp_args["dt_type"] in ["zephyr_dt", "linux_dt"] or openamp_args["openamp_output_filename"]:
         # if find_only is False, then processing will also occur.
         if not xlnx_handle_relations(sdt, machine, False, openamp_args["dt_type"]):
-            return False
+            _error(
+                "openamp_xlnx: failed to process OpenAMP relations for "
+                "processor '%s' and OS '%s'" %
+                (machine, openamp_args["dt_type"]),
+                1,
+            )
 
     return True

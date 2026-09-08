@@ -628,3 +628,34 @@ def test_libmetal_missing_processor_lists_supported_targets(monkeypatch, caplog)
     assert "processor 'psu_cortexr5_0'" in caplog.text
     assert "APU_Linux (os=linux, processor=cpus_a53)" in caplog.text
     assert "R5_1_BAREMETAL (os=baremetal, processor=psu_cortexr5_1)" in caplog.text
+
+
+def test_openamp_relation_failure_exits_nonzero(monkeypatch, caplog):
+    """A requested tree transformation must not report successful output."""
+    config = {
+        "machine": "cortexa78_0",
+        "dt_type": "linux_dt",
+        "openamp_output_filename": None,
+        "report_valid_ipis": False,
+    }
+    sdt = type("FakeSdt", (), {"tree": object()})()
+
+    monkeypatch.setattr(
+        openamp_xlnx, "parse_openamp_args", lambda args: config)
+    monkeypatch.setattr(
+        openamp_xlnx, "xlnx_openamp_find_compat_domains",
+        lambda tree: True)
+    monkeypatch.setattr(
+        openamp_xlnx, "xlnx_openamp_update_relation_timers",
+        lambda sdt, dt_type, machine: True)
+    monkeypatch.setattr(
+        openamp_xlnx, "xlnx_handle_relations",
+        lambda sdt, machine, find_only, os: False)
+
+    with pytest.raises(SystemExit) as error:
+        openamp_xlnx.xlnx_openamp_parse(
+            sdt, {"args": ["cortexa78_0", "linux_dt"]})
+
+    assert error.value.code == 1
+    assert "failed to process OpenAMP relations" in caplog.text
+    assert "processor 'cortexa78_0' and OS 'linux_dt'" in caplog.text
