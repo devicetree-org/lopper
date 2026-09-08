@@ -90,6 +90,30 @@ class _FakeTree:
         return self._phandles.get(phandle)
 
 
+def _remoteproc_v2_fixture(
+        pd_id=0x44, legacy_pd=None,
+        node_name="r52_0a_atcm_global@eba00000"):
+    """Build the minimum channel data needed for R52 TCM construction."""
+    tcm = LopperNode(
+        -1,
+        f"/{node_name}",
+        name=node_name,
+    )
+    tcm["xlnx,ip-name"] = ["r52_0a_atcm_global"]
+    if pd_id is not None:
+        tcm["power-domains"] = [0xA5, pd_id]
+    if legacy_pd is not None:
+        tcm["xlnx,power-domain"] = [legacy_pd]
+
+    pd_property = type("PowerDomainProperty", (), {"value": [0xA5, 0]})()
+    channel_info = {
+        "cpu_config": openamp_xlnx.CPU_CONFIG.RPU_SPLIT,
+        "remote_node": object(),
+        "rpu_core_pd_prop": pd_property,
+    }
+    return channel_info, tcm
+
+
 def _cpu_selection_fixture(mask, cpu_count=1, first_reg=0):
     cpus = [
         _FakeNode(
@@ -415,6 +439,108 @@ def test_openamp_enables_only_selected_linux_uio_timer(monkeypatch):
     assert second_selected.propval("status", list) == ["okay"]
     assert tree[unrelated.abs_path] is unrelated
     assert unrelated.propval("compatible", list) == ["cdns,ttc"]
+
+
+@pytest.mark.parametrize(
+    "platform, pd_id, legacy_pd, node_name, expected_legacy_id",
+    [
+        # Current Versal2 SDTs use an SCMI ID and need no legacy property.
+        (
+            openamp_xlnx.SOC_TYPE.VERSAL2,
+            0x44,
+            None,
+            "r52_0a_atcm_global@eba00000",
+            0x183180CB,
+        ),
+        # Older platforms put the address-table ID in power-domains itself.
+        (
+            openamp_xlnx.SOC_TYPE.ZYNQMP,
+            15,
+            None,
+            "psu_r5_0_atcm_global@ffe00000",
+            15,
+        ),
+        # Transitional SDTs can fall back to xlnx,power-domain.
+        (
+            openamp_xlnx.SOC_TYPE.VERSAL2,
+            0xDEADBEEF,
+            0x183180CB,
+            "r52_0a_atcm_global@eba00000",
+            0x183180CB,
+        ),
+    ],
+)
+def test_remoteproc_v2_resolves_current_and_legacy_tcm_ids(
+        monkeypatch, platform, pd_id, legacy_pd, node_name,
+        expected_legacy_id):
+    """Modern, legacy, and transitional TCM IDs resolve address mappings."""
+    channel_info, tcm = _remoteproc_v2_fixture(
+        pd_id, legacy_pd, node_name)
+    captured = {}
+
+    monkeypatch.setattr(
+        openamp_xlnx, "determinte_rpu_core",
+        lambda tree, cpu_config, remote_node: openamp_xlnx.RPU_CORE.RPU_0)
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: platform)
+
+    def capture_cluster(tree, platform, cpu_config, ranges, path):
+        captured["ranges"] = ranges
+        return True
+
+    def capture_core(tree, info, power_domains, reg, reg_names, path,
+                     platform):
+        captured["power_domains"] = power_domains
+        captured["reg"] = reg
+        captured["reg_names"] = reg_names
+        return "core"
+
+    monkeypatch.setattr(
+        openamp_xlnx, "xlnx_remoteproc_v2_add_cluster", capture_cluster)
+    monkeypatch.setattr(
+        openamp_xlnx, "xlnx_remoteproc_v2_add_core", capture_core)
+
+    result = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+        object(), channel_info, [tcm])
+
+    mapping = openamp_xlnx.legacy_memory_nodes[expected_legacy_id]
+    assert result == "core"
+    assert captured["power_domains"] == [0xA5, 0, 0xA5, pd_id]
+    assert captured["reg"] == mapping["rpu_view"]
+    assert captured["ranges"] == mapping["system_view"]
+    assert captured["reg_names"] == ["atcm0"]
+
+
+@pytest.mark.parametrize(
+    "pd_id, legacy_pd, expected_error",
+    [
+        (None, None, "missing a valid power-domains property"),
+        (0xDEADBEEF, None,
+         "no address mapping for power-domains ID 0xdeadbeef"),
+        (0xDEADBEEF, 0xFEEDFACE,
+         "power-domains ID 0xdeadbeef, legacy ID 0xfeedface"),
+    ],
+)
+def test_remoteproc_v2_reports_invalid_tcm_mapping(
+        monkeypatch, capsys, pd_id, legacy_pd, expected_error):
+    """Missing and unknown TCM power-domain IDs have useful diagnostics."""
+    channel_info, tcm = _remoteproc_v2_fixture(pd_id, legacy_pd)
+
+    monkeypatch.setattr(
+        openamp_xlnx, "determinte_rpu_core",
+        lambda tree, cpu_config, remote_node: openamp_xlnx.RPU_CORE.RPU_0)
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.VERSAL2)
+
+    result = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+        object(), channel_info, [tcm])
+
+    assert result is False
+    diagnostic = capsys.readouterr().out
+    assert tcm.abs_path in diagnostic
+    assert expected_error in diagnostic
 
 
 def test_zephyr_ipc_shm_replaces_domain_carveout_references():
