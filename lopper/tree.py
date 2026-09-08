@@ -1050,7 +1050,11 @@ class LopperProp():
         property_description = phandle_props[self.name]
 
         # index 0 is always the description, other elements are flags, etc.
-        property_fields = property_description[0].split()
+        # A property whose layout depends on the node carrying it (rather than
+        # on its name alone) can supply alternative descriptions; the node
+        # picks which one applies.
+        property_fields = lopper_base.phandle_description(
+                              property_description, self.node ).split()
 
         group_size = 0
         group_sizes = []

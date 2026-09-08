@@ -1691,6 +1691,59 @@ class lopper_base:
         return newly_added
 
     @staticmethod
+    def phandle_description(entry, node=None):
+        """Select the field description for a property, given the node it is on
+
+        A property's layout is usually a function of its name alone, and an
+        entry in the phandle property table is just that: a description
+        string, optionally followed by a flag.
+
+        Some bindings are not decided by the name. The same property means
+        different things depending on the node carrying it, so an entry may
+        also supply variants: an optional third element listing alternative
+        descriptions, each with the condition under which it applies. The
+        first variant whose condition holds wins; if none do, or there are no
+        variants, the entry's own description is used.
+
+        A condition is currently a single key:
+
+           node-has: the description applies when the node has this property
+
+        Args:
+            entry: a phandle property table entry, i.e.
+                   [ description, flag?, [ { 'node-has': ..,
+                                             'description': .. }, .. ]? ]
+            node (LopperNode,optional): the node the property belongs to. With
+                                        no node there is nothing to test a
+                                        condition against, so the entry's own
+                                        description is used.
+
+        Returns:
+            string: the description that applies
+        """
+        default = entry[0]
+
+        try:
+            variants = entry[2]
+        except (IndexError, TypeError):
+            return default
+
+        if not variants or node is None:
+            return default
+
+        node_props = getattr(node, '__props__', {}) or {}
+
+        for variant in variants:
+            try:
+                wanted = variant.get('node-has')
+                if wanted and wanted in node_props:
+                    return variant['description']
+            except (AttributeError, KeyError):
+                continue
+
+        return default
+
+    @staticmethod
     def get_property_description(prop_name):
         """
         Get the property description for a given property name.
