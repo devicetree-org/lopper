@@ -625,7 +625,13 @@ class lopper_base:
                     "cpus" : [ 'phandle mask mode' ],
                     "clocks" : [ 'phandle:#clock-cells' ],
                     "reset-gpios" : [ 'phandle:#gpio-cells' ],
-                    "gpios" : [ 'phandle:#gpio-cells' ],
+                    # A GPIO hog is a child of the controller it hogs lines
+                    # on, so its gpios has no phandle to carry: the cells are
+                    # <id flags ..>, sized by the parent's #gpio-cells. See
+                    # Documentation/devicetree/bindings/gpio/gpio.txt.
+                    "gpios" : [ 'phandle:#gpio-cells', 0,
+                                [ { 'node-has': 'gpio-hog',
+                                    'description': '^:#gpio-cells' } ] ],
                     "resets" : [ 'phandle:#reset-cells' ],
                     "assigned-clocks" : [ 'phandle:#clock-cells' ],
                     "cpu-idle-states" : [ 'phandle' ],
