@@ -2349,6 +2349,13 @@ def xlnx_zephyr_domain_dts(tgt_node, sdt, options):
     if not _generate_domain_tree_for_zephyr(tgt_node, sdt, options, machine):
         return False
 
+    # misc_props holds SDT metadata that only the bare-metal flows consume, so
+    # gen_domain_dts keeps it; it has no Zephyr binding.
+    try:
+        sdt.tree.delete(sdt.tree['/misc_props'])
+    except KeyError:
+        pass
+
     memnode_list = sdt.tree.nodes('/memory@.*')
     memnode_list = [node for node in memnode_list if node.propval('device_type') == ["memory"]]
     xlnx_zephyr_fixup_rpu_memory_names(sdt.tree, machine, memnode_list)

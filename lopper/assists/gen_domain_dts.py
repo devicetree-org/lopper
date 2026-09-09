@@ -404,7 +404,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
     mapped_children_nodes = []
     for node in root_sub_nodes:
-        if node.name == "misc_props":
+        if linux_dt and node.name == "misc_props":
             sdt.tree.delete(node)
             continue
         if linux_dt:
