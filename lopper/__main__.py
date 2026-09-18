@@ -375,7 +375,11 @@ def main():
 
     # check that the input files (passed via -i) exist
     for i in inputfiles:
-        valid_ifile_types = [ ".json", ".dtsi", ".dtb", ".dts", ".yaml" ]
+        # .dtso is the Linux overlay-source convention.  Accepted here so an
+        # overlay can be passed alongside a base tree; it is held as an
+        # overlay subtree rather than merged (see is_overlay_file() and
+        # _compile_overlay_subtrees()).
+        valid_ifile_types = [ ".json", ".dtsi", ".dtb", ".dts", ".dtso", ".yaml" ]
         itype = lopper.Lopper.input_file_type(i)
         if not itype in valid_ifile_types:
             _error("unrecognized input file type passed", also_exit=1)

@@ -927,7 +927,7 @@ class LopperSDT:
                 ifile = ifile_searched
 
             if re.search( r".dts$", ifile ) or re.search( r".dtsi$", ifile ) or \
-               re.search( f".lop$", ifile ):
+               re.search( r".dtso$", ifile ) or re.search( f".lop$", ifile ):
                 # an input file is either a lopper operation file, or part of the
                 # system device tree. We can check for compatibility to decide which
                 # it is.
@@ -975,6 +975,20 @@ class LopperSDT:
                 lopper.log._error( f"input file {ifile} cannot be processed (no handler)" )
                 sys.exit(1)
 
+        # An overlay is not a base tree: it is a set of fragments whose
+        # targets only resolve against something else.  There is nothing to
+        # load it "into" when it is the system device tree itself, so catch
+        # it here and say so.  Without this it falls through to the binary
+        # loader (the terminal else below assumes an unrecognised extension
+        # is a dtb) and surfaces as FDT_ERR_BADMAGIC, which does not tell
+        # the caller anything useful.  Passed with -i alongside a base tree
+        # it is supported, and is held rather than merged.
+        if self.dts and re.search( r".dtso$", self.dts ):
+            lopper.log._error( f"overlay {self.dts} cannot be used as the system device tree. "
+                               "An overlay has no base to resolve against; pass it with -i "
+                               "alongside a base tree instead" )
+            sys.exit(1)
+
         # is the sdt a dts ?
         sdt_extended_trees = []
         if self.dts and re.search( r".dts$", self.dts ):
@@ -1000,7 +1014,7 @@ class LopperSDT:
                 overlay_dts_files = []
                 base_dts_files = []
                 for f in sdt_files:
-                    if f.endswith(".dts") or f.endswith(".dtsi"):
+                    if f.endswith(".dts") or f.endswith(".dtsi") or f.endswith(".dtso"):
                         if f != self.dts and is_overlay_file(f):
                             overlay_dts_files.append(f)
                         else:
