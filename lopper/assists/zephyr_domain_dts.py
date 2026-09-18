@@ -752,6 +752,12 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                         node["compatible"] = "xlnx,versal-8.9a"
                     # SYSMON
                     if "xlnx,versal-sysmon" in node["compatible"].value:
+                        if not node.props("interrupts"):
+                            try:
+                                node.parent.delete(node)
+                            except KeyError:
+                                pass
+                            continue
                         supply_count = sum(
                             1 for child in node.child_nodes.values()
                             if not child.props("xlnx,aie-temp")
