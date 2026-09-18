@@ -1,0 +1,153 @@
+/dts-v1/;
+
+/*
+ * Test SDT for mutually linked peer retention (domain_access step 2d).
+ *
+ * A device whose only inbound link is a phandle held in a *subnode* of an
+ * accessed node is not refcounted by steps 1/1a: ref_all() marks the
+ * accessed subtree but masks every property when resolving, and step 1a
+ * only chases references from the accessed node's own properties.  The
+ * graph binding is the common case -- a capture wrapper reachable only
+ * through <accessed>/ports/port@N/endpoint's remote-endpoint.
+ *
+ * Step 2d retains such a node when the reference is *reciprocated*, which
+ * is what distinguishes a peer from shared infrastructure.  This fixture
+ * carries all three cases:
+ *
+ *   vcap_visp_ss_00   mutually linked to the accessed visp_ss  -> survives
+ *   oneway_sink       referenced by visp_ss, does NOT link back -> deleted
+ *   unrelated@b2000000 referenced by nothing                    -> deleted
+ *
+ * The negative control matters as much as the positive one: if step 2d
+ * retained oneway_sink it would be following subnode phandles generally,
+ * which is what marks the whole tree as referenced.
+ */
+
+/ {
+	compatible = "xlnx,versal-net";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	model = "Test SDT for mutually linked peer retention";
+
+	cpus_a78: cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "cpus,cluster";
+
+		cpu@0 {
+			compatible = "arm,cortex-a78";
+			device_type = "cpu";
+			reg = <0x0>;
+		};
+	};
+
+	amba_pl: amba_pl {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/*
+		 * Accessed by APU_Linux.  Its output endpoints reference two
+		 * sinks: one reciprocates, one does not.
+		 */
+		visp_ss: visp_ss@b1300000 {
+			compatible = "xlnx,visp";
+			reg = <0x0 0xb1300000 0x0 0x1000>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@1 {
+					reg = <0x1>;
+					visp_out: endpoint {
+						remote-endpoint = <&vcap_in>;
+					};
+				};
+
+				port@2 {
+					reg = <0x2>;
+					visp_out2: endpoint {
+						remote-endpoint = <&oneway_in>;
+					};
+				};
+			};
+		};
+
+		/*
+		 * The peer.  No unit address (it is a composite wired by the
+		 * endpoint graph, not by address) so it is deliberately absent
+		 * from the generated device inventory and cannot be claimed by
+		 * a dev:"*" glob.  Retained only because vcap_in names
+		 * visp_out back.
+		 */
+		vcap_visp_ss_00: vcap_visp_ss_00 {
+			compatible = "xlnx,video";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0x0>;
+					vcap_in: endpoint {
+						remote-endpoint = <&visp_out>;
+					};
+				};
+
+				/*
+				 * A sibling port with no reciprocal link.  It must
+				 * survive along with its parent: step 2d refs the
+				 * whole peer subtree, because the step 5 filter
+				 * walks every descendant of the bus.
+				 */
+				port@1 {
+					reg = <0x1>;
+					vcap_spare: endpoint {
+					};
+				};
+			};
+		};
+
+		/*
+		 * Negative control: referenced from the accessed node's subtree
+		 * exactly as vcap is, but it does not reference back.
+		 */
+		oneway_sink: oneway_sink {
+			compatible = "xlnx,video";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0x0>;
+					oneway_in: endpoint {
+					};
+				};
+			};
+		};
+
+		/* Baseline: referenced by nothing at all. */
+		unrelated: unrelated@b2000000 {
+			compatible = "xlnx,other";
+			reg = <0x0 0xb2000000 0x0 0x1000>;
+		};
+	};
+
+	domains {
+		compatible = "openamp,domain-v1";
+
+		APU_Linux: APU_Linux {
+			compatible = "openamp,domain-v1";
+
+			cpus = <&cpus_a78 0xff 0x3>;
+
+			/* Only the ISP tile is claimed; the capture wrapper is not. */
+			access = <&visp_ss 0x0>;
+
+			memory = <0x0 0x0 0x0 0x80000000>;
+		};
+	};
+};
