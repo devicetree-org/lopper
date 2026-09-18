@@ -209,6 +209,77 @@ def validate_reserved_memory_in_memory_ranges(sdt, domain_node, verbose=0):
     )
 
 
+def mutually_linked( source_node, target_node ):
+    """Does target_node reference source_node back ?
+
+    A phandle leading out of an accessed node's subtree is not, on its own,
+    evidence that the target shares the accessed node's fate.  Most such
+    references point at shared infrastructure -- clocks, resets, power
+    domains, interrupt parents -- which many unrelated nodes also reference.
+    Following them is what marks effectively the whole tree as referenced,
+    which is why domain_access does not chase phandles out of a subtree.
+
+    A *mutual* reference is different in kind.  If source names target and
+    target names source back, the two are peers in a relationship that
+    neither can fulfil alone; the graph binding's remote-endpoint pairs are
+    the common case.  Shared infrastructure cannot reciprocate -- a clock
+    referenced by eight devices would have to name all eight back -- so
+    reciprocation is a structural test for peer-hood.  It needs no list of
+    blessed property names and it cannot fan out.
+
+    Args:
+       source_node (LopperNode): node holding the outbound reference
+       target_node (LopperNode): node that it references
+
+    Returns:
+       bool: True if target_node references source_node back
+    """
+    try:
+        for prop in target_node:
+            for back in prop.resolve_phandles():
+                if back and back.abs_path == source_node.abs_path:
+                    return True
+    except Exception:
+        # a property that will not resolve is simply not evidence of a
+        # mutual link. It is not an error condition here.
+        pass
+
+    return False
+
+
+def owning_device( node ):
+    """Walk up from a referenced node to the device that owns it
+
+    Graph bindings put the reciprocal reference on an endpoint, several
+    levels below the device it belongs to
+    (<device>/ports/port@N/endpoint).  Retention has to be applied to the
+    device rather than the endpoint: the unreferenced node filter walks
+    every descendant of the bus, so a device left unreferenced is deleted
+    and takes its endpoints with it.
+
+    The owning device is the closest ancestor carrying a 'compatible', which
+    is what distinguishes a device from the structural port/endpoint nodes
+    below it.  A bus is not a device, so the walk stops rather than
+    returning one: referencing a bus would defeat the filter entirely.
+
+    Args:
+       node (LopperNode): the referenced node
+
+    Returns:
+       LopperNode: the owning device, or None if there isn't one
+    """
+    n = node
+    while n is not None:
+        compat = n.propval( "compatible" )
+        if compat and compat != ['']:
+            if any( "simple-bus" in str(c) for c in compat ):
+                return None
+            return n
+        n = n.parent
+
+    return None
+
+
 # tgt_node: is the domain node number
 # sdt: is the system device tree
 def core_domain_access( tgt_node, sdt, options ):
@@ -534,6 +605,85 @@ def core_domain_access( tgt_node, sdt, options ):
                         p = p.parent
     except Exception as e:
         _warning(f"domain_access: exception in domain subnode refcounting: {e}")
+
+    # 2d) mutually linked peers
+    #
+    # An accessed node's subtree is refcounted -- ref_all() above marks the
+    # node and every subnode -- but the phandles held in those subnodes are
+    # deliberately not followed.  ref_all() masks every property when it
+    # resolves, and step 1a only chases references from the accessed node's
+    # own properties.  That is on purpose: subnode properties are dominated
+    # by links to shared infrastructure, and following them transitively
+    # marks effectively the whole tree as referenced, which defeats pruning.
+    #
+    # The gap that leaves is a device whose only inbound link is a phandle
+    # held in a *subnode* of an accessed node.  The graph binding is the
+    # common case: a capture wrapper is reachable only through
+    # <accessed>/ports/port@N/endpoint's remote-endpoint, so it is never
+    # referenced and the step 5 filter deletes it.  Silently, since what is
+    # left still compiles -- the ports are simply left with endpoint stubs
+    # that resolve to nothing.
+    #
+    # Retaining those without reopening the transitive problem needs a test
+    # that separates a peer from a shared resource.  Reciprocation is that
+    # test: if the target names us back, the two are peers.  Shared
+    # infrastructure cannot reciprocate, so this cannot fan out, and it
+    # needs no table of blessed property names -- it generalises to any
+    # binding that records a relationship from both ends.
+    #
+    # The peer is marked with ref_all( peer, True ): the device, its
+    # ancestors and its own subtree.  The subtree matters because step 5
+    # walks every descendant of the bus, so a peer whose children were left
+    # unreferenced would survive with its ports deleted.  ref_all() does not
+    # follow phandles (it masks all properties), so nothing transits out of
+    # the peer and the contamination this is careful to avoid stays avoided.
+    #
+    # A genuine peer that is *not* reciprocated -- the one way "-connected"
+    # style bindings, or a pair split across trees -- is unaffected by this
+    # and still needs an explicit access entry.  That remains the supported
+    # way to force a node to be kept.
+    #
+    # Note for anyone extending this: a one way link is not distinguished by
+    # how narrowly it points.  On a real ISP design 'dmas' and 'phys' are as
+    # pairwise as 'remote-endpoint' is -- one reference per target -- they
+    # are simply a consumer naming a provider, with no reference back.  So
+    # fan-out is not the discriminator, direction is.  If those links ever do
+    # need automatic retention, the extension is a property *class* rather
+    # than a list of names: 'dmas', 'phys' and the vendor '-connected' family
+    # are all the same kind of link and would be retained as a group.
+    # Enumerating individual property names per binding is not maintainable.
+    # Reciprocation needs no such table at all, which is why it is the rule
+    # used here.
+    peers_retained = []
+    try:
+        for d in direct_node_refs:
+            for subnode in d.subnodes( children_only=True ):
+                for prop in subnode:
+                    try:
+                        targets = prop.resolve_phandles()
+                    except Exception:
+                        continue
+
+                    for t in targets:
+                        if not t:
+                            continue
+
+                        if not mutually_linked( subnode, t ):
+                            continue
+
+                        peer = owning_device( t )
+                        if peer is None or peer in direct_node_refs:
+                            continue
+
+                        sdt.tree.ref_all( peer, True )
+                        peers_retained.append(
+                            ( peer.abs_path, subnode.abs_path, prop.name ) )
+    except Exception as e:
+        _warning(f"domain_access: exception in mutual peer refcounting: {e}")
+
+    for peer_path, src_path, prop_name in peers_retained:
+        _info( f"domain_access: retaining mutually linked peer: {peer_path} "
+               f"(reciprocated via {src_path}:{prop_name})" )
 
     # 3) cpus access
     try:
