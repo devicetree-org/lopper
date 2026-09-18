@@ -99,6 +99,14 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1, 2, 3, 4, 5, 6]
 
+  xlnx,hdmi-mode:
+    description: HDMI TX build mode from C_HDMI_MODE.
+                 0 = HDMI 2.1 TMDS only (no FRL block),
+                 1 = HDMI 2.1 FRL + TMDS.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
   xlnx,include-hdcp-1-4:
     type: boolean
     $ref: /schemas/types.yaml#/definitions/flag
@@ -163,6 +171,7 @@ required:
   - xlnx,vid-interface
   - xlnx,snd-pcm
   - xlnx,max-frl-rate
+  - xlnx,hdmi-mode
   - ports
 
 additionalProperties: false
