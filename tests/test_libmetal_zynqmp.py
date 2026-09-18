@@ -79,9 +79,13 @@ def test_zynqmp_libmetal_linux_and_baremetal_outputs(
         count=1,
     )
     assert replacements == 1
-    if not include_legacy_cpu:
+    if include_legacy_cpu:
+        cpu_entry = "      - cluster: cpus_r5_1\n        cpumask: 0x2\n"
         yaml_text = yaml_text.replace(
-            "        cluster_cpu: psu_cortexr5_1\n", "", 1)
+            cpu_entry,
+            cpu_entry + "        cluster_cpu: psu_cortexr5_1\n",
+            1,
+        )
     domain_yaml.write_text(yaml_text)
 
     expanded = tmp_path / "libmetal-zynqmp-expanded.dts"
