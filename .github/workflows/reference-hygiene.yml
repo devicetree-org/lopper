@@ -1,0 +1,53 @@
+name: Reference Hygiene
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  references:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history so a commit range can be resolved.
+          fetch-depth: 0
+
+      - name: Check commit messages
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_HEAD: ${{ github.sha }}
+        run: |
+          set -eu
+          empty=0000000000000000000000000000000000000000
+          if [ -n "${PR_BASE:-}" ] && [ -n "${PR_HEAD:-}" ]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [ -n "${PUSH_BEFORE:-}" ] && [ "$PUSH_BEFORE" != "$empty" ] \
+               && git cat-file -e "$PUSH_BEFORE" 2>/dev/null; then
+            range="$PUSH_BEFORE..$PUSH_HEAD"
+          else
+            # New branch, or the previous tip is unavailable: check the tip only.
+            range="$PUSH_HEAD~1..$PUSH_HEAD"
+          fi
+          echo "Scanning $range"
+          chmod +x scripts/check-references.sh
+          ./scripts/check-references.sh --range "$range"
+
+      - name: Check pull request title and description
+        if: github.event_name == 'pull_request'
+        # Passed through the environment rather than interpolated into the
+        # script: both are author-supplied text.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -eu
+          printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > pr-text.txt
+          chmod +x scripts/check-references.sh
+          ./scripts/check-references.sh --text pr-text.txt
