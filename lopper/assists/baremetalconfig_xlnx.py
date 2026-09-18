@@ -1,5 +1,5 @@
 #/*
-# * Copyright (c) 2020 - 2025 Xilinx Inc. All rights reserved.
+# * Copyright (c) 2020 - 2026 Xilinx Inc. All rights reserved.
 # *
 # * Author:
 # *       Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
@@ -778,7 +778,7 @@ def xlnx_generate_bm_config(tgt_node, sdt, options):
         drvoptprop_list = []
         if index == 0:
             plat.buf('#include "%s.h"\n' % drvname)
-            plat.buf('\n%s %s __attribute__ ((section (".drvcfg_sec"))) = {\n' % (config_struct, config_struct + str("Table[]")))
+            plat.buf('\n__attribute__((weak)) %s %s __attribute__ ((section (".drvcfg_sec"))) = {\n' % (config_struct, config_struct + str("Table[]")))
         xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 0, options)
         if index == len(driver_nodes)-1:
             plat.buf('\n\t {\n\t\t NULL\n\t}')
