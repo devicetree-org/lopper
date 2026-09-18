@@ -15,7 +15,10 @@ Author:
 """
 
 import os
+from pathlib import Path
+
 import pytest
+import yaml
 
 from lopper.assists import (
     lopper_lib,
@@ -24,6 +27,13 @@ from lopper.assists import (
     yaml_to_dts_expansion,
 )
 from lopper.tree import LopperNode, LopperTree
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+ZYNQMP_OPENAMP_YAML = (
+    REPO_ROOT / "demos" / "openamp" / "inputs" /
+    "openamp-overlay-zynqmp.yaml"
+)
 
 
 class TestOpenAMPDemo:
@@ -543,11 +553,17 @@ def test_remoteproc_v2_reports_invalid_tcm_mapping(
     assert expected_error in diagnostic
 
 
-def test_zephyr_ipc_shm_replaces_domain_carveout_references():
+@pytest.mark.parametrize(
+    "address_cells,size_cells", [(1, 1), (2, 1), (2, 2)])
+def test_zephyr_ipc_shm_replaces_domain_carveout_references(
+        address_cells, size_cells):
     """Consolidated IPC memory replaces deleted domain phandles."""
     tree = LopperTree()
     tree + LopperNode(-1, "/chosen")
-    tree + LopperNode(-1, "/reserved-memory")
+    reserved_memory = LopperNode(-1, "/reserved-memory")
+    reserved_memory["#address-cells"] = [address_cells]
+    reserved_memory["#size-cells"] = [size_cells]
+    tree + reserved_memory
     tree + LopperNode(-1, "/domains")
     carveouts = []
     for name, address, size in (
@@ -555,12 +571,18 @@ def test_zephyr_ipc_shm_replaces_domain_carveout_references():
             ("vring1", 0x9884000, 0x4000),
             ("buffer", 0x9888000, 0x78000)):
         node = LopperNode(-1, f"/reserved-memory/{name}@{address:x}")
-        node["reg"] = [0, address, 0, size]
+        node["reg"] = (
+            lopper_lib.int_to_cells(address, address_cells) +
+            lopper_lib.int_to_cells(size, size_cells)
+        )
         tree + node
         node.phandle_or_create()
         carveouts.append(node)
     firmware = LopperNode(-1, "/reserved-memory/rproc@9800000")
-    firmware["reg"] = [0, 0x9800000, 0, 0x60000]
+    firmware["reg"] = (
+        lopper_lib.int_to_cells(0x9800000, address_cells) +
+        lopper_lib.int_to_cells(0x60000, size_cells)
+    )
     tree + firmware
     firmware.phandle_or_create()
     domain = LopperNode(-1, "/domains/R5_0_ZEPHYR")
@@ -578,7 +600,96 @@ def test_zephyr_ipc_shm_replaces_domain_carveout_references():
         ipc.phandle, firmware.phandle]
     assert tree["/chosen"].propval("zephyr,ipc_shm", list) == [
         ipc.abs_path]
-    assert ipc.propval("reg", list) == [0, 0x9880000, 0, 0x80000]
+    assert ipc.propval("reg", list) == (
+        lopper_lib.int_to_cells(0x9880000, address_cells) +
+        lopper_lib.int_to_cells(0x80000, size_cells)
+    )
+
+
+def test_openamp_header_uses_vdev0buffer_reg_size(tmp_path):
+    """SHARED_MEM_SIZE is the vdev0buffer size, not its base address."""
+    policy = yaml.safe_load(ZYNQMP_OPENAMP_YAML.read_text())
+    definitions = policy["definitions"]["OpenAMP"]
+    region_names = (
+        "rpu0vdev0vring0",
+        "rpu0vdev0vring1",
+        "rpu0vdev0buffer",
+    )
+    regions = {
+        name: definitions[name][0]
+        for name in region_names
+    }
+
+    tree = LopperTree()
+    reserved_memory = LopperNode(-1, "/reserved-memory")
+    reserved_memory["#address-cells"] = [1]
+    reserved_memory["#size-cells"] = [1]
+    tree + reserved_memory
+
+    carveouts = []
+    for name in region_names:
+        address = regions[name]["start"]
+        size = regions[name]["size"]
+        node = LopperNode(-1, f"/reserved-memory/{name}@{address:x}")
+        node["reg"] = [address, size]
+        tree + node
+        carveouts.append(node)
+
+    axi = LopperNode(-1, "/axi")
+    axi["#address-cells"] = [1]
+    axi["#size-cells"] = [1]
+    tree + axi
+    remote_ipi = LopperNode(-1, "/axi/mailbox@ff340000")
+    remote_ipi["reg"] = [0xff340000, 0x10000]
+    remote_ipi["xlnx,int-id"] = [65]
+    tree + remote_ipi
+    host_ipi = LopperNode(
+        -1, "/axi/mailbox@ff340000/child@ff350000")
+    host_ipi["xlnx,ipi-bitmask"] = [0x200]
+    tree + host_ipi
+    tree.sync()
+
+    output = tmp_path / "platform_info.h"
+    assert openamp_xlnx.xlnx_openamp_gen_outputs_only(
+        tree, "cortexr5_0", output, carveouts, host_ipi)
+
+    generated = output.read_text()
+    vring0 = regions["rpu0vdev0vring0"]
+    buffer = regions["rpu0vdev0buffer"]
+    assert (f"#define SHARED_MEM_PA           "
+            f"{vring0['start']:#x}") in generated
+    assert (f"#define SHARED_MEM_SIZE         "
+            f"{buffer['size']:#x}") in generated
+    assert (f"#define SHARED_BUF_OFFSET       "
+            f"{buffer['start'] - vring0['start']:#x}") in generated
+
+
+@pytest.mark.parametrize(
+    "address_cells,size_cells", [(1, 1), (2, 1), (2, 2)])
+def test_carveout_overlap_detected_for_either_node_order(
+        address_cells, size_cells):
+    """An overlap is found when the selected carveout is the second node."""
+    tree = LopperTree()
+    reserved_memory = LopperNode(-1, "/reserved-memory")
+    reserved_memory["#address-cells"] = [address_cells]
+    reserved_memory["#size-cells"] = [size_cells]
+    tree + reserved_memory
+
+    unrelated = LopperNode(-1, "/reserved-memory/unrelated@1000")
+    unrelated["reg"] = (
+        lopper_lib.int_to_cells(0x1000, address_cells) +
+        lopper_lib.int_to_cells(0x1000, size_cells)
+    )
+    tree + unrelated
+    carveout = LopperNode(-1, "/reserved-memory/carveout@1800")
+    carveout["reg"] = (
+        lopper_lib.int_to_cells(0x1800, address_cells) +
+        lopper_lib.int_to_cells(0x1000, size_cells)
+    )
+    tree + carveout
+    tree.sync()
+
+    assert not openamp_xlnx.xlnx_validate_carveouts(tree, [carveout])
 
 
 def test_libmetal_missing_processor_lists_supported_targets(monkeypatch, caplog):
