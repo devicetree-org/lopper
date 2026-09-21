@@ -107,6 +107,14 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [6, 8, 10, 12, 16]
 
+  xlnx,video-interface:
+    description: |
+      Video interface determines Native or AXI mode.
+      0 for AXI and 1 for Native mode.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0,1]
+
   xlnx,audio-channels:
     description: |
       This denotes number of audio channels enabled in the IP
@@ -177,6 +185,7 @@ required:
   - clock-names
   - xlnx,max-link-rate
   - xlnx,bpc
+  - xlnx,video-interface
   - xlnx,max-lanes
   - xlnx,audio-enable
   - xlnx,hdcp-enable
