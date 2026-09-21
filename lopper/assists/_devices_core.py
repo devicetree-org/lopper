@@ -472,6 +472,34 @@ class DevicesCore:
             return None, None
         return ranges[0]
 
+    def _is_bus_like(self, node):
+        """Is this node acting as a bus, whatever its compatible says ?
+
+        A node carrying both 'ranges' and '#address-cells' is declaring that
+        it translates addresses for its children.  That is what a bus is in
+        device tree terms, and it holds whether or not the node also says
+        "simple-bus".  Glue layer wrappers are the common case: a vendor node
+        that owns the clocks, resets and power-domains for an IP block, with
+        the generic controller as its addressed child.
+
+        Nodes with a unit address are excluded.  Those are devices in their
+        own right and are already discovered by the normal scan; treating one
+        as a bus as well is a larger change than this, and is not the gap
+        being closed here.
+
+        Args:
+            node: LopperNode to test
+
+        Returns:
+            bool: True if the node translates addresses for its children
+        """
+        if '@' in node.name:
+            return False
+
+        props = getattr(node, '__props__', {}) or {}
+
+        return 'ranges' in props and '#address-cells' in props
+
     def _is_actual_device(self, node):
         """Check if node represents an actual device (vs structural/infrastructure node).
 
@@ -583,6 +611,44 @@ class DevicesCore:
             bus_nodes.extend(found)
 
         lopper.log._info(f"Found {len(bus_nodes)} bus nodes to scan for devices")
+
+        # A bus child can be acting as a bus without saying "simple-bus".  The
+        # glue layer wrapper is the common shape: a vendor node holding the
+        # clocks, resets and power-domains for an IP block, with the generic
+        # controller as its addressed child -- e.g. "xlnx,versal2-mmi-dwc3"
+        # wrapping an "snps,dwc3".  Its compatible is correct and should not be
+        # changed to simple-bus: it has a driver and real device properties.
+        #
+        # Device tree already has a way to say "I translate addresses for my
+        # children": 'ranges' together with '#address-cells'.  A node carrying
+        # both is a bus by DT semantics whatever its compatible says, so use
+        # that rather than inventing a heuristic.  Scanning into those is what
+        # makes their children discoverable; without it the wrapper is skipped
+        # for having no unit address and the addressed child underneath it is
+        # never reached, because only direct bus children are scanned.
+        #
+        # Deliberately narrow.  The wrapper itself is NOT added as a device --
+        # a bus is not an assignable device, and domain_access refs the parent
+        # chain of anything claimed, so the wrapper survives anyway once its
+        # child is.  Descent only happens into nodes that declare themselves
+        # address translators, so it is self limiting, and every node found
+        # still has to pass _is_actual_device(): infrastructure and clock
+        # exclusions apply underneath a wrapper exactly as they do above it.
+        queue = list(bus_nodes)
+        scanned = set()
+        while queue:
+            bus = queue.pop(0)
+            if bus.abs_path in scanned:
+                continue
+            scanned.add(bus.abs_path)
+
+            for child in bus.child_nodes.values():
+                if self._is_bus_like(child):
+                    lopper.log._debug(
+                        f"  Bus-like child (ranges + #address-cells): {child.name}")
+                    queue.append(child)
+            if bus.abs_path not in [b.abs_path for b in bus_nodes]:
+                bus_nodes.append(bus)
 
         # Collect devices from each bus
         for bus in bus_nodes:
