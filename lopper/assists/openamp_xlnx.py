@@ -640,6 +640,72 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
 
     return True
 
+# Translate SCMI IDs from versal2-scmi-power.h to the XilPM API IDs in
+# xlnx-versal-power.h (TTC0-3) and xlnx-versal2-power.h (TTC4-7).
+# Apply this table only after identifying the Versal2 SCMI provider: numeric
+# IDs alone cannot distinguish SCMI from the direct firmware bindings.
+_VERSAL2_SCMI_TTC_XILPM_IDS = {
+    22: 0x18224024,  # TTC0
+    23: 0x18224025,  # TTC1
+    24: 0x18224026,  # TTC2
+    25: 0x18224027,  # TTC3
+    58: 0x1822411f,  # TTC4
+    59: 0x18224120,  # TTC5
+    60: 0x18224121,  # TTC6
+    61: 0x18224122,  # TTC7
+}
+
+
+def _libmetal_ttc_xilpm_node_id(tree, timer_node, platform):
+    """Return the firmware ID consumed by Libmetal's XilPM calls.
+
+    The power-domains argument belongs to its provider's ID space. Direct
+    firmware providers already supply a XilPM ID; Versal2 SCMI supplies an
+    index that must be translated for TTC_NODEID. Keep the DT property intact
+    so Linux can still use its original power-domain provider and argument.
+
+    Both paths require one provider with #power-domain-cells = <1>. Invalid
+    or unsupported bindings raise ValueError for the output caller to report.
+    """
+    def invalid(reason):
+        return ValueError(f"OPENAMP: XLNX: {timer_node.abs_path}: {reason}")
+
+    pd = timer_node.propval("power-domains", list)
+    if len(pd) != 2 or not all(isinstance(cell, int) and cell >= 0 for cell in pd):
+        raise invalid("expected one power-domains reference with one ID")
+    provider = tree.pnode(pd[0])
+    if provider is None:
+        raise invalid(f"unresolved power-domains provider {pd[0]:#x}")
+    if provider.propval("#power-domain-cells", list) != [1]:
+        raise invalid(f"{provider.abs_path} must declare #power-domain-cells = <1>")
+
+    firmware_compat = {
+        SOC_TYPE.ZYNQMP: "xlnx,zynqmp-firmware",
+        SOC_TYPE.VERSAL: "xlnx,versal-firmware",
+        SOC_TYPE.VERSAL_NET: "xlnx,versal-net-firmware",
+        SOC_TYPE.VERSAL2: "xlnx,versal2-firmware",
+    }
+    if firmware_compat.get(platform) in provider.propval("compatible", list):
+        return pd[1]
+
+    # SCMI power providers are protocol children, with compatibility on the
+    # transport parent. Neither node names nor phandle labels identify them.
+    # Protocol 0x11 is SCMI Power Domain Management.
+    parent_compat = (provider.parent.propval("compatible", list)
+                     if provider.parent else [])
+    is_scmi_power = (
+        provider.propval("reg", list) == [0x11]
+        and any(compat in parent_compat for compat in
+                ("arm,scmi", "arm,scmi-smc", "linaro,scmi-optee")))
+    if is_scmi_power and platform == SOC_TYPE.VERSAL2:
+        try:
+            return _VERSAL2_SCMI_TTC_XILPM_IDS[pd[1]]
+        except KeyError:
+            raise invalid(f"unsupported Versal2 SCMI TTC power-domain ID {pd[1]:#x}")
+    raise invalid(f"unsupported TTC power-domains provider {provider.abs_path} "
+                  f"for platform {platform}")
+
+
 def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_node, os, verbose = 0 ):
     """Generate .cmake file for Libmetal IPI usage
 
@@ -654,6 +720,9 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
 
     Returns:
         bool: True on successful file generation, False on failure.
+
+    Raises:
+        SystemExit: If the TTC power binding cannot supply a supported XilPM ID.
     """
     print(" ---> xlnx_libmetal_gen_output_file")
     platform = get_platform(tree, verbose)
@@ -673,6 +742,13 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
         _error(str(exc))
         return False
 
+    try:
+        ttc_node_id = _libmetal_ttc_xilpm_node_id(tree, timer_node, platform)
+    except ValueError as exc:
+        # Returning False lets the assist dispatcher warn and exit zero unless
+        # --werror is set. Fail here so builds cannot accept a missing CMake file.
+        _error(str(exc), 1)
+
     suffix = "ipi" if platform == SOC_TYPE.ZYNQMP else "mailbox"
 
     values = {"SHM_IMAGE_BASE": hex(data_base),
@@ -685,7 +761,7 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
                 "SHM_BASE_ADDR": values["SHM_IMAGE_BASE"], "SHM_SIZE": values["SHM_IMAGE_SIZE"],
                 "SHM0_DESC_BASE": hex(desc0_base), "SHM0_DESC_SIZE": hex(desc0_size),
                 "SHM1_DESC_BASE": hex(desc1_base), "SHM1_DESC_SIZE": hex(desc1_size),
-                "TTC_DEV_NAME": "%s.timer" % hex(timer_base)[2:], "TTC_NODEID": hex(timer_node.propval("power-domains")[1]),
+                "TTC_DEV_NAME": "%s.timer" % hex(timer_base)[2:], "TTC_NODEID": hex(ttc_node_id),
                 "TTC_BASE_ADDR": hex(timer_base),
                 "IPI_DEV_NAME": "%s.%s" % (hex(ipi_base)[2:], suffix), "IPI_BASE_ADDR": hex(ipi_base),
                 "IPI_MASK": hex(ipi_node['xlnx,ipi-bitmask'].value[0]),
