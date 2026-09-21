@@ -167,3 +167,24 @@ def test_zynqmp_libmetal_linux_and_baremetal_outputs(
         assert linux_values[name] == value
     for name, value in r5_expected.items():
         assert r5_values[name] == value
+
+    # An unsupported power provider must fail the CLI even without --werror.
+    for os_name, source in [('linux_dt', linux_dts), ('baremetal_dt', r5_dts)]:
+        invalid_dts = tmp_path / f'{os_name}-invalid-provider.dts'
+        text = source.read_text()
+        assert '"xlnx,zynqmp-firmware"' in text
+        invalid_dts.write_text(text.replace(
+            '"xlnx,zynqmp-firmware"', '"test,unsupported-firmware"'))
+        invalid_cmake = tmp_path / f'{os_name}-invalid-provider.cmake'
+        result = subprocess.run([
+            sys.executable, str(LOPPER), '-f', str(invalid_dts),
+            str(tmp_path / f'{os_name}-invalid-output.dts'),
+            '--', 'openamp', '--libmetal_output_file',
+            '--compatible-string=libmetal,ipc-v1',
+            '--processor=psu_cortexr5_1', f'--os={os_name}',
+            f'--openamp_output_filename={invalid_cmake}',
+        ], cwd=REPO_ROOT, capture_output=True, text=True)
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert 'unsupported TTC power-domains provider' in result.stderr
+        assert 'timer@ff130000' in result.stderr
+        assert not invalid_cmake.exists()
