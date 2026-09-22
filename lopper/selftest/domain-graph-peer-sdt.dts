@@ -73,6 +73,22 @@
 					};
 				};
 			};
+
+			/*
+			 * A self reference inside the accessed subtree.  An
+			 * interrupt controller being its own interrupt-parent is
+			 * a normal idiom, and step 2d must skip it: a node is not
+			 * its own peer, and the reciprocation check would
+			 * otherwise iterate this node while step 2d is already
+			 * iterating it, which never terminates.
+			 */
+			visp_intc: interrupt-controller@b1310000 {
+				compatible = "test,gic";
+				#interrupt-cells = <3>;
+				interrupt-controller;
+				interrupt-parent = <&visp_intc>;
+				reg = <0x0 0xb1310000 0x0 0x1000>;
+			};
 		};
 
 		/*

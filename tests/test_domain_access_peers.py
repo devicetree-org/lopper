@@ -162,3 +162,42 @@ class TestMutuallyLinkedPeerRetention:
         assert "visp_ss@b1300000" in children, \
             "the accessed node was deleted"
         dt.cleanup()
+
+    # ------------------------------------------------------------------
+    # self references
+    # ------------------------------------------------------------------
+
+    def test_self_reference_is_skipped(self, test_outdir):
+        """A node inside the accessed subtree may reference itself.
+
+        visp_intc is its own interrupt-parent, which is how interrupt
+        controllers are normally written.  Step 2d walks the accessed
+        subtree and resolves each property's phandles, so it meets that
+        reference and has to recognise the target as the node it is already
+        looking at.
+
+        A node is not its own peer, so there is nothing to retain, but the
+        reason to skip it before the reciprocation check is stronger than
+        that: a node offers one walk of its properties at a time, carried
+        to completion, and checking reciprocation starts a second walk.
+        When the target is the node step 2d is already walking, the two
+        have nothing to tell them apart -- the inner one finishing returns
+        the node to its starting state, and the outer walk begins again.
+
+        If this test does not complete, the skip has been removed.
+        """
+        dt = self._run_pipeline(test_outdir, output_name="da-peer-selfref.dts")
+
+        intc = "/amba_pl/visp_ss@b1300000/interrupt-controller@b1310000"
+        try:
+            node = dt.tree[intc]
+        except Exception:
+            node = None
+        assert node is not None, \
+            "the self referencing node was deleted - it is inside the " \
+            "accessed subtree and must be retained with it"
+
+        parent = node.propval("interrupt-parent")
+        assert parent and parent != [''], \
+            "interrupt-parent was stripped from the self referencing node"
+        dt.cleanup()
