@@ -88,7 +88,8 @@ def test_invalid_ttc_binding_reports_timer(problem, diagnostic):
 
 
 @pytest.mark.parametrize('os_name', ['linux_dt', 'baremetal_dt'])
-def test_cmake_uses_xilpm_id_and_preserves_scmi_binding(tmp_path, monkeypatch, os_name):
+@pytest.mark.parametrize('invalid_region', [None, 'desc0', 'desc1', 'data', 'timer', 'mailbox'])
+def test_cmake_generation(tmp_path, monkeypatch, os_name, invalid_region):
     tree, timer, provider = ttc_tree()
     carveouts = []
     for i, name in enumerate(('desc0', 'desc1', 'data')):
@@ -106,6 +107,16 @@ def test_cmake_uses_xilpm_id_and_preserves_scmi_binding(tmp_path, monkeypatch, o
     tree + channel
     monkeypatch.setattr(assist, 'get_platform', lambda *args: assist.SOC_TYPE.VERSAL2)
     output = tmp_path / 'libmetal.cmake'
+    if invalid_region is not None:
+        regions = dict(zip(('desc0', 'desc1', 'data'), carveouts))
+        regions.update(timer=timer, mailbox=mailbox)
+        regions[invalid_region]['reg'] = [0, 0, 0, 0]
+        with pytest.raises(SystemExit) as exc:
+            assist.xlnx_libmetal_gen_output_file(
+                tree, output, carveouts, channel, timer, os_name)
+        assert exc.value.code == 1
+        assert not output.exists()
+        return
     assert assist.xlnx_libmetal_gen_output_file(
         tree, output, carveouts, channel, timer, os_name)
     import re

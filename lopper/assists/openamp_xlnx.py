@@ -722,7 +722,7 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
         bool: True on successful file generation, False on failure.
 
     Raises:
-        SystemExit: If the TTC power binding cannot supply a supported XilPM ID.
+        SystemExit: If a required reg region or the TTC power binding is invalid.
     """
     print(" ---> xlnx_libmetal_gen_output_file")
     platform = get_platform(tree, verbose)
@@ -738,11 +738,6 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
         data_base, data_size = _required_reg_region(data)
         timer_base, _ = _required_reg_region(timer_node)
         ipi_base, _ = _required_reg_region(ipi_node.parent)
-    except ValueError as exc:
-        _error(str(exc))
-        return False
-
-    try:
         ttc_node_id = _libmetal_ttc_xilpm_node_id(tree, timer_node, platform)
     except ValueError as exc:
         # Returning False lets the assist dispatcher warn and exit zero unless
