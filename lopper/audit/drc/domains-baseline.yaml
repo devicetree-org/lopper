@@ -95,3 +95,29 @@ drc:
       of: access
       relative: parent-domain
     message: "a domain's access must be a subset of its parent's"
+
+  # What a domain claims must be a device. A node naming a device that the
+  # system device tree does not have is not rejected on the way in: a top
+  # level key in an input YAML becomes a node, and if nothing already exists
+  # to carry the properties it declares, one is created to hold them. That
+  # node gets a phandle and can be referenced, so by the time access is
+  # resolved it looks present, and the tree is emitted with a device in it
+  # that no hardware corresponds to.
+  #
+  # What it does not get is a compatible, because nothing supplied one, and
+  # that is the difference between a device and a node that merely exists.
+  # Checking for it catches the declaration that was never real, whatever
+  # named it.
+  #
+  # access entries are (phandle, flags) pairs, hence index 0 / stride 2.
+  - id: domain-access-is-device
+    severity: error
+    phase: post-processing
+    select:
+      - "/domains/.*:access"
+    check: phandle-type
+    params:
+      property: "access"
+      index: 0
+      stride: 2
+    message: "a domain's access must name devices, not nodes without a compatible"

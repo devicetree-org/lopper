@@ -572,6 +572,12 @@ class PhandleTypeCheck(CheckHandler):
     Parameters: ``property`` to follow, ``compatible`` the target must carry,
     and optionally ``index`` / ``stride`` for a property whose entries are
     tuples (``cpus`` is (cluster, cpumask, exec-level), so index 0, stride 3).
+
+    ``compatible`` may be omitted, which asks the weaker question: does the
+    target carry a compatible at all? That is the difference between a device
+    and a node that merely exists, and it is what catches a node conjured to
+    hold a property -- it has a phandle and can be referenced, but nothing
+    identifies it as a device.
     """
     CHECK_TYPE = "phandle-type"
 
@@ -601,7 +607,17 @@ class PhandleTypeCheck(CheckHandler):
                     continue
                 compat = target.propval("compatible")
                 compat = compat if isinstance(compat, list) else [compat]
-                if want not in compat:
+                have = [c for c in compat if c not in (None, "")]
+
+                if want is None:
+                    if not have:
+                        results.append(self._fail(
+                            rule,
+                            f"{node.abs_path}: '{prop}' references "
+                            f"{target.abs_path}, which has no compatible and "
+                            f"so is not a device",
+                            node.abs_path))
+                elif want not in compat:
                     results.append(self._fail(
                         rule,
                         f"{node.abs_path}: '{prop}' references "
