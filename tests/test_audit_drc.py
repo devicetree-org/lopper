@@ -1246,6 +1246,70 @@ class TestSmallHandlers:
         fails = [r for r in v.results if not r.passed]
         assert len(fails) == 1 and "resolves to no node" in fails[0].message
 
+    # ------------------------------------------------------------------
+    # compatible omitted: "is this a device at all?"
+    # ------------------------------------------------------------------
+
+    def _dev(self, tree, path, phandle, compat="acme,widget"):
+        """A node that can be referenced; a device only if given a compatible."""
+        n = LopperNode(-1, path)
+        tree + n
+        n + LopperProp(name="phandle", value=[phandle])
+        if compat is not None:
+            n + LopperProp(name="compatible", value=[compat])
+        return phandle
+
+    def test_access_target_without_compatible_is_not_a_device(self):
+        """A node conjured to hold a property is referenceable but not a device.
+
+        A top level key in an input YAML becomes a node, so a domain YAML that
+        names a device the system device tree does not have gets one created to
+        carry whatever properties it declared. It has a phandle and resolves, so
+        nothing downstream notices; what it does not have is a compatible.
+        """
+        tree = _tree_with_domains()
+        real = self._dev(tree, "/amba_pl/visp_mbox_rpu_8", 0x340)
+        phantom = self._dev(tree, "/amba_pl/visp_mbox_rpu_9", 0x3c4, compat=None)
+        _domain(tree, "/domains/APU_Linux", access=[real, 0, phantom, 0])
+        tree.sync()
+        v = _run(["domain-access-is-device"], tree, ValidationPhase.POST_PROCESSING)
+        fails = [r for r in v.results if not r.passed]
+        assert len(fails) == 1, \
+            "expected exactly the compatible-less target to be reported"
+        assert "visp_mbox_rpu_9" in fails[0].message
+        assert "no compatible" in fails[0].message
+
+    def test_access_targets_with_compatible_pass(self):
+        """Real devices are not reported, whatever their compatible is.
+
+        Omitting the compatible parameter asks only whether the target carries
+        one, so it must not become an accidental filter on a particular value.
+        """
+        tree = _tree_with_domains()
+        a = self._dev(tree, "/amba_pl/dev_a", 0x100, compat="acme,widget")
+        b = self._dev(tree, "/amba_pl/dev_b", 0x101, compat="other,thing")
+        _domain(tree, "/domains/APU_Linux", access=[a, 0, b, 0])
+        tree.sync()
+        v = _run(["domain-access-is-device"], tree, ValidationPhase.POST_PROCESSING)
+        assert [r for r in v.results if not r.passed] == []
+
+    def test_access_target_with_empty_compatible_is_not_a_device(self):
+        """An empty compatible is no compatible.
+
+        propval() returns [''] for an absent or empty property, so a check that
+        only tested for the property's presence would pass this.
+        """
+        tree = _tree_with_domains()
+        n = LopperNode(-1, "/amba_pl/hollow")
+        tree + n
+        n + LopperProp(name="phandle", value=[0x200])
+        n + LopperProp(name="compatible", value=[""])
+        _domain(tree, "/domains/APU_Linux", access=[0x200, 0])
+        tree.sync()
+        v = _run(["domain-access-is-device"], tree, ValidationPhase.POST_PROCESSING)
+        fails = [r for r in v.results if not r.passed]
+        assert len(fails) == 1 and "no compatible" in fails[0].message
+
     def test_acyclic_detects_a_loop(self):
         tree = _tree_with_domains()
         _domain(tree, "/domains/a", parent="/domains/b")
