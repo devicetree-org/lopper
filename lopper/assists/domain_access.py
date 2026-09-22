@@ -668,6 +668,16 @@ def core_domain_access( tgt_node, sdt, options ):
                         if not t:
                             continue
 
+                        # Don't include self-references.  A node is not its own
+                        # peer, and it is already in the subtree being walked,
+                        # so there is nothing to retain.  The idiom is common
+                        # (an interrupt controller is its own interrupt-parent)
+                        # and must be skipped before the reciprocation check,
+                        # which would otherwise iterate this same node while we
+                        # are iterating it here.
+                        if t.abs_path == subnode.abs_path:
+                            continue
+
                         if not mutually_linked( subnode, t ):
                             continue
 
