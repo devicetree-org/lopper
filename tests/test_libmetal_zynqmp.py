@@ -168,23 +168,32 @@ def test_zynqmp_libmetal_linux_and_baremetal_outputs(
     for name, value in r5_expected.items():
         assert r5_values[name] == value
 
-    # An unsupported power provider must fail the CLI even without --werror.
+    # Invalid power bindings and reg regions must fail without --werror.
     for os_name, source in [('linux_dt', linux_dts), ('baremetal_dt', r5_dts)]:
-        invalid_dts = tmp_path / f'{os_name}-invalid-provider.dts'
         text = source.read_text()
         assert '"xlnx,zynqmp-firmware"' in text
-        invalid_dts.write_text(text.replace(
-            '"xlnx,zynqmp-firmware"', '"test,unsupported-firmware"'))
-        invalid_cmake = tmp_path / f'{os_name}-invalid-provider.cmake'
-        result = subprocess.run([
-            sys.executable, str(LOPPER), '-f', str(invalid_dts),
-            str(tmp_path / f'{os_name}-invalid-output.dts'),
-            '--', 'openamp', '--libmetal_output_file',
-            '--compatible-string=libmetal,ipc-v1',
-            '--processor=psu_cortexr5_1', f'--os={os_name}',
-            f'--openamp_output_filename={invalid_cmake}',
-        ], cwd=REPO_ROOT, capture_output=True, text=True)
-        assert result.returncode != 0, result.stdout + result.stderr
-        assert 'unsupported TTC power-domains provider' in result.stderr
-        assert 'timer@ff130000' in result.stderr
-        assert not invalid_cmake.exists()
+        invalid_provider = text.replace(
+            '"xlnx,zynqmp-firmware"', '"test,unsupported-firmware"')
+        invalid_reg, count = re.subn(
+            r'(timer@ff130000\s*\{.*?\breg\s*=\s*)[^;]+;',
+            r'\g<1><0 0xff130000 0 0>;', text, count=1, flags=re.DOTALL)
+        assert count == 1
+        for failure, content, diagnostic in [
+            ('provider', invalid_provider, 'unsupported TTC power-domains provider'),
+            ('reg', invalid_reg, 'has an invalid reg property'),
+        ]:
+            invalid_dts = tmp_path / f'{os_name}-invalid-{failure}.dts'
+            invalid_dts.write_text(content)
+            invalid_cmake = tmp_path / f'{os_name}-invalid-{failure}.cmake'
+            result = subprocess.run([
+                sys.executable, str(LOPPER), '-f', str(invalid_dts),
+                str(tmp_path / f'{os_name}-invalid-output.dts'),
+                '--', 'openamp', '--libmetal_output_file',
+                '--compatible-string=libmetal,ipc-v1',
+                '--processor=psu_cortexr5_1', f'--os={os_name}',
+                f'--openamp_output_filename={invalid_cmake}',
+            ], cwd=REPO_ROOT, capture_output=True, text=True)
+            assert result.returncode != 0, result.stdout + result.stderr
+            assert diagnostic in result.stderr
+            assert 'timer@ff130000' in result.stderr
+            assert not invalid_cmake.exists()
