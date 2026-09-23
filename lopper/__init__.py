@@ -1304,12 +1304,28 @@ class LopperSDT:
                 if not self.use_libfdt:
                     lopper.log._error( f"dtb system device tree passed ({self.dts}), and libfdt is disabled" )
                     sys.exit(1)
+                # A schema is learned while compiling dts source. A dtb has no
+                # source to learn from, so the request cannot be honoured and
+                # property types fall back to byte level guessing. That guess
+                # is not always decidable: an encoded value whose bytes happen
+                # to be printable is indistinguishable from a string.
+                if isinstance(self.schema, tuple) and self.schema[0] == "learn_dump":
+                    lopper.log._warning( f"schema learning was requested with an output file, but the input "
+                                         f"is a dtb ({self.dts}) and has no source to learn from. No schema "
+                                         f"will be written." )
+                    self.schema = None
+                elif self.schema == "learn":
+                    lopper.log._debug( f"dtb input ({self.dts}): nothing to learn a schema from, property "
+                                       f"types will be guessed" )
+                    self.schema = None
+
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
                 self.tree = LopperTree()
                 self.tree.warnings = self.warnings
                 self.tree.werror = self.werror
                 self.tree.strict = not self.permissive
-                self.tree.load( Lopper.export( self.FDT ) )
+                self.tree.schema = self.schema
+                self.tree.load( Lopper.export( self.FDT, schema = self.schema ) )
                 _deserialize_overlay_subtrees( self.tree )
 
                 # Do a check for common sanity issues here, invalid phandles, etc.
