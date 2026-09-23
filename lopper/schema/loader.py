@@ -164,53 +164,116 @@ LOPPER_SCHEMA_SECTIONS = (
 _LEARNED_SECTIONS = LOPPER_SCHEMA_SECTIONS[1:]
 
 
-def load_external_schema(path: str) -> dict:
-    """Load a schema supplied to lopper, from a file or a directory
+# An inline type statement, given on the command line instead of in a file.
+INLINE_SCHEMA_PREFIX = 'type:'
 
-    Two forms are accepted, told apart by content rather than by filename:
 
-    lopper's own form, carrying an 'overrides' section and/or the sections
-    that "--schema learn:<file>" writes, so a learned schema round trips; and
-    dt-schema, as published for devicetree bindings, whose 'properties' are
-    read for their types.
+def load_external_schema(sources) -> dict:
+    """Load the schemas supplied to lopper
 
-    A directory is searched recursively and its files applied in sorted order,
-    so a later file can restate a type set by an earlier one.
+    A source is a schema file, a directory of them, or an inline statement
+    prefixed with "type:". Sources are applied in the order given, so a later
+    one can restate a type an earlier one set.
+
+    Two file forms are accepted, told apart by content rather than by
+    filename: lopper's own form, carrying an 'overrides' section and/or the
+    sections that "--schema learn:<file>" writes, so a learned schema round
+    trips; and dt-schema, as published for devicetree bindings, whose
+    'properties' are read for their types.
 
     Args:
-        path (str): a schema file, or a directory of them
+        sources (str or list): schema files, directories, or inline statements
 
     Returns:
         dict: a schema whose 'overrides' section states the types found
     """
-    files = _external_schema_files(path)
-    if not files:
-        lopper.log._error( f"schema: no yaml files found under {path}", also_exit=1 )
+    if isinstance(sources, str):
+        sources = [sources]
 
     merged = { 'overrides': { 'properties': {}, 'node_patterns': {}, 'paths': {} } }
 
     total = 0
-    for schema_file in files:
-        data = _load_yaml_file(schema_file)
-        if data is None:
-            lopper.log._error( f"schema: {schema_file} could not be read as yaml", also_exit=1 )
+    for source in sources:
+        if source.startswith( INLINE_SCHEMA_PREFIX ):
+            count = _merge_inline_schema( merged, source[len(INLINE_SCHEMA_PREFIX):], source )
+            lopper.log._info( f"schema: {source}: {count} type statement(s)" )
+            total += count
+            continue
 
-        kind = _external_schema_kind( data, schema_file )
-        if kind == 'lopper':
-            count = _merge_lopper_schema( merged, data, schema_file )
-        else:
-            count = _merge_dt_schema( merged, data, schema_file )
+        files = _external_schema_files(source)
+        if not files:
+            lopper.log._error( f"schema: no yaml files found under {source}", also_exit=1 )
 
-        lopper.log._info( f"schema: {schema_file}: {count} type definition(s)" )
-        total += count
+        for schema_file in files:
+            data = _load_yaml_file(schema_file)
+            if data is None:
+                lopper.log._error( f"schema: {schema_file} could not be read as yaml", also_exit=1 )
+
+            kind = _external_schema_kind( data, schema_file )
+            if kind == 'lopper':
+                count = _merge_lopper_schema( merged, data, schema_file )
+            else:
+                count = _merge_dt_schema( merged, data, schema_file )
+
+            lopper.log._info( f"schema: {schema_file}: {count} type definition(s)" )
+            total += count
 
     if not total:
-        # Loading a file and getting nothing from it is the failure this whole
-        # path exists to avoid, so it is called out rather than left to be
-        # discovered in the output.
-        lopper.log._warning( f"schema: {path} supplied no property types" )
+        # Supplying a schema and getting nothing out of it is the failure this
+        # whole path exists to avoid, so it is called out rather than left to
+        # be discovered in the output.
+        lopper.log._warning( f"schema: {', '.join(sources)} supplied no property types" )
 
     return merged
+
+
+def _merge_inline_schema(merged: dict, spec: str, source: str) -> int:
+    """Merge an inline type statement
+
+    The statement is one or more "name=type" pairs separated by ';'. A comma
+    cannot be the separator: property names contain them, as in
+    "xlnx,ddr-freq".
+
+    A name may carry a scope ahead of it, split on the last '/'. A leading '/'
+    makes it an exact node path, anything else a node pattern, and no scope at
+    all states the type wherever the property appears:
+
+        xlnx,ddr-freq=uint32
+        memory-controller@*/xlnx,ddr-freq=uint32
+        /axi/memory-controller@fd070000/reg=uint64
+    """
+    count = 0
+    for entry in spec.split(';'):
+        entry = entry.strip()
+        if not entry:
+            continue
+
+        name, assigned, type_name = entry.partition('=')
+        if not assigned or not name or not type_name:
+            lopper.log._error( f"schema: {source}: '{entry}' is not a type statement. "
+                               f"Expected [scope/]<property>=<type>, for example "
+                               f"'xlnx,ddr-freq=uint32'", also_exit=1 )
+
+        _validate_type_name( type_name, name, source )
+
+        if '/' in name:
+            scope, _, prop_name = name.rpartition('/')
+            if not prop_name:
+                lopper.log._error( f"schema: {source}: '{entry}' names no property "
+                                   f"after its scope", also_exit=1 )
+
+            if scope.startswith('/'):
+                bucket = merged['overrides']['paths'].setdefault( scope, {} )
+            else:
+                bucket = merged['overrides']['node_patterns'].setdefault( scope, {} )
+        else:
+            bucket = merged['overrides']['properties']
+            prop_name = name
+
+        bucket[prop_name] = type_name
+        count += 1
+
+    return count
 
 
 def _external_schema_files(path: str) -> List[str]:

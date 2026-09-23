@@ -34,6 +34,7 @@ from lopper.fmt import LopperFmt
 from lopper.schema.learned import DTSPropertyTypeResolver, lopper_fmt_from_type_name
 from lopper.schema.loader import _json_schema_to_property_type
 from lopper.schema.types import PropertyType
+from lopper.__main__ import resolve_schema_arguments
 
 
 # 0x3f2e5100 decodes as the string "?.Q" if guessed from bytes alone.
@@ -395,6 +396,95 @@ class TestTypeReferences:
     def test_unresolvable_reference_is_not_guessed_at(self):
         spec = {'$ref': 'types.yaml#/definitions/not-a-type'}
         assert _json_schema_to_property_type(spec, 'p') == PropertyType.UNKNOWN
+
+
+class TestInlineStatements:
+    """A type can be stated on the command line, without writing a file.
+
+    The separator is ';' rather than ',' because property names contain
+    commas: "xlnx,ddr-freq" would otherwise be split in half.
+    """
+
+    def test_a_bare_name_states_the_type_wherever_it_appears(self, ambiguous_dtb):
+        dtb, _ = ambiguous_dtb
+        sdt = _load_dtb(dtb, ["type:xlnx,ddr-freq=uint32"])
+
+        assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+
+    def test_a_node_pattern_scopes_the_statement(self, ambiguous_dtb):
+        dtb, _ = ambiguous_dtb
+        sdt = _load_dtb(dtb, ["type:memory-controller@*/xlnx,ddr-freq=uint32"])
+
+        assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+
+    def test_a_leading_separator_makes_it_an_exact_path(self, ambiguous_dtb):
+        dtb, _ = ambiguous_dtb
+        sdt = _load_dtb(dtb, [f"type:{MC_PATH}/xlnx,ddr-freq=uint32"])
+
+        assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+
+    def test_several_statements_in_one_argument(self, ambiguous_dtb):
+        dtb, _ = ambiguous_dtb
+        sdt = _load_dtb(dtb, ["type:xlnx,ddr-freq=uint32;xlnx,ip-name=string"])
+
+        assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+        assert _prop(sdt.tree, "xlnx,ip-name").value == ['psu_ddrc']
+
+    def test_a_comma_in_a_property_name_survives(self, ambiguous_dtb):
+        """The separator must not split a vendor prefixed name."""
+        dtb, _ = ambiguous_dtb
+        sdt = _load_dtb(dtb, ["type:xlnx,ddr-freq=uint32;xlnx,ddrc-clk-freq-hz=uint32"])
+
+        assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+        assert _prop(sdt.tree, "xlnx,ddrc-clk-freq-hz").value == [0x1f98a480]
+
+    def test_sources_apply_in_the_order_given(self, ambiguous_dtb):
+        dtb, _ = ambiguous_dtb
+        sdt = _load_dtb(dtb, ["type:xlnx,ddr-freq=string",
+                              "type:xlnx,ddr-freq=uint32"])
+
+        assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+
+    @pytest.mark.parametrize("spec", [
+        "type:broken",              # no type given
+        "type:=uint32",             # no property named
+        "type:xlnx,ddr-freq=",      # no type named
+        "type:xlnx,ddr-freq=nope",  # not a type
+        "type:scope/=uint32",       # scope, but no property
+    ])
+    def test_a_malformed_statement_is_refused(self, ambiguous_dtb, spec):
+        dtb, _ = ambiguous_dtb
+        with pytest.raises(SystemExit) as excinfo:
+            _load_dtb(dtb, [spec])
+        assert excinfo.value.code != 0
+
+
+class TestSchemaArgumentResolution:
+    """--schema is repeatable, but the modes that are not schemas are not."""
+
+    def test_no_argument_learns(self):
+        assert resolve_schema_arguments([]) == "learn"
+
+    def test_none_disables(self):
+        assert resolve_schema_arguments(["none"]) is None
+
+    def test_schemas_accumulate_in_order(self, tmp_path):
+        first = tmp_path / "a.yaml"
+        first.write_text("overrides:\n  properties:\n    a: uint32\n")
+
+        resolved = resolve_schema_arguments([str(first), "type:b=string"])
+
+        assert resolved == [str(first), "type:b=string"]
+
+    @pytest.mark.parametrize("mode", ["none", "learn"])
+    def test_a_mode_cannot_be_combined_with_a_schema(self, mode):
+        """Mixing them asks for two different things at once."""
+        with pytest.raises(SystemExit):
+            resolve_schema_arguments([mode, "type:a=uint32"])
+
+    def test_a_missing_schema_path_is_refused(self, tmp_path):
+        with pytest.raises(SystemExit):
+            resolve_schema_arguments([str(tmp_path / "absent.yaml")])
 
 
 def test_learn_request_on_dtb_does_not_write_a_schema(ambiguous_dtb, tmp_path, caplog):

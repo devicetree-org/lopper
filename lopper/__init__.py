@@ -838,7 +838,8 @@ class LopperSDT:
         # before the input is looked at, so that dts and dtb input alike see a
         # schema rather than a path: the per-input handling below differs, and
         # only the dts side ever had a place to do this.
-        if isinstance(self.schema, str) and self.schema != "learn":
+        if isinstance(self.schema, list) or \
+           (isinstance(self.schema, str) and self.schema != "learn"):
             self.schema = lopper.schema.load_external_schema( self.schema )
             lopper.schema.initialize_lopper_properties( self.schema )
             lopper.schema._schema_manager.update_schema( self.schema )

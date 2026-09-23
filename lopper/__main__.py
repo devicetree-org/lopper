@@ -53,9 +53,57 @@ def parse_schema_argument(schema_arg):
         if not output_path:
             _error("schema output path cannot be empty after 'learn:'", also_exit=1)
         return ("learn_dump", output_path)
+    elif schema_arg.startswith("type:"):
+        if not schema_arg[5:]:
+            _error("schema type statement cannot be empty after 'type:'", also_exit=1)
+        return ("load", schema_arg)
     else:
         # Assume it's a path to an existing schema
         return ("load", schema_arg)
+
+
+def resolve_schema_arguments(schema_args):
+    """Resolve the --schema arguments into a single setting.
+
+    --schema may be given more than once to supply several schemas, which are
+    applied in the order given. The modes that are not schemas -- none, learn
+    and learn:<file> -- select what lopper does rather than add to what it
+    knows, so each has to stand alone.
+
+    Returns: None, "learn", ("learn_dump", path), or a list of schema sources
+    """
+    if not schema_args:
+        return "learn"
+
+    actions = [ parse_schema_argument(arg) for arg in schema_args ]
+    modes = [ action for action, _ in actions if action != "load" ]
+
+    if modes and len(actions) > 1:
+        _error( f"--schema {modes[0]} cannot be combined with another --schema. It selects "
+                f"what lopper does rather than adding a schema to use.", also_exit=1 )
+
+    if modes:
+        action, target = actions[0]
+        if action == "none":
+            return None
+        if action == "learn":
+            return "learn"
+
+        # learn_dump: refuse to overwrite a schema that is already there
+        if target != "-":
+            if Path(target).exists():
+                _error( f"schema output file {target} already exists. Please remove it or "
+                        f"choose a different filename.", also_exit=1 )
+        return ("learn_dump", target)
+
+    sources = []
+    for _, target in actions:
+        if not target.startswith("type:"):
+            if not Path(target).exists():
+                _error( f"schema {target} does not exist", also_exit=1 )
+        sources.append( target )
+
+    return sources
 
 def usage():
     prog = "lopper"
@@ -109,7 +157,11 @@ def usage():
     print('    , --cfgfile       specify a lopper configuration file to use (configparser format) ' )
     print('    , --cfgval        specify a configuration value to use (in configparser section format). Can be specified multiple times.' )
     print('                      values are readable by code lops via "config", allowing a lop to be parameterized per invocation' )
-    print('    , --schema        one of: "path to a dts schema", "learn" or "none" ')
+    print('    , --schema        one of: a schema file, a directory of them, an inline')
+    print('                          "type:<property>=<type>" statement, "learn",')
+    print('                          "learn:<file>" or "none". May be repeated to supply')
+    print('                          several schemas, applied in the order given, e.g.')
+    print('                          --schema type:\'xlnx,ddr-freq=uint32\'')
     print('  -h, --help          display this help and exit')
     print('  -O, --outdir        directory to use for output files')
     print('    , --server        after processing, start a server for ReST API calls')
@@ -144,7 +196,7 @@ def main():
     symbols = False
     warnings = []
     usage_flag = False
-    schema = None
+    schema = []
     memmap_file = None
     drc_paths = []
     cpumap_file = None
@@ -203,7 +255,8 @@ def main():
         elif o in ('--server'):
             server=True
         elif o in ('--schema'):
-            schema = a
+            # repeatable: several schemas can be supplied, applied in order
+            schema.append(a)
         elif o in ('-S', '--save-temps' ):
             save_temps=True
         elif o in ('--no-libfdt' ):
@@ -422,27 +475,7 @@ def main():
                 # global section, not currently implemented
                 pass
 
-    if schema:
-        action, target = parse_schema_argument(schema)
-
-        if action == "none":
-            schema = None
-        elif action == "learn":
-            schema = "learn"
-        elif action == "learn_dump":
-            # Check if output file exists
-            if target != "-":  # Not stdout
-                output_path = Path(target)
-                if output_path.exists():
-                    _error(f"schema output file {target} already exists. Please remove it or choose a different filename.", also_exit=1)
-            schema = ("learn_dump", target)
-        elif action == "load":
-            schemaf = Path(target)
-            if not schemaf.exists():
-                _error(f"schema file {target} does not exist", also_exit=1)
-            schema = target
-    else:
-        schema = "learn"
+    schema = resolve_schema_arguments( schema )
 
     # Track if -x/--xlate was used for legacy fallback
     xlate_fallback = False
