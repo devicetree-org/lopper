@@ -492,9 +492,16 @@ def wildcard_devices( tree, domains_node ):
                         # core_domain_access skips device pruning, instead of
                         # failing.  This is a persisted property (a "lopper,"
                         # name, not "__..__") so it survives a DTS round-trip and
-                        # works in multi-step pipelines; core_domain_access always
-                        # deletes it, which is what keeps it out of the final
-                        # output.  Not authored spec data.
+                        # works in multi-step pipelines.  Not authored spec data.
+                        #
+                        # It is deliberately never deleted, including by
+                        # core_domain_access: it is the keep-all equivalent of a
+                        # scoped domain's access list, so a second pass that no
+                        # longer saw it would find neither access nor marker and
+                        # bare-prune the domain.  Strip it at finalize with a
+                        # delete lop if a clean deliverable is wanted.  See the
+                        # matching comment in domain_access.py, which is where
+                        # the property is read.
                         if dev == "*" and not parent_access:
                             _info( f"glob '*' in {domain.abs_path}: no parent device pool; marking keep-all (device pruning skipped)" )
                             domain + LopperProp( name="lopper,access-keep-all", value=[1] )
