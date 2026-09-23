@@ -459,6 +459,49 @@ class TestInlineStatements:
         assert excinfo.value.code != 0
 
 
+class TestPartialSchema:
+    """Stating one type must not restate any others.
+
+    Before the resolver stopped guessing from names, supplying a schema at
+    all meant every property it did not mention was typed by the ".*,.*"
+    heuristic, which calls any vendor prefixed name a string. Correcting one
+    property therefore broke its neighbours, and a partial schema was worse
+    than none -- which is the only kind of schema anyone writes by hand.
+    """
+
+    def test_neighbours_keep_the_type_they_had(self, ambiguous_dtb):
+        dtb, _ = ambiguous_dtb
+        sdt = _load_dtb(dtb, ["type:xlnx,ddr-freq=uint32"])
+
+        assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+        # numeric, and not named by the schema
+        assert _prop(sdt.tree, "xlnx,ddrc-clk-freq-hz").value == [0x1f98a480]
+        # a string, and also not named by the schema
+        assert _prop(sdt.tree, "xlnx,ip-name").value == ['psu_ddrc']
+
+    def test_only_the_named_property_differs_from_an_unschemaed_run(self, ambiguous_dtb):
+        """Everything the schema is silent about reads as it would with none."""
+        dtb, _ = ambiguous_dtb
+
+        bare = _load_dtb(dtb, None)
+        bare_values = { p.name: p.value for p in bare.tree[MC_PATH] }
+
+        sdt = _load_dtb(dtb, ["type:xlnx,ddr-freq=uint32"])
+        values = { p.name: p.value for p in sdt.tree[MC_PATH] }
+
+        differing = { name for name, value in values.items()
+                      if bare_values.get(name) != value }
+
+        assert differing == {"xlnx,ddr-freq"}
+
+    def test_an_unknown_property_is_left_to_the_byte_guess(self):
+        """The resolver says it has no opinion rather than guessing a name."""
+        resolver = DTSPropertyTypeResolver({'overrides': {'properties': {'a': 'uint32'}}})
+
+        assert resolver.get_property_type('xlnx,some-unlisted-thing',
+                                          MC_PATH) == LopperFmt.UNKNOWN
+
+
 class TestSchemaArgumentResolution:
     """--schema is repeatable, but the modes that are not schemas are not."""
 

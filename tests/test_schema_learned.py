@@ -338,10 +338,20 @@ class TestDTSPropertyTypeResolverLookup:
         result = resolver.get_property_type('special-prop', node_path='/special/node')
         assert result == LopperFmt.UINT64
 
-    def test_fallback_to_heuristics(self, resolver):
-        """Unknown property should fall back to heuristics."""
-        result = resolver.get_property_type('clock-names')
-        assert result == LopperFmt.MULTI_STRING
+    def test_property_the_schema_does_not_describe_is_not_guessed_at(self, resolver):
+        """A property outside the schema gets no opinion from the resolver.
+
+        It used to be typed from its name, which was confident and sometimes
+        wrong: the ".*,.*" heuristic calls every vendor prefixed name a
+        string, so a numeric property absent from the schema was decoded as
+        one even when its bytes could not be a string. UNKNOWN hands it to the
+        byte level guess instead, which is what an unschemaed run uses.
+
+        The name based rules are still applied deliberately -- see
+        TestDTSPropertyTypeResolverHeuristics -- they are simply no longer
+        reached as a fallback.
+        """
+        assert resolver.get_property_type('clock-names') == LopperFmt.UNKNOWN
 
 
 class TestSchemaManagerSingleton:

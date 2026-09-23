@@ -1752,10 +1752,19 @@ class DTSPropertyTypeResolver:
                     # If we have no context to check against, accept the pattern
                     return pattern_info['type']
 
-        # Priority 6: Name-based heuristics (now data-driven!)
-        return self._apply_heuristics(prop_name)
-
-        # Default: Unknown
+        # Nothing in the schema covers this property. Say so, rather than
+        # guessing from its name.
+        #
+        # A name based guess is confident and wrong in a way a byte based one
+        # is not. The ".*,.*" heuristic types every vendor prefixed name as a
+        # string, so a numeric property the schema does not happen to mention
+        # is decoded as a string even when its bytes could not be one. That
+        # turned a partial schema into something worse than no schema at all:
+        # stating a type for one property silently retyped its neighbours.
+        #
+        # Returning UNKNOWN hands the property to the byte level guess in
+        # fdt.py, which is what a run with no schema uses and what these
+        # properties got before a schema was supplied.
         return LopperFmt.UNKNOWN
 
     def _apply_heuristics(self, prop_name):
