@@ -834,6 +834,15 @@ class LopperSDT:
         if libfdt:
             lopper.log._info( f"loading dtb and using libfdt to manipulate tree" )
 
+        # A schema handed to lopper is a path until it is read. Resolve it here,
+        # before the input is looked at, so that dts and dtb input alike see a
+        # schema rather than a path: the per-input handling below differs, and
+        # only the dts side ever had a place to do this.
+        if isinstance(self.schema, str) and self.schema != "learn":
+            self.schema = lopper.schema.load_external_schema( self.schema )
+            lopper.schema.initialize_lopper_properties( self.schema )
+            lopper.schema._schema_manager.update_schema( self.schema )
+
         if sdt_file:
             # check for required support applications
             if libfdt:
@@ -1137,9 +1146,18 @@ class LopperSDT:
                 # in this scenario
                 pass
             else:
-                # this is a schema file, we don't currently have support for
-                # this, so output a warning
-                lopper.log._warning( f"schema file {self.schema}, but external schemas are not supported yet" )
+                # A schema was supplied and is already active. Fold what was
+                # learned from this compile in underneath it: the merge only
+                # adds names the supplied schema does not already carry, so it
+                # contributes the breadth of this tree without displacing a
+                # type that was stated explicitly. Without it, every property
+                # the supplied schema does not mention would be left to the
+                # name based fallbacks rather than to what the source showed.
+                added = lopper.schema._schema_manager.merge_schema( schema )
+                if added:
+                    lopper.log._info( f"schema: {added} learned definition(s) folded in "
+                                      f"under the supplied schema" )
+                    self.schema = lopper.schema._schema_manager.schema
 
             if self.use_libfdt:
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')

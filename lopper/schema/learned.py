@@ -1374,8 +1374,18 @@ def lopper_fmt_from_type_name(type_name):
     try:
         return PropertyType(type_name).to_lopper_fmt()
     except ValueError:
-        valid = ", ".join( sorted( t.value for t in PropertyType ) )
-        raise ValueError( f"unknown property type '{type_name}'. valid types: {valid}" )
+        raise ValueError( f"unknown property type '{type_name}'. "
+                          f"valid types: {property_type_names()}" )
+
+
+def property_type_names():
+    """The type names that may be stated in a schema, as a printable list
+
+    PropertyType.UNKNOWN is left out: it is the resolver's way of saying it has
+    no opinion, and is not something worth declaring.
+    """
+    return ", ".join( sorted( t.value for t in PropertyType
+                              if t is not PropertyType.UNKNOWN ) )
 
 
 class DTSPropertyTypeResolver:

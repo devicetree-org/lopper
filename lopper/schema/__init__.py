@@ -58,6 +58,7 @@ from .core import (
 from .loader import (
     get_schema_search_path,
     load_all_schemas,
+    load_external_schema,
 )
 
 # Backwards compatibility: re-export everything from learned.py
@@ -168,6 +169,7 @@ __all__ = [
     # Loader
     'get_schema_search_path',
     'load_all_schemas',
+    'load_external_schema',
     # Legacy (from learned.py)
     'PROPERTY_DEBUG_LIST',
     'PROPERTY_DEBUG_SET',

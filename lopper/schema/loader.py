@@ -149,6 +149,180 @@ def _load_schemas_from_dir(registry: SchemaRegistry, schema_dir: str) -> int:
     return count
 
 
+# Sections that mark a file as being in lopper's own schema form, which is
+# what "--schema learn:<file>" writes, so a learned schema can be fed back in.
+LOPPER_SCHEMA_SECTIONS = (
+    'overrides',
+    'property_definitions',
+    'node_patterns',
+    'path_overrides',
+    'compatible_mappings',
+    'property_patterns',
+)
+
+# Sections carried through unchanged when a lopper form schema is loaded.
+_LEARNED_SECTIONS = LOPPER_SCHEMA_SECTIONS[1:]
+
+
+def load_external_schema(path: str) -> dict:
+    """Load a schema supplied to lopper, from a file or a directory
+
+    Two forms are accepted, told apart by content rather than by filename:
+
+    lopper's own form, carrying an 'overrides' section and/or the sections
+    that "--schema learn:<file>" writes, so a learned schema round trips; and
+    dt-schema, as published for devicetree bindings, whose 'properties' are
+    read for their types.
+
+    A directory is searched recursively and its files applied in sorted order,
+    so a later file can restate a type set by an earlier one.
+
+    Args:
+        path (str): a schema file, or a directory of them
+
+    Returns:
+        dict: a schema whose 'overrides' section states the types found
+    """
+    files = _external_schema_files(path)
+    if not files:
+        lopper.log._error( f"schema: no yaml files found under {path}", also_exit=1 )
+
+    merged = { 'overrides': { 'properties': {}, 'node_patterns': {}, 'paths': {} } }
+
+    total = 0
+    for schema_file in files:
+        data = _load_yaml_file(schema_file)
+        if data is None:
+            lopper.log._error( f"schema: {schema_file} could not be read as yaml", also_exit=1 )
+
+        kind = _external_schema_kind( data, schema_file )
+        if kind == 'lopper':
+            count = _merge_lopper_schema( merged, data, schema_file )
+        else:
+            count = _merge_dt_schema( merged, data, schema_file )
+
+        lopper.log._info( f"schema: {schema_file}: {count} type definition(s)" )
+        total += count
+
+    if not total:
+        # Loading a file and getting nothing from it is the failure this whole
+        # path exists to avoid, so it is called out rather than left to be
+        # discovered in the output.
+        lopper.log._warning( f"schema: {path} supplied no property types" )
+
+    return merged
+
+
+def _external_schema_files(path: str) -> List[str]:
+    """Collect the schema files named by a path, recursing into a directory."""
+    if os.path.isdir(path):
+        found = []
+        for extension in ('yaml', 'yml'):
+            found += glob_module.glob( os.path.join(path, '**', f'*.{extension}'),
+                                       recursive=True )
+        return sorted(found)
+
+    return [path]
+
+
+def _external_schema_kind(data, path: str) -> str:
+    """Decide which form a loaded schema file is in."""
+    if not isinstance(data, dict):
+        lopper.log._error( f"schema: {path} is not a yaml mapping", also_exit=1 )
+
+    if any( section in data for section in LOPPER_SCHEMA_SECTIONS ):
+        return 'lopper'
+
+    if ('$schema' in data or '$id' in data) and 'properties' in data:
+        return 'dt-schema'
+
+    lopper.log._error( f"schema: {path} is in no recognised form. Expected either a lopper "
+                       f"schema, with one of: {', '.join(LOPPER_SCHEMA_SECTIONS)}; or a "
+                       f"dt-schema binding, with $id or $schema and a properties section",
+                       also_exit=1 )
+
+
+def _validate_type_name(type_name, prop_name: str, path: str):
+    """Refuse an unknown type name at load time, naming where it came from."""
+    try:
+        PropertyType(type_name)
+    except ValueError:
+        from .learned import property_type_names
+        lopper.log._error( f"schema: {path}: property '{prop_name}' has unknown type "
+                           f"'{type_name}'. valid types: {property_type_names()}",
+                           also_exit=1 )
+
+
+def _merge_override_scope(target: dict, incoming, path: str) -> int:
+    """Merge one scope of an overrides section, validating type names."""
+    count = 0
+    for prop_name, type_name in (incoming or {}).items():
+        if isinstance(type_name, str):
+            _validate_type_name( type_name, prop_name, path )
+        target[prop_name] = type_name
+        count += 1
+
+    return count
+
+
+def _merge_lopper_schema(merged: dict, data: dict, path: str) -> int:
+    """Merge a schema written in lopper's own form."""
+    overrides = data.get('overrides') or {}
+
+    count = _merge_override_scope( merged['overrides']['properties'],
+                                   overrides.get('properties'), path )
+
+    for scope in ('node_patterns', 'paths'):
+        for key, props in (overrides.get(scope) or {}).items():
+            bucket = merged['overrides'][scope].setdefault(key, {})
+            count += _merge_override_scope( bucket, props, path )
+
+    # A learned schema carries its observations in these sections. They are
+    # kept as they are: they rank below the overrides above, which is what
+    # lets a stated type correct something that was learned wrongly.
+    for section in _LEARNED_SECTIONS:
+        if section in data:
+            merged.setdefault(section, {}).update( data[section] or {} )
+            count += len( data[section] or {} )
+
+    return count
+
+
+def _merge_dt_schema(merged: dict, data: dict, path: str) -> int:
+    """Merge a dt-schema binding, reading its properties for their types.
+
+    A binding's properties include generic names such as reg and status, whose
+    meaning depends on the node they appear in. Applying those to every node
+    would corrupt trees the binding says nothing about, so a binding has to
+    say which nodes it describes, and one that does not is refused.
+    """
+    scope = _schema_to_node_pattern( data, path )
+    if not scope:
+        lopper.log._error( f"schema: {path} does not say which nodes it describes, and its "
+                           f"properties include names whose type depends on the node. Add a "
+                           f"'node_pattern' key naming the nodes it applies to, for example "
+                           f"'node_pattern: memory-controller@*'", also_exit=1 )
+
+    # Node patterns are matched against a path's trailing components, so a
+    # leading separator would never match.
+    bucket = merged['overrides']['node_patterns'].setdefault( scope.lstrip('/'), {} )
+
+    count = 0
+    for prop_name, prop_schema in (data.get('properties') or {}).items():
+        if not isinstance(prop_schema, dict):
+            continue
+
+        prop_type = _json_schema_to_property_type( prop_schema, prop_name )
+        if prop_type == PropertyType.UNKNOWN:
+            lopper.log._debug( f"schema: {path}: no type for '{prop_name}', leaving it alone" )
+            continue
+
+        bucket[prop_name] = prop_type.value
+        count += 1
+
+    return count
+
+
 def _load_yaml_file(path: str) -> Optional[dict]:
     """Load a YAML file.
 
@@ -386,6 +560,40 @@ def _parse_property_schema(name: str, spec: dict) -> Optional[PropertySpec]:
     )
 
 
+def _property_type_from_ref(spec: dict) -> Optional[PropertyType]:
+    """Resolve a dt-schema type reference to a PropertyType.
+
+    The fragment of a types.yaml reference is the type name, and those names
+    are PropertyType's values, so "types.yaml#/definitions/uint32" resolves
+    directly. References nested inside allOf/oneOf/anyOf are followed, since
+    bindings commonly wrap a reference alongside a constraint.
+
+    Args:
+        spec: JSON schema dict
+
+    Returns:
+        PropertyType, or None if the spec carries no resolvable reference
+    """
+    if not isinstance(spec, dict):
+        return None
+
+    ref = spec.get('$ref')
+    if not ref:
+        for combiner in ('allOf', 'oneOf', 'anyOf'):
+            for entry in spec.get(combiner) or []:
+                found = _property_type_from_ref(entry)
+                if found is not None:
+                    return found
+        return None
+
+    fragment = ref.split('/')[-1]
+    try:
+        return PropertyType(fragment)
+    except ValueError:
+        lopper.log._debug(f"schema: unrecognised type reference '{ref}'")
+        return None
+
+
 def _json_schema_to_property_type(spec: dict, name: str) -> PropertyType:
     """Convert JSON schema type to PropertyType.
 
@@ -396,6 +604,14 @@ def _json_schema_to_property_type(spec: dict, name: str) -> PropertyType:
     Returns:
         PropertyType enum value
     """
+    # dt-schema states most property types by reference into types.yaml
+    # rather than with a json 'type', so a binding that says
+    #   $ref: types.yaml#/definitions/uint32
+    # has no 'type' key at all and would otherwise resolve to UNKNOWN.
+    ref_type = _property_type_from_ref(spec)
+    if ref_type is not None:
+        return ref_type
+
     schema_type = spec.get('type', 'unknown')
 
     if schema_type == 'integer':

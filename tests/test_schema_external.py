@@ -32,6 +32,8 @@ import lopper.schema
 from lopper import Lopper, LopperSDT
 from lopper.fmt import LopperFmt
 from lopper.schema.learned import DTSPropertyTypeResolver, lopper_fmt_from_type_name
+from lopper.schema.loader import _json_schema_to_property_type
+from lopper.schema.types import PropertyType
 
 
 # 0x3f2e5100 decodes as the string "?.Q" if guessed from bytes alone.
@@ -250,6 +252,149 @@ def test_override_corrects_an_undecidable_type_on_dtb_input(ambiguous_dtb):
     sdt = _load_dtb(dtb, schema)
 
     assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+
+
+class TestSchemaFiles:
+    """Schemas are read from a file or a directory, in either accepted form."""
+
+    LOPPER_FORM = """
+overrides:
+  properties:
+    xlnx,ddr-freq: uint32
+"""
+
+    DT_SCHEMA_FORM = """
+$id: http://devicetree.org/schemas/xlnx,zynqmp-ddrc.yaml#
+$schema: http://json-schema.org/draft-07/schema#
+node_pattern: memory-controller@*
+properties:
+  xlnx,ddrc-clk-freq-hz:
+    $ref: types.yaml#/definitions/uint32
+"""
+
+    def _run(self, dtb, schema_path):
+        sdt = _load_dtb(dtb, str(schema_path))
+        return sdt
+
+    def test_lopper_form_file(self, ambiguous_dtb, tmp_path):
+        dtb, _ = ambiguous_dtb
+        path = tmp_path / "override.yaml"
+        path.write_text(self.LOPPER_FORM)
+
+        sdt = self._run(dtb, path)
+
+        assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+
+    def test_dt_schema_form_file_resolves_a_type_reference(self, ambiguous_dtb, tmp_path):
+        """A binding states its types by reference into types.yaml."""
+        dtb, _ = ambiguous_dtb
+        path = tmp_path / "binding.yaml"
+        path.write_text(self.DT_SCHEMA_FORM)
+
+        sdt = self._run(dtb, path)
+
+        assert _prop(sdt.tree, "xlnx,ddrc-clk-freq-hz").value == [0x1f98a480]
+
+    def test_directory_loads_both_forms_together(self, ambiguous_dtb, tmp_path):
+        """The many-files case: a directory of mixed schemas is applied as one."""
+        dtb, _ = ambiguous_dtb
+        schemas = tmp_path / "schemas"
+        schemas.mkdir()
+        (schemas / "a-override.yaml").write_text(self.LOPPER_FORM)
+        (schemas / "b-binding.yaml").write_text(self.DT_SCHEMA_FORM)
+
+        sdt = self._run(dtb, schemas)
+
+        assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+        assert _prop(sdt.tree, "xlnx,ddrc-clk-freq-hz").value == [0x1f98a480]
+
+    def test_a_later_file_restates_an_earlier_type(self, ambiguous_dtb, tmp_path):
+        """Files apply in sorted order, so the last word wins."""
+        dtb, _ = ambiguous_dtb
+        schemas = tmp_path / "schemas"
+        schemas.mkdir()
+        (schemas / "1-first.yaml").write_text(
+            "overrides:\n  properties:\n    xlnx,ddr-freq: string\n")
+        (schemas / "2-second.yaml").write_text(self.LOPPER_FORM)
+
+        sdt = self._run(dtb, schemas)
+
+        assert _prop(sdt.tree, "xlnx,ddr-freq").value == [0x3f2e5100]
+
+
+class TestSchemaFilesRefused:
+    """A schema that cannot be applied says so, rather than doing nothing.
+
+    Silently ignoring a supplied schema is the behaviour these tests exist to
+    keep from coming back: it is indistinguishable from the schema being wrong.
+    """
+
+    def _expect_refusal(self, dtb, path):
+        with pytest.raises(SystemExit) as excinfo:
+            _load_dtb(dtb, str(path))
+        assert excinfo.value.code != 0
+
+    def test_unscoped_binding_is_refused(self, ambiguous_dtb, tmp_path):
+        """A binding must say which nodes it describes.
+
+        Its properties include generic names such as reg, whose type depends
+        on the node, so applying them everywhere would corrupt trees the
+        binding says nothing about.
+        """
+        dtb, _ = ambiguous_dtb
+        path = tmp_path / "unscoped.yaml"
+        path.write_text(
+            "$id: http://devicetree.org/schemas/some,device.yaml#\n"
+            "properties:\n"
+            "  reg:\n"
+            "    $ref: types.yaml#/definitions/uint32\n")
+
+        self._expect_refusal(dtb, path)
+
+    def test_unknown_type_name_is_refused(self, ambiguous_dtb, tmp_path):
+        dtb, _ = ambiguous_dtb
+        path = tmp_path / "typo.yaml"
+        path.write_text("overrides:\n  properties:\n    xlnx,ddr-freq: uint33\n")
+
+        self._expect_refusal(dtb, path)
+
+    def test_unrecognised_form_is_refused(self, ambiguous_dtb, tmp_path):
+        dtb, _ = ambiguous_dtb
+        path = tmp_path / "nonsense.yaml"
+        path.write_text("some-random-key: 1\n")
+
+        self._expect_refusal(dtb, path)
+
+    def test_empty_directory_is_refused(self, ambiguous_dtb, tmp_path):
+        dtb, _ = ambiguous_dtb
+        empty = tmp_path / "empty"
+        empty.mkdir()
+
+        self._expect_refusal(dtb, empty)
+
+
+class TestTypeReferences:
+    """dt-schema states most types by reference rather than with a json type."""
+
+    @pytest.mark.parametrize("ref,expected", [
+        ("types.yaml#/definitions/uint32",       PropertyType.UINT32),
+        ("types.yaml#/definitions/uint64",       PropertyType.UINT64),
+        ("types.yaml#/definitions/string",       PropertyType.STRING),
+        ("types.yaml#/definitions/phandle",      PropertyType.PHANDLE),
+        ("#/definitions/uint32-array",           PropertyType.UINT32_ARRAY),
+    ])
+    def test_reference_resolves(self, ref, expected):
+        assert _json_schema_to_property_type({'$ref': ref}, 'p') == expected
+
+    def test_reference_nested_in_a_combiner_resolves(self):
+        """Bindings commonly wrap a reference alongside a constraint."""
+        spec = {'allOf': [{'$ref': 'types.yaml#/definitions/uint32'},
+                          {'maximum': 100}]}
+        assert _json_schema_to_property_type(spec, 'p') == PropertyType.UINT32
+
+    def test_unresolvable_reference_is_not_guessed_at(self):
+        spec = {'$ref': 'types.yaml#/definitions/not-a-type'}
+        assert _json_schema_to_property_type(spec, 'p') == PropertyType.UNKNOWN
 
 
 def test_learn_request_on_dtb_does_not_write_a_schema(ambiguous_dtb, tmp_path, caplog):
