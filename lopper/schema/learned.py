@@ -1355,6 +1355,29 @@ class DTSTypeChecker:
 
 
 
+def lopper_fmt_from_type_name(type_name):
+    """Resolve a property type name to a LopperFmt
+
+    The vocabulary is PropertyType's, so it stays in step with the dt-schema
+    type names the schema loader understands: uint32, string, phandle,
+    string-array and the rest.
+
+    Args:
+       type_name (str): a dt-schema type name, e.g. "uint32"
+
+    Returns:
+       LopperFmt: the corresponding format
+
+    Raises:
+       ValueError: the name is not a known type
+    """
+    try:
+        return PropertyType(type_name).to_lopper_fmt()
+    except ValueError:
+        valid = ", ".join( sorted( t.value for t in PropertyType ) )
+        raise ValueError( f"unknown property type '{type_name}'. valid types: {valid}" )
+
+
 class DTSPropertyTypeResolver:
     """
     Fast property type resolver for DTB processing.
@@ -1369,6 +1392,31 @@ class DTSPropertyTypeResolver:
         self._compatible_properties = {}
         self._pattern_properties = {}
         self._path_properties = schema.get('path_overrides', {})
+
+        # Explicit overrides: types that were stated rather than observed,
+        # supplied on the command line or in a schema handed to lopper. They
+        # are consulted ahead of everything else, so that a declaration can
+        # correct a type that was learned or guessed wrongly. See
+        # get_property_type().
+        self._override_properties = {}
+        self._override_patterns = {}
+        self._override_paths = {}
+
+        overrides = schema.get('overrides', {})
+        for prop_name, prop_def in overrides.get('properties', {}).items():
+            self._override_properties[prop_name] = self._override_to_lopper_fmt( prop_name, prop_def )
+
+        for pattern, props in overrides.get('node_patterns', {}).items():
+            regex = pattern.replace('*', '[^/]+')
+            self._override_patterns[pattern] = {
+                'regex': re.compile(f".*/{regex}$"),
+                'properties': { p: self._override_to_lopper_fmt( p, d )
+                                for p, d in props.items() }
+            }
+
+        for path, props in overrides.get('paths', {}).items():
+            self._override_paths[path] = { p: self._override_to_lopper_fmt( p, d )
+                                           for p, d in props.items() }
 
         # Compile property name patterns with context (THIS WAS MISSING!)
         self._property_patterns = []
@@ -1435,6 +1483,18 @@ class DTSPropertyTypeResolver:
         format_str = prop_def.get('format', '')
 
         return '-bits' in format_str
+
+    def _override_to_lopper_fmt(self, prop_name, prop_def):
+        """Resolve an override entry to a LopperFmt
+
+        Overrides are written by hand rather than generated, so a bare type
+        name ("uint32") is accepted alongside the json-schema form that a
+        learned schema uses.
+        """
+        if isinstance(prop_def, str):
+            return lopper_fmt_from_type_name( prop_def )
+
+        return self._schema_to_lopper_fmt( prop_name, prop_def )
 
     def _schema_to_lopper_fmt(self, prop_name, prop_def):
         """Convert schema property definition to LopperFmt type"""
@@ -1607,6 +1667,29 @@ class DTSPropertyTypeResolver:
                 _warning(f"  Schema def: {prop_def}")
                 fmt = self._schema_to_lopper_fmt(prop_name, prop_def)
                 _warning(f"  Converted to: {fmt}")
+
+        # Priority 0: explicit override. A stated type beats anything that was
+        # observed or guessed, which is what lets a supplied schema correct a
+        # property that byte level guessing cannot decide. Most specific scope
+        # first: an exact path, then a node pattern, then the bare name.
+        if node_path and node_path in self._override_paths:
+            if prop_name in self._override_paths[node_path]:
+                fmt = self._override_paths[node_path][prop_name]
+                _debug( f"schema: {prop_name} typed {fmt} by override for path {node_path}" )
+                return fmt
+
+        if node_path:
+            for pattern, pattern_info in self._override_patterns.items():
+                if pattern_info['regex'].match(node_path):
+                    if prop_name in pattern_info['properties']:
+                        fmt = pattern_info['properties'][prop_name]
+                        _debug( f"schema: {prop_name} typed {fmt} by override for node pattern {pattern}" )
+                        return fmt
+
+        if prop_name in self._override_properties:
+            fmt = self._override_properties[prop_name]
+            _debug( f"schema: {prop_name} typed {fmt} by global override" )
+            return fmt
 
         # Priority 1: Path-specific override
         if node_path and node_path in self._path_properties:
