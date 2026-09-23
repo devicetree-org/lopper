@@ -255,6 +255,31 @@ class TestToplevelDiscovery:
         assert 'aliases' not in dev_names
         assert '__symbols__' not in dev_names
 
+    def test_discover_toplevel_skips_lopper_internal_nodes(self, lopper_sdt):
+        """Lopper's own bookkeeping nodes are not devices.
+
+        __lopper-phandles__ is the one that matters, because it is the only
+        internal node that carries a compatible ("lopper,phandle-tracker") and
+        so passes the is-this-a-device test on its own merits. Enumerated, it
+        reaches a domain's access list and serializes as a dangling 0xffffffff,
+        since it has no phandle.
+
+        A leading "__" is the rule rather than a list of the nodes seen so far,
+        so a future internal node is covered without touching this again.
+        """
+        generator = SDTDevices(lopper_sdt)
+
+        internal = LopperNode(-1, "/__lopper-phandles__")
+        lopper_sdt.tree + internal
+        internal + LopperProp(name="compatible", value=["lopper,phandle-tracker"])
+        lopper_sdt.tree.sync()
+
+        dev_names = [d['dev'] for d in generator.discover_toplevel()]
+        assert '__lopper-phandles__' not in dev_names, \
+            "a lopper-internal node was enumerated as a device"
+        assert not [d for d in dev_names if d.startswith('__')], \
+            f"metadata nodes leaked into the device inventory: {dev_names}"
+
 
 class TestPatternFiltering:
     """Test include/exclude pattern filtering."""

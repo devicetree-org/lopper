@@ -1034,6 +1034,15 @@ class DevicesCore:
         seen = set()
 
         # Nodes to skip (buses, special nodes, etc.)
+        #
+        # A leading "__" marks a node as metadata rather than hardware, both in
+        # device tree itself (__symbols__, __fixups__, __local_fixups__) and in
+        # lopper's own bookkeeping (__lopper-phandles__, __lopper-overlays__).
+        # None of them is a device, so the prefix is the rule rather than a list
+        # of the ones seen so far -- which is what let __lopper-phandles__ be
+        # enumerated as a device: it carries compatible = "lopper,phandle-tracker"
+        # and so looked like one, then reached a domain's access list and
+        # serialized as a dangling 0xffffffff, having no phandle of its own.
         skip_patterns = [
             r'^cpus',
             r'^memory@',
@@ -1041,9 +1050,7 @@ class DevicesCore:
             r'^firmware$',
             r'^chosen$',
             r'^aliases$',
-            r'^__symbols__$',
-            r'^__fixups__$',
-            r'^__local_fixups__$',
+            r'^__',
         ]
 
         try:
