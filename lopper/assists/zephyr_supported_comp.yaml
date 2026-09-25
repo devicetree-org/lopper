@@ -537,3 +537,18 @@ xlnx,clkx5-wiz-1.0:
     - '#clock-cells'
     - xlnx,num-out-clks
     - status
+
+xlnx,zynqmp-gpio-1.0:
+  required:
+    - compatible
+    - status
+    - reg
+    - '#gpio-cells'
+    - gpio-controller
+    - interrupt-parent
+    - interrupts
+    - interrupt-controller
+    - '#interrupt-cells'
+    - power-domains
+    - '#address-cells'
+    - '#size-cells'

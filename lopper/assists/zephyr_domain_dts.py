@@ -961,13 +961,15 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                         if node.props("#dma-cells") != [] and node.propval("#dma-cells") != [1]:
                             node['#dma-cells'].value = [1]
                     # GPIOPS
-                    if any(version in node["compatible"].value for version in ("xlnx,pmc-gpio-1.0", "xlnx,versal-gpio-1.0")):
+                    if any(version in node["compatible"].value for version in ("xlnx,pmc-gpio-1.0", "xlnx,versal-gpio-1.0", "xlnx,zynqmp-gpio-1.0")):
                         version = lambda x: x in node["compatible"].value
                         platform = sdt.tree['/']['family'].value
                         if version("xlnx,pmc-gpio-1.0"):
                             num_banks = [(0,26),(1,26),(3,32),(4,32)]
                             if platform != ['VersalNet']:
                                 num_banks.extend([(2,26),(5,32)])
+                        elif version("xlnx,zynqmp-gpio-1.0"):
+                            num_banks = [(0,26),(1,26),(2,26),(3,32),(4,32),(5,32)]
                         else:
                             num_banks = [(0,26),(3,32)]
                             if platform != ['VersalNet']:
