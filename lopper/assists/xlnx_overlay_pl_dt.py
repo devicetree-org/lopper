@@ -33,6 +33,7 @@ from lopper.tree import LopperNode, LopperTree
 sys.path.append(os.path.dirname(__file__))
 _init(__name__)
 from baremetalconfig_xlnx import *
+from lopper_lib import cell_value_get
 
 
 def is_compat( node, compat_string_to_test ):
@@ -565,6 +566,27 @@ def move_nodes_to_fpga(new_amba_node, fpga_node, node_collections, platform, con
 
     return new_amba_node, fpga_node
 
+def drop_unreachable_pl_nodes(sdt, amba_node, new_amba_node, platform):
+    symbols = sdt.tree["/__symbols__"].__props__
+    cpu_family = platform.split("-")[0]
+    cpu_name = platform if platform in symbols else next(
+        (name for name in symbols if name.endswith(f"{cpu_family}_0")),
+        f"{cpu_family}_0"
+    )
+    cpu_cluster = get_cpu_node(sdt, {"args": [cpu_name]}).parent
+    addr_cells = amba_node["#address-cells"].value[0]
+    for node in list(new_amba_node.child_nodes.values()):
+        if node.propval("reg") == [""]:
+            continue
+        base, _ = cell_value_get(node["reg"].value, addr_cells)
+        if cpu_cluster not in sdt.tree.accessible_by(base):
+            _warning(
+                f"excluding {node.name} from {platform} overlay: "
+                "address is not reachable through the processor address-map"
+            )
+            new_amba_node = new_amba_node - node
+    return new_amba_node
+
 def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree,
                        exclude_props=None, exclude_nodes=None):
     """
@@ -883,6 +905,10 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         new_amba_node, fpga_node = move_nodes_to_fpga(
             new_amba_node, fpga_node, node_collections,
             platform, config, zynq_platforms
+        )
+
+        new_amba_node = drop_unreachable_pl_nodes(
+            sdt, amba_node, new_amba_node, platform
         )
 
         overlay_tree = build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, sdt.tree,
