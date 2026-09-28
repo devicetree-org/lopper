@@ -537,8 +537,7 @@ xlnx,cpm6-controller:
   required:
     - compatible
     - reg
-    - status
-    - xlnx,ctrl_id
+    - xlnx,ctrl-id
     - xlnx,en
     - xlnx,perst
     - xlnx,mode
@@ -548,7 +547,7 @@ xlnx,cpm6-controller:
     - xlnx,ide-cap-en
     - xlnx,link-ide-stream
     - xlnx,selective-ide-stream
-    - xlnx,cxl-hdm-decoder_enable
+    - xlnx,cxl-hdm-decoder-enable
     - xlnx,cxl-num-hdm-decoders
     - xlnx,cxl-range1-size
     - xlnx,cxl-regloc1-bir
