@@ -521,6 +521,46 @@ xlnx,zynqmp-ipi-dest-mailbox:
     - reg-names
     - remote-ipi-id
 
+xlnx,psv-cpm6-11.0:
+  type: node
+  required:
+    - compatible
+    - reg
+    - status
+    - '#address-cells'
+    - '#size-cells'
+    - xlnx,ip-name
+    - xlnx,name
+
+xlnx,cpm6-controller:
+  type: node
+  required:
+    - compatible
+    - reg
+    - status
+    - xlnx,ctrl_id
+    - xlnx,en
+    - xlnx,perst
+    - xlnx,mode
+    - xlnx,port-type
+    - xlnx,protocol
+    - xlnx,fw-type
+    - xlnx,ide-cap-en
+    - xlnx,link-ide-stream
+    - xlnx,selective-ide-stream
+    - xlnx,cxl-hdm-decoder_enable
+    - xlnx,cxl-num-hdm-decoders
+    - xlnx,cxl-range1-size
+    - xlnx,cxl-regloc1-bir
+    - xlnx,cxl-regloc1-offset
+    - xlnx,cxl-regloc1-type
+    - xlnx,cxl-regloc2-bir
+    - xlnx,cxl-regloc2-offset
+    - xlnx,cxl-regloc2-type
+    - xlnx,cxl-regloc3-bir
+    - xlnx,cxl-regloc3-offset
+    - xlnx,cxl-regloc3-type
+
 xlnx,versal-sysmon:
   required:
     - compatible
