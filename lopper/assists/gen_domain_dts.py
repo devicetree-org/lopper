@@ -383,7 +383,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                             "lpd_iou_secure_slcr", "lpd_afi", "fpd_systmr_read", "fpd_systmr_ctrl", "fpd_slv_asild_xmpu",
                             "fpd_slv_asilb_xmpu", "fpd_slcr_secure", "fpd_slcr", "fpd_cmn", "fpd_afi", "pmc_efuse_ctrl",
                             "pmc_efuse_cache", "crp", "crf", "crl", "coresight_lpd_atm", "coresight_fpd_stm", "pmc_bbram_ctrl",
-                            "pmc_cfi_cframe", "pmc_cfu_apb"]
+                            "pmc_cfi_cframe", "pmc_cfu_apb", "sdma", "fpd_cmn_xmpu", "fpd_splitter_0", "fpd_splitter_1",
+                            "fpd_splitter_2", "fpd_splitter_3"]
 
     linux_ignore_ip_list += versal_gen2_linux_ignore_ip_list
 
