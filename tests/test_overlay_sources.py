@@ -238,3 +238,114 @@ class TestOverlayE2E:
         combined = result.stdout + result.stderr
         assert "user-overlay.dtsi" in combined, \
             f"Expected user-overlay.dtsi to appear in lopper output:\n{combined}"
+
+
+class TestOverlayNestedLabels:
+    """Labels on nodes below an overlay's fragment target must survive.
+
+    dtc records the label of every labelled overlay node under /__symbols__,
+    and nowhere else: the fragment target itself is recovered from __fixups__,
+    but anything deeper is only named there. Requesting symbols when compiling
+    the overlay is therefore the difference between a labelled node keeping its
+    name and being emitted anonymously.
+
+    Graph bindings make this the common case rather than a corner: ports /
+    port@N / endpoint puts the labelled node three levels below the target, so
+    any capture or display pipeline description depends on it.
+    """
+
+    # A labelled endpoint three levels below the fragment target, which is the
+    # shape of every device tree graph binding.
+    _OVERLAY = """\
+/dts-v1/;
+/plugin/;
+
+&mmi_dc {
+    ports {
+        port@0 {
+            dc_in_0: endpoint {
+            };
+        };
+    };
+};
+"""
+
+    def _compile(self, tmp_path):
+        """Compile the overlay against the base and return the tree metadata."""
+        base_file = tmp_path / "system-top.dts"
+        base_file.write_text(_BASE_DTS)
+
+        overlay_file = tmp_path / "nested.dtso"
+        overlay_file.write_text(self._OVERLAY)
+
+        sdt = LopperSDT(str(base_file))
+        sdt.dryrun = False
+        sdt.verbose = 0
+        sdt.werror = False
+        sdt.output_file = str(tmp_path / "out.dts")
+        sdt.cleanup_flag = True
+        sdt.save_temps = False
+        sdt.enhanced = True
+        sdt.outdir = str(tmp_path)
+        sdt.setup(sdt.dts, [], "", True, libfdt=True)
+
+        sdt._compile_overlay_subtrees([str(overlay_file)], str(tmp_path))
+        return sdt.tree._metadata
+
+    def test_symbols_are_collected_from_the_overlay(self, tmp_path):
+        """The overlay is compiled with symbols, so its labels are available.
+
+        Compiled without dtc's -@ the overlay DTB has no /__symbols__ at all,
+        and there is then nothing to recover the label from -- the failure is
+        silent and total rather than partial.
+        """
+        md = self._compile(tmp_path)
+
+        labels = md.get('overlay_symbol_labels', {})
+        assert labels, \
+            "no overlay symbol labels collected: the overlay was compiled " \
+            "without symbols, so dtc emitted no __symbols__ node"
+
+        collected = [lbl for pairs in labels.values() for _, lbl in pairs]
+        assert 'dc_in_0' in collected, \
+            f"the labelled endpoint was not among the collected labels: {collected}"
+
+    def test_nested_label_is_set_on_the_overlay_node(self, tmp_path):
+        """The label is applied to the node, not just returned alongside it.
+
+        Consumers that merge the overlay pick labels up from the returned list,
+        but those that copy the nodes instead -- fragment_add_for_refs() builds
+        &label fragments that way -- never see it. Setting it on the node means
+        both get it, since deepcopy carries the label.
+        """
+        md = self._compile(tmp_path)
+
+        found = {}
+
+        def walk(node):
+            if node.label:
+                found[node.label] = node.abs_path
+            for child in node.child_nodes.values():
+                walk(child)
+
+        for nodes in md.get('overlay_subtrees', {}).values():
+            for node in nodes:
+                walk(node)
+
+        assert 'dc_in_0' in found, \
+            f"the endpoint node carries no label; labelled nodes found: {found}"
+
+    def test_fragment_target_keeps_its_own_label(self, tmp_path):
+        """Baseline: the target label still comes from __fixups__ as before.
+
+        That path is independent of __symbols__, so it would keep working even
+        with symbols unavailable. Asserted so a regression there is not
+        mistaken for the nested-label failure.
+        """
+        md = self._compile(tmp_path)
+
+        roots = [n for nodes in md.get('overlay_subtrees', {}).values()
+                 for n in nodes]
+        assert roots, "no overlay subtrees were registered"
+        assert any(n.label == 'mmi_dc' for n in roots), \
+            f"fragment target lost its label: {[(n.abs_path, n.label) for n in roots]}"
