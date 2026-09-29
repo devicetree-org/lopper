@@ -514,7 +514,9 @@ def _apply_pl_peripheral_transforms(node, schema, rename_timer=None, stdout_baud
         stdout_baud: Fallback baud rate for UARTNS550 current-speed.
 
     Returns:
-        Updated is_supported_periph list if compatible changed, else None.
+        None if the caller's is_supported_periph needs no update.
+        A non-empty list (the new is_supported_periph) if the compatible changed.
+        An empty list if the node is unsupported; the caller then deletes it.
     """
     compatible_changed = False
 
@@ -536,6 +538,9 @@ def _apply_pl_peripheral_transforms(node, schema, rename_timer=None, stdout_baud
         compatible_changed = True
 
     if any(v in node["compatible"].value for v in ("ns16550", "xlnx,axi-uart16550-2.0")):
+        # axi-uart16550 is expected to have its interrupt connected, drop the node otherwise
+        if node.propval('interrupts') == ['']:
+            return []
         if node.propval('current-speed') == ['']:
             node["current-speed"] = LopperProp("current-speed")
             if node.propval('xlnx,baudrate') != ['']:
