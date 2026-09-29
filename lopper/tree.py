@@ -177,8 +177,16 @@ def _resolve_overlay_fixups(tree, fixups, local_fixups=None):
         if not nodes:
             continue
         target_phandle = nodes[0].phandle
-        if not target_phandle or target_phandle < 0:
+        if target_phandle is not None and target_phandle < 0:
             continue
+        if not target_phandle:
+            # dtc only assigns a phandle to a node something references. A node
+            # referenced *only* by the overlay therefore has none, and skipping
+            # here would leave the placeholder in place for the one case this
+            # resolution exists to handle. Mint one, as phandle reference
+            # resolution does elsewhere.
+            target_phandle = tree.phandle_gen()
+            nodes[0].phandle = target_phandle
         for ref in refs:
             try:
                 frag_label, relative_path, prop_name, byte_offset_str = ref
@@ -5014,11 +5022,121 @@ class LopperTree:
                 for child in ov_node.child_nodes.values():
                     fragment.add(copy.deepcopy(child))
 
+                # Bind the dtc placeholders before the fragment is emitted.
+                #
+                # A reference leaving the overlay is compiled to 0xffffffff
+                # with the label recorded in __fixups__, because dtc compiled
+                # the overlay without a base to resolve against.  Nothing
+                # resolves that on this path: _resolve_overlay_fixups() runs
+                # when an overlay is *merged*, and this one is transcribed
+                # into a fragment instead, so the placeholder reached the
+                # output and the property was dropped for not resolving.
+                #
+                # Here is the right moment for it.  self is the base tree and
+                # it is final -- resolving any earlier risks binding to a node
+                # an assist later prunes.  Only the value needs setting: the
+                # emitted form comes from dereferencing it, and overlay_of()
+                # has already registered the base as an external tree, so the
+                # target is reachable and the reference is written as its
+                # label rather than a bare number.
+                self._bind_fragment_fixups(stem, fragment, overlay_tree)
+
                 overlay_tree.add(fragment)
                 fragments_added.append(fragment)
                 lopper.log._info(f"Added user overlay fragment '&{ov_node.label}' from '{stem}'")
 
         return fragments_added
+
+    def _bind_fragment_fixups( self, stem, fragment, overlay_tree=None ):
+        """Patch dtc phandle placeholders in a fragment about to be emitted.
+
+        The overlay's __fixups__ were recorded as (fragment_label,
+        relative_path, prop_name, byte_offset), keyed by the label of the node
+        the reference points at.  Resolve each against self -- the base tree,
+        which is final at emit time -- and write the phandle into the copied
+        property, so the reference is emitted rather than dropped.
+
+        This is the transcription counterpart of _resolve_overlay_fixups(),
+        which serves the merge path.  It stays separate because the two halves
+        live in different trees here: the target is in self, while the node
+        holding the property exists only in the fragment being built.
+
+        Args:
+            stem (string): overlay name the fixups were registered under
+            fragment (LopperNode): the fragment node, children already copied
+        """
+        fixups = self._metadata.get('overlay_fixups', {}).get(stem)
+        if not fixups:
+            return
+
+        # index the fragment's nodes by their path below the fragment root, so
+        # a fixup's relative_path can be looked up directly
+        by_rel = {}
+        def _index( node, rel ):
+            by_rel[rel] = node
+            for child in node.child_nodes.values():
+                _index( child, rel + "/" + child.name )
+        _index( fragment, "" )
+
+        # Look in the overlay first.  An overlay usually references something
+        # alongside it rather than in the base: this assist has just extracted
+        # the PL subtree into overlay_tree, so a reference to a PL node finds
+        # its target there and not in what is left of the base.
+        search = [ t for t in (overlay_tree, self) if t is not None ]
+
+        for label, refs in fixups.items():
+            target = None
+            owner = None
+            for tree in search:
+                found = tree.lnodes( label, exact=True )
+                if found:
+                    target, owner = found[0], tree
+                    break
+
+            if target is None:
+                lopper.log._warning(
+                    f"overlay fixup: '{label}' was not found in the overlay or "
+                    f"the base tree, reference left unresolved" )
+                continue
+
+            if not target.phandle or target.phandle < 0:
+                # Referenced only by the overlay, so dtc never gave it one.
+                #
+                # It has to be clear of both trees, not just the one the target
+                # sits in.  The overlay was compiled on its own and numbered
+                # its internal phandles from 1, so minting from the base alone
+                # will collide with them and the reference silently resolves to
+                # whichever overlay node already holds that number.
+                highest = 0
+                for tree in search:
+                    pnodes = getattr( tree, '__pnodes__', None ) or {}
+                    if pnodes:
+                        highest = max( highest, max(pnodes.keys()) )
+                for node in fragment.subnodes():
+                    if node.phandle and node.phandle > highest:
+                        highest = node.phandle
+
+                target.phandle = highest + 1
+
+            for ref in refs:
+                try:
+                    _frag_label, relative_path, prop_name, byte_offset = ref
+                    holder = by_rel.get( relative_path )
+                    if holder is None or prop_name not in holder.__props__:
+                        continue
+
+                    prop = holder.__props__[prop_name]
+                    val = list( prop.__dict__.get( 'value', [] ) )
+                    idx = int( byte_offset ) // 4
+                    if idx < len(val):
+                        val[idx] = target.phandle
+                        prop.__dict__['value'] = val
+                        try:
+                            prop.resolve()
+                        except Exception:
+                            pass
+                except Exception as e:
+                    lopper.log._warning( f"overlay fixup {ref}: {e}" )
 
     def tree_refs( self, target_tree ):
         """Find properties in this tree that reference nodes in target_tree
