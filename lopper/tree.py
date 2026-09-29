@@ -5101,22 +5101,22 @@ class LopperTree:
 
             if not target.phandle or target.phandle < 0:
                 # Referenced only by the overlay, so dtc never gave it one.
-                #
-                # It has to be clear of both trees, not just the one the target
-                # sits in.  The overlay was compiled on its own and numbered
-                # its internal phandles from 1, so minting from the base alone
-                # will collide with them and the reference silently resolves to
-                # whichever overlay node already holds that number.
-                highest = 0
-                for tree in search:
-                    pnodes = getattr( tree, '__pnodes__', None ) or {}
-                    if pnodes:
-                        highest = max( highest, max(pnodes.keys()) )
-                for node in fragment.subnodes():
-                    if node.phandle and node.phandle > highest:
-                        highest = node.phandle
+                # It has to be distinct across both trees rather than just the
+                # one the target sits in, since each numbered its phandles
+                # without knowing about the other.
+                others = [ t for t in search if t is not owner ]
+                new_phandle = owner.phandle_gen( also=others )
 
-                target.phandle = highest + 1
+                # The fragment is not in a tree yet -- it is added once this
+                # returns -- so the phandles it carries are in neither index
+                # and phandle_gen() cannot see them. They are the ones most
+                # likely to collide, being numbered from 1 by the standalone
+                # overlay compile, so step over them explicitly.
+                for node in fragment.subnodes():
+                    if node.phandle and node.phandle >= new_phandle:
+                        new_phandle = node.phandle + 1
+
+                target.phandle = new_phandle
 
             for ref in refs:
                 try:
@@ -5235,26 +5235,33 @@ class LopperTree:
         """
         return list(self.__pnodes__.keys())
 
-    def phandle_gen( self ):
+    def phandle_gen( self, also=None ):
         """Generate a phandle for use in a node
 
         Creates a unique phandle for a node. This is basic tracking and is
         used since fdt_find_max_phandle is not fully exposed, and removes
         a binding to libfdt.
 
+        Unique within this tree by default, which is all a phandle has to be
+        while it stays here. A node that will be referenced from somewhere
+        else needs more than that: a tree compiled on its own starts numbering
+        from 1, so two trees brought together have numbered the same phandles
+        independently, and one minted from either alone collides with the
+        other. Pass the trees it has to be distinct from as `also`.
+
         Args:
-           None
+           also (list of LopperTree, optional): further trees the result must
+                                                not collide with
 
         Returns:
            phandle number
 
         """
-        if self.__pnodes__:
-            sorted_phandles = sorted(list(self.__pnodes__.keys()))
-            highest_phandle = sorted_phandles[-1]
-        else:
-            # no phandles at all yet!
-            highest_phandle = 0
+        highest_phandle = 0
+        for tree in [ self ] + list( also or [] ):
+            pnodes = getattr( tree, '__pnodes__', None )
+            if pnodes:
+                highest_phandle = max( highest_phandle, max( pnodes.keys() ) )
 
         ret_phandle = highest_phandle + 1
         if ret_phandle == 0:
