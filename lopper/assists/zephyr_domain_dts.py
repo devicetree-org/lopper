@@ -1991,7 +1991,72 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                                 _php = pit.phandle_or_create()
                                 if pit.props("phandle") == []:
                                     pit + LopperProp(name="phandle", value=_php)
+                            
+                            # ---- GPIO: create GPO (output) and GPI (input) channel nodes ----
+                            for chan in range(1, 5):
+                                use_gpo = (
+                                    int(node.propval(f"xlnx,use-gpo{chan}", list)[0])
+                                    if node.props(f"xlnx,use-gpo{chan}") != []
+                                    else 0
+                                )
+                                if use_gpo:
+                                    gpo_size = (
+                                        int(node.propval(f"xlnx,gpo{chan}-size", list)[0])
+                                        if node.props(f"xlnx,gpo{chan}-size") != []
+                                        else 32
+                                    )
+                                    gpo_init = (
+                                        int(node.propval(f"xlnx,gpo{chan}-init", list)[0])
+                                        if node.props(f"xlnx,gpo{chan}-init") != []
+                                        else 0
+                                    )
+                                    gpo_node = LopperNode()
+                                    gpo_node.name = f"gpo{chan}"
+                                    gpo_node + LopperProp(name="compatible", value=["xlnx,iomodule-gpio"])
+                                    gpo_node + LopperProp("gpio-controller")
+                                    gpo_node + LopperProp(name="#gpio-cells", value=[2])
+                                    gpo_node + LopperProp(name="xlnx,gpio-port", value=[chan])
+                                    gpo_node + LopperProp(name="xlnx,gpio-direction", value=["output"])
+                                    gpo_node + LopperProp(name="ngpios", value=[gpo_size])
+                                    gpo_node + LopperProp(name="xlnx,gpio-init", value=[gpo_init])
+                                    gpo_node.label_set(f"iomodule_gpo{chan}")
+                                    node.add(gpo_node)
+                                    _gpo_php = gpo_node.phandle_or_create()
+                                    if gpo_node.props("phandle") == []:
+                                        gpo_node + LopperProp(name="phandle", value=_gpo_php)
 
+                                use_gpi = (
+                                    int(node.propval(f"xlnx,use-gpi{chan}", list)[0])
+                                    if node.props(f"xlnx,use-gpi{chan}") != []
+                                    else 0
+                                )
+                                if use_gpi:
+                                    gpi_size = (
+                                        int(node.propval(f"xlnx,gpi{chan}-size", list)[0])
+                                        if node.props(f"xlnx,gpi{chan}-size") != []
+                                        else 32
+                                    )
+                                    gpi_irq = (
+                                        int(node.propval(f"xlnx,gpi{chan}-interrupt", list)[0])
+                                        if node.props(f"xlnx,gpi{chan}-interrupt") != []
+                                        else 0
+                                    )
+                                    gpi_node = LopperNode()
+                                    gpi_node.name = f"gpi{chan}"
+                                    gpi_node + LopperProp(name="compatible", value=["xlnx,iomodule-gpio"])
+                                    gpi_node + LopperProp("gpio-controller")
+                                    gpi_node + LopperProp(name="#gpio-cells", value=[2])
+                                    gpi_node + LopperProp(name="xlnx,gpio-port", value=[chan])
+                                    gpi_node + LopperProp(name="xlnx,gpio-direction", value=["input"])
+                                    gpi_node + LopperProp(name="ngpios", value=[gpi_size])
+                                    if gpi_irq:
+                                        gpi_node + LopperProp(name="xlnx,gpio-interrupt-type", value=[gpi_irq])
+                                    gpi_node.label_set(f"iomodule_gpi{chan}")
+                                    node.add(gpi_node)
+                                    _gpi_php = gpi_node.phandle_or_create()
+                                    if gpi_node.props("phandle") == []:
+                                        gpi_node + LopperProp(name="phandle", value=_gpi_php)
+                            
                             # ---- /aliases: serial0 -> UART ----
                             try:
                                 sdt.tree.sync()
