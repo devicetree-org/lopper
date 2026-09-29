@@ -355,6 +355,35 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
             if real_path:
                 symbol_labels.append((real_path, label))
 
+    # Set the label on the result nodes as well as returning the list.
+    #
+    # _apply_overlay_symbol_labels() registers these against a merged tree, so
+    # it only serves the overlay_tree() path.  A consumer that copies these
+    # nodes instead of merging them -- fragment_add_for_refs() builds &label
+    # fragments that way -- never goes near it, and emitted the nodes
+    # unlabelled.  Labelling here covers both: LopperNode.__deepcopy__ carries
+    # label, so a copied node keeps it.
+    if symbol_labels:
+        # Index by real path. Only the fragment target and its immediate
+        # children have had their abs_path rewritten at this point -- deeper
+        # nodes still carry the dtc /fragment@N/__overlay__/... form, which
+        # LopperTree.add() straightens out later when they are added to a
+        # tree. __symbols__ paths are real, so map each node through
+        # _frag_to_real() to compare like with like rather than rewriting
+        # paths that something else already owns.
+        by_path = {}
+        def _index(n):
+            by_path[_frag_to_real(n.abs_path) or n.abs_path] = n
+            for c in n.child_nodes.values():
+                _index(c)
+        for n in result_nodes:
+            _index(n)
+
+        for real_path, label in symbol_labels:
+            node = by_path.get(real_path)
+            if node is not None and not node.label:
+                node.label = label
+
     return result_nodes, rewritten_fixups, local_fixups, symbol_labels
 
 
@@ -406,7 +435,11 @@ def compile_overlay_standalone(overlay_file, include_paths="", tmpdir=None, save
             plugin_file, [], full_includes,
             force_overwrite=True, outdir=work_dir,
             save_temps=save_temps, verbose=0, enhanced=False,
-            permissive=True, symbols=False
+            # -@ is required: dtc records the label of each labelled overlay
+            # node under /__symbols__, and that is the only place they exist.
+            # Without it _unwrap_overlay_tree() has no labels to collect, and
+            # every node below the fragment target is emitted unlabelled.
+            permissive=True, symbols=True
         )
 
         # The overlay introduces properties the input tree never had, so they
