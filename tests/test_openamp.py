@@ -668,6 +668,126 @@ def test_remoteproc_v2_reports_invalid_tcm_mapping(
     assert expected_error in diagnostic
 
 
+def _rpu_remote(core_pd, core_num=0):
+    """Remote domain as YAML expansion leaves it for a split RPU core."""
+    remote = LopperNode(-1, "/domains/RPU")
+    remote["cpu_config_str"] = ["split"]
+    remote["core_num"] = [core_num]
+    if core_pd is not None:
+        remote["rpu_pd_val"] = [0xA5, core_pd]
+    return remote
+
+
+@pytest.mark.parametrize(
+    "platform, core_pd, core_num, rpu_core",
+    [
+        # SDTs give cpus_r5_1 and every R52 cluster a single cpu@0, so
+        # core_num is 0; the core's power domain gives its number.
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, 0x8, 0, 1),
+        (openamp_xlnx.SOC_TYPE.VERSAL, 0x18110006, 0, 1),
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0x181100C0, 0, 1),
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0x181100C2, 0, 3),
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 1, 0, 1),
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 7, 0, 7),
+        # A remote without a known RPU core power domain keeps core_num.
+        (openamp_xlnx.SOC_TYPE.VERSAL, None, 1, 1),
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 0x181100C0, 3, 3),
+    ],
+)
+def test_rpu_core_comes_from_core_power_domain(
+        monkeypatch, platform, core_pd, core_num, rpu_core):
+    """The RPU core number comes from its power domain, not its CPU reg."""
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform", lambda tree, verbose=0: platform)
+    remote = _rpu_remote(core_pd, core_num)
+    split = openamp_xlnx.CPU_CONFIG.RPU_SPLIT
+
+    assert openamp_xlnx.determinte_rpu_core(None, split, remote) == \
+        openamp_xlnx.RPU_CORE(rpu_core)
+
+
+@pytest.mark.parametrize(
+    "platform, clusters",
+    [
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, ["ffe00000"] * 2),
+        (openamp_xlnx.SOC_TYPE.VERSAL, ["ffe00000"] * 2),
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET,
+         ["eba00000", "eba00000", "eba80000", "eba80000"]),
+        (openamp_xlnx.SOC_TYPE.VERSAL2,
+         ["eba00000", "eba00000", "eba80000", "eba80000", "ebb00000",
+          "ebb00000", "ebb80000", "ebb80000", "ebc00000", "ebc00000"]),
+    ],
+)
+def test_cluster_address_is_core_0_atcm(platform, clusters):
+    """Each cluster is named after its core 0 ATCM address in the SDT."""
+    assert [openamp_xlnx.xlnx_remoteproc_v2_cluster_base_str(
+        platform, openamp_xlnx.RPU_CORE(core))
+        for core in range(len(clusters))] == clusters
+
+
+def _tcm_node(tree, name, size, pd_id):
+    """Add an SDT TCM node /axi/<name> with a reg and power-domains."""
+    node = LopperNode(-1, f"/axi/{name}")
+    node["xlnx,ip-name"] = ["tcm_global"]
+    node["reg"] = (
+        lopper_lib.int_to_cells(int(name.split("@")[1], 16), 2) +
+        lopper_lib.int_to_cells(size, 2))
+    node["power-domains"] = [0xA5, pd_id]
+    tree + node
+    return node
+
+
+@pytest.mark.parametrize(
+    "platform, remotes, expected",
+    [
+        # ZynqMP (Kria and ZCU102): both R5 cores in split mode.
+        (openamp_xlnx.SOC_TYPE.ZYNQMP,
+         [(0x7, [("psu_r5_0_atcm_global@ffe00000", 0x10000, 15)]),
+          (0x8, [("psu_r5_1_atcm_global@ffe90000", 0x10000, 17)])],
+         {"/remoteproc@ffe00000/r5f@0": 0x7,
+          "/remoteproc@ffe00000/r5f@1": 0x8}),
+        # Versal NET: RPU_A_1 in cluster A and RPU_B_0 in cluster B.
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET,
+         [(0x181100C0, [("psx_r52_1a_atcm_global@eba40000", 0x10000,
+                         0x183180CE)]),
+          (0x181100C1, [("psx_r52_0b_atcm_global@eba80000", 0x10000,
+                         0x183180D1)])],
+         {"/remoteproc@eba00000/r52f@1": 0x181100C0,
+          "/remoteproc@eba80000/r52f@0": 0x181100C1}),
+        # Versal2 SCMI IDs: RPU_A_0 and RPU_A_1, and RPU_D_1.
+        (openamp_xlnx.SOC_TYPE.VERSAL2,
+         [(0, [("r52_0a_atcm_global@eba00000", 0x10000, 0x44)]),
+          (1, [("r52_1a_atcm_global@eba40000", 0x10000, 0x47)]),
+          (7, [("r52_1d_atcm_global@ebbc0000", 0x10000, 0x59)])],
+         {"/remoteproc@eba00000/r52f@0": 0,
+          "/remoteproc@eba00000/r52f@1": 1,
+          "/remoteproc@ebb80000/r52f@1": 7}),
+    ],
+)
+def test_remoteproc_v2_places_each_rpu_core(
+        monkeypatch, platform, remotes, expected):
+    """Remotes on any RPU core get their own cluster and core node."""
+    tree = LopperTree()
+    axi = LopperNode(-1, "/axi")
+    axi["#address-cells"] = [2]
+    axi["#size-cells"] = [2]
+    tree + axi
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform", lambda tree, verbose=0: platform)
+
+    for core_pd, tcms in remotes:
+        info = {"remote_node": _rpu_remote(core_pd)}
+        assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
+        tcm_nodes = [_tcm_node(tree, *tcm) for tcm in tcms]
+        assert openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+            tree, info, tcm_nodes)
+
+    cores = [n for n in tree["/"].subnodes()
+             if n.name.startswith(("r5f@", "r52f@"))]
+    assert {n.abs_path: n.propval("power-domains", list)[1]
+            for n in cores} == expected
+
+
 @pytest.mark.parametrize(
     "address_cells,size_cells", [(1, 1), (2, 1), (2, 2)])
 def test_zephyr_ipc_shm_replaces_domain_carveout_references(

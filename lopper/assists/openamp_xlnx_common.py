@@ -496,6 +496,19 @@ class SOC_TYPE:
     VERSAL_NET = 3
     VERSAL2 = 4
 
+# Power-domain ID of the first RPU core and the number of RPU cores on each
+# platform. The cores' IDs are consecutive: PD_RPU_0/1 on ZynqMP,
+# PM_DEV_RPU0_0/1 on Versal (also used by Versal Gen 2 R5 parts),
+# PM_DEV_RPU_A_0..PM_DEV_RPU_B_1 on Versal NET, and
+# SCMI_PD_VERSAL2_DEV_RPU_A_0..RPU_E_1 on Versal2.
+rpu_core_pd_ids = {
+    SOC_TYPE.ZYNQMP: (0x7, 2),
+    SOC_TYPE.VERSAL: (0x18110005, 2),
+    SOC_TYPE.VERSAL_NET: (0x181100bf, 4),
+    SOC_TYPE.VERSAL2: (0x0, 10),
+}
+"""dict[int, tuple[int, int]]: First RPU core power-domain ID and core count."""
+
 platform_info_header_r5_template = """
 /*
  * Copyright (c) 2025 AMD, Inc.
