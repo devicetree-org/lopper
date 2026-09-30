@@ -416,15 +416,23 @@ class LopperProp():
         # Back-reference to the owning LopperNode (set by LopperNode when added)
         self._node = None
 
+        # Assign straight into __dict__ rather than through the overridden
+        # __setattr__, which resolves on every assignment.  Resolving here
+        # would run against a property that has its name but not yet its
+        # value, and a formatter selected by that name will act on whatever
+        # is there: a property constructed as "lopper-preamble" is typed as a
+        # preamble immediately, and the preamble formatter indexes the value
+        # it does not yet have.  Anything built name-first has the same issue,
+        # __deepcopy__ among them
         if value == None:
-            self.value = []
+            self.__dict__["value"] = []
         else:
-            # we want to avoid the overriden __setattr__ below
             self.__dict__["value"] = value
-            # set a default ptype, since before the property is
-            # resolved, it may be used in some sort of test that
-            # needs a type
-            self.ptype = self.property_type_guess()
+
+        # set a default ptype, since before the property is
+        # resolved, it may be used in some sort of test that
+        # needs a type
+        self.ptype = self.property_type_guess()
 
 
     def __deepcopy__(self, memodict={}):
