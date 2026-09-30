@@ -900,6 +900,22 @@ def xlnx_libmetal_linux_setup_ipi(tree, relation_node, machine, verbose = 0 ):
             _error("openamp_xlnx: libmetal: cannot resolve IPI for %s" % node.abs_path)
             return False
 
+        # Linux binds an IPI agent either to the mailbox driver, as RPMsg
+        # needs, or to UIO, as libmetal needs; RPMsg relations are processed
+        # first, so their mboxes are already in the tree.
+        for user in tree["/"].subnodes():
+            mboxes = user.propval("mboxes", list)
+            if mboxes == [""] or not isinstance(mboxes[0], int):
+                continue
+            mbox = tree.pnode(mboxes[0])
+            if mbox is not None and mbox.parent is not None and \
+                    mbox.parent.abs_path == ipi_node.parent.abs_path:
+                _error("openamp_xlnx: libmetal: %s uses IPI %s, which %s "
+                       "already uses as a mailbox; use another IPI for "
+                       "libmetal" % (node.abs_path, ipi_node.parent.abs_path,
+                                     user.abs_path))
+                return False
+
         # setup IPI mask so UIO device's corresponding DT node has the remote's bitmask set.
         ipi_node.parent + LopperProp(name="libmetal,uio-ipi-bitmask", value=ipi_node.propval("xlnx,ipi-bitmask"))
 

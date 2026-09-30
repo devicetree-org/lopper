@@ -994,6 +994,45 @@ def test_rpmsg_rejects_second_relation_for_core(capsys):
 
 
 @pytest.mark.parametrize(
+    "libmetal_ipi, allowed",
+    [("/axi/ipi@ff340000/child@ff320000", False),
+     ("/axi/ipi@ff350000/child@ff320000", True)],
+)
+def test_libmetal_rejects_ipi_used_by_rpmsg(
+        monkeypatch, libmetal_ipi, allowed):
+    """libmetal cannot use an IPI agent that RPMsg uses as a mailbox."""
+    tree = LopperTree()
+    for path in ("/axi", "/axi/ipi@ff340000", "/axi/ipi@ff340000/child@ff310000",
+                 "/axi/ipi@ff340000/child@ff320000", "/axi/ipi@ff350000",
+                 "/axi/ipi@ff350000/child@ff320000"):
+        tree + LopperNode(-1, path)
+    for path in ("/axi/ipi@ff340000/child@ff310000", libmetal_ipi):
+        tree[path].phandle_or_create()
+        tree[path]["xlnx,ipi-bitmask"] = [0x100]
+    # RPMsg on RPU0 through IPI agent ff340000.
+    core = LopperNode(-1, "/remoteproc@ffe00000/r5f@0")
+    tree + LopperNode(-1, "/remoteproc@ffe00000")
+    tree + core
+    rpmsg_mbox = tree["/axi/ipi@ff340000/child@ff310000"].phandle
+    core["mboxes"] = [rpmsg_mbox, 0, rpmsg_mbox, 1]
+    # libmetal to RPU1.
+    relation = LopperNode(-1, "/domains/APU/libmetal-relation")
+    tree + LopperNode(-1, "/domains")
+    tree + LopperNode(-1, "/domains/APU")
+    tree + relation
+    channel = LopperNode(-1, "/domains/APU/libmetal-relation/relation0")
+    tree + channel
+    channel["mbox"] = [tree[libmetal_ipi].phandle]
+    tree.sync()
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.ZYNQMP)
+
+    assert openamp_xlnx.xlnx_libmetal_linux_setup_ipi(
+        tree, relation, "psu_cortexa53_0") is allowed
+
+
+@pytest.mark.parametrize(
     "address_cells,size_cells", [(1, 1), (2, 1), (2, 2)])
 def test_zephyr_ipc_shm_replaces_domain_carveout_references(
         address_cells, size_cells):
