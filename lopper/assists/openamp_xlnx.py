@@ -1365,11 +1365,13 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
         if legacy_pd_id is None and pd_id in legacy_memory_nodes:
             legacy_pd_id = pd_id
 
-        # Transitional SDTs may carry the legacy key separately. This remains
-        # a compatibility fallback; modern Versal2 mapping does not require it.
+        # Transitional SDTs may carry the legacy key separately. Versal2
+        # uses only the SCMI power-domains ID: xlnx,power-domain can
+        # disagree with it, and falling back would pair one bank's
+        # address with another bank's power domain.
         legacy_pd = n.propval("xlnx,power-domain", list)
-        if (legacy_pd_id is None and legacy_pd and
-                legacy_pd != [""]):
+        if (legacy_pd_id is None and platform != SOC_TYPE.VERSAL2 and
+                legacy_pd and legacy_pd != [""]):
             legacy_pd_id = legacy_pd[0]
 
         mapping = legacy_memory_nodes.get(legacy_pd_id)
@@ -1385,8 +1387,19 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
                   f"power-domains ID {pd_id_string}{legacy_id_string}")
             return False
 
-        core_reg_val.extend(mapping["rpu_view"])
-        cluster_ranges_val.extend(mapping["system_view"])
+        # The SDT is authoritative for the TCM bank's global address and
+        # size. The table only supplies the core-local view (bank index
+        # and local offset), which the R52 SDTs do not describe.
+        tcm_base, tcm_size = node_reg_start_size(n)
+        if tcm_base is None or not tcm_size:
+            print(f"ERROR: TCM node {node_path} is missing a valid "
+                  "reg property")
+            return False
+        # Remoteproc ranges and reg use two address and two size cells.
+        size_cells = int_to_cells(tcm_size, 2)
+        core_reg_val.extend(mapping["rpu_view"][:2] + size_cells)
+        cluster_ranges_val.extend(mapping["system_view"][:2] +
+                                  int_to_cells(tcm_base, 2) + size_cells)
 
         # map TCM node name to binding compliant TCM name
         if not any(tcm_name_substr in n.name.lower() for tcm_name_substr in core_reg_names_mappings):

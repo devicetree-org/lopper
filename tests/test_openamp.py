@@ -102,18 +102,25 @@ class _FakeTree:
 
 def _remoteproc_v2_fixture(
         pd_id=0x44, legacy_pd=None,
-        node_name="r52_0a_atcm_global@eba00000"):
+        node_name="r52_0a_atcm_global@eba00000", reg_size=0x10000,
+        with_reg=True):
     """Build the minimum channel data needed for R52 TCM construction."""
-    tcm = LopperNode(
-        -1,
-        f"/{node_name}",
-        name=node_name,
-    )
+    tree = LopperTree()
+    axi = LopperNode(-1, "/axi")
+    axi["#address-cells"] = [2]
+    axi["#size-cells"] = [2]
+    tree + axi
+    tcm = LopperNode(-1, f"/axi/{node_name}")
     tcm["xlnx,ip-name"] = ["r52_0a_atcm_global"]
+    if with_reg:
+        base = int(node_name.split("@")[1], 16)
+        tcm["reg"] = (lopper_lib.int_to_cells(base, 2) +
+                      lopper_lib.int_to_cells(reg_size, 2))
     if pd_id is not None:
         tcm["power-domains"] = [0xA5, pd_id]
     if legacy_pd is not None:
         tcm["xlnx,power-domain"] = [legacy_pd]
+    tree + tcm
 
     pd_property = type("PowerDomainProperty", (), {"value": [0xA5, 0]})()
     channel_info = {
@@ -451,41 +458,8 @@ def test_openamp_enables_only_selected_linux_uio_timer(monkeypatch):
     assert unrelated.propval("compatible", list) == ["cdns,ttc"]
 
 
-@pytest.mark.parametrize(
-    "platform, pd_id, legacy_pd, node_name, expected_legacy_id",
-    [
-        # Current Versal2 SDTs use an SCMI ID and need no legacy property.
-        (
-            openamp_xlnx.SOC_TYPE.VERSAL2,
-            0x44,
-            None,
-            "r52_0a_atcm_global@eba00000",
-            0x183180CB,
-        ),
-        # Older platforms put the address-table ID in power-domains itself.
-        (
-            openamp_xlnx.SOC_TYPE.ZYNQMP,
-            15,
-            None,
-            "psu_r5_0_atcm_global@ffe00000",
-            15,
-        ),
-        # Transitional SDTs can fall back to xlnx,power-domain.
-        (
-            openamp_xlnx.SOC_TYPE.VERSAL2,
-            0xDEADBEEF,
-            0x183180CB,
-            "r52_0a_atcm_global@eba00000",
-            0x183180CB,
-        ),
-    ],
-)
-def test_remoteproc_v2_resolves_current_and_legacy_tcm_ids(
-        monkeypatch, platform, pd_id, legacy_pd, node_name,
-        expected_legacy_id):
-    """Modern, legacy, and transitional TCM IDs resolve address mappings."""
-    channel_info, tcm = _remoteproc_v2_fixture(
-        pd_id, legacy_pd, node_name)
+def _construct_remoteproc_v2(monkeypatch, platform, channel_info, tcm):
+    """Run remoteproc cluster construction and capture its outputs."""
     captured = {}
 
     monkeypatch.setattr(
@@ -513,13 +487,147 @@ def test_remoteproc_v2_resolves_current_and_legacy_tcm_ids(
 
     result = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
         object(), channel_info, [tcm])
+    return result, captured
 
-    mapping = openamp_xlnx.legacy_memory_nodes[expected_legacy_id]
+
+@pytest.mark.parametrize(
+    "platform, pd_id, legacy_pd, node_name, size, bank, offset, reg_name",
+    [
+        # ZynqMP: power-domains holds the firmware ID directly.
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, 15, None,
+         "psu_r5_0_atcm_global@ffe00000", 0x10000, 0, 0x0, "atcm0"),
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, 18, None,
+         "psu_r5_1_btcm_global@ffeb0000", 0x10000, 1, 0x20000, "btcm1"),
+        # Versal: firmware IDs, including R5 core 1.
+        (openamp_xlnx.SOC_TYPE.VERSAL, 0x1831800B, None,
+         "psv_r5_0_atcm_global@ffe00000", 0x10000, 0, 0x0, "atcm0"),
+        (openamp_xlnx.SOC_TYPE.VERSAL, 0x1831800E, None,
+         "psv_r5_1_btcm_global@ffeb0000", 0x10000, 1, 0x20000, "btcm1"),
+        # Versal NET: TCM_A_1A is the core 1 ATCM at 0xeba40000.
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0x183180CE, None,
+         "psx_r52_1a_atcm_global@eba40000", 0x10000, 1, 0x0, "atcm0"),
+        # Versal NET: transitional SDTs may still use xlnx,power-domain.
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0xDEADBEEF, 0x183180CB,
+         "psx_r52_0a_atcm_global@eba00000", 0x10000, 0, 0x0, "atcm0"),
+        # Versal2: SCMI IDs for cluster A core 0 and core 1 (r52_1a).
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 0x44, None,
+         "r52_0a_atcm_global@eba00000", 0x10000, 0, 0x0, "atcm0"),
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 0x47, None,
+         "r52_1a_atcm_global@eba40000", 0x10000, 1, 0x0, "atcm0"),
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 0x49, None,
+         "r52_1a_ctcm_global@eba60000", 0x8000, 1, 0x18000, "ctcm0"),
+        # Versal2: the address comes from the SDT, not the address table.
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 0x56, None,
+         "r52_0d_atcm_global@ebb80000", 0x10000, 0, 0x0, "atcm0"),
+    ],
+)
+def test_remoteproc_v2_tcm_ranges_use_sdt_reg(
+        monkeypatch, platform, pd_id, legacy_pd, node_name, size, bank,
+        offset, reg_name):
+    """Remoteproc ranges use the SDT TCM address with the table bank view."""
+    channel_info, tcm = _remoteproc_v2_fixture(
+        pd_id, legacy_pd, node_name, reg_size=size)
+    base = int(node_name.split("@")[1], 16)
+
+    result, captured = _construct_remoteproc_v2(
+        monkeypatch, platform, channel_info, tcm)
+
     assert result == "core"
     assert captured["power_domains"] == [0xA5, 0, 0xA5, pd_id]
-    assert captured["reg"] == mapping["rpu_view"]
-    assert captured["ranges"] == mapping["system_view"]
-    assert captured["reg_names"] == ["atcm0"]
+    assert captured["reg"] == [bank, offset, 0x0, size]
+    assert captured["ranges"] == [bank, offset, 0x0, base, 0x0, size]
+    assert captured["reg_names"] == [reg_name]
+
+
+# Local offsets of the A, B, and C TCM banks on an R52 core.
+_R52_BANK_OFFSETS = (0x0, 0x10000, 0x18000)
+
+
+def _r52_legacy_core_and_bank(legacy_id):
+    """Core and bank encoded in a Versal NET/Versal2 TCM firmware ID.
+
+    TCM_A_0A..TCM_B_1C are 0x183180cb-0x183180d6 and TCM_C_0A..TCM_E_1C
+    are 0x18318100-0x18318111: three banks per core, in RPU core order
+    (A_0, A_1, B_0, B_1, C_0, ...).
+    """
+    if 0x183180CB <= legacy_id <= 0x183180D6:
+        index = legacy_id - 0x183180CB
+        return index // 3, index % 3
+    if 0x18318100 <= legacy_id <= 0x18318111:
+        index = legacy_id - 0x18318100
+        return 4 + index // 3, index % 3
+    return None
+
+
+def test_r52_tcm_table_bank_view_matches_firmware_id():
+    """Each R52 table entry maps its TCM to the right core and bank."""
+    checked = 0
+    for legacy_id, mapping in openamp_xlnx.legacy_memory_nodes.items():
+        decoded = _r52_legacy_core_and_bank(legacy_id)
+        if decoded is None:
+            continue
+        core, bank = decoded
+        expected = [core % 2, _R52_BANK_OFFSETS[bank]]
+        assert mapping["rpu_view"][:2] == expected, hex(legacy_id)
+        assert mapping["system_view"][:2] == expected, hex(legacy_id)
+        checked += 1
+    assert checked
+
+
+def test_r5_tcm_table_bank_view_matches_firmware_id():
+    """Each R5 table entry maps its TCM to the right core and bank."""
+    expected = {
+        # ZynqMP psu_r5_{0,1}_{a,b}tcm_global
+        15: [0, 0x0], 16: [0, 0x20000], 17: [1, 0x0], 18: [1, 0x20000],
+        # Versal psv_r5_{0,1}_{a,b}tcm_global
+        0x1831800B: [0, 0x0], 0x1831800C: [0, 0x20000],
+        0x1831800D: [1, 0x0], 0x1831800E: [1, 0x20000],
+    }
+    for legacy_id, view in expected.items():
+        mapping = openamp_xlnx.legacy_memory_nodes[legacy_id]
+        assert mapping["rpu_view"][:2] == view, hex(legacy_id)
+        assert mapping["system_view"][:2] == view, hex(legacy_id)
+
+
+def test_versal2_scmi_tcm_ids_translate_to_same_core_and_bank():
+    """Each Versal2 SCMI TCM ID maps to the same core and bank.
+
+    SCMI TCM IDs start at SCMI_PD_VERSAL2_DEV_TCM_A_0A (0x44) and follow
+    the same core and bank order as the firmware IDs.
+    """
+    table = openamp_xlnx.versal2_scmi_to_legacy_pd
+    for scmi_id, legacy_id in table.items():
+        index = scmi_id - 0x44
+        assert (index // 3, index % 3) == \
+            _r52_legacy_core_and_bank(legacy_id), hex(scmi_id)
+        assert legacy_id in openamp_xlnx.legacy_memory_nodes, hex(scmi_id)
+
+
+def test_remoteproc_v2_versal2_ignores_xlnx_power_domain(
+        monkeypatch, capsys):
+    """Versal2 does not fall back to a conflicting xlnx,power-domain."""
+    # SCMI 0x4a is TCM_B_0A. The SDT's xlnx,power-domain for the same node
+    # has been seen to carry TCM_A_1A (0x183180ce).
+    channel_info, tcm = _remoteproc_v2_fixture(
+        0x4A, 0x183180CE, "r52_0b_atcm_global@eba80000")
+
+    result, _ = _construct_remoteproc_v2(
+        monkeypatch, openamp_xlnx.SOC_TYPE.VERSAL2, channel_info, tcm)
+
+    assert result is False
+    assert "no address mapping for power-domains ID 0x4a" in \
+        capsys.readouterr().out
+
+
+def test_remoteproc_v2_requires_tcm_reg(monkeypatch, capsys):
+    """A TCM node without reg is rejected instead of using the table."""
+    channel_info, tcm = _remoteproc_v2_fixture(with_reg=False)
+
+    result, _ = _construct_remoteproc_v2(
+        monkeypatch, openamp_xlnx.SOC_TYPE.VERSAL2, channel_info, tcm)
+
+    assert result is False
+    assert "is missing a valid reg property" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
