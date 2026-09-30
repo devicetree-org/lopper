@@ -992,3 +992,87 @@ class TestPropertyFind:
                 assert target is not None, "deref should resolve the phandle"
                 assert hasattr(target, 'abs_path'), "Should be a LopperNode"
                 break
+
+
+class TestPropertyConstruction:
+    """A property must not be resolved before it has a value.
+
+    LopperProp assigns straight into __dict__ rather than through the
+    overridden __setattr__, which resolves on every assignment. Resolving
+    during construction runs against a property that has its name but not yet
+    its value, and the formatter is selected by that name: a property called
+    lopper-preamble is typed as a preamble immediately, and the preamble
+    formatter indexes a value it does not have.
+
+    Anything that builds a property name-first hits this, __deepcopy__ among
+    them -- which is why copying a tree carrying a header comment failed.
+    """
+
+    def test_empty_preamble_construction_does_not_raise(self):
+        """Constructing a preamble with no value must not resolve it.
+
+        This is the construction __deepcopy__ performs. The name alone is
+        enough to select the preamble formatter, so a resolve here reaches it
+        with nothing to format.
+        """
+        prop = LopperProp("lopper-preamble")
+        assert prop.value == []
+
+    def test_tree_with_a_preamble_can_be_deep_copied(self):
+        """The reported case: a tree carrying a header comment is copied.
+
+        An enhanced DTS with a header comment produces lopper-preamble, and
+        activating a named overlay deep-copies the base tree, so the two meet
+        in any domain_access run over such a tree.
+        """
+        import copy
+
+        tree = LopperTree()
+        tree["/"] + LopperProp("lopper-preamble", value=["Board description"])
+
+        cloned = copy.deepcopy(tree)
+        cloned.resolve()
+
+        assert cloned["/"]["lopper-preamble"].value == ["Board description"], \
+            "the preamble text did not survive the copy"
+
+    def test_copied_preamble_still_formats(self):
+        """Deferring the resolve must not cost the formatting.
+
+        The point of not resolving early is to resolve later with a value
+        present, so the rendered form has to be the same as if it had never
+        been interrupted.
+        """
+        import copy
+
+        tree = LopperTree()
+        tree["/"] + LopperProp("lopper-preamble", value=["Board description"])
+
+        cloned = copy.deepcopy(tree)
+        cloned.resolve()
+
+        assert str(cloned["/"]["lopper-preamble"]) == "/*\nBoard description*/\n"
+
+    def test_multi_line_preamble_survives(self):
+        """More than one line, since the formatter treats the last specially."""
+        import copy
+
+        tree = LopperTree()
+        tree["/"] + LopperProp("lopper-preamble", value=["line one", "line two"])
+
+        cloned = copy.deepcopy(tree)
+        cloned.resolve()
+
+        assert cloned["/"]["lopper-preamble"].value == ["line one", "line two"]
+        assert str(cloned["/"]["lopper-preamble"]) == "/*\nline one\nline two*/\n"
+
+    def test_a_valued_property_is_unchanged(self):
+        """Baseline: construction with a value behaves as it always did.
+
+        That branch already bypassed __setattr__ deliberately; this asserts
+        the empty branch was brought into line with it rather than the other
+        way about.
+        """
+        prop = LopperProp("compatible", value=["test,thing"])
+        assert prop.value == ["test,thing"]
+        assert prop.ptype is not None
