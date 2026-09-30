@@ -11,6 +11,7 @@ import sys
 import os
 import re
 import shutil
+import traceback
 from pathlib import Path
 from io import StringIO
 import contextlib
@@ -87,6 +88,73 @@ class LopperAssist:
         self.file = lop_file
         # holds specific key,value properties
         self.properties = properties_dict
+
+
+def _assist_name( cb_func ):
+    """Name an assist callable for a message.
+
+    Its repr carries a heap address, which tells a reader nothing and differs
+    between runs of the same failure.
+
+    Args:
+       cb_func: the assist callable
+
+    Returns:
+       string: the function name, or its repr if it has no name
+    """
+    name = getattr( cb_func, '__name__', None )
+    if not name:
+        return str( cb_func )
+
+    # An assist loaded through SourceFileLoader carries a filename as its
+    # module ("gen_domain_dts.py"), so drop the suffix before reducing a
+    # dotted module path to its last component -- otherwise the qualifier
+    # ends up as "py".
+    module = getattr( cb_func, '__module__', None )
+    if module:
+        if module.endswith( '.py' ):
+            module = module[:-3]
+        module = module.split('.')[-1]
+        if module and module != name:
+            return f"{module}.{name}"
+
+    return name
+
+
+def _exception_origin( e, limit=3 ):
+    """Describe where an exception was raised, not where it was caught.
+
+    sys.exc_info() hands back a traceback whose tb_frame is the frame doing
+    the catching, so reporting from it names this file and the line of the
+    except clause -- the same answer for every assist that ever fails here,
+    which is the one thing a reader already knows.
+
+    The traceback chains outward from the catch towards the raise through
+    tb_next, so the innermost frame is the origin. Report that, and a little
+    of the path into it, since an assist calling into lopper core raises
+    somewhere the assist's own name does not appear.
+
+    Args:
+       e (Exception): the caught exception
+       limit (int): how many innermost frames to describe
+
+    Returns:
+       list of string: innermost frame last, empty if there is no traceback
+    """
+    tb = getattr( e, '__traceback__', None )
+    if tb is None:
+        return []
+
+    frames = traceback.extract_tb( tb )
+    if not frames:
+        return []
+
+    described = []
+    for frame in frames[-limit:]:
+        where = os.path.basename( frame.filename )
+        described.append( f"at {where}:{frame.lineno} in {frame.name}()" )
+
+    return described
 
 
 def is_overlay_file(filepath):
@@ -1695,10 +1763,11 @@ class LopperSDT:
                         if not cb_func( 0, out_tree, { 'outfile': output_filename, 'verbose' : self.verbose } ):
                             lopper.log._warning( f"output assist returned false, check for errors ..." )
                     except Exception as e:
-                        lopper.log._warning( f"output assist {cb_func} failed: {e}" )
-                        exc_type, exc_obj, exc_tb = sys.exc_info()
-                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                        lopper.log._warning( f"{exc_type} {fname} {exc_tb.tb_lineno}" )
+                        lopper.log._warning(
+                            f"output assist {_assist_name(cb_func)} failed: "
+                            f"{type(e).__name__}: {e}" )
+                        for line in _exception_origin( e ):
+                            lopper.log._warning( f"  {line}" )
                         if self.werror:
                             sys.exit(1)
             else:
@@ -2653,10 +2722,11 @@ class LopperSDT:
                         if not cb_func( cb_node, self, { 'verbose' : self.verbose, 'outdir' : cb_outdir, 'args': cb_opts } ):
                             lopper.log._warning( f"the assist returned false, check for errors ..." )
                     except Exception as e:
-                        lopper.log._warning( f"assist %{cb_func} failed: {e}" )
-                        exc_type, exc_obj, exc_tb = sys.exc_info()
-                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                        lopper.log._warning( f"{exc_type} {fname} {exc_tb.tb_lineno}" )
+                        lopper.log._warning(
+                            f"assist {_assist_name(cb_func)} failed: "
+                            f"{type(e).__name__}: {e}" )
+                        for line in _exception_origin( e ):
+                            lopper.log._warning( f"  {line}" )
                         # exit if warnings are treated as errors
                         if self.werror:
                             sys.exit(1)
