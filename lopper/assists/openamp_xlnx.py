@@ -1204,9 +1204,13 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
             print("ERROR: ", "split" if cpu_config == CPU_CONFIG.RPU_SPLIT else "lockstep", "for cpu value mismatches the cluster.")
             return False
 
-        # only in split case, let range value be extended by both cores
+        # In split mode the cluster maps the banks of both cores: append this
+        # core's ranges to those already in the cluster node.
         if cpu_config == CPU_CONFIG.RPU_SPLIT:
-            cluster_node_props["ranges"].extend(cluster_ranges_val)
+            existing_ranges = cluster_node.propval("ranges", list)
+            if existing_ranges == [""]:
+                existing_ranges = []
+            cluster_node["ranges"] = existing_ranges + list(cluster_ranges_val)
 
     except KeyError:
         cluster_node = LopperNode(-1, cluster_node_path)

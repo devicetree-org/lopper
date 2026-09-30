@@ -787,6 +787,14 @@ def test_remoteproc_v2_places_each_rpu_core(
     assert {n.abs_path: n.propval("power-domains", list)[1]
             for n in cores} == expected
 
+    # Each cluster maps the ATCM of each of its cores, tagged with the
+    # core's bank.
+    for cluster in {n.parent for n in cores}:
+        ranges = cluster.propval("ranges", list)
+        banks = sorted(int(n.name.split("@")[1])
+                       for n in cluster.subnodes(children_only=True))
+        assert sorted(ranges[0::6]) == banks
+
 
 @pytest.mark.parametrize(
     "address_cells,size_cells", [(1, 1), (2, 1), (2, 2)])
