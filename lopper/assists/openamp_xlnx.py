@@ -1045,10 +1045,21 @@ def determinte_rpu_core(tree, cpu_config, remote_node):
         RPU_CORE | bool: Enum representing the selected core, or False on failure.
 
     Algorithm:
-        Validates the presence of ``core_num`` and converts it into the appropriate
-        ``RPU_CORE`` enum instance.
+        RPU cores have consecutive power-domain IDs, so the remote core's ID
+        in ``rpu_pd_val`` minus the platform's first RPU core ID gives the
+        core's number across all RPU clusters. SDTs give each R52 cluster,
+        and some give each R5 cluster, a single cpu@0, so ``core_num`` (the
+        CPU reg) is only used when the core's power domain is not known.
     """
     print(" -> determinte_rpu_core", cpu_config, remote_node)
+    rpu_pd_val = remote_node.propval("rpu_pd_val")
+    platform = get_platform(tree)
+    if platform in rpu_core_pd_ids and len(rpu_pd_val) > 1 and \
+            isinstance(rpu_pd_val[1], int):
+        first_id, count = rpu_core_pd_ids[platform]
+        if 0 <= rpu_pd_val[1] - first_id < count:
+            return RPU_CORE(rpu_pd_val[1] - first_id)
+
     if remote_node.propval("core_num") == ['']:
         print(" determinte_rpu_core failed. could not find core_num property no node: ", remote_node)
         return False
@@ -1270,20 +1281,20 @@ def xlnx_remoteproc_v2_cluster_base_str(platform, rpu_core):
         SOC_TYPE.VERSAL_NET: {
             RPU_CORE.RPU_0: "eba00000",
             RPU_CORE.RPU_1: "eba00000",
-            RPU_CORE.RPU_2: "eba40000",
-            RPU_CORE.RPU_3: "eba40000",
+            RPU_CORE.RPU_2: "eba80000",
+            RPU_CORE.RPU_3: "eba80000",
         },
         SOC_TYPE.VERSAL2: {
             RPU_CORE.RPU_0: "eba00000",
             RPU_CORE.RPU_1: "eba00000",
-            RPU_CORE.RPU_2: "ebb00000",
-            RPU_CORE.RPU_3: "ebb00000",
-            RPU_CORE.RPU_4: "ebc00000",
-            RPU_CORE.RPU_5: "ebc00000",
-            RPU_CORE.RPU_6: "ebac0000",
-            RPU_CORE.RPU_7: "ebac0000",
-            RPU_CORE.RPU_8: "ebbc0000",
-            RPU_CORE.RPU_9: "ebbc0000",
+            RPU_CORE.RPU_2: "eba80000",
+            RPU_CORE.RPU_3: "eba80000",
+            RPU_CORE.RPU_4: "ebb00000",
+            RPU_CORE.RPU_5: "ebb00000",
+            RPU_CORE.RPU_6: "ebb80000",
+            RPU_CORE.RPU_7: "ebb80000",
+            RPU_CORE.RPU_8: "ebc00000",
+            RPU_CORE.RPU_9: "ebc00000",
         },
         SOC_TYPE.ZYNQMP: {
             RPU_CORE.RPU_0: "ffe00000",
@@ -1458,7 +1469,8 @@ def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, elfload_nodes, v
 
     openamp_channel_info["rpu_core_pd_prop"] = remote_node.props("rpu_pd_val")[0]
     openamp_channel_info["cpu_config"] = cpu_config
-    openamp_channel_info["rpu_core"] = str(int(rpu_core))
+    # Index of the core in its two-core cluster, used to name the core node.
+    openamp_channel_info["rpu_core"] = str(int(rpu_core) % 2)
 
     return True
 
