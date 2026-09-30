@@ -458,13 +458,14 @@ def test_openamp_enables_only_selected_linux_uio_timer(monkeypatch):
     assert unrelated.propval("compatible", list) == ["cdns,ttc"]
 
 
-def _construct_remoteproc_v2(monkeypatch, platform, channel_info, tcm):
+def _construct_remoteproc_v2(monkeypatch, platform, channel_info, tcm,
+                             rpu_core=0):
     """Run remoteproc cluster construction and capture its outputs."""
     captured = {}
 
     monkeypatch.setattr(
         openamp_xlnx, "determinte_rpu_core",
-        lambda tree, cpu_config, remote_node: openamp_xlnx.RPU_CORE.RPU_0)
+        lambda tree, cpu_config, remote_node: openamp_xlnx.RPU_CORE(rpu_core))
     monkeypatch.setattr(
         openamp_xlnx, "get_platform",
         lambda tree, verbose=0: platform)
@@ -491,45 +492,46 @@ def _construct_remoteproc_v2(monkeypatch, platform, channel_info, tcm):
 
 
 @pytest.mark.parametrize(
-    "platform, pd_id, legacy_pd, node_name, size, bank, offset, reg_name",
+    "platform, core, pd_id, legacy_pd, node_name, size, bank, offset, "
+    "reg_name",
     [
         # ZynqMP: power-domains holds the firmware ID directly.
-        (openamp_xlnx.SOC_TYPE.ZYNQMP, 15, None,
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, 0, 15, None,
          "psu_r5_0_atcm_global@ffe00000", 0x10000, 0, 0x0, "atcm0"),
-        (openamp_xlnx.SOC_TYPE.ZYNQMP, 18, None,
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, 1, 18, None,
          "psu_r5_1_btcm_global@ffeb0000", 0x10000, 1, 0x20000, "btcm1"),
         # Versal: firmware IDs, including R5 core 1.
-        (openamp_xlnx.SOC_TYPE.VERSAL, 0x1831800B, None,
+        (openamp_xlnx.SOC_TYPE.VERSAL, 0, 0x1831800B, None,
          "psv_r5_0_atcm_global@ffe00000", 0x10000, 0, 0x0, "atcm0"),
-        (openamp_xlnx.SOC_TYPE.VERSAL, 0x1831800E, None,
+        (openamp_xlnx.SOC_TYPE.VERSAL, 1, 0x1831800E, None,
          "psv_r5_1_btcm_global@ffeb0000", 0x10000, 1, 0x20000, "btcm1"),
         # Versal NET: TCM_A_1A is the core 1 ATCM at 0xeba40000.
-        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0x183180CE, None,
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 1, 0x183180CE, None,
          "psx_r52_1a_atcm_global@eba40000", 0x10000, 1, 0x0, "atcm0"),
         # Versal NET: transitional SDTs may still use xlnx,power-domain.
-        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0xDEADBEEF, 0x183180CB,
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0, 0xDEADBEEF, 0x183180CB,
          "psx_r52_0a_atcm_global@eba00000", 0x10000, 0, 0x0, "atcm0"),
         # Versal NET cluster B: TCM_B_0A at 0xeba80000, TCM_B_1B at
         # 0xebad0000. The SDT's xlnx,power-domain for r52_0b holds TCM_A_1A
         # (0x183180ce); power-domains is used first.
-        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0x183180D1, 0x183180CE,
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 2, 0x183180D1, 0x183180CE,
          "psx_r52_0b_atcm_global@eba80000", 0x10000, 0, 0x0, "atcm0"),
-        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0x183180D5, None,
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 3, 0x183180D5, None,
          "psx_r52_1b_btcm_global@ebad0000", 0x8000, 1, 0x10000, "btcm0"),
         # Versal2: SCMI IDs for cluster A core 0 and core 1 (r52_1a).
-        (openamp_xlnx.SOC_TYPE.VERSAL2, 0x44, None,
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 0, 0x44, None,
          "r52_0a_atcm_global@eba00000", 0x10000, 0, 0x0, "atcm0"),
-        (openamp_xlnx.SOC_TYPE.VERSAL2, 0x47, None,
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 1, 0x47, None,
          "r52_1a_atcm_global@eba40000", 0x10000, 1, 0x0, "atcm0"),
-        (openamp_xlnx.SOC_TYPE.VERSAL2, 0x49, None,
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 1, 0x49, None,
          "r52_1a_ctcm_global@eba60000", 0x8000, 1, 0x18000, "ctcm0"),
         # Versal2: the address comes from the SDT, not the address table.
-        (openamp_xlnx.SOC_TYPE.VERSAL2, 0x56, None,
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 6, 0x56, None,
          "r52_0d_atcm_global@ebb80000", 0x10000, 0, 0x0, "atcm0"),
     ],
 )
 def test_remoteproc_v2_tcm_ranges_use_sdt_reg(
-        monkeypatch, platform, pd_id, legacy_pd, node_name, size, bank,
+        monkeypatch, platform, core, pd_id, legacy_pd, node_name, size, bank,
         offset, reg_name):
     """Remoteproc ranges use the SDT TCM address with the table bank view."""
     channel_info, tcm = _remoteproc_v2_fixture(
@@ -537,7 +539,7 @@ def test_remoteproc_v2_tcm_ranges_use_sdt_reg(
     base = int(node_name.split("@")[1], 16)
 
     result, captured = _construct_remoteproc_v2(
-        monkeypatch, platform, channel_info, tcm)
+        monkeypatch, platform, channel_info, tcm, rpu_core=core)
 
     assert result == "core"
     assert captured["power_domains"] == [0xA5, 0, 0xA5, pd_id]
@@ -624,10 +626,65 @@ def test_remoteproc_v2_versal2_ignores_xlnx_power_domain(monkeypatch):
         0x4A, 0x183180CE, "r52_0b_atcm_global@eba80000")
 
     result, captured = _construct_remoteproc_v2(
-        monkeypatch, openamp_xlnx.SOC_TYPE.VERSAL2, channel_info, tcm)
+        monkeypatch, openamp_xlnx.SOC_TYPE.VERSAL2, channel_info, tcm,
+        rpu_core=2)
 
     assert result == "core"
     assert captured["ranges"] == [0, 0x0, 0x0, 0xEBA80000, 0x0, 0x10000]
+
+
+@pytest.mark.parametrize(
+    "platform, core, pd_id, node_name, owner",
+    [
+        # RPU1 given RPU0's ATCM.
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, 1, 15,
+         "psu_r5_0_atcm_global@ffe00000", 0),
+        (openamp_xlnx.SOC_TYPE.VERSAL, 0, 0x1831800E,
+         "psv_r5_1_btcm_global@ffeb0000", 1),
+        # RPU_A_1 given r52_0b (TCM_B_0A), the bank the Versal NET and
+        # Versal2 SDTs swap with r52_1a in xlnx,power-domain.
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 1, 0x183180D1,
+         "psx_r52_0b_atcm_global@eba80000", 2),
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 1, 0x4A,
+         "r52_0b_atcm_global@eba80000", 2),
+    ],
+)
+def test_remoteproc_v2_rejects_tcm_of_another_core(
+        monkeypatch, capsys, platform, core, pd_id, node_name, owner):
+    """A split core may not load another core's TCM bank."""
+    channel_info, tcm = _remoteproc_v2_fixture(pd_id, None, node_name)
+
+    result, _ = _construct_remoteproc_v2(
+        monkeypatch, platform, channel_info, tcm, rpu_core=core)
+
+    assert result is False
+    assert (f"TCM node {tcm.abs_path} belongs to RPU core {owner}, but the "
+            f"remote runs on RPU core {core}") in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "platform, core, pd_id, node_name, allowed",
+    [
+        # Lockstep core 0 uses core 1's banks in its own cluster ...
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, 0, 17,
+         "psu_r5_1_atcm_global@ffe90000", True),
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 2, 0x4D,
+         "r52_1b_atcm_global@ebac0000", True),
+        # ... but not the banks of another cluster.
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 0, 0x4A,
+         "r52_0b_atcm_global@eba80000", False),
+    ],
+)
+def test_remoteproc_v2_lockstep_uses_its_cluster_tcm(
+        monkeypatch, platform, core, pd_id, node_name, allowed):
+    """In lockstep, a core may load the TCM banks of its whole cluster."""
+    channel_info, tcm = _remoteproc_v2_fixture(pd_id, None, node_name)
+    channel_info["cpu_config"] = openamp_xlnx.CPU_CONFIG.RPU_LOCKSTEP
+
+    result, _ = _construct_remoteproc_v2(
+        monkeypatch, platform, channel_info, tcm, rpu_core=core)
+
+    assert (result == "core") is allowed
 
 
 def test_remoteproc_v2_requires_tcm_reg(monkeypatch, capsys):

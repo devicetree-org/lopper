@@ -546,6 +546,18 @@ rpu_core_pd_ids = {
 }
 """dict[int, tuple[int, int]]: First RPU core power-domain ID and core count."""
 
+# Power-domain ID of the first TCM bank and the number of TCM banks of each
+# RPU core. Each core's banks have consecutive IDs, in RPU core order:
+# PD_TCM_0_A.. on ZynqMP, PM_DEV_TCM_0_A.. on Versal, PM_DEV_TCM_A_0A.. on
+# Versal NET, and SCMI_PD_VERSAL2_DEV_TCM_A_0A.. on Versal2.
+rpu_tcm_pd_ids = {
+    SOC_TYPE.ZYNQMP: (0xf, 2),
+    SOC_TYPE.VERSAL: (0x1831800b, 2),
+    SOC_TYPE.VERSAL_NET: (0x183180cb, 3),
+    SOC_TYPE.VERSAL2: (0x44, 3),
+}
+"""dict[int, tuple[int, int]]: First TCM bank power-domain ID, banks per core."""
+
 platform_info_header_r5_template = """
 /*
  * Copyright (c) 2025 AMD, Inc.
