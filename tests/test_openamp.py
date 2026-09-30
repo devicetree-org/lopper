@@ -665,19 +665,20 @@ def test_remoteproc_v2_rejects_tcm_of_another_core(
 @pytest.mark.parametrize(
     "platform, core, pd_id, node_name, allowed",
     [
-        # Lockstep core 0 uses core 1's banks in its own cluster ...
+        # R5 lockstep core 0 uses core 1's banks in its own cluster ...
         (openamp_xlnx.SOC_TYPE.ZYNQMP, 0, 17,
          "psu_r5_1_atcm_global@ffe90000", True),
+        # ... R52 cores do not combine TCM in lockstep ...
         (openamp_xlnx.SOC_TYPE.VERSAL2, 2, 0x4D,
-         "r52_1b_atcm_global@ebac0000", True),
-        # ... but not the banks of another cluster.
+         "r52_1b_atcm_global@ebac0000", False),
+        # ... and no core uses the banks of another cluster.
         (openamp_xlnx.SOC_TYPE.VERSAL2, 0, 0x4A,
          "r52_0b_atcm_global@eba80000", False),
     ],
 )
 def test_remoteproc_v2_lockstep_uses_its_cluster_tcm(
         monkeypatch, platform, core, pd_id, node_name, allowed):
-    """In lockstep, a core may load the TCM banks of its whole cluster."""
+    """In R5 lockstep, core 0 may load the TCM banks of its whole cluster."""
     channel_info, tcm = _remoteproc_v2_fixture(pd_id, None, node_name)
     channel_info["cpu_config"] = openamp_xlnx.CPU_CONFIG.RPU_LOCKSTEP
 
@@ -933,6 +934,82 @@ def test_remoteproc_v2_lockstep_cluster_has_one_relation(
 
     assert all(results[:-1]) and results[-1] is False
     assert expected_error in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "platform, core_pd, tcms, tcm_pds",
+    [
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, 0x7,
+         ["psu-r5-0-atcm-global@ffe00000", "psu-r5-0-btcm-global@ffe20000",
+          "psu-r5-1-atcm-global@ffe90000", "psu-r5-1-btcm-global@ffeb0000"],
+         [0xF, 0x10, 0x11, 0x12]),
+        (openamp_xlnx.SOC_TYPE.VERSAL, 0x18110005,
+         ["psv_r5_0_atcm_global@ffe00000", "psv_r5_0_btcm_global@ffe20000",
+          "psv_r5_1_atcm_global@ffe90000", "psv_r5_1_btcm_global@ffeb0000"],
+         [0x1831800B, 0x1831800C, 0x1831800D, 0x1831800E]),
+    ],
+)
+def test_remoteproc_v2_r5_lockstep_matches_binding(
+        monkeypatch, platform, core_pd, tcms, tcm_pds):
+    """R5 lockstep maps core 1's banks after core 0's, as in the binding.
+
+    The xlnx,zynqmp-r5fss lockstep example: core 0 has ATCM and BTCM at
+    local 0x0 and 0x20000 (global 0xffe00000, 0xffe20000) and core 1's at
+    local 0x10000 and 0x30000 (global 0xffe10000, 0xffe30000), all in bank 0.
+    """
+    tree = LopperTree()
+    axi = LopperNode(-1, "/axi")
+    axi["#address-cells"] = [2]
+    axi["#size-cells"] = [2]
+    tree + axi
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform", lambda tree, verbose=0: platform)
+    info = {"remote_node": _rpu_remote(core_pd, config="lockstep")}
+    assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
+    nodes = [_tcm_node(tree, name, 0x10000, pd_id)
+             for name, pd_id in zip(tcms, tcm_pds)]
+
+    core = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+        tree, info, nodes)
+
+    cluster = tree["/remoteproc@ffe00000"]
+    assert cluster.propval("xlnx,cluster-mode", list) == [1]
+    assert cluster.propval("xlnx,tcm-mode", list) == [1]
+    assert cluster.propval("ranges", list) == [
+        0, 0x0, 0, 0xFFE00000, 0, 0x10000,
+        0, 0x20000, 0, 0xFFE20000, 0, 0x10000,
+        0, 0x10000, 0, 0xFFE10000, 0, 0x10000,
+        0, 0x30000, 0, 0xFFE30000, 0, 0x10000]
+    assert core.abs_path == "/remoteproc@ffe00000/r5f@0"
+    assert core.propval("reg", list) == [
+        0, 0x0, 0, 0x10000, 0, 0x20000, 0, 0x10000,
+        0, 0x10000, 0, 0x10000, 0, 0x30000, 0, 0x10000]
+    assert core.propval("reg-names", list) == [
+        "atcm0", "btcm0", "atcm1", "btcm1"]
+    assert core.propval("power-domains", list)[1::2] == [core_pd] + tcm_pds
+
+
+def test_remoteproc_v2_rejects_tcm_bank_listed_twice(monkeypatch, capsys):
+    """A TCM bank listed twice, such as by an SDT lockstep node, fails."""
+    tree = LopperTree()
+    axi = LopperNode(-1, "/axi")
+    axi["#address-cells"] = [2]
+    axi["#size-cells"] = [2]
+    tree + axi
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.ZYNQMP)
+    info = {"remote_node": _rpu_remote(0x7, config="lockstep")}
+    assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
+    # The SDT's psu_r5_0_atcm_lockstep node has core 0's ATCM power domain.
+    nodes = [_tcm_node(tree, "psu-r5-0-atcm-global@ffe00000", 0x10000, 15),
+             _tcm_node(tree, "psu-r5-0-atcm-lockstep@ffe10000", 0x10000, 15)]
+
+    assert openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+        tree, info, nodes) is False
+    assert ("TCM node /axi/psu-r5-0-atcm-lockstep@ffe10000 is a TCM bank "
+            "that another elfload node of the remote already lists") in \
+        capsys.readouterr().out
 
 
 def test_rpmsg_allows_one_relation_per_remote_core():

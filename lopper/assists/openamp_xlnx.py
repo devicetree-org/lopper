@@ -1396,6 +1396,14 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
     core_reg_names_mappings = r52_core_reg_names_mappings if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ] else r5_core_reg_names_mappings
 
+    # In R5 lockstep, the TCM of both cores is combined: core 1's ATCM and
+    # BTCM follow core 0's at local 0x10000 and 0x30000, and the cluster maps
+    # each local address to the cluster's global base plus that address. R52
+    # cores do not combine TCM in lockstep.
+    r5_lockstep = (cpu_config == CPU_CONFIG.RPU_LOCKSTEP and
+                   platform in (SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL))
+    tcm_bank_ids = set()
+
     # loop through TCM nodes
     for n in [ n for n in channel_elfload_nodes if n.propval("xlnx,ip-name") != [''] ]:
         # Preserve the complete provider/specifier tuple for the generated
@@ -1444,15 +1452,21 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
                   f"power-domains ID {pd_id_string}{legacy_id_string}")
             return False
 
-        # A split core may only load its own TCM banks; in lockstep, core 0
+        # Each bank is listed once; the SDT's R5 lockstep TCM nodes, for
+        # example, carry core 0's power domains.
+        if legacy_pd_id in tcm_bank_ids:
+            print(f"ERROR: TCM node {node_path} is a TCM bank that another "
+                  f"elfload node of the remote already lists")
+            return False
+        tcm_bank_ids.add(legacy_pd_id)
+
+        # A core may only load its own TCM banks; in R5 lockstep, core 0
         # uses the banks of both cores in its cluster.
         owner = xlnx_rpu_tcm_owner(
             platform, pd_id if platform == SOC_TYPE.VERSAL2 else legacy_pd_id)
         if owner is not None and rpu_core is not False:
             core = int(rpu_core)
-            if owner != core and not (
-                    cpu_config == CPU_CONFIG.RPU_LOCKSTEP and
-                    owner // 2 == core // 2):
+            if owner != core and not (r5_lockstep and owner // 2 == core // 2):
                 print(f"ERROR: TCM node {node_path} belongs to RPU core "
                       f"{owner}, but the remote runs on RPU core {core}")
                 return False
@@ -1465,11 +1479,18 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
             print(f"ERROR: TCM node {node_path} is missing a valid "
                   "reg property")
             return False
+        # Core-local view of the bank: remoteproc bank index and local offset.
+        local_view = mapping["rpu_view"][:2]
+        if r5_lockstep and owner is not None and owner % 2 == 1:
+            local_view = [0, local_view[1] + 0x10000]
+            tcm_base = int(xlnx_remoteproc_v2_cluster_base_str(
+                platform, rpu_core), 16) + local_view[1]
+
         # Remoteproc ranges and reg use two address and two size cells.
         size_cells = int_to_cells(tcm_size, 2)
-        core_reg_val.extend(mapping["rpu_view"][:2] + size_cells)
-        cluster_ranges_val.extend(mapping["system_view"][:2] +
-                                  int_to_cells(tcm_base, 2) + size_cells)
+        core_reg_val.extend(local_view + size_cells)
+        cluster_ranges_val.extend(local_view + int_to_cells(tcm_base, 2) +
+                                  size_cells)
 
         # map TCM node name to binding compliant TCM name
         if not any(tcm_name_substr in n.name.lower() for tcm_name_substr in core_reg_names_mappings):
