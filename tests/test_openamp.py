@@ -610,20 +610,24 @@ def test_versal2_scmi_tcm_ids_translate_to_same_core_and_bank():
         assert legacy_id in openamp_xlnx.legacy_memory_nodes, hex(scmi_id)
 
 
-def test_remoteproc_v2_versal2_ignores_xlnx_power_domain(
-        monkeypatch, capsys):
-    """Versal2 does not fall back to a conflicting xlnx,power-domain."""
+def test_versal2_scmi_tcm_ids_cover_every_bank():
+    """Every Versal2 SCMI TCM ID, TCM_A_0A (0x44) to TCM_E_1C (0x61), maps."""
+    assert sorted(openamp_xlnx.versal2_scmi_to_legacy_pd) == \
+        list(range(0x44, 0x62))
+
+
+def test_remoteproc_v2_versal2_ignores_xlnx_power_domain(monkeypatch):
+    """Versal2 maps power-domains, not a conflicting xlnx,power-domain."""
     # SCMI 0x4a is TCM_B_0A. The SDT's xlnx,power-domain for the same node
     # has been seen to carry TCM_A_1A (0x183180ce).
     channel_info, tcm = _remoteproc_v2_fixture(
         0x4A, 0x183180CE, "r52_0b_atcm_global@eba80000")
 
-    result, _ = _construct_remoteproc_v2(
+    result, captured = _construct_remoteproc_v2(
         monkeypatch, openamp_xlnx.SOC_TYPE.VERSAL2, channel_info, tcm)
 
-    assert result is False
-    assert "no address mapping for power-domains ID 0x4a" in \
-        capsys.readouterr().out
+    assert result == "core"
+    assert captured["ranges"] == [0, 0x0, 0x0, 0xEBA80000, 0x0, 0x10000]
 
 
 def test_remoteproc_v2_requires_tcm_reg(monkeypatch, capsys):
@@ -762,6 +766,12 @@ def _tcm_node(tree, name, size, pd_id):
          {"/remoteproc@eba00000/r52f@0": 0,
           "/remoteproc@eba00000/r52f@1": 1,
           "/remoteproc@ebb80000/r52f@1": 7}),
+        # Versal2 SCMI IDs in clusters B and C: RPU_B_0 and RPU_C_1.
+        (openamp_xlnx.SOC_TYPE.VERSAL2,
+         [(2, [("r52_0b_atcm_global@eba80000", 0x10000, 0x4A)]),
+          (5, [("r52_1c_atcm_global@ebb40000", 0x10000, 0x53)])],
+         {"/remoteproc@eba80000/r52f@0": 2,
+          "/remoteproc@ebb00000/r52f@1": 5}),
     ],
 )
 def test_remoteproc_v2_places_each_rpu_core(

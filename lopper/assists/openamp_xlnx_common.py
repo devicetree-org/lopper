@@ -381,6 +381,30 @@ legacy_memory_nodes = {
         "system_view": [0x1, 0x18000, 0x0, 0xEBAE0000, 0x0, 0x8000],
         "rpu_view": [0x1, 0x18000, 0x0, 0x8000]
     },
+    0x18318100: {  # r52_0c_atcm_global
+        "system_view": [0x0, 0x0, 0x0, 0xEBB00000, 0x0, 0x10000],
+        "rpu_view": [0x0, 0x0, 0x0, 0x10000]
+    },
+    0x18318101: {  # r52_0c_btcm_global
+        "system_view": [0x0, 0x10000, 0x0, 0xEBB10000, 0x0, 0x8000],
+        "rpu_view": [0x0, 0x10000, 0x0, 0x8000]
+    },
+    0x18318102: {  # r52_0c_ctcm_global
+        "system_view": [0x0, 0x18000, 0x0, 0xEBB20000, 0x0, 0x8000],
+        "rpu_view": [0x0, 0x18000, 0x0, 0x8000]
+    },
+    0x18318103: {  # r52_1c_atcm_global
+        "system_view": [0x1, 0x0, 0x0, 0xEBB40000, 0x0, 0x10000],
+        "rpu_view": [0x1, 0x0, 0x0, 0x10000]
+    },
+    0x18318104: {  # r52_1c_btcm_global
+        "system_view": [0x1, 0x10000, 0x0, 0xEBB50000, 0x0, 0x8000],
+        "rpu_view": [0x1, 0x10000, 0x0, 0x8000]
+    },
+    0x18318105: {  # r52_1c_ctcm_global
+        "system_view": [0x1, 0x18000, 0x0, 0xEBB60000, 0x0, 0x8000],
+        "rpu_view": [0x1, 0x18000, 0x0, 0x8000]
+    },
     0x18318106: {  # r52_0d_atcm_global
         "system_view": [0x0, 0x0, 0x0, 0xEBC00000, 0x0, 0x10000],
         "rpu_view": [0x0, 0x0, 0x0, 0x10000]
@@ -452,9 +476,10 @@ SDT; the remaining cells are kept for reference.
 # this translation separate from the legacy address table so ``power-domains``
 # can be the authoritative input without duplicating the address descriptors.
 # Only TCMs already supported by legacy_memory_nodes are listed here.
-# 0x183180ce-0x183180d0 are the firmware IDs of TCM_A_1{A,B,C}, the banks of
-# RPU cluster A core 1 (r52_1a_*_global); SCMI TCM_B_0x (0x4a-0x4c,
-# r52_0b_*_global) belongs to another core and is not listed.
+# Each SCMI TCM ID maps to the firmware ID of the same bank:
+# SCMI_PD_VERSAL2_DEV_TCM_<cluster>_<core><bank> to PM_DEV_TCM_<cluster>_
+# <core><bank>. 0x183180ce-0x183180d0 are TCM_A_1{A,B,C}, the banks of RPU
+# cluster A core 1 (r52_1a_*_global).
 versal2_scmi_to_legacy_pd = {
     0x44: 0x183180cb,  # r52_0a_atcm_global
     0x45: 0x183180cc,  # r52_0a_btcm_global
@@ -462,6 +487,18 @@ versal2_scmi_to_legacy_pd = {
     0x47: 0x183180ce,  # r52_1a_atcm_global
     0x48: 0x183180cf,  # r52_1a_btcm_global
     0x49: 0x183180d0,  # r52_1a_ctcm_global
+    0x4a: 0x183180d1,  # r52_0b_atcm_global
+    0x4b: 0x183180d2,  # r52_0b_btcm_global
+    0x4c: 0x183180d3,  # r52_0b_ctcm_global
+    0x4d: 0x183180d4,  # r52_1b_atcm_global
+    0x4e: 0x183180d5,  # r52_1b_btcm_global
+    0x4f: 0x183180d6,  # r52_1b_ctcm_global
+    0x50: 0x18318100,  # r52_0c_atcm_global
+    0x51: 0x18318101,  # r52_0c_btcm_global
+    0x52: 0x18318102,  # r52_0c_ctcm_global
+    0x53: 0x18318103,  # r52_1c_atcm_global
+    0x54: 0x18318104,  # r52_1c_btcm_global
+    0x55: 0x18318105,  # r52_1c_ctcm_global
     0x56: 0x18318106,  # r52_0d_atcm_global
     0x57: 0x18318107,  # r52_0d_btcm_global
     0x58: 0x18318108,  # r52_0d_ctcm_global
