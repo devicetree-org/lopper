@@ -303,6 +303,12 @@ def xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveout
         the Linux remoteproc driver.
     """
     print(" -> xlnx_rpmsg_update_tree_linux", node)
+    # The core's remoteproc driver takes one mailbox and one vdev0buffer;
+    # a second RPMsg relation would replace the first one's mailbox.
+    if core_node.propval("mboxes") != ['']:
+        print(f"ERROR: {core_node.abs_path} already has an RPMsg relation; "
+              f"{node.abs_path} is a second one for the same RPU core")
+        return False
     vdev0buf_node = [n for n in rpmsg_carveouts if "vdev0buf" in n.name]
     if len(vdev0buf_node) == 1:
         vdev0buf_node[0] + LopperProp(name="compatible", value="shared-dma-pool")
@@ -1460,6 +1466,34 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
     # construct remoteproc cluster node
     cluster_node_path = "/remoteproc@" + xlnx_remoteproc_v2_cluster_base_str(platform, rpu_core)
+
+    # A core runs one firmware, so it has one remoteproc relation, and a
+    # cluster in lockstep runs one firmware on its core 0. Check before the
+    # cluster node changes: a second core node would replace the first one's
+    # properties.
+    core_index = int(rpu_core) % 2
+    lockstep = cpu_config == CPU_CONFIG.RPU_LOCKSTEP
+    if lockstep and core_index != 0:
+        print(f"ERROR: RPU core {int(rpu_core)} is core {core_index} of its "
+              "cluster; a cluster in lockstep runs on its core 0")
+        return False
+    try:
+        cluster_node = tree[cluster_node_path]
+    except KeyError:
+        cluster_node = None
+    if cluster_node is not None:
+        lockstep_cluster = lockstep or cluster_node.propval(
+            "xlnx,cluster-mode", list) == [int(CPU_CONFIG.RPU_LOCKSTEP)]
+        for existing in cluster_node.subnodes(children_only=True):
+            if lockstep_cluster:
+                print(f"ERROR: {existing.abs_path} already uses "
+                      f"{cluster_node_path}; a cluster in lockstep can have "
+                      "only one remoteproc relation")
+                return False
+            if existing.name.endswith(f"@{core_index}"):
+                print(f"ERROR: {existing.abs_path} already exists; each RPU "
+                      "core can have only one remoteproc relation")
+                return False
     if not xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_val, cluster_node_path):
         return False
 

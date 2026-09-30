@@ -487,7 +487,7 @@ def _construct_remoteproc_v2(monkeypatch, platform, channel_info, tcm,
         openamp_xlnx, "xlnx_remoteproc_v2_add_core", capture_core)
 
     result = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
-        object(), channel_info, [tcm])
+        tcm.tree, channel_info, [tcm])
     return result, captured
 
 
@@ -729,10 +729,10 @@ def test_remoteproc_v2_reports_invalid_tcm_mapping(
     assert expected_error in diagnostic
 
 
-def _rpu_remote(core_pd, core_num=0):
-    """Remote domain as YAML expansion leaves it for a split RPU core."""
+def _rpu_remote(core_pd, core_num=0, config="split"):
+    """Remote domain as YAML expansion leaves it for an RPU core."""
     remote = LopperNode(-1, "/domains/RPU")
-    remote["cpu_config_str"] = ["split"]
+    remote["cpu_config_str"] = [config]
     remote["core_num"] = [core_num]
     if core_pd is not None:
         remote["rpu_pd_val"] = [0xA5, core_pd]
@@ -861,6 +861,136 @@ def test_remoteproc_v2_places_each_rpu_core(
         banks = sorted(int(n.name.split("@")[1])
                        for n in cluster.subnodes(children_only=True))
         assert sorted(ranges[0::6]) == banks
+
+
+def test_remoteproc_v2_rejects_second_relation_for_core(monkeypatch, capsys):
+    """Two remoteproc relations for one RPU core fail on the second one."""
+    tree = LopperTree()
+    axi = LopperNode(-1, "/axi")
+    axi["#address-cells"] = [2]
+    axi["#size-cells"] = [2]
+    tree + axi
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.ZYNQMP)
+    atcm = _tcm_node(tree, "psu_r5_1_atcm_global@ffe90000", 0x10000, 17)
+    btcm = _tcm_node(tree, "psu_r5_1_btcm_global@ffeb0000", 0x10000, 18)
+
+    # Two domains on RPU1, such as a baremetal and a Zephyr domain.
+    for index, tcm in enumerate((atcm, btcm)):
+        info = {"remote_node": _rpu_remote(0x8)}
+        assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
+        result = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+            tree, info, [tcm])
+        if index == 0:
+            assert result
+            ranges = tree["/remoteproc@ffe00000"].propval("ranges", list)
+
+    assert result is False
+    assert tree["/remoteproc@ffe00000"].propval("ranges", list) == ranges
+    assert ("/remoteproc@ffe00000/r5f@1 already exists; each RPU core can "
+            "have only one remoteproc relation") in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "relations, expected_error",
+    [
+        # A cluster in lockstep runs on its core 0.
+        ([(0x8, "lockstep", "psu_r5_1_atcm_global@ffe90000", 17)],
+         "RPU core 1 is core 1 of its cluster; a cluster in lockstep runs "
+         "on its core 0"),
+        # Core 1 is not free while the cluster runs in lockstep ...
+        ([(0x7, "lockstep", "psu_r5_0_atcm_global@ffe00000", 15),
+          (0x8, "split", "psu_r5_1_atcm_global@ffe90000", 17)],
+         "/remoteproc@ffe00000/r5f@0 already uses /remoteproc@ffe00000; a "
+         "cluster in lockstep can have only one remoteproc relation"),
+        # ... and a cluster with a split core cannot switch to lockstep.
+        ([(0x8, "split", "psu_r5_1_atcm_global@ffe90000", 17),
+          (0x7, "lockstep", "psu_r5_0_atcm_global@ffe00000", 15)],
+         "/remoteproc@ffe00000/r5f@1 already uses /remoteproc@ffe00000; a "
+         "cluster in lockstep can have only one remoteproc relation"),
+    ],
+)
+def test_remoteproc_v2_lockstep_cluster_has_one_relation(
+        monkeypatch, capsys, relations, expected_error):
+    """A cluster in lockstep has one remoteproc relation, on its core 0."""
+    tree = LopperTree()
+    axi = LopperNode(-1, "/axi")
+    axi["#address-cells"] = [2]
+    axi["#size-cells"] = [2]
+    tree + axi
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.ZYNQMP)
+
+    results = []
+    for core_pd, config, tcm_name, tcm_pd in relations:
+        info = {"remote_node": _rpu_remote(core_pd, config=config)}
+        assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
+        tcm = _tcm_node(tree, tcm_name, 0x10000, tcm_pd)
+        results.append(openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+            tree, info, [tcm]))
+
+    assert all(results[:-1]) and results[-1] is False
+    assert expected_error in capsys.readouterr().out
+
+
+def test_rpmsg_allows_one_relation_per_remote_core():
+    """One host may have RPMsg relations to several remote cores."""
+    tree = LopperTree()
+    tree + LopperNode(-1, "/reserved-memory")
+    tree + LopperNode(-1, "/remoteproc@ffe00000")
+    for core_index in (0, 1):
+        carveouts = []
+        for name in ("vdev0vring0", "vdev0vring1", "vdev0buffer"):
+            node = LopperNode(
+                -1, f"/reserved-memory/rpu{core_index}{name}@"
+                    f"{0x9880000 + 0x100000 * core_index:x}")
+            tree + node
+            node.phandle_or_create()
+            carveouts.append(node)
+        core = LopperNode(-1, f"/remoteproc@ffe00000/r5f@{core_index}")
+        tree + core
+        core["memory-region"] = [carveouts[0].phandle]
+        ipi = LopperNode(-1, f"/ipi@ff34{core_index}000")
+        tree + ipi
+        ipi.phandle_or_create()
+        relation = LopperNode(
+            -1, f"/domains/APU/rpmsg-relation/relation{core_index}")
+        tree.sync()
+        assert openamp_xlnx.xlnx_rpmsg_update_tree_linux(
+            tree, relation, ipi, core, carveouts)
+        assert core.propval("mboxes", list) == [ipi.phandle, 0,
+                                                 ipi.phandle, 1]
+
+
+def test_rpmsg_rejects_second_relation_for_core(capsys):
+    """A second RPMsg relation to one remoteproc core fails."""
+    tree = LopperTree()
+    tree + LopperNode(-1, "/reserved-memory")
+    carveouts = []
+    for name in ("vdev0vring0@9880000", "vdev0vring1@9884000",
+                 "vdev0buffer@9888000"):
+        node = LopperNode(-1, f"/reserved-memory/{name}")
+        tree + node
+        node.phandle_or_create()
+        carveouts.append(node)
+    core = LopperNode(-1, "/remoteproc@ffe00000/r5f@0")
+    tree + LopperNode(-1, "/remoteproc@ffe00000")
+    tree + core
+    core["memory-region"] = [carveouts[0].phandle]
+    ipi = LopperNode(-1, "/ipi@ff340000")
+    tree + ipi
+    ipi.phandle_or_create()
+    relation = LopperNode(-1, "/domains/APU/rpmsg-relation/relation0")
+    tree.sync()
+
+    assert openamp_xlnx.xlnx_rpmsg_update_tree_linux(
+        tree, relation, ipi, core, list(carveouts))
+    assert not openamp_xlnx.xlnx_rpmsg_update_tree_linux(
+        tree, relation, ipi, core, list(carveouts))
+    assert ("/remoteproc@ffe00000/r5f@0 already has an RPMsg relation" in
+            capsys.readouterr().out)
 
 
 @pytest.mark.parametrize(
