@@ -1312,6 +1312,26 @@ def xlnx_remoteproc_v2_cluster_base_str(platform, rpu_core):
 
     return base_addresses[platform][rpu_core]
 
+def xlnx_rpu_tcm_owner(platform, tcm_id):
+    """Return the number of the RPU core that owns a TCM bank.
+
+    Args:
+        platform (SOC_TYPE): Detected platform.
+        tcm_id (int): Power-domain ID of the TCM bank, as listed in
+            ``rpu_tcm_pd_ids`` for the platform.
+
+    Returns:
+        int | None: RPU core number, or None when the ID is not a TCM bank
+        of the platform.
+    """
+    if platform not in rpu_tcm_pd_ids or not isinstance(tcm_id, int):
+        return None
+    first_id, banks = rpu_tcm_pd_ids[platform]
+    index = tcm_id - first_id
+    if 0 <= index < banks * rpu_core_pd_ids[platform][1]:
+        return index // banks
+    return None
+
 def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elfload_nodes, verbose = 0):
     """Build the remoteproc cluster and core nodes for a channel.
 
@@ -1401,6 +1421,19 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
             print(f"ERROR: TCM node {node_path} has no address mapping for "
                   f"power-domains ID {pd_id_string}{legacy_id_string}")
             return False
+
+        # A split core may only load its own TCM banks; in lockstep, core 0
+        # uses the banks of both cores in its cluster.
+        owner = xlnx_rpu_tcm_owner(
+            platform, pd_id if platform == SOC_TYPE.VERSAL2 else legacy_pd_id)
+        if owner is not None and rpu_core is not False:
+            core = int(rpu_core)
+            if owner != core and not (
+                    cpu_config == CPU_CONFIG.RPU_LOCKSTEP and
+                    owner // 2 == core // 2):
+                print(f"ERROR: TCM node {node_path} belongs to RPU core "
+                      f"{owner}, but the remote runs on RPU core {core}")
+                return False
 
         # The SDT is authoritative for the TCM bank's global address and
         # size. The table only supplies the core-local view (bank index
