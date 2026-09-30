@@ -509,6 +509,13 @@ def _construct_remoteproc_v2(monkeypatch, platform, channel_info, tcm):
         # Versal NET: transitional SDTs may still use xlnx,power-domain.
         (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0xDEADBEEF, 0x183180CB,
          "psx_r52_0a_atcm_global@eba00000", 0x10000, 0, 0x0, "atcm0"),
+        # Versal NET cluster B: TCM_B_0A at 0xeba80000, TCM_B_1B at
+        # 0xebad0000. The SDT's xlnx,power-domain for r52_0b holds TCM_A_1A
+        # (0x183180ce); power-domains is used first.
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0x183180D1, 0x183180CE,
+         "psx_r52_0b_atcm_global@eba80000", 0x10000, 0, 0x0, "atcm0"),
+        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0x183180D5, None,
+         "psx_r52_1b_btcm_global@ebad0000", 0x8000, 1, 0x10000, "btcm0"),
         # Versal2: SCMI IDs for cluster A core 0 and core 1 (r52_1a).
         (openamp_xlnx.SOC_TYPE.VERSAL2, 0x44, None,
          "r52_0a_atcm_global@eba00000", 0x10000, 0, 0x0, "atcm0"),
