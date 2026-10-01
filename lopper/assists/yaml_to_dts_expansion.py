@@ -35,7 +35,8 @@ import json
 from .lopper_lib import (check_bit_set, clear_bit, chunks,
                          CpuSelectionSource, property_set,
                          resolve_domain_cpus, set_bit,
-                         expand_start_size_to_reg)
+                         expand_start_size_to_reg, node_reg_start_size,
+                         parse_address_map)
 from lopper.log import _init, _warning, _info, _error, _debug
 from .zephyr_memory import (
     LINKER_SCALAR_PROPERTIES,
@@ -43,6 +44,12 @@ from .zephyr_memory import (
     LayoutError,
     linker_section_property,
     resolve_memory_node,
+)
+from .xlnx_rpu_tcm import (
+    is_global_tcm_bank,
+    rpu_cluster_tcm_base,
+    rpu_cpu_type,
+    tcm_bank_type,
 )
 
 sys.path.append(os.path.dirname(__file__))
@@ -1171,6 +1178,70 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
 
     property_set( prop_name, mem_list, subnode )
 
+def _rpu_core_number(cluster_node, cpu_node):
+    """Return an RPU core's number across all RPU clusters.
+
+    SDTs give each RPU core its own ``cpus-r5@N`` or ``cpus-r52@N`` cluster
+    with a single ``cpu@0``, so N is the core's number. Older SDTs put both
+    R5 cores in one cluster; there the core's reg is its number.
+    """
+    cpus = [n for n in cluster_node.subnodes(children_only=True)
+            if n.name.startswith("cpu@")]
+    if len(cpus) == 1 and "@" in cluster_node.name:
+        try:
+            return int(cluster_node.name.split("@")[1], 16)
+        except ValueError:
+            pass
+    reg = cpu_node.propval("reg")
+    return reg[0] if reg != [''] else None
+
+
+def _rpu_tcm_view(tree, cluster_node):
+    """Return the TCM entries of an RPU cluster's address-map.
+
+    Returns a flat list of (power-domain ID, core address, size) triples, one
+    per address-map entry whose target is a TCM bank with a power domain.
+    ZynqMP SDTs map each core's banks at their core-local addresses this way
+    (``<0x0 &psu_r5_0_atcm 0x0 0x10000>``).
+    """
+    address_map = cluster_node.propval("address-map")
+    if address_map == ['']:
+        return []
+    address_cells = cluster_node.propval("#ranges-address-cells")
+    size_cells = cluster_node.propval("#ranges-size-cells")
+    address_cells = address_cells[0] if address_cells != [''] else 1
+    size_cells = size_cells[0] if size_cells != [''] else 1
+    view = []
+    for entry in parse_address_map(address_map, address_cells, size_cells):
+        target = tree.pnode(entry.phandle)
+        if target is None or tcm_bank_type(target.name) is None:
+            continue
+        pd = target.propval("power-domains")
+        if len(pd) < 2 or not isinstance(pd[1], int):
+            continue
+        view.extend([pd[1], entry.child_addr, entry.size])
+    return view
+
+
+def _rpu_cluster_base(tree, cpu_type, core_number):
+    """Return the TCM base of the RPU cluster holding an RPU core.
+
+    RPU clusters hold two cores each, in core order, and each cluster's TCM
+    lies in one aligned span. Sorting the spans of the SDT's TCM banks gives
+    one base per cluster.
+    """
+    bases = set()
+    for node in tree["/"].subnodes():
+        if not is_global_tcm_bank(node.name):
+            continue
+        start, _ = node_reg_start_size(node)
+        if isinstance(start, int):
+            bases.add(rpu_cluster_tcm_base(start, cpu_type))
+    bases = sorted(bases)
+    cluster = core_number // 2
+    return bases[cluster] if cluster < len(bases) else None
+
+
 def openamp_remote_cpu_expand( tree, subnode, cluster_cpu, cluster_node, verbose = 0):
     """ Routine to add OpenAMP specific information for later processing as the remote CPU
         node will be removed before OpenAMP processing can be called.
@@ -1207,6 +1278,22 @@ def openamp_remote_cpu_expand( tree, subnode, cluster_cpu, cluster_node, verbose
         power_domains = selected_cores[0].propval("power-domains")
         if power_domains != ['']:
             subnode + LopperProp(name="rpu_pd_val", value=power_domains)
+
+    # The RPU cluster node is gone by the time OpenAMP runs on a domain
+    # tree, so keep what remoteproc needs from it: the core's number, the
+    # TCM banks its address-map maps, and its RPU cluster's TCM base.
+    cpu_type = (rpu_cpu_type(selected_cores[0])
+                if len(selected_cores) == 1 else None)
+    if cpu_type is not None and cluster_node is not None:
+        core_number = _rpu_core_number(cluster_node, selected_cores[0])
+        if isinstance(core_number, int):
+            subnode + LopperProp(name="rpu_core_num", value=core_number)
+            base = _rpu_cluster_base(tree, cpu_type, core_number)
+            if base is not None:
+                subnode + LopperProp(name="rpu_cluster_base", value=base)
+        tcm_view = _rpu_tcm_view(tree, cluster_node)
+        if tcm_view:
+            subnode + LopperProp(name="rpu_tcm_view", value=tcm_view)
 
     if cluster_node is not None and "r5" in cluster_node.name:
         subnode + LopperProp(name="cpu_config_str", value="lockstep" if check_bit_set(subnode.propval("cpus")[2], 30) else "split")

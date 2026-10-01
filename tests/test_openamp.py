@@ -24,6 +24,7 @@ from lopper.assists import (
     lopper_lib,
     openamp_xlnx,
     openamp_xlnx_common,
+    xlnx_rpu_tcm,
     yaml_to_dts_expansion,
 )
 from lopper.tree import LopperNode, LopperTree
@@ -787,6 +788,31 @@ def test_cluster_address_is_core_0_atcm(platform, clusters):
         for core in range(len(clusters))] == clusters
 
 
+@pytest.mark.parametrize(
+    "cpu_type, banks, base",
+    [
+        # ZynqMP and Versal R5: both cores' ATCM and BTCM.
+        ("cortexr5", [0xFFE00000, 0xFFE20000, 0xFFE90000, 0xFFEB0000],
+         0xFFE00000),
+        # R52 clusters A to E: the A, B and C banks of both cores.
+        ("cortexr52", [0xEBA00000, 0xEBA20000, 0xEBA40000, 0xEBA60000],
+         0xEBA00000),
+        ("cortexr52", [0xEBA80000, 0xEBAA0000, 0xEBAC0000, 0xEBAE0000],
+         0xEBA80000),
+        ("cortexr52", [0xEBB00000, 0xEBB20000, 0xEBB40000, 0xEBB60000],
+         0xEBB00000),
+        ("cortexr52", [0xEBB80000, 0xEBBA0000, 0xEBBC0000, 0xEBBE0000],
+         0xEBB80000),
+        ("cortexr52", [0xEBC00000, 0xEBC20000, 0xEBC40000, 0xEBC60000],
+         0xEBC00000),
+    ],
+)
+def test_cluster_tcm_base_is_core_0_atcm(cpu_type, banks, base):
+    """Every TCM bank of an RPU cluster gives the cluster's core 0 ATCM."""
+    assert {xlnx_rpu_tcm.rpu_cluster_tcm_base(bank, cpu_type)
+            for bank in banks} == {base}
+
+
 def _tcm_node(tree, name, size, pd_id):
     """Add an SDT TCM node /axi/<name> with a reg and power-domains."""
     node = LopperNode(-1, f"/axi/{name}")
@@ -1010,6 +1036,110 @@ def test_remoteproc_v2_rejects_tcm_bank_listed_twice(monkeypatch, capsys):
     assert ("TCM node /axi/psu-r5-0-atcm-lockstep@ffe10000 is a TCM bank "
             "that another elfload node of the remote already lists") in \
         capsys.readouterr().out
+
+
+def _sdt_tree_with_axi():
+    tree = LopperTree()
+    axi = LopperNode(-1, "/axi")
+    axi["#address-cells"] = [2]
+    axi["#size-cells"] = [2]
+    tree + axi
+    return tree
+
+
+def _sdt_node(tree, path, address, size, pd_id=None):
+    node = LopperNode(-1, path)
+    node["reg"] = (lopper_lib.int_to_cells(address, 2) +
+                   lopper_lib.int_to_cells(size, 2))
+    if pd_id is not None:
+        node["power-domains"] = [0xA5, pd_id]
+    tree + node
+    node.phandle_or_create()
+    return node
+
+
+def _sdt_cluster(tree, path, cpu_regs):
+    cluster = LopperNode(-1, path)
+    cluster["compatible"] = ["cpus,cluster"]
+    tree + cluster
+    cpus = []
+    for reg in cpu_regs:
+        cpu = LopperNode(-1, f"{path}/cpu@{reg:x}")
+        cpu["compatible"] = ["arm,cortex-r52"]
+        cpu["reg"] = [reg]
+        tree + cpu
+        cpus.append(cpu)
+    return cluster, cpus
+
+
+@pytest.mark.parametrize(
+    "cluster_path, cpu_regs, selected, core",
+    [
+        # Current SDTs: one cluster per RPU core, holding cpu@0.
+        ("/cpus-r52@3", [0], 0, 3),
+        ("/cpus-r5@1", [0], 0, 1),
+        # Older SDTs: both R5 cores in one cluster.
+        ("/cpus-r5@0", [0, 1], 1, 1),
+    ],
+)
+def test_yaml_rpu_core_number_comes_from_sdt_cluster(
+        cluster_path, cpu_regs, selected, core):
+    """YAML expansion numbers an RPU core by its SDT cluster."""
+    tree = LopperTree()
+    cluster, cpus = _sdt_cluster(tree, cluster_path, cpu_regs)
+
+    assert yaml_to_dts_expansion._rpu_core_number(
+        cluster, cpus[selected]) == core
+
+
+def test_yaml_rpu_tcm_view_comes_from_cluster_address_map():
+    """YAML expansion keeps the TCM banks of the cluster's address-map.
+
+    ZynqMP SDTs map each R5 core's banks at their core-local addresses.
+    Entries for other devices and for TCM nodes without a power domain are
+    skipped.
+    """
+    tree = _sdt_tree_with_axi()
+    atcm = _sdt_node(tree, "/axi/psu_r5_0_atcm@0", 0x0, 0x10000, 15)
+    btcm = _sdt_node(tree, "/axi/psu-r5-0-btcm@20000", 0x20000, 0x10000, 16)
+    tcm_ram = _sdt_node(tree, "/axi/psu_r5_tcm_ram_0@0", 0x0, 0x40000)
+    serial = _sdt_node(tree, "/axi/serial@ff000000", 0xFF000000, 0x1000,
+                       0x21)
+    cluster, _ = _sdt_cluster(tree, "/cpus-r5@0", [0])
+    cluster["#ranges-address-cells"] = [1]
+    cluster["#ranges-size-cells"] = [1]
+    cluster["address-map"] = [
+        0xFF000000, serial.phandle, 0xFF000000, 0x1000,
+        0x0, atcm.phandle, 0x0, 0x10000,
+        0x20000, btcm.phandle, 0x20000, 0x10000,
+        0x0, tcm_ram.phandle, 0x0, 0x40000,
+    ]
+
+    assert yaml_to_dts_expansion._rpu_tcm_view(tree, cluster) == [
+        15, 0x0, 0x10000, 16, 0x20000, 0x10000]
+
+
+@pytest.mark.parametrize(
+    "core, base",
+    [(0, 0xEBA00000), (1, 0xEBA00000), (3, 0xEBA80000), (4, 0xEBB00000),
+     (7, 0xEBB80000), (9, 0xEBC00000), (10, None)],
+)
+def test_yaml_rpu_cluster_base_comes_from_sdt_tcm(core, base):
+    """YAML expansion finds a core's RPU cluster from the SDT's TCM banks."""
+    tree = _sdt_tree_with_axi()
+    for name, address in (
+            ("r52_1e_ctcm_global", 0xEBC60000),
+            ("r52_0a_atcm_global", 0xEBA00000),
+            ("r52_1a_btcm_global", 0xEBA50000),
+            ("r52_0b_atcm_global", 0xEBA80000),
+            ("r52_1c_atcm_global", 0xEBB40000),
+            ("r52_0d_btcm_global", 0xEBB90000)):
+        _sdt_node(tree, f"/axi/{name}@{address:x}", address, 0x8000)
+    # Not a global TCM bank.
+    _sdt_node(tree, "/axi/r52_tcm_alias@0", 0x0, 0x100000)
+
+    assert yaml_to_dts_expansion._rpu_cluster_base(
+        tree, "cortexr52", core) == base
 
 
 def test_rpmsg_allows_one_relation_per_remote_core():
