@@ -1690,6 +1690,17 @@ class LopperSDT:
                 output_filename = self.outdir + "/" + output_filename
 
             if self.use_libfdt:
+                # Resolve before exporting, the same way the .dts path below
+                # does. A node that was moved during lop or assist processing
+                # only picks up its new path when the tree is resolved, and
+                # the symbol table is rebuilt from node labels at that point.
+                # Exporting an unresolved tree writes symbols that still name
+                # the pre-move location, which is worse than writing none at
+                # all: an overlay applied against that dtb resolves its
+                # fixups onto a path that no longer exists.
+                tree_to_write.strict = not self.permissive
+                tree_to_write.resolve()
+
                 fdt = Lopper.fdt()
                 Lopper.sync( fdt, tree_to_write.export() )
                 Lopper.write_fdt( fdt, output_filename, overwrite, self.verbose )
