@@ -766,25 +766,6 @@ def test_rpu_core_comes_from_yaml_expansion(rpu_core_num, core_num, rpu_core):
 
 
 @pytest.mark.parametrize(
-    "platform, clusters",
-    [
-        (openamp_xlnx.SOC_TYPE.ZYNQMP, ["ffe00000"] * 2),
-        (openamp_xlnx.SOC_TYPE.VERSAL, ["ffe00000"] * 2),
-        (openamp_xlnx.SOC_TYPE.VERSAL_NET,
-         ["eba00000", "eba00000", "eba80000", "eba80000"]),
-        (openamp_xlnx.SOC_TYPE.VERSAL2,
-         ["eba00000", "eba00000", "eba80000", "eba80000", "ebb00000",
-          "ebb00000", "ebb80000", "ebb80000", "ebc00000", "ebc00000"]),
-    ],
-)
-def test_cluster_address_is_core_0_atcm(platform, clusters):
-    """Each cluster is named after its core 0 ATCM address in the SDT."""
-    assert [openamp_xlnx.xlnx_remoteproc_v2_cluster_base_str(
-        platform, openamp_xlnx.RPU_CORE(core))
-        for core in range(len(clusters))] == clusters
-
-
-@pytest.mark.parametrize(
     "cpu_type, banks, base",
     [
         # ZynqMP and Versal R5: both cores' ATCM and BTCM.
@@ -913,6 +894,39 @@ def test_remoteproc_v2_rejects_second_relation_for_core(monkeypatch, capsys):
     assert tree["/remoteproc@ffe00000"].propval("ranges", list) == ranges
     assert ("/remoteproc@ffe00000/r5f@1 already exists; each RPU core can "
             "have only one remoteproc relation") in capsys.readouterr().out
+
+
+def test_remoteproc_v2_remote_without_tcm_uses_sdt_cluster_base(monkeypatch):
+    """A remote that loads no TCM still joins its RPU cluster's node."""
+    tree = LopperTree()
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.VERSAL2)
+    remote = _rpu_remote(7)
+    remote["rpu_cluster_base"] = [0xEBB80000]
+    info = {"remote_node": remote}
+    assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
+
+    node = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(tree, info, [])
+
+    assert node.abs_path == "/remoteproc@ebb80000/r52f@1"
+    assert tree["/remoteproc@ebb80000"].propval("ranges", list) == []
+
+
+def test_remoteproc_v2_remote_without_tcm_needs_cluster_base(
+        monkeypatch, capsys):
+    """Without TCM or an SDT cluster base, the cluster is unknown."""
+    tree = LopperTree()
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.VERSAL2)
+    info = {"remote_node": _rpu_remote(7)}
+    assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
+
+    assert openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+        tree, info, []) is False
+    assert ("no TCM bank or RPU cluster base found for remote /domains/RPU"
+            in capsys.readouterr().out)
 
 
 @pytest.mark.parametrize(

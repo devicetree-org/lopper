@@ -43,6 +43,7 @@ from lopper_lib import (
     node_property_cells,
     node_reg_start_size,
 )
+from xlnx_rpu_tcm import rpu_cluster_tcm_base
 from string import ascii_lowercase as alc
 
 _init(__name__)
@@ -1278,51 +1279,6 @@ def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, power_domains, core_
     return core_node
 
 
-def xlnx_remoteproc_v2_cluster_base_str(platform, rpu_core):
-    """Return the remoteproc cluster base address string for an RPU core.
-
-    Args:
-        platform (SOC_TYPE): Detected platform.
-        rpu_core (RPU_CORE): Enum indicating the RPU core index.
-
-    Returns:
-        str: Hexadecimal string representing the base address for the cluster.
-
-    Algorithm:
-        Performs a table lookup keyed by platform and core index to derive the base
-        address required for the cluster node path.
-    """
-    base_addresses = {
-        SOC_TYPE.VERSAL_NET: {
-            RPU_CORE.RPU_0: "eba00000",
-            RPU_CORE.RPU_1: "eba00000",
-            RPU_CORE.RPU_2: "eba80000",
-            RPU_CORE.RPU_3: "eba80000",
-        },
-        SOC_TYPE.VERSAL2: {
-            RPU_CORE.RPU_0: "eba00000",
-            RPU_CORE.RPU_1: "eba00000",
-            RPU_CORE.RPU_2: "eba80000",
-            RPU_CORE.RPU_3: "eba80000",
-            RPU_CORE.RPU_4: "ebb00000",
-            RPU_CORE.RPU_5: "ebb00000",
-            RPU_CORE.RPU_6: "ebb80000",
-            RPU_CORE.RPU_7: "ebb80000",
-            RPU_CORE.RPU_8: "ebc00000",
-            RPU_CORE.RPU_9: "ebc00000",
-        },
-        SOC_TYPE.ZYNQMP: {
-            RPU_CORE.RPU_0: "ffe00000",
-            RPU_CORE.RPU_1: "ffe00000",
-        },
-        SOC_TYPE.VERSAL: {
-            RPU_CORE.RPU_0: "ffe00000",
-            RPU_CORE.RPU_1: "ffe00000",
-        },
-    }
-
-    return base_addresses[platform][rpu_core]
-
 def xlnx_rpu_tcm_owner(platform, tcm_id):
     """Return the number of the RPU core that owns a TCM bank.
 
@@ -1360,14 +1316,18 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
         ranges for TCM and DDR nodes, and ensures the cluster node exists with the
         correct configuration. Versal2 TCM addresses are selected by their SCMI
         power-domain IDs; older firmware IDs and ``xlnx,power-domain`` remain
-        compatibility paths. Finally, tracks new DDR regions and inserts the core
-        node using ``xlnx_remoteproc_v2_add_core``.
+        compatibility paths. The cluster node is named after the base of the
+        RPU cluster's TCM span, found from the remote's TCM addresses, or for
+        a remote without TCM from the base that YAML expansion took from the
+        SDT. Finally, tracks new DDR regions and inserts the core node using
+        ``xlnx_remoteproc_v2_add_core``.
     """
     print(" -> xlnx_remoteproc_v2_construct_cluster")
  
     cpu_config = openamp_channel_info["cpu_config"]
+    remote_node = openamp_channel_info["remote_node"]
 
-    rpu_core = determinte_rpu_core(tree, cpu_config, openamp_channel_info["remote_node"] )
+    rpu_core = determinte_rpu_core(tree, cpu_config, remote_node)
     platform = get_platform(tree, verbose)
     cluster_ranges_val = []
     core_reg_names = []
@@ -1376,6 +1336,7 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
     if not platform_validate(platform):
         return False
+    family = RPU_FAMILIES[platform]
 
     power_domains = openamp_channel_info["rpu_core_pd_prop"].value
 
@@ -1392,6 +1353,7 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
     r5_lockstep = (cpu_config == CPU_CONFIG.RPU_LOCKSTEP and
                    platform in (SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL))
     tcm_bank_ids = set()
+    cluster_bases = set()
 
     # loop through TCM nodes
     for n in [ n for n in channel_elfload_nodes if n.propval("xlnx,ip-name") != [''] ]:
@@ -1470,16 +1432,17 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
             return False
         # Core-local view of the bank: remoteproc bank index and local offset.
         local_view = mapping["rpu_view"][:2]
+        cluster_base = rpu_cluster_tcm_base(tcm_base, family.cpu_type)
         if r5_lockstep and owner is not None and owner % 2 == 1:
             local_view = [0, local_view[1] + 0x10000]
-            tcm_base = int(xlnx_remoteproc_v2_cluster_base_str(
-                platform, rpu_core), 16) + local_view[1]
+            tcm_base = cluster_base + local_view[1]
 
         # Remoteproc ranges and reg use two address and two size cells.
         size_cells = int_to_cells(tcm_size, 2)
         core_reg_val.extend(local_view + size_cells)
         cluster_ranges_val.extend(local_view + int_to_cells(tcm_base, 2) +
                                   size_cells)
+        cluster_bases.add(cluster_base)
 
         # map TCM node name to binding compliant TCM name
         if not any(tcm_name_substr in n.name.lower() for tcm_name_substr in core_reg_names_mappings):
@@ -1490,8 +1453,24 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
             if tcm_substr in n.name:
                 core_reg_names.append(core_reg_names_mappings[tcm_substr])
 
-    # construct remoteproc cluster node
-    cluster_node_path = "/remoteproc@" + xlnx_remoteproc_v2_cluster_base_str(platform, rpu_core)
+    # The cluster node is named after the base of the RPU cluster's TCM
+    # span, so both cores of a cluster share it.
+    if len(cluster_bases) > 1:
+        print("ERROR: the TCM banks of remote "
+              f"{getattr(remote_node, 'abs_path', remote_node)} are in more "
+              "than one RPU cluster: " +
+              ", ".join(hex(base) for base in sorted(cluster_bases)))
+        return False
+    if cluster_bases:
+        cluster_base = cluster_bases.pop()
+    else:
+        sdt_base = remote_node.propval("rpu_cluster_base", list)
+        if sdt_base == [""] or not isinstance(sdt_base[0], int):
+            print("ERROR: no TCM bank or RPU cluster base found for remote "
+                  f"{getattr(remote_node, 'abs_path', remote_node)}")
+            return False
+        cluster_base = sdt_base[0]
+    cluster_node_path = f"/remoteproc@{cluster_base:x}"
 
     # A core runs one firmware, so it has one remoteproc relation, and a
     # cluster in lockstep runs one firmware on its core 0. Check before the
