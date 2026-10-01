@@ -23,6 +23,7 @@ from pathlib import PurePath
 from io import StringIO
 import contextlib
 import importlib
+import traceback
 from lopper import Lopper
 from lopper import LopperFmt
 import lopper
@@ -613,7 +614,11 @@ def xlnx_rpmsg_update_tree_zephyr(machine, tree, ipi_node, domain_node, ipc_node
         and clears flash/OCM choices that would clash with RPMsg shared memory.
     """
 
-    ipc_node = xlnx_openamp_configure_zephyr_ipc_shm(tree, ipc_nodes)
+    try:
+        ipc_node = xlnx_openamp_configure_zephyr_ipc_shm(tree, ipc_nodes)
+    except ValueError as exc:
+        _error(f"openamp_xlnx: {domain_node.abs_path}: {exc}")
+        return False
 
     direct_ipm_target = xlnx_openamp_uses_direct_ipm(machine)
 
@@ -762,9 +767,8 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
         ipi_base, _ = _required_reg_region(ipi_node.parent)
         ttc_node_id = _libmetal_ttc_xilpm_node_id(tree, timer_node, platform)
     except ValueError as exc:
-        # Returning False lets the assist dispatcher warn and exit zero unless
-        # --werror is set. Fail here so builds cannot accept a missing CMake file.
-        _error(f"openamp_xlnx: {exc}", 1)
+        _error(f"openamp_xlnx: {exc}")
+        return False
 
     suffix = "ipi" if platform == SOC_TYPE.ZYNQMP else "mailbox"
 
@@ -1655,9 +1659,9 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
     if not match_cpunode and os != "linux_dt":
         _error(
             "openamp_xlnx: cannot generate '%s': processor '%s' was not "
-            "found in the system device tree" % (output_file_name, machine),
-            1,
+            "found in the system device tree" % (output_file_name, machine)
         )
+        return False
 
     domains = sdt.tree['/domains']
     relation_node = None
@@ -1708,9 +1712,9 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
         _error(
             "openamp_xlnx: cannot generate '%s': no %s relation found for "
             "processor '%s' and OS '%s'; supported targets: %s" %
-            (output_file_name, compatible, machine, os, targets),
-            1,
+            (output_file_name, compatible, machine, os, targets)
         )
+        return False
 
     carveouts = None
     ipi_node = None
@@ -1937,15 +1941,35 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
         verbose (int): Verbosity level for diagnostic output.
 
     Returns:
-        bool: True when processing succeeds or no domains exist, False on errors.
+        bool: True when processing succeeds or no domains exist.
 
     Raises:
-        SystemExit: If a requested OpenAMP relation cannot be processed.
+        SystemExit: If any step fails or raises.
 
     Algorithm:
-        Parses assist arguments, checks for OpenAMP-compatible domains, delegates
-        relation handling when appropriate. Relation-processing failures are
-        fatal because continuing would write an incomplete OpenAMP device tree.
+        Runs ``_xlnx_openamp_parse`` and exits with status 1 if it fails or
+        raises. Lopper only warns when an assist returns False, so this is
+        where every OpenAMP failure becomes fatal: continuing would write an
+        incomplete device tree or output file. Each step logs its own reason
+        before returning False.
+    """
+    try:
+        succeeded = _xlnx_openamp_parse(sdt, options, verbose)
+    except Exception as exc:
+        origin = traceback.extract_tb(exc.__traceback__)[-1]
+        _error(f"openamp_xlnx: {type(exc).__name__}: {exc} (at "
+               f"{os.path.basename(origin.filename)}:{origin.lineno} in "
+               f"{origin.name})", 1)
+    if not succeeded:
+        _error("openamp_xlnx: OpenAMP processing failed; see the errors "
+               "above", 1)
+    return True
+
+def _xlnx_openamp_parse(sdt, options, verbose = 0 ):
+    """Parse assist arguments and run the requested OpenAMP processing.
+
+    Returns:
+        bool: True on success; False after logging why a step failed.
     """
     # Xilinx OpenAMP subroutine to parse OpenAMP Channel
     # information and generate Device Tree information.
@@ -1966,7 +1990,12 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
         return True
 
     if openamp_args["openamp_output_filename"]:
-        return openamp_nontree_outputs_handler(sdt, openamp_args["openamp_output_filename"], openamp_args, 1 )
+        output_file_name = openamp_args["openamp_output_filename"]
+        if not openamp_nontree_outputs_handler(sdt, output_file_name,
+                                               openamp_args, 1):
+            _error("openamp_xlnx: cannot generate '%s'" % output_file_name)
+            return False
+        return True
 
     xlnx_openamp_update_relation_timers(
         sdt, openamp_args["dt_type"], machine)
@@ -1977,8 +2006,8 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
             _error(
                 "openamp_xlnx: failed to process OpenAMP relations for "
                 "processor '%s' and OS '%s'" %
-                (machine, openamp_args["dt_type"]),
-                1,
+                (machine, openamp_args["dt_type"])
             )
+            return False
 
     return True

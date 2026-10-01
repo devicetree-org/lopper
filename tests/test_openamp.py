@@ -1564,20 +1564,18 @@ def test_libmetal_missing_processor_lists_supported_targets(monkeypatch, caplog)
     monkeypatch.setattr(openamp_xlnx, "get_cpu_node",
                         lambda sdt, options: requested_cpu)
 
-    with pytest.raises(SystemExit) as error:
-        openamp_xlnx.openamp_nontree_outputs_handler(
-            sdt,
-            "unused.cmake",
-            {
-                "machine": "psu_cortexr5_0",
-                "dt_type": "baremetal_dt",
-                "relation_parent": None,
-                "relation": None,
-                "compatible_string": "libmetal,ipc-v1",
-            },
-        )
+    assert openamp_xlnx.openamp_nontree_outputs_handler(
+        sdt,
+        "unused.cmake",
+        {
+            "machine": "psu_cortexr5_0",
+            "dt_type": "baremetal_dt",
+            "relation_parent": None,
+            "relation": None,
+            "compatible_string": "libmetal,ipc-v1",
+        },
+    ) is False
 
-    assert error.value.code == 1
     assert "cannot generate 'unused.cmake'" in caplog.text
     assert "no libmetal,ipc-v1 relation found" in caplog.text
     assert "processor 'psu_cortexr5_0'" in caplog.text
@@ -1614,3 +1612,100 @@ def test_openamp_relation_failure_exits_nonzero(monkeypatch, caplog):
     assert error.value.code == 1
     assert "failed to process OpenAMP relations" in caplog.text
     assert "processor 'cortexa78_0' and OS 'linux_dt'" in caplog.text
+
+
+def _openamp_parse_config(**overrides):
+    config = {
+        "machine": "cortexa78_0",
+        "dt_type": "linux_dt",
+        "openamp_output_filename": None,
+        "report_valid_ipis": False,
+    }
+    config.update(overrides)
+    return config
+
+
+def test_openamp_output_failure_exits_nonzero(monkeypatch, caplog):
+    """A requested output file that cannot be generated fails the build."""
+    sdt = type("FakeSdt", (), {"tree": object()})()
+    monkeypatch.setattr(
+        openamp_xlnx, "parse_openamp_args",
+        lambda args: _openamp_parse_config(
+            openamp_output_filename="openamp.h"))
+    monkeypatch.setattr(
+        openamp_xlnx, "xlnx_openamp_find_compat_domains", lambda tree: True)
+    monkeypatch.setattr(
+        openamp_xlnx, "openamp_nontree_outputs_handler",
+        lambda sdt, name, args, verbose: False)
+
+    with pytest.raises(SystemExit) as error:
+        openamp_xlnx.xlnx_openamp_parse(sdt, {"args": []})
+
+    assert error.value.code == 1
+    assert "cannot generate 'openamp.h'" in caplog.text
+    assert "OpenAMP processing failed" in caplog.text
+
+
+def test_openamp_invalid_arguments_exit_nonzero(caplog):
+    """Assist arguments that name no processor fail the build."""
+    sdt = type("FakeSdt", (), {"tree": object()})()
+
+    with pytest.raises(SystemExit) as error:
+        openamp_xlnx.xlnx_openamp_parse(sdt, {"args": []})
+
+    assert error.value.code == 1
+    assert "no processor given" in caplog.text
+
+
+def test_openamp_unexpected_exception_exits_nonzero(monkeypatch, caplog):
+    """An exception during OpenAMP processing fails the build and says
+    where it was raised."""
+    sdt = type("FakeSdt", (), {"tree": object()})()
+    monkeypatch.setattr(
+        openamp_xlnx, "parse_openamp_args",
+        lambda args: _openamp_parse_config())
+    monkeypatch.setattr(
+        openamp_xlnx, "xlnx_openamp_find_compat_domains", lambda tree: True)
+    monkeypatch.setattr(
+        openamp_xlnx, "xlnx_openamp_update_relation_timers",
+        lambda sdt, dt_type, machine: True)
+
+    def broken_relations(sdt, machine, find_only, os):
+        return None.propval("cpu_config_str")
+
+    monkeypatch.setattr(
+        openamp_xlnx, "xlnx_handle_relations", broken_relations)
+
+    with pytest.raises(SystemExit) as error:
+        openamp_xlnx.xlnx_openamp_parse(sdt, {"args": []})
+
+    assert error.value.code == 1
+    assert ("openamp_xlnx: AttributeError: 'NoneType' object has no "
+            "attribute 'propval' (at test_openamp.py:") in caplog.text
+    assert "in broken_relations)" in caplog.text
+
+
+def test_zephyr_ipc_carveouts_that_are_not_contiguous_fail(caplog):
+    """Non-contiguous Zephyr IPC carveouts are reported, not raised."""
+    tree = LopperTree()
+    reserved = LopperNode(-1, "/reserved-memory")
+    reserved["#address-cells"] = [2]
+    reserved["#size-cells"] = [2]
+    tree + reserved
+    nodes = []
+    for name, base in (("vring0", 0x3ed40000), ("vring1", 0x3ed44000),
+                       ("buffer", 0x3ed50000)):
+        node = LopperNode(-1, f"/reserved-memory/{name}@{base:x}")
+        node["reg"] = (lopper_lib.int_to_cells(base, 2) +
+                       lopper_lib.int_to_cells(0x4000, 2))
+        tree + node
+        nodes.append(node)
+    domain = LopperNode(-1, "/domains/RPU")
+
+    assert openamp_xlnx.xlnx_rpmsg_update_tree_zephyr(
+        "psu_cortexr5_0", tree, None, domain, nodes,
+        "openamp,rpmsg-v1") is False
+    assert ("openamp_xlnx: /domains/RPU: IPC carveouts are not contiguous: "
+            "/reserved-memory/vring1@3ed44000 ends at 0x3ed48000, "
+            "/reserved-memory/buffer@3ed50000 starts at 0x3ed50000"
+            ) in caplog.text

@@ -89,7 +89,8 @@ def test_invalid_ttc_binding_reports_timer(problem, diagnostic):
 
 @pytest.mark.parametrize('os_name', ['linux_dt', 'baremetal_dt'])
 @pytest.mark.parametrize('invalid_region', [None, 'desc0', 'desc1', 'data', 'timer', 'mailbox'])
-def test_cmake_generation(tmp_path, monkeypatch, os_name, invalid_region):
+def test_cmake_generation(tmp_path, monkeypatch, caplog, os_name,
+                          invalid_region):
     tree, timer, provider = ttc_tree()
     carveouts = []
     for i, name in enumerate(('desc0', 'desc1', 'data')):
@@ -111,10 +112,11 @@ def test_cmake_generation(tmp_path, monkeypatch, os_name, invalid_region):
         regions = dict(zip(('desc0', 'desc1', 'data'), carveouts))
         regions.update(timer=timer, mailbox=mailbox)
         regions[invalid_region]['reg'] = [0, 0, 0, 0]
-        with pytest.raises(SystemExit) as exc:
-            assist.xlnx_libmetal_gen_output_file(
-                tree, output, carveouts, channel, timer, os_name)
-        assert exc.value.code == 1
+        # The function reports the region and fails; xlnx_openamp_parse
+        # turns the failure into exit status 1.
+        assert assist.xlnx_libmetal_gen_output_file(
+            tree, output, carveouts, channel, timer, os_name) is False
+        assert "has an invalid reg property" in caplog.text
         assert not output.exists()
         return
     assert assist.xlnx_libmetal_gen_output_file(
