@@ -5,10 +5,11 @@
 1. [Purpose](#purpose)
 2. [Workflow overview](#workflow-overview)
 3. [Shared OpenAMP processing](#shared-openamp-processing)
-4. [Zephyr remote workflow](#zephyr-remote-workflow)
-5. [Libmetal workflow](#libmetal-workflow)
-6. [Responsibility boundaries](#responsibility-boundaries)
-7. [Validation](#validation)
+4. [Linux remoteproc nodes](#linux-remoteproc-nodes)
+5. [Zephyr remote workflow](#zephyr-remote-workflow)
+6. [Libmetal workflow](#libmetal-workflow)
+7. [Responsibility boundaries](#responsibility-boundaries)
+8. [Validation](#validation)
 
 ## Purpose
 
@@ -74,6 +75,44 @@ and Versal Gen 2 use the mailbox transport.
 
 The OpenAMP transform retains common memory-policy metadata for the dedicated
 Zephyr assists. It does not assign application objects to linker regions.
+
+## Linux remoteproc nodes
+
+For a Linux host, each remoteproc relation becomes a core node in a
+`remoteproc@<base>` cluster node, as the `xlnx,zynqmp-r5fss` binding
+describes. The values come from the SDT and the domain YAML:
+
+| Value | Source |
+|---|---|
+| RPU core number | Unit address N of the remote's `cpus-r5@N` or `cpus-r52@N` cluster |
+| Core node `r5f@<i>` / `r52f@<i>`, bank index | The core's position in its two-core RPU cluster, N % 2 |
+| TCM bank global address and size | The bank node's `reg` |
+| TCM bank power domain | The bank node's `power-domains`; `xlnx,power-domain` is not used |
+| TCM bank type | ATCM, BTCM or CTCM in the bank node's name |
+| TCM bank core-local address | The RPU cluster `address-map`, when it maps the bank at a core-local address (ZynqMP SDTs); otherwise the CPU's TCM layout: R5 ATCM 0x0, BTCM 0x20000; R52 ATCM 0x0, BTCM 0x10000, CTCM 0x18000 |
+| Cluster base | The aligned TCM span holding the remote's banks (1 MB on R5, 512 KB on R52), which starts at the cluster's core 0 ATCM; for a remote without TCM, the Nth such span among the SDT's TCM banks, N being the core number // 2 |
+
+YAML expansion stores the core number, the cluster's TCM `address-map`
+entries and the cluster base on the remote domain (`rpu_core_num`,
+`rpu_tcm_view`, `rpu_cluster_base`), because OpenAMP runs on a domain tree
+from which the RPU cluster nodes have been removed.
+
+The R52 core-local TCM addresses are set by software at boot. The Zephyr
+assists configure them from the same layout (`xlnx_rpu_tcm.py`), so Zephyr
+firmware and the Linux remoteproc node agree.
+
+A cluster in lockstep runs one remote, on its core 0. R52 cores do not combine
+TCM, so an R52 lockstep remote loads its own banks at the same addresses as in
+split mode. In R5 lockstep the two cores' TCMs are combined: the remote lists
+core 0's banks and the SDT's lockstep banks at 0xffe10000 and 0xffe30000, all
+in bank 0 at their offset in the cluster's TCM span (0x0, 0x20000, 0x10000,
+0x30000), named `atcm0`, `btcm0`, `atcm1` and `btcm1`.
+
+Lopper copies each bank's `power-domains` from the SDT. Current SDTs give the
+R5 lockstep banks core 0's power domains, where Linux expects core 1's; the
+generated node then lists a power domain twice and Lopper warns that the
+output is malformed because of the SDT input. The output is correct once the
+SDT is fixed.
 
 ## Zephyr remote workflow
 
