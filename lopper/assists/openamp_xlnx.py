@@ -29,7 +29,7 @@ import lopper
 from lopper.tree import *
 from re import *
 from string import Template
-from lopper.log import _init, _warning, _info, _error
+from lopper.log import _init, _warning, _info, _error, _debug
 
 sys.path.append(os.path.dirname(__file__))
 from openamp_xlnx_common import *
@@ -68,12 +68,11 @@ def _required_reg_region(node):
     two-address-cell/two-size-cell representation.
     """
     if not isinstance(node, LopperNode):
-        raise ValueError("OPENAMP: XLNX: expected a node with a reg property")
+        raise ValueError("expected a node with a reg property")
 
     base, size = node_reg_start_size(node)
     if base is None or size is None or size <= 0:
-        raise ValueError("OPENAMP: XLNX: %s has an invalid reg property" %
-                         node.abs_path)
+        raise ValueError("%s has an invalid reg property" % node.abs_path)
     return base, size
 
 def is_compat( node, compat_string_to_test ):
@@ -112,7 +111,8 @@ def xlnx_openamp_keep_node(linux_dt, zephyr_dt, node, tree):
         Try each condition for the given node.
     """
     if not isinstance(node, LopperNode):
-        print("OPENAMP: XLNX: ERROR: expected node ref in xlnx_openamp_keep_node")
+        _error("openamp_xlnx: xlnx_openamp_keep_node expects a node, got %r"
+               % (node,))
         return False
 
     conditions = [
@@ -224,7 +224,8 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None):
     # get_cpu_node expects dictionary where first arg first element is machine
     match_cpunode = get_cpu_node(sdt, {'args':[machine]})
     if not match_cpunode:
-        print("xlnx_handle_relations: unable to find machine: ", machine)
+        _error("openamp_xlnx: processor '%s' not found in the system "
+               "device tree" % machine)
         return False
 
     # first collect all relevant openamp domains
@@ -280,7 +281,8 @@ def xlnx_handle_relations(sdt, machine, find_only = True, os = None):
             return False
 
     if not remoteproc_relations and not rpmsg_relations:
-        print("OPENAMP: XLNX: WARNING: no remoteproc or rpmsg relations found for machine", machine)
+        _warning("openamp_xlnx: no remoteproc or RPMsg relations found for "
+                 "processor '%s'" % machine)
 
     # if here for find case, then return None as failure
     # if processing too and we are here, then this did not encounter error. So return True.
@@ -307,25 +309,22 @@ def xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveout
         entries to trail RPMsg carveouts, and injects mailbox properties required by
         the Linux remoteproc driver.
     """
-    print(" -> xlnx_rpmsg_update_tree_linux", node)
+    _debug("openamp_xlnx: xlnx_rpmsg_update_tree_linux %s" % node.abs_path)
     # The core's remoteproc driver takes one mailbox and one vdev0buffer;
     # a second RPMsg relation would replace the first one's mailbox.
     if core_node.propval("mboxes") != ['']:
-        print(f"ERROR: {core_node.abs_path} already has an RPMsg relation; "
-              f"{node.abs_path} is a second one for the same RPU core")
+        _error(f"openamp_xlnx: {core_node.abs_path} already has an RPMsg "
+               f"relation; {node.abs_path} is a second one for the same "
+               "RPU core")
         return False
-    vdev0buf_node = [n for n in rpmsg_carveouts if "vdev0buf" in n.name]
-    if len(vdev0buf_node) == 1:
-        vdev0buf_node[0] + LopperProp(name="compatible", value="shared-dma-pool")
-    else:
-        print("ERROR: missing or multiple vdev0buf nodes for linux rpmsg case")
-        return False
-
-    # vdev0buf should be first after the ELF load prop already in memory-region
+    # The carveouts hold one vdev0buffer, which goes first after the ELF
+    # load region already in memory-region.
     vdev0buf = [ index for index, rc in enumerate(rpmsg_carveouts) if "vdev0buffer" in rc.name ]
     if len(vdev0buf) != 1:
-        print("ERROR: xlnx_rpmsg_update_tree_linux: expected 1 vdev0buffer node. got ", vdev0buf)
+        _error(f"openamp_xlnx: {node.abs_path}: expected one vdev0buffer "
+               f"carveout, found {len(vdev0buf)}")
         return False
+    rpmsg_carveouts[vdev0buf[0]] + LopperProp(name="compatible", value="shared-dma-pool")
 
     vdev0buf = rpmsg_carveouts.pop(vdev0buf[0])
     rpmsg_carveouts.insert(0, vdev0buf)
@@ -367,7 +366,8 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
     # get_cpu_node expects dictionary where first arg first element is machine
     match_cpunode = get_cpu_node(sdt, {'args':[machine]})
     if not match_cpunode:
-        print("unable to find machine: ", machine)
+        _error("openamp_xlnx: processor '%s' not found in the system "
+               "device tree" % machine)
         return False
 
     # map machine to CPU node and then to openamp domain with relation
@@ -385,7 +385,8 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
              break
 
     if target_node is None:
-        print("OPENAMP: XLNX: ERROR: unable to map machine", machine, "to relation")
+        _error("openamp_xlnx: no OpenAMP relation found for processor '%s'"
+               % machine)
         return False
 
     # find node described in the domain that is for ELF LOAD
@@ -393,34 +394,39 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
     # remote should only have one relevant host
     rpmsg_rels = target_node.subnodes(children_only=True)
     if len(rpmsg_rels) != 1:
-        print("OPENAMP: XLNX: ERROR: expected 1 and only 1 rpmsg relation for ", target_node)
+        _error(f"openamp_xlnx: {target_node.abs_path}: expected one "
+               f"relation, found {len(rpmsg_rels)}")
         return False
 
     rpmsg_rel = rpmsg_rels[0]
     host = rpmsg_rel.propval("host")
     if host == [''] or len(host) != 1:
-        print("OPENAMP: XLNX: ERROR: expected host prop for", target_node)
+        _error(f"openamp_xlnx: {rpmsg_rel.abs_path}: expected one host "
+               "property")
         return False
 
     host_node = sdt.tree.pnode(host[0])
     if not isinstance(host_node, LopperNode):
-        print("OPENAMP: XLNX: ERROR: expected host node ref in host prop for", rpmsg_rel)
+        _error(f"openamp_xlnx: {rpmsg_rel.abs_path}: host does not "
+               "reference a domain")
         return False
 
     if target_node.propval('compatible') == ["libmetal,ipc-v1"]:
         for rel in target_node.subnodes(children_only=True):
             elfload = rel.propval("elfload")
             if elfload == ['']:
-                print("OPENAMP: XLNX: ERROR: libmetal remote domain needs elfload property.")
+                _error(f"openamp_xlnx: {rel.abs_path}: a libmetal remote "
+                       "needs an elfload property")
                 return False
             elfload_node = sdt.tree.pnode(elfload[0])
             try:
                 base, size = _required_reg_region(elfload_node)
             except ValueError as exc:
-                print(exc)
+                _error(f"openamp_xlnx: {exc}")
                 return False
             return (base, size, "LIBMETAL_DDR")
-        print("OPENAMP: XLNX: ERROR: libmetal invalid domain setup.")
+        _error(f"openamp_xlnx: {target_node.abs_path}: libmetal domain has "
+               "no relations")
         return False
 
     # look through host for matching remoteproc relation. If found then return the relation's elfload property reg value
@@ -428,19 +434,22 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
         if ['openamp,remoteproc-v2'] == rel.parent.propval("compatible"):
             remote = rel.propval("remote")
             if remote == ['']:
-                print("OPENAMP: XLNX: ERROR: elfload needs remoteproc host to describe elfload region")
+                _error(f"openamp_xlnx: {rel.abs_path}: remoteproc relation "
+                       "has no remote, so its elfload cannot be found")
                 return False
 
             #  check that the referenced remote matches
             referenced_remote_domain = sdt.tree.pnode(remote[0])
             if referenced_remote_domain is None or referenced_remote_domain != target_node.parent.parent:
-                print("OPENAMP: XLNX: ERROR: referenced remote is invalid for host", rel)
+                _error(f"openamp_xlnx: {rel.abs_path}: remote does not "
+                       "reference this domain")
                 return False
 
             elfload_nodes = [ sdt.tree.pnode(i) for i in rel.propval("elfload") ]
             relevant_elfload_nodes = [ i for i in elfload_nodes if i is not None and 'mmio-sram' not in i.propval('compatible')]
             if not relevant_elfload_nodes:
-                print("OPENAMP: XLNX: ERROR: expected at least one ELFLOAD node for case of generating openamp linker script using DDR.")
+                _error(f"openamp_xlnx: {rel.abs_path}: a DDR linker script "
+                       "needs at least one DDR elfload region")
                 return False
 
             # return reg from match
@@ -448,12 +457,13 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
                 base, size = _required_reg_region(
                     relevant_elfload_nodes[0])
             except ValueError as exc:
-                print(exc)
+                _error(f"openamp_xlnx: {exc}")
                 return False
 
             return (base, size, "RSC_TABLE")
 
-    print("OPENAMP: XLNX: ERROR: unable to find elf load carveout")
+    _error("openamp_xlnx: no remoteproc relation gives an elfload region "
+           "for processor '%s'" % machine)
     return False
 
 def xlnx_openamp_uses_direct_ipm(machine):
@@ -525,8 +535,8 @@ def xlnx_openamp_apply_legacy_zephyr_memories(tree, domain_node):
 def xlnx_openamp_configure_zephyr_ipc_shm(tree, ipc_nodes):
     """Combine the OpenAMP vrings and buffer into one Zephyr IPC SRAM node."""
     if len(ipc_nodes) != 3:
-        raise ValueError("OPENAMP: XLNX: Zephyr RPMsg requires three IPC "
-                         "carveouts; found %d" % len(ipc_nodes))
+        raise ValueError("Zephyr RPMsg requires three IPC carveouts; "
+                         "found %d" % len(ipc_nodes))
 
     regions = []
     ipc_phandles = set()
@@ -538,7 +548,7 @@ def xlnx_openamp_configure_zephyr_ipc_shm(tree, ipc_nodes):
 
     for previous, current in zip(regions, regions[1:]):
         if previous[1] != current[0]:
-            raise ValueError("OPENAMP: XLNX: IPC carveouts are not contiguous: "
+            raise ValueError("IPC carveouts are not contiguous: "
                              "%s ends at %#x, %s starts at %#x" %
                              (previous[2].abs_path, previous[1],
                               current[2].abs_path, current[0]))
@@ -679,7 +689,7 @@ def _libmetal_ttc_xilpm_node_id(tree, timer_node, platform):
     or unsupported bindings raise ValueError for the output caller to report.
     """
     def invalid(reason):
-        return ValueError(f"OPENAMP: XLNX: {timer_node.abs_path}: {reason}")
+        return ValueError(f"{timer_node.abs_path}: {reason}")
 
     pd = timer_node.propval("power-domains", list)
     if len(pd) != 2 or not all(isinstance(cell, int) and cell >= 0 for cell in pd):
@@ -735,9 +745,10 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
     Raises:
         SystemExit: If a required reg region or the TTC power binding is invalid.
     """
-    print(" ---> xlnx_libmetal_gen_output_file")
+    _debug("openamp_xlnx: xlnx_libmetal_gen_output_file %s" % output_file)
     platform = get_platform(tree, verbose)
     if platform is None:
+        _report_unsupported_platform(tree)
         return False
     desc0 = carveouts[0]
     desc1 = carveouts[1]
@@ -753,7 +764,7 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
     except ValueError as exc:
         # Returning False lets the assist dispatcher warn and exit zero unless
         # --werror is set. Fail here so builds cannot accept a missing CMake file.
-        _error(str(exc), 1)
+        _error(f"openamp_xlnx: {exc}", 1)
 
     suffix = "ipi" if platform == SOC_TYPE.ZYNQMP else "mailbox"
 
@@ -779,7 +790,8 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
     values.update({"SHM1_DESC_DEV_NAME": "%s.%s" % (desc1.name.split("@")[1].lower(), desc1.name.split("@")[0].lower())})
 
     if os not in [ "linux_dt", "baremetal_dt" ]:
-        print("unsupported os:", os)
+        _error("openamp_xlnx: libmetal output supports linux_dt and "
+               "baremetal_dt, not '%s'" % os)
         return False
 
     try:
@@ -787,7 +799,8 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
             output = Template(libmetal_cmake_template)
             f.write(output.substitute(values))
     except Exception as e:
-        print("OPENAMP: XLNX: ERROR: xlnx_libmetal_gen_output_file: Error in generating template for RPU header.", e)
+        _error(f"openamp_xlnx: cannot write libmetal output {output_file}: "
+               f"{e}")
         return False
 
     return True
@@ -819,20 +832,20 @@ def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_node
     try:
         vring_regions = [_required_reg_region(node) for node in vrings]
         if not vring_regions:
-            raise ValueError("OPENAMP: XLNX: no vring carveouts were found")
+            raise ValueError("no vring carveouts were found")
         if len(buffers) != 1:
             raise ValueError(
-                "OPENAMP: XLNX: expected one vdev0buffer carveout; found %d" %
+                "expected one vdev0buffer carveout; found %d" %
                 len(buffers))
         shbuf_base, shbuf_size = _required_reg_region(buffers[0])
         remote_ipi_base, _ = _required_reg_region(remote_ipi)
     except ValueError as exc:
-        _error(str(exc))
+        _error(f"openamp_xlnx: {exc}")
         return False
 
     shm_base = min(base for base, _ in vring_regions)
     if shbuf_base < shm_base:
-        _error("OPENAMP: XLNX: vdev0buffer precedes the vring carveouts")
+        _error("openamp_xlnx: vdev0buffer precedes the vring carveouts")
         return False
 
     shm_pa = hex(shm_base)
@@ -866,7 +879,8 @@ def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_node
             output = Template(platform_info_header_r5_template)
             f.write(output.substitute(inputs))
     except Exception as e:
-        print("OPENAMP: XLNX: ERROR: xlnx_openamp_gen_outputs_only: Error in generating template for RPU header.", e)
+        _error(f"openamp_xlnx: cannot write OpenAMP header {output_file}: "
+               f"{e}")
         return False
 
     return True
@@ -886,7 +900,7 @@ def xlnx_libmetal_linux_setup_ipi(tree, relation_node, machine, verbose = 0 ):
     Algorithm:
         Find IPI from relation. Set it for parent.
     """
-    _info("openamp_xlnx: Set up IPI for Libmetal Linux relation %s" %
+    _debug("openamp_xlnx: Set up IPI for Libmetal Linux relation %s" %
           relation_node.abs_path)
 
     platform = get_platform(tree, verbose)
@@ -949,7 +963,7 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
         references, gathers carveouts, applies OS-specific tree rewrites, and
         optionally emits a header file via ``xlnx_openamp_gen_outputs_only``.
     """
-    _info("openamp_xlnx: parsing RPMsg relation %s" %
+    _debug("openamp_xlnx: parsing RPMsg relation %s" %
           rpmsg_relation_node.abs_path)
 
     platform = get_platform(tree, verbose)
@@ -1049,13 +1063,19 @@ def determine_cpus_config(remote_domain):
         Validates that ``cpu_config_str`` exists, ensures the value is one of the known
         strings, and converts it into the matching ``CPU_CONFIG`` enum constant.
     """
-    print(" -> determine_cpus_config ", remote_domain, remote_domain.propval("cpu_config_str"), remote_domain.propval("cpus"))
+    domain_path = getattr(remote_domain, "abs_path", remote_domain)
+    _debug("openamp_xlnx: determine_cpus_config %s cpu_config_str=%s cpus=%s"
+           % (domain_path, remote_domain.propval("cpu_config_str"),
+              remote_domain.propval("cpus")))
     if remote_domain.propval("cpu_config_str") == ['']:
-        print(" determine_cpus_config failed. could not find cpu_config_str property on remote domain", remote_domain)
+        _error(f"openamp_xlnx: {domain_path}: no cpu_config_str; the domain "
+               "was not expanded from YAML for an RPU cluster")
         return -1
 
     if remote_domain.propval("cpu_config_str") not in [ ['split'], ['lockstep'] ]:
-        print(" determine_cpus_config failed. invalid cpu_config_str: ", remote_domain.propval("cpu_config_str"))
+        _error(f"openamp_xlnx: {domain_path}: cpu_config_str is "
+               f"{remote_domain.propval('cpu_config_str')}, expected split "
+               "or lockstep")
         return -1
 
     return { "split": CPU_CONFIG.RPU_SPLIT, "lockstep": CPU_CONFIG.RPU_LOCKSTEP }[remote_domain.propval("cpu_config_str")[0]]
@@ -1078,13 +1098,15 @@ def determinte_rpu_core(tree, cpu_config, remote_node):
         core's reg in a cluster that holds both. Remote domains expanded
         without it fall back to ``core_num``.
     """
-    print(" -> determinte_rpu_core", cpu_config, remote_node)
+    remote_path = getattr(remote_node, "abs_path", remote_node)
+    _debug("openamp_xlnx: determinte_rpu_core %s %s" % (remote_path, cpu_config))
     rpu_core_num = remote_node.propval("rpu_core_num")
     if rpu_core_num != [''] and isinstance(rpu_core_num[0], int):
         return RPU_CORE(rpu_core_num[0])
 
     if remote_node.propval("core_num") == ['']:
-        print(" determinte_rpu_core failed. could not find core_num property no node: ", remote_node)
+        _error(f"openamp_xlnx: {remote_path}: no rpu_core_num or core_num, "
+               "so its RPU core is not known")
         return False
 
     core_index = int(remote_node.propval("core_num")[0])
@@ -1106,13 +1128,16 @@ def xlnx_validate_carveouts(tree, carveouts):
         Ensures the ``/reserved-memory`` node exists, gathers ``reg`` tuples from
         carveouts, and checks for pairwise overlap among relevant regions.
     """
-    print(" -> xlnx_validate_carveouts")
+    _debug("openamp_xlnx: xlnx_validate_carveouts")
     expect_ddr = any(["/reserved-memory/" in n.abs_path for n in carveouts])
     try:
         res_mem_node = tree["/reserved-memory"]
     except KeyError:
         if expect_ddr:
-            print("ERROR: carveouts should be in reserved memory.")
+            _error("openamp_xlnx: carveouts %s are under /reserved-memory, "
+                   "which the tree does not have" %
+                   ", ".join(n.abs_path for n in carveouts
+                             if "/reserved-memory/" in n.abs_path))
             return False
 
         res_mem_node = LopperNode(-1, "/reserved-memory")
@@ -1120,7 +1145,8 @@ def xlnx_validate_carveouts(tree, carveouts):
         tree.add(res_mem_node)
 
     if res_mem_node.propval('#size-cells') == [''] or res_mem_node.propval('#address-cells') == ['']:
-        print("ERROR: malformed reserved memory - expected #size-cells and #address-cells")
+        _error("openamp_xlnx: /reserved-memory needs #address-cells and "
+               "#size-cells")
         return False
 
     try:
@@ -1128,7 +1154,7 @@ def xlnx_validate_carveouts(tree, carveouts):
             _required_reg_region(carveout) for carveout in carveouts
         }
     except ValueError as exc:
-        _error(str(exc))
+        _error(f"openamp_xlnx: {exc}")
         return False
 
     # validate no overlaps or conflicts by generating 2d array of reg values from each reserved memory
@@ -1138,23 +1164,22 @@ def xlnx_validate_carveouts(tree, carveouts):
         base, size = node_reg_start_size(node)
         if base is None or size is None or size <= 0:
             continue
-        res_mem_regions.append((base, size))
+        res_mem_regions.append((base, size, node))
 
     for i in range(len(res_mem_regions)):
-        base1, size1 = res_mem_regions[i]
+        base1, size1, node1 = res_mem_regions[i]
 
         for j in range(i + 1, len(res_mem_regions)):
-            base2, size2 = res_mem_regions[j]
+            base2, size2, node2 = res_mem_regions[j]
             # Only validate relevant carveouts
             if ((base1, size1) not in carveout_pairs and
                     (base2, size2) not in carveout_pairs):
                 continue
             # Overlap check
             if base1 < base2 + size2 and base2 < base1 + size1:
-                print(
-                    "ERROR: conflict between reserved memory nodes reg values:",
-                    [hex(x) for x in (base1, size1, base2, size2)]
-                )
+                _error(f"openamp_xlnx: reserved memory {node1.abs_path} "
+                       f"({base1:#x}, size {size1:#x}) overlaps "
+                       f"{node2.abs_path} ({base2:#x}, size {size2:#x})")
                 return False
 
     return True
@@ -1173,7 +1198,8 @@ def platform_validate(platform):
         platform is not supported.
     """
     if platform not in RPU_FAMILIES:
-        print("ERROR: unsupported platform: ", platform)
+        _error("openamp_xlnx: platform %s has no RPU remoteproc support"
+               % platform)
         return False
     return True
 
@@ -1191,9 +1217,10 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
         bool: True when the cluster node is valid or successfully created.
 
     Algorithm:
-        Derives compatibility strings/modes from the platform, verifies existing
-        cluster nodes for mode consistency, merges ranges when in split mode, or
-        constructs a new node populated with all required properties.
+        Derives compatibility strings/modes from the platform, merges ranges
+        when in split mode, or constructs a new node populated with all
+        required properties. ``xlnx_remoteproc_v2_construct_cluster`` has
+        already rejected a relation whose mode conflicts with the cluster's.
     """
     family = RPU_FAMILIES[platform]
 
@@ -1216,11 +1243,6 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
 
     try:
         cluster_node = tree[cluster_node_path]
-
-        # here validate if cpu config does not match
-        if cluster_modes[cpu_config.value] != cluster_node.propval("xlnx,cluster-mode"):
-            print("ERROR: ", "split" if cpu_config == CPU_CONFIG.RPU_SPLIT else "lockstep", "for cpu value mismatches the cluster.")
-            return False
 
         # In split mode the cluster maps the banks of both cores: append this
         # core's ranges to those already in the cluster node.
@@ -1259,7 +1281,7 @@ def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, power_domains, core_
         builds the property set (compatibility, power domains, register ranges,
         memory regions), and attaches the node to the tree.
     """
-    print(" --> xlnx_remoteproc_v2_add_core")
+    _debug("openamp_xlnx: xlnx_remoteproc_v2_add_core %s" % cluster_node_path)
     family = RPU_FAMILIES[platform]
 
     core_node = LopperNode(-1, "{}/{}@{}".format( cluster_node_path, family.core_node_name, int(openamp_channel_info["rpu_core"])))
@@ -1335,7 +1357,7 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
         expansion took from the SDT. Finally, tracks new DDR regions and
         inserts the core node using ``xlnx_remoteproc_v2_add_core``.
     """
-    print(" -> xlnx_remoteproc_v2_construct_cluster")
+    _debug("openamp_xlnx: xlnx_remoteproc_v2_construct_cluster")
 
     cpu_config = openamp_channel_info["cpu_config"]
     remote_node = openamp_channel_info["remote_node"]
@@ -1358,8 +1380,8 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
     # A cluster in lockstep runs one firmware, on its core 0.
     if lockstep and core_index != 0:
-        print(f"ERROR: RPU core {int(rpu_core)} is core {core_index} of its "
-              "cluster; a cluster in lockstep runs on its core 0")
+        _error(f"openamp_xlnx: RPU core {int(rpu_core)} is core {core_index} "
+               "of its cluster; a cluster in lockstep runs on its core 0")
         return False
 
     cluster_ranges_val = []
@@ -1386,8 +1408,8 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
         pd = n.propval("power-domains", list)
         node_path = getattr(n, "abs_path", n.name)
         if not pd or pd == [""] or len(pd) < 2:
-            print(f"ERROR: TCM node {node_path} is missing a valid "
-                  "power-domains property")
+            _error(f"openamp_xlnx: TCM node {node_path} is missing a valid "
+                   "power-domains property")
             return False
         power_domains.extend(pd)
         pd_id = pd[1]
@@ -1398,7 +1420,7 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
         # Keep the SDT's value and say that the output is malformed.
         if pd_id in tcm_bank_nodes:
             pd_id_string = hex(pd_id) if isinstance(pd_id, int) else str(pd_id)
-            _warning(f"OPENAMP: XLNX: TCM node {node_path} has the same "
+            _warning(f"openamp_xlnx: TCM node {node_path} has the same "
                      f"power domain ({pd_id_string}) as TCM node "
                      f"{tcm_bank_nodes[pd_id]}; the remoteproc node for "
                      f"remote {getattr(remote_node, 'abs_path', remote_node)} "
@@ -1410,13 +1432,14 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
         tcm_base, tcm_size = node_reg_start_size(n)
         if tcm_base is None or not tcm_size:
-            print(f"ERROR: TCM node {node_path} is missing a valid "
-                  "reg property")
+            _error(f"openamp_xlnx: TCM node {node_path} is missing a valid "
+                   "reg property")
             return False
 
         bank_type = tcm_bank_type(n.name)
         if bank_type not in local_origins:
-            print(f"ERROR: Unable to map %s to proper TCM spec name" % n.name)
+            _error(f"openamp_xlnx: TCM node {node_path} is not an ATCM, BTCM "
+                   f"or CTCM bank of a {family.cpu_type} core")
             return False
 
         cluster_base = rpu_cluster_tcm_base(tcm_base, family.cpu_type)
@@ -1442,7 +1465,9 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
         # map TCM node name to binding compliant TCM name
         if not any(tcm_name_substr in n.name.lower() for tcm_name_substr in core_reg_names_mappings):
-            print(f"ERROR: Unable to map %s to proper TCM spec name" % n.name)
+            _error(f"openamp_xlnx: no reg-names entry for TCM node "
+                   f"{node_path}; R5 TCM banks are named by their global "
+                   "address")
             return False
 
         for tcm_substr in core_reg_names_mappings:
@@ -1452,18 +1477,18 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
     # The cluster node is named after the base of the RPU cluster's TCM
     # span, so both cores of a cluster share it.
     if len(cluster_bases) > 1:
-        print("ERROR: the TCM banks of remote "
-              f"{getattr(remote_node, 'abs_path', remote_node)} are in more "
-              "than one RPU cluster: " +
-              ", ".join(hex(base) for base in sorted(cluster_bases)))
+        _error("openamp_xlnx: the TCM banks of remote "
+               f"{getattr(remote_node, 'abs_path', remote_node)} are in more "
+               "than one RPU cluster: " +
+               ", ".join(hex(base) for base in sorted(cluster_bases)))
         return False
     if cluster_bases:
         cluster_base = cluster_bases.pop()
     else:
         sdt_base = remote_node.propval("rpu_cluster_base", list)
         if sdt_base == [""] or not isinstance(sdt_base[0], int):
-            print("ERROR: no TCM bank or RPU cluster base found for remote "
-                  f"{getattr(remote_node, 'abs_path', remote_node)}")
+            _error("openamp_xlnx: no TCM bank or RPU cluster base found for "
+                   f"remote {getattr(remote_node, 'abs_path', remote_node)}")
             return False
         cluster_base = sdt_base[0]
     cluster_node_path = f"/remoteproc@{cluster_base:x}"
@@ -1480,13 +1505,13 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
             "xlnx,cluster-mode", list) == [int(CPU_CONFIG.RPU_LOCKSTEP)]
         for existing in cluster_node.subnodes(children_only=True):
             if lockstep_cluster:
-                print(f"ERROR: {existing.abs_path} already uses "
-                      f"{cluster_node_path}; a cluster in lockstep can have "
-                      "only one remoteproc relation")
+                _error(f"openamp_xlnx: {existing.abs_path} already uses "
+                       f"{cluster_node_path}; a cluster in lockstep can have "
+                       "only one remoteproc relation")
                 return False
             if existing.name.endswith(f"@{core_index}"):
-                print(f"ERROR: {existing.abs_path} already exists; each RPU "
-                      "core can have only one remoteproc relation")
+                _error(f"openamp_xlnx: {existing.abs_path} already exists; "
+                       "each RPU core can have only one remoteproc relation")
                 return False
     if not xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_val, cluster_node_path):
         return False
@@ -1515,21 +1540,24 @@ def xlnx_remoteproc_rpu_parse(tree, node, openamp_channel_info, elfload_nodes, v
         validates required power-domain properties, and stores the derived values in
         ``openamp_channel_info`` for downstream processing.
     """
-    print(" -> xlnx_remoteproc_rpu_parse", node)
+    _debug("openamp_xlnx: xlnx_remoteproc_rpu_parse %s"
+           % getattr(node, "abs_path", node))
 
     remote_node = openamp_channel_info["remote_node"] 
+    remote_path = getattr(remote_node, "abs_path", remote_node)
     cpu_config = determine_cpus_config(remote_node)
     if cpu_config not in [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT]:
-        print("ERROR: cpu_config: ", cpu_config, " is not in ", [ CPU_CONFIG.RPU_LOCKSTEP, CPU_CONFIG.RPU_SPLIT])
+        # determine_cpus_config has reported why.
         return False
 
     rpu_core = determinte_rpu_core(tree, cpu_config, remote_node )
     if rpu_core not in RPU_CORE:
-        print("ERROR: Invalid rpu core: ", rpu_core)
+        _error(f"openamp_xlnx: {remote_path}: no valid RPU core ({rpu_core})")
         return False
 
     if remote_node.propval("rpu_pd_val") == ['']:
-        print("ERROR: no RPU Power domain value found")
+        _error(f"openamp_xlnx: {remote_path}: its RPU core has no "
+               "power-domains")
         return False
 
     openamp_channel_info["rpu_core_pd_prop"] = remote_node.props("rpu_pd_val")[0]
@@ -1571,7 +1599,7 @@ def get_platform(tree, verbose = 0):
     rpu_socs_enums = [ SOC_TYPE.VERSAL2, SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET ]
 
     if verbose > 0 and not banner_printed:
-        print("[INFO]: ------> OPENAMP: XLNX: \t platform info: ", inputs)
+        _debug("openamp_xlnx: platform info: %s" % inputs)
         banner_printed = True
 
     for index, soc in enumerate(rpu_socs):
@@ -1581,9 +1609,15 @@ def get_platform(tree, verbose = 0):
                     return rpu_socs_enums[index]
 
     if platform is None:
-        print("Unable to find data for platform: ", inputs)
+        _debug("openamp_xlnx: no RPU platform matches %s" % inputs)
 
     return platform
+
+def _report_unsupported_platform(tree):
+    """Log that the tree's platform has no OpenAMP RPU support."""
+    root = tree["/"]
+    _error("openamp_xlnx: unsupported platform: model %s, compatible %s"
+           % (root.propval("model"), root.propval("compatible")))
 
 def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose = 0 ):
     """Derive the platform enum from the root node's model/compatible strings.
@@ -1605,9 +1639,10 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
         Gather relation's ipi node and carveouts. Then determine the use case. Based on this
         call the output-file routine. That output-file routine shall return True or False.
     """
-    print(" --> openamp_nontree_outputs_handler")
+    _debug("openamp_xlnx: openamp_nontree_outputs_handler %s" % output_file_name)
     platform = get_platform(sdt.tree, verbose)
     if platform is None:
+        _report_unsupported_platform(sdt.tree)
         return False
 
     # get_cpu_node expects dictionary where first arg first element is machine
@@ -1687,23 +1722,26 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
         pname = "remote" if os == "linux_dt" else "host"
         # check for remote property
         if not node.props(pname):
-            print("ERROR: ", node, "is missing ", pname, " property")
+            _error(f"openamp_xlnx: {node.abs_path} is missing {pname} "
+                   "property")
             return False
 
         # first find host to remote IPI
         mbox_pval = node.propval("mbox")
         if mbox_pval == ['']:
-            print("ERROR: ", node, " is missing mbox property")
+            _error(f"openamp_xlnx: {node.abs_path} is missing mbox property")
             return False
 
         ipi_node = sdt.tree.pnode(mbox_pval[0])
         if ipi_node is None:
-            print("ERROR: Unable to find ipi")
+            _error(f"openamp_xlnx: {node.abs_path}: mbox does not reference "
+                   "an IPI")
             return False
 
         carveout_prop = node.propval("carveouts")
         if carveout_prop == ['']:
-            print("ERROR: ", node, " is missing carveouts property")
+            _error(f"openamp_xlnx: {node.abs_path} is missing carveouts "
+                   "property")
             return False
 
         carveouts = [ sdt.tree.pnode(phandle) for phandle in carveout_prop ]
@@ -1714,7 +1752,8 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
         if [openamp_args['compatible_string']] == relation_node.propval("compatible"):
             timer_pval = node.propval("timer")
             if timer_pval == ['']:
-                print("ERROR: ", node, " is missing timer property")
+                _error(f"openamp_xlnx: {node.abs_path} is missing timer "
+                       "property")
                 return False
 
             timer_node = sdt.tree.pnode(node.propval("timer")[0])
@@ -1742,11 +1781,12 @@ def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_ar
         ``xlnx_remoteproc_rpu_parse``, constructs cluster/core nodes, and records the
         core nodes for later RPMsg processing.
     """
-    print(" -> xlnx_remoteproc_parse", remoteproc_relation_node)
+    _debug("openamp_xlnx: xlnx_remoteproc_parse %s"
+           % remoteproc_relation_node.abs_path)
 
     # Xilinx OpenAMP subroutine to collect Remoteproc information from relation node in tree
     if get_platform(tree, verbose) is None:
-        print("Unsupported platform")
+        _report_unsupported_platform(tree)
         return False
 
     channel_to_core_dict = {}
@@ -1754,7 +1794,8 @@ def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_ar
     for node in remoteproc_relation_node.subnodes(children_only=True):
         # check for remote property
         if node.propval("remote") == ['']:
-            print("ERROR: ", node, "is missing remote property")
+            _error(f"openamp_xlnx: {node.abs_path} is missing remote "
+                   "property")
             return False
 
         remote_node = tree.pnode(node.propval("remote")[0])
@@ -1762,7 +1803,8 @@ def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_ar
 
         # check for elfload prop
         if not node.props("elfload"):
-            print("ERROR: ", node, " is missing elfload property")
+            _error(f"openamp_xlnx: {node.abs_path} is missing elfload "
+                   "property")
             return False
 
         channel_elfload_nodes = [ tree.pnode(current_elfload) for current_elfload in node.propval("elfload") ]
@@ -1868,17 +1910,20 @@ def parse_openamp_args(arg_inputs):
         elif config["openamp_remote"] and config["openamp_header_only"] and not config["machine"]:
             config["machine"] = config["openamp_remote"]
         elif not config["machine"]:
-            print("INFO: OpenAMP plugin: missing processor or openamp_remote being passed in. exiting now")
+            _error("openamp_xlnx: no processor given; pass it as the first "
+                   "assist argument")
             return False
 
         # handling for ipi mapping workflow
         if config["libmetal_output_file"] and not config["compatible_string"]:
-            print("requires compatible_string to be set for libmetal_output_file case")
+            _error("openamp_xlnx: libmetal output needs a compatible string "
+                   "argument")
             return False
 
         # provide default output file for IPI mapping use case if none provided
         if config["libmetal_output_file"] and not config["openamp_output_filename"]:
-            print("INFO: OpenAMP plugin: libmetal_output_file route is taken. output file is not specified so default is used (libmetal_output_file.cmake)")
+            _info("openamp_xlnx: no libmetal output file given; writing "
+                  "libmetal_output_file.cmake")
             config["openamp_output_filename"] = "libmetal_output_file.cmake"
 
     return config
@@ -1917,8 +1962,7 @@ def xlnx_openamp_parse(sdt, options, verbose = 0 ):
         return xlnx_openamp_report_valid_ipis(sdt, machine)
 
     if not xlnx_openamp_find_compat_domains(tree):
-        if verbose > 1:
-            _warning("openamp_xlnx: no OpenAMP domains found")
+        _info("openamp_xlnx: no OpenAMP domains found")
         return True
 
     if openamp_args["openamp_output_filename"]:
