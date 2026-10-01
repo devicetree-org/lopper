@@ -731,38 +731,34 @@ def test_remoteproc_v2_reports_invalid_tcm_mapping(
     assert expected_error in diagnostic
 
 
-def _rpu_remote(core_pd, core_num=0, config="split"):
-    """Remote domain as YAML expansion leaves it for an RPU core."""
+def _rpu_remote(core, config="split", core_pd=0xC0):
+    """Remote domain as YAML expansion leaves it for RPU core ``core``."""
     remote = LopperNode(-1, "/domains/RPU")
     remote["cpu_config_str"] = [config]
-    remote["core_num"] = [core_num]
-    if core_pd is not None:
-        remote["rpu_pd_val"] = [0xA5, core_pd]
+    remote["core_num"] = [0]
+    remote["rpu_core_num"] = [core]
+    remote["rpu_pd_val"] = [0xA5, core_pd]
     return remote
 
 
 @pytest.mark.parametrize(
-    "platform, core_pd, core_num, rpu_core",
+    "rpu_core_num, core_num, rpu_core",
     [
         # SDTs give cpus_r5_1 and every R52 cluster a single cpu@0, so
-        # core_num is 0; the core's power domain gives its number.
-        (openamp_xlnx.SOC_TYPE.ZYNQMP, 0x8, 0, 1),
-        (openamp_xlnx.SOC_TYPE.VERSAL, 0x18110006, 0, 1),
-        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0x181100C0, 0, 1),
-        (openamp_xlnx.SOC_TYPE.VERSAL_NET, 0x181100C2, 0, 3),
-        (openamp_xlnx.SOC_TYPE.VERSAL2, 1, 0, 1),
-        (openamp_xlnx.SOC_TYPE.VERSAL2, 7, 0, 7),
-        # A remote without a known RPU core power domain keeps core_num.
-        (openamp_xlnx.SOC_TYPE.VERSAL, None, 1, 1),
-        (openamp_xlnx.SOC_TYPE.VERSAL2, 0x181100C0, 3, 3),
+        # core_num (the CPU reg) is 0; YAML expansion stores the core's
+        # number from the cluster's unit address.
+        (1, 0, 1),
+        (7, 0, 7),
+        # A remote expanded without rpu_core_num keeps core_num.
+        (None, 1, 1),
     ],
 )
-def test_rpu_core_comes_from_core_power_domain(
-        monkeypatch, platform, core_pd, core_num, rpu_core):
-    """The RPU core number comes from its power domain, not its CPU reg."""
-    monkeypatch.setattr(
-        openamp_xlnx, "get_platform", lambda tree, verbose=0: platform)
-    remote = _rpu_remote(core_pd, core_num)
+def test_rpu_core_comes_from_yaml_expansion(rpu_core_num, core_num, rpu_core):
+    """The RPU core number comes from rpu_core_num, not the CPU reg."""
+    remote = LopperNode(-1, "/domains/RPU")
+    remote["core_num"] = [core_num]
+    if rpu_core_num is not None:
+        remote["rpu_core_num"] = [rpu_core_num]
     split = openamp_xlnx.CPU_CONFIG.RPU_SPLIT
 
     assert openamp_xlnx.determinte_rpu_core(None, split, remote) == \
@@ -830,30 +826,30 @@ def _tcm_node(tree, name, size, pd_id):
     [
         # ZynqMP (Kria and ZCU102): both R5 cores in split mode.
         (openamp_xlnx.SOC_TYPE.ZYNQMP,
-         [(0x7, [("psu_r5_0_atcm_global@ffe00000", 0x10000, 15)]),
-          (0x8, [("psu_r5_1_atcm_global@ffe90000", 0x10000, 17)])],
+         [(0, 0x7, [("psu_r5_0_atcm_global@ffe00000", 0x10000, 15)]),
+          (1, 0x8, [("psu_r5_1_atcm_global@ffe90000", 0x10000, 17)])],
          {"/remoteproc@ffe00000/r5f@0": 0x7,
           "/remoteproc@ffe00000/r5f@1": 0x8}),
         # Versal NET: RPU_A_1 in cluster A and RPU_B_0 in cluster B.
         (openamp_xlnx.SOC_TYPE.VERSAL_NET,
-         [(0x181100C0, [("psx_r52_1a_atcm_global@eba40000", 0x10000,
-                         0x183180CE)]),
-          (0x181100C1, [("psx_r52_0b_atcm_global@eba80000", 0x10000,
-                         0x183180D1)])],
+         [(1, 0x181100C0, [("psx_r52_1a_atcm_global@eba40000", 0x10000,
+                            0x183180CE)]),
+          (2, 0x181100C1, [("psx_r52_0b_atcm_global@eba80000", 0x10000,
+                            0x183180D1)])],
          {"/remoteproc@eba00000/r52f@1": 0x181100C0,
           "/remoteproc@eba80000/r52f@0": 0x181100C1}),
         # Versal2 SCMI IDs: RPU_A_0 and RPU_A_1, and RPU_D_1.
         (openamp_xlnx.SOC_TYPE.VERSAL2,
-         [(0, [("r52_0a_atcm_global@eba00000", 0x10000, 0x44)]),
-          (1, [("r52_1a_atcm_global@eba40000", 0x10000, 0x47)]),
-          (7, [("r52_1d_atcm_global@ebbc0000", 0x10000, 0x59)])],
+         [(0, 0, [("r52_0a_atcm_global@eba00000", 0x10000, 0x44)]),
+          (1, 1, [("r52_1a_atcm_global@eba40000", 0x10000, 0x47)]),
+          (7, 7, [("r52_1d_atcm_global@ebbc0000", 0x10000, 0x59)])],
          {"/remoteproc@eba00000/r52f@0": 0,
           "/remoteproc@eba00000/r52f@1": 1,
           "/remoteproc@ebb80000/r52f@1": 7}),
         # Versal2 SCMI IDs in clusters B and C: RPU_B_0 and RPU_C_1.
         (openamp_xlnx.SOC_TYPE.VERSAL2,
-         [(2, [("r52_0b_atcm_global@eba80000", 0x10000, 0x4A)]),
-          (5, [("r52_1c_atcm_global@ebb40000", 0x10000, 0x53)])],
+         [(2, 2, [("r52_0b_atcm_global@eba80000", 0x10000, 0x4A)]),
+          (5, 5, [("r52_1c_atcm_global@ebb40000", 0x10000, 0x53)])],
          {"/remoteproc@eba80000/r52f@0": 2,
           "/remoteproc@ebb00000/r52f@1": 5}),
     ],
@@ -869,8 +865,8 @@ def test_remoteproc_v2_places_each_rpu_core(
     monkeypatch.setattr(
         openamp_xlnx, "get_platform", lambda tree, verbose=0: platform)
 
-    for core_pd, tcms in remotes:
-        info = {"remote_node": _rpu_remote(core_pd)}
+    for core, core_pd, tcms in remotes:
+        info = {"remote_node": _rpu_remote(core, core_pd=core_pd)}
         assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
         tcm_nodes = [_tcm_node(tree, *tcm) for tcm in tcms]
         assert openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
@@ -905,7 +901,7 @@ def test_remoteproc_v2_rejects_second_relation_for_core(monkeypatch, capsys):
 
     # Two domains on RPU1, such as a baremetal and a Zephyr domain.
     for index, tcm in enumerate((atcm, btcm)):
-        info = {"remote_node": _rpu_remote(0x8)}
+        info = {"remote_node": _rpu_remote(1)}
         assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
         result = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
             tree, info, [tcm])
@@ -923,17 +919,17 @@ def test_remoteproc_v2_rejects_second_relation_for_core(monkeypatch, capsys):
     "relations, expected_error",
     [
         # A cluster in lockstep runs on its core 0.
-        ([(0x8, "lockstep", "psu_r5_1_atcm_global@ffe90000", 17)],
+        ([(1, "lockstep", "psu_r5_1_atcm_global@ffe90000", 17)],
          "RPU core 1 is core 1 of its cluster; a cluster in lockstep runs "
          "on its core 0"),
         # Core 1 is not free while the cluster runs in lockstep ...
-        ([(0x7, "lockstep", "psu_r5_0_atcm_global@ffe00000", 15),
-          (0x8, "split", "psu_r5_1_atcm_global@ffe90000", 17)],
+        ([(0, "lockstep", "psu_r5_0_atcm_global@ffe00000", 15),
+          (1, "split", "psu_r5_1_atcm_global@ffe90000", 17)],
          "/remoteproc@ffe00000/r5f@0 already uses /remoteproc@ffe00000; a "
          "cluster in lockstep can have only one remoteproc relation"),
         # ... and a cluster with a split core cannot switch to lockstep.
-        ([(0x8, "split", "psu_r5_1_atcm_global@ffe90000", 17),
-          (0x7, "lockstep", "psu_r5_0_atcm_global@ffe00000", 15)],
+        ([(1, "split", "psu_r5_1_atcm_global@ffe90000", 17),
+          (0, "lockstep", "psu_r5_0_atcm_global@ffe00000", 15)],
          "/remoteproc@ffe00000/r5f@1 already uses /remoteproc@ffe00000; a "
          "cluster in lockstep can have only one remoteproc relation"),
     ],
@@ -951,8 +947,8 @@ def test_remoteproc_v2_lockstep_cluster_has_one_relation(
         lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.ZYNQMP)
 
     results = []
-    for core_pd, config, tcm_name, tcm_pd in relations:
-        info = {"remote_node": _rpu_remote(core_pd, config=config)}
+    for core, config, tcm_name, tcm_pd in relations:
+        info = {"remote_node": _rpu_remote(core, config=config)}
         assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
         tcm = _tcm_node(tree, tcm_name, 0x10000, tcm_pd)
         results.append(openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
@@ -990,7 +986,8 @@ def test_remoteproc_v2_r5_lockstep_matches_binding(
     tree + axi
     monkeypatch.setattr(
         openamp_xlnx, "get_platform", lambda tree, verbose=0: platform)
-    info = {"remote_node": _rpu_remote(core_pd, config="lockstep")}
+    info = {"remote_node": _rpu_remote(0, config="lockstep",
+                                       core_pd=core_pd)}
     assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
     nodes = [_tcm_node(tree, name, 0x10000, pd_id)
              for name, pd_id in zip(tcms, tcm_pds)]
@@ -1025,7 +1022,7 @@ def test_remoteproc_v2_rejects_tcm_bank_listed_twice(monkeypatch, capsys):
     monkeypatch.setattr(
         openamp_xlnx, "get_platform",
         lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.ZYNQMP)
-    info = {"remote_node": _rpu_remote(0x7, config="lockstep")}
+    info = {"remote_node": _rpu_remote(0, config="lockstep")}
     assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
     # The SDT's psu_r5_0_atcm_lockstep node has core 0's ATCM power domain.
     nodes = [_tcm_node(tree, "psu-r5-0-atcm-global@ffe00000", 0x10000, 15),
