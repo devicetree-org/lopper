@@ -1171,7 +1171,7 @@ def platform_validate(platform):
         Compares the provided enum against a whitelist and prints an error when the
         platform is not supported.
     """
-    if platform not in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL, SOC_TYPE.VERSAL_NET, SOC_TYPE.VERSAL2 ]:
+    if platform not in RPU_FAMILIES:
         print("ERROR: unsupported platform: ", platform)
         return False
     return True
@@ -1194,12 +1194,7 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
         cluster nodes for mode consistency, merges ranges when in split mode, or
         constructs a new node populated with all required properties.
     """
-    driver_compat_str  = {
-      SOC_TYPE.ZYNQMP : "xlnx,zynqmp-r5fss",
-      SOC_TYPE.VERSAL : "xlnx,versal-r5fss",
-      SOC_TYPE.VERSAL_NET : "xlnx,versal-net-r52fss",
-      SOC_TYPE.VERSAL2 : "xlnx,versal-net-r52fss",
-    }
+    family = RPU_FAMILIES[platform]
 
     cluster_modes = {
         CPU_CONFIG.RPU_SPLIT: 0,
@@ -1207,7 +1202,7 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
     }
 
     cluster_node_props = {
-      "compatible" : driver_compat_str[platform],
+      "compatible" : family.cluster_compatible,
       "#address-cells": 0x2,
       "#size-cells": 0x2,
       "xlnx,cluster-mode": cluster_modes[cpu_config.value],
@@ -1215,7 +1210,7 @@ def xlnx_remoteproc_v2_add_cluster(tree, platform, cpu_config, cluster_ranges_va
     }
 
     # R5 cores also need tcm mode
-    if platform in [ SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL ]:
+    if family.tcm_mode:
         cluster_node_props["xlnx,tcm-mode"] = cluster_modes[cpu_config.value]
 
     try:
@@ -1264,14 +1259,12 @@ def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, power_domains, core_
         memory regions), and attaches the node to the tree.
     """
     print(" --> xlnx_remoteproc_v2_add_core")
-    compatible_strs = { SOC_TYPE.VERSAL2:  "xlnx,versal2-r52f", SOC_TYPE.VERSAL_NET:  "xlnx,versal-net-r52f", SOC_TYPE.VERSAL: "xlnx,versal-r5f", SOC_TYPE.ZYNQMP: "xlnx,zynqmp-r5f" }
-    core_names = { SOC_TYPE.VERSAL_NET: "r52f", SOC_TYPE.VERSAL: "r5f", SOC_TYPE.ZYNQMP: "r5f" }
-    core_names[SOC_TYPE.VERSAL2] = core_names[SOC_TYPE.VERSAL_NET]
+    family = RPU_FAMILIES[platform]
 
-    core_node = LopperNode(-1, "{}/{}@{}".format( cluster_node_path, core_names[platform], int(openamp_channel_info["rpu_core"])))
+    core_node = LopperNode(-1, "{}/{}@{}".format( cluster_node_path, family.core_node_name, int(openamp_channel_info["rpu_core"])))
 
     core_node_props = {
-      "compatible" : compatible_strs[platform],
+      "compatible" : family.core_compatible,
       "power-domains": power_domains,
       "reg": core_reg_val,
       "reg-names": core_reg_names,

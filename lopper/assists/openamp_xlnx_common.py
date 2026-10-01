@@ -12,6 +12,7 @@ from enum import Enum, IntEnum
 import ast
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from baremetalconfig_xlnx import get_cpu_node
@@ -532,6 +533,39 @@ class SOC_TYPE:
     ZYNQ = 2
     VERSAL_NET = 3
     VERSAL2 = 4
+
+
+@dataclass(frozen=True)
+class RpuFamily:
+    """Linux remoteproc binding values for one RPU family.
+
+    Attributes:
+        cpu_type (str): ``cortexr5`` or ``cortexr52``, the key into the TCM
+            layout in ``xlnx_rpu_tcm``.
+        cluster_compatible (str): Compatible of the remoteproc cluster node.
+        core_compatible (str): Compatible of each remoteproc core node.
+        core_node_name (str): Name of each core node, ``<name>@<core>``.
+        tcm_mode (bool): Whether the cluster node carries ``xlnx,tcm-mode``.
+    """
+
+    cpu_type: str
+    cluster_compatible: str
+    core_compatible: str
+    core_node_name: str
+    tcm_mode: bool
+
+
+RPU_FAMILIES = {
+    SOC_TYPE.ZYNQMP: RpuFamily("cortexr5", "xlnx,zynqmp-r5fss",
+                               "xlnx,zynqmp-r5f", "r5f", True),
+    SOC_TYPE.VERSAL: RpuFamily("cortexr5", "xlnx,versal-r5fss",
+                               "xlnx,versal-r5f", "r5f", True),
+    SOC_TYPE.VERSAL_NET: RpuFamily("cortexr52", "xlnx,versal-net-r52fss",
+                                   "xlnx,versal-net-r52f", "r52f", False),
+    SOC_TYPE.VERSAL2: RpuFamily("cortexr52", "xlnx,versal-net-r52fss",
+                                "xlnx,versal2-r52f", "r52f", False),
+}
+"""dict[int, RpuFamily]: Remoteproc binding values for each RPU family."""
 
 # Power-domain ID of the first RPU core and the number of RPU cores on each
 # platform. The cores' IDs are consecutive: PD_RPU_0/1 on ZynqMP,
