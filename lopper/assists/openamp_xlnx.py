@@ -43,7 +43,11 @@ from lopper_lib import (
     node_property_cells,
     node_reg_start_size,
 )
-from xlnx_rpu_tcm import rpu_cluster_tcm_base
+from xlnx_rpu_tcm import (
+    TCM_LOCAL_ORIGINS,
+    rpu_cluster_tcm_base,
+    tcm_bank_type,
+)
 from string import ascii_lowercase as alc
 
 _init(__name__)
@@ -1279,25 +1283,28 @@ def xlnx_remoteproc_v2_add_core(tree, openamp_channel_info, power_domains, core_
     return core_node
 
 
-def xlnx_rpu_tcm_owner(platform, tcm_id):
-    """Return the number of the RPU core that owns a TCM bank.
+def xlnx_rpu_sdt_tcm_view(remote_node):
+    """Return the core-local TCM addresses that the SDT gives a remote.
 
     Args:
-        platform (SOC_TYPE): Detected platform.
-        tcm_id (int): Power-domain ID of the TCM bank, as listed in
-            ``rpu_tcm_pd_ids`` for the platform.
+        remote_node (LopperNode): Remote domain node.
 
     Returns:
-        int | None: RPU core number, or None when the ID is not a TCM bank
-        of the platform.
+        dict[int, int]: Core-local address of each TCM bank, keyed by the
+        bank's power-domain ID.
+
+    Algorithm:
+        YAML expansion copies the TCM entries of the remote core's RPU
+        cluster ``address-map`` into ``rpu_tcm_view`` as (power-domain ID,
+        core-local address, size) triples, because the cluster node is gone
+        by the time OpenAMP runs on a domain tree. Only ZynqMP SDTs map TCM
+        banks there.
     """
-    if platform not in rpu_tcm_pd_ids or not isinstance(tcm_id, int):
-        return None
-    first_id, banks = rpu_tcm_pd_ids[platform]
-    index = tcm_id - first_id
-    if 0 <= index < banks * rpu_core_pd_ids[platform][1]:
-        return index // banks
-    return None
+    cells = remote_node.propval("rpu_tcm_view", list)
+    if cells == [""]:
+        return {}
+    return {cells[i]: cells[i + 1] for i in range(0, len(cells) - 2, 3)}
+
 
 def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elfload_nodes, verbose = 0):
     """Build the remoteproc cluster and core nodes for a channel.
@@ -1312,32 +1319,52 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
         LopperNode | bool: Newly created core node on success, or False on failure.
 
     Algorithm:
-        Validates platform support, merges power-domain data from carveouts, derives
-        ranges for TCM and DDR nodes, and ensures the cluster node exists with the
-        correct configuration. Versal2 TCM addresses are selected by their SCMI
-        power-domain IDs; older firmware IDs and ``xlnx,power-domain`` remain
-        compatibility paths. The cluster node is named after the base of the
-        RPU cluster's TCM span, found from the remote's TCM addresses, or for
-        a remote without TCM from the base that YAML expansion took from the
-        SDT. Finally, tracks new DDR regions and inserts the core node using
-        ``xlnx_remoteproc_v2_add_core``.
+        Each TCM bank comes from the SDT: its global address and size from
+        its ``reg``, its power domain from ``power-domains``, and its type
+        (ATCM, BTCM, CTCM) from its name. Its core-local address comes from
+        the RPU cluster ``address-map`` when the SDT maps the bank there, and
+        otherwise from the family's TCM layout. In R5 lockstep the two
+        cores' TCMs are combined: the remote lists the SDT's lockstep banks
+        at 0xffe10000 and 0xffe30000 along with core 0's, and each bank's
+        core-local address is its offset in the cluster's TCM span. R52
+        cores do not combine TCM, so an R52 lockstep remote loads its own
+        banks as in split mode. The remoteproc bank index is the core's
+        position in its two-core RPU cluster. The cluster node is named after
+        the base of the RPU cluster's TCM span, found from the remote's TCM
+        addresses, or for a remote without TCM from the base that YAML
+        expansion took from the SDT. Finally, tracks new DDR regions and
+        inserts the core node using ``xlnx_remoteproc_v2_add_core``.
     """
     print(" -> xlnx_remoteproc_v2_construct_cluster")
- 
+
     cpu_config = openamp_channel_info["cpu_config"]
     remote_node = openamp_channel_info["remote_node"]
+    lockstep = cpu_config == CPU_CONFIG.RPU_LOCKSTEP
 
     rpu_core = determinte_rpu_core(tree, cpu_config, remote_node)
+    if rpu_core is False:
+        return False
     platform = get_platform(tree, verbose)
-    cluster_ranges_val = []
-    core_reg_names = []
-    power_domains = []
-    core_reg_val = []
-
     if not platform_validate(platform):
         return False
     family = RPU_FAMILIES[platform]
+    local_origins = TCM_LOCAL_ORIGINS[family.cpu_type]
+    sdt_tcm_view = xlnx_rpu_sdt_tcm_view(remote_node)
+    r5_lockstep = lockstep and family.cpu_type == "cortexr5"
 
+    # Bank index of the core's TCM in the remoteproc ranges and reg: the
+    # core's position in its two-core RPU cluster.
+    core_index = int(rpu_core) % 2
+
+    # A cluster in lockstep runs one firmware, on its core 0.
+    if lockstep and core_index != 0:
+        print(f"ERROR: RPU core {int(rpu_core)} is core {core_index} of its "
+              "cluster; a cluster in lockstep runs on its core 0")
+        return False
+
+    cluster_ranges_val = []
+    core_reg_names = []
+    core_reg_val = []
     power_domains = openamp_channel_info["rpu_core_pd_prop"].value
 
     # In R5 lockstep, core 1's ATCM and BTCM are the cluster's second ATCM
@@ -1347,22 +1374,15 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
                                 "ffe90000" : "atcm1", "ffeb0000" : "btcm1" }
     r52_core_reg_names_mappings = { "atcm" : "atcm0", "btcm" : "btcm0", "ctcm": "ctcm0" }
 
-    core_reg_names_mappings = r52_core_reg_names_mappings if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ] else r5_core_reg_names_mappings
+    core_reg_names_mappings = r52_core_reg_names_mappings if family.cpu_type == "cortexr52" else r5_core_reg_names_mappings
 
-    # In R5 lockstep, the TCM of both cores is combined: the remote lists
-    # the SDT's lockstep banks at 0xffe10000 and 0xffe30000 with core 0's,
-    # and each bank's core-local address is its offset in the cluster's TCM
-    # span. R52 cores do not combine TCM in lockstep.
-    r5_lockstep = (cpu_config == CPU_CONFIG.RPU_LOCKSTEP and
-                   platform in (SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL))
     tcm_bank_nodes = {}
     cluster_bases = set()
 
     # loop through TCM nodes
     for n in [ n for n in channel_elfload_nodes if n.propval("xlnx,ip-name") != [''] ]:
         # Preserve the complete provider/specifier tuple for the generated
-        # remoteproc node. It is also the primary source for selecting the TCM
-        # address mapping below.
+        # remoteproc node.
         pd = n.propval("power-domains", list)
         node_path = getattr(n, "abs_path", n.name)
         if not pd or pd == [""] or len(pd) < 2:
@@ -1370,9 +1390,7 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
                   "power-domains property")
             return False
         power_domains.extend(pd)
-
         pd_id = pd[1]
-        legacy_pd_id = None
 
         # Each bank has its own power domain. The SDT's R5 lockstep TCM
         # nodes carry core 0's power domains, where Linux expects core 1's,
@@ -1390,64 +1408,30 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
         else:
             tcm_bank_nodes[pd_id] = node_path
 
-        # Versal2 uses SCMI IDs in power-domains. Translate a supported SCMI
-        # TCM ID to the existing legacy address-table key.
-        if platform == SOC_TYPE.VERSAL2:
-            legacy_pd_id = versal2_scmi_to_legacy_pd.get(pd_id)
-
-        # Older ZynqMP and Versal SDTs, plus some Versal NET TCMs, put the
-        # legacy address-table ID directly in power-domains.
-        if legacy_pd_id is None and pd_id in legacy_memory_nodes:
-            legacy_pd_id = pd_id
-
-        # Transitional SDTs may carry the legacy key separately. Versal2
-        # uses only the SCMI power-domains ID: xlnx,power-domain can
-        # disagree with it, and falling back would pair one bank's
-        # address with another bank's power domain.
-        legacy_pd = n.propval("xlnx,power-domain", list)
-        if (legacy_pd_id is None and platform != SOC_TYPE.VERSAL2 and
-                legacy_pd and legacy_pd != [""]):
-            legacy_pd_id = legacy_pd[0]
-
-        mapping = legacy_memory_nodes.get(legacy_pd_id)
-        if mapping is None:
-            pd_id_string = hex(pd_id) if isinstance(pd_id, int) else str(pd_id)
-            legacy_id_string = ""
-            if legacy_pd and legacy_pd != [""]:
-                legacy_id = legacy_pd[0]
-                if isinstance(legacy_id, int):
-                    legacy_id = hex(legacy_id)
-                legacy_id_string = f", legacy ID {legacy_id}"
-            print(f"ERROR: TCM node {node_path} has no address mapping for "
-                  f"power-domains ID {pd_id_string}{legacy_id_string}")
-            return False
-
-        # A core may only load its own TCM banks; in R5 lockstep, core 0
-        # uses the banks of both cores in its cluster.
-        owner = xlnx_rpu_tcm_owner(
-            platform, pd_id if platform == SOC_TYPE.VERSAL2 else legacy_pd_id)
-        if owner is not None and rpu_core is not False:
-            core = int(rpu_core)
-            if owner != core and not (r5_lockstep and owner // 2 == core // 2):
-                print(f"ERROR: TCM node {node_path} belongs to RPU core "
-                      f"{owner}, but the remote runs on RPU core {core}")
-                return False
-
-        # The SDT is authoritative for the TCM bank's global address and
-        # size. The table only supplies the core-local view (bank index
-        # and local offset), which the R52 SDTs do not describe.
         tcm_base, tcm_size = node_reg_start_size(n)
         if tcm_base is None or not tcm_size:
             print(f"ERROR: TCM node {node_path} is missing a valid "
                   "reg property")
             return False
-        # Core-local view of the bank: remoteproc bank index and local offset.
-        local_view = mapping["rpu_view"][:2]
+
+        bank_type = tcm_bank_type(n.name)
+        if bank_type not in local_origins:
+            print(f"ERROR: Unable to map %s to proper TCM spec name" % n.name)
+            return False
+
         cluster_base = rpu_cluster_tcm_base(tcm_base, family.cpu_type)
         if r5_lockstep:
-            # The combined TCM keeps the global layout: the second ATCM and
-            # BTCM at local 0x10000 and 0x30000.
-            local_view = [0, tcm_base - cluster_base]
+            # The combined TCM keeps the global layout: core 1's banks at
+            # local 0x10000 and 0x30000.
+            local_address = tcm_base - cluster_base
+        else:
+            # The cluster address-map maps a bank either at its core-local
+            # address or, on some SDTs, at its global address; only the
+            # former is the core's view.
+            local_address = sdt_tcm_view.get(pd_id)
+            if local_address is None or local_address == tcm_base:
+                local_address = local_origins[bank_type]
+        local_view = [core_index, local_address]
 
         # Remoteproc ranges and reg use two address and two size cells.
         size_cells = int_to_cells(tcm_size, 2)
@@ -1485,15 +1469,8 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
     cluster_node_path = f"/remoteproc@{cluster_base:x}"
 
     # A core runs one firmware, so it has one remoteproc relation, and a
-    # cluster in lockstep runs one firmware on its core 0. Check before the
-    # cluster node changes: a second core node would replace the first one's
-    # properties.
-    core_index = int(rpu_core) % 2
-    lockstep = cpu_config == CPU_CONFIG.RPU_LOCKSTEP
-    if lockstep and core_index != 0:
-        print(f"ERROR: RPU core {int(rpu_core)} is core {core_index} of its "
-              "cluster; a cluster in lockstep runs on its core 0")
-        return False
+    # cluster in lockstep has one relation. Check before the cluster node
+    # changes: a second core node would replace the first one's properties.
     try:
         cluster_node = tree[cluster_node_path]
     except KeyError:
