@@ -28,6 +28,11 @@ except ImportError:
         SECTION_NAMES as OPENAMP_EXTENSION_SECTIONS,
     )
 
+try:
+    from .xlnx_rpu_tcm import TCM_LOCAL_ORIGINS
+except ImportError:
+    from xlnx_rpu_tcm import TCM_LOCAL_ORIGINS
+
 SUPPORTED_ZEPHYR_VERSIONS = ("4.3",)
 ZEPHYR_SECTIONS = {
     "vector_table", "text", "rodata", "data", "bss", "noinit",
@@ -45,12 +50,6 @@ MPU_POLICY_PROPERTIES = {
     "readable", "writable", "executable", "cacheable", "shareable",
     "userspace", "static",
 }
-TCM_LOCAL_ORIGINS = {
-    "cortexr5": {"ATCM": 0x0, "BTCM": 0x20000},
-    "cortexr52": {"ATCM": 0x0, "BTCM": 0x10000, "CTCM": 0x18000},
-}
-
-
 class LayoutError(ValueError):
     """Report invalid or ambiguous Zephyr linker metadata."""
 
