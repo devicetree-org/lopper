@@ -1340,19 +1340,22 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
     power_domains = openamp_channel_info["rpu_core_pd_prop"].value
 
+    # In R5 lockstep, core 1's ATCM and BTCM are the cluster's second ATCM
+    # and BTCM, at 0xffe10000 and 0xffe30000.
     r5_core_reg_names_mappings = { "ffe00000" : "atcm0", "ffe20000" : "btcm0",
+                                "ffe10000" : "atcm1", "ffe30000" : "btcm1",
                                 "ffe90000" : "atcm1", "ffeb0000" : "btcm1" }
     r52_core_reg_names_mappings = { "atcm" : "atcm0", "btcm" : "btcm0", "ctcm": "ctcm0" }
 
     core_reg_names_mappings = r52_core_reg_names_mappings if get_platform(tree, 0) in [ SOC_TYPE.VERSAL2, SOC_TYPE.VERSAL_NET ] else r5_core_reg_names_mappings
 
-    # In R5 lockstep, the TCM of both cores is combined: core 1's ATCM and
-    # BTCM follow core 0's at local 0x10000 and 0x30000, and the cluster maps
-    # each local address to the cluster's global base plus that address. R52
-    # cores do not combine TCM in lockstep.
+    # In R5 lockstep, the TCM of both cores is combined: the remote lists
+    # the SDT's lockstep banks at 0xffe10000 and 0xffe30000 with core 0's,
+    # and each bank's core-local address is its offset in the cluster's TCM
+    # span. R52 cores do not combine TCM in lockstep.
     r5_lockstep = (cpu_config == CPU_CONFIG.RPU_LOCKSTEP and
                    platform in (SOC_TYPE.ZYNQMP, SOC_TYPE.VERSAL))
-    tcm_bank_ids = set()
+    tcm_bank_nodes = {}
     cluster_bases = set()
 
     # loop through TCM nodes
@@ -1370,6 +1373,22 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
 
         pd_id = pd[1]
         legacy_pd_id = None
+
+        # Each bank has its own power domain. The SDT's R5 lockstep TCM
+        # nodes carry core 0's power domains, where Linux expects core 1's,
+        # so Linux would request one bank twice and never power the other.
+        # Keep the SDT's value and say that the output is malformed.
+        if pd_id in tcm_bank_nodes:
+            pd_id_string = hex(pd_id) if isinstance(pd_id, int) else str(pd_id)
+            _warning(f"OPENAMP: XLNX: TCM node {node_path} has the same "
+                     f"power domain ({pd_id_string}) as TCM node "
+                     f"{tcm_bank_nodes[pd_id]}; the remoteproc node for "
+                     f"remote {getattr(remote_node, 'abs_path', remote_node)} "
+                     "lists it twice and is malformed. Fix the "
+                     "power-domains of these nodes in the system device "
+                     "tree.")
+        else:
+            tcm_bank_nodes[pd_id] = node_path
 
         # Versal2 uses SCMI IDs in power-domains. Translate a supported SCMI
         # TCM ID to the existing legacy address-table key.
@@ -1403,14 +1422,6 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
                   f"power-domains ID {pd_id_string}{legacy_id_string}")
             return False
 
-        # Each bank is listed once; the SDT's R5 lockstep TCM nodes, for
-        # example, carry core 0's power domains.
-        if legacy_pd_id in tcm_bank_ids:
-            print(f"ERROR: TCM node {node_path} is a TCM bank that another "
-                  f"elfload node of the remote already lists")
-            return False
-        tcm_bank_ids.add(legacy_pd_id)
-
         # A core may only load its own TCM banks; in R5 lockstep, core 0
         # uses the banks of both cores in its cluster.
         owner = xlnx_rpu_tcm_owner(
@@ -1433,9 +1444,10 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
         # Core-local view of the bank: remoteproc bank index and local offset.
         local_view = mapping["rpu_view"][:2]
         cluster_base = rpu_cluster_tcm_base(tcm_base, family.cpu_type)
-        if r5_lockstep and owner is not None and owner % 2 == 1:
-            local_view = [0, local_view[1] + 0x10000]
-            tcm_base = cluster_base + local_view[1]
+        if r5_lockstep:
+            # The combined TCM keeps the global layout: the second ATCM and
+            # BTCM at local 0x10000 and 0x30000.
+            local_view = [0, tcm_base - cluster_base]
 
         # Remoteproc ranges and reg use two address and two size cells.
         size_cells = int_to_cells(tcm_size, 2)
