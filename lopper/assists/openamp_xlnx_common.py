@@ -97,10 +97,10 @@ def _openamp_domain_cpu_assignment(tree, domain):
     if selection.diagnostic:
         domain_name = getattr(domain, "abs_path", domain.name)
         if selection.source == CpuSelectionSource.UNRESOLVED:
-            _warning(f"{domain_name}: {selection.diagnostic}")
+            _warning(f"openamp_xlnx: {domain_name}: {selection.diagnostic}")
         else:
-            _warning(f"{domain_name}: {selection.diagnostic}; migrate "
-                     "the domain to a cluster-relative mask")
+            _warning(f"openamp_xlnx: {domain_name}: {selection.diagnostic}; "
+                     "migrate the domain to a cluster-relative mask")
 
     return selection.cluster, selection.mask, selection.cpus
 

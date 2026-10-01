@@ -565,7 +565,7 @@ def test_remoteproc_v2_versal2_ignores_xlnx_power_domain(monkeypatch):
     assert captured["ranges"] == [0, 0x0, 0x0, 0xEBA80000, 0x0, 0x10000]
 
 
-def test_remoteproc_v2_requires_tcm_reg(monkeypatch, capsys):
+def test_remoteproc_v2_requires_tcm_reg(monkeypatch, caplog):
     """A TCM node without reg is rejected."""
     channel_info, tcm = _remoteproc_v2_fixture(with_reg=False)
 
@@ -573,7 +573,27 @@ def test_remoteproc_v2_requires_tcm_reg(monkeypatch, capsys):
         monkeypatch, openamp_xlnx.SOC_TYPE.VERSAL2, channel_info, tcm)
 
     assert result is False
-    assert "is missing a valid reg property" in capsys.readouterr().out
+    assert "is missing a valid reg property" in caplog.text
+
+
+def test_remoteproc_v2_errors_go_through_lopper_logging(
+        monkeypatch, capsys, caplog):
+    """Remoteproc errors and trace go through Lopper's logger, not stdout."""
+    tree = LopperTree()
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.VERSAL2)
+    info = {"remote_node": _rpu_remote(1, config="lockstep")}
+    assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
+
+    assert openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+        tree, info, []) is False
+
+    assert capsys.readouterr().out == ""
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert [r.getMessage() for r in errors] == [
+        "openamp_xlnx: RPU core 1 is core 1 of its cluster; a cluster in "
+        "lockstep runs on its core 0"]
 
 
 @pytest.mark.parametrize(
@@ -583,14 +603,16 @@ def test_remoteproc_v2_requires_tcm_reg(monkeypatch, capsys):
          "missing a valid power-domains property"),
         # Not an ATCM, BTCM or CTCM bank.
         (0x44, "r52_tcm_alias@eba00000",
-         "Unable to map r52_tcm_alias@eba00000 to proper TCM spec name"),
+         "TCM node /axi/r52_tcm_alias@eba00000 is not an ATCM, BTCM or CTCM "
+         "bank of a cortexr52 core"),
         # R52 cores have no DTCM.
         (0x44, "r52_0a_dtcm_global@eba00000",
-         "Unable to map r52_0a_dtcm_global@eba00000 to proper TCM spec name"),
+         "TCM node /axi/r52_0a_dtcm_global@eba00000 is not an ATCM, BTCM or "
+         "CTCM bank of a cortexr52 core"),
     ],
 )
 def test_remoteproc_v2_reports_invalid_tcm_mapping(
-        monkeypatch, capsys, pd_id, node_name, expected_error):
+        monkeypatch, caplog, pd_id, node_name, expected_error):
     """A TCM node without a power domain or bank type is reported."""
     channel_info, tcm = _remoteproc_v2_fixture(pd_id, None, node_name)
 
@@ -605,7 +627,7 @@ def test_remoteproc_v2_reports_invalid_tcm_mapping(
         object(), channel_info, [tcm])
 
     assert result is False
-    assert expected_error in capsys.readouterr().out
+    assert expected_error in caplog.text
 
 
 def _rpu_remote(core, config="split", core_pd=0xC0):
@@ -898,7 +920,7 @@ def test_remoteproc_v2_remote_without_tcm_uses_sdt_cluster_base(monkeypatch):
 
 
 def test_remoteproc_v2_remote_without_tcm_needs_cluster_base(
-        monkeypatch, capsys):
+        monkeypatch, caplog):
     """Without TCM or an SDT cluster base, the cluster is unknown."""
     tree = LopperTree()
     monkeypatch.setattr(
@@ -910,10 +932,10 @@ def test_remoteproc_v2_remote_without_tcm_needs_cluster_base(
     assert openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
         tree, info, []) is False
     assert ("no TCM bank or RPU cluster base found for remote /domains/RPU"
-            in capsys.readouterr().out)
+            in caplog.text)
 
 
-def test_remoteproc_v2_rejects_tcm_of_two_clusters(monkeypatch, capsys):
+def test_remoteproc_v2_rejects_tcm_of_two_clusters(monkeypatch, caplog):
     """A remote whose TCM banks are in two RPU clusters fails."""
     tree = LopperTree()
     axi = LopperNode(-1, "/axi")
@@ -933,10 +955,10 @@ def test_remoteproc_v2_rejects_tcm_of_two_clusters(monkeypatch, capsys):
     assert openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
         tree, info, nodes) is False
     assert ("the TCM banks of remote /domains/RPU are in more than one RPU "
-            "cluster: 0xeba00000, 0xeba80000") in capsys.readouterr().out
+            "cluster: 0xeba00000, 0xeba80000") in caplog.text
 
 
-def test_remoteproc_v2_rejects_second_relation_for_core(monkeypatch, capsys):
+def test_remoteproc_v2_rejects_second_relation_for_core(monkeypatch, caplog):
     """Two remoteproc relations for one RPU core fail on the second one."""
     tree = LopperTree()
     axi = LopperNode(-1, "/axi")
@@ -962,7 +984,7 @@ def test_remoteproc_v2_rejects_second_relation_for_core(monkeypatch, capsys):
     assert result is False
     assert tree["/remoteproc@ffe00000"].propval("ranges", list) == ranges
     assert ("/remoteproc@ffe00000/r5f@1 already exists; each RPU core can "
-            "have only one remoteproc relation") in capsys.readouterr().out
+            "have only one remoteproc relation") in caplog.text
 
 
 _MALFORMED_TCM = "is malformed. Fix the power-domains of these nodes"
@@ -1122,7 +1144,7 @@ def test_remoteproc_v2_r52_lockstep_uses_core_0_banks(
     ],
 )
 def test_remoteproc_v2_lockstep_cluster_has_one_relation(
-        monkeypatch, capsys, relations, expected_error):
+        monkeypatch, caplog, relations, expected_error):
     """A cluster in lockstep has one remoteproc relation, on its core 0."""
     tree = LopperTree()
     axi = LopperNode(-1, "/axi")
@@ -1142,7 +1164,7 @@ def test_remoteproc_v2_lockstep_cluster_has_one_relation(
             tree, info, [tcm]))
 
     assert all(results[:-1]) and results[-1] is False
-    assert expected_error in capsys.readouterr().out
+    assert expected_error in caplog.text
 
 
 def test_remoteproc_v2_warns_on_power_domain_listed_twice(
@@ -1307,7 +1329,7 @@ def test_rpmsg_allows_one_relation_per_remote_core():
                                                  ipi.phandle, 1]
 
 
-def test_rpmsg_rejects_second_relation_for_core(capsys):
+def test_rpmsg_rejects_second_relation_for_core(caplog):
     """A second RPMsg relation to one remoteproc core fails."""
     tree = LopperTree()
     tree + LopperNode(-1, "/reserved-memory")
@@ -1333,7 +1355,7 @@ def test_rpmsg_rejects_second_relation_for_core(capsys):
     assert not openamp_xlnx.xlnx_rpmsg_update_tree_linux(
         tree, relation, ipi, core, list(carveouts))
     assert ("/remoteproc@ffe00000/r5f@0 already has an RPMsg relation" in
-            capsys.readouterr().out)
+            caplog.text)
 
 
 @pytest.mark.parametrize(
