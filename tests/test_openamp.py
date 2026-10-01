@@ -972,26 +972,47 @@ def test_remoteproc_v2_lockstep_cluster_has_one_relation(
     assert expected_error in capsys.readouterr().out
 
 
+_MALFORMED_TCM = "is malformed. Fix the power-domains of these nodes"
+
+
 @pytest.mark.parametrize(
-    "platform, core_pd, tcms, tcm_pds",
+    "platform, core_pd, banks, malformed",
     [
+        # The 2026.2 ZCU102 and K24c SDTs give the lockstep banks core 0's
+        # power domains (15, 16) where Linux expects core 1's (17, 18).
         (openamp_xlnx.SOC_TYPE.ZYNQMP, 0x7,
-         ["psu-r5-0-atcm-global@ffe00000", "psu-r5-0-btcm-global@ffe20000",
-          "psu-r5-1-atcm-global@ffe90000", "psu-r5-1-btcm-global@ffeb0000"],
-         [0xF, 0x10, 0x11, 0x12]),
+         [("psu-r5-0-atcm-global@ffe00000", 15),
+          ("psu-r5-0-btcm-global@ffe20000", 16),
+          ("psu-r5-0-atcm-lockstep@ffe10000", 15),
+          ("psu-r5-0-btcm-lockstep@ffe30000", 16)], True),
+        # The same SDT once fixed.
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, 0x7,
+         [("psu-r5-0-atcm-global@ffe00000", 15),
+          ("psu-r5-0-btcm-global@ffe20000", 16),
+          ("psu-r5-0-atcm-lockstep@ffe10000", 17),
+          ("psu-r5-0-btcm-lockstep@ffe30000", 18)], False),
+        # The 2026.2 VRK165 and VPK360 SDTs, and once fixed.
         (openamp_xlnx.SOC_TYPE.VERSAL, 0x18110005,
-         ["psv_r5_0_atcm_global@ffe00000", "psv_r5_0_btcm_global@ffe20000",
-          "psv_r5_1_atcm_global@ffe90000", "psv_r5_1_btcm_global@ffeb0000"],
-         [0x1831800B, 0x1831800C, 0x1831800D, 0x1831800E]),
+         [("psv_r5_0_atcm_global@ffe00000", 0x1831800B),
+          ("psv_r5_0_btcm_global@ffe20000", 0x1831800C),
+          ("psv_r5_0_atcm_lockstep@ffe10000", 0x1831800B),
+          ("psv_r5_0_btcm_lockstep@ffe30000", 0x1831800C)], True),
+        (openamp_xlnx.SOC_TYPE.VERSAL, 0x18110005,
+         [("psv_r5_0_atcm_global@ffe00000", 0x1831800B),
+          ("psv_r5_0_btcm_global@ffe20000", 0x1831800C),
+          ("psv_r5_0_atcm_lockstep@ffe10000", 0x1831800D),
+          ("psv_r5_0_btcm_lockstep@ffe30000", 0x1831800E)], False),
     ],
 )
-def test_remoteproc_v2_r5_lockstep_matches_binding(
-        monkeypatch, platform, core_pd, tcms, tcm_pds):
-    """R5 lockstep maps core 1's banks after core 0's, as in the binding.
+def test_remoteproc_v2_r5_lockstep_copies_sdt_banks(
+        monkeypatch, caplog, platform, core_pd, banks, malformed):
+    """R5 lockstep maps the SDT's banks as the binding's lockstep example.
 
-    The xlnx,zynqmp-r5fss lockstep example: core 0 has ATCM and BTCM at
-    local 0x0 and 0x20000 (global 0xffe00000, 0xffe20000) and core 1's at
-    local 0x10000 and 0x30000 (global 0xffe10000, 0xffe30000), all in bank 0.
+    The xlnx,zynqmp-r5fss lockstep example: ATCM and BTCM at local 0x0 and
+    0x20000 (global 0xffe00000, 0xffe20000), and the second ATCM and BTCM
+    at local 0x10000 and 0x30000 (global 0xffe10000, 0xffe30000), all in
+    bank 0. Power domains are copied from the SDT; when the SDT repeats
+    one, the output is malformed and Lopper says so.
     """
     tree = LopperTree()
     axi = LopperNode(-1, "/axi")
@@ -1003,8 +1024,7 @@ def test_remoteproc_v2_r5_lockstep_matches_binding(
     info = {"remote_node": _rpu_remote(0, config="lockstep",
                                        core_pd=core_pd)}
     assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
-    nodes = [_tcm_node(tree, name, 0x10000, pd_id)
-             for name, pd_id in zip(tcms, tcm_pds)]
+    nodes = [_tcm_node(tree, name, 0x10000, pd_id) for name, pd_id in banks]
 
     core = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
         tree, info, nodes)
@@ -1023,11 +1043,24 @@ def test_remoteproc_v2_r5_lockstep_matches_binding(
         0, 0x10000, 0, 0x10000, 0, 0x30000, 0, 0x10000]
     assert core.propval("reg-names", list) == [
         "atcm0", "btcm0", "atcm1", "btcm1"]
-    assert core.propval("power-domains", list)[1::2] == [core_pd] + tcm_pds
+    assert core.propval("power-domains", list) == [0xA5, core_pd] + [
+        cell for _, pd_id in banks for cell in (0xA5, pd_id)]
+    warnings = [r.getMessage() for r in caplog.records
+                if _MALFORMED_TCM in r.getMessage()]
+    if malformed:
+        assert len(warnings) == 2
+        assert (f"TCM node /axi/{banks[2][0]} has the same power domain "
+                f"({hex(banks[2][1])}) as TCM node /axi/{banks[0][0]}; the "
+                "remoteproc node for remote /domains/RPU lists it twice and "
+                "is malformed") in warnings[0]
+    else:
+        assert warnings == []
 
 
-def test_remoteproc_v2_rejects_tcm_bank_listed_twice(monkeypatch, capsys):
-    """A TCM bank listed twice, such as by an SDT lockstep node, fails."""
+def test_remoteproc_v2_warns_on_power_domain_listed_twice(
+        monkeypatch, caplog):
+    """Two TCM nodes with one power domain still give output, with a
+    warning that it is malformed because of the SDT."""
     tree = LopperTree()
     axi = LopperNode(-1, "/axi")
     axi["#address-cells"] = [2]
@@ -1035,18 +1068,22 @@ def test_remoteproc_v2_rejects_tcm_bank_listed_twice(monkeypatch, capsys):
     tree + axi
     monkeypatch.setattr(
         openamp_xlnx, "get_platform",
-        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.ZYNQMP)
-    info = {"remote_node": _rpu_remote(0, config="lockstep")}
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.VERSAL2)
+    info = {"remote_node": _rpu_remote(0)}
     assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
-    # The SDT's psu_r5_0_atcm_lockstep node has core 0's ATCM power domain.
-    nodes = [_tcm_node(tree, "psu-r5-0-atcm-global@ffe00000", 0x10000, 15),
-             _tcm_node(tree, "psu-r5-0-atcm-lockstep@ffe10000", 0x10000, 15)]
+    nodes = [_tcm_node(tree, "r52_0a_atcm_global@eba00000", 0x10000, 0x44),
+             _tcm_node(tree, "r52_0a_btcm_global@eba10000", 0x8000, 0x44)]
 
-    assert openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
-        tree, info, nodes) is False
-    assert ("TCM node /axi/psu-r5-0-atcm-lockstep@ffe10000 is a TCM bank "
-            "that another elfload node of the remote already lists") in \
-        capsys.readouterr().out
+    core = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+        tree, info, nodes)
+
+    assert core.propval("power-domains", list) == [
+        0xA5, 0xC0, 0xA5, 0x44, 0xA5, 0x44]
+    assert ("TCM node /axi/r52_0a_btcm_global@eba10000 has the same power "
+            "domain (0x44) as TCM node /axi/r52_0a_atcm_global@eba00000; "
+            "the remoteproc node for remote /domains/RPU lists it twice and "
+            "is malformed. Fix the power-domains of these nodes in the "
+            "system device tree.") in caplog.text
 
 
 def _sdt_tree_with_axi():
