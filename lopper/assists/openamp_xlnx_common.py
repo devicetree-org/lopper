@@ -301,15 +301,6 @@ class CLUSTER_CONFIG(Enum):
     RPU_0 = 1
     RPU_1 = 2
 
-openamp_linux_hosts = [ "psv_cortexa72_0", "psx_cortexa78_0", "psu_cortexa53_0", "cortexa78_0" ]
-"""list[str]: Names of processor nodes recognized as OpenAMP Linux hosts."""
-
-openamp_remotes = { "psx_cortexr52_0", "psx_cortexr52_1", "psx_cortexr52_2", "psx_cortexr52_3",
- "cortexr52_0", "cortexr52_1", "cortexr52_2", "cortexr52_3", "cortexr52_4",
- "cortexr52_5", "cortexr52_6", "cortexr52_7", "cortexr52_8", "cortexr52_9",
- "psu_cortexr5_0", "psu_cortexr5_1", "psv_cortexr5_1", "psv_cortexr5_0", }
-"""set[str]: Names of processor nodes supported as OpenAMP remotes."""
-
 class SOC_TYPE:
     """Enum-like constants for supported SoC families."""
 
