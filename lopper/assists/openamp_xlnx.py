@@ -1795,14 +1795,29 @@ def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_ar
 
     channel_to_core_dict = {}
 
-    for node in remoteproc_relation_node.subnodes(children_only=True):
+    # Each remote is described by a child of the relation: relation0,
+    # relation1, ... Older YAML put remote and elfload lists on the relation
+    # itself, which YAML expansion does not expand.
+    relations = remoteproc_relation_node.subnodes(children_only=True)
+    if not relations:
+        _error(f"openamp_xlnx: {remoteproc_relation_node.abs_path} has no "
+               "relations; describe each remote in a relation0, relation1, "
+               "... child with remote and elfload properties")
+        return False
+
+    for node in relations:
         # check for remote property
         if node.propval("remote") == ['']:
             _error(f"openamp_xlnx: {node.abs_path} is missing remote "
                    "property")
             return False
 
-        remote_node = tree.pnode(node.propval("remote")[0])
+        remote = node.propval("remote")[0]
+        remote_node = tree.pnode(remote) if isinstance(remote, int) else None
+        if remote_node is None:
+            _error(f"openamp_xlnx: {node.abs_path}: remote {remote!r} is not "
+                   "a domain")
+            return False
         openamp_channel_info = { "remote_node": remote_node }
 
         # check for elfload prop
@@ -1811,7 +1826,15 @@ def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_ar
                    "property")
             return False
 
-        channel_elfload_nodes = [ tree.pnode(current_elfload) for current_elfload in node.propval("elfload") ]
+        channel_elfload_nodes = []
+        for current_elfload in node.propval("elfload"):
+            elfload_node = (tree.pnode(current_elfload)
+                            if isinstance(current_elfload, int) else None)
+            if elfload_node is None:
+                _error(f"openamp_xlnx: {node.abs_path}: elfload entry "
+                       f"{current_elfload!r} is not a node")
+                return False
+            channel_elfload_nodes.append(elfload_node)
         # validate later
         carveout_validation_arr.extend(channel_elfload_nodes)
 
