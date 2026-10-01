@@ -1646,6 +1646,69 @@ def test_openamp_output_failure_exits_nonzero(monkeypatch, caplog):
     assert "OpenAMP processing failed" in caplog.text
 
 
+def _remoteproc_relation_tree():
+    """A host domain with an empty remoteproc relation, and an RPU domain."""
+    tree = LopperTree()
+    for path in ("/domains", "/domains/APU_Linux",
+                 "/domains/APU_Linux/domain-to-domain",
+                 "/domains/APU_Linux/domain-to-domain/remoteproc-relation",
+                 "/domains/RPU0"):
+        tree + LopperNode(-1, path)
+    tcm = LopperNode(-1, "/r52_0a_atcm_global@eba00000")
+    tree + tcm
+    tcm.phandle_or_create()
+    tree["/domains/RPU0"].phandle_or_create()
+    return tree, tree["/domains/APU_Linux/domain-to-domain/"
+                      "remoteproc-relation"], tcm
+
+
+def test_remoteproc_relation_without_relations_fails(monkeypatch, caplog):
+    """A remoteproc relation in the old list format is reported."""
+    tree, relation, _ = _remoteproc_relation_tree()
+    relation["remote"] = ["RPU0"]
+    relation["elfload"] = ["r52_0a_atcm_global"]
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.VERSAL2)
+
+    assert not openamp_xlnx.xlnx_remoteproc_parse(tree, relation, [])
+    assert ("openamp_xlnx: /domains/APU_Linux/domain-to-domain/"
+            "remoteproc-relation has no relations; describe each remote in "
+            "a relation0, relation1, ... child with remote and elfload "
+            "properties") in caplog.text
+
+
+@pytest.mark.parametrize(
+    "remote, elfload, expected_error",
+    [
+        # A remote name that YAML expansion did not resolve to a domain.
+        ("openamp_rpu0", None,
+         "relation0: remote 'openamp_rpu0' is not a domain"),
+        # A phandle that is not in the tree.
+        (0xDEAD, None, "relation0: remote 57005 is not a domain"),
+        # An elfload entry that is not a node.
+        (None, "rproc0@40000000",
+         "relation0: elfload entry 'rproc0@40000000' is not a node"),
+    ],
+)
+def test_remoteproc_relation_references_must_resolve(
+        monkeypatch, caplog, remote, elfload, expected_error):
+    """Remote and elfload references that do not resolve are reported."""
+    tree, relation, tcm = _remoteproc_relation_tree()
+    child = LopperNode(-1, relation.abs_path + "/relation0")
+    tree + child
+    child["remote"] = [remote if remote is not None
+                       else tree["/domains/RPU0"].phandle]
+    child["elfload"] = [tcm.phandle] + ([elfload] if elfload else [])
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform",
+        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.VERSAL2)
+
+    assert openamp_xlnx.xlnx_remoteproc_parse(tree, relation, []) is False
+    assert (f"openamp_xlnx: {relation.abs_path}/{expected_error}"
+            in caplog.text)
+
+
 def test_openamp_invalid_arguments_exit_nonzero(caplog):
     """Assist arguments that name no processor fail the build."""
     sdt = type("FakeSdt", (), {"tree": object()})()
