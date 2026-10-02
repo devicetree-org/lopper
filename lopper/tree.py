@@ -5047,7 +5047,8 @@ class LopperTree:
                 # has already registered the base as an external tree, so the
                 # target is reachable and the reference is written as its
                 # label rather than a bare number.
-                self._bind_fragment_fixups(stem, fragment, overlay_tree)
+                self._bind_fragment_fixups(stem, fragment, overlay_tree,
+                                           frag_label=ov_node.label)
 
                 overlay_tree.add(fragment)
                 fragments_added.append(fragment)
@@ -5055,7 +5056,8 @@ class LopperTree:
 
         return fragments_added
 
-    def _bind_fragment_fixups( self, stem, fragment, overlay_tree=None ):
+    def _bind_fragment_fixups( self, stem, fragment, overlay_tree=None,
+                               frag_label=None ):
         """Patch dtc phandle placeholders in a fragment about to be emitted.
 
         The overlay's __fixups__ were recorded as (fragment_label,
@@ -5069,9 +5071,23 @@ class LopperTree:
         live in different trees here: the target is in self, while the node
         holding the property exists only in the fragment being built.
 
+        An overlay holds the fixups for every fragment in its file, and a
+        fixup's path is recorded relative to its own fragment root rather than
+        as an absolute one, so that a later rename or move of the target is
+        picked up automatically.  Two fragments with the same internal shape --
+        two instances of one IP, each wired to its own sink -- therefore record
+        the same relative path, and matching on that alone would write both
+        fixups into both fragments.  The fragment each one belongs to is
+        recorded alongside it, and dtc guarantees labels are unique within a
+        compilation unit, so that is what separates them.
+
         Args:
             stem (string): overlay name the fixups were registered under
             fragment (LopperNode): the fragment node, children already copied
+            overlay_tree (LopperTree,optional): searched for targets before self
+            frag_label (string,optional): label of this fragment's target node.
+                                          Fixups recorded against a different
+                                          fragment are skipped when it is given
         """
         fixups = self._metadata.get('overlay_fixups', {}).get(stem)
         if not fixups:
@@ -5128,7 +5144,10 @@ class LopperTree:
 
             for ref in refs:
                 try:
-                    _frag_label, relative_path, prop_name, byte_offset = ref
+                    ref_frag_label, relative_path, prop_name, byte_offset = ref
+                    if frag_label and ref_frag_label != frag_label:
+                        # belongs to a different fragment of the same overlay
+                        continue
                     holder = by_rel.get( relative_path )
                     if holder is None or prop_name not in holder.__props__:
                         continue
