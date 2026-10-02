@@ -1453,14 +1453,14 @@ def test_zephyr_ipc_shm_replaces_domain_carveout_references(
 def test_openamp_header_uses_vdev0buffer_reg_size(tmp_path):
     """SHARED_MEM_SIZE is the vdev0buffer size, not its base address."""
     policy = yaml.safe_load(ZYNQMP_OPENAMP_YAML.read_text())
-    definitions = policy["definitions"]["OpenAMP"]
+    reserved = policy["reserved-memory"]
     region_names = (
-        "rpu0vdev0vring0",
-        "rpu0vdev0vring1",
-        "rpu0vdev0buffer",
+        "rpu0vdev0vring0@9860000",
+        "rpu0vdev0vring1@9864000",
+        "rpu0vdev0buffer@9868000",
     )
     regions = {
-        name: definitions[name][0]
+        name: reserved[name]
         for name in region_names
     }
 
@@ -1474,7 +1474,7 @@ def test_openamp_header_uses_vdev0buffer_reg_size(tmp_path):
     for name in region_names:
         address = regions[name]["start"]
         size = regions[name]["size"]
-        node = LopperNode(-1, f"/reserved-memory/{name}@{address:x}")
+        node = LopperNode(-1, f"/reserved-memory/{name}")
         node["reg"] = [address, size]
         tree + node
         carveouts.append(node)
@@ -1498,8 +1498,8 @@ def test_openamp_header_uses_vdev0buffer_reg_size(tmp_path):
         tree, "cortexr5_0", output, carveouts, host_ipi)
 
     generated = output.read_text()
-    vring0 = regions["rpu0vdev0vring0"]
-    buffer = regions["rpu0vdev0buffer"]
+    vring0 = regions["rpu0vdev0vring0@9860000"]
+    buffer = regions["rpu0vdev0buffer@9868000"]
     assert (f"#define SHARED_MEM_PA           "
             f"{vring0['start']:#x}") in generated
     assert (f"#define SHARED_MEM_SIZE         "
