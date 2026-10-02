@@ -69,7 +69,6 @@ domains:
           carveouts: [ vdev0vring0@9880000, vdev0vring1@9884000,
                        vdev0buffer@9888000 ]
           mbox: ipi_3_to_ipi_1
-          timer: [ ttc0, ttc1 ]
   R5_0_ZEPHYR:
     os,type: zephyr
     zephyr-version: "4.3"
