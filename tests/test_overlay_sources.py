@@ -506,3 +506,186 @@ class TestOverlayFixupResolution:
         rendered = getattr(prop, "string_val", "") or ""
         assert "&sink_ep" in rendered, \
             f"reference was not written by label: {rendered!r}"
+
+
+# Two targets, identical internal shape below each. The fixups for both are
+# held together under the one overlay name, and each records its path relative
+# to its own fragment root, so both read "/ports/port@0/endpoint".
+_TWO_TARGET_BASE = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    compatible = "test";
+
+    amba: amba {
+        compatible = "simple-bus";
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+
+        dc0: dc@a0000000 {
+            compatible = "test,dc";
+            reg = <0xa0000000 0x1000>;
+        };
+
+        dc1: dc@b0000000 {
+            compatible = "test,dc";
+            reg = <0xb0000000 0x1000>;
+        };
+
+        sink_a: sink@c0000000 {
+            compatible = "test,sink";
+            reg = <0xc0000000 0x1000>;
+        };
+
+        sink_b: sink@d0000000 {
+            compatible = "test,sink";
+            reg = <0xd0000000 0x1000>;
+        };
+    };
+};
+"""
+
+_TWO_TARGET_OVERLAY = """\
+/dts-v1/;
+/plugin/;
+
+&dc0 {
+    ports { port@0 { ep_a: endpoint { remote-endpoint = <&sink_a>; }; }; };
+};
+
+&dc1 {
+    ports { port@0 { ep_b: endpoint { remote-endpoint = <&sink_b>; }; }; };
+};
+"""
+
+# Two blocks naming the same target. dtc accepts this and emits two fragments,
+# both labelled dc0, so the label cannot separate them -- nor should it, since
+# they describe one node and the later definition wins.
+_SAME_TARGET_OVERLAY = """\
+/dts-v1/;
+/plugin/;
+
+&dc0 {
+    first-block;
+    ports { port@0 { ep_a: endpoint { remote-endpoint = <&sink_a>; }; }; };
+};
+
+&dc0 {
+    second-block;
+    ports { port@0 { ep_b: endpoint { remote-endpoint = <&sink_b>; }; }; };
+};
+"""
+
+_SPLIT_OVERLAY_A = """\
+/dts-v1/;
+/plugin/;
+&dc0 { ports { port@0 { ep_a: endpoint { remote-endpoint = <&sink_a>; }; }; }; };
+"""
+
+_SPLIT_OVERLAY_B = """\
+/dts-v1/;
+/plugin/;
+&dc1 { ports { port@0 { ep_b: endpoint { remote-endpoint = <&sink_b>; }; }; }; };
+"""
+
+
+class TestOverlayFixupsPerFragment:
+    """A fixup must only be written into the fragment it was recorded against.
+
+    An overlay's fixups are held together under one name, and each path is
+    stored relative to its own fragment root so a later rename of the target is
+    picked up. Two fragments of the same shape therefore collide on that path
+    alone, and only the fragment label recorded beside it tells them apart.
+    """
+
+    def _sdt(self, tmp_path, overlays):
+        base_file = tmp_path / "system-top.dts"
+        base_file.write_text(_TWO_TARGET_BASE)
+
+        files = []
+        for name, text in overlays:
+            f = tmp_path / name
+            f.write_text(text)
+            files.append(str(f))
+
+        sdt = LopperSDT(str(base_file))
+        sdt.dryrun = False
+        sdt.verbose = 0
+        sdt.werror = False
+        sdt.output_file = str(tmp_path / "out.dts")
+        sdt.cleanup_flag = True
+        sdt.save_temps = False
+        sdt.enhanced = True
+        sdt.outdir = str(tmp_path)
+        sdt.setup(sdt.dts, [], "", True, libfdt=True)
+        sdt._compile_overlay_subtrees(files, str(tmp_path))
+        return sdt
+
+    def _resolved(self, sdt):
+        """{fragment name: label its remote-endpoint resolved to}."""
+        from lopper.tree import LopperTree
+
+        out = LopperTree()
+        fragments = sdt.tree.fragment_add_for_refs(out)
+
+        # Built after the fragments are bound, not before: a sink referenced
+        # only by the overlay has no phandle until binding mints one, so a map
+        # taken earlier has every target sitting on 0.
+        by_phandle = {}
+        for label in ("sink_a", "sink_b"):
+            found = sdt.tree.lnodes(label, exact=True)
+            if found:
+                by_phandle[found[0].phandle] = label
+
+        resolved = []
+        for frag in fragments:
+            for node in frag.subnodes():
+                prop = node.__props__.get("remote-endpoint")
+                if prop is None:
+                    continue
+                value = prop.value if isinstance(prop.value, list) else [prop.value]
+                resolved.append((frag.name, by_phandle.get(value[0])))
+        return resolved
+
+    def test_each_fragment_keeps_its_own_target(self, tmp_path):
+        """Two instances of one IP, each wired to its own sink."""
+        sdt = self._sdt(tmp_path, [("twotarget.dtso", _TWO_TARGET_OVERLAY)])
+        resolved = dict(self._resolved(sdt))
+
+        assert resolved.get("&dc0") == "sink_a", \
+            f"&dc0 took another fragment's target: {resolved.get('&dc0')}"
+        assert resolved.get("&dc1") == "sink_b", \
+            f"&dc1 took another fragment's target: {resolved.get('&dc1')}"
+
+    def test_no_fragment_is_left_unresolved(self, tmp_path):
+        """Filtering must not discard a fixup that does belong here."""
+        sdt = self._sdt(tmp_path, [("twotarget.dtso", _TWO_TARGET_OVERLAY)])
+        resolved = self._resolved(sdt)
+
+        assert len(resolved) == 2, f"expected two bound references, got {resolved}"
+        assert all(label is not None for _, label in resolved), \
+            f"a reference was left unbound: {resolved}"
+
+    def test_repeated_target_still_takes_the_later_block(self, tmp_path):
+        """Two blocks on one target describe one node, so the later wins.
+
+        Both fragments carry the same label, so the filter cannot separate
+        them and must not try to. Guards against over-filtering.
+        """
+        sdt = self._sdt(tmp_path, [("sametarget.dtso", _SAME_TARGET_OVERLAY)])
+        resolved = self._resolved(sdt)
+
+        assert len(resolved) == 2, f"expected both blocks emitted, got {resolved}"
+        assert {label for _, label in resolved} == {"sink_b"}, \
+            f"the later block should win for both, got {resolved}"
+
+    def test_separate_overlays_do_not_interfere(self, tmp_path):
+        """The same shape in two files stays isolated by overlay name."""
+        sdt = self._sdt(tmp_path, [("ovA.dtso", _SPLIT_OVERLAY_A),
+                                   ("ovB.dtso", _SPLIT_OVERLAY_B)])
+        resolved = dict(self._resolved(sdt))
+
+        assert resolved.get("&dc0") == "sink_a"
+        assert resolved.get("&dc1") == "sink_b"
