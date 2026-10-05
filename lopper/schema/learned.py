@@ -1412,6 +1412,23 @@ class DTSPropertyTypeResolver:
         self._override_patterns = {}
         self._override_paths = {}
 
+        # Nodes whose property type is a property of the node rather than of
+        # the property name. A symbol or an alias is a path string, whatever
+        # it is called, so there is nothing here to observe or infer.
+        #
+        # Stated as overrides because they have to be consulted before the
+        # global name table: a symbol is named after a label, and a label is
+        # free to collide with the name of a real property. A tree with a node
+        # labelled "timer" and an unrelated "timer" property holding a phandle
+        # would otherwise have /__symbols__/timer typed from that phandle, and
+        # its path string encoded as cells.
+        #
+        # A supplied schema still wins -- these are seeded before the schema's
+        # own overrides are read, so naming either path there replaces this.
+
+        for _structural in ("/__symbols__", "/aliases"):
+            self._override_paths[_structural] = { "*": LopperFmt.STRING }
+
         overrides = schema.get('overrides', {})
         for prop_name, prop_def in overrides.get('properties', {}).items():
             self._override_properties[prop_name] = self._override_to_lopper_fmt( prop_name, prop_def )
@@ -1683,18 +1700,25 @@ class DTSPropertyTypeResolver:
         # property that byte level guessing cannot decide. Most specific scope
         # first: an exact path, then a node pattern, then the bare name.
         if node_path and node_path in self._override_paths:
-            if prop_name in self._override_paths[node_path]:
-                fmt = self._override_paths[node_path][prop_name]
-                _debug( f"schema: {prop_name} typed {fmt} by override for path {node_path}" )
-                return fmt
+            path_props = self._override_paths[node_path]
+            # "*" types every property at this path. Some nodes carry
+            # properties whose names cannot be known in advance -- a symbol is
+            # named after whatever label the author chose -- so there is no
+            # list to enumerate, only a statement about the node.
+            for key in (prop_name, "*"):
+                if key in path_props:
+                    fmt = path_props[key]
+                    _debug( f"schema: {prop_name} typed {fmt} by override for path {node_path}" )
+                    return fmt
 
         if node_path:
             for pattern, pattern_info in self._override_patterns.items():
                 if pattern_info['regex'].match(node_path):
-                    if prop_name in pattern_info['properties']:
-                        fmt = pattern_info['properties'][prop_name]
-                        _debug( f"schema: {prop_name} typed {fmt} by override for node pattern {pattern}" )
-                        return fmt
+                    for key in (prop_name, "*"):
+                        if key in pattern_info['properties']:
+                            fmt = pattern_info['properties'][key]
+                            _debug( f"schema: {prop_name} typed {fmt} by override for node pattern {pattern}" )
+                            return fmt
 
         if prop_name in self._override_properties:
             fmt = self._override_properties[prop_name]
