@@ -765,3 +765,81 @@ class TestResolvePropertySpec:
             spec_lopper_fmt = spec.type_def.property_type.to_lopper_fmt()
             assert spec_lopper_fmt == lopper_fmt, \
                 f"{prop}: PropertySpec gives {spec_lopper_fmt}, get_property_type gives {lopper_fmt}"
+
+
+class TestStructuralNodeTypes:
+    """Some nodes decide the type of everything they hold.
+
+    A symbol or an alias is a path string whatever it is called. The name
+    carries no type information, because it is a label the author chose and a
+    label is free to collide with the name of a real property -- a tree with a
+    node labelled "timer" and an unrelated "timer" property holding a phandle
+    is legal. Typing the symbol from that phandle encodes its path as cells.
+    """
+
+    @pytest.fixture
+    def resolver(self):
+        # 'timer' known globally as a phandle property, which is what the
+        # learner records after seeing timer = <&ttc> on a real node
+        return DTSPropertyTypeResolver({
+            'property_definitions': {
+                'timer': {'type': 'phandle'},
+            }
+        })
+
+    def test_symbol_is_a_string_even_when_its_name_is_a_phandle_property(self, resolver):
+        assert resolver.get_property_type('timer', '/__symbols__') == LopperFmt.STRING
+
+    def test_alias_is_a_string_on_the_same_grounds(self, resolver):
+        assert resolver.get_property_type('timer', '/aliases') == LopperFmt.STRING
+
+    def test_the_same_name_is_still_a_phandle_elsewhere(self, resolver):
+        """The fix must not disarm the property it was learned from."""
+        assert resolver.get_property_type('timer', '/amba/consumer') == LopperFmt.UINT32
+
+    def test_an_arbitrary_label_is_also_a_string(self, resolver):
+        """Symbol names cannot be enumerated, so the rule is about the node."""
+        for label in ('gic', 'ttc0', 'some_label_nobody_predicted'):
+            assert resolver.get_property_type(label, '/__symbols__') == LopperFmt.STRING
+
+    def test_a_supplied_schema_still_wins(self):
+        """Structural defaults are seeded first so a declaration can replace
+        them. Nothing here is meant to be unoverridable."""
+        resolver = DTSPropertyTypeResolver({
+            'overrides': {
+                'paths': {
+                    '/__symbols__': {'odd_one': {'type': 'uint32'}},
+                }
+            }
+        })
+        assert resolver.get_property_type('odd_one', '/__symbols__') == LopperFmt.UINT32
+
+
+class TestPathOverrideWildcard:
+    """A path override may type every property at that path with "*".
+
+    For nodes whose property names are not knowable in advance there is no
+    list to enumerate, only a statement about the node itself.
+    """
+
+    def test_wildcard_types_an_unlisted_property(self):
+        resolver = DTSPropertyTypeResolver({
+            'overrides': {'paths': {'/made/up': {'*': {'type': 'string'}}}}
+        })
+        assert resolver.get_property_type('anything', '/made/up') == LopperFmt.STRING
+
+    def test_a_named_property_beats_the_wildcard(self):
+        resolver = DTSPropertyTypeResolver({
+            'overrides': {'paths': {'/made/up': {'*': {'type': 'string'},
+                                                 'count': {'type': 'uint32'}}}}
+        })
+        assert resolver.get_property_type('count', '/made/up') == LopperFmt.UINT32
+        assert resolver.get_property_type('other', '/made/up') == LopperFmt.STRING
+
+    def test_the_wildcard_does_not_leak_to_other_paths(self):
+        resolver = DTSPropertyTypeResolver({
+            'overrides': {'paths': {'/made/up': {'*': {'type': 'string'}}},
+                          'properties': {}},
+            'property_definitions': {'count': {'type': 'phandle'}},
+        })
+        assert resolver.get_property_type('count', '/somewhere/else') == LopperFmt.UINT32
