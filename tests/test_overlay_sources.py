@@ -689,3 +689,138 @@ class TestOverlayFixupsPerFragment:
 
         assert resolved.get("&dc0") == "sink_a"
         assert resolved.get("&dc1") == "sink_b"
+
+
+# A base tree that references one of its own nodes by phandle, plus an
+# overlay whose internally-assigned phandles start from 1 as every standalone
+# compile does. The two numberings are independent, so the overlay arrives
+# holding numbers the base is already using.
+_COLLIDE_BASE = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    compatible = "test";
+
+    amba: amba {
+        compatible = "simple-bus";
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+
+        intc: interrupt-controller@a0000000 {
+            compatible = "test,intc";
+            reg = <0xa0000000 0x1000>;
+            interrupt-controller;
+            #interrupt-cells = <3>;
+        };
+
+        victim: victim@b0000000 {
+            compatible = "test,victim";
+            reg = <0xb0000000 0x1000>;
+            interrupt-parent = <&intc>;
+        };
+
+        tgt: widget@c0000000 {
+            compatible = "test,widget";
+            reg = <0xc0000000 0x1000>;
+        };
+    };
+};
+"""
+
+_COLLIDE_OVERLAY = """\
+/dts-v1/;
+/plugin/;
+
+&tgt {
+    ports {
+        port@0 {
+            ov_ep_a: endpoint { };
+        };
+        port@1 {
+            ov_ep_b: endpoint { };
+        };
+    };
+};
+"""
+
+
+class TestOverlayPhandlesDoNotDisturbTheBase:
+    """An overlay's own phandle numbering must not reach into the base.
+
+    A standalone overlay compile numbers from 1, exactly as the base did, so
+    the two have assigned the same numbers to different nodes. Transcribing
+    the overlay into the tree without renumbering leaves base properties
+    holding integers that now answer to an overlay node, and they render as a
+    reference to it -- an interrupt parent becoming a video endpoint.
+    """
+
+    def _prepare(self, tmp_path):
+        base_file = tmp_path / "system-top.dts"
+        base_file.write_text(_COLLIDE_BASE)
+        ov_file = tmp_path / "collide.dtso"
+        ov_file.write_text(_COLLIDE_OVERLAY)
+
+        sdt = LopperSDT(str(base_file))
+        sdt.dryrun = False
+        sdt.verbose = 0
+        sdt.werror = False
+        sdt.output_file = str(tmp_path / "out.dts")
+        sdt.cleanup_flag = True
+        sdt.save_temps = False
+        sdt.enhanced = True
+        sdt.outdir = str(tmp_path)
+        sdt.setup(sdt.dts, [], "", True, libfdt=True)
+        sdt._compile_overlay_subtrees([str(ov_file)], str(tmp_path))
+        return sdt
+
+    def test_a_base_reference_still_names_its_own_target(self, tmp_path):
+        """victim's interrupt-parent must still be the interrupt controller.
+
+        The PL assist extracts base content into the same tree it adds the
+        overlay fragments to, so a base-derived property is rendered with the
+        overlay's nodes in scope. That is where a shared number is resolved to
+        the wrong node -- checking the base tree alone never sees it, since
+        nothing there answers to the overlay's numbering.
+        """
+        import copy
+        from lopper.tree import LopperTree
+
+        sdt = self._prepare(tmp_path)
+
+        out = LopperTree()
+        victim = sdt.tree.lnodes("victim", exact=True)
+        assert victim, "victim node missing from the base"
+        out.add(copy.deepcopy(victim[0]))
+
+        out.overlay_of(sdt.tree)
+        out.resolve()
+
+        moved = out.lnodes("victim", exact=True)
+        assert moved, "victim did not survive into the emitted tree"
+        prop = moved[0].__props__.get("interrupt-parent")
+        assert prop is not None, "interrupt-parent disappeared"
+
+        rendered = getattr(prop, "string_val", "") or ""
+        assert "ov_ep" not in rendered, \
+            f"base reference was captured by an overlay node: {rendered!r}"
+
+    def test_overlay_phandles_are_distinct_from_base_phandles(self, tmp_path):
+        """No overlay node may carry a number the base is already using."""
+        from lopper.tree import LopperTree
+
+        sdt = self._prepare(tmp_path)
+        out = LopperTree()
+        out.overlay_of(sdt.tree)
+        out.resolve()
+
+        base_phandles = set(sdt.tree.__pnodes__.keys())
+        overlay_phandles = set()
+        for frag in out.__nodes__.values():
+            for node in frag.subnodes():
+                if node.phandle and node.phandle > 0:
+                    overlay_phandles.add(node.phandle)
+
+        clash = base_phandles & overlay_phandles
+        assert not clash, f"overlay reused base phandle numbers: {sorted(clash)}"
