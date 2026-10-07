@@ -1076,3 +1076,60 @@ class TestPropertyConstruction:
         prop = LopperProp("compatible", value=["test,thing"])
         assert prop.value == ["test,thing"]
         assert prop.ptype is not None
+
+
+class TestPhandleAllocation:
+    """A phandle number must not be handed out twice in a tree's lifetime.
+
+    Deleting a node does not rewrite the references to it, so a property
+    elsewhere is left holding a bare integer. While nothing answers to that
+    integer the reference is dangling, and write-time strict mode drops it --
+    the visible failure we want. Reissue the number and the reference silently
+    resolves again, to whatever unrelated node now holds it.
+    """
+
+    def _tree_with_phandles(self, count):
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        for i in range(1, count + 1):
+            node = LopperNode(-1, "/n%d" % i)
+            tree.add(node)
+            node.phandle = i
+            tree.__pnodes__[i] = node
+        return tree
+
+    def test_allocation_starts_above_the_live_maximum(self):
+        tree = self._tree_with_phandles(3)
+        assert tree.phandle_gen() == 4
+
+    def test_deleting_the_highest_node_does_not_free_its_number(self):
+        """The case that bit us: __pnodes__ only knows what is live, so
+        removing the top node lowers the maximum and the next allocation
+        lands exactly on the number it just freed."""
+        tree = self._tree_with_phandles(3)
+        first = tree.phandle_gen()
+
+        del tree.__pnodes__[3]
+        assert tree.phandle_gen() > first, \
+            "a retired phandle was handed out again"
+
+    def test_a_retired_number_is_never_reissued(self):
+        tree = self._tree_with_phandles(3)
+        del tree.__pnodes__[3]
+        assert tree.phandle_gen() > 3, "phandle 3 was recycled after deletion"
+
+    def test_successive_allocations_are_distinct(self):
+        tree = self._tree_with_phandles(2)
+        seen = {tree.phandle_gen() for _ in range(5)}
+        assert len(seen) == 5, f"phandle_gen repeated itself: {sorted(seen)}"
+
+    def test_the_mark_is_recorded_against_every_tree_asked_about(self):
+        """A number allocated to be distinct from another tree is spoken for
+        in that tree too, whichever one the node ends up in."""
+        a = self._tree_with_phandles(2)
+        b = self._tree_with_phandles(5)
+
+        got = a.phandle_gen(also=[b])
+        assert got > 5, "allocation ignored the other tree's numbering"
+        assert b.phandle_gen() > got, \
+            "the other tree reissued a number already handed out"
