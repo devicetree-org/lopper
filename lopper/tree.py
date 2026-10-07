@@ -4462,6 +4462,12 @@ class LopperTree:
         for node in result.__nodes__.values():
             node.tree = result
 
+        # Shift the overlay clear of this tree's numbering before merging.
+        # __pnodes__ is keyed by phandle, so an overlay node arriving on a
+        # number the base already uses silently evicts the base's entry and
+        # the references to it stop resolving.
+        self.apply_potential_overlay( name )
+
         for ov_node in self._metadata.get('overlay_subtrees', {}).get(name, []):
             _merge_node_into_tree(result, ov_node)
 
@@ -5018,6 +5024,14 @@ class LopperTree:
         # --- source 2: user overlay subtrees (-i files) ---
         subtrees = self._metadata.get('overlay_subtrees', {})
         for stem, nodes in subtrees.items():
+            # Writing an overlay out beside this tree's content is a form of
+            # applying it: both end up in one file, and a number means one
+            # thing there. The overlay was compiled on its own and numbered
+            # from 1, as this tree did, so shift it clear before anything is
+            # transcribed. Per overlay and in order, so several of them clear
+            # each other as well as the base.
+            self.apply_potential_overlay( stem )
+
             for ov_node in nodes:
                 if not ov_node.label:
                     lopper.log._warning(f"overlay subtree node {ov_node.abs_path} has no label, skipping")
@@ -5268,6 +5282,83 @@ class LopperTree:
 
         """
         return list(self.__pnodes__.keys())
+
+    def apply_potential_overlay( self, name ):
+        """Shift a held overlay's phandles clear of this tree, without merging
+
+        A standalone overlay compile numbers its phandles from 1, exactly as
+        this tree did, so the two have handed the same numbers to different
+        nodes. libfdt settles that at fdt_overlay_apply() time by shifting
+        every phandle in the overlay past the base's maximum before anything
+        is merged, which makes a clash arithmetically impossible rather than
+        something to detect and repair.
+
+        This is that step on its own. The overlay is renumbered and this
+        tree's mark is raised past it, but nothing is merged and this tree is
+        not modified. An overlay may still be written out separately as its
+        own source afterwards -- that is a form of apply rather than a
+        different operation, and it is where an unshifted overlay does its
+        damage: a base property holding a number the overlay also uses
+        resolves to the overlay's node and is written as a reference to it.
+
+        The shift accumulates. Each call takes its delta from the mark the
+        last one raised, so a second overlay clears this tree *and* the first
+        overlay, which is what libfdt gets by applying them in sequence.
+
+        Renumbering is in place. Nothing is lost by it -- a phandle number
+        carries no meaning beyond being distinct within its tree -- so an
+        overlay can be shifted again later if it is applied somewhere else.
+
+        The overlay's own internal references still hold their original
+        numbers in the property cells. Those are rebound by path rather than
+        by value, so they pick up whatever the target ends up with, which
+        means resolution has to run after this and never before.
+
+        What this deliberately does not do is publish the overlay's symbols.
+        libfdt's last apply step folds an applied overlay's __symbols__ into
+        the base so later overlays can reference them, but that is a
+        consequence of really applying: the base gained the nodes. Nothing is
+        applied here and the base is untouched, so an overlay referencing a
+        label defined in another overlay does not resolve. dtc has no cross
+        overlay notion when compiling either -- that resolution only exists
+        at apply time against a live base -- so there is nothing to carry
+        over when overlays are written out as source.
+
+        Args:
+           name (string): overlay name (stem), as registered
+
+        Returns:
+           int: the delta applied, 0 if there was nothing to shift
+        """
+        nodes = self._metadata.get( 'overlay_subtrees', {} ).get( name )
+        if not nodes:
+            return 0
+
+        delta = getattr( self, '__phandle_watermark__', 0 )
+        if self.__pnodes__:
+            delta = max( delta, max( self.__pnodes__.keys() ) )
+
+        if delta <= 0:
+            return 0
+
+        highest = 0
+
+        def _shift( node ):
+            nonlocal highest
+            if node.phandle and node.phandle > 0:
+                node.phandle = node.phandle + delta
+                highest = max( highest, node.phandle )
+            for child in node.child_nodes.values():
+                _shift( child )
+
+        for n in nodes:
+            _shift( n )
+
+        self._phandle_seen( highest )
+
+        lopper.log._debug( f"overlay '{name}': phandles shifted by {delta}" )
+
+        return delta
 
     def _phandle_seen( self, phandle ):
         """Record that this tree has carried this phandle number.
