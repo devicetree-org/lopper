@@ -2643,6 +2643,7 @@ class LopperNode(object):
             # Note: duplicate phandle detection is done lazily at resolve() time
             # via lopper.audit.check_duplicate_phandles() for better performance
             self.tree.__pnodes__[value] = self
+            self.tree._phandle_seen( value )
 
         # Set the phandle attribute (after index updates to avoid recursion via __setattr__)
         self.__dict__['phandle'] = value
@@ -3123,6 +3124,7 @@ class LopperNode(object):
 
         # Update the tree's phandle index so pnode() lookups work
         self.tree.__pnodes__[new_ph] = self
+        self.tree._phandle_seen( new_ph )
 
         _debug( "phandle {self.phandle} created for node {self.abs_path}" )
 
@@ -4246,6 +4248,11 @@ class LopperTree:
         self.__nnodes__ = OrderedDict()
         # nodes, indexed by phandle
         self.__pnodes__ = OrderedDict()
+        # highest phandle this tree has ever handed out. __pnodes__ only knows
+        # what is live, so deleting the highest numbered node would otherwise
+        # lower the mark and let the next allocation reuse that number. See
+        # phandle_gen().
+        self.__phandle_watermark__ = 0
         # nodes, indexed by label
         self.__lnodes__ = OrderedDict()
         # nodes. indexed by aliases
@@ -5262,6 +5269,25 @@ class LopperTree:
         """
         return list(self.__pnodes__.keys())
 
+    def _phandle_seen( self, phandle ):
+        """Record that this tree has carried this phandle number.
+
+        Called wherever __pnodes__ gains an entry, so the allocator's mark
+        covers every number the tree has ever held rather than only the ones
+        it minted itself. A phandle that arrived from dtc or was loaded from
+        a dtb has to retire exactly as one from phandle_gen() does -- the
+        reference left behind when its node is deleted does not care where
+        the number originally came from.
+
+        Args:
+           phandle (int): the number now in use
+        """
+        try:
+            if phandle and phandle > getattr( self, '__phandle_watermark__', 0 ):
+                self.__phandle_watermark__ = phandle
+        except Exception:
+            pass
+
     def phandle_gen( self, also=None ):
         """Generate a phandle for use in a node
 
@@ -5284,16 +5310,43 @@ class LopperTree:
            phandle number
 
         """
+        trees = [ self ] + list( also or [] )
+
         highest_phandle = 0
-        for tree in [ self ] + list( also or [] ):
+        # (see _phandle_seen() for how the watermark is maintained)
+        for tree in trees:
             pnodes = getattr( tree, '__pnodes__', None )
             if pnodes:
                 highest_phandle = max( highest_phandle, max( pnodes.keys() ) )
+            # A number that has been handed out before must not come back,
+            # even once the node holding it is gone. __pnodes__ only knows
+            # what is live, so deleting the highest numbered node lowers that
+            # maximum and the next allocation lands exactly on the number it
+            # just freed. Properties elsewhere are still holding it: deleting
+            # a node does not rewrite the references to it, so such a
+            # reference is left pointing at a bare integer. While that integer
+            # resolves to nothing the reference is dangling, and write time
+            # strict mode drops it, which is the visible failure we want.
+            # Reissue the number and it silently resolves again, to whatever
+            # unrelated node now holds it.
+
+            highest_phandle = max( highest_phandle,
+                                   getattr( tree, '__phandle_watermark__', 0 ) )
 
         ret_phandle = highest_phandle + 1
         if ret_phandle == 0:
             _warning( "phandle of 0 (invalid) was generated, tree may be corrupted" )
             ret_phandle = ret_phandle + 1
+
+        # Record against every tree the caller asked this to be distinct from,
+        # since the number is now spoken for across all of them regardless of
+        # which one the node ends up in.
+        for tree in trees:
+            try:
+                if ret_phandle > getattr( tree, '__phandle_watermark__', 0 ):
+                    tree.__phandle_watermark__ = ret_phandle
+            except Exception:
+                pass
 
         return ret_phandle
 
@@ -5960,6 +6013,7 @@ class LopperTree:
             self.__nnodes__[node.number] = node
         if node.phandle > 0:
             self.__pnodes__[node.phandle] = node
+            self._phandle_seen( node.phandle )
         if node.label:
             try:
                 if self.__lnodes__[node.label]:
