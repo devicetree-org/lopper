@@ -447,9 +447,15 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
         for n in result_nodes:
             _index(n)
 
+        # __symbols__ is what the author wrote, so it wins over a label that
+        # was derived rather than authored. A node called "endpoint" picks up
+        # "endpoint" (and "endpoint_1" for the next one) from its own name
+        # during the compile, and refusing to replace that loses the real
+        # label: a graph binding comes out with anonymous endpoints again,
+        # which is the failure this recovery exists to prevent.
         for real_path, label in symbol_labels:
             node = by_path.get(real_path)
-            if node is not None and not node.label:
+            if node is not None and node.label != label:
                 node.label = label
 
     return result_nodes, rewritten_fixups, local_fixups, symbol_labels
@@ -1279,6 +1285,17 @@ class LopperSDT:
             self.tree.schema = self.schema
             self.tree.load( dct )
             _deserialize_overlay_subtrees( self.tree )
+
+            # Labels live in __symbols__ when a tree comes from a dtb, and a
+            # node that carries no properties has nothing for the label to be
+            # inferred from. Attach them before anything copies or moves a
+            # node, or the label is left behind in this tree's index.
+
+            # Labels live in __symbols__ when a tree comes from a dtb, and a
+            # node that carries no properties has nothing for the label to be
+            # inferred from. Attach them before anything copies or moves a
+            # node, or the label is left behind in this tree's index.
+            self.tree.labels_from_symbols()
 
             self.tree.__dbg__ = self.verbose
 
