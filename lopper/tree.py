@@ -4994,6 +4994,9 @@ class LopperTree:
         """
         exclude_set = set(exclude_props) if exclude_props else set()
         fragments_added = []
+        # overlay name -> [(real path of the fragment's target, fragment)],
+        # for the local fixup pass once every fragment exists
+        emitted = {}
 
         # --- source 1: phandle cross-references ---
         referencing = self.tree_refs(overlay_tree)
@@ -5073,9 +5076,84 @@ class LopperTree:
 
                 overlay_tree.add(fragment)
                 fragments_added.append(fragment)
+                emitted.setdefault(stem, []).append((ov_node.abs_path, fragment))
                 lopper.log._info(f"Added user overlay fragment '&{ov_node.label}' from '{stem}'")
 
+        # Internal references last, once every fragment exists: one can cross
+        # from one fragment to another, and the target's fragment may not have
+        # been built when the holder's was.
+
+        # Internal references last, once every fragment exists: one can cross
+        # from one fragment to another, and the target's fragment may not have
+        # been built when the holder's was.
+        self._bind_fragment_local_fixups(emitted)
+
         return fragments_added
+
+    def _bind_fragment_local_fixups( self, emitted ):
+        """Rebind an overlay's internal references across its emitted fragments
+
+        __local_fixups__ records a reference from one overlay node to another
+        by position, and the cell still holds the number dtc gave the target
+        when the overlay was compiled on its own. That number means nothing
+        here: the overlay has been shifted clear of this tree, and before the
+        shift it was worse than meaningless, since it could name an unrelated
+        node of ours and be written out as a reference to it.
+
+        We recorded these as paths rather than values precisely so they can be
+        rebound to whatever the target ends up with, which is why this has to
+        run after apply_potential_overlay() and never before.
+
+        Args:
+            emitted (dict): overlay name -> [(real path of the fragment's
+                            target, fragment node)], for the fragments just
+                            written
+        """
+        for stem, frags in emitted.items():
+            fixups = self._metadata.get( 'overlay_local_fixups', {} ).get( stem )
+            if not fixups:
+                continue
+
+            # One flat index of this overlay's emitted nodes by real path.
+            # A fragment's own nodes still carry dtc's /fragment@N/... paths
+            # below the first level, so the real path is rebuilt from the
+            # fragment's target downwards rather than read off the node.
+            index = {}
+
+            def _record( node, real ):
+                index[real] = node
+                for child in node.child_nodes.values():
+                    _record( child, real.rstrip( "/" ) + "/" + child.name )
+
+            for root_real, frag in frags:
+                _record( frag, root_real )
+
+            for holder_path, prop_name, byte_offset, target_path in fixups:
+                try:
+                    holder = index.get( holder_path )
+                    if holder is None or prop_name not in holder.__props__:
+                        continue
+
+                    target = index.get( target_path )
+                    if target is None or not target.phandle or target.phandle < 0:
+                        lopper.log._warning(
+                            f"overlay local fixup: target '{target_path}' was not "
+                            f"found among the emitted fragments, reference left "
+                            f"unresolved" )
+                        continue
+
+                    prop = holder.__props__[prop_name]
+                    val = list( prop.__dict__.get( 'value', [] ) )
+                    idx = int( byte_offset ) // 4
+                    if idx < len( val ):
+                        val[idx] = target.phandle
+                        prop.__dict__['value'] = val
+                        try:
+                            prop.resolve()
+                        except Exception:
+                            pass
+                except Exception as e:
+                    lopper.log._warning( f"overlay local fixup {holder_path}: {e}" )
 
     def _bind_fragment_fixups( self, stem, fragment, overlay_tree=None,
                                frag_label=None ):
@@ -6848,6 +6926,51 @@ class LopperTree:
                 pass
 
         return nodes
+
+    def labels_from_symbols( self ):
+        """Attach the labels recorded in /__symbols__ to the nodes they name
+
+        dtc keeps labels out of the nodes themselves -- they are compile time
+        identifiers -- and preserves them in /__symbols__ when asked with -@.
+        Lopper otherwise infers a node's label from a label typed property,
+        which only exists for a node that carries properties at all. An empty
+        node, a graph endpoint with nothing in it but a label, ends up with
+        none.
+
+        The label then survives only as an entry in this tree's index, so it
+        does not travel when the node is copied or moved into another tree:
+        the node arrives unlabelled and the index entry is left behind in a
+        tree the node is no longer part of. A later lookup finds neither.
+
+        __symbols__ is what the author wrote, so read it directly rather than
+        inferring. A node that had no label has no entry, so nothing is
+        invented and nothing is lost.
+
+        Returns:
+           int: number of labels attached
+        """
+        try:
+            symbols = self['/__symbols__']
+        except Exception:
+            return 0
+
+        attached = 0
+        for prop in symbols:
+            try:
+                path = prop.value[0] if isinstance( prop.value, list ) else prop.value
+                if not isinstance( path, str ):
+                    continue
+                node = self.__nodes__.get( path )
+                if node is not None and node.label != prop.name:
+                    node.label = prop.name
+                    attached += 1
+            except Exception:
+                continue
+
+        if attached:
+            lopper.log._debug( f"labels_from_symbols: attached {attached} label(s)" )
+
+        return attached
 
     def label_to_phandle(self, value, strict=False, fallback_tree=None, bare_label=False):
         """Resolve a phandle reference string to a numeric phandle.
