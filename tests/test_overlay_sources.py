@@ -824,3 +824,178 @@ class TestOverlayPhandlesDoNotDisturbTheBase:
 
         clash = base_phandles & overlay_phandles
         assert not clash, f"overlay reused base phandle numbers: {sorted(clash)}"
+
+
+# A base whose endpoints are declared but empty -- the shape a graph binding
+# takes before anything is wired -- and an overlay that wires both ends. The
+# overlay's own two fragments reference each other, which dtc records as a
+# local fixup since both ends are inside the one overlay.
+_WIRED_BASE = """\
+/dts-v1/;
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    compatible = "test";
+
+    amba: amba {
+        compatible = "simple-bus";
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+
+        sink: sink@a0000000 {
+            compatible = "test,sink";
+            reg = <0xa0000000 0x1000>;
+        };
+
+        src: src@b0000000 {
+            compatible = "test,src";
+            reg = <0xb0000000 0x1000>;
+            src_port: port {
+                src_out: endpoint {
+                };
+            };
+        };
+    };
+};
+"""
+
+_WIRED_OVERLAY = """\
+/dts-v1/;
+/plugin/;
+
+&sink {
+    ports {
+        port@0 {
+            sink_in: endpoint {
+                remote-endpoint = <&src_out>;
+            };
+        };
+    };
+};
+
+&src_out {
+    remote-endpoint = <&sink_in>;
+};
+"""
+
+
+class TestOverlayWiresBothEnds:
+    """An overlay that completes a link in both directions.
+
+    Three things have to hold at once: the nested label the author wrote has
+    to survive, a reference out to the base has to bind, and the reference
+    back -- which crosses from one fragment of the overlay to another, and so
+    is a local fixup -- has to bind to the node rather than to whatever number
+    dtc happened to give it.
+    """
+
+    def _emit(self, tmp_path):
+        from lopper.tree import LopperTree
+
+        base_file = tmp_path / "system-top.dts"
+        base_file.write_text(_WIRED_BASE)
+        ov_file = tmp_path / "wired.dtso"
+        ov_file.write_text(_WIRED_OVERLAY)
+
+        sdt = LopperSDT(str(base_file))
+        sdt.dryrun = False
+        sdt.verbose = 0
+        sdt.werror = False
+        sdt.output_file = str(tmp_path / "out.dts")
+        sdt.cleanup_flag = True
+        sdt.save_temps = False
+        sdt.enhanced = True
+        sdt.symbols = True
+        sdt.outdir = str(tmp_path)
+        sdt.setup(sdt.dts, [], "", True, libfdt=True)
+        sdt._compile_overlay_subtrees([str(ov_file)], str(tmp_path))
+
+        out = LopperTree()
+        out.overlay_of(sdt.tree)
+        out.resolve()
+        return sdt, out
+
+    def _rendered(self, tree, suffix):
+        for path, node in tree.__nodes__.items():
+            if path.endswith(suffix):
+                prop = node.__props__.get("remote-endpoint")
+                if prop is not None:
+                    return getattr(prop, "string_val", "") or ""
+        return None
+
+    def test_the_authored_label_survives(self, tmp_path):
+        """sink_in, not a label derived from the node's own name."""
+        sdt, out = self._emit(tmp_path)
+        assert out.lnodes("sink_in", exact=True), \
+            "the overlay's nested label was lost"
+
+    def test_the_reference_out_to_the_base_binds(self, tmp_path):
+        sdt, out = self._emit(tmp_path)
+        rendered = self._rendered(out, "/ports/port@0/endpoint")
+        assert rendered, "remote-endpoint was dropped from the overlay fragment"
+        assert "src_out" in rendered, \
+            f"reference out to the base did not bind: {rendered!r}"
+
+    def test_the_reference_back_binds_across_fragments(self, tmp_path):
+        """&src_out references sink_in, which lives in the other fragment of
+        the same overlay -- a local fixup, resolved by path."""
+        sdt, out = self._emit(tmp_path)
+        rendered = self._rendered(out, "&src_out")
+        assert rendered, "remote-endpoint was dropped from the &src_out fragment"
+        assert "sink_in" in rendered, \
+            f"local fixup did not bind to the node: {rendered!r}"
+
+
+class TestLabelsFromSymbols:
+    """A label on a node with no properties survives loading.
+
+    dtc keeps labels out of nodes and records them in __symbols__. Lopper
+    otherwise infers a label from a label-typed property, which an empty node
+    does not have, so the label reaches the tree index but never the node --
+    and is left behind the moment the node is copied elsewhere.
+    """
+
+    def test_an_empty_node_keeps_its_label(self, tmp_path):
+        base_file = tmp_path / "system-top.dts"
+        base_file.write_text(_WIRED_BASE)
+
+        sdt = LopperSDT(str(base_file))
+        sdt.dryrun = False
+        sdt.verbose = 0
+        sdt.werror = False
+        sdt.output_file = str(tmp_path / "out.dts")
+        sdt.cleanup_flag = True
+        sdt.save_temps = False
+        sdt.enhanced = True
+        sdt.symbols = True
+        sdt.outdir = str(tmp_path)
+        sdt.setup(sdt.dts, [], "", True, libfdt=True)
+
+        node = sdt.tree.__nodes__.get("/amba/src@b0000000/port/endpoint")
+        assert node is not None, "the empty endpoint node did not survive load"
+        assert node.label == "src_out", \
+            f"label was not attached from __symbols__: {node.label!r}"
+
+    def test_the_label_travels_with_a_copy(self, tmp_path):
+        """The point of attaching it: a copied node takes its label along."""
+        import copy
+
+        base_file = tmp_path / "system-top.dts"
+        base_file.write_text(_WIRED_BASE)
+
+        sdt = LopperSDT(str(base_file))
+        sdt.dryrun = False
+        sdt.verbose = 0
+        sdt.werror = False
+        sdt.output_file = str(tmp_path / "out.dts")
+        sdt.cleanup_flag = True
+        sdt.save_temps = False
+        sdt.enhanced = True
+        sdt.symbols = True
+        sdt.outdir = str(tmp_path)
+        sdt.setup(sdt.dts, [], "", True, libfdt=True)
+
+        node = sdt.tree.__nodes__.get("/amba/src@b0000000/port/endpoint")
+        assert copy.deepcopy(node).label == "src_out", \
+            "the label did not travel with the copied node"
