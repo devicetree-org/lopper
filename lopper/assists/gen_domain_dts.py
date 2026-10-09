@@ -439,6 +439,13 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 elif (xlnx_openamp_keep_node(linux_dt, False, node, sdt.tree) or
                       _node_must_be_preserved(node, sdt.tree)):
                     continue
+                # sdtgen can merge contiguous R5 TCM GLOBAL windows into one
+                # address-map entry (e.g. psv_r5_0_atcm_global size 0x40000), so
+                # individual *-tcm-global / *-lockstep nodes are unmapped and
+                # would be pruned here. Keep them for baremetal so create_bsp
+                # still emits TCM GLOBAL definitions in bsp.yaml and xparameters.h.
+                elif not linux_dt and node.propval('compatible') != [''] and "tcm" in node.propval('compatible', list)[0]:
+                    continue
                 # dual-mapped 8-cell reg won't match either domain's address-map; preserve here so
                 # zephyr_domain_dts.py's xlnx_remove_unsupported_nodes can slice it
                 elif node.propval('compatible') != [''] and any('clkx5-wiz' in c for c in node.propval('compatible', list)) and len(node.propval('reg', list)) == 8:
