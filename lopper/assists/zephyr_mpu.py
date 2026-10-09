@@ -133,6 +133,43 @@ def _uses_static_mpu(memory):
                         memory.node.propval("mpu-policy", list)]
 
 
+def r5_mpu_aperture(origin, length):
+    """Return the smallest ARMv7-R MPU region covering a range.
+
+    Description:
+        Expands the range to the smallest naturally aligned power-of-two
+        window that contains it. Used by the Zephyr and the standalone
+        (xlnx_rpu_mpu) MPU generators.
+
+    Args:
+        origin (int): Start of the range.
+        length (int): Byte length of the range.
+
+    Returns:
+        tuple[int, int]: Representable aperture origin and length.
+
+    Raises:
+        LayoutError: If the range is empty or the aperture is outside the
+            32-bit R5 address space.
+    """
+    end = origin + length
+    if length <= 0:
+        raise LayoutError("an MPU memory range must have a positive size")
+    # ARMv7-R MPU regions require power-of-two sizes of at least 32 bytes.
+    # This bit-length form rounds the requested length up to the smallest
+    # representable size.
+    size = max(32, 1 << (length - 1).bit_length())
+    base = origin & ~(size - 1)
+    while base + size < end:
+        size <<= 1
+        base = origin & ~(size - 1)
+    if base + size > 1 << 32:
+        raise LayoutError(
+            f"0x{origin:x}-0x{end:x} cannot be represented in the "
+            "32-bit R5 MPU address space")
+    return base, size
+
+
 def _r5_mpu_aperture(memory, local_memories):
     """Calculate a representable ARMv7-R MPU aperture.
 
@@ -153,20 +190,10 @@ def _r5_mpu_aperture(memory, local_memories):
         LayoutError: If the aperture is outside 32-bit R5 address space or
             overlaps a configured local memory.
     """
-    end = memory.origin + memory.length
-    if memory.length <= 0:
-        raise LayoutError("an MPU memory range must have a positive size")
-    # ARMv7-R MPU regions require power-of-two sizes. This bit-length form
-    # rounds the requested length up to the smallest representable size.
-    length = 1 << (memory.length - 1).bit_length()
-    origin = memory.origin & ~(length - 1)
-    while origin + length < end:
-        length <<= 1
-        origin = memory.origin & ~(length - 1)
-    if origin + length > 1 << 32:
-        raise LayoutError(
-            f"memory '{memory.name}' cannot be represented in the "
-            "32-bit R5 MPU address space")
+    try:
+        origin, length = r5_mpu_aperture(memory.origin, memory.length)
+    except LayoutError as exc:
+        raise LayoutError(f"memory '{memory.name}': {exc}") from exc
     for local in local_memories:
         local_end = local.origin + local.length
         if origin < local_end and local.origin < origin + length:
@@ -246,12 +273,13 @@ def _prepare_r5_mpu_ranges(processor, memories, dynamic_memories):
             f"0x{origin:x}-0x{origin + length:x}")
 
 
-def _validate_memory_overlaps(memories):
+def validate_memory_overlaps(memories):
     """Reject overlapping MPU memory ranges.
 
     Description:
         Sorts normalized half-open ranges and rejects configurations that
         would require MPU region priority to resolve conflicting entries.
+        Shared by the Zephyr and the standalone MPU generators.
 
     Args:
         memories (tuple[Memory]): Normalized MPU memories to validate.
@@ -329,7 +357,7 @@ def generate_mpu_tree(root_node, sdt, options):
         dynamic_memories = tuple(memory for memory in memories
                                  if not _uses_static_mpu(memory))
         _prepare_r5_mpu_ranges(processor, memories, dynamic_memories)
-        _validate_memory_overlaps(dynamic_memories)
+        validate_memory_overlaps(dynamic_memories)
         for memory in memories:
             _apply_memory(memory, emit_mpu=not _uses_static_mpu(memory))
         try:
