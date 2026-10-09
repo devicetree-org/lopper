@@ -142,6 +142,66 @@ def find_files(search_pattern, search_path):
 
     return glob.glob(f"{search_path}{os.path.sep}{search_pattern}")
 
+def delete_unused_props(node, keep_props):
+    """Delete every property of the node that is not in keep_props."""
+    for prop in list(node.__props__.keys()):
+        if prop not in keep_props:
+            node.delete(prop)
+
+def load_yaml_bindings(binding_dir=None):
+    """
+    Read the yaml bindings and collect what the property prune needs.
+
+    Args:
+        | binding_dir: directory with the binding yaml files
+        |              (default: yaml_bindings next to this file)
+    Returns:
+        dict:
+        | compatlist: compatible strings covered by the bindings
+        | proplist: properties to keep, the "required" list of every binding
+        |           plus the cell, device_type, status, and xlnx,ip-name properties
+    """
+    # Imported here. baremetalconfig_xlnx imports this module at load time.
+    from baremetalconfig_xlnx import compat_list
+
+    if binding_dir is None:
+        binding_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "yaml_bindings")
+
+    bindings = {
+        "compatlist": [],
+        # Shouldn't delete properties. xlnx,ip-name and status stays so the overlay can
+        # still disable video IPs from that property.
+        "proplist": ["#interrupt-cells", "#address-cells", "#size-cells",
+                     "device_type", "xlnx,ip-name", "status"],
+    }
+    for yaml_file in find_files("*.yaml", binding_dir):
+        schema = load_yaml(yaml_file)
+        bindings["compatlist"] += compat_list(schema)
+        bindings["proplist"] += schema.get("required", [])
+    return bindings
+
+def prune_props_from_yaml_bindings(node, bindings=None):
+    """
+    Remove properties that are not in the combined required list of the yaml bindings.
+
+    A node is pruned only when one of its compatible strings is covered by those bindings.
+
+    Args:
+        | node: LopperNode to prune
+        | bindings: return value of load_yaml_bindings(), loaded when None
+    Returns:
+        bool: True if the node was pruned
+    """
+    if bindings is None:
+        bindings = load_yaml_bindings()
+
+    node_compat = node.propval('compatible', list)
+    if not any(compat in node_compat for compat in bindings["compatlist"]):
+        return False
+
+    delete_unused_props(node, bindings["proplist"])
+    return True
+
 def parse_depends_schema(depends_dict):
     """
     Parse the depends dictionary to determine validation mode and extract driver requirements.
