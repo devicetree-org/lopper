@@ -585,3 +585,13 @@ xlnx,zynqmp-gpio-1.0:
     - interrupts
     - '#address-cells'
     - '#size-cells'
+
+xlnx,zynqmp-qspi-1.0:
+  required:
+    - compatible
+    - status
+    - reg
+    - interrupts
+    - '#address-cells'
+    - '#size-cells'
+    - clock-frequency
