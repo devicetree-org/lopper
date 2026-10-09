@@ -16,6 +16,14 @@ import common_utils as utils
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node, get_label
 from common_utils import to_cmakelist
 from openamp_xlnx import xlnx_openamp_get_ddr_elf_load
+from xlnx_rpu_linker import (
+    LayoutError,
+    default_section_regions,
+    find_linker_domain,
+    r52_tcm_regions_snippet,
+    resolve_placement,
+    section_cmake_variables,
+)
 from lopper.log import _init, _warning, _info, _error, _debug, _level
 
 sys.path.append(os.path.dirname(__file__))
@@ -219,6 +227,58 @@ def get_unique_memip_list(mem_ranges):
     return unique_mem_ip_list
 
 
+def get_section_placement(sdt, tgt_node, match_cpunode, machine, mem_ranges,
+                          lable_names, default_ddr, ddr_range):
+    """
+    Resolve the RPU section placement from the target's domain linker block
+    Parameters:
+        sdt(obj)              : SDT
+        tgt_node(obj)         : Target node obj
+        match_cpunode(obj)    : Target CPU node
+        machine(str)          : Target CPU label
+        mem_ranges(dict)      : Linker memory ranges
+        lable_names(dict)     : Linker memory names
+        default_ddr(str)      : Key of the default DDR in mem_ranges
+        ddr_range(tuple)      : Start and size of the default DDR region
+    Return:
+        Placement, or None when no baremetal or FreeRTOS domain with a
+        linker block selects the CPU. Exits on an invalid placement.
+    """
+    root_node = sdt.tree[tgt_node]
+    symbol_node = ""
+    for node in root_node.subnodes():
+        if node.name == "__symbols__":
+            symbol_node = node
+            break
+
+    def region_for_node(node):
+        label = get_label(sdt, symbol_node, node)
+        if not label:
+            return None
+        keys = [key for key, name in lable_names.items()
+                if name.startswith(f"{label}_")]
+        if len(keys) != 1:
+            return None
+        start, size = mem_ranges[keys[0]]
+        return lable_names[keys[0]], start, size
+
+    try:
+        domain = find_linker_domain(sdt.tree, match_cpunode)
+        if domain is None:
+            return None
+        placement = resolve_placement(
+            sdt.tree, domain, match_cpunode, machine,
+            (lable_names[default_ddr], ddr_range[0], ddr_range[1]),
+            region_for_node)
+    except LayoutError as exc:
+        _error(f"baremetallinker_xlnx: {exc}", also_exit=1)
+    _info(f"baremetallinker_xlnx: section placement from {domain.abs_path}"
+          " (split mode): " +
+          ", ".join(f"{name}={region}"
+                    for name, region in placement.sections.items()))
+    return placement
+
+
 # tgt_node: is the baremetal config top level domain node number
 # sdt: is the system device-tree
 # options: baremetal application source path
@@ -264,6 +324,14 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
             openamp_elfload_sz = elfload_tuple[1]
             openamp_entry_name = elfload_tuple[2]
 
+    if openamp_elfload_sz:
+        ddr_range = (openamp_elfload_start, openamp_elfload_sz)
+    else:
+        ddr_range = tuple(mem_ranges[default_ddr])
+    placement = get_section_placement(
+        sdt, tgt_node, match_cpunode, machine, mem_ranges, lable_names,
+        default_ddr, ddr_range)
+
     memip_list = []
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
         # Here skip adding DDR system mem to config if OpenAMP module is set
@@ -285,16 +353,56 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     if mb_reset_addr:
         cfd.write("set(BASE_VECTOR %s)\n" % mb_reset_addr)
     cfd.write("set(DDR %s)\n" % lable_names[default_ddr])
-    cfd.write("set(CODE %s)\n" % lable_names[default_ddr])
-    cfd.write("set(DATA %s)\n" % lable_names[default_ddr])
+    if placement is not None:
+        sections = placement.cmake_variables()
+    else:
+        defaults = default_section_regions(
+            machine, lable_names[default_ddr], lable_names[default_ddr])
+        sections = ([] if defaults is None
+                    else section_cmake_variables(defaults))
+    section_values = dict(sections)
+    cfd.write("set(CODE %s)\n" % section_values.get(
+        "CODE", lable_names[default_ddr]))
+    cfd.write("set(DATA %s)\n" % section_values.get(
+        "DATA", lable_names[default_ddr]))
+    for name, value in sections:
+        if name not in ("CODE", "DATA"):
+            cfd.write("set(%s %s)\n" % (name, value))
+    if placement is not None and placement.tcm_regions:
+        for bank, value in sorted(placement.tcm_regions.items()):
+            cfd.write("set(TCM_%s_REGION %s)\n" % (bank, hex(value)))
+        snippet = r52_tcm_regions_snippet(placement.tcm_regions)
+        cfd.write('set(TCM_REGIONS "%s")\n' % snippet)
     memip_list = [lable_names[i] for i in memip_list]
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
 
-    generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr)
+    generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr,
+                           placement.memory if placement is not None else None)
 
     return True
 
-def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr):
+
+def rpu_tcm_memory_lines(mem_sec, tcm_memory):
+    """
+    Apply the TCM regions of a domain linker block to the MEMORY lines
+    Parameters:
+        mem_sec(str)        : MEMORY lines written so far
+        tcm_memory(dict)    : Region name to core-local (origin, length)
+    Return:
+        mem_sec with each listed region's line replaced, or added when the
+        target had no line for it
+    """
+    for name, (origin, length) in tcm_memory.items():
+        line = f'\n\t{name} : ORIGIN = {hex(origin)}, LENGTH = {hex(length)}'
+        pattern = re.compile(r'\n\t' + re.escape(name) + r' : [^\n]*')
+        if pattern.search(mem_sec):
+            mem_sec = pattern.sub(lambda m: line, mem_sec)
+        else:
+            mem_sec += line
+    return mem_sec
+
+
+def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr,tcm_memory=None):
     """
     To get generate the linker script
     Parameters:
@@ -310,6 +418,9 @@ def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,
         openamp_entry_name(str)    : OpenAMP elf entry name
         traverse(bool)             : True or False
         lable_names(list)          : Lable names
+        mb_reset_addr(int)         : MicroBlaze reset vector address
+        tcm_memory(dict)           : RPU TCM regions of a domain linker
+                                     block, or None
     Return:
         None
     """
@@ -385,6 +496,8 @@ def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,
         else:
             mem_sec += '\n\tpmc_ram : ORIGIN = 0xF2000000, LENGTH = 0x20000'
             mem_sec += '\n\tr52_tcm_alias : ORIGIN = 0x0, LENGTH = 0x20000'
+    if tcm_memory:
+        mem_sec = rpu_tcm_memory_lines(mem_sec, tcm_memory)
     if openamp_config:
         heap_size = 0x4000
     for key, value in sorted(mem_ranges.items(), key=lambda e: e[1][1], reverse=traverse):
@@ -541,4 +654,3 @@ def generate_mem_config(mem_ranges,memtest_config,memip_list,default_ddr,cpu_ip_
         memip_list.insert(0, memip_list.pop(memip_list.index(default_ddr)))
 
     return default_ddr,memip_list
-
