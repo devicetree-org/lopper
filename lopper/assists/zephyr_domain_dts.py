@@ -925,6 +925,20 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                         if node.propval("xlnx,clock-freq") != ['']:
                             node + LopperProp(name="clock-frequency",
                                               value=node["xlnx,clock-freq"].value)
+                    # QSPI
+                    if "xlnx,zynqmp-qspi-1.0" in node["compatible"].value:
+                        node["compatible"].value = ["xlnx,zynqmp-qspi-1.0"]
+                        if node.propval('#address-cells') != [1]:
+                            node["#address-cells"] = LopperProp("#address-cells")
+                            node["#address-cells"].value = 1
+                            node.add(node["#address-cells"])
+                        if node.propval('#size-cells') != [0]:
+                            node["#size-cells"] = LopperProp("#size-cells")
+                            node["#size-cells"].value = 0
+                            node.add(node["#size-cells"])
+                        if node.propval("xlnx,clock-freq") != ['']:
+                            node + LopperProp(name="clock-frequency",
+                                              value=node["xlnx,clock-freq"].value)
 
                     # SPIPS
                     if "cdns,spi-r1p6" in node["compatible"].value:
