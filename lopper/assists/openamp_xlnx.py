@@ -416,8 +416,9 @@ def xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveout
                f"relation; {node.abs_path} is a second one for the same "
                "RPU core")
         return False
-    # The carveouts hold one vdev0buffer, which goes first after the ELF
-    # load region already in memory-region.
+    # The carveouts hold one vdev0buffer, which goes first after the DDR
+    # ELF-load region already in memory-region. A remote that loads into
+    # TCM only has no such region, and the vdev0buffer comes first.
     vdev0buf = [ index for index, rc in enumerate(rpmsg_carveouts) if "vdev0buffer" in rc.name ]
     if len(vdev0buf) != 1:
         _error(f"openamp_xlnx: {node.abs_path}: expected one vdev0buffer "
@@ -427,7 +428,8 @@ def xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveout
 
     vdev0buf = rpmsg_carveouts.pop(vdev0buf[0])
     rpmsg_carveouts.insert(0, vdev0buf)
-    new_mem_region_prop_val = core_node.propval("memory-region")
+    new_mem_region_prop_val = [ phandle for phandle in core_node.propval("memory-region")
+                                if isinstance(phandle, int) ]
 
     [ new_mem_region_prop_val.append(rc.phandle) for rc in rpmsg_carveouts ]
 
@@ -438,7 +440,10 @@ def xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveout
         new_mem_region_prop_val.append( new_mem_region_prop_val.pop(ddrboot_node_index[0]) )
 
     # update property with new values
-    core_node["memory-region"].value = new_mem_region_prop_val
+    if core_node.props("memory-region"):
+        core_node["memory-region"].value = new_mem_region_prop_val
+    else:
+        core_node + LopperProp(name="memory-region", value = new_mem_region_prop_val)
     core_node + LopperProp(name="mboxes", value = [ipi_node.phandle, 0, ipi_node.phandle, 1])
     core_node + LopperProp(name="mbox-names", value = ["tx", "rx"])
     return True
