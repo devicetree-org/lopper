@@ -35,8 +35,7 @@ import json
 from .lopper_lib import (check_bit_set, clear_bit, chunks,
                          CpuSelectionSource, property_set,
                          resolve_domain_cpus, set_bit,
-                         expand_start_size_to_reg, node_reg_start_size,
-                         parse_address_map)
+                         expand_start_size_to_reg, parse_address_map)
 from lopper.log import _init, _warning, _info, _error, _debug
 from .zephyr_memory import (
     LINKER_SCALAR_PROPERTIES,
@@ -46,8 +45,8 @@ from .zephyr_memory import (
     resolve_memory_node,
 )
 from .xlnx_rpu_tcm import (
-    is_global_tcm_bank,
-    rpu_cluster_tcm_base,
+    rpu_cluster_tcm_bases,
+    rpu_core_number,
     rpu_cpu_type,
     tcm_bank_type,
 )
@@ -1178,22 +1177,7 @@ def memory_expand( tree, subnode, memory_start = 0xbeef, prop_name = 'memory', v
 
     property_set( prop_name, mem_list, subnode )
 
-def _rpu_core_number(cluster_node, cpu_node):
-    """Return an RPU core's number across all RPU clusters.
-
-    SDTs give each RPU core its own ``cpus-r5@N`` or ``cpus-r52@N`` cluster
-    with a single ``cpu@0``, so N is the core's number. Older SDTs put both
-    R5 cores in one cluster; there the core's reg is its number.
-    """
-    cpus = [n for n in cluster_node.subnodes(children_only=True)
-            if n.name.startswith("cpu@")]
-    if len(cpus) == 1 and "@" in cluster_node.name:
-        try:
-            return int(cluster_node.name.split("@")[1], 16)
-        except ValueError:
-            pass
-    reg = cpu_node.propval("reg")
-    return reg[0] if reg != [''] else None
+_rpu_core_number = rpu_core_number
 
 
 def _rpu_tcm_view(tree, cluster_node):
@@ -1230,14 +1214,7 @@ def _rpu_cluster_base(tree, cpu_type, core_number):
     lies in one aligned span. Sorting the spans of the SDT's TCM banks gives
     one base per cluster.
     """
-    bases = set()
-    for node in tree["/"].subnodes():
-        if not is_global_tcm_bank(node.name):
-            continue
-        start, _ = node_reg_start_size(node)
-        if isinstance(start, int):
-            bases.add(rpu_cluster_tcm_base(start, cpu_type))
-    bases = sorted(bases)
+    bases = rpu_cluster_tcm_bases(tree, cpu_type)
     cluster = core_number // 2
     return bases[cluster] if cluster < len(bases) else None
 

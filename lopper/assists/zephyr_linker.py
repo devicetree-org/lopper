@@ -15,7 +15,7 @@ from zephyr_memory import (
     LayoutError, parse_layout, zephyr_argument_parser,
 )
 
-TCM_REGION_ENABLE = 0x1
+from xlnx_rpu_tcm import r52_tcm_region_words
 
 
 def is_compat(node, compat_string_to_test):
@@ -113,6 +113,8 @@ def _render_linker(layout, user_contents=None):
         ctcm = memories_by_kind.get("CTCM")
         if atcm is None:
             raise LayoutError("R52 TCM profile requires ATCM")
+        words = r52_tcm_region_words(
+            btcm.origin if btcm else None, ctcm.origin if ctcm else None)
         custom_lines.extend((
             "    /* Cortex-R52 TCM configuration consumed before stack setup.",
             "     * Bit 0 enables a local-address mapping; a zero word leaves",
@@ -122,11 +124,11 @@ def _render_linker(layout, user_contents=None):
             "    {",
             "        . = ALIGN(4);",
             "        z_arm_tcm_a_region = .;",
-            "        LONG(0x00000000)",
+            f"        LONG(0x{words['A']:08x})",
             "        z_arm_tcm_b_region = .;",
-            f"        LONG(0x{((btcm.origin | TCM_REGION_ENABLE) if btcm else 0):08x})",
+            f"        LONG(0x{words['B']:08x})",
             "        z_arm_tcm_c_region = .;",
-            f"        LONG(0x{((ctcm.origin | TCM_REGION_ENABLE) if ctcm else 0):08x})",
+            f"        LONG(0x{words['C']:08x})",
             f"    }} > {atcm.name}",
             "",
         ))
