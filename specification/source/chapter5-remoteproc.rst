@@ -251,6 +251,23 @@ omitted for brevity.
    };
 
 
+.. _remoteproc-relation-timers:
+
+Relation timers
+~~~~~~~~~~~~~~~
+
+RPMsg and Libmetal relations may name timers with ``timer``:
+
+- On the remote side of an RPMsg relation (the relation child that names
+  ``host``), ``timer`` names a TTC owned by the remote.  If the remote
+  domain sets neither ``xlnx,sleep-timer`` nor ``xlnx,tick-timer``, its
+  xiltimer sleep timer is counter 0 of that TTC and, for FreeRTOS, its tick
+  timer is counter 1.  Explicit properties win.  See the RPU sleep and tick
+  timers section of the domain YAML chapter.
+- On a Libmetal relation, ``timer`` names a timer shared with the Linux
+  host through UIO.  It is never used as a sleep or tick timer.
+
+
 Notes
 ~~~~~
 
