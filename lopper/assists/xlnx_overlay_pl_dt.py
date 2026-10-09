@@ -929,6 +929,11 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         amba_pl_ref.label = ""
 
 
+        # Prune properties that the yaml bindings do not require.
+        yaml_bindings = utils.load_yaml_bindings()
+        for node in overlay_tree['/'].subnodes():
+            utils.prune_props_from_yaml_bindings(node, yaml_bindings)
+
     # Clean overlay properties
     clean_overlay_properties(overlay_tree)
 
