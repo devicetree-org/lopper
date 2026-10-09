@@ -651,6 +651,153 @@ shall be omitted for standalone Zephyr firmware that does not contain an
 OpenAMP resource table.
 
 
+Baremetal and FreeRTOS Section Placement
+----------------------------------------
+
+Baremetal and FreeRTOS domains on a Cortex-R5 or Cortex-R52 RPU core may
+carry a ``linker`` mapping that places each logical section in a TCM bank or
+in DDR.  It is read by the ``baremetallinker_xlnx`` assist, which writes the
+linker region of each section as CMake variables for the ESW and
+openamp-system-reference linker templates.  The domain shall have ``os,type``
+``baremetal`` or ``freertos`` (optionally followed by further comma-separated
+fields, such as ``baremetal,newlib``).  A domain without a ``linker``
+mapping gets the same linker script as before this mapping existed.
+
+The ``linker`` mapping has the following keys:
+
+``layout``
+   Optional preset: ``tcm``, ``tcm-data`` or ``ddr``.  Without it, sections
+   that ``sections`` does not place use ``ddr``.
+
+``linker_memories``
+   Optional list of memory references.  When present, every section region
+   shall be one of them, and a preset may only use the TCM banks it lists.
+
+``sections``
+   Optional mapping of logical sections to regions; it overrides the preset.
+   At least one of ``layout`` and ``sections`` is required.
+
+The logical sections are ``vector_table``, ``text``, ``rodata``, ``data``,
+``bss``, ``heap``, ``stack`` and ``resource_table``.  Each has a ``region``:
+a TCM bank or memory node reference (node name, label, path or vendor IP
+name), or the keyword ``ddr`` for the default DDR region of the target
+(the lowest DDR, or the OpenAMP ELF-load carveout when the assist runs in
+OpenAMP mode).  Only ``vector_table`` takes an ``offset``, and it shall be
+0.
+
+The presets place the sections as follows.  On Cortex-R52 the heap and
+stack use the CTCM; on Cortex-R5 they use the BTCM.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Preset
+     - vector_table
+     - text, rodata
+     - data, bss, resource_table
+     - heap, stack
+   * - ``tcm``
+     - ATCM
+     - ATCM
+     - BTCM
+     - BTCM (R5) or CTCM (R52)
+   * - ``tcm-data``
+     - ATCM
+     - DDR
+     - BTCM
+     - BTCM (R5) or CTCM (R52)
+   * - ``ddr``
+     - ATCM
+     - DDR
+     - DDR
+     - DDR
+
+The assist supports RPU cores in split mode and uses these core-local TCM
+addresses.  It rejects a domain whose ``cpus`` mode cell selects lockstep
+(bit 30 set): placement for a cluster in lockstep is not supported yet.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Mode
+     - Cortex-R5 (ZynqMP, Versal)
+     - Cortex-R52 (Versal NET, Versal Gen 2)
+   * - Split
+     - ATCM 64 KB at 0x0, BTCM 64 KB at 0x20000
+     - ATCM 64 KB at 0x0, BTCM 32 KB at 0x10000, CTCM 32 KB at 0x18000
+
+The assist checks the assembled tree, whatever the input route, and
+rejects a placement when:
+
+- ``vector_table`` is not in the ATCM, or has a non-zero offset;
+- a TCM bank named by ``sram``, ``linker_memories`` or a section belongs
+  to another core, or is one of the ``*_atcm_lockstep`` and
+  ``*_btcm_lockstep`` banks;
+- a region a section uses overlaps an IPC carveout: a carveout that an
+  OpenAMP or libmetal relation lists in ``carveouts``, or a shared OpenAMP
+  ``/reserved-memory`` node such as a vring or vdev buffer.
+
+Example:
+
+.. code-block:: YAML
+
+   domains:
+     RPU0_BAREMETAL:
+       os,type: baremetal
+       cpus:
+         - cluster: cpus_r5_0
+           cpumask: 0x1
+           mode: { secure: true, el: 0x3 }
+       sram: [ { start: 0xffe00000, size: 0x10000 },
+               { start: 0xffe20000, size: 0x10000 } ]
+       linker:
+         layout: tcm
+         linker_memories: [ psu_r5_0_atcm_global, psu_r5_0_btcm_global ]
+         sections:
+           vector_table:   { region: psu_r5_0_atcm_global, offset: 0 }
+           resource_table: { region: psu_r5_0_btcm_global }
+
+The assist writes these CMake variables, each naming a ``MEMORY`` region of
+the generated script:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Variable
+     - Sections
+     - Without a ``linker`` mapping
+   * - ``VECTORS``
+     - ``.vectors``, ``.bootdata``
+     - The ATCM region the templates used before (``psu_r5_0_atcm_MEM_0``,
+       ``psv_r5_0_atcm_MEM_0``, ``r52_tcm_alias``, ``psx_r52_tcm_alias``)
+   * - ``CODE``
+     - ``.text`` and other code
+     - DDR, as before
+   * - ``RODATA``
+     - ``.rodata``, ``.rodata1``, ``.sdata2``, ``.sbss2``
+     - ``DATA``
+   * - ``DATA``
+     - ``.data`` and other data
+     - DDR, as before
+   * - ``BSS``, ``HEAP``, ``STACK``
+     - ``.bss``, ``.heap``, ``.stack``
+     - ``DATA``
+   * - ``RSC_TABLE_REGION``
+     - ``.resource_table``
+     - ``DATA``
+
+``RSC_TABLE_REGION`` is separate from ``RSC_TABLE``, which in OpenAMP mode
+holds the ELF-load carveout address.  With a ``linker`` mapping, the
+``MEMORY`` section also gets the core's TCM regions, and on Cortex-R52 the
+assist writes
+``TCM_A_REGION``, ``TCM_B_REGION`` and ``TCM_C_REGION``: the words
+standalone ``boot.S`` loads from ``_TCM_A_REGION``, ``_TCM_B_REGION`` and
+``_TCM_C_REGION`` and writes to the TCM region registers.  A used BTCM or
+CTCM gets its core-local base with the enable bit set; the ATCM word and
+unused banks are 0, which leaves them as boot firmware configured them.
+``TCM_REGIONS`` holds the linker script lines that define these words.
+
+
 Flags
 -----
 
