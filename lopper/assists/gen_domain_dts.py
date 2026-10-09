@@ -23,15 +23,19 @@ from common_utils import to_cmakelist
 import common_utils as utils
 from domain_access import update_mem_node
 from openamp_xlnx import xlnx_openamp_keep_node
+from xlnx_rpu_linker import linker_referenced_nodes
 
 
 def _node_must_be_preserved(node, tree):
     """Return True when a node must survive domain prune.
 
-    Keeps nodes already referenced from /chosen (standard DT) and explicit
-    Zephyr memory-region nodes.
+    Keeps nodes already referenced from /chosen (standard DT), explicit
+    Zephyr memory-region nodes, and the memories a domain linker block
+    places sections in, which baremetallinker_xlnx resolves and checks.
     """
     if "zephyr,memory-region" in node.propval("compatible", list):
+        return True
+    if node.abs_path in linker_referenced_nodes(tree):
         return True
     try:
         chosen = tree['/chosen']
