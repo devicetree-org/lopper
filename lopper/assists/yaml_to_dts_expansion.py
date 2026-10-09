@@ -1955,6 +1955,74 @@ def resolve_host_remote( tree, subnode, verbose = 0 ):
     return True
 
 
+def timer_node_by_label(tree, label):
+    """Return the ``timer@*`` node whose label is ``label``, or None.
+
+    Timers sit under ``/axi`` on ZynqMP and Versal, and at the root level on
+    Versal2 and other SoCs.
+    """
+    timer_node = []
+    if "/axi" in tree:
+        timer_node = [ n for n in tree["/axi"].subnodes(children_only=True, name="timer@*") if n.label == label ]
+    if timer_node == []:
+        timer_node = [ n for n in tree["/"].subnodes(name="timer@*") if n.label == label ]
+    return timer_node[0] if timer_node else None
+
+
+DOMAIN_TIMER_PROPERTIES = ( "xlnx,sleep-timer", "xlnx,tick-timer" )
+
+
+def domain_timers_expand(tree, domain_node, verbose = 0 ):
+    """Expand a domain's ``xlnx,sleep-timer`` and ``xlnx,tick-timer``.
+
+    The YAML form ``[ ttc3, 1 ]`` names a timer by label and a counter. It
+    becomes ``<&ttc3 1>``, the form a DTS author writes directly.
+
+    A label that does not resolve is left as written. The OpenAMP timer
+    checks run on the assembled tree and report it there, so the YAML and
+    DTS routes get the same error.
+
+    Args:
+        tree (LopperTree): Device tree to update.
+        domain_node (LopperNode): Domain node from the YAML.
+        verbose (int): Verbosity flag for diagnostics.
+
+    Returns:
+        bool: True when every timer property was expanded.
+    """
+    expanded = True
+    for prop_name in DOMAIN_TIMER_PROPERTIES:
+        value = domain_node.propval(prop_name, list)
+        if value == ['']:
+            continue
+        if len(value) != 2 or not isinstance(value[0], str):
+            expanded = False
+            continue
+
+        label = value[0].lstrip("&")
+        counter = value[1]
+        if isinstance(counter, str):
+            try:
+                counter = int(counter, 0)
+            except ValueError:
+                expanded = False
+                continue
+
+        timer_node = timer_node_by_label(tree, label)
+        if timer_node is None:
+            if verbose:
+                print(f"[DBG] {domain_node.abs_path}: {prop_name} names "
+                      f"unknown timer '{label}'")
+            expanded = False
+            continue
+
+        if timer_node.phandle == 0:
+            timer_node.phandle_or_create()
+        domain_node[prop_name].value = [ timer_node.phandle, counter ]
+
+    return expanded
+
+
 def xlnx_timer_expand(tree, subnode, verbose = 0 ):
     """Expand  YAML label of timer into full device tree reference.
 
@@ -1979,20 +2047,15 @@ def xlnx_timer_expand(tree, subnode, verbose = 0 ):
         if isinstance(timer_pval, str):
             timer_pval = [ timer_pval ]
         for label in timer_pval:
-            timer_node = []
-            if "/axi" in tree:
-                timer_node = [ n for n in tree["/axi"].subnodes(children_only=True, name="timer@*") if n.label == label ]
-            if timer_node == []:
-                # Versal2 and other SoCs place timers at root level, not under /axi
-                timer_node = [ n for n in tree["/"].subnodes(name="timer@*") if n.label == label ]
-            if timer_node == []:
+            timer_node = timer_node_by_label(tree, label)
+            if timer_node is None:
                 lopper.log._error("ERROR: xlnx_timer_expand requires timer label reference")
                 return False
 
-            if timer_node[0].phandle == 0:
-                timer_node[0].phandle_or_create()
+            if timer_node.phandle == 0:
+                timer_node.phandle_or_create()
 
-            timer_ref_list.append(timer_node[0].phandle)
+            timer_ref_list.append(timer_node.phandle)
 
         relation["timer"].value = timer_ref_list
 
