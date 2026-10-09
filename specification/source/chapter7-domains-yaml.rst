@@ -398,6 +398,89 @@ Example:
      xlnx,zephyr,mems: [ ddrboot@9800100 ]
 
 
+RPU Sleep and Tick Timers
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A baremetal or FreeRTOS domain may name the timers that its xiltimer library
+uses for sleep and for the operating system tick:
+
+``xlnx,sleep-timer``
+   Sleep timer: a timer node label and a counter.  Supported for
+   ``os,type: baremetal`` and ``os,type: freertos``.
+
+``xlnx,tick-timer``
+   Tick timer: a timer node label and a counter.  Supported for
+   ``os,type: freertos`` only.
+
+For any other ``os,type`` Lopper warns and ignores the property.
+
+.. code-block:: YAML
+
+   domains:
+     RPU0_FREERTOS:
+       os,type: freertos
+       xlnx,sleep-timer: [ ttc3, 0 ]
+       xlnx,tick-timer: [ ttc3, 1 ]
+
+     RPU1_BAREMETAL:
+       os,type: baremetal
+       xlnx,sleep-timer: [ ttc1, 0 ]
+
+YAML expansion turns the label into a phandle, which is the form a DTS
+author writes directly:
+
+.. code-block:: DTS
+
+   xlnx,sleep-timer = <&ttc3 0>;
+   xlnx,tick-timer = <&ttc3 1>;
+
+If a domain sets neither property, the ``timer`` of its own RPMsg relation
+is used: counter 0 for sleep and, for FreeRTOS, counter 1 for tick.  See
+:ref:`Relation timers <remoteproc-relation-timers>`.  Explicit properties
+win.
+
+Lopper checks the timers on the assembled tree, so the checks apply to YAML
+and DTS input alike.  The checks are selected by the timer node's
+``compatible``.  The supported compatible is ``cdns,ttc`` (Cadence TTC).
+A TTC has counters 0, 1 and 2; counter *k* starts at the TTC base address
+plus 4 × *k*, which is the address of the counter node that
+``lop-ttc-split.dts`` creates for the baremetal drivers.  Each of the
+following is an error:
+
+- the label or phandle does not resolve to a node;
+- the timer node has no handler for its ``compatible``;
+- the counter is not valid for the timer;
+- the domain has an ``access`` list that does not include the timer;
+- another domain uses the timer, through ``access``, a timer property or a
+  relation, or the domain's own Libmetal relation uses it;
+- the timer is a Linux UIO device (``compatible = "uio"``), as a Libmetal
+  relation timer is;
+- the sleep and tick timers are the same counter.
+
+When the timer comes from the RPMsg relation instead, a failed check is a
+warning and the BSP timers apply, so existing descriptions keep working.
+
+For the RPU application, the ``openamp`` assist writes the selection as a C
+file, ``amd_timer_config.c``, that defines the ``XSleepTimer_Instance`` and
+``XTickTimer_Instance`` variables.  xiltimer defines both as weak variables
+holding the counter base address, so the file selects the timers of one
+application without changing the BSP.  The file is written only when the
+domain names a timer::
+
+   lopper system.dts -- openamp --openamp_header_only \
+       --openamp_output_filename=amd_platform_info.h \
+       --openamp_remote=psv_cortexr5_0 \
+       --rpu-timer-config=amd_timer_config.c \
+       --bsp-sleep-timer=0xff110000 --bsp-tick-timer=0xff100000
+
+The optional ``--bsp-sleep-timer`` and ``--bsp-tick-timer`` give the
+addresses the BSP uses.  When the domain leaves a role to the BSP and that
+timer is used by another domain or relation, Lopper warns.
+
+For Linux device tree output, a timer named by either property is set to
+``status = "disabled"``, because it belongs to the remote domain.
+
+
 Zephyr Linker and MPU Policy
 ----------------------------
 
