@@ -591,3 +591,14 @@ xlnx,zynqmp-gpio-1.0:
     - power-domains
     - '#address-cells'
     - '#size-cells'
+
+xlnx,zynqmp-qspi-1.0:
+  required:
+    - compatible
+    - status
+    - reg
+    - interrupts
+    - interrupt-parent
+    - '#address-cells'
+    - '#size-cells'
+    - clock-frequency
