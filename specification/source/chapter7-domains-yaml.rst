@@ -568,6 +568,113 @@ shall be omitted for standalone Zephyr firmware that does not contain an
 OpenAMP resource table.
 
 
+Standalone and FreeRTOS MPU Table
+---------------------------------
+
+A Cortex-R5 or Cortex-R52 domain with ``os,type: baremetal`` or
+``os,type: freertos`` may use the same ``mpu-policy`` property on its
+memories.  The ``xlnx_rpu_mpu`` assist then writes ``amd_mpu_config.c``, which
+defines the standalone BSP's ``InitialMpu_Config`` table and so replaces the
+BSP's weak default.  The application builds this file with its other sources.
+The assist runs on the tree assembled from the system device tree and the
+domain YAML::
+
+   lopper -f --enhanced --auto -i domain.yaml system-top.dts out.dts
+   lopper -f --enhanced -O <app src> out.dts unused.dts -- xlnx_rpu_mpu \
+       --domain=/domains/RPU0 [--output=amd_mpu_config.c] \
+       [--free-regions=N] [--aie]
+
+When the domain uses ``lopper,activate`` or conditional properties, the assist
+reads the overlay tree selected by ``lopper,activate`` or, if absent,
+``os,type``.  Thus ``mpu-policy!baremetal`` and ``mpu-policy!freertos`` apply
+to their own domains only.
+
+Memories considered
+~~~~~~~~~~~~~~~~~~~
+
+The assist considers the memories in the domain's ``sram`` and
+``reserved-memory`` and the ``carveouts`` and ``elfload`` memories of the
+domain's relations.  If none of them has ``mpu-policy``, nothing is written
+and the BSP default table applies unchanged.  Otherwise:
+
+- A memory with ``mpu-policy`` gets one MPU region.  The values and permitted
+  combinations are those of `Memory policy`_.
+- A memory whose ``mpu-policy`` includes ``static``, and every TCM bank, gets
+  no region.  The BSP already maps the TCM.
+- An OpenAMP or libmetal carveout without ``mpu-policy`` gets the attributes
+  the RPU demos give it at run time: ``NORM_SHARED_NCACHE`` for vrings, the
+  vdev buffer and libmetal shared memory, and ``NORM_NSHARED_NCACHE`` for a
+  resource-table carveout (a carveout whose name contains ``rsc`` or
+  ``resource``).
+
+``mpu-policy`` maps to BSP attributes as follows.  ``cacheable`` selects the
+cacheable type of the BSP's DDR region, ``NORM_NSHARED_WB_WA`` on Cortex-R5
+and ``NORM_NSHARED_WT_NWA`` on Cortex-R52; without it the memory is
+``NORM_NSHARED_NCACHE``.  ``shareable`` selects the ``NORM_SHARED_*``
+variant.  A ``writable`` memory is ``PRIV_RW_USER_RW`` and a read-only memory
+``PRIV_RO_USER_RO``.  Standalone and FreeRTOS run privileged and the BSP sets
+no execute-never bit, so ``userspace`` and ``executable`` do not change the
+attributes.  Run-time ``Xil_MemMap()`` calls then use the same attribute
+values as the generated regions.
+
+Generated table
+~~~~~~~~~~~~~~~
+
+The table starts from the BSP's own default for the SoC: the table that
+``Init_MPU()`` computes on ZynqMP and Versal Cortex-R5, with its DDR region
+computed from the system device tree's DDR as the BSP does, and the weak
+``InitialMpu_Config`` on Versal NET and Versal Gen 2 Cortex-R52.  A domain
+region whose attributes equal those of the default region covering it is
+dropped.  Contiguous regions with equal attributes are merged.  Then:
+
+- Cortex-R5: each region shall be a power of two in size, at least 32 bytes,
+  and aligned to its size.  The regions follow the default ones, so they take
+  priority.
+- Cortex-R52: each region's base and size shall be multiples of 64 bytes.
+  Regions may not overlap, so default regions are split around the domain's
+  regions.  The output does not define ``_TCM_A_REGION``, ``_TCM_B_REGION``
+  or ``_TCM_C_REGION``.
+
+At most 16 regions exist, and ``--free-regions`` of them (default 5 on
+Cortex-R5, 3 on Cortex-R52) shall stay free for run-time mappings.  On
+Cortex-R5 libmetal maps every I/O region with a new MPU region; the OpenAMP
+and libmetal demos map 5.  On Cortex-R52 libmetal reuses a region that already
+covers a mapping with the same attributes, and a mapping inside a larger region
+splits it into 3.  ``--aie`` matches a Versal BSP that defines
+``XPAR_AIE_NUM_INSTANCES``.
+
+The assist fails, listing every region, when a region cannot be represented
+or the table does not fit.  To replace the whole table, omit ``mpu-policy``
+and define ``InitialMpu_Config`` in the application.
+
+Example:
+
+.. code-block:: YAML
+
+   reserved-memory:
+     rproc0@9800000:
+       start: 0x9800000
+       size: 0x60000
+       mpu-policy: [ readable, writable, executable, cacheable ]
+     vdev0vring0@9880000: { start: 0x9880000, size: 0x4000 }
+     vdev0vring1@9884000: { start: 0x9884000, size: 0x4000 }
+     vdev0buffer@9888000: { start: 0x9888000, size: 0x78000 }
+
+   domains:
+     R5_0_FREERTOS:
+       os,type: freertos
+       reserved-memory: [ rproc0@9800000 ]
+       domain-to-domain:
+         rpmsg-relation:
+           relation0:
+             carveouts: [ vdev0vring0@9880000, vdev0vring1@9884000,
+                          vdev0buffer@9888000 ]
+
+``rproc0`` opts the domain in and is already cacheable DDR in the default
+table, so it gets no region.  The vrings and the buffer form one 512 KB
+``NORM_SHARED_NCACHE | PRIV_RW_USER_RW`` region at ``0x9880000``.
+
+
 Flags
 -----
 
