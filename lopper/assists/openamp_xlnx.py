@@ -49,6 +49,7 @@ from xlnx_rpu_tcm import (
     rpu_cluster_tcm_base,
     tcm_bank_type,
 )
+import openamp_xlnx_timers
 from string import ascii_lowercase as alc
 
 _init(__name__)
@@ -195,6 +196,103 @@ def xlnx_openamp_update_relation_timers(sdt, target_os, machine):
             else:
                 timer_node["compatible"] = "cdns,ttc"
 
+    return True
+
+
+def xlnx_openamp_disable_domain_timers(sdt):
+    """Disable, for Linux, the timers that domains name for xiltimer.
+
+    A timer named by ``xlnx,sleep-timer`` or ``xlnx,tick-timer`` belongs to
+    that domain, so Linux must not drive it. The checks run first, so the
+    Linux device tree and the RPU application cannot disagree.
+
+    Returns:
+        bool: False when a domain's timer properties are invalid.
+    """
+    tree = sdt.tree
+    claims = openamp_xlnx_timers.timer_claims(tree)
+    succeeded = True
+    for domain in openamp_xlnx_timers.domain_nodes(tree):
+        if not any(domain.propval(prop, list) != [''] for prop in
+                   openamp_xlnx_timers.ROLE_PROPERTIES.values()):
+            continue
+
+        result = openamp_xlnx_timers.resolve_domain_timers(
+            tree, domain, claims)
+        for warning in result.warnings:
+            _warning(f"openamp_xlnx: {warning}")
+        for error in result.errors:
+            _error(f"openamp_xlnx: {error}")
+            succeeded = False
+
+        for choice in result.choices.values():
+            if choice.node.propval("status", list) != ["disabled"]:
+                _info(f"openamp_xlnx: disabling {choice.node.abs_path} for "
+                      f"Linux, used by {domain.name}")
+            choice.node["status"] = "disabled"
+
+    return succeeded
+
+
+def xlnx_openamp_rpu_timer_output(sdt, machine, openamp_args):
+    """Write the timer selection for the domain that runs on ``machine``.
+
+    Writes ``openamp_args['rpu_timer_config']`` when the domain names its
+    timers, directly or through its RPMsg relation. Writes nothing when it
+    does not, so the BSP timers apply.
+
+    Returns:
+        bool: False when the domain's timer properties are invalid.
+    """
+    tree = sdt.tree
+    output_file = openamp_args["rpu_timer_config"]
+    cpu = get_cpu_node(sdt, {'args': [machine]})
+    domains = [domain for domain in openamp_xlnx_timers.domain_nodes(tree)
+               if _openamp_domain_selects_cpu(tree, domain, cpu)]
+    bsp_timers = {
+        openamp_xlnx_timers.SLEEP: openamp_args.get("bsp_sleep_timer"),
+        openamp_xlnx_timers.TICK: openamp_args.get("bsp_tick_timer"),
+    }
+
+    claims = openamp_xlnx_timers.timer_claims(tree)
+    results = []
+    for domain in domains:
+        result = openamp_xlnx_timers.resolve_domain_timers(
+            tree, domain, claims)
+        for warning in result.warnings:
+            _warning(f"openamp_xlnx: {warning}")
+        for error in result.errors:
+            _error(f"openamp_xlnx: {error}")
+        if result.errors:
+            return False
+        for warning in openamp_xlnx_timers.bsp_timer_warnings(
+                tree, result, bsp_timers, claims):
+            _warning(f"openamp_xlnx: {warning}")
+        if result.choices:
+            results.append(result)
+
+    if not results:
+        _info(f"openamp_xlnx: no timers selected for '{machine}'; the BSP "
+              "timers apply")
+        return True
+
+    if len(results) > 1:
+        _error("openamp_xlnx: more than one domain selects timers for "
+               f"'{machine}': "
+               f"{', '.join(result.domain.name for result in results)}")
+        return False
+
+    result = results[0]
+    try:
+        with open(output_file, "w") as f:
+            f.write(openamp_xlnx_timers.render_timer_config(result))
+    except OSError as e:
+        _error(f"openamp_xlnx: cannot write timer output {output_file}: {e}")
+        return False
+
+    for choice in result.choices.values():
+        _info(f"openamp_xlnx: {result.domain.name} {choice.role} timer: "
+              f"{choice.source}, {choice.address:#x}")
     return True
 
 
@@ -1910,6 +2008,18 @@ def parse_openamp_args(arg_inputs):
     parser.add_argument("--relation", type=str, help="target relation")
     parser.add_argument("--report-valid-ipis", type=str, metavar="PROCESSOR",
                         help="report supported and configured IPI mappings for PROCESSOR")
+    parser.add_argument("--rpu-timer-config", type=str, metavar="FILE",
+                        help="also write the xiltimer sleep and tick timer "
+                        "selection for the processor's domain to FILE, if "
+                        "the domain names timers")
+    parser.add_argument("--bsp-sleep-timer", type=lambda v: int(v, 0),
+                        metavar="ADDRESS",
+                        help="BSP sleep timer address, used to warn when "
+                        "it is in use elsewhere")
+    parser.add_argument("--bsp-tick-timer", type=lambda v: int(v, 0),
+                        metavar="ADDRESS",
+                        help="BSP tick timer address, used to warn when it "
+                        "is in use elsewhere")
 
     config = {}
     if len(arg_inputs) == 2 and arg_inputs[1] in ["linux_dt", "zephyr_dt"]:
@@ -2018,7 +2128,13 @@ def _xlnx_openamp_parse(sdt, options, verbose = 0 ):
                                                openamp_args, 1):
             _error("openamp_xlnx: cannot generate '%s'" % output_file_name)
             return False
+        if openamp_args.get("rpu_timer_config"):
+            return xlnx_openamp_rpu_timer_output(sdt, machine, openamp_args)
         return True
+
+    if openamp_args["dt_type"] == "linux_dt":
+        if not xlnx_openamp_disable_domain_timers(sdt):
+            return False
 
     xlnx_openamp_update_relation_timers(
         sdt, openamp_args["dt_type"], machine)
