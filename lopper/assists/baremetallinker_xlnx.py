@@ -15,10 +15,14 @@ import common_utils as utils
 
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node, get_label
 from common_utils import to_cmakelist
-from openamp_xlnx import xlnx_openamp_get_ddr_elf_load
+from openamp_xlnx import (
+    xlnx_openamp_get_ddr_elf_load,
+    xlnx_openamp_get_tcm_elf_load_nodes,
+)
 from xlnx_rpu_linker import (
     LayoutError,
     default_section_regions,
+    elfload_tcm_sections,
     find_linker_domain,
     r52_tcm_regions_snippet,
     resolve_placement,
@@ -242,7 +246,8 @@ def get_section_placement(sdt, tgt_node, match_cpunode, machine, mem_ranges,
         ddr_range(tuple)      : Start and size of the default DDR region
     Return:
         Placement, or None when no baremetal or FreeRTOS domain with a
-        linker block selects the CPU. Exits on an invalid placement.
+        linker block selects the CPU and no OpenAMP or libmetal relation
+        loads its firmware into TCM only. Exits on an invalid placement.
     """
     root_node = sdt.tree[tgt_node]
     symbol_node = ""
@@ -263,17 +268,28 @@ def get_section_placement(sdt, tgt_node, match_cpunode, machine, mem_ranges,
         return lable_names[keys[0]], start, size
 
     try:
+        sections = None
         domain = find_linker_domain(sdt.tree, match_cpunode)
         if domain is None:
-            return None
+            # A relation that loads the firmware into TCM only implies
+            # the TCM layout over the listed banks.
+            tcm_nodes = xlnx_openamp_get_tcm_elf_load_nodes(machine, sdt)
+            if not tcm_nodes:
+                return None
+            domain = find_linker_domain(sdt.tree, match_cpunode,
+                                        linker_block=False)
+            if domain is None:
+                return None
+            sections = elfload_tcm_sections(tcm_nodes, match_cpunode)
         placement = resolve_placement(
             sdt.tree, domain, match_cpunode, machine,
             (lable_names[default_ddr], ddr_range[0], ddr_range[1]),
-            region_for_node)
+            region_for_node, sections=sections)
     except LayoutError as exc:
         _error(f"baremetallinker_xlnx: {exc}", also_exit=1)
-    _info(f"baremetallinker_xlnx: section placement from {domain.abs_path}"
-          " (split mode): " +
+    source = "TCM ELF load of" if sections is not None else "linker block of"
+    _info(f"baremetallinker_xlnx: section placement from {source} "
+          f"{domain.abs_path} (split mode): " +
           ", ".join(f"{name}={region}"
                     for name, region in placement.sections.items()))
     return placement
@@ -371,6 +387,10 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     for name, value in sections:
         if name not in ("CODE", "DATA"):
             cfd.write("set(%s %s)\n" % (name, value))
+    if placement is not None:
+        # Tells templates with a fixed legacy layout, such as the
+        # openamp-system-reference legacy apps, to follow the sections.
+        cfd.write("set(RPU_SECTION_PLACEMENT ON)\n")
     if placement is not None and placement.tcm_regions:
         for bank, value in sorted(placement.tcm_regions.items()):
             cfd.write("set(TCM_%s_REGION %s)\n" % (bank, hex(value)))
