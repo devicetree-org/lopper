@@ -44,6 +44,12 @@ from .zephyr_memory import (
     linker_section_property,
     resolve_memory_node,
 )
+from .xlnx_rpu_linker import (
+    BAREMETAL_LINKER_SECTIONS,
+    DDR_REGION,
+    LINKER_LAYOUTS,
+    linker_os_type,
+)
 from .xlnx_rpu_tcm import (
     rpu_cluster_tcm_bases,
     rpu_core_number,
@@ -54,13 +60,118 @@ from .xlnx_rpu_tcm import (
 sys.path.append(os.path.dirname(__file__))
 
 
+def _set_domain_property(domain_node, name, value):
+    """Set or replace one property on a domain node."""
+    if name in domain_node.__props__:
+        domain_node[name].value = value
+    else:
+        domain_node + LopperProp(name=name, value=value)
+
+
+def _baremetal_linker_expand(tree, domain_node, linker, verbose=0):
+    """Flatten a baremetal or FreeRTOS linker block into domain properties.
+
+    Description:
+        Accepts an optional ``layout`` preset (tcm, tcm-data, ddr), an
+        optional ``linker_memories`` list and an optional ``sections``
+        mapping. Section regions are memory references, stored as phandles,
+        or the keyword ``ddr`` for the default DDR region chosen by
+        baremetallinker_xlnx, stored as a string. The checks that need the
+        processor and the TCM mode run later, in baremetallinker_xlnx, on
+        the assembled tree.
+
+    Args:
+        tree (LopperTree): Device tree containing physical memories.
+        domain_node (LopperNode): Baremetal or FreeRTOS domain.
+        linker (LopperNode): The domain's linker child.
+        verbose (int): Verbosity level for diagnostic output.
+
+    Returns:
+        bool: True.
+
+    Raises:
+        LayoutError: If keys, sections or references are invalid.
+    """
+    unknown = set(linker.__props__) - {"layout", "linker_memories"}
+    if unknown:
+        raise LayoutError(
+            f"{linker.abs_path}: unsupported properties for os,type "
+            f"'{linker_os_type(domain_node)}': " + ", ".join(sorted(unknown)))
+
+    layout = linker.propval("layout", list)
+    if layout and layout != [""]:
+        if len(layout) != 1 or layout[0] not in LINKER_LAYOUTS:
+            raise LayoutError(
+                f"{linker.abs_path}: layout must be one of " +
+                ", ".join(LINKER_LAYOUTS))
+        _set_domain_property(domain_node, "linker-layout", [layout[0]])
+
+    memory_references = linker.propval("linker_memories", list)
+    if memory_references and memory_references != [""]:
+        memory_phandles = [
+            resolve_memory_node(tree, reference).phandle_or_create()
+            for reference in memory_references if reference != DDR_REGION]
+        if memory_phandles:
+            _set_domain_property(
+                domain_node, "linker_memories", memory_phandles)
+
+    section_parents = [node for node in linker.subnodes(children_only=True)
+                       if node.name == "sections"]
+    if len(section_parents) > 1:
+        raise LayoutError(
+            f"{linker.abs_path}: expected at most one sections child")
+    if not section_parents and "linker-layout" not in domain_node.__props__:
+        raise LayoutError(
+            f"{linker.abs_path}: expected a layout or a sections child")
+    for section in (section_parents[0].subnodes(children_only=True)
+                    if section_parents else []):
+        name = section.name
+        if name not in BAREMETAL_LINKER_SECTIONS:
+            raise LayoutError(
+                f"{section.abs_path}: unsupported linker section '{name}' "
+                f"for os,type '{linker_os_type(domain_node)}'; supported: " +
+                ", ".join(sorted(BAREMETAL_LINKER_SECTIONS)))
+        unknown = set(section.__props__) - {"region", "offset"}
+        if unknown:
+            raise LayoutError(
+                f"{section.abs_path}: unsupported properties: " +
+                ", ".join(sorted(unknown)))
+        regions = section.propval("region", list)
+        if len(regions) != 1 or regions == [""]:
+            raise LayoutError(
+                f"{section.abs_path}: region must contain one reference")
+        property_name = linker_section_property(name)
+        if regions[0] == DDR_REGION:
+            _set_domain_property(domain_node, property_name, [DDR_REGION])
+        else:
+            memory = resolve_memory_node(tree, regions[0])
+            _set_domain_property(
+                domain_node, property_name, [memory.phandle_or_create()])
+        offsets = section.propval("offset", list)
+        if offsets and offsets != [""]:
+            if name != "vector_table" or offsets != [0]:
+                raise LayoutError(
+                    f"{section.abs_path}: only vector_table takes an "
+                    "offset, and it must be 0: the linker templates place "
+                    "the vectors at the start of their region")
+            _set_domain_property(
+                domain_node, f"{property_name}-offset", [0])
+
+    if verbose:
+        _info(f"expanded linker metadata for {domain_node.abs_path}")
+    tree - linker
+    return True
+
+
 def zephyr_linker_expand(tree, domain_node, verbose=0):
-    """Flatten readable Zephyr linker YAML before domain pruning.
+    """Flatten readable linker YAML before domain pruning.
 
     Description:
         Converts a domain-local linker/sections hierarchy into properties on
         the selected domain. Physical-memory references become phandles so
         the metadata survives domain-access pruning without special handling.
+        Zephyr domains use the Zephyr linker ABI; baremetal and FreeRTOS
+        domains use the section placement read by baremetallinker_xlnx.
 
     Args:
         tree (LopperTree): Device tree containing physical memories.
@@ -80,10 +191,13 @@ def zephyr_linker_expand(tree, domain_node, verbose=0):
     if len(linker_nodes) != 1:
         raise LayoutError(
             f"{domain_node.abs_path}: expected at most one linker child")
+    if linker_os_type(domain_node) in ("baremetal", "freertos"):
+        return _baremetal_linker_expand(
+            tree, domain_node, linker_nodes[0], verbose)
     if domain_node.propval("os,type", list) != ["zephyr"]:
         raise LayoutError(
             f"{domain_node.abs_path}: linker metadata requires os,type "
-            "'zephyr'")
+            "'zephyr', 'baremetal' or 'freertos'")
 
     linker = linker_nodes[0]
     unknown = set(linker.__props__) - set(LINKER_SCALAR_PROPERTIES) - {
