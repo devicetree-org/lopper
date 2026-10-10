@@ -584,16 +584,33 @@ def drop_unreachable_pl_nodes(sdt, amba_node, new_amba_node, platform):
         return new_amba_node
 
     addr_cells = amba_node["#address-cells"].value[0]
+    size_cells = amba_node["#size-cells"].value[0]
+    stride = addr_cells + size_cells
+
+    reachable_ranges = []
+    drop_candidates = []
     for node in list(new_amba_node.child_nodes.values()):
         if node.propval("reg") == [""]:
             continue
         base, _ = cell_value_get(node["reg"].value, addr_cells)
-        if cpu_cluster not in sdt.tree.accessible_by(base):
-            _warning(
-                f"excluding {node.name} from {platform} overlay: "
-                "address is not reachable through the processor address-map"
-            )
-            new_amba_node - node
+        reachable_by = sdt.tree.accessible_by(base)
+        if cpu_cluster in reachable_by:
+            rv = node["reg"].value
+            for i in range(0, len(rv) - stride + 1, stride):
+                rb, _ = cell_value_get(rv[i:], addr_cells)
+                rs, _ = cell_value_get(rv[i + addr_cells:], size_cells)
+                reachable_ranges.append((rb, rs))
+        elif reachable_by:
+            drop_candidates.append((node, base))
+
+    for node, base in drop_candidates:
+        if any(rb <= base < rb + rs for rb, rs in reachable_ranges):
+            continue
+        _warning(
+            f"excluding {node.name} from {platform} overlay: "
+            "address is not reachable through the processor address-map"
+        )
+        new_amba_node - node
     return new_amba_node
 
 def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree,
