@@ -748,13 +748,22 @@ def _write_overlay_sidecar(tree, output_path):
 def _write_overlay_dtso_files(tree, output_path):
     """Emit one .dtso overlay file per condition in overlay_subtrees (opt-in).
 
-    Each file is a standard DTS overlay that, when applied, reproduces the
-    conditional property overrides for that condition.  Merge schemes
-    (append/prepend/delete) are not representable in DTS overlays — the
-    output is always replace-mode.  This is documented inside the emitted file.
+    Each file is a standard DTS overlay that, when applied, reproduces that
+    condition's contribution.  Merge schemes (append/prepend/delete) are not
+    representable in DTS overlays — the output is always replace-mode, which
+    is noted inside the emitted file.
+
+    An overlay is held as a bare list of nodes rather than a tree, which is
+    the whole reason this is not simply a write() call.  Assemble a real tree
+    from them and let the normal DTS writer serialise it: writing the text by
+    hand loses everything the writer already knows how to do, and losing it
+    is silent, since an overlay with its children dropped is still a valid
+    file that compiles.
 
     Output: <stem>.<condition>.dtso per condition.
     """
+    import copy as _copy
+
     overlay_subtrees = tree._metadata.get('overlay_subtrees', {})
     if not overlay_subtrees:
         return
@@ -764,34 +773,54 @@ def _write_overlay_dtso_files(tree, output_path):
 
     for condition_name, node_list in overlay_subtrees.items():
         dtso_path = str(parent / f"{stem}.{condition_name}.dtso")
-        lines = [
-            "// Auto-generated DTS overlay for condition: " + condition_name,
-            "// NOTE: merge schemes (append/prepend/delete) are not expressible in",
-            "// DTS overlays — all property overrides are replace-mode here.",
-            "/dts-v1/;",
-            "/plugin/;",
-            "",
-        ]
-        for ov_node in node_list:
-            # Emit a fragment using the node's label if available, else path
-            label = ov_node.label if hasattr(ov_node, 'label') and ov_node.label else None
-            ref = f"&{label}" if label else f"&{{  /* {ov_node.abs_path} */ }}"
-            lines.append(f"&{label or 'LABEL_UNKNOWN'} {{")
-            for prop_name, lp in ov_node.__props__.items():
-                val = lp.value
-                if isinstance(val, list) and len(val) == 1:
-                    val = val[0]
-                if isinstance(val, str):
-                    lines.append(f'\t{prop_name} = "{val}";')
-                elif isinstance(val, int):
-                    lines.append(f'\t{prop_name} = <{hex(val)}>;')
-                else:
-                    lines.append(f'\t/* {prop_name}: complex value, omitted */')
-            lines.append("};")
-            lines.append("")
 
-        with open(dtso_path, 'w') as f:
-            f.write('\n'.join(lines))
+        ov = LopperTree()
+        for ov_node in node_list:
+            if not ov_node.label:
+                lopper.log._warning(
+                    f"overlay dtso: '{ov_node.abs_path}' has no label, so it "
+                    f"cannot be named as a fragment target; skipping it" )
+                continue
+
+            # Re-root the node as an &label fragment.  LopperTree.add()
+            # re-paths the children to match.
+            frag = _copy.deepcopy(ov_node)
+            frag.name = "&" + ov_node.label
+            frag.__dict__['abs_path'] = "/&" + ov_node.label
+            frag.label = ""
+            ov.add(frag)
+
+        if not ov['/'].child_nodes:
+            lopper.log._warning(
+                f"overlay dtso: condition '{condition_name}' has nothing that "
+                f"can be expressed as a fragment, no file written" )
+            continue
+
+        # Resolution only: the base is read so that references resolve to
+        # <&label>, and is not modified.  overlay_of() would additionally
+        # register this tree in the base's child_trees, which writing output
+        # has no business doing.
+        ov.link_for_resolution(tree)
+        ov._type = "dts_overlay"
+        ov.resolve()
+
+        # A phandle number is this tree's bookkeeping and means nothing to
+        # whoever applies the overlay, so drop them rather than emit stale
+        # numbers.  It has to be the number that is cleared, not a 'phandle'
+        # property: print() re-resolves before writing and re-derives the
+        # property from node.phandle, so removing only the property is undone
+        # before it reaches the file.  These nodes are deep copies, so the
+        # held overlay is not disturbed by renumbering them.
+        for n in ov:
+            n.phandle = 0
+            n.__props__.pop('phandle', None)
+
+        ov['/'] + LopperProp( "lopper-preamble", value=[
+            f"Auto-generated DTS overlay for condition: {condition_name}",
+            "NOTE: merge schemes (append/prepend/delete) are not expressible in",
+            "DTS overlays - all property overrides are replace-mode here." ] )
+
+        ov.print(dtso_path)
         lopper.log._info(f"overlay dtso written: {dtso_path}")
 
 
