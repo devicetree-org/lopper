@@ -215,8 +215,16 @@ lopper -f --permissive \
 
 `--emit-overlay-dtso` writes one `<out>.<condition>.dtso` file per condition.
 These are standard DTS overlay files and can be inspected or fed with `-i`.
-Note that merge schemes are not representable in DTS overlays — the output is
-always replace-mode.
+
+The file carries whatever the condition contributes: properties of any width,
+child nodes below the fragment target, the labels on them, and references
+written as `<&label>` so that they still resolve on the way back in. The one
+thing that cannot survive is the merge scheme — `append`, `prepend` and
+`delete` have no equivalent in a DTS overlay, so every property override is
+emitted as a replace. Use the sidecar instead where that matters.
+
+A node with no label is skipped with a warning rather than emitted, since
+there is no way to name it as a fragment target.
 
 ### Summary of overlay emit options
 
@@ -225,7 +233,7 @@ always replace-mode.
 | *(default)* | `/__lopper-overlays__` in output DTS | Yes | Automatic two-pass; removed in final output |
 | `--emit-embedded-overlays` | `/__lopper-overlays__` in output DTS | Yes | Re-embeds on every pass; use for >2-pass pipelines |
 | `--emit-overlay-sidecar` | `<out>.overlays.yaml` | Yes | Full sigil fidelity; feed with `-i` |
-| `--emit-overlay-dtso` | `<out>.<cond>.dtso` per condition | No (replace only) | Human-readable; standard DTS overlay format |
+| `--emit-overlay-dtso` | `<out>.<cond>.dtso` per condition | No (replace only) | Human-readable; standard DTS overlay format; feed with `-i` |
 
 All emit options only affect DTS (`.dts`/`.dtsi`) output; YAML and JSON output
 formats are unaffected.
