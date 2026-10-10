@@ -4,6 +4,7 @@ overlay targets from DTS files.
 """
 
 import pytest
+import shutil
 import subprocess
 import tempfile
 import os
@@ -999,3 +1000,211 @@ class TestLabelsFromSymbols:
         node = sdt.tree.__nodes__.get("/amba/src@b0000000/port/endpoint")
         assert copy.deepcopy(node).label == "src_out", \
             "the label did not travel with the copied node"
+
+
+# ---------------------------------------------------------------------------
+# --emit-overlay-dtso
+#
+# The emitter writes one .dtso per registered overlay.  It used to build that
+# file by concatenating strings, which meant it only ever reproduced the shape
+# it was written for -- scalar property overrides on a node that already
+# exists -- and silently discarded everything else.  An overlay whose content
+# is a subtree came out as an empty fragment that still compiled, so nothing
+# reported the loss, and the docs invite the result to be fed back with -i.
+# ---------------------------------------------------------------------------
+
+_DTSO_BASE = """\
+/dts-v1/;
+/ {
+    #address-cells = <2>;
+    #size-cells = <2>;
+    compatible = "test";
+
+    amba: amba {
+        #address-cells = <2>;
+        #size-cells = <2>;
+        ranges;
+
+        mmi_dc: mmi_dc@fd4a0000 {
+            compatible = "xlnx,mmi-dc";
+            reg = <0x0 0xfd4a0000 0x0 0x10000>;
+        };
+
+        avpg: avpg@a0000000 {
+            compatible = "xlnx,av-pat-gen";
+            reg = <0x0 0xa0000000 0x0 0x10000>;
+        };
+    };
+};
+"""
+
+# A scalar property, a multi-cell property and a labelled child, so that each
+# of the three things the string emitter dropped is covered by one overlay.
+_DTSO_OVERLAY = """\
+/dts-v1/;
+/plugin/;
+
+&mmi_dc {
+    status = "okay";
+    reg = <0x0 0xfd4a0000 0x0 0x20000>;
+    widget_a: widget {
+        compatible = "test,widget";
+    };
+};
+"""
+
+# Both ends of a link, each in its own fragment, referencing the other. The
+# cross-reference is a local fixup: dtc records it by position because it
+# cannot know the number, so it only survives if emission is symbolic.
+_DTSO_WIRED_OVERLAY = """\
+/dts-v1/;
+/plugin/;
+
+&mmi_dc {
+    ports {
+        port@0 {
+            dc_in: endpoint {
+                remote-endpoint = <&avpg_out>;
+            };
+        };
+    };
+};
+
+&avpg {
+    ports {
+        port@0 {
+            avpg_out: endpoint {
+                remote-endpoint = <&dc_in>;
+            };
+        };
+    };
+};
+"""
+
+
+class TestOverlayDtsoEmit:
+    """What --emit-overlay-dtso writes for an overlay that is not flat."""
+
+    def _emit(self, tmp_path, overlay_text, stem="ov"):
+        """Register an overlay and emit it, returning the emitted text."""
+        from lopper import _write_overlay_dtso_files
+
+        base_file = tmp_path / "system-top.dts"
+        base_file.write_text(_DTSO_BASE)
+        ov_file = tmp_path / f"{stem}.dtso"
+        ov_file.write_text(overlay_text)
+
+        sdt = LopperSDT(str(base_file))
+        sdt.dryrun = False
+        sdt.verbose = 0
+        sdt.werror = False
+        sdt.output_file = str(tmp_path / "out.dts")
+        sdt.cleanup_flag = True
+        sdt.save_temps = False
+        sdt.enhanced = True
+        sdt.symbols = True
+        sdt.outdir = str(tmp_path)
+        sdt.setup(sdt.dts, [], "", True, libfdt=True)
+        sdt._compile_overlay_subtrees([str(ov_file)], str(tmp_path))
+
+        _write_overlay_dtso_files(sdt.tree, str(tmp_path / "out.dts"))
+        emitted = tmp_path / f"out.{stem}.dtso"
+        assert emitted.exists(), \
+            f"no overlay file was emitted (looked for {emitted})"
+        return emitted.read_text()
+
+    def test_a_child_below_the_target_is_emitted(self, tmp_path):
+        """The whole point: an overlay that adds a subtree must emit it."""
+        text = self._emit(tmp_path, _DTSO_OVERLAY)
+        assert "widget" in text, \
+            f"the child node was dropped from the emitted overlay:\n{text}"
+        assert "test,widget" in text, \
+            f"the child node's properties were dropped:\n{text}"
+
+    def test_the_childs_label_is_emitted(self, tmp_path):
+        """A label is how the node is referenced; losing it loses the link."""
+        text = self._emit(tmp_path, _DTSO_OVERLAY)
+        assert "widget_a:" in text, \
+            f"the child node's label was dropped:\n{text}"
+
+    def test_a_multi_cell_property_is_emitted(self, tmp_path):
+        """Anything longer than one cell used to become a comment."""
+        text = self._emit(tmp_path, _DTSO_OVERLAY)
+        assert "0x20000" in text, \
+            f"the multi-cell property was not emitted:\n{text}"
+        assert "complex value, omitted" not in text, \
+            f"a property was replaced by a placeholder comment:\n{text}"
+
+    def test_a_scalar_property_is_still_emitted(self, tmp_path):
+        """The shape the emitter was originally written for must not regress."""
+        text = self._emit(tmp_path, _DTSO_OVERLAY)
+        assert 'status = "okay"' in text, \
+            f"the scalar property override was lost:\n{text}"
+
+    def test_no_phandle_number_is_emitted(self, tmp_path):
+        """A phandle is the emitting tree's bookkeeping, not the consumer's."""
+        text = self._emit(tmp_path, _DTSO_OVERLAY)
+        assert "phandle" not in text, \
+            f"a stale phandle number reached the emitted overlay:\n{text}"
+
+    def test_a_cross_fragment_reference_is_written_by_label(self, tmp_path):
+        """Both directions of a link, each resolved to <&label>."""
+        text = self._emit(tmp_path, _DTSO_WIRED_OVERLAY, stem="wired")
+        assert "<&avpg_out>" in text, \
+            f"the forward reference was not written by label:\n{text}"
+        assert "<&dc_in>" in text, \
+            f"the reference back across fragments was not written by label:\n{text}"
+
+    def test_the_emitted_overlay_round_trips(self, tmp_path):
+        """The docs say the output can be fed back with -i, so it must survive.
+
+        Registering the emitted file has to yield the same properties and the
+        same children as registering the original did.  This is the failure
+        that mattered: a lossy carrier silently reintroduces the bug that the
+        overlay-preservation work exists to prevent.
+        """
+        emitted_text = self._emit(tmp_path, _DTSO_OVERLAY)
+
+        second = tmp_path / "second"
+        second.mkdir()
+        base_file = second / "system-top.dts"
+        base_file.write_text(_DTSO_BASE)
+        ov_file = second / "fedback.dtso"
+        ov_file.write_text(emitted_text)
+
+        sdt = LopperSDT(str(base_file))
+        sdt.dryrun = False
+        sdt.verbose = 0
+        sdt.werror = False
+        sdt.output_file = str(second / "out.dts")
+        sdt.cleanup_flag = True
+        sdt.save_temps = False
+        sdt.enhanced = True
+        sdt.symbols = True
+        sdt.outdir = str(second)
+        sdt.setup(sdt.dts, [], "", True, libfdt=True)
+        sdt._compile_overlay_subtrees([str(ov_file)], str(second))
+
+        nodes = sdt.tree._metadata.get('overlay_subtrees', {}).get('fedback', [])
+        assert nodes, "the emitted overlay registered nothing on the way back in"
+
+        target = nodes[0]
+        assert "status" in target.__props__, \
+            f"scalar property lost on round trip: {list(target.__props__)}"
+        assert "reg" in target.__props__, \
+            f"multi-cell property lost on round trip: {list(target.__props__)}"
+        assert target.child_nodes, \
+            "the child node was lost on the round trip through -i"
+
+    @pytest.mark.skipif(shutil.which("dtc") is None, reason="dtc not available")
+    def test_the_emitted_overlay_compiles(self, tmp_path):
+        """It claims to be a standard DTS overlay, so dtc must accept it."""
+        text = self._emit(tmp_path, _DTSO_WIRED_OVERLAY, stem="wired")
+        src = tmp_path / "check.dtso"
+        src.write_text(text)
+        r = subprocess.run(
+            ["dtc", "-I", "dts", "-O", "dtb", "-o", str(tmp_path / "check.dtbo"),
+             str(src)],
+            capture_output=True, text=True)
+        assert r.returncode == 0, \
+            f"dtc rejected the emitted overlay:\n{r.stderr}\n--- source ---\n{text}"
