@@ -1820,7 +1820,14 @@ class LopperFDT(lopper.base.lopper_base):
                 comments_to_delete.extend( extra_drops.split() )
                 lopper.log._debug( f"comment scan: droplist {comments_to_delete}" )
             for cnum in comments_to_delete:
-                lopper_comment_regex = re.compile( r'lopper-comment-{0} = ".*?";'.format(cnum), re.MULTILINE | re.DOTALL )
+                # The comment body is a dts string, and _comment_replacer() escaped
+                # any quotes it contained. Honour that escaping when looking for the
+                # end of the property: a non-greedy match stops at the first '";' it
+                # sees, which for a comment carrying its own quoted text is inside the
+                # body rather than at the end of it. That removes the opening and
+                # leaves the remainder behind as bare text for dtc to choke on.
+                lopper_comment_regex = re.compile( r'lopper-comment-{0} = "(?:[^"\\]|\\.)*";'.format(cnum),
+                                                   re.MULTILINE | re.DOTALL )
                 fp_comments_and_labels_as_attributes = re.sub( lopper_comment_regex, "", fp_comments_and_labels_as_attributes )
 
             labeldict = {}
