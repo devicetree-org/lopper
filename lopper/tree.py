@@ -5728,12 +5728,9 @@ class LopperTree:
                         self[raw]
                     except Exception:
                         props_to_delete.append(p)
-                        # Suppress noise for comment nodes — they disappear
-                        # with their parent by design, not a real dangling ref.
-                        if not p.name.startswith('lopper-comment-'):
-                            lopper.log._warning(
-                                f"strict: dropping dangling path-ref "
-                                f"'{n.abs_path}/{p.name}' -> '{raw}' (node gone)")
+                        lopper.log._warning(
+                            f"strict: dropping dangling path-ref "
+                            f"'{n.abs_path}/{p.name}' -> '{raw}' (node gone)")
                 for p in props_to_delete:
                     n - p
 
@@ -6079,6 +6076,12 @@ class LopperTree:
         resolver's name-based exclusions so we never treat e.g. bootargs
         ("/dev/mmcblk0 ...") as a path-ref."""
         if name in non_path_ref_names:
+            return None
+        # A comment carries the text the author wrote, and a block comment
+        # opens with '/*' -- which is not a reference to a node named '/* ... */'.
+        # Everything enhanced processing preserves is held in one of these, so
+        # reading them as paths discards every comment in the tree.
+        if name.startswith( "lopper-comment" ):
             return None
         if not isinstance(value, list) or len(value) != 1 or not isinstance(value[0], str):
             return None
