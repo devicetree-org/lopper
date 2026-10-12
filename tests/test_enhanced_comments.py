@@ -228,3 +228,56 @@ class TestPositionIsFoundWithoutReadingContents:
         text = (tmp_path / "unbalanced.dts.pp.enhanced").read_text()
         assert "FIRST" in text, "a comment in a legal position should be kept"
         assert "SECOND" not in text, "a comment after a subnode should be dropped"
+
+
+class TestCommentsNeverBreakTheBuild:
+    """dtc decides what is legal, and a wrong guess costs a comment.
+
+    Whether a carried comment may stay where it is gets decided by reading the
+    preprocessed text rather than parsing it, so it can be wrong. When it is,
+    dtc rejects the source. Rather than failing, the comments are dropped and
+    the compile is retried: the tree is what was asked for, a comment is not.
+    """
+
+    def test_dropping_comments_leaves_valid_dts(self, tmp_path):
+        """The retreat removes the property and nothing else."""
+        source = ('/dts-v1/;\n/ {\n\tanode {\n\t};\n'
+                  '\tlopper-comment-1 = "/* somewhere dts does not allow */";\n};\n')
+        f = tmp_path / "carried.dts"
+        f.write_text(source)
+
+        removed = Lopper.drop_comments_from(str(f))
+
+        assert removed == 1
+        text = f.read_text()
+        assert "lopper-comment" not in text
+        assert "anode" in text, "the tree must survive the retreat untouched"
+
+    def test_a_comment_body_is_not_cut_short(self, tmp_path):
+        """A comment carrying its own quotes is removed whole.
+
+        The body is a dts string with its quotes escaped, so a plain
+        non-greedy match ends at the first quote inside the text and leaves
+        the rest behind -- which is what made the compile fail in the first
+        place.
+        """
+        source = ('/dts-v1/;\n/ {\n'
+                  '\tlopper-comment-1 = "/* phy-mode = \\"10gbase-r\\"; */";\n};\n')
+        f = tmp_path / "quoted.dts"
+        f.write_text(source)
+
+        assert Lopper.drop_comments_from(str(f)) == 1
+
+        text = f.read_text()
+        assert "10gbase-r" not in text
+        assert "*/" not in text, "no tail of the comment may be left behind"
+
+    def test_nothing_to_drop_is_reported_as_such(self, tmp_path):
+        """A source with no carried comments is left alone."""
+        source = '/dts-v1/;\n/ {\n\tanode {\n\t};\n};\n'
+        f = tmp_path / "plain.dts"
+        f.write_text(source)
+        before = f.read_text()
+
+        assert Lopper.drop_comments_from(str(f)) == 0
+        assert f.read_text() == before
