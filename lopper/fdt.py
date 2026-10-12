@@ -35,6 +35,7 @@ import lopper.log
 from lopper.base import lopper_base
 from lopper.tree import LopperTreePrinter
 from lopper.tree import LOPPER_COMMENT_CONTAINER
+from lopper.tree import LOPPER_COMMENT_HOLDER
 
 import lopper.schema
 
@@ -1819,6 +1820,7 @@ class LopperFDT(lopper.base.lopper_base):
 
             comments_to_delete = []
             comments_to_wrap = []
+            comments_to_hold = []
             file_as_array = fp_comments_and_labels_as_attributes.splitlines()
             file_boundary_index = 0
             node_depth = 0
@@ -1902,8 +1904,11 @@ class LopperFDT(lopper.base.lopper_base):
                         comments_to_wrap.append( comment_number )
 
                     if node_depth == 0:
-                        lopper.log._debug( "comment scan: comment before any nodes, tagging to delete" )
-                        comments_to_delete.append( comment_number )
+                        # Outside any node. A property is not legal here and
+                        # neither is a bare node, so there is nowhere to carry it
+                        # in place: move it to a holder inside the tree instead.
+                        lopper.log._debug( "comment scan: comment outside any node, tagging to hold" )
+                        comments_to_hold.append( comment_number )
 
                     m2 = re.search( r"^\s*lopper-comment", file_as_array[i] )
                     if not m2:
@@ -1911,6 +1916,29 @@ class LopperFDT(lopper.base.lopper_base):
                         if not m3:
                             lopper.log._debug( "comment scan: comment embedded in property, tagging to delete" )
                             comments_to_delete.append( comment_number )
+
+            # Move a comment written outside any node into a holder inside the
+            # tree. Nothing may sit at the top level but a node, and a node there
+            # is no more legal than the property was, so there is no carrying it
+            # in place -- the position itself cannot be expressed. Lift them out,
+            # in the order they were written, and add them in one block at the
+            # end; the writer emits them after the tree.
+            held = []
+            for cnum in [ c for c in comments_to_hold if c not in comments_to_delete ]:
+                lopper_comment_regex = re.compile( r'[ \t]*(lopper-comment-{0} = "(?:[^"\\]|\\.)*";)[ \t]*\n?'.format(cnum),
+                                                   re.MULTILINE | re.DOTALL )
+                match = re.search( lopper_comment_regex, fp_comments_and_labels_as_attributes )
+                if not match:
+                    continue
+                held.append( match.group(1) )
+                fp_comments_and_labels_as_attributes = re.sub(
+                    lopper_comment_regex, "", fp_comments_and_labels_as_attributes, count = 1 )
+                lopper.log._debug( f"comment scan: comment #{cnum} held for emission after the tree" )
+
+            if held:
+                holder = "\n".join( f"\t\t{h}" for h in held )
+                fp_comments_and_labels_as_attributes += (
+                    f"\n/ {{\n\t{LOPPER_COMMENT_HOLDER} {{\n{holder}\n\t}};\n}};\n" )
 
             # Carry a comment that follows a subnode in a node of its own, so it
             # keeps the place it was written in rather than being dropped. One
@@ -1921,7 +1949,8 @@ class LopperFDT(lopper.base.lopper_base):
             # wrong and put a node somewhere dts does not allow one. dtc rules on
             # that, and dt_compile drops the comments and retries if it objects:
             # a wrong judgement costs the comment, not the build.
-            for cnum in [ c for c in comments_to_wrap if c not in comments_to_delete ]:
+            for cnum in [ c for c in comments_to_wrap
+                          if c not in comments_to_delete and c not in comments_to_hold ]:
                 lopper_comment_regex = re.compile( r'(lopper-comment-{0} = "(?:[^"\\]|\\.)*";)'.format(cnum),
                                                    re.MULTILINE | re.DOTALL )
                 fp_comments_and_labels_as_attributes = re.sub(

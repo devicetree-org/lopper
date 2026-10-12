@@ -295,10 +295,19 @@ def _apply_overlay_symbol_labels(tree, symbol_labels):
 # unwrapped on output -- only the comment it holds is emitted.
 LOPPER_COMMENT_CONTAINER = "lopper-comment-container-"
 
+# Node that holds the comments written at the top level of the source, outside
+# any node. Those have no position in the tree -- there is the root and the
+# root's children, and "between two top-level blocks" is neither -- so they are
+# parked here, where a property is legal, and emitted after the tree. The node
+# itself is never written out.
+LOPPER_COMMENT_HOLDER = "__lopper-comments__"
+LOPPER_COMMENT_HOLDER_PATH = "/" + LOPPER_COMMENT_HOLDER
+
 # Lopper-internal nodes that must be skipped during DTS output.
 # Add any new internal node paths here rather than adding per-path checks.
 _LOPPER_INTERNAL_NODES = frozenset({
     "/__lopper-phandles__",
+    LOPPER_COMMENT_HOLDER_PATH,
     # Note: /__lopper-overlays__ is NOT listed here. It must be emitted to the
     # output DTS (so a second-pass invocation can deserialize it), and is
     # explicitly deleted from the tree by _deserialize_overlay_subtrees() after
@@ -5794,6 +5803,32 @@ class LopperTree:
                     p.resolve()
 
         self["/"].print( output )
+
+        # Comments written at the top level of the source come last. They were
+        # parked in a holder node to get them through the compile, since a
+        # property is legal there and a bare comment is not; the holder itself is
+        # never emitted, only what it carries.
+        #
+        # Known and accepted: comments scattered between several top-level blocks
+        # all arrive here together, in the order they were written, rather than
+        # back at the blocks they sat beside. Those blocks do not survive into the
+        # output -- a '&label { }' is merged into the node it names -- so the
+        # position they had has nowhere to be restored to.
+        try:
+            holder = self[LOPPER_COMMENT_HOLDER_PATH]
+        except Exception:
+            holder = None
+
+        if holder is not None:
+            # Written out directly rather than through the property printer: that
+            # indents to the depth of the node holding the property, and these
+            # belong at the top level, outside everything, where the author put
+            # them. The text is the comment, delimiters and all.
+            for p in holder:
+                for chunk in p.value:
+                    if isinstance(chunk, (bytes, bytearray)):
+                        chunk = chunk.decode( "utf-8", errors="replace" )
+                    print( chunk, file=output, flush=True )
 
     def resolve( self, check=False ):
         """resolve a tree
