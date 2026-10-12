@@ -96,6 +96,21 @@ def _compile(tmp_path, source, name, save_temps=False):
     return dtb
 
 
+def _enhanced_output(tmp_path, source, name):
+    """Compile with enhanced processing and return the written dts."""
+    dts = tmp_path / f"{name}.dts"
+    dts.write_text(source)
+    out = tmp_path / f"{name}-out.dts"
+
+    sdt = LopperSDT(str(dts))
+    sdt.dryrun = False
+    sdt.enhanced = True
+    sdt.setup(str(dts), [], "", force=True)
+    sdt.write(output_filename=str(out), enhanced=True)
+
+    return out.read_text()
+
+
 def test_dropped_comment_carrying_quotes_compiles(tmp_path):
     """A dropped comment takes its whole body with it.
 
@@ -332,3 +347,35 @@ class TestCommentsNeverBreakTheBuild:
 
         assert Lopper.drop_comments_from(str(f)) == 0
         assert f.read_text() == before
+
+
+class TestCommentTextSurvivesVerbatim:
+    """What the author wrote is what comes back.
+
+    The comment becomes a dts string, so the characters dts gives meaning to
+    have to be escaped going in. Quotes were; backslashes were not, and a
+    backslash is both an escape introducer and, immediately before the closing
+    quote, a way to swallow it.
+    """
+
+    def test_trailing_backslash_is_not_eaten(self, tmp_path):
+        """A backslash before the closing delimiter used to escape it."""
+        source = '/dts-v1/;\n\n/ {\n    /* ends with a backslash \\ */\n    p = <1>;\n};\n'
+        out = _enhanced_output(tmp_path, source, "trailing-bs")
+
+        assert "ends with a backslash \\ */" in out
+
+    def test_escape_sequences_are_not_interpreted(self, tmp_path):
+        r"""'C:\temp\new' is a path, not a tab and a newline."""
+        source = '/dts-v1/;\n\n/ {\n    /* a path C:\\temp\\new */\n    p = <1>;\n};\n'
+        out = _enhanced_output(tmp_path, source, "escapes")
+
+        assert "C:\\temp\\new" in out
+        assert "C:\temp" not in out, "the \\t must not become a tab"
+
+    def test_a_quote_and_a_backslash_together(self, tmp_path):
+        """Escaping one must not corrupt the other: backslashes go first."""
+        source = '/dts-v1/;\n\n/ {\n    /* mode = "x" under C:\\y */\n    p = <1>;\n};\n'
+        out = _enhanced_output(tmp_path, source, "both")
+
+        assert 'mode = "x" under C:\\y' in out
