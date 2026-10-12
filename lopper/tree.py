@@ -6103,7 +6103,7 @@ class LopperTree:
         except Exception as e:
             lopper.log._warning( f"could not move node {node}, re-adding to tree" )
 
-            noode.abs_path = existing_path
+            node.abs_path = existing_path
             self.add( node )
 
             return False

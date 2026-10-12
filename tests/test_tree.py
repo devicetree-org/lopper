@@ -1133,3 +1133,50 @@ class TestPhandleAllocation:
         assert got > 5, "allocation ignored the other tree's numbering"
         assert b.phandle_gen() > got, \
             "the other tree reissued a number already handed out"
+
+
+class TestNodeMove:
+    """Tests for LopperTree.move().
+
+    move() reparents a node and carries the same object across to the new
+    path. It is deliberately not a rename (the leaf name does not change and
+    path references do not follow) and not a merge (nothing is folded into a
+    node that is already there).
+    """
+
+    @staticmethod
+    def _tree(extra=()):
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        for path in ("/aliases", "/src", "/dst", "/src/thing") + tuple(extra):
+            tree.add(LopperNode(-1, path))
+        tree["/src/thing"] + LopperProp("carried", -1, None, ["from-src"])
+        tree.resolve()
+        return tree
+
+    def test_recovery_restores_the_node_rather_than_raising(self, monkeypatch):
+        """A failed add() must leave the node where it started.
+
+        The recovery path referred to an undefined name, so a move that could
+        not complete raised NameError over top of the real failure instead of
+        putting the node back.
+        """
+        tree = self._tree()
+        node = tree["/src/thing"]
+
+        real_add = LopperTree.add
+        calls = {"n": 0}
+
+        def failing_add(self, n, dont_sync=False, merge=False):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("induced add failure")
+            return real_add(self, n, dont_sync, merge)
+
+        monkeypatch.setattr(LopperTree, "add", failing_add)
+
+        result = tree.move(node, "/src/thing", "/dst/thing")
+
+        assert result is False, "a failed move reported success"
+        assert node.abs_path == "/src/thing", \
+            f"node was not restored, it is at {node.abs_path}"
