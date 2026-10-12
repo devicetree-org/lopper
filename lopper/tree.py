@@ -288,6 +288,13 @@ def _apply_overlay_symbol_labels(tree, symbol_labels):
             pass
 
 
+# Prefix of the node that carries a comment through the compile when the comment
+# sits where a property is not allowed: after a subnode, since dts wants a node's
+# properties before its subnodes. A node is legal there and keeps its place among
+# the siblings, so the comment comes back out where it went in. The node is
+# unwrapped on output -- only the comment it holds is emitted.
+LOPPER_COMMENT_CONTAINER = "lopper-comment-container-"
+
 # Lopper-internal nodes that must be skipped during DTS output.
 # Add any new internal node paths here rather than adding per-path checks.
 _LOPPER_INTERNAL_NODES = frozenset({
@@ -2993,7 +3000,24 @@ class LopperNode(object):
         if self.abs_path in _LOPPER_INTERNAL_NODES:
             # lopper-internal bookkeeping node — never emit to output
             return
-        elif self.abs_path != "/":
+
+        if self.name.startswith( LOPPER_COMMENT_CONTAINER ):
+            # The node exists only to give the comment somewhere legal to sit for
+            # the compile. Emit what it carries, not the node itself.
+            #
+            # A property indents itself to its node's depth, and the comment
+            # belongs where the container sits rather than inside it, so stand the
+            # container one level out for the duration.
+            container_depth = self.depth
+            self.depth -= 1
+            try:
+                for p in self:
+                    p.print( output )
+            finally:
+                self.depth = container_depth
+            return
+
+        if self.abs_path != "/":
             plabel = ""
             try:
                 if n['lopper-label.*']:

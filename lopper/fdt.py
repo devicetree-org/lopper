@@ -34,6 +34,7 @@ import lopper.base
 import lopper.log
 from lopper.base import lopper_base
 from lopper.tree import LopperTreePrinter
+from lopper.tree import LOPPER_COMMENT_CONTAINER
 
 import lopper.schema
 
@@ -1635,12 +1636,24 @@ class LopperFDT(lopper.base.lopper_base):
         except OSError:
             return 0
 
-        # The same escape-aware span used elsewhere: the comment body is a dts
-        # string whose quotes were escaped when the property was built, so a
-        # plain non-greedy match ends at the first quote inside the text.
+        # A comment that sits after a subnode is carried in a node of its own, so
+        # take the node with it: stripping the property alone would leave an empty
+        # node behind, in the position that was the problem to begin with.
+        #
+        # The spans are escape-aware. The comment body is a dts string whose
+        # quotes were escaped when the property was built, so a plain non-greedy
+        # match ends at the first quote inside the text and leaves a tail.
+        container_regex = re.compile(
+            r'[ \t]*' + LOPPER_COMMENT_CONTAINER + r'[0-9]+\s*\{\s*'
+            r'lopper-comment-[0-9]+ = "(?:[^"\\]|\\.)*";\s*\};[ \t]*\n?',
+            re.MULTILINE | re.DOTALL )
         comment_regex = re.compile( r'[ \t]*lopper-comment-[0-9]+ = "(?:[^"\\]|\\.)*";[ \t]*\n?',
                                     re.MULTILINE | re.DOTALL )
-        stripped, removed = re.subn( comment_regex, "", source )
+
+        stripped, wrapped = re.subn( container_regex, "", source )
+        stripped, bare = re.subn( comment_regex, "", stripped )
+
+        removed = wrapped + bare
         if not removed:
             return 0
 
@@ -1805,6 +1818,7 @@ class LopperFDT(lopper.base.lopper_base):
             lopper_comment_open_pattern = re.compile(r'lopper-comment-([0-9]+) = "(.*$)', re.DOTALL )
 
             comments_to_delete = []
+            comments_to_wrap = []
             file_as_array = fp_comments_and_labels_as_attributes.splitlines()
             file_boundary_index = 0
             node_depth = 0
@@ -1880,8 +1894,12 @@ class LopperFDT(lopper.base.lopper_base):
                     lopper.log._debug( f"comment scan: line {i} has comment #{comment_number} [{m.group(2)}]" )
 
                     if subnode_at_depth[node_depth]:
-                        lopper.log._debug( "comment scan: comment found after first subnode, tagging to delete" )
-                        comments_to_delete.append( comment_number )
+                        # dts wants a node's properties before its subnodes, so a
+                        # comment property is not allowed here. A node is legal
+                        # after a node and keeps its place among the siblings, so
+                        # carry the comment in one rather than dropping it.
+                        lopper.log._debug( "comment scan: comment found after first subnode, tagging to wrap" )
+                        comments_to_wrap.append( comment_number )
 
                     if node_depth == 0:
                         lopper.log._debug( "comment scan: comment before any nodes, tagging to delete" )
@@ -1893,6 +1911,24 @@ class LopperFDT(lopper.base.lopper_base):
                         if not m3:
                             lopper.log._debug( "comment scan: comment embedded in property, tagging to delete" )
                             comments_to_delete.append( comment_number )
+
+            # Carry a comment that follows a subnode in a node of its own, so it
+            # keeps the place it was written in rather than being dropped. One
+            # that another check has already condemned is past saving, so wrap
+            # only those that are not.
+            #
+            # Where a comment sits is judged by reading the text, so this can be
+            # wrong and put a node somewhere dts does not allow one. dtc rules on
+            # that, and dt_compile drops the comments and retries if it objects:
+            # a wrong judgement costs the comment, not the build.
+            for cnum in [ c for c in comments_to_wrap if c not in comments_to_delete ]:
+                lopper_comment_regex = re.compile( r'(lopper-comment-{0} = "(?:[^"\\]|\\.)*";)'.format(cnum),
+                                                   re.MULTILINE | re.DOTALL )
+                fp_comments_and_labels_as_attributes = re.sub(
+                    lopper_comment_regex,
+                    lambda m: f"{LOPPER_COMMENT_CONTAINER}{cnum} {{ {m.group(1)} }};",
+                    fp_comments_and_labels_as_attributes )
+                lopper.log._debug( f"comment scan: comment #{cnum} wrapped to keep its place" )
 
             # in case our comment fixups miss something, pull an env variable that is a list
             # of comment numbers to delete.
