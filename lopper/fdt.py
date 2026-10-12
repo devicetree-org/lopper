@@ -1782,12 +1782,21 @@ class LopperFDT(lopper.base.lopper_base):
             comment_body_lines = set()
             comment_span_regex = re.compile( r'lopper-comment-[0-9]+ = "(?:[^"\\]|\\.)*";',
                                              re.MULTILINE | re.DOTALL )
+            comment_text_from = {}
             for cm in re.finditer( comment_span_regex, fp_comments_and_labels_as_attributes ):
                 opening_line = fp_comments_and_labels_as_attributes.count( "\n", 0, cm.start() )
                 closing_line = fp_comments_and_labels_as_attributes.count( "\n", 0, cm.end() )
                 # The opening line still has to be seen: it is what identifies the
                 # comment and where it sits. Only what follows it is opaque.
                 comment_body_lines.update( range( opening_line + 1, closing_line + 1 ) )
+
+                # That line is half structure and half comment, though. The text
+                # begins after the opening quote, and a comment that starts by
+                # quoting a node -- '/* res: memory@0 {' -- puts a brace there
+                # that no later line closes. Remember where the words start so
+                # the brace count can stop at it.
+                line_start = fp_comments_and_labels_as_attributes.rfind( "\n", 0, cm.start() ) + 1
+                comment_text_from[opening_line] = cm.start() - line_start
 
             for i,f in enumerate(file_as_array):
                 if i in comment_body_lines:
@@ -1803,7 +1812,10 @@ class LopperFDT(lopper.base.lopper_base):
                     subnode_at_depth = { 0: False }
                     node_depth = 0
 
-                mn = re.search( r"^\s*(.*){", f )
+                # Only the part of the line before a comment's text is structure.
+                structure = f[:comment_text_from[i]] if i in comment_text_from else f
+
+                mn = re.search( r"^\s*(.*){", structure )
                 if mn:
                     node_depth += 1
                     lopper.log._debug( f"comment scan: node depth increased to {node_depth} ({mn.group(1)})" )
@@ -1814,11 +1826,11 @@ class LopperFDT(lopper.base.lopper_base):
                     # here. Its "};" is not at the start of the line, so the check
                     # below never sees it and the depth would climb and stay there,
                     # putting every later comment at a depth the tree is not at.
-                    if re.search( r"{.*}", f ):
+                    if re.search( r"{.*}", structure ):
                         node_depth -= 1
                         lopper.log._debug( f"comment scan: node closed on the same line, depth back to {node_depth}" )
 
-                mn = re.search( r"^\s*};", f )
+                mn = re.search( r"^\s*};", structure )
                 if mn:
                     lopper.log._debug( f"comment scan: node depth decreased to {node_depth}" )
                     node_depth -= 1
