@@ -6081,19 +6081,36 @@ class LopperTree:
         return self
 
     def move( self, node, old_path, new_path, dont_sync = False ):
-        """magic method for adding a node to a tree
+        """Move a node to a new parent, carrying the node itself across.
 
-        Supports adding a node to a tree through "+"
+        The same node object is registered at new_path, so anything holding a
+        reference to it -- a bound alias, for instance -- follows the move.
 
-            tree + <LopperNode object>
+        This is a move and nothing else. It does not rename (new_path must end
+        in the node's current name; use rename() to change that, which also
+        rewrites the path references pointing at the node). It does not merge
+        (a path that is already occupied is refused rather than absorbed).
+        Path references to the moved node deliberately do not follow it: use a
+        phandle where identity has to survive a reparent.
 
         Args:
-           other (LopperNode): node to add
+           node (LopperNode): the node to move
+           old_path (str): the node's current path. Advisory -- the node's own
+                           path is what is used, and a mismatch is reported.
+           new_path (str): the destination path, ending in the node's name
+           dont_sync (bool): skip the tree sync that would follow the move
 
         Returns:
-           LopperTree: returns self, Exception on invalid input
+           Boolean: True if the node was moved, False if it was not (the
+           destination is occupied, or the move failed and the node was put
+           back). Raises ValueError if new_path would rename the node.
 
         """
+        if old_path and old_path != node.abs_path:
+            lopper.log._warning(
+                f"move: told the node is at '{old_path}', but it is at "
+                f"'{node.abs_path}'. Moving the node from where it actually is." )
+
         # A move changes the parent a node sits under, not what the node is
         # called. The two are not interchangeable: path references follow a
         # rename and deliberately do not follow a move, so a new_path that

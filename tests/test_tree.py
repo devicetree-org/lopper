@@ -10,6 +10,7 @@ import filecmp
 from pathlib import Path
 
 from lopper import Lopper, LopperSDT
+import lopper.log
 from lopper.tree import LopperTree, LopperTreePrinter, LopperNode, LopperProp
 
 
@@ -1248,3 +1249,26 @@ class TestNodeMove:
             "the moved path does not hold the node that was moved"
         assert "/src/thing" not in tree.__nodes__, "the node was left behind too"
         assert node.propval("carried") == ["from-src"], "the move lost properties"
+
+    def test_a_wrong_old_path_is_reported_and_the_node_still_moves(self):
+        """old_path is advisory, but a mismatch should not pass unremarked.
+
+        It was accepted and never read, so a caller passing a stale path got
+        no indication that what they believed about the tree was wrong.
+        """
+        tree = self._tree()
+        node = tree["/src/thing"]
+
+        warned = []
+        real_warning = lopper.log._warning
+        lopper.log._warning = lambda msg, *a, **k: warned.append(str(msg))
+        try:
+            result = tree.move(node, "/somewhere/stale", "/dst/thing")
+        finally:
+            lopper.log._warning = real_warning
+        tree.resolve()
+
+        assert result is True, "the move should still happen"
+        assert tree.__nodes__.get("/dst/thing") is node
+        assert any("stale" in w for w in warned), \
+            f"the mismatch was not reported: {warned}"
