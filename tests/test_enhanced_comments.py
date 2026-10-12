@@ -29,6 +29,7 @@ import shutil
 import pytest
 
 from lopper import Lopper, LopperSDT
+from lopper.tree import LOPPER_COMMENT_HOLDER
 
 
 # Comments only reach lopper if the preprocessor passes them through. pcpp does,
@@ -123,17 +124,28 @@ def test_dropped_comment_carrying_quotes_compiles(tmp_path):
     assert dtb
 
 
-def test_dropped_comment_leaves_nothing_behind(tmp_path):
-    """Nothing of the comment survives into the preprocessed source."""
+def test_relocated_comment_leaves_no_tail_behind(tmp_path):
+    """The comment moves whole, and nothing of it stays where it was.
+
+    A comment outside any node is lifted into the holder. Lifting it uses the
+    same escape-aware span as dropping one, and for the same reason: a plain
+    non-greedy match ends at the first quote inside the body and leaves the
+    rest of the comment sitting in the source as bare text.
+    """
     _compile(tmp_path, TOP_LEVEL_QUOTED_COMMENT, "residue", save_temps=True)
 
     preprocessed = tmp_path / "residue.dts.pp.enhanced"
     assert preprocessed.exists(), "save_temps should retain the preprocessed source"
 
     text = preprocessed.read_text()
-    assert "lopper-comment" not in text
-    assert "10gbase-r" not in text
-    assert "fixed-link" not in text
+    holder_at = text.find(LOPPER_COMMENT_HOLDER)
+    assert holder_at > 0, "the comment should have been lifted into the holder"
+
+    # the whole comment is in the holder, and none of it before it
+    assert "10gbase-r" in text[holder_at:]
+    assert "fixed-link" in text[holder_at:]
+    assert "10gbase-r" not in text[:holder_at]
+    assert "*/" not in text[:holder_at], "no tail may be left where the comment was"
 
 
 def test_comment_in_a_legal_position_is_kept(tmp_path):
@@ -379,3 +391,58 @@ class TestCommentTextSurvivesVerbatim:
         out = _enhanced_output(tmp_path, source, "both")
 
         assert 'mode = "x" under C:\\y' in out
+
+
+def test_comment_outside_any_node_survives(tmp_path):
+    """A comment written outside any node comes back after the tree.
+
+    Nothing may sit at the top level of a dts but a node, so there is no
+    carrying this one in place the way a comment after a subnode is carried:
+    the position itself cannot be expressed. It is parked in a holder inside
+    the tree and written out after it, at the top level where it belongs.
+    """
+    source = """/dts-v1/;
+
+/ {
+    anode { p = <1>; };
+};
+
+/* first, outside any node */
+
+/*
+&some_label {
+    phy-mode = "10gbase-r";
+};
+*/
+"""
+    out = _enhanced_output(tmp_path, source, "outside")
+
+    assert "first, outside any node" in out
+    assert "phy-mode = \"10gbase-r\";" in out, "a commented out node survives intact"
+
+    # after the tree, at the top level, and the holder itself never appears.
+    # Anchored on the tree's content rather than on a closing brace: the held
+    # comment contains a commented out node, braces and all.
+    lines = out.splitlines()
+    anode = next(i for i, l in enumerate(lines) if l.strip().startswith("anode"))
+    comment = next(i for i, l in enumerate(lines) if "first, outside any node" in l)
+    assert comment > anode, "top level comments come after the tree"
+    assert lines[comment].startswith("/*"), "and at the top level, unindented"
+    assert LOPPER_COMMENT_HOLDER not in out
+
+
+def test_held_comments_keep_their_order(tmp_path):
+    """They arrive together, in the order they were written."""
+    source = """/dts-v1/;
+
+/ {
+    anode { p = <1>; };
+};
+
+/* ONE */
+/* TWO */
+/* THREE */
+"""
+    out = _enhanced_output(tmp_path, source, "order")
+
+    assert out.index("ONE") < out.index("TWO") < out.index("THREE")
