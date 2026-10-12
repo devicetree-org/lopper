@@ -1611,6 +1611,45 @@ class LopperFDT(lopper.base.lopper_base):
         return True
 
     @staticmethod
+    def drop_comments_from( source_file ):
+        """Remove every carried comment from a preprocessed dts
+
+        Enhanced processing carries comments through the compile as properties,
+        and decides from the surrounding text whether each one may stay where it
+        is. That decision is made by reading the text rather than parsing it, so
+        it can be wrong, and a comment kept in a position dts does not allow is
+        rejected by dtc.
+
+        This is the retreat from that: drop the comments and leave the tree
+        alone. Decoration is worth less than a build.
+
+        Args:
+           source_file (string): path to the preprocessed dts, rewritten in place
+
+        Returns:
+           int: how many comments were removed
+        """
+        try:
+            with open( source_file ) as f:
+                source = f.read()
+        except OSError:
+            return 0
+
+        # The same escape-aware span used elsewhere: the comment body is a dts
+        # string whose quotes were escaped when the property was built, so a
+        # plain non-greedy match ends at the first quote inside the text.
+        comment_regex = re.compile( r'[ \t]*lopper-comment-[0-9]+ = "(?:[^"\\]|\\.)*";[ \t]*\n?',
+                                    re.MULTILINE | re.DOTALL )
+        stripped, removed = re.subn( comment_regex, "", source )
+        if not removed:
+            return 0
+
+        with open( source_file, 'w' ) as f:
+            f.write( stripped )
+
+        return removed
+
+    @staticmethod
     def dt_compile( dts_file, i_files, includes, force_overwrite=False, outdir="./",
                     save_temps=False, verbose=0, enhanced = True, permissive = False,
                     symbols=False):
@@ -1968,9 +2007,30 @@ class LopperFDT(lopper.base.lopper_base):
 
             result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
             if result.returncode != 0:
-                lopper.log._error( f"dt_compile: unable to compile with args {dtcargs}" )
-                lopper.log._error( f"\n{textwrap.indent(result.stderr.decode(), '         ')}" )
-                sys.exit(1)
+                # Before giving up: the comments. Everything else in this file is
+                # the tree that was asked for, but a comment is decoration that
+                # enhanced processing carried through, and whether one may stay
+                # where it is was decided by reading the text rather than parsing
+                # it. That decision can be wrong, and being wrong should cost a
+                # comment rather than the build. dtc is the authority on what is
+                # legal, so let it rule, then retreat.
+                first_failure = result.stderr.decode()
+                dropped = LopperFDT.drop_comments_from( preprocessed_name )
+                if dropped:
+                    lopper.log._info( f"dt_compile: compile failed with comments carried "
+                                      f"through; retrying without them" )
+                    result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
+                    if result.returncode == 0:
+                        lopper.log._warning(
+                            f"dt_compile: {dropped} comment(s) could not be placed in valid "
+                            f"dts and have been dropped from the output. The tree itself is "
+                            f"unaffected. Use --save-temps to inspect {preprocessed_name}, or "
+                            f"LOPPER_COMMENT_DROPLIST to drop a comment by number." )
+
+                if result.returncode != 0:
+                    lopper.log._error( f"dt_compile: unable to compile with args {dtcargs}" )
+                    lopper.log._error( f"\n{textwrap.indent(first_failure, '         ')}" )
+                    sys.exit(1)
 
         # cleanup: remove the .pp file
         if not save_temps:
