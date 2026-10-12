@@ -346,6 +346,24 @@ class lopper_base:
         if len(prop) == 0:
             return LopperFmt.EMPTY
 
+        # A comment, a preamble or a label is lopper's own doing: it put the text
+        # there, so there is nothing to guess. Guessing anyway gets it wrong in two
+        # ways seen in real trees -- a comment whose length happens to divide by
+        # four reads as a uint32 array, and one containing anything outside ascii
+        # (an em dash, say) reads as a byte array. The first loses the text and
+        # then raises when the printer tries to turn the numbers back into
+        # characters; the second mangles it quietly.
+        #
+        # A learned schema types these correctly, but only when one was learned or
+        # supplied. A tree built directly has none, and the decode has to be right
+        # without it.
+        try:
+            prop_name = prop.name
+        except AttributeError:
+            prop_name = ""
+        if prop_name.startswith( ("lopper-comment", "lopper-preamble", "lopper-label") ):
+            return LopperFmt.STRING
+
         first_byte = prop[0]
         last_byte = prop[-1]
 
