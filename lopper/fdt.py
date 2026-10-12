@@ -1770,7 +1770,29 @@ class LopperFDT(lopper.base.lopper_base):
             file_boundary_index = 0
             node_depth = 0
             subnode_at_depth = { 0: False }
+
+            # A comment property carries the comment's text, and that text can be
+            # anything the author wrote -- including braces, and whole nodes that
+            # were commented out. Reading those lines as structure counts the
+            # comment's own braces as tree depth: a commented out node raises the
+            # depth, and an unbalanced brace raises it and never lowers it again,
+            # so every comment after that one is judged against a depth the tree
+            # never reached. Find the span of each property first and treat its
+            # continuation lines as opaque.
+            comment_body_lines = set()
+            comment_span_regex = re.compile( r'lopper-comment-[0-9]+ = "(?:[^"\\]|\\.)*";',
+                                             re.MULTILINE | re.DOTALL )
+            for cm in re.finditer( comment_span_regex, fp_comments_and_labels_as_attributes ):
+                opening_line = fp_comments_and_labels_as_attributes.count( "\n", 0, cm.start() )
+                closing_line = fp_comments_and_labels_as_attributes.count( "\n", 0, cm.end() )
+                # The opening line still has to be seen: it is what identifies the
+                # comment and where it sits. Only what follows it is opaque.
+                comment_body_lines.update( range( opening_line + 1, closing_line + 1 ) )
+
             for i,f in enumerate(file_as_array):
+                if i in comment_body_lines:
+                    continue
+
                 # take note when we pass an included file boundary, we'll use it to scan back
                 # and look for structures.
                 ml = re.search( r"^\#line.*\"(.*?)\"", f )
@@ -1787,6 +1809,14 @@ class LopperFDT(lopper.base.lopper_base):
                     lopper.log._debug( f"comment scan: node depth increased to {node_depth} ({mn.group(1)})" )
                     subnode_at_depth[node_depth-1] = True
                     subnode_at_depth[node_depth] = False
+
+                    # A node written on one line -- "a { };" -- opens and closes
+                    # here. Its "};" is not at the start of the line, so the check
+                    # below never sees it and the depth would climb and stay there,
+                    # putting every later comment at a depth the tree is not at.
+                    if re.search( r"{.*}", f ):
+                        node_depth -= 1
+                        lopper.log._debug( f"comment scan: node closed on the same line, depth back to {node_depth}" )
 
                 mn = re.search( r"^\s*};", f )
                 if mn:
