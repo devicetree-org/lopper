@@ -137,7 +137,7 @@
 		phandle = <0x4>;
 	};
 
-	amba_apu : apu-bus {
+	amba_apu: apu-bus {
 		compatible = "simple-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
@@ -168,7 +168,7 @@
 		};
 	};
 
-	amba : axi {
+	amba: axi {
 		compatible = "simple-bus";
 		#address-cells = <0x2>;
 		#size-cells = <0x2>;
