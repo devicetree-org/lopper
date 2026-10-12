@@ -165,6 +165,51 @@ def test_a_kept_comment_reaches_the_output(tmp_path):
     assert "a comment in a position a property can occupy" in out.read_text()
 
 
+def test_comment_after_a_subnode_keeps_its_place(tmp_path):
+    """A comment following a subnode survives, where it was written.
+
+    dts wants a node's properties before its subnodes, so the comment cannot
+    stay a property here. A node is legal after a node and holds its place
+    among the siblings, so the comment is carried in one and unwrapped on the
+    way out -- still between the two nodes it was written between.
+    """
+    source = """/dts-v1/;
+
+/ {
+    before = <1>;
+
+    anode {
+        p = <1>;
+    };
+    /* between anode and bnode, where it was written */
+    bnode {
+        q = <2>;
+    };
+};
+"""
+    dts = tmp_path / "between.dts"
+    dts.write_text(source)
+    out = tmp_path / "between-out.dts"
+
+    sdt = LopperSDT(str(dts))
+    sdt.dryrun = False
+    sdt.enhanced = True
+    sdt.setup(str(dts), [], "", force=True)
+    sdt.write(output_filename=str(out), enhanced=True)
+
+    text = out.read_text()
+    assert "between anode and bnode" in text
+
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    anode = next(i for i, l in enumerate(lines) if l.startswith("anode"))
+    comment = next(i for i, l in enumerate(lines) if "between anode and bnode" in l)
+    bnode = next(i for i, l in enumerate(lines) if l.startswith("bnode"))
+    assert anode < comment < bnode
+
+    # the node that carried it is an artifact of the compile, not of the output
+    assert "lopper-comment-container" not in text
+
+
 class TestPositionIsFoundWithoutReadingContents:
     """Where a comment sits is decided without reading what it says.
 
@@ -210,9 +255,10 @@ class TestPositionIsFoundWithoutReadingContents:
     def test_unbalanced_brace_does_not_strand_later_comments(self, tmp_path):
         """An unbalanced brace in a comment used to skew everything after it.
 
-        The first comment is in a legal position and stays, brace and all.
-        The second is genuinely after a subnode and has to go -- which only
-        happens if the first one's brace was not counted.
+        The two comments get different treatment, and both verdicts are only
+        right if the first one's brace was not counted as structure. The first
+        is somewhere a property can live and is left as one. The second follows
+        a subnode, where a property is not allowed, so it is carried in a node.
         """
         source = """/dts-v1/;
 
@@ -226,8 +272,13 @@ class TestPositionIsFoundWithoutReadingContents:
         _compile(tmp_path, source, "unbalanced", save_temps=True)
 
         text = (tmp_path / "unbalanced.dts.pp.enhanced").read_text()
-        assert "FIRST" in text, "a comment in a legal position should be kept"
-        assert "SECOND" not in text, "a comment after a subnode should be dropped"
+        first = next(l for l in text.splitlines() if "FIRST" in l)
+        second = next(l for l in text.splitlines() if "SECOND" in l)
+
+        assert "lopper-comment-container" not in first, \
+            "a comment a property position accepts should stay a property"
+        assert "lopper-comment-container" in second, \
+            "a comment after a subnode should be carried in a node"
 
 
 class TestCommentsNeverBreakTheBuild:
