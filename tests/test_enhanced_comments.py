@@ -130,3 +130,68 @@ def test_comment_in_a_legal_position_is_kept(tmp_path):
     dtb = _compile(tmp_path, IN_NODE_QUOTED_COMMENT, "in-node")
 
     assert dtb
+
+
+class TestPositionIsFoundWithoutReadingContents:
+    """Where a comment sits is decided without reading what it says.
+
+    The scan counts braces to track depth, and by the time it runs a comment
+    is a property holding whatever the author wrote. Reading those lines as
+    structure lets a comment's own braces move the depth, and every comment
+    after it is then judged against a depth the tree never reached.
+    """
+
+    def test_node_written_on_one_line(self, tmp_path):
+        """"a { };" opens and closes on the same line.
+
+        The closing brace is not at the start of the line, so a close check
+        anchored there never sees it and the depth climbs and stays. The
+        comment that follows is then not recognised as being after a subnode,
+        is left in place, and dtc rejects it.
+        """
+        source = """/dts-v1/;
+
+/ {
+    anode { };
+    /* after a subnode, so this cannot stay */
+};
+"""
+        assert _compile(tmp_path, source, "one-line")
+
+    def test_commented_out_node_does_not_move_the_depth(self, tmp_path):
+        """A commented out node is text, not structure."""
+        source = """/dts-v1/;
+
+/ {
+    before = <1>;
+    /*
+    &some_label {
+        phy-mode = "10gbase-r";
+    };
+    */
+    after = <2>;
+};
+"""
+        assert _compile(tmp_path, source, "commented-node")
+
+    def test_unbalanced_brace_does_not_strand_later_comments(self, tmp_path):
+        """An unbalanced brace in a comment used to skew everything after it.
+
+        The first comment is in a legal position and stays, brace and all.
+        The second is genuinely after a subnode and has to go -- which only
+        happens if the first one's brace was not counted.
+        """
+        source = """/dts-v1/;
+
+/ {
+    before = <1>;
+    /* FIRST: a stray brace, as in commented out code: if (x) { do(); */
+    anode { };
+    /* SECOND: after a subnode */
+};
+"""
+        _compile(tmp_path, source, "unbalanced", save_temps=True)
+
+        text = (tmp_path / "unbalanced.dts.pp.enhanced").read_text()
+        assert "FIRST" in text, "a comment in a legal position should be kept"
+        assert "SECOND" not in text, "a comment after a subnode should be dropped"
