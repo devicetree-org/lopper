@@ -6094,6 +6094,19 @@ class LopperTree:
            LopperTree: returns self, Exception on invalid input
 
         """
+        # A move changes the parent a node sits under, not what the node is
+        # called. The two are not interchangeable: path references follow a
+        # rename and deliberately do not follow a move, so a new_path that
+        # also renames does not say which of those should apply. Renaming
+        # here would quietly give a rename without its reference rewriting.
+        new_name = os.path.basename( new_path )
+        if new_name != node.name:
+            raise ValueError(
+                f"move: '{new_path}' would rename '{node.name}' to '{new_name}'. "
+                f"A move reparents a node, it does not rename one (renaming is a "
+                f"rename, and path references follow it). Use rename() for the "
+                f"name, move() for the parent." )
+
         # A move carries this node object across to the new path, which is what
         # lets a bound alias follow it. Dropping it into a path that is already
         # occupied cannot do that: the node that is there would have to absorb

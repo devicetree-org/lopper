@@ -1215,3 +1215,36 @@ class TestNodeMove:
 
         assert dict(tree.aliases()).get("thing0") == "/src/thing", \
             "a refused move dropped the alias bound to the node"
+
+    def test_a_move_that_would_also_rename_is_rejected(self):
+        """new_path may change the parent, not the leaf name.
+
+        The leaf name used to be ignored: the node was reparented and kept its
+        old name, because export() rewrites abs_path from the name rather than
+        the other way round. The move reported success while having put the
+        node somewhere the caller did not ask for.
+        """
+        import pytest
+
+        tree = self._tree()
+        node = tree["/src/thing"]
+
+        with pytest.raises(ValueError) as caught:
+            tree.move(node, "/src/thing", "/dst/renamed")
+
+        assert "rename" in str(caught.value).lower(), \
+            f"the error does not say what is wrong: {caught.value}"
+        assert tree["/src/thing"] is node, "a rejected move disturbed the tree"
+
+    def test_a_move_reparents_and_keeps_the_same_node(self):
+        """The ordinary case: same object, new parent, properties intact."""
+        tree = self._tree()
+        node = tree["/src/thing"]
+
+        assert tree.move(node, "/src/thing", "/dst/thing") is True
+        tree.resolve()
+
+        assert tree.__nodes__.get("/dst/thing") is node, \
+            "the moved path does not hold the node that was moved"
+        assert "/src/thing" not in tree.__nodes__, "the node was left behind too"
+        assert node.propval("carried") == ["from-src"], "the move lost properties"
