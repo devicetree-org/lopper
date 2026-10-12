@@ -978,7 +978,14 @@ class lopper_base:
         if s.startswith('/'):
             global count
             count = count + 1
-            r1 = re.sub( r'\"', '\\"', s )
+            # Escape backslashes before quotes, and both of them. The comment
+            # becomes a dts string, so a quote in the text would end the property
+            # early -- and so would a backslash immediately before the closing
+            # one, by escaping it. A lone backslash anywhere else starts an escape
+            # sequence that dtc resolves to something the author did not write.
+            # Order matters: doing quotes first would then escape the backslash
+            # this adds. The preamble is handled the same way in fdt.py.
+            r1 = s.replace( '\\', '\\\\' ).replace( '"', '\\"' )
             #r2 = "lopper-comment-container-{0} {{ lopper-comment-{1} = \"{2}\";}};".format(count,count, r1)
             r2 = f"lopper-comment-{count} = \"{r1}\";"
             return r2
