@@ -28,7 +28,7 @@ import shutil
 
 import pytest
 
-from lopper import Lopper
+from lopper import Lopper, LopperSDT
 
 
 # Comments only reach lopper if the preprocessor passes them through. pcpp does,
@@ -130,6 +130,39 @@ def test_comment_in_a_legal_position_is_kept(tmp_path):
     dtb = _compile(tmp_path, IN_NODE_QUOTED_COMMENT, "in-node")
 
     assert dtb
+
+
+def test_a_kept_comment_reaches_the_output(tmp_path):
+    """Preserving a comment through the compile is only half of it.
+
+    A block comment's text opens with '/*', and strict mode prunes properties
+    whose value looks like a path to a node that is not there. Every comment
+    the whole mechanism exists to carry is held in such a property, so reading
+    them as paths threw all of them away on the way out -- in the default mode,
+    whatever position the comment was in.
+    """
+    source = """/dts-v1/;
+
+/ {
+    /* a comment in a position a property can occupy */
+    akeeper = <1>;
+
+    anode {
+        compatible = "test,anode";
+    };
+};
+"""
+    dts = tmp_path / "kept.dts"
+    dts.write_text(source)
+    out = tmp_path / "kept-out.dts"
+
+    sdt = LopperSDT(str(dts))
+    sdt.dryrun = False
+    sdt.enhanced = True
+    sdt.setup(str(dts), [], "", force=True)
+    sdt.write(output_filename=str(out), enhanced=True)
+
+    assert "a comment in a position a property can occupy" in out.read_text()
 
 
 class TestPositionIsFoundWithoutReadingContents:
