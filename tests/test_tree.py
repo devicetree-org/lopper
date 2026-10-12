@@ -1180,3 +1180,38 @@ class TestNodeMove:
         assert result is False, "a failed move reported success"
         assert node.abs_path == "/src/thing", \
             f"node was not restored, it is at {node.abs_path}"
+
+    def test_a_move_onto_an_occupied_path_is_refused(self):
+        """Moving onto a path that already holds a node must not destroy either.
+
+        The move used to delete the source, hand the occupant an empty export
+        to merge (delete() marks the node deleted, and a deleted node exports
+        nothing), and report success -- so the moved node and everything it
+        carried disappeared silently.
+        """
+        tree = self._tree(extra=("/dst/thing",))
+        tree["/dst/thing"] + LopperProp("settled", -1, None, ["already-here"])
+        tree.resolve()
+
+        node = tree["/src/thing"]
+        result = tree.move(node, "/src/thing", "/dst/thing")
+        tree.resolve()
+
+        assert result is False, "move onto an occupied path reported success"
+        assert "/src/thing" in tree.__nodes__, "the moved node was removed anyway"
+        assert tree["/src/thing"].propval("carried") == ["from-src"], \
+            "the moved node lost the properties it was carrying"
+        assert tree["/dst/thing"].propval("settled") == ["already-here"], \
+            "the occupant was disturbed by a refused move"
+
+    def test_a_refused_move_leaves_a_bound_alias_alone(self):
+        """An alias bound to the node must survive a move that did not happen."""
+        tree = self._tree(extra=("/dst/thing",))
+        node = tree["/src/thing"]
+        tree.alias_set("thing0", node)
+
+        tree.move(node, "/src/thing", "/dst/thing")
+        tree.resolve()
+
+        assert dict(tree.aliases()).get("thing0") == "/src/thing", \
+            "a refused move dropped the alias bound to the node"

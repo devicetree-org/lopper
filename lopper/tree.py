@@ -6094,6 +6094,20 @@ class LopperTree:
            LopperTree: returns self, Exception on invalid input
 
         """
+        # A move carries this node object across to the new path, which is what
+        # lets a bound alias follow it. Dropping it into a path that is already
+        # occupied cannot do that: the node that is there would have to absorb
+        # this one, and this object would cease to exist. Folding a node into
+        # another node is a merge, and the caller has to ask for it as one.
+        occupant = self.__nodes__.get( new_path )
+        if occupant is not None and occupant is not node:
+            lopper.log._warning(
+                f"move: {new_path} is already occupied, not moving {node.abs_path} "
+                f"onto it. To combine the two, merge this node into that one and "
+                f"delete it -- a move cannot, since it would destroy the node it "
+                f"was asked to move." )
+            return False
+
         self.delete( node )
 
         existing_path = node.abs_path
