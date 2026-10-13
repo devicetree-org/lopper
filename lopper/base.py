@@ -1704,8 +1704,18 @@ class lopper_base:
         if not analyzed_patterns or not isinstance(analyzed_patterns, dict):
             return {}
 
-        # Get the current base dictionary (this handles the lazy initialization)
-        base_dict = lopper_base.phandle_possible_properties().copy()
+        # Mutate the table in place rather than building a copy and binding
+        # it back. The table is a class variable on this class, and every
+        # subclass inherits the same object until something assigns through
+        # one -- an assignment does not write through, it creates a shadowing
+        # attribute on the subclass, and from then on reads taken through the
+        # subclass and writes made here address different dictionaries. What
+        # is learned afterwards is simply never seen.
+        base_dict = lopper_base.phandle_possible_prop_dict
+        if not base_dict:
+            # lazy initialisation: materialise the defaults into the table
+            # itself, so there is one dictionary from here on.
+            base_dict.update( lopper_base.phandle_possible_properties() )
 
         # Track what we add for return value
         newly_added = {}
@@ -1715,9 +1725,6 @@ class lopper_base:
             if prop_name not in base_dict:
                 base_dict[prop_name] = description
                 newly_added[prop_name] = description
-
-        # Assign the combined dictionary back to the class variable
-        lopper_base.phandle_possible_prop_dict = base_dict
 
         return newly_added
 

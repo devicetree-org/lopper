@@ -155,9 +155,13 @@ def overlay_test( sdt ):
     amba_node = sdt.tree["/amba_pl"]
 
     # take the defaults, we'll be extending this to a new property in this
-    # assist
-    Lopper.phandle_possible_prop_dict = Lopper.phandle_possible_properties()
-    Lopper.phandle_possible_prop_dict["remote_endpoint"] = [ "phandle" ]
+    # assist. Extend the table in place: assigning to it would shadow the
+    # class variable with a subclass copy, and anything learned afterwards
+    # would land in the original and never be seen through this name again.
+    phandle_props = Lopper.phandle_possible_prop_dict
+    if not phandle_props:
+        phandle_props.update( Lopper.phandle_possible_properties() )
+    phandle_props["remote_endpoint"] = [ "phandle" ]
 
     new_amba_node = amba_node()
     sdt.tree = sdt.tree - amba_node

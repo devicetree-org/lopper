@@ -2457,12 +2457,20 @@ class LopperSDT:
             if re.search( r"phandle-desc", lop_args ):
                 lopper.log._debug( f"processing phandle meta data {type(Lopper)}")
 
-                # grab all the defaults
-                Lopper.phandle_possible_prop_dict = Lopper.phandle_possible_properties()
-                try:
-                    del Lopper.phandle_possible_prop_dict["DEFAULT"]
-                except:
-                    pass
+                # Mutate the table in place. Assigning to
+                # Lopper.phandle_possible_prop_dict does not write through to
+                # the class that owns it -- it creates a shadowing attribute
+                # on the concrete subclass, and from that point lookups made
+                # here and the properties learned from scanned sources address
+                # two different dictionaries. Anything learned afterwards is
+                # then invisible, and a phandle reference is written out as a
+                # bare number instead of a label.
+                phandle_props = Lopper.phandle_possible_prop_dict
+                if not phandle_props:
+                    # lazy initialisation: fold the defaults into the table
+                    phandle_props.update( Lopper.phandle_possible_properties() )
+
+                phandle_props.pop( "DEFAULT", None )
 
                 # now override, remove, extend
                 for p in lop_node:
@@ -2471,19 +2479,16 @@ class LopperSDT:
                     if p.name != "compatible":
                         if re.search( r'^reset$', p.name ):
                             lopper.log._debug( f"resetting phandle table" )
-                            Lopper.phandle_possible_prop_dict = OrderedDict()
+                            phandle_props.clear()
                         elif re.search( r'^lopper-comment.*', p.name ):
                             # skip
                             pass
                         elif re.search( r'^\-.*', p.name ):
                             # delete
                             p.name = re.sub( r'^\-', '', p.name )
-                            try:
-                                del Lopper.phandle_possible_prop_dict[p.name]
-                            except:
-                                pass
+                            phandle_props.pop( p.name, None )
                         else:
-                            Lopper.phandle_possible_prop_dict[p.name] = [ p.value[0] ]
+                            phandle_props[p.name] = [ p.value[0] ]
 
             return True
 
