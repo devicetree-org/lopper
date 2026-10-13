@@ -9,8 +9,18 @@ echo "========================================="
 echo "Running pytest test suite..."
 echo "========================================="
 
+# -n auto distributes across cores. pytest-xdist is already a declared
+# dependency in requirements.txt; it was simply never asked for here, and the
+# suite ran serially at roughly four times the wall clock as a result.
+#
+# --dist loadfile keeps every test in a file on one worker. Without it, three
+# overlay tests fail at 16 workers and pass at 8: their references render
+# numerically (<0x5>) instead of symbolically (<&src_out>), depending on which
+# tests from other files happened to share the worker. That is a pre-existing
+# isolation leak rather than anything about parallelism, and it means results
+# already depend on ordering. loadfile avoids it; it does not fix it.
 PYTEST_FAILED=0
-if pytest -v tests/ --tb=short --junitxml=pytest-results.xml 2>&1 | tee pytest_output.txt; then
+if pytest -v tests/ -n auto --dist loadfile --tb=short --junitxml=pytest-results.xml 2>&1 | tee pytest_output.txt; then
     echo "✅ Pytest tests passed!"
 else
     PYTEST_FAILED=1
@@ -42,11 +52,24 @@ FAILED=$(grep -c "\[TEST FAILED\]:" test_output.txt || true)
 echo "Legacy tests passed: $PASSED"
 echo "Legacy tests failed: $FAILED"
 
-# Parse pytest results
-# Count PASSED in test lines (e.g., "tests/test_tree.py::TestFoo::test_bar PASSED")
-PYTEST_PASSED=$(grep -E "^tests/.*PASSED" pytest_output.txt | wc -l || true)
-# Count FAILED in test lines only (not in summary)
-PYTEST_FAILED_COUNT=$(grep -E "^tests/.*FAILED" pytest_output.txt | wc -l || true)
+# Parse pytest results from the junit xml rather than the console output.
+# Matching "^tests/.*PASSED" only works for serial -v output: under xdist each
+# line is prefixed with its worker ("[gw3] [ 12%] PASSED tests/..."), so the
+# anchored pattern silently counts zero and the run looks empty rather than
+# broken. The xml carries the counts directly and does not change shape.
+read -r PYTEST_PASSED PYTEST_FAILED_COUNT <<< "$(python3 - <<'PYEOF'
+import xml.etree.ElementTree as ET
+try:
+    root = ET.parse('pytest-results.xml').getroot()
+    suites = [root] if root.tag == 'testsuite' else root.findall('testsuite')
+    total = sum(int(s.get('tests', 0)) for s in suites)
+    bad = sum(int(s.get('failures', 0)) + int(s.get('errors', 0)) for s in suites)
+    skipped = sum(int(s.get('skipped', 0)) for s in suites)
+    print(total - bad - skipped, bad)
+except Exception:
+    print(0, 0)
+PYEOF
+)"
 
 echo "Pytest tests passed: $PYTEST_PASSED"
 echo "Pytest tests failed: $PYTEST_FAILED_COUNT"
