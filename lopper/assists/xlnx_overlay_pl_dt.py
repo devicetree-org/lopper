@@ -153,13 +153,17 @@ def usage():
     print('  --firmware-name=<name> - Override the default firmware-name in the output')
     print('  --nodes=<node-spec>[;<node-spec>;...] - Specify nodes to include in overlay')
     print('                      Overrides default /amba_pl extraction when specified.')
-    print('                      Semicolons separate node specs; commas separate properties.')
+    print('                      Semicolons separate node specs; colons separate properties.')
     print('                      Node spec format:')
     print('                        <node>           - Include entire node (by path or label)')
-    print('                        <node>#<prop>,<prop>,... - Include only specific properties')
+    print('                        <node>#<prop>:<prop>:... - Include only specific properties')
+    print('                      A property name may contain a comma (xlnx,dc-operating-mode),')
+    print('                      so colons separate them. A comma-separated list is still read')
+    print('                      as such when it contains no colon.')
     print('                      Examples:')
     print('                        --nodes=/amba_pl                    - Extract entire /amba_pl node')
-    print('                        --nodes=mmi_dc#clocks,clock-names   - Only clocks/clock-names from mmi_dc')
+    print('                        --nodes=mmi_dc#clocks:clock-names   - Only clocks/clock-names from mmi_dc')
+    print('                        --nodes=mmi_dc#xlnx,dc-operating-mode:xlnx,dc-presentation-mode')
     print('                        --nodes=/amba_pl;mmi_dc#clocks      - Combine whole node and property specs')
     print('  --exclude-props=<prop>[,<prop>,...] - Comma-separated list of properties to exclude from overlay')
     print('                      These properties will be removed from the generated overlay output.')
@@ -186,9 +190,22 @@ def parse_node_specs(specs_str):
     Format: <node-spec>[;<node-spec>;...]
     Where node-spec is either:
       - <node>              : Include entire node (path like /amba_pl or label like mmi_dc)
-      - <node>#<prop>[,<prop>,...] : Include only specific properties
+      - <node>#<prop>[:<prop>...] : Include only specific properties
 
-    Semicolons separate node specs; commas separate properties within a node spec.
+    Semicolons separate node specs. Within a node spec, properties are
+    separated by a colon, or by a comma when no colon is present.
+
+    A comma is legal inside a property name and the vendor prefix convention
+    puts one in nearly every one of them -- 'xlnx,dc-operating-mode' is a
+    single property, not two. Splitting the list on commas therefore cannot
+    express any such name, which is most of the properties anyone would want
+    to select. A colon cannot appear in a property name, so it can separate
+    them unambiguously.
+
+    The comma remains the separator when the list contains no colon, so
+    specs written against the older syntax keep working. A list mixing both
+    is read as colon-separated, which leaves any comma where it belongs:
+    inside a name.
 
     Args:
         specs_str: The specification string (value after --nodes=)
@@ -200,6 +217,10 @@ def parse_node_specs(specs_str):
     Examples:
         '/amba_pl'                    -> [{'node': '/amba_pl', 'properties': None}]
         'mmi_dc#clocks,clock-names'   -> [{'node': 'mmi_dc', 'properties': ['clocks', 'clock-names']}]
+        'mmi_dc#xlnx,dc-operating-mode:xlnx,dc-presentation-mode'
+                                      -> [{'node': 'mmi_dc', 'properties':
+                                           ['xlnx,dc-operating-mode',
+                                            'xlnx,dc-presentation-mode']}]
         'mmi_dc#clocks;phy0'          -> [{'node': 'mmi_dc', 'properties': ['clocks']},
                                           {'node': 'phy0', 'properties': None}]
     """
@@ -218,7 +239,21 @@ def parse_node_specs(specs_str):
             parts = spec.split('#', 1)
             node_name = parts[0].strip()
             props_part = parts[1].strip()
-            props = [p.strip() for p in props_part.split(',') if p.strip()]
+            if ':' in props_part:
+                props = [p.strip() for p in props_part.split(':') if p.strip()]
+            else:
+                props = [p.strip() for p in props_part.split(',') if p.strip()]
+                if len(props) > 1:
+                    # 'a,b' is ambiguous: two properties, or one whose name
+                    # carries a vendor prefix. Nothing in the string tells
+                    # them apart, so say which reading was taken rather than
+                    # let a wrong one fail later as a property that is simply
+                    # never found.
+                    _warning(
+                        f"--nodes: '{props_part}' read as {len(props)} comma-separated "
+                        f"properties {props}. If this is one property whose name "
+                        f"contains a comma, separate properties with ':' instead "
+                        f"-- a colon cannot appear in a property name." )
             result.append({'node': node_name, 'properties': props if props else None})
         else:
             # Whole node extraction
