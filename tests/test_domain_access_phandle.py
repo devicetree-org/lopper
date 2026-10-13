@@ -60,7 +60,14 @@ class TestDomainSubnodePhandleRefcounting:
         # recognises carveouts/mbox/timer/elfload slots.  In production these
         # come from the phandle-desc-v1 block in %.yaml.lop; here we inject
         # them directly so the test is self-contained and order-independent.
-        base = Lopper.phandle_possible_properties()
+        # Inject in place. Assigning to Lopper.phandle_possible_prop_dict
+        # installs a shadowing attribute on the subclass, after which
+        # anything schema learning writes to the base class is invisible to
+        # every later lookup in the session -- which is how a suite running
+        # after this one gets a bare number where it expects <&label>.
+        base = Lopper.phandle_possible_prop_dict
+        if not base:
+            base.update( Lopper.phandle_possible_properties() )
         base.pop("DEFAULT", None)
         for prop, spec in {
             "carveouts": "phandle",
@@ -71,7 +78,6 @@ class TestDomainSubnodePhandleRefcounting:
             "remote":    "phandle",
         }.items():
             base[prop] = [spec]
-        Lopper.phandle_possible_prop_dict = base
 
         device_tree.setup(device_tree.dts, [], "", True, libfdt=True)
         device_tree.target = target
