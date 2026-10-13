@@ -13,14 +13,8 @@ echo "========================================="
 # dependency in requirements.txt; it was simply never asked for here, and the
 # suite ran serially at roughly four times the wall clock as a result.
 #
-# --dist loadfile keeps every test in a file on one worker. Without it, three
-# overlay tests fail at 16 workers and pass at 8: their references render
-# numerically (<0x5>) instead of symbolically (<&src_out>), depending on which
-# tests from other files happened to share the worker. That is a pre-existing
-# isolation leak rather than anything about parallelism, and it means results
-# already depend on ordering. loadfile avoids it; it does not fix it.
 PYTEST_FAILED=0
-if pytest -v tests/ -n auto --dist loadfile --tb=short --junitxml=pytest-results.xml 2>&1 | tee pytest_output.txt; then
+if pytest -v tests/ -n auto --tb=short --junitxml=pytest-results.xml 2>&1 | tee pytest_output.txt; then
     echo "✅ Pytest tests passed!"
 else
     PYTEST_FAILED=1
