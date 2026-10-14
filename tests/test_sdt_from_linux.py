@@ -40,9 +40,14 @@ def _have_tools():
             and shutil.which('dtc') is not None)
 
 
-pytestmark = pytest.mark.skipif(
-    not _have_tools(),
-    reason="sdt-from-linux integration tests require cpp and dtc")
+pytestmark = [
+    pytest.mark.skipif(
+        not _have_tools(),
+        reason="sdt-from-linux integration tests require cpp and dtc"),
+    # Golden-file SDT generation: a full lopper run per case against a real
+    # board description. The heaviest file in the suite.
+    pytest.mark.slow,
+]
 
 
 def _run_pipeline(board_name, outdir, no_zephyr=False, no_template=False,

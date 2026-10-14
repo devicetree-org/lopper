@@ -37,9 +37,13 @@ def _have_tools():
             and shutil.which('dtc') is not None)
 
 
-pytestmark = pytest.mark.skipif(
-    not _have_tools(),
-    reason="round-trip tests require cpp and dtc")
+pytestmark = [
+    pytest.mark.skipif(
+        not _have_tools(),
+        reason="round-trip tests require cpp and dtc"),
+    # Compiles, processes and re-emits a whole board SDT per case.
+    pytest.mark.slow,
+]
 
 
 def _build_sdt(board, outdir):

@@ -20,10 +20,15 @@ DOMAIN_ACCESS_YAML = (
 )
 
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("dtc") is None,
-    reason="ZynqMP Libmetal generation requires dtc",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        shutil.which("dtc") is None,
+        reason="ZynqMP Libmetal generation requires dtc",
+    ),
+    # Two cases, each driving several lopper runs end to end; the slowest
+    # pair in the suite.
+    pytest.mark.slow,
+]
 
 
 def _run(args):

@@ -54,6 +54,9 @@ def test_legacy_zephyr_entry_point_delegates(monkeypatch, caplog):
     assert "delegating to the zephyr_domain_dts assist" in caplog.text
 
 
+# Runs the legacy entry point and the dedicated assist and diffs them: the
+# whole of this file's runtime, the other 19 tests are free.
+@pytest.mark.slow
 @pytest.mark.skipif(shutil.which("dtc") is None, reason="dtc is required")
 def test_legacy_zephyr_entry_point_matches_dedicated_assist(tmp_path):
     """Old machine-conf syntax performs the complete Zephyr conversion."""

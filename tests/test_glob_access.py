@@ -190,6 +190,10 @@ class TestGlobAccessIntegration:
         assert star_found, "APU_domain should have dev: '*' in access"
 
 
+# Nine cases, each a full domain_access run against a real SDT: 63.6s of
+# this file's 63.9s. The other 27 tests here cost 0.3s between them, so the
+# mark goes on the class rather than the module.
+@pytest.mark.slow
 class TestPeerExclusion:
     """Test peer exclusion: explicit device refs excluded from glob matches.
 

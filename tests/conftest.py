@@ -17,6 +17,19 @@ from lopper.tree import LopperTree
 import lopper_sanity
 
 
+def pytest_configure(config):
+    """Register markers so -m stays meaningful and typos are visible."""
+    config.addinivalue_line(
+        "markers",
+        "slow: drives whole lopper runs against large inputs. About 26 tests "
+        "out of 1400+ carry this and they are roughly 70% of the suite's wall "
+        "clock, so '-m \"not slow\"' is a usable iteration loop. They are the "
+        "integration coverage -- golden SDT output, domain globbing, "
+        "roundtrips -- so a full run is still required before pushing, and CI "
+        "always runs everything."
+    )
+
+
 class Capturing(list):
     """Context manager to capture stdout."""
     def __enter__(self):
