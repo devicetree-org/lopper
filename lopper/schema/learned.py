@@ -1397,6 +1397,20 @@ class DTSPropertyTypeResolver:
     def __init__(self, schema):
         self.schema = schema
 
+        # Answers from get_property_type(), keyed on its arguments.
+        #
+        # Every table that routine consults is built here in __init__ and is
+        # not written to afterwards, so for a given resolver the answer for a
+        # given question cannot change. Without this the lookup is repeated
+        # for every property of every node on every resolve, and the tail of
+        # it is four linear walks over pattern tables: on a Versal2 openamp
+        # expansion that was 18.7 million regular expression matches, 96% of
+        # every match in the run.
+        #
+        # Deliberately on the instance rather than module-level, so a new
+        # resolver -- a different schema -- starts with an empty cache.
+        self._type_cache = {}
+
         # Build optimized lookup tables for fast access
         self._property_types = {}
         self._compatible_properties = {}
@@ -1666,6 +1680,9 @@ class DTSPropertyTypeResolver:
         """
         Get LopperFmt type for a property.
 
+        Answers are cached on the resolver -- see _type_cache in __init__ for
+        why that is sound and why it matters.
+
         .. deprecated::
             For new code, use :meth:`resolve_property_spec` which returns
             a :class:`PropertySpec` with richer type information including
@@ -1678,6 +1695,27 @@ class DTSPropertyTypeResolver:
 
         Returns:
             LopperFmt enum value
+        """
+        # compatible arrives as a list often enough to matter, and a list
+        # cannot key a dict.
+        key = ( prop_name, node_path,
+                tuple(compatible) if isinstance(compatible, list) else compatible )
+        try:
+            return self._type_cache[key]
+        except KeyError:
+            pass
+        except TypeError:
+            # an unhashable argument: answer it, but do not try to remember it
+            return self._resolve_property_type( prop_name, node_path, compatible )
+
+        result = self._resolve_property_type( prop_name, node_path, compatible )
+        self._type_cache[key] = result
+        return result
+
+    def _resolve_property_type(self, prop_name, node_path=None, compatible=None):
+        """Work out a property's type, consulting every table in priority order.
+
+        The uncached half of get_property_type(); call that rather than this.
         """
 
         # Generic debug for tracked properties
