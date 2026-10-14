@@ -60,10 +60,22 @@ def glob_test( sdt, glob_test_type ):
             # apu_domain.print()
             access = apu_domain["access"]
             try:
-                if "&uart0" in access.string_val and "&uart1" in access.string_val:
-                    print( f"[PASS]: uart test: both &uart0 and &uart1 are in the access list: {access.string_val}" )
+                # Ask the property what it references, rather than looking for
+                # the labels in its printed form. string_val is the text we
+                # would write to a file; it exists for output and is only
+                # composed when something is about to print. Matching against
+                # it tests the renderer as much as the access list, and reads
+                # a value that a caller has no business reading.
+                targets = set()
+                for t in access.resolve_phandles():
+                    label = getattr( t, "label", None )
+                    if label:
+                        targets.add( label )
+
+                if "uart0" in targets and "uart1" in targets:
+                    print( f"[PASS]: uart test: both uart0 and uart1 are in the access list: {sorted(targets)}" )
                 else:
-                    print( f"[FAIL]: uart test, both &uart0 and &uart1 are NOT in the access list: {access.string_val}" )
+                    print( f"[FAIL]: uart test, both uart0 and uart1 are NOT in the access list: {sorted(targets)}" )
             except Exception as e:
                 print( f"ERROR: while checking serial glob: {e}" )
                 os._exit(1)
