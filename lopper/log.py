@@ -101,6 +101,13 @@ def _init( name ):
         l.addHandler( ch )
         l.propagate = False
 
+        # A module that logged before calling this will have been answered
+        # with the root logger, and that answer is remembered. Registering a
+        # logger changes the right answer, so drop what was remembered. This
+        # is rare -- modules call _init() on import -- and the cache refills
+        # on the next call.
+        __logger_cache__.clear()
+
 def _level( level, name = None ):
     """
     Set the logging level of a named logger
@@ -220,6 +227,19 @@ def _is_enabled(level, logger=None):
     return logger.isEnabledFor(level)
 
 
+# Loggers already looked up, keyed on the calling module's filename.
+#
+# Which logger a module gets is decided by its filename and whether _init()
+# has been called for it, so the answer does not change for the life of the
+# process. Without this, every message -- including the ones discarded
+# because debug is off -- costs a stack walk, a basename, a dict lookup and
+# a getLogger. A Versal2 openamp expansion makes 1.27 million of those calls.
+#
+# Keyed on the full path rather than the basename so that two modules of the
+# same name in different packages cannot share an entry.
+__logger_cache__ = {}
+
+
 ## internal calls only, since this pokes at the call stack and is
 ## expected to find the caller two deep.
 def __logger__():
@@ -237,6 +257,8 @@ def __logger__():
     if _init() has been called, we return the logger, otherwise, we return
     the root logger and use the defaults.
 
+    The result is cached per calling module; see __logger_cache__.
+
     Args:
         None
 
@@ -244,13 +266,24 @@ def __logger__():
         Logger
     """
     try:
-        # look two levels back for the calling module, and see if it
-        # has a logger
-        x = os.path.basename(sys._getframe().f_back.f_back.f_code.co_filename)
-        # print( "available loggers %s" % logging.root.manager.loggerDict )
-        logger = logging.root.manager.loggerDict[x]
+        # look two levels back for the calling module
+        caller = sys._getframe().f_back.f_back.f_code.co_filename
+    except Exception:
+        return root_logger
+
+    try:
+        return __logger_cache__[caller]
+    except KeyError:
+        pass
+
+    try:
+        x = os.path.basename(caller)
+        # presence in loggerDict is what says _init() ran for this module
+        logging.root.manager.loggerDict[x]
         logger = logging.getLogger(x)
     except Exception as e:
         logger = root_logger
+
+    __logger_cache__[caller] = logger
 
     return logger
