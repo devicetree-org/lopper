@@ -1208,3 +1208,154 @@ class TestOverlayDtsoEmit:
             capture_output=True, text=True)
         assert r.returncode == 0, \
             f"dtc rejected the emitted overlay:\n{r.stderr}\n--- source ---\n{text}"
+
+
+# ---------------------------------------------------------------------------
+# A user overlay naming a target that already has a fragment
+#
+# An assist contributes its own &label fragments to the overlay tree before
+# overlay_of() runs -- one that moves a block of hardware out of the base
+# and into an overlay will name the same node an author does. The user
+# overlay is then the second node to arrive at that path, and tree.add()
+# keeps a colliding node's children while discarding its properties. The
+# subtree an author wrote landed; the properties they wrote on the target
+# itself did not, and nothing said so.
+# ---------------------------------------------------------------------------
+
+_CONTRIB_BASE = """\
+/dts-v1/;
+/ {
+    #address-cells = <2>;
+    #size-cells = <2>;
+    compatible = "test";
+
+    amba: amba {
+        #address-cells = <2>;
+        #size-cells = <2>;
+        ranges;
+
+        mmi_dc: mmi_dc@fd4a0000 {
+            compatible = "xlnx,mmi-dc";
+            reg = <0x0 0xfd4a0000 0x0 0x10000>;
+        };
+    };
+};
+"""
+
+_CONTRIB_OVERLAY = """\
+/dts-v1/;
+/plugin/;
+
+&mmi_dc {
+    xlnx,dc-presentation-mode = "Recorded";
+    ports {
+        port@0 {
+            dc_live_in_0: endpoint {
+                compatible = "test,endpoint";
+            };
+        };
+    };
+};
+"""
+
+
+class TestUserOverlayContributesToAnExistingFragment:
+    """The property an author wrote has to arrive even when the target
+    already has a fragment from somewhere else."""
+
+    def _emit(self, tmp_path, preexisting_props=None):
+        from lopper.tree import LopperTree, LopperNode, LopperProp
+
+        base_file = tmp_path / "system-top.dts"
+        base_file.write_text(_CONTRIB_BASE)
+        ov_file = tmp_path / "contrib.dtso"
+        ov_file.write_text(_CONTRIB_OVERLAY)
+
+        sdt = LopperSDT(str(base_file))
+        sdt.dryrun = False
+        sdt.verbose = 0
+        sdt.werror = False
+        sdt.output_file = str(tmp_path / "out.dts")
+        sdt.cleanup_flag = True
+        sdt.save_temps = False
+        sdt.enhanced = True
+        sdt.symbols = True
+        sdt.outdir = str(tmp_path)
+        sdt.setup(sdt.dts, [], "", True, libfdt=True)
+        sdt._compile_overlay_subtrees([str(ov_file)], str(tmp_path))
+
+        out = LopperTree()
+
+        # stand in for what an assist does: put a fragment for the same
+        # target into the overlay tree before overlay_of() runs
+        pre = LopperNode(name="&mmi_dc")
+        pre.label = ""
+        for pname, pval in (preexisting_props or {"clock-names": ["mmi_pll"]}).items():
+            pre.__props__[pname] = LopperProp(pname, -1, pre, pval)
+        out.add(pre)
+
+        out.overlay_of(sdt.tree)
+        out.resolve()
+        return out
+
+    def _fragment(self, tree):
+        for path, node in tree.__nodes__.items():
+            if path.endswith("&mmi_dc"):
+                return node
+        return None
+
+    def test_the_authored_property_arrives(self, tmp_path):
+        out = self._emit(tmp_path)
+        frag = self._fragment(out)
+        assert frag is not None, "no &mmi_dc fragment was emitted at all"
+        assert "xlnx,dc-presentation-mode" in frag.__props__, \
+            ("the user overlay's property was dropped because the target "
+             f"already had a fragment; got {list(frag.__props__)}")
+
+    def test_the_existing_property_is_kept(self, tmp_path):
+        """Contributing must not throw away what was already there."""
+        out = self._emit(tmp_path)
+        frag = self._fragment(out)
+        assert "clock-names" in frag.__props__, \
+            f"the pre-existing property was lost: {list(frag.__props__)}"
+
+    def test_the_children_still_arrive(self, tmp_path):
+        """Children were never the broken half; pin them so a fix to the
+        properties cannot cost them."""
+        out = self._emit(tmp_path)
+        assert any(p.endswith("/ports/port@0/endpoint") for p in out.__nodes__), \
+            f"the overlay's subtree is missing: {sorted(out.__nodes__)}"
+
+    def test_a_conflicting_property_is_reported(self, tmp_path):
+        """Both sources naming one property is a real conflict. The authored
+        value wins, but silently losing a computed one is how this was
+        missed in the first place.
+
+        Collected from the logger rather than through caplog or capfd.
+        _init() sets propagate=False, so records never reach the root
+        handler caplog hooks, and the stream handler holds the stderr it
+        was given at import, which is not the descriptor capfd watches.
+        """
+        import logging
+
+        records = []
+
+        class _Collect(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+
+        handler = _Collect()
+        logger = logging.getLogger("tree.py")
+        logger.addHandler(handler)
+        try:
+            out = self._emit(
+                tmp_path,
+                preexisting_props={"xlnx,dc-presentation-mode": ["Live"]})
+        finally:
+            logger.removeHandler(handler)
+
+        frag = self._fragment(out)
+        assert frag.__props__["xlnx,dc-presentation-mode"].value == ["Recorded"], \
+            "the authored value did not win"
+        assert any("replaces the value" in m for m in records), \
+            f"a replaced property was not reported: {records}"
