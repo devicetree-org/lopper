@@ -5107,7 +5107,54 @@ class LopperTree:
                 self._bind_fragment_fixups(stem, fragment, overlay_tree,
                                            frag_label=ov_node.label)
 
-                overlay_tree.add(fragment)
+                # A fragment for this target may already be here. An assist
+                # contributes its own &label fragments to the overlay tree
+                # before overlay_of() runs -- one that moves a block of
+                # hardware out of the base and into an overlay will name the
+                # same node an author does -- so a user overlay naming that
+                # node is the second one to arrive.
+                #
+                # tree.add() takes the children of a node that collides and
+                # discards its properties, so the subtree an author wrote
+                # lands and the properties they wrote on the target itself
+                # do not. Carry them over by hand rather than merging in the
+                # tree: this is the one place that knows the second node is
+                # a user overlay contributing to a target, and what that
+                # should mean. Changing add() would decide it for every
+                # caller.
+                existing = overlay_tree.__nodes__.get( "/" + fragment_name )
+
+                if existing is None:
+                    overlay_tree.add(fragment)
+                else:
+                    # Two sources want this fragment. A base node whose
+                    # property referenced something the overlay took is
+                    # emitted as a fragment to repair that reference, and a
+                    # user overlay naming the same node arrives second.
+                    #
+                    # tree.add() has no notion of contributing to a node
+                    # that is already there: it takes the children and
+                    # discards the properties with a debug line, so the
+                    # subtree an author wrote lands and what they wrote on
+                    # the target itself does not.
+                    #
+                    # Merge instead, which is what applying this fragment on
+                    # top of the other one means and is already written:
+                    # properties replace, children merge, children with no
+                    # counterpart stay. Say when a property is replaced --
+                    # the displaced value was computed from the hardware
+                    # description, and losing it silently is how this went
+                    # unnoticed.
+                    for prop_name in fragment.__props__:
+                        if prop_name in existing.__props__:
+                            lopper.log._warning(
+                                f"overlay '{stem}': '{prop_name}' on "
+                                f"&{ov_node.label} replaces the value already "
+                                f"in the overlay" )
+
+                    _merge_node_into_tree( overlay_tree, fragment )
+                    fragment = existing
+
                 fragments_added.append(fragment)
                 emitted.setdefault(stem, []).append((ov_node.abs_path, fragment))
                 lopper.log._info(f"Added user overlay fragment '&{ov_node.label}' from '{stem}'")
