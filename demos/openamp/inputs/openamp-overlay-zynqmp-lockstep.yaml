@@ -1,121 +1,111 @@
-definitions:
-    OpenAMP:
-         openamp_channel_0_access_srams: &openamp_channel_0_access_srams # used for access in each domain
-             - dev: psu_r5_0_atcm
-               flags: 0
-             - dev: psu_r5_0_btcm
-               flags: 0
+# ZynqMP OpenAMP: Linux on A53-0 loads and runs the R5 cluster in lockstep
+# (remoteproc) and talks to it over RPMsg.
+#
+# In lockstep the cluster runs on core 0 and its firmware can use both
+# cores' TCM: core 0's banks and the second pair the SDT labels
+# psu_r5_0_{a,b}tcm_lockstep.
+#
+# Written against demos/openamp/inputs/openamp_zu.dts, whose IPI channels are
+# labelled psu_ipi_<agent>_<destination>: A53-0 uses IPI agent 7 and the R5
+# cluster agent 1.
 
-         rpu0vdev0vring0: &rpu0vdev0vring0
-             - start: 0x3ed60000
-               size: 0x4000
-               no-map: 1
+reserved-memory:
+    ranges: true
+    "#address-cells": 2
+    "#size-cells": 2
 
-         rproc0: &rproc0
-             - start: 0x3ed00000
-               size: 0x60000
-               no-map: 1
-
-         rpu0vdev0vring1: &rpu0vdev0vring1
-             - start: 0x3ed64000
-               size: 0x4000
-               no-map: 1
-
-         rpu0vdev0buffer: &rpu0vdev0buffer
-             - start: 0x3ed68000
-               size: 0x40000
-               no-map: 1
-
-         openamp_channel_1_access_srams: &openamp_channel_1_access_srams # used for access in each domain
-             - dev: psu_r5_1_atcm
-               flags: 0
-             - dev: psu_r5_0_btcm
-               flags: 0
+    rproc0@3ed00000:
+        start: 0x3ed00000
+        size: 0x60000
+        no-map: 1
+    rpu0vdev0vring0@3ed60000:
+        start: 0x3ed60000
+        size: 0x4000
+        no-map: 1
+    rpu0vdev0vring1@3ed64000:
+        start: 0x3ed64000
+        size: 0x4000
+        no-map: 1
+    rpu0vdev0buffer@3ed68000:
+        start: 0x3ed68000
+        size: 0x40000
+        no-map: 1
 
 domains:
-    openamp_a53_0_cluster: # host in channel from a53-0 to r5-0 and r5-1
-        compatible:
-            - "openamp,domain-v1"
+    openamp_a53_0_cluster:
+        compatible: openamp,domain-v1
         cpus:
             - cluster: cpus_a53
               cpumask: 0x1
               mode:
-                 secure: true
-                 el: 0x3
+                  secure: true
+                  el: 0x3
+        os,type: linux
         access:
-            - dev:
-                - ipi7
-              flags:
-                - 0
-            - <<+: *openamp_channel_0_access_srams
-            - <<+: *openamp_channel_1_access_srams
-
+            - dev: ipi7
+              flags: 0
+            - dev: psu_r5_0_atcm_global
+              flags: 0
+            - dev: psu_r5_0_btcm_global
+              flags: 0
+            - dev: psu_r5_0_atcm_lockstep
+              flags: 0
+            - dev: psu_r5_0_btcm_lockstep
+              flags: 0
         reserved-memory:
-            ranges: true
-            <<+: [ *rpu0vdev0vring1, *rpu0vdev0vring0, *rpu0vdev0buffer, *rproc0 ]
+            - rproc0@3ed00000
+            - rpu0vdev0vring0@3ed60000
+            - rpu0vdev0vring1@3ed64000
+            - rpu0vdev0buffer@3ed68000
 
         domain-to-domain:
             compatible: openamp,domain-to-domain-v1
             remoteproc-relation:
                 compatible: openamp,remoteproc-v2
-                remote:
-                     - openamp_r5_0_cluster
-                     - openamp_r5_1_cluster
-                elfload:
-                     - [ psu_r5_0_atcm, psu_r5_0_btcm, psu_r5_1_atcm, psu_r5_1_btcm, rproc0 ]
-                     - [ psu_r5_1_atcm, psu_r5_1_btcm ]
+                relation0:
+                    remote: openamp_r5_lockstep
+                    elfload: [ psu_r5_0_atcm_global, psu_r5_0_btcm_global,
+                               psu_r5_0_atcm_lockstep, psu_r5_0_btcm_lockstep,
+                               rproc0@3ed00000 ]
 
             rpmsg-relation:
                 compatible: openamp,rpmsg-v1
-                openamp-xlnx-native: false
-                remote:
-                    - openamp_r5_0_cluster
-                carveouts:
-                     - rpu0vdev0vring0
-                     - rpu0vdev0vring1
-                     - rpu0vdev0buffer
-                mbox:
-                    - ipi7
+                relation0:
+                    remote: openamp_r5_lockstep
+                    carveouts: [ rpu0vdev0vring0@3ed60000, rpu0vdev0vring1@3ed64000, rpu0vdev0buffer@3ed68000 ]
+                    mbox: psu_ipi_7_1
 
-    openamp_r5_0_cluster:
-        compatible:
-            - "openamp,domain-v1"
+    openamp_r5_lockstep:
+        compatible: openamp,domain-v1
         cpus:
             - cluster: cpus_r5_0
               cpumask: 0x1
               mode:
-                 lockstep: true
+                  secure: true
+                  lockstep: true
+        os,type: baremetal
         access:
-            - dev:
-                - ipi1
+            - dev: ipi1
               flags: 0
-            - <<+: *openamp_channel_0_access_srams # TCM banks used for firmware memory
-            - <<+: *openamp_channel_1_access_srams
+            - dev: psu_r5_0_atcm_global
+              flags: 0
+            - dev: psu_r5_0_btcm_global
+              flags: 0
+            - dev: psu_r5_0_atcm_lockstep
+              flags: 0
+            - dev: psu_r5_0_btcm_lockstep
+              flags: 0
         reserved-memory:
-            ranges: true
-            <<+: [ *rpu0vdev0vring1, *rpu0vdev0vring0, *rpu0vdev0buffer, *rproc0 ]
+            - rproc0@3ed00000
+            - rpu0vdev0vring0@3ed60000
+            - rpu0vdev0vring1@3ed64000
+            - rpu0vdev0buffer@3ed68000
 
         domain-to-domain:
-             compatible: openamp,domain-to-domain-v1
-             rpmsg-relation:
-                 compatible: openamp,rpmsg-v1
-                 host:
-                     - openamp_a53_0_cluster
-                 mbox:
-                     - ipi1
-                 carveouts:
-                     - rpu0vdev0vring0
-                     - rpu0vdev0vring1
-                     - rpu0vdev0buffer
-
-    openamp_r5_1_cluster:
-        compatible:
-            - "openamp,domain-v1"
-        cpus:
-            - cluster: cpus_r5_1
-              cpumask: 0x1
-              mode:
-        access:
-            - <<+: *openamp_channel_1_access_srams
-        domain-to-domain:
-             compatible: openamp,domain-to-domain-v1
+            compatible: openamp,domain-to-domain-v1
+            rpmsg-relation:
+                compatible: openamp,rpmsg-v1
+                relation0:
+                    host: openamp_a53_0_cluster
+                    carveouts: [ rpu0vdev0vring0@3ed60000, rpu0vdev0vring1@3ed64000, rpu0vdev0buffer@3ed68000 ]
+                    mbox: psu_ipi_1_7
