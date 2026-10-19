@@ -19,6 +19,13 @@ sys.path.append(os.path.dirname(__file__))
 
 _init(__name__)
 
+RPU_IP_NAMES = (
+    "psu_cortexr5",
+    "psv_cortexr5",
+    "psx_cortexr52",
+    "cortexr52",
+)
+
 def get_label(sdt, symbol_node, node):
     prop_dict = symbol_node.__props__
     match = [label for label,node_abs in prop_dict.items() if re.match(node_abs[0], node.abs_path) and len(node_abs[0]) == len(node.abs_path)]
@@ -44,6 +51,10 @@ def get_cpu_node(sdt, options):
                 cpu_labels.append(matched_label)
     _error(f"In valid CPU Name valid Processors for a given SDT are {cpu_labels}\n")
     sys.exit(1)
+
+def cpu_is_rpu(sdt, options):
+    ip_name = get_cpu_node(sdt, options).propval('xlnx,ip-name', list)
+    return bool(ip_name) and ip_name[0] in RPU_IP_NAMES
 
 def item_generator(json_input, lookup_key):
     if isinstance(json_input, dict):
@@ -130,6 +141,31 @@ def scan_reg_size(node, value, idx):
         size = 4294967296
 
     return reg, size
+
+def get_reg_base_addr(sdt, node, options):
+    """Return the selected reg base, size, entry count, and next entry index.
+
+    For RPU PL IP with an initial base above 32 bits, prefer the first
+    subsequent reg entry whose base fits in 32 bits.
+    """
+    na = node.parent["#address-cells"].value[0]
+    ns = node.parent["#size-cells"].value[0]
+    cells = na + ns
+    num_of_addr = int(len(node['reg'].value)/cells)
+    multi_reg_index = 1
+    val, size = scan_reg_size(node, node['reg'].value, 0)
+    if (val > 0xFFFFFFFF
+            and node.abs_path.startswith("/amba_pl/")
+            and num_of_addr > 1):
+        if cpu_is_rpu(sdt, options):
+            for index in range(1, num_of_addr):
+                candidate_val, candidate_size = scan_reg_size(
+                    node, node['reg'].value, index)
+                if candidate_val <= 0xFFFFFFFF:
+                    val, size = candidate_val, candidate_size
+                    multi_reg_index = index + 1
+                    break
+    return val, size, num_of_addr, multi_reg_index
 
 def get_interrupt_prop(sdt, node, value):
     intr = []
@@ -455,7 +491,7 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
 def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, options):
     nosub = 0
     if prop == "reg":
-        val, size = scan_reg_size(node, node[prop].value, 0)
+        val, size, _, _ = get_reg_base_addr(sdt, node, options)
         drvprop_list.append(hex(val))
         plat.buf('\n\t\t%s' % hex(val))
         if pad:
@@ -602,11 +638,8 @@ def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, o
             _debug(f"Get device type failed for {node.name}, adding default value as {0}")
             device_ispci = 0
         if device_ispci:
-            match_cpunode = get_cpu_node(sdt, options)
-            if match_cpunode.propval('xlnx,ip-name') != ['']:
-                ip_name = match_cpunode.propval('xlnx,ip-name', list)[0]
-                if ip_name in ["psu_cortexr5", "psv_cortexr5", "psx_cortexr52", "cortexr52"]:
-                    pad = 1
+            if cpu_is_rpu(sdt, options):
+                pad = 1
             prop_vallist = get_pci_ranges(node, node[prop].value, pad)
             for j, prop_val in enumerate(prop_vallist):
                 plat.buf('\n\t\t%s' % prop_val)
