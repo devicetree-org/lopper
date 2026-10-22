@@ -299,6 +299,9 @@ def xlnx_generate_petalinux_config(tgt_node, sdt, options):
         device = sdt.tree['/'].propval('device_id')
         if device != ['']:
             device_type_dict['device_id'] = device[0]
+        vivado_version = sdt.tree['/'].propval('vivado-version')
+        if vivado_version != ['']:
+            device_type_dict['vivado_version'] = vivado_version[0]
 
         # Add chosen node properties early in the output for better organization
         if chosen_properties:
