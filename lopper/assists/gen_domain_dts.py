@@ -244,9 +244,14 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
             for subnode in nodes_to_move:
                 is_pr = ('fpga-region' in subnode.propval('compatible', list)
                          and fpga_parent is not None)
+                old_path = subnode.abs_path
                 new_path = (fpga_parent.abs_path + "/" + subnode.name if is_pr
-                            else subnode.abs_path.replace("/amba_pl/", "/"))
-                sdt.tree.move(subnode, subnode.abs_path, new_path)
+                            else old_path.replace("/amba_pl/", "/"))
+                sdt.tree.move(subnode, old_path, new_path)
+                # tree.move() does not update __symbols__. Rewrite the label
+                # path so the GC below (get_label exact-path match) keeps it.
+                if subnode.label and subnode.label in symbol_node.__props__:
+                    symbol_node[subnode.label] = subnode.abs_path
 
     filter_ipi_nodes_for_cpu(sdt, machine)
 
