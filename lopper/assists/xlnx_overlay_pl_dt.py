@@ -61,33 +61,7 @@ def remove_node_ref(sdt, tgt_node, ref_node):
             sdt.tree['/' + ref_node.name].delete(prop)
 
 match_list = ["v_tc", "v_smpte_uhdsdi_tx", "v_smpte_uhdsdi_rx", "v_hdmi_tx1", "v_hdmi_rx1",
-              "v_hdmi_rx", "v_hdmi_tx", "v_dp_tx", "v_dp_rx", "v_dp_rx1", "v_dp_tx1"]
-
-def add_status_disabled_after_ipname(filepath, match_list):
-    """
-    This API adds `status = "disabled";` after each line matching `xlnx,ip-name = "{name}";`
-    from the provided match_list. Preserves indentation.
-
-    Args:
-        filepath (str): Path to the input DTS/DTSI file.
-        match_list (List[str]): List of IP names to match.
-    """
-    with open(filepath, "r") as f:
-        lines = f.readlines()
-
-    modified_lines = []
-    for line in lines:
-        modified_lines.append(line)
-        stripped_line = line.strip()
-
-        for name in match_list:
-            if stripped_line == f'xlnx,ip-name = "{name}";':
-                indent = line[:len(line) - len(line.lstrip())]
-                modified_lines.append(f'{indent}status = "disabled";\n')
-                break
-
-    with open(filepath, "w") as f:
-        f.writelines(modified_lines)
+              "v_hdmi_rx", "v_hdmi_tx", "v_dp_tx", "v_dp_rx", "v_dp_rx1", "v_dp_tx1", "axi_gpio"]
 
 def infer_platform_from_sdt(sdt):
     """
@@ -697,6 +671,16 @@ def build_overlay_tree(new_amba_node, fpga_node, fpga_node_name, base_tree,
 
     return overlay_tree
 
+def disable_hierarchical_nodes(overlay_tree):
+    for node in overlay_tree.__nodes__.values():
+        if not node.props("xlnx,ip-name"):
+            continue
+        ip_name = node.propval("xlnx,ip-name")[0]
+        if ip_name in match_list and node.props("xlnx,is-hierarchy"):
+            if ip_name == "axi_gpio" and "reset_sel_axis" not in node.propval("xlnx,name")[0]:
+                continue
+            node["status"] = "disabled"
+
 def clean_overlay_properties(overlay_tree):
     """
     Remove phandle and status="okay" properties from all nodes in overlay tree.
@@ -811,8 +795,7 @@ def write_output_files(overlay_tree, sdt, pl_file, dtso_file):
     Write output files and perform post-processing.
 
     Writes overlay tree to pl.dtsi, performs post-processing
-    (interrupt-parent replacement, status disabled for video IPs),
-    and copies pl.dtsi to pl.dtso.
+    (interrupt-parent replacement), and copies pl.dtsi to pl.dtso.
 
     Args:
         overlay_tree: The overlay tree to write
@@ -835,9 +818,6 @@ def write_output_files(overlay_tree, sdt, pl_file, dtso_file):
 
     with open(pl_file, "w") as f:
         f.write(content)
-
-    # Add status = "disabled" for specific video IPs
-    add_status_disabled_after_ipname(pl_file, match_list)
 
     # Copy contents from pl.dtsi to pl.dtso in the same directory
     with open(pl_file, "r") as src, open(dtso_file, "w") as dst:
@@ -980,7 +960,9 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
         amba_pl_ref.name = "&amba"
         amba_pl_ref.label = ""
 
+    disable_hierarchical_nodes(overlay_tree)
 
+    if not node_specs:
         # Prune properties that the yaml bindings do not require.
         yaml_bindings = utils.load_yaml_bindings()
         for node in overlay_tree['/'].subnodes():
