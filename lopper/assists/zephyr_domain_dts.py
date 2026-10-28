@@ -2245,6 +2245,12 @@ def xlnx_generate_zephyr_domain_dts(tgt_node, sdt, options):
                     sdt.tree[node]['zephyr,console'] = dev_node
                     sdt.tree[node]['zephyr,shell-uart'] = dev_node
 
+                if sdt.tree['/chosen'].propval('zephyr,entropy') == ['']:
+                    for root_node in root_sub_nodes:
+                        if any('xlnx,pmcl-trng' in compat for compat in root_node.propval('compatible', list)):
+                            sdt.tree[node]['zephyr,entropy'] = root_node.abs_path.replace("/amba_pl/", "/soc/")
+                            break
+
         if node.name == "amba_pl":
                 sdt.tree.delete(node)
                 new_dst_node = node()
