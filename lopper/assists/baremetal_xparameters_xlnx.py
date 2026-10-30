@@ -175,7 +175,7 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
 
                     if prop == "reg":
                         try:
-                            val, size = bm_config.scan_reg_size(node, node[prop].value, 0)
+                            val, size, num_of_addr, multi_reg_index = bm_config.get_reg_base_addr(sdt, node, options)
                             plat.buf(f'\n#define XPAR_{label_name}_BASEADDR {hex(val)}')
                             plat.buf(f'\n#define XPAR_{label_name}_HIGHADDR {hex(val + size -1)}')
                             canondef_dict.update({"BASEADDR":hex(val)})
@@ -183,12 +183,8 @@ def xlnx_generate_xparams(tgt_node, sdt, options):
                             """
                             Generate defines for all the available baseaddresses
                             """
-                            na = node.parent["#address-cells"].value[0]
-                            ns = node.parent["#size-cells"].value[0]
-                            cells = na + ns
-                            num_of_addr = int(len(node[prop].value)/cells)
-                            if num_of_addr > 1:
-                                for j in range(1, num_of_addr):
+                            if num_of_addr > 1 and multi_reg_index < num_of_addr:
+                                for j in range(multi_reg_index, num_of_addr):
                                     try:
                                         val, size = bm_config.scan_reg_size(node, node[prop].value, j)
                                         plat.buf(f'\n#define XPAR_{label_name}_BASEADDR_{j} {hex(val)}')
