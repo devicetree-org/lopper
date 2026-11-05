@@ -371,7 +371,7 @@ def test_ttc_counters_match_lop_ttc_split(tmp_path):
     output = tmp_path / "ttc-split.dts"
 
     run = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "lopper.py"), "-f",
+        [sys.executable, str(REPO_ROOT / "lopper.py"), "-f", "--symbols",
          "-i", str(REPO_ROOT / "lopper" / "lops" / "lop-ttc-split.dts"),
          str(source), str(output)],
         cwd=tmp_path, capture_output=True, text=True)
