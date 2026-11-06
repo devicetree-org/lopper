@@ -40,6 +40,35 @@ def _node_must_be_preserved(node, tree):
     return any(node.abs_path in prop.value for prop in chosen.__props__.values())
 
 
+def _drop_xlnx_name_amba_nodes(tree):
+    """Delete PS amba nodes whose label equals xlnx,name.
+
+    SDT gives a new &amba node the cell name as its label and stores that
+    same string in xlnx,name when the kernel dtsi has no label at the
+    address. Linux does not bind these nodes. Only direct children of the
+    amba bus are visited, so PL nodes under amba_pl and memory nodes at
+    the root stay.
+    """
+    amba = None
+    for node in tree["/"].child_nodes.values():
+        if node.label == "amba":
+            amba = node
+            break
+    if amba is None:
+        return 0
+
+    removed = 0
+    for node in list(amba.child_nodes.values()):
+        xlnx_name = node.propval("xlnx,name", list)
+        if not xlnx_name or xlnx_name == [""]:
+            continue
+        value = xlnx_name[0]
+        if node.label and node.label == value:
+            tree.delete(node)
+            removed += 1
+    return removed
+
+
 def delete_unused_props( node, driver_proplist , delete_child_nodes):
     if delete_child_nodes:
         child_list = list(node.child_nodes.keys())
@@ -236,6 +265,10 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
     filter_ipi_nodes_for_cpu(sdt, machine)
 
+    # Linux DT only: drop PS amba nodes whose label equals xlnx,name. This
+    # runs while xlnx,name is still on the node.
+    if linux_dt:
+        _drop_xlnx_name_amba_nodes(sdt.tree)
 
     node_list = []
     cpu_ip = match_cpunode.propval('xlnx,ip-name', list)
