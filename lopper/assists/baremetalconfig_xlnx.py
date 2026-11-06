@@ -131,6 +131,35 @@ def scan_reg_size(node, value, idx):
 
     return reg, size
 
+def get_reg_base_addr(sdt, node, options):
+    """Return the selected reg base, size, entry count, and next entry index.
+
+    For RPU PL IP with an initial base above 32 bits, prefer the first
+    subsequent reg entry whose base fits in 32 bits.
+    """
+    na = node.parent["#address-cells"].value[0]
+    ns = node.parent["#size-cells"].value[0]
+    cells = na + ns
+    num_of_addr = int(len(node['reg'].value)/cells)
+    multi_reg_index = 1
+    val, size = scan_reg_size(node, node['reg'].value, 0)
+    if (val > 0xFFFFFFFF
+            and node.abs_path.startswith("/amba_pl/")
+            and num_of_addr > 1):
+        cpu_ip_name = get_cpu_node(
+            sdt, options).propval('xlnx,ip-name', list)
+        is_rpu = bool(cpu_ip_name) and cpu_ip_name[0] in (
+            "psu_cortexr5", "psv_cortexr5", "psx_cortexr52", "cortexr52")
+        if is_rpu:
+            for index in range(1, num_of_addr):
+                candidate_val, candidate_size = scan_reg_size(
+                    node, node['reg'].value, index)
+                if candidate_val <= 0xFFFFFFFF:
+                    val, size = candidate_val, candidate_size
+                    multi_reg_index = index + 1
+                    break
+    return val, size, num_of_addr, multi_reg_index
+
 def get_interrupt_prop(sdt, node, value):
     intr = []
     inp =  node['interrupt-parent'].value[0]
@@ -455,7 +484,7 @@ def xlnx_generate_config_struct(sdt, node, drvprop_list, plat, driver_proplist, 
 def xlnx_generate_prop(sdt, node, prop, drvprop_list, plat, pad, phandle_prop, options):
     nosub = 0
     if prop == "reg":
-        val, size = scan_reg_size(node, node[prop].value, 0)
+        val, size, _, _ = get_reg_base_addr(sdt, node, options)
         drvprop_list.append(hex(val))
         plat.buf('\n\t\t%s' % hex(val))
         if pad:
