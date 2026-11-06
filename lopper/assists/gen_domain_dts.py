@@ -1,5 +1,5 @@
 #/*
-# * Copyright (C) 2023 Advanced Micro Devices, Inc. All Rights Reserved.
+# * Copyright (C) 2023-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 # *
 # * Author:
 # *     Appana Durga Kedareswara rao <appana.durga.kedareswara.rao@amd.com>
@@ -24,6 +24,7 @@ import common_utils as utils
 from domain_access import update_mem_node
 from openamp_xlnx import xlnx_openamp_keep_node
 from xlnx_rpu_linker import linker_referenced_nodes
+from linux_binding_prune_xlnx import prune_linux_dt_bindings
 
 
 def _node_must_be_preserved(node, tree, linker_nodes=None):
@@ -414,18 +415,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
 
     if linux_dt:
         binding_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "yaml_bindings")
-        yaml_prune_list = utils.find_files("*.yaml", binding_dir)
-        driver_compatlist = []
-        # Shouldn't delete properties
-        driver_proplist = ["#interrupt-cells", "#address-cells", "#size-cells", "device_type"]
-        ipi_schema = None
-        for yaml_prune in yaml_prune_list:
-            yaml_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), yaml_prune)
-            schema = utils.load_yaml(yaml_file)
-            driver_compatlist = driver_compatlist + compat_list(schema)
-            driver_proplist = driver_proplist + schema.get('required',[])
-            if "xlnx,zynqmp-ipi-mailbox.yaml" in yaml_prune:
-                ipi_schema = schema
 
     mapped_children_nodes = []
     # Read before the walk: the prune deletes nodes as it goes, so the
@@ -443,6 +432,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 if 'xlnx,is-hierarchy' in node.__props__ and 'tcm' not in node.name:
                     sdt.tree.delete(node)
             elif node.name == "rpu-bus":
+                sdt.tree.delete(node)
+            elif "indirect-bus" in node.propval('compatible', list):
                 sdt.tree.delete(node)
         if node not in mapped_nodelist:
             if node.propval('device_type') != ['']:
@@ -479,38 +470,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     continue
                 else:
                     sdt.tree.delete(node)
-        elif node.propval('compatible') != [''] and linux_dt:
-            is_prune_node = [compat for compat in driver_compatlist if compat in node.propval('compatible', list)]
-            delete_child_nodes = False
-            if 'xlnx,usp-rf-data-converter-2.6' in node.propval('compatible'):
-                delete_child_nodes = True
-            if is_prune_node:
-                if linux_dt and "qdma" in node.label:
-                    mode = node.propval('xlnx,device_port_type')
-                delete_unused_props( node, driver_proplist, delete_child_nodes)
-
-                # Prune IPI child node properties according to the YAML schema
-                if linux_dt and ipi_schema:
-                    ipi_parent_compat = ipi_schema.get("properties", {}).get("compatible", {}).get("enum", [])
-                    pattern_props = ipi_schema.get("patternProperties", {})
-                    # Only process if this node is an IPI parent node
-                    if any(c in ipi_parent_compat for c in node.propval('compatible', list)):
-                        for pattern, child_schema in pattern_props.items():
-                            # Get the required property list for IPI child nodes from YAML
-                            ipi_child_required = child_schema.get("required", [])
-                            # Get the list of valid child compatibles from YAML (if present)
-                            child_compat_enum = child_schema.get("properties", {}).get("compatible", {}).get("enum", [])
-                            for child in node.subnodes():
-                                child_compat = child.propval('compatible', list)
-                                # If YAML lists child compatibles, match them; else, prune all children
-                                if not child_compat_enum or any(c in child_compat_enum for c in child_compat):
-                                    delete_unused_props(child, ipi_child_required, False)
-                            break  # Only process the first pattern (as in the YAML)
-
-                if linux_dt and "qdma" in node.label:
-                    if mode == ['PCI_Express_Endpoint_device']:
-                        if "okay" in node.propval('status', list)[0]:
-                            node.propval('status', list)[0] = "disabled"
 
     # For MicroBlaze/MicroBlaze RISC-V: remap PS peripheral interrupts to AXI INTC.
     # PS peripherals like sysmon have GIC-format interrupts (3-cell) but on MicroBlaze
@@ -643,6 +602,6 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                         node + LopperProp("interrupts-extended = <&cpu0_intc 9>")
                         break
 
-            delete_unused_props( sdt.tree[match_cpunode] , driver_proplist, False)
+        prune_linux_dt_bindings(sdt.tree, binding_dir)
 
     return True
