@@ -26,16 +26,26 @@ from openamp_xlnx import xlnx_openamp_keep_node
 from xlnx_rpu_linker import linker_referenced_nodes
 
 
-def _node_must_be_preserved(node, tree):
+def _node_must_be_preserved(node, tree, linker_nodes=None):
     """Return True when a node must survive domain prune.
 
     Keeps nodes already referenced from /chosen (standard DT), explicit
     Zephyr memory-region nodes, and the memories a domain linker block
     places sections in, which baremetallinker_xlnx resolves and checks.
+
+    Args:
+        node (LopperNode): Node being considered for deletion.
+        tree (LopperTree): Tree being pruned.
+        linker_nodes (set[str]): Paths the domain linker blocks reference,
+            from linker_referenced_nodes(). Read once before the prune and
+            passed in: the prune deletes as it walks, so resolving the
+            references again part way through sees fewer of them.
     """
     if "zephyr,memory-region" in node.propval("compatible", list):
         return True
-    if node.abs_path in linker_referenced_nodes(tree):
+    if linker_nodes is None:
+        linker_nodes = linker_referenced_nodes(tree)
+    if node.abs_path in linker_nodes:
         return True
     try:
         chosen = tree['/chosen']
@@ -418,6 +428,9 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                 ipi_schema = schema
 
     mapped_children_nodes = []
+    # Read before the walk: the prune deletes nodes as it goes, so the
+    # references resolve against a tree that is still whole.
+    linker_nodes = linker_referenced_nodes(sdt.tree)
     for node in root_sub_nodes:
         if linux_dt and node.name == "misc_props":
             sdt.tree.delete(node)
@@ -451,7 +464,7 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     mapped_children_nodes.append(node)
                     continue
                 elif (xlnx_openamp_keep_node(linux_dt, False, node, sdt.tree) or
-                      _node_must_be_preserved(node, sdt.tree)):
+                      _node_must_be_preserved(node, sdt.tree, linker_nodes)):
                     continue
                 # sdtgen can merge contiguous R5 TCM GLOBAL windows into one
                 # address-map entry (e.g. psv_r5_0_atcm_global size 0x40000), so
