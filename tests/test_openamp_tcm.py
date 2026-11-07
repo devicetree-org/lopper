@@ -142,3 +142,89 @@ def test_linux_memory_region_keeps_ddr_record_first(cpu_lookup):
 
     assert [tree.pnode(p).label for p in core.propval("memory-region")] == [
         "rproc0", "vdev0buffer", "vdev0vring0", "vdev0vring1"]
+
+
+# An R5 remote of a remoteproc relation must list its core's ATCM: the R5
+# vector table is at 0x0 in the ATCM, and Linux remoteproc loads only the
+# memory the relation lists.
+
+@pytest.mark.parametrize("labels, core, missing", [
+    (["psu_r5_0_atcm_global", "rproc0"], 0, False),
+    (["psu_r5_0_atcm_global", "psu_r5_0_btcm_global"], 0, False),
+    # A bank at its core-local address, named for its core.
+    (["psu_r5_0_atcm", "rproc0"], 0, False),
+    (["rproc0"], 0, True),
+    (["psu_r5_0_btcm_global", "rproc0"], 0, True),
+    # Another core's ATCM, and core 1's ATCM seen as a lockstep bank.
+    (["psu_r5_1_atcm_global", "rproc0"], 0, True),
+    (["psu_r5_0_atcm_lockstep", "rproc0"], 0, True),
+    (["psu_r5_1_atcm_global", "rproc0"], 1, False),
+    # Core unknown: any core's ATCM.
+    (["psu_r5_1_atcm_global", "rproc0"], None, False),
+])
+def test_r5_atcm_missing(labels, core, missing):
+    sdt, _ = _openamp_tree(labels)
+    nodes = [sdt.tree.lnodes(label)[0] for label in labels]
+
+    assert openamp_xlnx.xlnx_openamp_r5_atcm_missing(
+        sdt.tree, core, nodes) is missing
+
+
+def _rpmsg_remote_tree(elfload_labels, libmetal=False):
+    """_openamp_tree with the remote's RPMsg relation to its host."""
+    sdt, cpu = _openamp_tree(elfload_labels, libmetal)
+    tree = sdt.tree
+    tree["/reserved-memory"]["#address-cells"] = [2]
+    tree["/reserved-memory"]["#size-cells"] = [2]
+    if not libmetal:
+        group = "/domains/R5_0/domain-to-domain/rpmsg-relation"
+        _node(tree, "/domains/R5_0/domain-to-domain")
+        _node(tree, group, {"compatible": ["openamp,rpmsg-v1"]})
+        _node(tree, f"{group}/relation0", {
+            "host": [tree["/domains/APU_Linux"].phandle_or_create()]})
+    tree.sync()
+    return sdt, cpu
+
+
+def test_r5_remoteproc_ddr_only_elfload_fails(cpu_lookup, caplog):
+    """The RPU linker step stops before writing a DDR linker script."""
+    sdt, _ = _rpmsg_remote_tree(["rproc0"])
+
+    assert openamp_xlnx.xlnx_openamp_get_ddr_elf_load(
+        "psu_cortexr5_0", sdt) is False
+    assert ("Linux remoteproc loads R5 core 0, so elfload must list the "
+            "core's ATCM" in caplog.text)
+
+
+def test_r5_remoteproc_with_atcm_keeps_the_ddr_region(cpu_lookup):
+    sdt, _ = _rpmsg_remote_tree(["psu_r5_0_atcm_global", "rproc0"])
+
+    assert openamp_xlnx.xlnx_openamp_get_ddr_elf_load(
+        "psu_cortexr5_0", sdt) == (0x9800000, 0x1000, "RSC_TABLE")
+
+
+def test_r5_libmetal_ddr_only_elfload_is_valid(cpu_lookup):
+    """A libmetal remote is not loaded by Linux remoteproc."""
+    sdt, _ = _rpmsg_remote_tree(["rproc0"], libmetal=True)
+
+    assert openamp_xlnx.xlnx_openamp_get_ddr_elf_load(
+        "psu_cortexr5_0", sdt) == (0x9800000, 0x1000, "LIBMETAL_DDR")
+
+
+def test_r5_remoteproc_node_needs_the_atcm(monkeypatch, caplog):
+    """The Linux step does not build a remoteproc node that cannot load
+    the R5 vector table."""
+    sdt, _ = _openamp_tree(["rproc0"])
+    monkeypatch.setattr(openamp_xlnx, "get_platform",
+                        lambda tree, verbose=0: openamp_xlnx.SOC_TYPE.ZYNQMP)
+    remote = sdt.tree["/domains/R5_0"]
+    remote["rpu_core_num"] = [0]
+    remote["cpu_config_str"] = ["split"]
+    info = {"remote_node": remote, "cpu_config": openamp_xlnx.CPU_CONFIG.RPU_SPLIT,
+            "rpu_core_pd_prop": LopperProp(name="power-domains",
+                                           value=[0xA5, 0x7])}
+
+    assert openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+        sdt.tree, info, [sdt.tree.lnodes("rproc0")[0]]) is False
+    assert ("Linux remoteproc loads R5 core 0, so elfload must list the "
+            "core's ATCM" in caplog.text)

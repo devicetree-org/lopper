@@ -46,7 +46,11 @@ from lopper_lib import (
 )
 from xlnx_rpu_tcm import (
     TCM_LOCAL_ORIGINS,
+    rpu_cluster_tcm_bases,
     rpu_cluster_tcm_base,
+    rpu_core_number,
+    rpu_cpu_type,
+    rpu_tcm_bank_owner,
     tcm_bank_type,
 )
 import openamp_xlnx_timers
@@ -564,6 +568,12 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
 
             elfload_nodes = [ sdt.tree.pnode(i) for i in rel.propval("elfload") ]
             elfload_nodes = [ i for i in elfload_nodes if i is not None ]
+            if rpu_cpu_type(match_cpunode) == "cortexr5":
+                core = rpu_core_number(match_cpunode.parent, match_cpunode)
+                if xlnx_openamp_r5_atcm_missing(sdt.tree, core,
+                                                elfload_nodes):
+                    _r5_atcm_missing_error(rel.abs_path, core, elfload_nodes)
+                    return False
             relevant_elfload_nodes = [ i for i in elfload_nodes
                                        if 'mmio-sram' not in i.propval('compatible')
                                        and not _elfload_is_tcm(i) ]
@@ -598,6 +608,60 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
 def _elfload_is_tcm(node):
     """Return True when an elfload node is an RPU TCM bank."""
     return tcm_bank_type(node.name) is not None
+
+
+def xlnx_openamp_r5_atcm_missing(tree, core, elfload_nodes):
+    """Return True when an R5 remote's elfload lists no ATCM of its core.
+
+    Description:
+        The Cortex-R5 has no VBAR: its vector table is at 0x0, in the
+        ATCM, or at 0xffff0000 in OCM, and the RPU linker templates link
+        ``.vectors`` to the ATCM. Linux remoteproc loads only the memory
+        the remoteproc core node maps, which for TCM is the banks the
+        relation lists in ``elfload``. Firmware of an R5 remote whose
+        ``elfload`` has no ATCM of its core, such as a DDR carveout only,
+        builds but cannot be loaded.
+
+        The Cortex-R52 sets its vector base in VBAR and HVBAR, and a
+        libmetal remote or a plain application is not loaded by Linux
+        remoteproc, so neither needs this check.
+
+    Args:
+        tree (LopperTree): Tree that holds the TCM banks.
+        core (int | None): The remote's RPU core number; None when it is
+            not known, which accepts the ATCM of any core.
+        elfload_nodes (list[LopperNode]): Nodes of the relation's
+            ``elfload``.
+
+    Returns:
+        bool: True when no listed bank is an ATCM of the core. An ATCM
+        whose core the SDT does not tell is accepted; a ``*_lockstep``
+        bank is core 1's TCM and is not accepted.
+    """
+    # TODO: move this check to the OpenAMP relation DRC rules on the
+    # assembled tree when they land (pending-work/openamp-relation-drc).
+    bases = rpu_cluster_tcm_bases(tree, "cortexr5")
+    for node in elfload_nodes:
+        if tcm_bank_type(node.name) != "ATCM":
+            continue
+        owner = rpu_tcm_bank_owner(node, "cortexr5", bases)
+        if owner is None:
+            return False
+        owner_core, lockstep_bank = owner
+        if not lockstep_bank and (core is None or owner_core == core):
+            return False
+    return True
+
+
+def _r5_atcm_missing_error(where, core, elfload_nodes):
+    """Report an R5 remoteproc elfload without the core's ATCM."""
+    core_text = f"R5 core {core}" if core is not None else "the R5 core"
+    listed = ", ".join(getattr(n, "abs_path", n.name)
+                       for n in elfload_nodes) or "nothing"
+    _error(f"openamp_xlnx: {where}: Linux remoteproc loads {core_text}, so "
+           "elfload must list the core's ATCM: the R5 vector table is at "
+           "0x0 in the ATCM, and Linux loads only the memory the relation "
+           f"lists; elfload lists {listed}")
 
 
 def xlnx_openamp_get_elf_load_nodes(sdt, cpu_node):
@@ -1592,6 +1656,12 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
     if lockstep and core_index != 0:
         _error(f"openamp_xlnx: RPU core {int(rpu_core)} is core {core_index} "
                "of its cluster; a cluster in lockstep runs on its core 0")
+        return False
+
+    if family.cpu_type == "cortexr5" and xlnx_openamp_r5_atcm_missing(
+            tree, int(rpu_core), channel_elfload_nodes):
+        _r5_atcm_missing_error(getattr(remote_node, "abs_path", remote_node),
+                               int(rpu_core), channel_elfload_nodes)
         return False
 
     cluster_ranges_val = []
