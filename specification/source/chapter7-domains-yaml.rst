@@ -737,6 +737,10 @@ rejects a placement when:
   OpenAMP or libmetal relation lists in ``carveouts``, or a shared OpenAMP
   ``/reserved-memory`` node such as a vring or vdev buffer.
 
+The assist does not check that the sections fit in their regions.  A
+placement that does not fit fails when the application is linked, with
+the linker's region overflow error.
+
 Example:
 
 .. code-block:: YAML
@@ -796,6 +800,66 @@ standalone ``boot.S`` loads from ``_TCM_A_REGION``, ``_TCM_B_REGION`` and
 CTCM gets its core-local base with the enable bit set; the ATCM word and
 unused banks are 0, which leaves them as boot firmware configured them.
 ``TCM_REGIONS`` holds the linker script lines that define these words.
+
+ELF load in TCM only
+~~~~~~~~~~~~~~~~~~~~
+
+An OpenAMP ``remoteproc`` relation or a ``libmetal`` relation may list only
+TCM banks of the remote core in its ``elfload``.  When the assist runs in
+OpenAMP mode and no ``linker`` mapping selects the core, it then places the
+sections in the listed banks, with the same checks and core-local
+addresses as a ``linker`` mapping:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Sections
+     - Bank
+   * - ``vector_table``, ``text``
+     - ATCM
+   * - ``rodata``, ``data``, ``bss``, ``resource_table``
+     - BTCM, else ATCM
+   * - ``heap``, ``stack``
+     - CTCM (R52), else BTCM, else ATCM
+
+The ATCM shall be listed.  Of several banks of one type, the first listed
+is used, and a cluster in lockstep is rejected.  Read-only data goes
+with the data, unlike the ``tcm`` preset, so that the 64 KB ATCM holds only
+the vectors and code.
+
+There is then no DDR ELF-load carveout: the assist writes neither
+``RSC_TABLE`` nor ``LIBMETAL_DDR``, and no DDR ``reserved-memory`` node is
+needed for the firmware.  An ``elfload`` that also lists a DDR carveout
+keeps the DDR placement; its first DDR entry is the ELF-load carveout, and
+its TCM banks are not used as DDR.  A ``linker`` mapping takes precedence
+over the ``elfload`` banks.
+
+Whenever the sections come from a ``linker`` mapping or a TCM-only
+``elfload``, the assist also writes ``RPU_SECTION_PLACEMENT`` as ``ON``.
+
+Example, libmetal demo on ZynqMP RPU 1:
+
+.. code-block:: YAML
+
+   R5_1_BAREMETAL:
+     os,type: baremetal
+     cpus:
+       - cluster: cpus_r5_1
+         cpumask: 0x1
+         mode: { secure: true, el: 0x3 }
+     sram: [ { start: 0xffe90000, size: 0x10000 },
+             { start: 0xffeb0000, size: 0x10000 } ]
+     domain-to-domain:
+       compatible: openamp,domain-to-domain-v1
+       libmetal-relation:
+         compatible: libmetal,ipc-v1
+         relation0:
+           host: APU_Linux
+           carveouts: [ libmetal_uio_desc0@99c8000, libmetal_uio_desc1@99cc000,
+                        libmetal_uio_data@99d0000 ]
+           mbox: ipi_2_to_ipi_8
+           timer: ttc2
+           elfload: [ psu_r5_1_atcm_global, psu_r5_1_btcm_global ]
 
 
 Flags
