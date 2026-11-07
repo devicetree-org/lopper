@@ -454,8 +454,9 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
         sdt (LopperSDT): Processed device tree structure.
 
     Returns:
-        tuple[int, int] | bool: Tuple of (base, size) when a carveout exists, or
-        False if the carveout cannot be resolved.
+        tuple[int, int, str] | None | bool: Tuple of (base, size, CMake
+        variable name) when a carveout exists, None when a libmetal remote
+        loads into TCM only, or False if the carveout cannot be resolved.
 
     Algorithm:
         Matches the machine to its CPU node, locates the associated RPMsg relation,
@@ -517,9 +518,21 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
                 _error(f"openamp_xlnx: {rel.abs_path}: a libmetal remote "
                        "needs an elfload property")
                 return False
-            elfload_node = sdt.tree.pnode(elfload[0])
+            elfload_nodes = [sdt.tree.pnode(i) if isinstance(i, int)
+                             else None for i in elfload]
+            if None in elfload_nodes:
+                _error(f"openamp_xlnx: {rel.abs_path}: elfload entry is "
+                       "not a node")
+                return False
+            # TCM banks are placed by the TCM bank model, not as DDR.
+            ddr_nodes = [n for n in elfload_nodes
+                         if not _elfload_is_tcm(n)]
+            if not ddr_nodes:
+                _info(f"openamp_xlnx: {rel.abs_path}: elfload is in TCM "
+                      "only; no DDR ELF-load carveout")
+                return None
             try:
-                base, size = _required_reg_region(elfload_node)
+                base, size = _required_reg_region(ddr_nodes[0])
             except ValueError as exc:
                 _error(f"openamp_xlnx: {exc}")
                 return False
@@ -545,8 +558,19 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
                 return False
 
             elfload_nodes = [ sdt.tree.pnode(i) for i in rel.propval("elfload") ]
-            relevant_elfload_nodes = [ i for i in elfload_nodes if i is not None and 'mmio-sram' not in i.propval('compatible')]
+            elfload_nodes = [ i for i in elfload_nodes if i is not None ]
+            relevant_elfload_nodes = [ i for i in elfload_nodes
+                                       if 'mmio-sram' not in i.propval('compatible')
+                                       and not _elfload_is_tcm(i) ]
             if not relevant_elfload_nodes:
+                if elfload_nodes and all(_elfload_is_tcm(i) for i in elfload_nodes):
+                    # The firmware loads into TCM only. Its sections are
+                    # placed in the TCM banks, and there is no DDR
+                    # carveout for the linker or the resource table
+                    # metadata.
+                    _info(f"openamp_xlnx: {rel.abs_path}: elfload lists "
+                          "TCM banks only; no DDR ELF-load region")
+                    return None
                 _error(f"openamp_xlnx: {rel.abs_path}: a DDR linker script "
                        "needs at least one DDR elfload region")
                 return False
@@ -564,6 +588,85 @@ def xlnx_openamp_get_ddr_elf_load(machine, sdt):
     _error("openamp_xlnx: no remoteproc relation gives an elfload region "
            "for processor '%s'" % machine)
     return False
+
+
+def _elfload_is_tcm(node):
+    """Return True when an elfload node is an RPU TCM bank."""
+    return tcm_bank_type(node.name) is not None
+
+
+def xlnx_openamp_get_elf_load_nodes(sdt, cpu_node):
+    """Return the elfload nodes of the relation that loads a CPU's firmware.
+
+    Args:
+        sdt (LopperSDT): Assembled system device tree.
+        cpu_node (LopperNode): Target CPU node.
+
+    Returns:
+        list[LopperNode]: Nodes of the first matching relation's
+        ``elfload``, in order; empty when no relation loads the CPU.
+
+    Algorithm:
+        Looks at relations by compatible, so it works on any assembled
+        tree: an ``openamp,remoteproc-v2`` relation whose ``remote``
+        domain selects the CPU, or a ``libmetal,ipc-v1`` relation in a
+        domain that selects the CPU and has an ``elfload``.
+    """
+    tree = sdt.tree
+    try:
+        domains = tree["/domains"]
+    except Exception:
+        return []
+    for group in domains.subnodes():
+        compat = group.propval("compatible", list)
+        if compat == [REMOTEPROC_D_TO_D_v2]:
+            for rel in group.subnodes(children_only=True):
+                remote = rel.propval("remote", list)
+                target = (tree.pnode(remote[0])
+                          if remote and isinstance(remote[0], int) else None)
+                if target is None or not _openamp_domain_selects_cpu(
+                        tree, target, cpu_node):
+                    continue
+                return [n for n in (tree.pnode(p) for p in
+                                    rel.propval("elfload", list)
+                                    if isinstance(p, int))
+                        if n is not None]
+        elif compat == [LIBMETAL_D_TO_D]:
+            domain = group.parent.parent if group.parent else None
+            if domain is None or domain.propval("cpus") == [''] or \
+                    not _openamp_domain_selects_cpu(tree, domain, cpu_node):
+                continue
+            for rel in group.subnodes(children_only=True):
+                nodes = [n for n in (tree.pnode(p) for p in
+                                     rel.propval("elfload", list)
+                                     if isinstance(p, int))
+                         if n is not None]
+                if nodes:
+                    return nodes
+    return []
+
+
+def xlnx_openamp_get_tcm_elf_load_nodes(machine, sdt):
+    """Return the TCM banks a CPU's firmware is loaded into, when the
+    OpenAMP or libmetal relation that loads it lists TCM banks only.
+
+    Args:
+        machine (str): Target processor, as given to the assist.
+        sdt (LopperSDT): Assembled system device tree.
+
+    Returns:
+        list[LopperNode]: TCM bank nodes of the ELF load. Empty when no
+        relation loads the CPU or when the ELF load includes non-TCM
+        memory: a DDR carveout keeps today's DDR placement unless the
+        domain has a linker block.
+    """
+    cpu_node = get_cpu_node(sdt, {'args': [machine]})
+    if not cpu_node:
+        return []
+    nodes = xlnx_openamp_get_elf_load_nodes(sdt, cpu_node)
+    if not nodes or not all(_elfload_is_tcm(n) for n in nodes):
+        return []
+    return nodes
 
 def xlnx_openamp_uses_direct_ipm(machine):
     """Return True for ZynqMP R5 targets using the legacy direct-IPM driver."""
