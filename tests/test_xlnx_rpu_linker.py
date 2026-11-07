@@ -8,6 +8,7 @@ import pytest
 from lopper.assists.xlnx_rpu_linker import (
     BAREMETAL_LINKER_SECTIONS,
     default_section_regions,
+    elfload_tcm_sections,
     find_linker_domain,
     r52_tcm_regions_snippet,
     resolve_placement,
@@ -352,3 +353,92 @@ def test_yaml_expansion_still_rejects_linux_domains():
 def test_every_section_has_a_cmake_variable():
     sections = {name: name for name in BAREMETAL_LINKER_SECTIONS}
     assert len(section_cmake_variables(sections)) == 8
+
+
+def _nodes(tree, *labels):
+    return [tree.lnodes(label)[0] for label in labels]
+
+
+def test_tcm_elfload_places_r5_core_1_in_its_local_banks():
+    """A libmetal or remoteproc ELF load in core 1's global TCM banks links
+    at the core-local addresses, using both banks."""
+    tree, cpus = _r5_tree()
+    domain = _domain(tree, cpus[1], SPLIT)
+    sections = elfload_tcm_sections(_nodes(
+        tree, "psu_r5_1_atcm_global", "psu_r5_1_btcm_global"), cpus[1])
+
+    placement = resolve_placement(
+        tree, domain, cpus[1], "psu_cortexr5_1", R5_DDR, sections=sections)
+
+    assert dict(placement.cmake_variables()) == {
+        "VECTORS": "psu_r5_0_atcm_MEM_0", "CODE": "psu_r5_0_atcm_MEM_0",
+        "RODATA": "psu_r5_0_btcm_MEM_0", "DATA": "psu_r5_0_btcm_MEM_0",
+        "BSS": "psu_r5_0_btcm_MEM_0", "HEAP": "psu_r5_0_btcm_MEM_0",
+        "STACK": "psu_r5_0_btcm_MEM_0",
+        "RSC_TABLE_REGION": "psu_r5_0_btcm_MEM_0",
+    }
+    assert placement.memory == {
+        "psu_r5_0_atcm_MEM_0": (0x0, 0x10000),
+        "psu_r5_0_btcm_MEM_0": (0x20000, 0x10000),
+    }
+
+
+def test_tcm_elfload_with_atcm_only_keeps_everything_in_atcm():
+    tree, cpus = _r5_tree()
+    sections = elfload_tcm_sections(
+        _nodes(tree, "psu_r5_0_atcm_global"), cpus[0])
+
+    assert {node.label for node in sections.values()} == {
+        "psu_r5_0_atcm_global"}
+
+
+def test_tcm_elfload_in_lockstep_is_rejected():
+    tree, cpus = _r5_tree()
+    domain = _domain(tree, cpus[0], LOCKSTEP)
+    sections = elfload_tcm_sections(_nodes(
+        tree, "psu_r5_0_atcm_global", "psu_r5_0_btcm_global"), cpus[0])
+
+    with pytest.raises(LayoutError, match="RPU cluster in lockstep"):
+        resolve_placement(tree, domain, cpus[0], "psu_cortexr5_0", R5_DDR,
+                          sections=sections)
+
+
+def test_tcm_elfload_r52_uses_ctcm_for_heap_and_stack():
+    tree, cpus = _r52_tree()
+    domain = _domain(tree, cpus[1], SPLIT)
+    sections = elfload_tcm_sections(_nodes(
+        tree, "r52_1a_atcm_global", "r52_1a_btcm_global",
+        "r52_1a_ctcm_global"), cpus[1])
+
+    placement = resolve_placement(
+        tree, domain, cpus[1], "cortexr52_1", R52_DDR, sections=sections)
+
+    assert placement.sections["heap"] == "r52_ctcm"
+    assert placement.sections["data"] == "r52_btcm"
+    assert placement.tcm_regions == {"A": 0, "B": 0x10001, "C": 0x18001}
+
+
+def test_tcm_elfload_banks_of_another_core_are_rejected():
+    tree, cpus = _r5_tree()
+    domain = _domain(tree, cpus[1], SPLIT)
+    sections = elfload_tcm_sections(_nodes(
+        tree, "psu_r5_0_atcm_global", "psu_r5_0_btcm_global"), cpus[1])
+
+    with pytest.raises(LayoutError, match="belongs to RPU core 0"):
+        resolve_placement(tree, domain, cpus[1], "psu_cortexr5_1", R5_DDR,
+                          sections=sections)
+
+
+def test_tcm_elfload_needs_the_atcm():
+    tree, cpus = _r5_tree()
+
+    with pytest.raises(LayoutError, match="must include the ATCM"):
+        elfload_tcm_sections(_nodes(tree, "psu_r5_1_btcm_global"), cpus[1])
+
+
+def test_find_linker_domain_without_a_linker_block():
+    tree, cpus = _r5_tree()
+    domain = _domain(tree, cpus[1], SPLIT)
+
+    assert find_linker_domain(tree, cpus[1]) is None
+    assert find_linker_domain(tree, cpus[1], linker_block=False) is domain
