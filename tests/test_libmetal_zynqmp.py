@@ -202,3 +202,47 @@ def test_zynqmp_libmetal_linux_and_baremetal_outputs(
             assert diagnostic in result.stderr
             assert 'timer@ff130000' in result.stderr
             assert not invalid_cmake.exists()
+
+
+def _baremetal_linker_cmake(tmp_path, yaml_text):
+    """Expand the YAML and run baremetallinker_xlnx in OpenAMP mode on
+    the assembled tree, as pyesw does for the libmetal demo."""
+    domain_yaml = tmp_path / "libmetal.yaml"
+    domain_yaml.write_text(yaml_text)
+    expanded = tmp_path / "expanded.dts"
+    _run(["-f", "--permissive", "--enhanced", "--auto",
+          "-i", domain_yaml, SDT, expanded])
+    src = tmp_path / "libmetal_demo" / "src"
+    (src / "data").mkdir(parents=True)
+    _run(["-f", "-O", tmp_path, expanded, "--", "baremetallinker_xlnx",
+          "psu_cortexr5_1", src, "openamp"])
+    cmake = tmp_path / "Libmetal_demoExample.cmake"
+    return _cmake_values(cmake), cmake.read_text()
+
+
+def test_zynqmp_libmetal_ddr_elfload_keeps_ddr_placement(tmp_path):
+    values, _ = _baremetal_linker_cmake(tmp_path, LIBMETAL_YAML.read_text())
+
+    assert values["LIBMETAL_DDR"] == "0x9968000"
+    assert values["CODE"] == values["DATA"] == "psu_r5_ddr_0_memory_0"
+    assert values["VECTORS"] == "psu_r5_0_atcm_MEM_0"
+    assert "RPU_SECTION_PLACEMENT" not in values
+
+
+def test_zynqmp_libmetal_tcm_elfload_places_sections_in_tcm(tmp_path):
+    """An elfload in R5 1's ATCM and BTCM, with the ATCM first, links the
+    demo at the core-local TCM addresses and needs no DDR carveout."""
+    yaml_text = LIBMETAL_YAML.read_text().replace(
+        "elfload: [libmetal_elf@9968000]",
+        "elfload: [psu_r5_1_atcm_global, psu_r5_1_btcm_global]")
+    assert "psu_r5_1_btcm_global" in yaml_text
+
+    values, text = _baremetal_linker_cmake(tmp_path, yaml_text)
+
+    assert "LIBMETAL_DDR" not in values
+    assert values["VECTORS"] == values["CODE"] == "psu_r5_0_atcm_MEM_0"
+    for name in ("RODATA", "DATA", "BSS", "HEAP", "STACK"):
+        assert values[name] == "psu_r5_0_btcm_MEM_0"
+    assert "psu_r5_0_atcm_MEM_0 : ORIGIN = 0x0, LENGTH = 0x10000" in text
+    assert "psu_r5_0_btcm_MEM_0 : ORIGIN = 0x20000, LENGTH = 0x10000" in text
+    assert "0xffe90000" not in text
