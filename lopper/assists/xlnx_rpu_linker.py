@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 
 from lopper.audit.memory import MemoryRegion, MemoryRegionType
 from lopper.assists.sdt_domains import _carveout_owner
+from lopper.tree import LopperNode
 
 try:
     from .zephyr_memory import (
@@ -209,9 +210,12 @@ def linker_referenced_nodes(tree):
     return paths
 
 
-def find_linker_domain(tree, cpu_node):
-    """Return the baremetal or FreeRTOS domain with linker metadata whose
-    cpus select ``cpu_node``, or None.
+def find_linker_domain(tree, cpu_node, linker_block=True):
+    """Return the baremetal or FreeRTOS domain whose cpus select
+    ``cpu_node``, or None.
+
+    Args:
+        linker_block (bool): Only consider domains with linker metadata.
 
     Raises:
         LayoutError: If more than one such domain selects the CPU.
@@ -224,16 +228,71 @@ def find_linker_domain(tree, cpu_node):
     for domain in domains.subnodes():
         if linker_os_type(domain) not in LINKER_OS_TYPES:
             continue
-        if not has_linker_metadata(domain):
+        if linker_block and not has_linker_metadata(domain):
             continue
         selection = resolve_domain_cpus(tree, domain)
         if any(cpu.abs_path == cpu_node.abs_path for cpu in selection.cpus):
             matches.append(domain)
     if len(matches) > 1:
         raise LayoutError(
-            f"{cpu_node.abs_path}: more than one domain with a linker block "
+            f"{cpu_node.abs_path}: more than one "
+            f"{'domain with a linker block' if linker_block else 'domain'} "
             "selects this CPU: " + ", ".join(d.abs_path for d in matches))
     return matches[0] if matches else None
+
+
+def elfload_tcm_sections(tcm_nodes, cpu_node):
+    """Return the section placement implied by an ELF load in TCM only.
+
+    Description:
+        An OpenAMP or libmetal relation whose ``elfload`` lists only TCM
+        banks loads the whole firmware into those banks: vectors and text
+        in the ATCM; read-only data, data, BSS and the resource table in
+        the BTCM, else the ATCM; heap and stack in the CTCM on R52, else
+        the BTCM, else the ATCM. Of several banks of one type, the first
+        listed is used.
+
+        Unlike the ``tcm`` layout, the read-only data goes with the data:
+        a 64 KB ATCM does not hold the libmetal demo's vectors, text and
+        read-only data together on R52, and is nearly full on R5, while
+        the BTCM has room.
+
+    Args:
+        tcm_nodes (list[LopperNode]): TCM bank nodes of the ELF load.
+        cpu_node (LopperNode): Target CPU node.
+
+    Returns:
+        dict[str, LopperNode]: Bank node of each section, for the
+        ``sections`` argument of :func:`resolve_placement`.
+
+    Raises:
+        LayoutError: If the banks include no ATCM, which holds the vectors.
+    """
+    banks = {}
+    for node in tcm_nodes:
+        bank = tcm_bank_type(node.name)
+        if bank is None:
+            raise LayoutError(f"{node.abs_path}: not a TCM bank")
+        banks.setdefault(bank, node)
+    if "ATCM" not in banks:
+        raise LayoutError(
+            f"{cpu_node.abs_path}: an ELF load in TCM only must include the "
+            "ATCM, which holds the vector table; it lists " +
+            ", ".join(node.abs_path for node in tcm_nodes))
+
+    def first(*candidates):
+        return next(banks[bank] for bank in candidates if bank in banks)
+
+    heap_stack = (("CTCM", "BTCM", "ATCM")
+                  if rpu_cpu_type(cpu_node) == "cortexr52"
+                  else ("BTCM", "ATCM"))
+    data = first("BTCM", "ATCM")
+    return {
+        "vector_table": banks["ATCM"], "text": banks["ATCM"],
+        "rodata": data, "data": data, "bss": data,
+        "heap": first(*heap_stack), "stack": first(*heap_stack),
+        "resource_table": data,
+    }
 
 
 def domain_lockstep(domain):
@@ -337,15 +396,16 @@ def _layout_targets(domain, cpu_type):
 
 
 def resolve_placement(tree, domain, cpu_node, machine, ddr_region,
-                      region_for_node=None):
+                      region_for_node=None, sections=None):
     """Resolve and check a domain's section placement.
 
     Description:
         Starts from the ``layout`` preset (``ddr`` when there is none),
-        replaces it with the explicit sections, and checks that the
-        cluster is in split mode, that the vector table is in the ATCM,
-        that every TCM bank belongs to the core, and that no region a
-        section uses overlaps an IPC carveout in ``/reserved-memory``.
+        replaces it with the explicit sections, from ``sections`` or else
+        from the domain, and checks that the cluster is in split mode, that
+        the vector table is in the ATCM, that every TCM bank belongs to the
+        core, and that no region a section uses overlaps an IPC carveout in
+        ``/reserved-memory``.
 
     Args:
         tree (LopperTree): Assembled system device tree.
@@ -358,6 +418,9 @@ def resolve_placement(tree, domain, cpu_node, machine, ddr_region,
         region_for_node (Callable): Maps a non-TCM memory node to a
             (linker name, start, size) tuple, or None when the linker has
             no region for it.
+        sections (dict): Section name to memory node or reference, or
+            ``ddr``, in place of the domain's ``linker-section-*``
+            properties, such as :func:`elfload_tcm_sections` returns.
 
     Returns:
         Placement: Region of each section, the core-local TCM MEMORY
@@ -408,14 +471,18 @@ def resolve_placement(tree, domain, cpu_node, machine, ddr_region,
     preset = _layout_targets(domain, cpu_type)
     targets = {}
     for name in BAREMETAL_LINKER_SECTIONS:
-        reference = _section_reference(domain, name)
+        if sections is not None:
+            reference = sections.get(name)
+        else:
+            reference = _section_reference(domain, name)
         if reference is None:
             targets[name] = (preset[name], None)
             continue
-        if reference == DDR_REGION:
+        if isinstance(reference, str) and reference == DDR_REGION:
             targets[name] = (DDR_REGION, None)
             continue
-        node = resolve_memory_node(tree, reference)
+        node = (reference if isinstance(reference, LopperNode)
+                else resolve_memory_node(tree, reference))
         if listed is not None and node.abs_path not in listed_paths:
             raise LayoutError(
                 f"{domain.abs_path}: section '{name}' region "
