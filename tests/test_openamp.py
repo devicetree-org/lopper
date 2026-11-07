@@ -461,9 +461,17 @@ def test_openamp_enables_only_selected_linux_uio_timer(monkeypatch):
 
 def _construct_remoteproc_v2(monkeypatch, platform, channel_info, tcm,
                              rpu_core=0):
-    """Run remoteproc cluster construction and capture its outputs."""
+    """Run remoteproc cluster construction and capture its outputs.
+
+    The callers check the ranges of one TCM bank at a time, so the rule
+    that an R5 remote lists its ATCM is off here; tests in
+    test_openamp_tcm.py cover it.
+    """
     captured = {}
 
+    monkeypatch.setattr(
+        openamp_xlnx, "xlnx_openamp_r5_atcm_missing",
+        lambda tree, core, elfload_nodes: False)
     monkeypatch.setattr(
         openamp_xlnx, "determinte_rpu_core",
         lambda tree, cpu_config, remote_node: openamp_xlnx.RPU_CORE(rpu_core))
@@ -972,11 +980,11 @@ def test_remoteproc_v2_rejects_second_relation_for_core(monkeypatch, caplog):
     btcm = _tcm_node(tree, "psu_r5_1_btcm_global@ffeb0000", 0x10000, 18)
 
     # Two domains on RPU1, such as a baremetal and a Zephyr domain.
-    for index, tcm in enumerate((atcm, btcm)):
+    for index in range(2):
         info = {"remote_node": _rpu_remote(1)}
         assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
         result = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
-            tree, info, [tcm])
+            tree, info, [atcm, btcm])
         if index == 0:
             assert result
             ranges = tree["/remoteproc@ffe00000"].propval("ranges", list)

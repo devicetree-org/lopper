@@ -178,6 +178,15 @@ Lopper derives the Linux remoteproc node as follows:
 - ``power-domains`` are derived from the target core and the referenced
   TCM memories.
 
+An R5 remote (ZynqMP, Versal) shall list the ATCM of its own core in
+``elfload``.  The Cortex-R5 vector table is at 0x0 in the ATCM, and Linux
+remoteproc loads only the memory the remoteproc node maps, so the firmware
+of an R5 remote without its ATCM cannot be loaded.  Lopper rejects such a
+relation, in the RPU linker step and in the Linux step.  A ``*_lockstep``
+bank or the ATCM of another core does not count.  Cortex-R52 remotes set
+their vector base in VBAR and may list DDR carveouts only; libmetal
+remotes are not loaded by Linux remoteproc and are not affected.
+
 The binding-specific memory layout differs by platform:
 
 - ZynqMP and Versal R5F use ATCM and BTCM banks. In split mode each
