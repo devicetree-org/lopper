@@ -268,6 +268,14 @@ def elfload_tcm_sections(tcm_nodes, cpu_node):
     Raises:
         LayoutError: If the banks include no ATCM, which holds the vectors.
     """
+    # TODO: lockstep. resolve_placement() rejects a cluster in lockstep, so
+    # these banks are always one core's split-mode banks. When lockstep is
+    # supported, an R5 ELF load in lockstep lists core 0's banks and the
+    # *_lockstep banks (core 1's ATCM and BTCM, at core-local 0x10000 and
+    # 0x30000); "first listed of each type" would then ignore half of the
+    # TCM. Map each type to its combined 128 KB range instead, and keep
+    # every PT_LOAD of the firmware inside one 64 KB bank for Linux
+    # remoteproc. R52 lockstep keeps core 0's own banks, as here.
     banks = {}
     for node in tcm_nodes:
         bank = tcm_bank_type(node.name)
@@ -435,6 +443,18 @@ def resolve_placement(tree, domain, cpu_node, machine, ddr_region,
         raise LayoutError(
             f"{domain.abs_path}: linker placement supports Cortex-R5 and "
             f"Cortex-R52 RPU targets only, not '{machine}'")
+    # TODO: lockstep placement. Rejected, for a linker block and for an ELF
+    # load in TCM only, until the system device tree describes the lockstep
+    # TCM (SDT series "Describe RPU TCM and clusters for OpenAMP" v2, patch
+    # 10: the R5 lockstep banks in cluster core 0's address-map). Then:
+    # - R5: core 0 sees ATCM and BTCM as 128 KB each (0x0, 0x20000); link
+    #   against that view. Firmware that Linux remoteproc loads must have
+    #   no PT_LOAD crossing a 64 KB bank, because the driver adds one
+    #   carveout per bank, for example by splitting the segments after the
+    #   link. Avoid --enable-non-contiguous-regions for this: GNU ld 2.42
+    #   drops a section that fits nowhere instead of reporting an overflow.
+    # - R52: the cores do not combine TCM in lockstep; core 0 uses its own
+    #   banks, as in split mode.
     if domain_lockstep(domain):
         raise LayoutError(
             f"{domain.abs_path}: section placement does not support an "
