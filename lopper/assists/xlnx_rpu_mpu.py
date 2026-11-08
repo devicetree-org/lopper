@@ -647,7 +647,11 @@ def _argument_parser():
 
 def generate_mpu_config(root_node, sdt, options):
     """Generate the table, exiting nonzero on invalid supplied content."""
-    if not _generate_mpu_config(root_node, sdt, options):
+    try:
+        succeeded = _generate_mpu_config(root_node, sdt, options)
+    except Exception as exc:
+        _error(f"xlnx_rpu_mpu: {type(exc).__name__}: {exc}", also_exit=1)
+    if not succeeded:
         _error("xlnx_rpu_mpu: MPU generation failed; see the errors above",
                also_exit=1)
     return True
