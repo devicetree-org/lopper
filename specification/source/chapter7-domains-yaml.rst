@@ -412,7 +412,8 @@ uses for sleep and for the operating system tick:
    Tick timer: a timer node label and a counter.  Supported for
    ``os,type: freertos`` only.
 
-For any other ``os,type`` Lopper warns and ignores the property.
+An explicit timer property for an unsupported ``os,type`` or role is an
+error. In particular, ``xlnx,tick-timer`` is not supported for baremetal.
 
 .. code-block:: YAML
 

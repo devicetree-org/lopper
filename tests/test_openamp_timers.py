@@ -165,14 +165,21 @@ def test_libmetal_relation_timer_is_never_a_fallback(system):
     ("r5_1", timers.TICK),
     ("apu", timers.SLEEP),
 ])
-def test_unsupported_os_type_warns_and_ignores(system, domain, role):
+def test_unsupported_os_type_is_an_error(system, domain, role):
     node = getattr(system, domain)
     system.set_timer(node, role, system.ttc[3], 1)
 
     result = system.resolve(node)
 
-    assert not result.choices and not result.errors
-    assert "is not supported for os,type" in result.warnings[0]
+    assert not result.choices and not result.warnings
+    assert "is not supported for os,type" in result.errors[0]
+
+
+def test_unsupported_role_prevents_partial_output(system):
+    system.set_timer(system.r5_1, timers.SLEEP, system.ttc[3], 0)
+    system.set_timer(system.r5_1, timers.TICK, system.ttc[3], 1)
+    result = system.resolve(system.r5_1)
+    assert result.errors and not result.choices
 
 
 def test_unresolved_label_is_an_error(system):

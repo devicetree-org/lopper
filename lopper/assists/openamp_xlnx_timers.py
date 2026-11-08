@@ -307,9 +307,12 @@ def resolve_domain_timers(tree, domain, claims=None):
 
     for role, prop in explicit.items():
         if role not in supported:
-            result.warnings.append(
+            result.errors.append(
                 f"{domain.name}: {prop} is not supported for os,type "
-                f"'{os_type}'; ignoring it")
+                f"'{os_type}'")
+
+    if result.errors:
+        return result
 
     references = {}
     if explicit:
