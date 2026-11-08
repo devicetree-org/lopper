@@ -327,6 +327,15 @@ def test_invalid_invocation_exits_nonzero(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+def test_unexpected_input_error_is_fatal(monkeypatch):
+    def missing_map(*args):
+        raise KeyError("address-map")
+    monkeypatch.setattr(mpu, "_generate_mpu_config", missing_map)
+    with pytest.raises(SystemExit) as error:
+        mpu.generate_mpu_config(None, None, {})
+    assert error.value.code == 1
+
+
 def test_invalid_memory_policy_exits_without_output(tmp_path):
     tree, domain = _tree("ZynqMP", "r5")
     memory = _memory(tree, "buffer", 0x9800000, 0x10000,

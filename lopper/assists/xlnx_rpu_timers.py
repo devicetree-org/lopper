@@ -82,5 +82,5 @@ def generate_timer_config(root_node, sdt, options):
                 os.unlink(temporary)
         _info(f"xlnx_rpu_timers: wrote {output} for {domain.abs_path}")
         return True
-    except (timers.TimerError, OSError) as exc:
-        _error(f"xlnx_rpu_timers: {exc}", also_exit=1)
+    except Exception as exc:
+        _error(f"xlnx_rpu_timers: {type(exc).__name__}: {exc}", also_exit=1)
