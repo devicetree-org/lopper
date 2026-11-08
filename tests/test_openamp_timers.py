@@ -11,6 +11,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +19,7 @@ from lopper.assists import (
     openamp_xlnx,
     openamp_xlnx_timers as timers,
     yaml_to_dts_expansion,
+    xlnx_rpu_timers,
 )
 from lopper.tree import LopperNode, LopperTree
 
@@ -154,6 +156,67 @@ def test_explicit_properties_win_over_relation(system):
 def test_no_timer_named_selects_nothing(system):
     result = system.resolve(system.r5_0)
     assert not result.choices and not result.errors and not result.warnings
+
+
+@pytest.mark.parametrize("mode", ["explicit", "fallback", "absent", "invalid"])
+def test_standalone_timer_assist(system, tmp_path, mode):
+    domain = system.r5_0
+    if mode == "explicit":
+        system.set_timer(domain, timers.SLEEP, system.ttc[3], 0)
+    elif mode == "fallback":
+        system.relation(domain, "openamp,rpmsg-v1", [system.ttc[3]])
+    elif mode == "invalid":
+        system.set_timer(domain, timers.SLEEP, system.ttc[3], 3)
+    sdt = SimpleNamespace(tree=system.tree, outdir=str(tmp_path))
+    options = {"args": [f"--domain={domain.abs_path}"]}
+    if mode == "invalid":
+        with pytest.raises(SystemExit) as error:
+            xlnx_rpu_timers.generate_timer_config(None, sdt, options)
+        assert error.value.code == 1
+        assert not list(tmp_path.iterdir())
+    else:
+        assert xlnx_rpu_timers.generate_timer_config(None, sdt, options)
+        output = tmp_path / "amd_timer_config.c"
+        if mode == "absent":
+            assert not output.exists()
+        else:
+            assert "XSleepTimer_Instance = 0xff110000U" in output.read_text()
+
+
+@pytest.mark.parametrize("counter", [0, 3])
+def test_standalone_timer_cli_without_openamp(tmp_path, counter):
+    source = tmp_path / "system.dts"
+    source.write_text('''/dts-v1/;
+/ {
+    #address-cells = <2>;
+    #size-cells = <2>;
+    cluster: cpus-r5 { };
+    ttc: timer@ff110000 {
+        compatible = "cdns,ttc";
+        reg = <0 0xff110000 0 0x1000>;
+    };
+    domains {
+        RPU0 {
+            cpus = <&cluster 1 0>;
+            os,type = "baremetal";
+            xlnx,sleep-timer = <&ttc COUNTER>;
+        };
+    };
+};
+'''.replace('COUNTER', str(counter)))
+    run = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "lopper.py"), "-f", "--enhanced",
+         "-O", str(tmp_path), str(source), str(tmp_path / "unused.dts"),
+         "--", "xlnx_rpu_timers", "--domain=/domains/RPU0"],
+        cwd=tmp_path, capture_output=True, text=True)
+    output = tmp_path / "amd_timer_config.c"
+    if counter == 0:
+        assert run.returncode == 0, run.stderr
+        assert "XSleepTimer_Instance = 0xff110000U" in output.read_text()
+    else:
+        assert run.returncode != 0
+        assert "a TTC has counters 0, 1 and 2" in run.stderr
+        assert not output.exists()
 
 
 def test_libmetal_relation_timer_is_never_a_fallback(system):
