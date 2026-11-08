@@ -438,7 +438,8 @@ author writes directly:
 If a domain sets neither property, the ``timer`` of its own RPMsg relation
 is used: counter 0 for sleep and, for FreeRTOS, counter 1 for tick.  See
 :ref:`Relation timers <remoteproc-relation-timers>`.  Explicit properties
-win.
+win: setting either property suppresses the relation fallback for both
+roles. An omitted role then keeps its BSP default.
 
 Lopper checks the timers on the assembled tree, so the checks apply to YAML
 and DTS input alike.  The checks are selected by the timer node's
@@ -461,12 +462,49 @@ following is an error:
 When the timer comes from the RPMsg relation instead, a failed check is a
 warning and the BSP timers apply, so existing descriptions keep working.
 
-For the RPU application, the ``openamp`` assist writes the selection as a C
-file, ``amd_timer_config.c``, that defines the ``XSleepTimer_Instance`` and
-``XTickTimer_Instance`` variables.  xiltimer defines both as weak variables
-holding the counter base address, so the file selects the timers of one
-application without changing the BSP.  The file is written only when the
-domain names a timer::
+For any RPU application, the ``xlnx_rpu_timers`` assist writes the selection
+independently of OpenAMP metadata generation::
+
+   mkdir -p app
+   lopper -f --enhanced --auto -i domain.yaml system-top.dts assembled.dts
+   lopper -f --enhanced -O app assembled.dts unused.dts -- xlnx_rpu_timers \
+       --domain=/domains/RPU0 --output=amd_timer_config.c
+
+The input is the tree assembled from the SDT and domain YAML, before
+processor pruning or TTC splitting. No OpenAMP-compatible domain or relation
+is required for explicit timer selections. No selection is a successful
+no-op; invalid explicit content exits nonzero. Compile the generated file
+directly into the application. Clear previous generated outputs before
+regeneration so a removed selection cannot leave a stale override.
+
+``--domain`` is the absolute path of the selected domain under ``/domains``;
+the domain must have ``cpus``. ``--output`` defaults to
+``amd_timer_config.c``. Relative output paths are resolved against the
+directory given by ``-O``; absolute paths are used directly. ``unused.dts``
+is Lopper's ordinary tree output, separate from the generated C artifact.
+The timer assist does not change the tree.
+
+The generated C defines a strong ``XSleepTimer_Instance`` for the selected
+sleep role and a strong ``XTickTimer_Instance`` for the selected tick role.
+For Versal TTC3 counters 0 and 1, these definitions are:
+
+.. code-block:: C
+
+   #include "xil_types.h"
+
+   UINTPTR XSleepTimer_Instance = 0xff110000U;
+   UINTPTR XTickTimer_Instance = 0xff110004U;
+
+xiltimer provides weak defaults and reads these variables when initializing
+the timers. The application must link the generated file directly into its
+executable. The BSP must support the override variables, use the TTC backend
+for each selected role, and contain the selected counter in its TTC driver
+configuration table. The assist does not add driver instances or rebuild the
+BSP. An application build must report incompatible BSP configuration as an
+error rather than silently omitting the generated override.
+
+For compatibility, the ``openamp`` assist also generates the same C file
+alongside its application metadata::
 
    lopper system.dts -- openamp --openamp_header_only \
        --openamp_output_filename=amd_platform_info.h \
@@ -474,12 +512,17 @@ domain names a timer::
        --rpu-timer-config=amd_timer_config.c \
        --bsp-sleep-timer=0xff110000 --bsp-tick-timer=0xff100000
 
-The optional ``--bsp-sleep-timer`` and ``--bsp-tick-timer`` give the
+Both assists accept optional ``--bsp-sleep-timer`` and ``--bsp-tick-timer``
+arguments. These give the
 addresses the BSP uses.  When the domain leaves a role to the BSP and that
 timer is used by another domain or relation, Lopper warns.
 
-For Linux device tree output, a timer named by either property is set to
-``status = "disabled"``, because it belongs to the remote domain.
+In the OpenAMP Linux device tree output path, a timer named by either
+property is set to ``status = "disabled"``, because it belongs to the
+remote domain. Linux does not consume the generated C file. The standalone
+timer assist generates only the application override; other Linux tree
+generation paths must exclude the firmware-owned TTC through their domain
+access configuration.
 
 
 Zephyr Linker and MPU Policy

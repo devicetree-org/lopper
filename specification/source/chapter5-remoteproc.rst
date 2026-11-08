@@ -271,7 +271,9 @@ RPMsg and Libmetal relations may name timers with ``timer``:
   ``host``), ``timer`` names a TTC owned by the remote.  If the remote
   domain sets neither ``xlnx,sleep-timer`` nor ``xlnx,tick-timer``, its
   xiltimer sleep timer is counter 0 of that TTC and, for FreeRTOS, its tick
-  timer is counter 1.  Explicit properties win.  See the RPU sleep and tick
+  timer is counter 1. Explicit properties win: setting either suppresses
+  fallback for both roles. The standalone ``xlnx_rpu_timers`` assist and
+  the OpenAMP metadata generator use the same selection rules. See the RPU sleep and tick
   timers section of the domain YAML chapter.
 - On a Libmetal relation, ``timer`` names a timer shared with the Linux
   host through UIO.  It is never used as a sleep or tick timer.
