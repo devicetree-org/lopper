@@ -312,5 +312,30 @@ def test_linux_domain_is_rejected():
     domain["os,type"] = ["linux"]
     tree.sync()
     sdt = SimpleNamespace(tree=tree, outdir=".")
-    assert not mpu.generate_mpu_config(
-        None, sdt, {"args": ["--domain=/domains/RPU0"]})
+    with pytest.raises(SystemExit) as error:
+        mpu.generate_mpu_config(
+            None, sdt, {"args": ["--domain=/domains/RPU0"]})
+    assert error.value.code == 1
+
+
+def test_invalid_invocation_exits_nonzero(tmp_path):
+    tree, _ = _tree("ZynqMP", "r5")
+    sdt = SimpleNamespace(tree=tree, outdir=str(tmp_path))
+    with pytest.raises(SystemExit) as error:
+        mpu.generate_mpu_config(None, sdt, {"args": []})
+    assert error.value.code == 1
+    assert not list(tmp_path.iterdir())
+
+
+def test_invalid_memory_policy_exits_without_output(tmp_path):
+    tree, domain = _tree("ZynqMP", "r5")
+    memory = _memory(tree, "buffer", 0x9800000, 0x10000,
+                     ["invalid-policy"])
+    domain["reserved-memory"] = [memory.phandle]
+    tree.sync()
+    sdt = SimpleNamespace(tree=tree, outdir=str(tmp_path))
+    with pytest.raises(SystemExit) as error:
+        mpu.generate_mpu_config(
+            None, sdt, {"args": ["--domain=/domains/RPU0"]})
+    assert error.value.code == 1
+    assert not list(tmp_path.iterdir())

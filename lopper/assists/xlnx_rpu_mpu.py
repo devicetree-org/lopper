@@ -646,6 +646,14 @@ def _argument_parser():
 
 
 def generate_mpu_config(root_node, sdt, options):
+    """Generate the table, exiting nonzero on invalid supplied content."""
+    if not _generate_mpu_config(root_node, sdt, options):
+        _error("xlnx_rpu_mpu: MPU generation failed; see the errors above",
+               also_exit=1)
+    return True
+
+
+def _generate_mpu_config(root_node, sdt, options):
     """Write amd_mpu_config.c for one standalone or FreeRTOS RPU domain.
 
     Returns:
@@ -654,7 +662,9 @@ def generate_mpu_config(root_node, sdt, options):
     """
     try:
         args = _argument_parser().parse_args(options.get("args", []))
-    except SystemExit:
+    except SystemExit as exc:
+        if exc.code == 0:
+            return True
         _error("xlnx_rpu_mpu: invalid arguments")
         return False
     try:
@@ -710,6 +720,6 @@ def generate_mpu_config(root_node, sdt, options):
                                 cpu_name, free_regions))
         _info(f"xlnx_rpu_mpu: wrote {output} with {len(table)} regions")
         return True
-    except (MpuError, LayoutError, OSError) as exc:
+    except (ValueError, LayoutError, OSError) as exc:
         _error(f"xlnx_rpu_mpu: {exc}")
         return False
