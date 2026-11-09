@@ -155,8 +155,10 @@ def xlnx_baremetal_validate_comp(tgt_node, sdt, options):
     """
     
     depends_raw = schema.get('depends', {})
-    # Parse depends schema to get validation mode (all/oneOf/anyOf) and driver requirements
-    validation_mode, meta_dict = utils.parse_depends_schema(depends_raw)
+    # Parse depends schema to get validation mode (all/oneOf/anyOf) and driver
+    # requirements, applying any per-processor condition.
+    validation_mode, meta_dict = utils.parse_depends_schema(
+        depends_raw, proc_ip_name, family, variant, yaml_file)
     
     if validation_mode in ['oneOf', 'anyOf']:
         _info(f"{name} uses {validation_mode} dependencies - validating in Lopper")
