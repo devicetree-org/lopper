@@ -202,17 +202,65 @@ def prune_props_from_yaml_bindings(node, bindings=None):
     delete_unused_props(node, bindings["proplist"])
     return True
 
-def parse_depends_schema(depends_dict):
+def select_depends(depends_dict, proc_ip_name=None, family=None, variant=None,
+                   yaml_file=""):
+    """
+    Apply the optional 'condition' of a flat depends dictionary.
+
+    A component can list every driver it may depend on and add a 'condition'
+    that selects the ones needed for the target processor. The condition is
+    Python code evaluated by run_exec() with 'proc', 'platform' and 'variant'
+    in scope; it must assign the selected driver names to 'depends':
+
+        depends:
+          ipipsu: []
+          mbox: []
+          condition: |
+            if proc in ["microblaze", "microblaze_riscv"]:
+                depends = ["mbox"]
+            else:
+                depends = ["ipipsu"]
+
+    The condition is evaluated only when the processor and platform family are
+    known; otherwise every listed driver is kept, as before.
+
+    Args:
+        depends_dict: Flat depends dictionary from the YAML schema
+        proc_ip_name: Processor IP name ('proc' in the condition)
+        family: Platform family ('platform' in the condition)
+        variant: Platform variant ('variant' in the condition)
+        yaml_file: YAML file name for error reporting
+
+    Returns:
+        dict: Driver requirements without the 'condition' key, limited to the
+              drivers selected by the condition when it is evaluated.
+    """
+    driver_reqs = {k: v for k, v in depends_dict.items() if k != 'condition'}
+    condition = depends_dict.get('condition')
+    if condition and proc_ip_name and family:
+        selected = run_exec(condition, proc_ip_name, family, variant,
+                            return_list="depends", yaml_file=yaml_file)
+        driver_reqs = {k: v for k, v in driver_reqs.items() if k in selected}
+    return driver_reqs
+
+def parse_depends_schema(depends_dict, proc_ip_name=None, family=None,
+                         variant=None, yaml_file=""):
     """
     Parse the depends dictionary to determine validation mode and extract driver requirements.
     
     Supports three formats:
     1. Traditional flat format: {'driver1': [props], 'driver2': [props]} - all required
+       An optional 'condition' selects the required drivers per processor,
+       see select_depends().
     2. oneOf format: {'oneOf': [{'driver1': [props]}, {'driver2': [props]}]} - at least one required
     3. anyOf format: {'anyOf': [{'driver1': [props]}, {'driver2': [props]}]} - at least one required
     
     Args:
         depends_dict: The depends dictionary from YAML schema
+        proc_ip_name: Processor IP name, used to evaluate a 'condition'
+        family: Platform family, used to evaluate a 'condition'
+        variant: Platform variant, used to evaluate a 'condition'
+        yaml_file: YAML file name for error reporting
         
     Returns:
         tuple: (validation_mode, driver_requirements_dict)
@@ -231,7 +279,8 @@ def parse_depends_schema(depends_dict):
                     driver_reqs.update(item)
             return (mode, driver_reqs)
     # Traditional flat format - all drivers required
-    driver_reqs = {k: v for k, v in depends_dict.items() if k not in ['condition']}
+    driver_reqs = select_depends(depends_dict, proc_ip_name, family, variant,
+                                 yaml_file)
     return ('all', driver_reqs)
     
 def log_setup(options):
