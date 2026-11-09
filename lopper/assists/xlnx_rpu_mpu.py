@@ -360,10 +360,12 @@ def domain_regions(tree, domain, processor):
         tuple[bool, list[Region]]: Whether any memory of the domain carries
         mpu-policy, and the regions to add to the baseline.
     """
-    try:
-        nodes = list(_domain_memory_nodes(tree, domain))
-    except LayoutError:
-        nodes = []
+    # No requested policies: preserve legacy memory descriptions untouched.
+    if not any("mpu-policy" in node.__props__ for node in tree["/"].subnodes()):
+        return False, []
+    has_memory = any(domain.propval(name, list) not in ([], [""])
+                     for name in ("sram", "reserved-memory"))
+    nodes = list(_domain_memory_nodes(tree, domain)) if has_memory else []
     carveouts = _relation_carveouts(tree, domain)
     for path in carveouts:
         if all(node.abs_path != path for node in nodes):
@@ -522,6 +524,11 @@ def build_table(soc, processor, additions, ddr=None, aie=False):
     _check_additions(kept, processor)
     if processor == "cortexr5":
         # Later regions take priority on Cortex-R5.
+        # An exact replacement makes the old entry redundant. Keep the
+        # override last, preserving priority over other overlapping entries.
+        replaced = {(region.base, region.size) for region in kept}
+        table = [region for region in table
+                 if (region.base, region.size) not in replaced]
         return table + kept
     # Cortex-R52 regions must not overlap.
     return sorted(_carve(table, kept) + kept, key=lambda r: r.base)
