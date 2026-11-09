@@ -826,13 +826,15 @@ def _domain_memory_nodes(tree, domain):
                               int(sram[index + 3]))
                 else:
                     length = int(sram[index + 2])
-                candidates = []
+                # SDTs may describe global TCM banks directly under root.
+                candidates = list(tree["/"].child_nodes.values())
                 for path in ("/axi", "/reserved-memory"):
                     try:
                         parent = tree[path]
                     except KeyError:
                         continue
                     candidates.extend(parent.subnodes())
+                candidates = list({node.abs_path: node for node in candidates}.values())
                 matches = []
                 for node in candidates:
                     if (node.props("reg") or
@@ -843,8 +845,7 @@ def _domain_memory_nodes(tree, domain):
                         except LayoutError:
                             continue
                 tcm_matches = [node for node in matches
-                               if node.abs_path.startswith("/axi/") and
-                               _memory_kind(node) in ("ATCM", "BTCM", "CTCM")]
+                               if _memory_kind(node) in ("ATCM", "BTCM", "CTCM")]
                 if tcm_matches:
                     matches = tcm_matches
                 if len(matches) > 1 and core_index is not None:

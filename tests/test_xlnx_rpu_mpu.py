@@ -214,6 +214,65 @@ def test_no_mpu_policy_writes_nothing(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+def test_no_policy_does_not_validate_legacy_sram():
+    tree, domain = _tree("ZynqMP", "r5")
+    domain["sram"] = [0, 0xffe00000, 0, 0x10000]
+    tree.sync()
+    assert mpu.domain_regions(tree, domain, "cortexr5") == (False, [])
+
+
+def test_invalid_sram_does_not_hide_requested_mpu_policy(tmp_path):
+    tree, domain = _tree("ZynqMP", "r5")
+    memory = _memory(tree, "shm", 0x9000000, 0x10000,
+                     ["readable", "writable", "shareable"])
+    domain["reserved-memory"] = [memory.phandle]
+    domain["sram"] = [0, 0xffe00000, 0, 0x10000]
+    tree.sync()
+    sdt = SimpleNamespace(tree=tree, outdir=str(tmp_path))
+    with pytest.raises(SystemExit) as exc:
+        mpu.generate_mpu_config(None, sdt, {"args": ["--domain=/domains/RPU0"]})
+    assert exc.value.code != 0
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("parent", ["", "/axi"])
+def test_global_tcm_does_not_hide_memory_policy(parent):
+    tree, domain = _tree("Versal", "r5")
+    if parent:
+        tree + LopperNode(-1, parent)
+        tree[parent]["#address-cells"] = [2]
+        tree[parent]["#size-cells"] = [2]
+    bank = LopperNode(-1, parent + "/psv_r5_0_atcm_global@ffe00000")
+    tree + bank
+    bank["compatible"] = ["mmio-sram"]
+    bank["reg"] = [0, 0xffe00000, 0, 0x10000]
+    memory = _memory(tree, "shm", 0x9000000, 0x10000,
+                     ["readable", "writable"])
+    domain["sram"] = [0, 0xffe00000, 0, 0x10000]
+    domain["reserved-memory"] = [memory.phandle]
+    tree.sync()
+    opted_in, regions = mpu.domain_regions(tree, domain, "cortexr5")
+    assert opted_in
+    assert len(regions) == 1
+    assert regions[0].base == 0x9000000
+
+
+def test_r5_exact_baseline_override_reuses_region_budget():
+    original = mpu.baseline("versal", (0, 0x3fffffff))
+    override = mpu.Region(0xfffc0000, 0x40000,
+                          "NORM_NSHARED_NCACHE | PRIV_RW_USER_RW",
+                          "OCM policy", "mpu-policy")
+    table = mpu.build_table("versal", "cortexr5", [override],
+                            (0, 0x3fffffff))
+    assert len(table) == len(original)
+    assert table[-1] == override
+    assert sum(region.base == override.base and region.size == override.size
+               for region in table) == 1
+    assert any(region.base == 0xff000000 and region.size == 0x1000000
+               for region in table)
+    mpu.check_fit(table, 5)
+
+
 def test_r5_carveouts_merge_and_redundant_policy_is_dropped():
     tree, domain = _openamp_domain("ZynqMP", "r5")
     _, regions = mpu.domain_regions(tree, domain, "cortexr5")
