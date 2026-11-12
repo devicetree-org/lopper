@@ -444,6 +444,8 @@ def xlnx_generate_domain_dts(tgt_node, sdt, options):
                     sdt.tree.delete(node)
             elif node.name == "rpu-bus":
                 sdt.tree.delete(node)
+            elif "indirect-bus" in node.propval('compatible', list):
+                sdt.tree.delete(node)
         if node not in mapped_nodelist:
             if node.propval('device_type') != ['']:
                 if "cpu" in node.propval('device_type', list)[0]:
