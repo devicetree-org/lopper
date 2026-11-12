@@ -4757,6 +4757,38 @@ class LopperTree:
             # thing to assign.
             raise TypeError( "LopperNode was not passed as value" )
 
+    def __contains__(self, item):
+        """magic method for testing whether a tree holds a node
+
+        Supports asking by path, or with the node itself
+
+            if "/axi" in tree:
+            if node in tree:
+
+        Without this, "in" falls back to walking the tree and comparing each
+        node it yields against the operand. A path never equals a node, so the
+        question was answered False however the tree was shaped, and a caller
+        guarding on it took the other branch every time.
+
+        A node is held if the tree has that node at that path, rather than
+        some other node that happens to share it.
+
+        Args:
+           item (str or LopperNode): path to look for, or node to look for
+
+        Returns:
+           Boolean: True if the tree holds it, False otherwise
+
+        """
+        if isinstance(item, str):
+            return item in self.__nodes__
+
+        node_path = getattr(item, "abs_path", None)
+        if node_path is None:
+            return False
+
+        return self.__nodes__.get(node_path) is item
+
     def __delitem__(self, key):
         """magic method for removing a property from a tree dictionary style
 

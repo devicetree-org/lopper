@@ -1347,3 +1347,51 @@ class TestSymbolsFollowPaths:
 
         assert "/__symbols__" not in tree.__nodes__, \
             "a tree that carried no symbols was given some"
+
+
+class TestTreeContains:
+    """``in`` asks whether the tree holds a node.
+
+    Without __contains__ it fell back to iterating the tree and comparing each
+    node against the operand, so a path string never matched and the answer
+    was False whatever the tree held.
+    """
+
+    @staticmethod
+    def _tree():
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        tree.add(LopperNode(-1, "/axi"))
+        tree.add(LopperNode(-1, "/axi/timer@ff110000"))
+        tree.resolve()
+        return tree
+
+    def test_a_path_the_tree_holds(self):
+        assert "/axi" in self._tree()
+
+    def test_a_path_the_tree_does_not_hold(self):
+        assert "/nope" not in self._tree()
+
+    def test_a_nested_path(self):
+        assert "/axi/timer@ff110000" in self._tree()
+
+    def test_the_node_itself(self):
+        tree = self._tree()
+        assert tree["/axi"] in tree
+
+    def test_a_node_that_was_removed(self):
+        tree = self._tree()
+        node = tree["/axi/timer@ff110000"]
+        tree.delete(node)
+        tree.resolve()
+        assert node not in tree, "a deleted node is still reported as held"
+
+    def test_a_different_node_at_the_same_path(self):
+        """Holding that path is not the same as holding this node."""
+        tree = self._tree()
+        impostor = LopperNode(-1, "/axi")
+        assert "/axi" in tree
+        assert impostor not in tree
+
+    def test_something_that_is_neither(self):
+        assert 42 not in self._tree()
