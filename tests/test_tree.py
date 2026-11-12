@@ -1272,3 +1272,78 @@ class TestNodeMove:
         assert tree.__nodes__.get("/dst/thing") is node
         assert any("stale" in w for w in warned), \
             f"the mismatch was not reported: {warned}"
+
+
+class TestSymbolsFollowPaths:
+    """/__symbols__ entries are label -> path strings.
+
+    A move or a rename changes the path while leaving the label alone, so the
+    entries have to be rewritten or they name a path nothing occupies. The
+    tree does that for every mutator, rather than each caller remembering to.
+    """
+
+    @staticmethod
+    def _tree():
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        for path in ("/__symbols__", "/src", "/dst",
+                     "/src/thing", "/src/thing/kid"):
+            tree.add(LopperNode(-1, path))
+        tree["/src/thing"].label = "mylabel"
+        tree["/src/thing/kid"].label = "kidlabel"
+        tree["/__symbols__"] + LopperProp("mylabel", -1, None, ["/src/thing"])
+        tree["/__symbols__"] + LopperProp("kidlabel", -1, None,
+                                          ["/src/thing/kid"])
+        tree.resolve()
+        return tree
+
+    def test_a_move_carries_the_symbol_with_it(self):
+        tree = self._tree()
+        node = tree["/src/thing"]
+
+        tree.move(node, "/src/thing", "/dst/thing")
+        tree.resolve()
+
+        assert tree["/__symbols__"].propval("mylabel") == ["/dst/thing"], \
+            "the symbol still names the path the node left"
+
+    def test_a_move_carries_a_descendant_symbol_too(self):
+        """The moved node is not the only one whose path changed."""
+        tree = self._tree()
+
+        tree.move(tree["/src/thing"], "/src/thing", "/dst/thing")
+        tree.resolve()
+
+        assert tree["/__symbols__"].propval("kidlabel") == ["/dst/thing/kid"], \
+            "a child's symbol was left behind by its parent's move"
+
+    def test_a_rename_carries_the_symbols(self):
+        tree = self._tree()
+
+        tree.rename(tree["/src/thing"], "renamed")
+        tree.resolve()
+
+        symbols = tree["/__symbols__"]
+        assert symbols.propval("mylabel") == ["/src/renamed"]
+        assert symbols.propval("kidlabel") == ["/src/renamed/kid"]
+
+    def test_a_move_does_not_change_the_label_itself(self):
+        """Only the path moves. The label is the node's own identity."""
+        tree = self._tree()
+        node = tree["/src/thing"]
+
+        tree.move(node, "/src/thing", "/dst/thing")
+        tree.resolve()
+
+        assert node.label == "mylabel", f"the move renamed the label: {node.label}"
+
+    def test_a_tree_without_symbols_does_not_acquire_them(self):
+        """Maintaining the node is not the same as inventing one."""
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        tree.add(LopperNode(-1, "/a"))
+        tree["/a"].label = "alabel"
+        tree.resolve()
+
+        assert "/__symbols__" not in tree.__nodes__, \
+            "a tree that carried no symbols was given some"

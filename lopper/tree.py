@@ -4042,11 +4042,19 @@ class LopperNode(object):
                 # that's ok, since we can't resolve in that case anyway
                 pass
 
-        if self.tree and self.tree.__symbols__:
+        # The other half of the symbol maintenance described in
+        # LopperTree.resolve(): that clears the entries, each node puts its own
+        # back at the path it now holds. The label is the node's own and does
+        # not change here; only the path the symbol points at does.
+        if self.tree and (self.tree.__symbols__
+                          or "/__symbols__" in self.tree.__nodes__):
             try:
                 symbol_node = self.tree['/__symbols__']
                 if self.label:
-                    symbol_node[self.label] = self.abs_path
+                    # A list, not a bare string: these are read back with
+                    # propval(...)[0], which on a bare string hands out its
+                    # first character rather than the path.
+                    symbol_node[self.label] = [ self.abs_path ]
             except:
                 pass
 
@@ -5890,7 +5898,14 @@ class LopperTree:
            Nothing
         """
 
-        if self.__symbols__:
+        # Maintained whenever the tree carries the node, not only when symbol
+        # generation was asked for. A tree compiled with dtc -@ arrives with
+        # /__symbols__ already in it, and its entries are label -> path
+        # strings: a move or a rename changes the path while leaving the label
+        # alone, so an entry that is not rewritten goes on naming a path that
+        # nothing occupies. Keeping it current is the tree's bookkeeping, not
+        # something each caller that moves a node should have to remember.
+        if self.__symbols__ or "/__symbols__" in self.__nodes__:
             try:
                 symbol_node = self['/__symbols__']
                 # remove all the symbol entries. the nodes will
