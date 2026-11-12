@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
-%YAML 1.2
+# %YAML 1.2
 ---
 $id: http://devicetree.org/schemas/display/xlnx/xlnx,mixer.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
@@ -7,111 +7,185 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: Xilinx Mixer IP.
 
 maintainers:
-  - Kunal Rane <kunal.rane@amd.com>
+  - Rajesh Gugulothu <rajesh.gugulothu@amd.com>
 
-description: |
+description:
   The Xilinx Mixer IP is used to mix multiple input streams
   either as streaming or memory mapped input on single display.
 
 properties:
   compatible:
-    items:
-      - enum:
-          - xlnx,v-mix-5.2
-          - xlnx,mixer-3.0
-          - xlnx,mixer-4.0
-          - xlnx,mixer-5.0
+    oneOf:
+      - const: xlnx,v-mix-6.0
+      - const: xlnx,v-mix-5.3
+      - const: xlnx,mixer-5.0
+      - const: xlnx,mixer-4.0
+        deprecated: true
+      - const: xlnx,mixer-3.0
+        deprecated: true
+
   reg:
+    maxItems: 1
+
+  interrupts:
     maxItems: 1
 
   clocks:
     description: Reference to video core clock.
     maxItems: 1
 
-  clock-names:
-    items:
-      - const: ap_clk
+  reset-gpios:
+    description: Should contain GPIO reset phandle.
+    maxItems: 1
+
+  xlnx,bpc:
+    description: Bits per component.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [8, 10, 12, 16]
+
+  xlnx,bridge:
+    description: The phandle of xilinx video timing controller.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  xlnx,dma-addr-width:
+    description: Size of dma address pointer in IP.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [32, 64]
+
+  xlnx,enable-csc-coefficient-register:
+    description: Denotes colorimetry coefficients can be programmed.
+    type: boolean
+
+  xlnx,logo-layer:
+    description: Denotes logo layer is enabled.
+    type: boolean
+
+  xlnx,tile-formats:
+    description:
+      Enables the tiled memory framebuffer datapath for non-streaming memory
+      overlays on v-mix-6.0.
+    type: boolean
+
+  xlnx,num-layers:
+    description: Number of overlay layers enabled.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 17
 
   xlnx,ppc:
     description: Pixels per clock.
-    allOf:
-      - $ref: /schemas/types.yaml#/definitions/uint8
-      - enum: [1, 2, 4, 8]
-
-  xlnx,bpc:
-    description: bits per component.
-    allOf:
-      - $ref: /schemas/types.yaml#/definitions/uint8
-      - enum: [8, 10, 12, 16]
-
-  xlnx,dma-addr-width:
-    description: Size of dma address pointer in IP
     $ref: /schemas/types.yaml#/definitions/uint32
-    enum: [ 32, 64 ]
- 
-  reset-gpios:
-    maxItems: 1
-    description: Should contain GPIO reset phandle
+    enum: [1, 2, 4, 8]
 
-  interrupts:
-    maxItems: 1
-
-  xlnx,num-layers: 
-    $ref: /schemas/types.yaml#/definitions/uint16
-    description: Number of overlay layers enabled.
+  xlnx,video-format:
+    description: Mixer output video format (0=RGB,1=YUV444,2=YUV422,3=YUV420).
+    $ref: /schemas/types.yaml#/definitions/uint32
     minimum: 0
-    maximum: 16
+    maximum: 3
 
-  xlnx,logo-layer:
-    type: boolean
-    description: denotes logo layer is enabled.
-
-  xlnx,bridge:
-    description: phandle to bridge node. This handle is reequired only
-      when VTC is connected as bridge. 
+  memory-region:
+    description:
+      Phandle to the reserved memory nodes to be associated with the
+      remoteproc device.
     maxItems: 1
 
-  port@0:
+  port:
+    $ref: /schemas/graph.yaml#/properties/port
+    description: |
+      Video output port, typically connected to a panel or bridge.
+
+  logo:
+    description: Logo layer as an overlay.
     type: object
-    description: Input/sink port node, describing module connected to
-      the input
-
-    properties:    
-      reg:
-        description: |
-          Input/sink port number.
-        const: 0
-
-      endpoint:
-        type: object
-
-        properties:
-          remote-endpoint: true
-
-        required:
-          -  remote-enpoint
-
-        additionalProperties: false
-      
-    required:
-      - reg
-      - remote-endpoint
-
-    additionalProperties: false
-
-  patternProperties:
-    'layer_[0-16]':
-     type: object
 
     properties:
       xlnx,layer-id:
-        $ref: /schemas/types.yaml#/definitions/uint16
         description: Number of overlay layers enabled.
+        $ref: /schemas/types.yaml#/definitions/uint32
         minimum: 0
         maximum: 16
-      
+
+      xlnx,logo-height:
+        description: Maximum number pixels in a line.
+        $ref: /schemas/types.yaml#/definitions/uint32
+        minimum: 32
+        maximum: 64
+
+      xlnx,logo-width:
+        description: Maximum number pixels in a line.
+        $ref: /schemas/types.yaml#/definitions/uint32
+        minimum: 32
+        maximum: 64
+
+    required:
+      - xlnx,layer-id
+      - xlnx,logo-height
+      - xlnx,logo-width
+
+    additionalProperties: false
+
+  layer_0:
+    description: |
+      Primary layer node; requires the following properties:
+      - xlnx,layer-max-height
+      - xlnx,layer-max-width
+      - xlnx,layer-primary
+    type: object
+    required:
+      - xlnx,layer-max-height
+      - xlnx,layer-max-width
+      - xlnx,layer-primary
+    additionalProperties: true
+
+patternProperties:
+  "^layer_([0-9]|1[0-6])$":
+    type: object
+    properties:
+      dmas:
+        maxItems: 1
+
+      dma-names:
+        items:
+          - const: dma0
+
+      xlnx,layer-alpha:
+        description: Optional; enables alpha compositing for this layer.
+        type: boolean
+
+      xlnx,layer-id:
+        description: Number of overlay layers enabled.
+        $ref: /schemas/types.yaml#/definitions/uint32
+        minimum: 0
+        maximum: 16
+
+      xlnx,layer-max-height:
+        description: Maximum number pixels in a line.
+        $ref: /schemas/types.yaml#/definitions/uint32
+        minimum: 64
+        maximum: 4320
+
+      xlnx,layer-max-width:
+        description: Maximum number pixels in a line.
+        $ref: /schemas/types.yaml#/definitions/uint32
+        minimum: 64
+        maximum: 8192
+
+      xlnx,layer-primary:
+        description: |
+          Indicates this layer is the primary plane (only one layer,
+          typically layer_0, should define this).
+        type: boolean
+
+      xlnx,layer-scale:
+        description: Optional; enables 2x or 4x scaling for this layer.
+        type: boolean
+
+      xlnx,layer-streaming:
+        description: If input for overlay is streaming or memory mapped.
+        type: boolean
+
       xlnx,vformat:
-        description: |          
+        description: |
           Mixer IP Format    Driver supported Format String
           BGR888                "RG24"
           RGB888                "BG24"
@@ -125,7 +199,6 @@ properties:
           UYVY                  "UYVY"
           AYUV                  "AYUV"
           NV12                  "NV12"
-          NV16                  "NV16"
           Y8                    "GREY"
           Y10                   "Y10 " (Note: Space included)
           XVUY2101010           "XV30"
@@ -133,152 +206,561 @@ properties:
           XVUY8888              "XV24"
           XV15                  "XV15"
           XV20                  "XV20"
-        Note : Format strings are case sensitive.
-        allOf:
-          - $ref: /schemas/types.yaml#/definitions/non-unique-string-array
-          - uniqueItems: true
-        
-      xlnx,layer-max-width:
-        $ref: /schemas/types.yaml#/definitions/uint16
-        description: Maximum number pixels in a line.
-        minimum: 64
-        maximum: 15360
-
-      xlnx,layer-height:
-        $ref: /schemas/types.yaml#/definitions/uint16
-        description: Maximum number of lines.
-        minimum: 64
-        maximum: 8640
-
-      dmas:
-        minItems: 1
-        maxItems: 2
-
-      dma-names:
-        maxItems: 1
-
-      xlnx,layer-streaming:
-        type: boolean
-        description: If input for overlay is streaming or memory mapped.
-
-      xlnx,layer-primary:
-        type: boolean
-        description: If overlay plane is primary or not.
-
-      xlnx,layer-alpha:
-        type: boolean
-        description: If alpha layer is enabled or not for
-          the particular plane.
-
-      xlnx,layer-scale:
-        type: boolean
-        description: If scaling is enabled or not for the plane.
+          T508                  "T508"
+          T50A                  "T50A"
+          T50C                  "T50C"
+          T608                  "T608"
+          T60A                  "T60A"
+          T60C                  "T60C"
+          T528                  "T528"
+          T52A                  "T52A"
+          T52C                  "T52C"
+          T628                  "T628"
+          T62A                  "T62A"
+          T62C                  "T62C"
+          T548                  "T548"
+          T54A                  "T54A"
+          T54C                  "T54C"
+          T648                  "T648"
+          T64A                  "T64A"
+          T64C                  "T64C"
+        oneOf:
+          - $ref: /schemas/types.yaml#/definitions/string
+          - type: array
+            items:
+              $ref: /schemas/types.yaml#/definitions/string
+            minItems: 1
+            maxItems: 2
+            uniqueItems: true
 
     required:
       - xlnx,layer-id
       - xlnx,vformat
-      - xlnx,layer-height
-      - xlnx,layer-max-width
-      - dmas
-      - dma-names
-      - xlnx,layer-streaming
-      - xlnx,layer-primary
-      - xlnx,layer-alpha 
-      - xlnx,layer-scale
-
     additionalProperties: false
 
 required:
-  -  compatible
-  -  reg
-  -  interrupts
-  -  clocks
-  -  reset-gpios
-  -  xlnx,bpc
-  -  xlnx,ppc
-  -  xlnx,num-layers
-  -  port@0
+  - compatible
+  - reg
+  - interrupts
+  - clocks
+  - reset-gpios
+  - xlnx,dma-addr-width
+  - xlnx,bpc
+  - xlnx,ppc
+  - xlnx,num-layers
+  - xlnx,video-format
+  # Conditional in the kernel schema (mixer-5.0 / v-mix-5.3 / v-mix-6.0).
+  # linux_dt pruning keeps only this list.
+  - xlnx,enable-csc-coefficient-register
 
-additionalProperties:
-  - xlnx,logo-layer 
-  - xlnx,bridge
+additionalProperties: false
+
+$defs:
+  xlnx-mixer-raster-vformat-string:
+    type: string
+    enum:
+      - RG24
+      - BG24
+      - XB30
+      - XR24
+      - RA24
+      - AB24
+      - AR24
+      - XB24
+      - YUYV
+      - UYVY
+      - AYUV
+      - NV12
+      - GREY
+      - "Y10 "
+      - XV30
+      - VU24
+      - XV24
+      - XV15
+      - XV20
+
+  xlnx-mixer-raster-vfmt-str-or-1elem:
+    oneOf:
+      - $ref: '#/$defs/xlnx-mixer-raster-vformat-string'
+      - type: array
+        items:
+          $ref: '#/$defs/xlnx-mixer-raster-vformat-string'
+        minItems: 1
+        maxItems: 1
+
+  xlnx-mixer-tile-vformat-single-memory:
+    type: string
+    enum:
+      - T508
+      - T50A
+      - T50C
+      - T528
+      - T52A
+      - T52C
+      - T548
+      - T54A
+      - T54C
+
+  xlnx-mixer-tile-pair-t508:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T508
+      - const: T608
+  xlnx-mixer-tile-pair-t50a:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T50A
+      - const: T60A
+  xlnx-mixer-tile-pair-t50c:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T50C
+      - const: T60C
+  xlnx-mixer-tile-pair-t528:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T528
+      - const: T628
+  xlnx-mixer-tile-pair-t52a:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T52A
+      - const: T62A
+  xlnx-mixer-tile-pair-t52c:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T52C
+      - const: T62C
+  xlnx-mixer-tile-pair-t548:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T548
+      - const: T648
+  xlnx-mixer-tile-pair-t54a:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T54A
+      - const: T64A
+  xlnx-mixer-tile-pair-t54c:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T54C
+      - const: T64C
+
+  xlnx-mixer-tile-vformat-memory:
+    description:
+      Non-streaming memory overlay on the tiled DMA framebuffer path.
+    oneOf:
+      - $ref: '#/$defs/xlnx-mixer-tile-vformat-single-memory'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t508'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t50a'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t50c'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t528'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t52a'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t52c'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t548'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t54a'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t54c'
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,mixer-3.0
+    then:
+      properties:
+        xlnx,num-layers:
+          maximum: 9
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,mixer-4.0
+              - xlnx,mixer-5.0
+              - xlnx,v-mix-5.3
+              - xlnx,v-mix-6.0
+    then:
+      properties:
+        xlnx,num-layers:
+          maximum: 17
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,mixer-5.0
+              - xlnx,v-mix-5.3
+              - xlnx,v-mix-6.0
+    then:
+      required:
+        - xlnx,enable-csc-coefficient-register
+  # xlnx,tile-formats is only valid for v-mix-6.0; forbid it for older
+  # compatibles.
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,v-mix-6.0
+    then: true
+    else:
+      properties:
+        xlnx,tile-formats: false
+  - if:
+      required:
+        - xlnx,tile-formats
+    then:
+      patternProperties:
+        # layer_0: raster string only (no tiled tokens, no string array).
+        "^layer_0$":
+          properties:
+            xlnx,vformat:
+              $ref: '#/$defs/xlnx-mixer-raster-vformat-string'
+        "^layer_([1-9]|1[0-6])$":
+          allOf:
+            - if:
+                properties:
+                  xlnx,layer-streaming:
+                    const: true
+                required:
+                  - xlnx,layer-streaming
+              then:
+                properties:
+                  xlnx,vformat:
+                    $ref: '#/$defs/xlnx-mixer-raster-vfmt-str-or-1elem'
+            - if:
+                not:
+                  properties:
+                    xlnx,layer-streaming:
+                      const: true
+                  required:
+                    - xlnx,layer-streaming
+              then:
+                properties:
+                  xlnx,vformat:
+                    $ref: '#/$defs/xlnx-mixer-tile-vformat-memory'
+  - if:
+      not:
+        required:
+          - xlnx,tile-formats
+    then:
+      patternProperties:
+        "^layer_0$":
+          properties:
+            xlnx,vformat:
+              $ref: '#/$defs/xlnx-mixer-raster-vformat-string'
+        "^layer_([1-9]|1[0-6])$":
+          properties:
+            xlnx,vformat:
+              $ref: '#/$defs/xlnx-mixer-raster-vfmt-str-or-1elem'
 
 examples:
   - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
 
-    hdmi_output_v_mix_0: v_mix@a0070000 {
-        clock-names = "ap_clk";
-        clocks = <&misc_clk_0>;
-        compatible = "xlnx,v-mix-5.2", "xlnx,mixer-3.0", "xlnx,mixer-4.0", "xlnx,mixer-5.0";
-        interrupt-names = "interrupt";
-        interrupt-parent = <&gic>;
-        interrupts = <0 95 4>;
+    v-mix@a0070000 {
+        compatible = "xlnx,v-mix-5.3";
         reg = <0xa0070000 0x10000>;
+        interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
+        clocks = <&misc_clk>;
         reset-gpios = <&gpio 98 1>;
-        xlnx,bpc = /bits/ 8 <8>;
+        xlnx,bpc = <8>;
         xlnx,dma-addr-width = <64>;
-        xlnx,num-layers = /bits/ 16 <9>;
-        xlnx,ppc = /bits/ 8 <2>;
-        crtc_mixer_porthdmi_output_v_mix_0: port@0 {
+        xlnx,num-layers = <9>;
+        xlnx,ppc = <2>;
+        xlnx,logo-layer;
+        xlnx,video-format = <0>;
+        xlnx,bridge = <&v_tc_0>;
+        xlnx,enable-csc-coefficient-register;
+        port {
             #address-cells = <1>;
             #size-cells = <0>;
-            reg = <0>;
-            mixer_crtchdmi_output_v_mix_0: endpoint {
-                remote-endpoint = <&hdmi_output_v_hdmi_tx_ss_0hdmi_output_v_mix_0>;
+            endpoint@0 {
+                reg = <0>;
+                remote-endpoint = <&hdmi_output_v_mix_0>;
             };
         };
-        xx_mix_masterhdmi_output_v_mix_0: layer_0 {
-            dma-names = "dma0";
-            dmas = <&hdmi_output_v_frmbuf_rd_0 0>;
-            xlnx,layer-id = <0>;
-            xlnx,layer-max-height = <2160>;
-            xlnx,layer-max-width = <3840>;
-            xlnx,layer-primary ;
-            xlnx,layer-streaming ;
-            xlnx,vformat = "BG24";
+        overlay0: layer_0 {
+          dma-names = "dma0";
+          dmas = <&hdmi_output_v_frmbuf_rd_0 0>;
+          xlnx,layer-id = <0>;
+          xlnx,layer-max-height = <2160>;
+          xlnx,layer-max-width = <3840>;
+          xlnx,layer-primary;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-streaming;
         };
-        xx_mix_overlay_1hdmi_output_v_mix_0: layer_1 {
-            xlnx,layer-id = <1>;
-            xlnx,layer-max-width = <1920>;
-            xlnx,vformat = "NV12";
+        overlay1: layer_1 {
+          xlnx,layer-id = <1>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
         };
-        xx_mix_overlay_2hdmi_output_v_mix_0: layer_2 {
-            xlnx,layer-id = <2>;
-            xlnx,layer-max-width = <1920>;
-            xlnx,vformat = "NV12";
+        overlay2: layer_2 {
+          xlnx,layer-id = <2>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
         };
-        xx_mix_overlay_3hdmi_output_v_mix_0: layer_3 {
-            xlnx,layer-id = <3>;
-            xlnx,layer-max-width = <1920>;
-            xlnx,vformat = "NV12";
+        overlay3: layer_3 {
+          xlnx,layer-id = <3>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
         };
-        xx_mix_overlay_4hdmi_output_v_mix_0: layer_4 {
-            xlnx,layer-id = <4>;
-            xlnx,layer-max-width = <1920>;
-            xlnx,vformat = "NV12";
+        overlay4: layer_4 {
+          xlnx,layer-id = <4>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
         };
-        xx_mix_overlay_5hdmi_output_v_mix_0: layer_5 {
-            xlnx,layer-id = <5>;
-            xlnx,layer-max-width = <1920>;
-            xlnx,vformat = "NV12";
+        overlay5: layer_5 {
+          xlnx,layer-id = <5>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
         };
-        xx_mix_overlay_6hdmi_output_v_mix_0: layer_6 {
-            xlnx,layer-id = <6>;
-            xlnx,layer-max-width = <1920>;
-            xlnx,vformat = "NV12";
+        overlay6: layer_6 {
+          xlnx,layer-id = <6>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
         };
-        xx_mix_overlay_7hdmi_output_v_mix_0: layer_7 {
-            xlnx,layer-id = <7>;
-            xlnx,layer-max-width = <1920>;
-            xlnx,vformat = "NV12";
+        overlay7: layer_7 {
+          xlnx,layer-id = <7>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
         };
-        xx_mix_overlay_8hdmi_output_v_mix_0: layer_8 {
+        logo_layer: logo {
             xlnx,layer-id = <8>;
-            xlnx,layer-max-width = <1920>;
-            xlnx,vformat = "NV12";
+            xlnx,logo-height = <64>;
+            xlnx,logo-width = <64>;
         };
-        xx_mix_logohdmi_output_v_mix_0: logo {
-            xlnx,layer-id = <9>;
+    };
+
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+
+    reserved-memory {
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+        psmem_multimedia: multimedia_cma_mem_region@40000000 {
+            compatible = "shared-dma-pool";
+            reg = <0x0 0x40000000 0x0 0x20000000>;
+            reusable;
+        };
+    };
+
+    v-mix@80200000 {
+        compatible = "xlnx,v-mix-5.3";
+        reg = <0x80200000 0x10000>;
+        interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
+        clocks = <&misc_clk>;
+        reset-gpios = <&gpio 98 1>;
+        xlnx,bpc = <8>;
+        xlnx,dma-addr-width = <64>;
+        xlnx,num-layers = <4>;
+        xlnx,ppc = <2>;
+        xlnx,logo-layer;
+        xlnx,video-format = <0>;
+        xlnx,bridge = <&v_tc_0>;
+        memory-region = <&psmem_multimedia>;
+        xlnx,enable-csc-coefficient-register;
+        port {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            endpoint@0 {
+                reg = <0>;
+                remote-endpoint = <&hdmi_output_v_mix_2>;
+            };
+        };
+        layer_0 {
+          dma-names = "dma0";
+          dmas = <&hdmi_output_v_frmbuf_rd_0 0>;
+          xlnx,layer-id = <0>;
+          xlnx,layer-max-height = <2160>;
+          xlnx,layer-max-width = <3840>;
+          xlnx,layer-primary;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-streaming;
+        };
+        layer_1 {
+          xlnx,layer-id = <1>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
+        };
+        layer_2 {
+          xlnx,layer-id = <2>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
+        };
+        logo {
+            xlnx,layer-id = <3>;
+            xlnx,logo-height = <64>;
+            xlnx,logo-width = <64>;
+        };
+    };
+
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+
+    reserved-memory {
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+        plmem_multimedia: multimedia_dma_mem_region@4800000000 {
+            compatible = "shared-dma-pool";
+            no-map;
+            reg = <0x48 0x0 0x0 0x70000000>;
+        };
+    };
+
+    v-mix@80100000 {
+        compatible = "xlnx,v-mix-5.3";
+        reg = <0x80100000 0x10000>;
+        interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
+        clocks = <&misc_clk>;
+        reset-gpios = <&gpio 98 1>;
+        xlnx,bpc = <8>;
+        xlnx,dma-addr-width = <64>;
+        xlnx,num-layers = <4>;
+        xlnx,ppc = <2>;
+        xlnx,logo-layer;
+        xlnx,video-format = <0>;
+        xlnx,bridge = <&v_tc_0>;
+        memory-region = <&plmem_multimedia>;
+        xlnx,enable-csc-coefficient-register;
+        port {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            endpoint@0 {
+                reg = <0>;
+                remote-endpoint = <&hdmi_output_v_mix_0>;
+            };
+        };
+        layer_0 {
+          dma-names = "dma0";
+          dmas = <&hdmi_output_v_frmbuf_rd_0 0>;
+          xlnx,layer-id = <0>;
+          xlnx,layer-max-height = <2160>;
+          xlnx,layer-max-width = <3840>;
+          xlnx,layer-primary;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-streaming;
+        };
+        layer_1 {
+          xlnx,layer-id = <1>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
+        };
+        layer_2 {
+          xlnx,layer-id = <2>;
+          xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
+        };
+        logo {
+            xlnx,layer-id = <3>;
+            xlnx,logo-height = <64>;
+            xlnx,logo-width = <64>;
+        };
+    };
+
+  # Example for systems where Mixer IP supports tiled formats (v-mix-6.0+).
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+
+    /* xlnx,tile-formats enables the tiled memory datapath for non-streaming
+     * overlays (layer_1+). layer_0 is always the hardware master streaming
+     * path and uses a raster xlnx,vformat string only. Tiled buffer layout
+     * (32x4 / 64x4 classes) and valid xlnx,vformat tokens follow the binding
+     * schema.
+     */
+    v-mix@80300000 {
+        compatible = "xlnx,v-mix-6.0";
+        reg = <0x80300000 0x10000>;
+        interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
+        clocks = <&misc_clk>;
+        reset-gpios = <&gpio 98 1>;
+        xlnx,bpc = <8>;
+        xlnx,dma-addr-width = <64>;
+        xlnx,num-layers = <4>;
+        xlnx,ppc = <2>;
+        xlnx,video-format = <0>;
+        xlnx,tile-formats;
+        xlnx,enable-csc-coefficient-register;
+        xlnx,bridge = <&v_tc_0>;
+        port {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            endpoint@0 {
+                reg = <0>;
+                remote-endpoint = <&hdmi_output_v_mix_0>;
+            };
+        };
+        layer_0 {
+          dma-names = "dma0";
+          dmas = <&hdmi_output_v_frmbuf_rd_0 0>;
+          xlnx,layer-id = <0>;
+          xlnx,layer-max-height = <2160>;
+          xlnx,layer-max-width = <3840>;
+          xlnx,layer-primary;
+          /* layer_0 is always a raster path, regardless of xlnx,tile-formats */
+          xlnx,vformat = "YUYV";
+          xlnx,layer-streaming;
+        };
+        layer_1 {
+          xlnx,layer-id = <1>;
+          /* T548+T648 pair (same effect as lone T548 for driver) */
+          xlnx,vformat = "T548", "T648";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
+        };
+        layer_2 {
+          xlnx,layer-id = <2>;
+          xlnx,vformat = "T528", "T628";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
+        };
+        logo {
+            xlnx,layer-id = <3>;
             xlnx,logo-height = <64>;
             xlnx,logo-width = <64>;
         };
