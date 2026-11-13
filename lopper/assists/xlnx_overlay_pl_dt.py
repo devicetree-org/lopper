@@ -32,7 +32,9 @@ from lopper.tree import LopperNode, LopperTree
 
 sys.path.append(os.path.dirname(__file__))
 _init(__name__)
+import common_utils as utils
 from baremetalconfig_xlnx import *
+from linux_binding_prune_xlnx import prune_linux_dt_bindings
 from lopper_lib import cell_value_get, parse_address_map
 
 
@@ -963,10 +965,9 @@ def xlnx_generate_overlay_dt(tgt_node, sdt, options):
     disable_hierarchical_nodes(overlay_tree)
 
     if not node_specs:
-        # Prune properties that the yaml bindings do not require.
-        yaml_bindings = utils.load_yaml_bindings()
-        for node in overlay_tree['/'].subnodes():
-            utils.prune_props_from_yaml_bindings(node, yaml_bindings)
+        binding_dir = os.path.join(
+            os.path.dirname(os.path.realpath(__file__)), "yaml_bindings")
+        prune_linux_dt_bindings(overlay_tree, binding_dir)
 
     # Clean overlay properties
     clean_overlay_properties(overlay_tree)
