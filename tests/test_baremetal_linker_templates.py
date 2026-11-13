@@ -2,7 +2,7 @@
 
 The ESW and openamp-system-reference RPU linker templates have a placeholder
 per section (@VECTORS@, @RODATA@, @BSS@, @HEAP@, @STACK@ and, for R52,
-@TCM_REGIONS@). Without a linker block, baremetallinker_xlnx must give them
+@R52_TCM_REGIONS@). Without a linker block, baremetallinker_xlnx must give them
 values that render each template byte for byte as the template did before it
 had those placeholders.
 

@@ -203,7 +203,7 @@ def test_r52_tcm_layout_uses_ctcm_and_sets_tcm_region_words():
         "r52_ctcm": (0x18000, 0x8000),
     }
     assert placement.tcm_regions == {"A": 0, "B": 0x10001, "C": 0x18001}
-    assert "_TCM_B_REGION = .;\n   LONG(${TCM_B_REGION})" in \
+    assert "_TCM_B_REGION = .;\n   LONG(${R52_TCM_B_REGION})" in \
         r52_tcm_regions_snippet(placement.tcm_regions)
 
 

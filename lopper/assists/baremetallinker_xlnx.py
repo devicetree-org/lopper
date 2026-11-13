@@ -393,9 +393,9 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
         cfd.write("set(RPU_SECTION_PLACEMENT ON)\n")
     if placement is not None and placement.tcm_regions:
         for bank, value in sorted(placement.tcm_regions.items()):
-            cfd.write("set(TCM_%s_REGION %s)\n" % (bank, hex(value)))
+            cfd.write("set(R52_TCM_%s_REGION %s)\n" % (bank, hex(value)))
         snippet = r52_tcm_regions_snippet(placement.tcm_regions)
-        cfd.write('set(TCM_REGIONS "%s")\n' % snippet)
+        cfd.write('set(R52_TCM_REGIONS "%s")\n' % snippet)
     memip_list = [lable_names[i] for i in memip_list]
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
 
