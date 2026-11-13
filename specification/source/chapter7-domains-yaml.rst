@@ -838,12 +838,15 @@ the generated script:
 holds the ELF-load carveout address.  With a ``linker`` mapping, the
 ``MEMORY`` section also gets the core's TCM regions, and on Cortex-R52 the
 assist writes
-``TCM_A_REGION``, ``TCM_B_REGION`` and ``TCM_C_REGION``: the words
+``R52_TCM_A_REGION``, ``R52_TCM_B_REGION`` and
+``R52_TCM_C_REGION``: the words
 standalone ``boot.S`` loads from ``_TCM_A_REGION``, ``_TCM_B_REGION`` and
 ``_TCM_C_REGION`` and writes to the TCM region registers.  A used BTCM or
 CTCM gets its core-local base with the enable bit set; the ATCM word and
 unused banks are 0, which leaves them as boot firmware configured them.
-``TCM_REGIONS`` holds the linker script lines that define these words.
+``R52_TCM_REGIONS`` holds the linker script lines that define these words.
+The ``R52_`` prefix identifies CMake metadata; the BSP linker symbols
+remain ``_TCM_A_REGION``, ``_TCM_B_REGION`` and ``_TCM_C_REGION``.
 
 ELF load in TCM only
 ~~~~~~~~~~~~~~~~~~~~

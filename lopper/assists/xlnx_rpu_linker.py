@@ -633,10 +633,10 @@ def r52_tcm_regions_snippet(tcm_regions):
     defines the words as weak zeros in ``.bootdata``; a linker script
     assignment takes precedence over them. These are the words the Zephyr
     linker writes as ``z_arm_tcm_x_region``. The snippet refers to the
-    TCM_x_REGION CMake variables, so the values stay in one place.
+    R52_TCM_x_REGION CMake variables, so the values stay in one place.
     """
     lines = []
     for bank in sorted(tcm_regions):
         lines.append(f"   _TCM_{bank}_REGION = .;")
-        lines.append(f"   LONG(${{TCM_{bank}_REGION}})")
+        lines.append(f"   LONG(${{R52_TCM_{bank}_REGION}})")
     return "\n" + "\n".join(lines)
