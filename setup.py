@@ -33,13 +33,20 @@ setuptools.setup(
         'Operating System :: POSIX :: Linux',
     ],
     packages=setuptools.find_packages(include=('lopper', 'lopper.*')),
-    python_requires='>=3.8',
+    python_requires='>=3.10',
     include_package_data=True,
     install_requires=[ "humanfriendly","configparser" ],
     extras_require={ "server": ["flask>=1.1.2","flask_restful>=0.3.8","pandas"],
                      "yaml": ["pyaml","ruamel.yaml","anytree","packaging"],
                      "dt" : ["devicetree"],
                      "pcpp" : ["pcpp"],
+                     # Device tree binding schemas, for assists that prune a
+                     # node down to the properties its binding allows. Supplies
+                     # the core and generic schemas that device bindings $ref
+                     # (types.yaml, graph.yaml, dt-core.yaml and friends) from
+                     # their upstream home, under a permissive license, so they
+                     # do not have to be carried here.
+                     "bindings" : ["dtschema>=2026.9"],
                     },
     namespace_packages=[ ],
     entry_points={'console_scripts': ('lopper = lopper.__main__:main',)},

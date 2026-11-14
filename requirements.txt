@@ -7,6 +7,11 @@ ruamel.yaml
 ruamel.yaml.clib
 six
 
+# Device tree binding schemas (setup.py: the "bindings" extra). Resolves the
+# core/generic $ref targets device bindings rely on, from their upstream home
+# rather than a vendored copy.
+dtschema>=2026.9
+
 # Testing dependencies
 pytest>=7.4.0
 pytest-xdist>=3.3.0  # for parallel test execution
