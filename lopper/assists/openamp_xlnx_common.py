@@ -20,8 +20,25 @@ from lopper.log import _warning
 from lopper.assists.lopper_lib import (
     CpuSelectionSource,
     _cpu_matches_legacy_label,
+    node_reg_start_size,
     resolve_domain_cpus,
 )
+
+def _required_reg_region(node):
+    """Return the first valid ``reg`` region for ``node``.
+
+    OpenAMP consumes only the first region from each device or carveout node.
+    Decode it using the parent bus cell widths instead of assuming a fixed
+    two-address-cell/two-size-cell representation.
+    """
+    if not isinstance(node, LopperNode):
+        raise ValueError("expected a node with a reg property")
+
+    base, size = node_reg_start_size(node)
+    if base is None or size is None or size <= 0:
+        raise ValueError("%s has an invalid reg property" % node.abs_path)
+    return base, size
+
 
 IPI_MAILBOX_COMPATIBLES = {
     "xlnx,versal-ipi-mailbox",
@@ -448,3 +465,39 @@ set(TTC_BASE_ADDR            $TTC_BASE_ADDR)
 # ------------------------------
 set(BUS_NAME                  "$BUS_NAME")
 """
+
+
+def is_axi_mailbox(node):
+    """Return True when ``node`` is an AXI Mailbox interface.
+
+    A MicroBlaze V remote in the PL is notified through an AXI Mailbox, which
+    has an interface for each side, instead of a PS IPI. The IP name is
+    checked first, as the Linux pass replaces the compatible.
+    """
+    if node is None:
+        return False
+    return ("mailbox" in node.propval("xlnx,ip-name", list) or
+            node.is_compatible("xlnx,mailbox"))
+
+
+# Linux binding of the remoteproc a soft processor such as a MicroBlaze V
+# uses: the firmware runs from a BRAM written through an AXI BRAM controller,
+# and a GPIO holds the processor in reset.
+BRAM_RPROC_COMPAT = "xlnx,zynqmp-bram-rproc"
+
+# Order of the RPMsg carveouts in memory-region, by remoteproc compatible.
+# Remoteprocs listed here also get memory-region-names. Others follow the RPU
+# bindings: vdev0buffer first after the ELF-load regions, then the vrings,
+# and their driver identifies the carveouts by node name.
+OPENAMP_LINUX_RPMSG_REGIONS = {
+    BRAM_RPROC_COMPAT: ("vdev0vring0", "vdev0vring1", "vdev0buffer"),
+}
+
+# Linux compatible of an AXI Mailbox interface used for RPMsg, by SoC. Every
+# SoC falls back to the ZynqMP compatible.
+PL_MBOX_FALLBACK_COMPAT = "amd,zynqmp-pl-mbox-2.1"
+PL_MBOX_LINUX_COMPAT = {
+    SOC_TYPE.VERSAL: "amd,versal-pl-mbox-2.1",
+    SOC_TYPE.VERSAL_NET: "amd,versal-net-pl-mbox-2.1",
+    SOC_TYPE.VERSAL2: "amd,versal2-pl-mbox-2.1",
+}
