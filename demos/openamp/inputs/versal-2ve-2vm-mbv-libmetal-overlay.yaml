@@ -1,0 +1,136 @@
+# VEK385 Linux userspace <-> MicroBlaze V libmetal (irq_shmem_demo), sharing
+# the RPU libmetal regions.
+#
+# Apply after versal-2ve-2vm-mbv-multidomain-base.yaml. The MicroBlaze V
+# uses the RPU libmetal regions, which the EDF base DT already reserves and
+# exports through UIO (libmetal_uio_desc0@99c8000, libmetal_uio_desc1@99cc000,
+# libmetal_uio_data@99d0000). They are declared below exactly as
+# versal-2ve-2vm-libmetal-overlay.yaml (meta-xilinx) declares them, so only
+# the APU-side mailbox interface comes from the PL overlay. Keep them
+# identical to the EDF base: the libmetal configuration takes its addresses
+# and device names from here.
+#
+# Requires the MicroBlaze V DDR window to cover 0x09800000-0x09bfffff (CED
+# design). The RPU and MicroBlaze V libmetal demos must not run at the same
+# time.
+#
+# The relations are named mbv0 so that they do not merge into the RPU
+# relations.
+#
+# Optional latency profiling (MBV_PROFILE) needs a PDI with the shared AXI
+# Timer mbv_timer. With one, add "timer: mbv_timer" to both mbv0 relations,
+# so the generated files carry the timer's addresses and clock, and export
+# the timer to Linux through UIO in the amba_pl section below, under the
+# timer's node name in the SDT:
+#
+#   <timer node name>:
+#     linux,uio-name!linux: "mbv-libmetal-timer"
+#     compatible!linux: "uio"
+reserved-memory:
+  ranges: true
+  "#size-cells": 2
+  "#address-cells": 2
+
+  libmetal_desc0@99c8000:
+    label: libmetal_desc0
+    start: 0x99c8000
+    size: 0x4000
+    no-map: 1
+  libmetal_desc1@99cc000:
+    label: libmetal_desc1
+    start: 0x99cc000
+    size: 0x4000
+    no-map: 1
+  libmetal_data@99d0000:
+    label: libmetal_data
+    start: 0x99d0000
+    size: 0x40000
+    no-map: 1
+
+axi:
+  libmetal_uio_desc0@99c8000:
+    linux,uio-name: "libmetal-desc0"
+    start: 0x99c8000
+    size: 0x4000
+    compatible: "uio"
+  libmetal_uio_desc1@99cc000:
+    linux,uio-name: "libmetal-desc1"
+    start: 0x99cc000
+    size: 0x4000
+    compatible: "uio"
+  libmetal_uio_data@99d0000:
+    linux,uio-name: "libmetal-data"
+    start: 0x99d0000
+    size: 0x40000
+    compatible: "uio"
+
+amba_pl:
+  # Linux -> MicroBlaze V libmetal mailbox (APU-side interface).
+  mbv_mailbox_S0@b2060000:
+    linux,uio-name!linux: "mbv-libmetal-mbox"
+    compatible!linux: "uio"         # linux overlay replaces it
+
+domains:
+  APU_Linux:
+    compatible: openamp,domain-v1
+    lopper,activate: linux
+    reserved-memory:
+      - libmetal_desc0@99c8000
+      - libmetal_desc1@99cc000
+      - libmetal_data@99d0000
+    # PL devices Linux needs for the MicroBlaze V: its mailbox interface (UIO),
+    # the BRAM controller it loads the firmware through, the reset GPIO, and
+    # the shared regions (UIO, already in the EDF base DT).
+    access:
+      - dev: mbv_mailbox_S0@b2060000
+      - dev: mbv_host_bram_ctrl@b0000000
+      - dev: gpio@b2050000
+      - dev: libmetal_uio_desc0@99c8000
+        flags: { timeshare: true }
+      - dev: libmetal_uio_desc1@99cc000
+        flags: { timeshare: true }
+      - dev: libmetal_uio_data@99d0000
+        flags: { timeshare: true }
+    domain-to-domain:
+      compatible: openamp,domain-to-domain-v1
+      remoteproc-relation:
+        compatible: openamp,remoteproc-v2
+        mbv0:
+          remote: MBV_Remote
+          elfload: [ mbv_host_bram_ctrl ]
+          reset-controller: mbv_reset_gpio
+          remoteproc-compatible: xlnx,zynqmp-bram-rproc
+          firmware-name: mbv_libmetal_demo.elf
+      libmetal-relation:
+        compatible: libmetal,ipc-v1
+        mbv0:
+          remote: MBV_Remote
+          carveouts: [ libmetal_uio_desc0@99c8000, libmetal_uio_desc1@99cc000, libmetal_uio_data@99d0000 ]
+          mbox: mbv_mailbox_S0
+
+  MBV_Remote:
+    compatible: openamp,domain-v1
+    reserved-memory:
+      - libmetal_desc0@99c8000
+      - libmetal_desc1@99cc000
+      - libmetal_data@99d0000
+    access:
+      - dev: mbv_mailbox_S1@40610000
+      - dev: serial@40600000
+      - dev: interrupt-controller@41200000
+      - dev: mbv_bram_ctrl@0
+      - dev: libmetal_uio_desc0@99c8000
+        flags: { timeshare: true }
+      - dev: libmetal_uio_desc1@99cc000
+        flags: { timeshare: true }
+      - dev: libmetal_uio_data@99d0000
+        flags: { timeshare: true }
+    domain-to-domain:
+      compatible: openamp,domain-to-domain-v1
+      libmetal-relation:
+        compatible: libmetal,ipc-v1
+        mbv0:
+          host: APU_Linux
+          carveouts: [ libmetal_uio_desc0@99c8000, libmetal_uio_desc1@99cc000, libmetal_uio_data@99d0000 ]
+          mbox: mbv_mailbox_S1
+          elfload: [ mbv_bram_ctrl_memory ]
