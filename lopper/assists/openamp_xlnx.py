@@ -1014,17 +1014,43 @@ def _libmetal_ttc_xilpm_node_id(tree, timer_node, platform):
                   f"for platform {platform}")
 
 
-def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_node, os, verbose = 0 ):
+def _timer_clock_hz(tree, timer_node):
+    """Return the input clock frequency, in Hz, of a PL AXI Timer.
+
+    The SDT gives it as the timer's clock-frequency, or as the
+    clock-frequency of the clock its clocks property names first.
+
+    Raises:
+        ValueError: If neither gives a frequency.
+    """
+    hz = timer_node.propval("clock-frequency", list)
+    if hz == [""]:
+        clocks = timer_node.propval("clocks", list)
+        clock = (tree.pnode(clocks[0])
+                 if clocks != [""] and isinstance(clocks[0], int) else None)
+        hz = (clock.propval("clock-frequency", list)
+              if clock is not None else [""])
+    if hz == [""] or not isinstance(hz[0], int) or hz[0] <= 0:
+        raise ValueError(f"{timer_node.abs_path}: no clock-frequency on the "
+                         "timer or its first clock")
+    return hz[0]
+
+
+def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_node, os, verbose = 0, cluster = None ):
     """Generate .cmake file for Libmetal IPI usage
 
     Args:
         tree (LopperTree): Device tree being inspected for metadata.
         output_file (str): name of output file
         carveouts (list[LopperNode]): Carveouts associated with libmetal
-        ipi_node (LopperNode): IPI node used
-        timer_node (LopperNode): Timer node used
+        ipi_node (LopperNode): IPI node, or AXI Mailbox interface, used
+        timer_node (LopperNode | None): Timer node used; optional for an
+            AXI Mailbox relation, where it is the shared timer the demo's
+            optional latency profiling reads
         os (str): os value
         verbose (int): Verbosity flag for diagnostic printing.
+        cluster (LopperNode | None): CPU cluster of the remote, whose
+            address map gives the addresses an AXI Mailbox remote uses
 
     Returns:
         bool: True on successful file generation, False on failure.
@@ -1041,18 +1067,32 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
     desc1 = carveouts[1]
     data = carveouts[2]
 
+    # A remote notified through an AXI Mailbox, such as a MicroBlaze V,
+    # reaches the carveouts and its mailbox through the address map of its
+    # cluster. The Linux host and the RPU outputs use system addresses.
+    axi_mailbox = is_axi_mailbox(ipi_node)
+    view = cluster if axi_mailbox and os != "linux_dt" else None
+    if axi_mailbox and os != "linux_dt" and cluster is None:
+        _error("openamp_xlnx: libmetal output for an AXI Mailbox remote "
+               "needs its processor")
+        return False
+
     try:
-        desc0_base, desc0_size = _required_reg_region(desc0)
-        desc1_base, desc1_size = _required_reg_region(desc1)
-        data_base, data_size = _required_reg_region(data)
-        timer_base, _ = _required_reg_region(timer_node)
-        ipi_base, _ = _required_reg_region(ipi_node.parent)
-        ttc_node_id = _libmetal_ttc_xilpm_node_id(tree, timer_node, platform)
+        desc0_base, desc0_size = cpu_view_region(view, desc0)
+        desc1_base, desc1_size = cpu_view_region(view, desc1)
+        data_base, data_size = cpu_view_region(view, data)
+        if axi_mailbox:
+            mbox_base, mbox_size = cpu_view_region(view, ipi_node)
+            if timer_node is not None:
+                timer_base, _ = cpu_view_region(view, timer_node)
+                timer_hz = _timer_clock_hz(tree, timer_node)
+        else:
+            timer_base, _ = _required_reg_region(timer_node)
+            ipi_base, _ = _required_reg_region(ipi_node.parent)
+            ttc_node_id = _libmetal_ttc_xilpm_node_id(tree, timer_node, platform)
     except ValueError as exc:
         _error(f"openamp_xlnx: {exc}")
         return False
-
-    suffix = "ipi" if platform == SOC_TYPE.ZYNQMP else "mailbox"
 
     values = {"SHM_IMAGE_BASE": hex(data_base),
               "SHM_IMAGE_SIZE": hex(data_size)}
@@ -1064,16 +1104,32 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
                 "SHM_BASE_ADDR": values["SHM_IMAGE_BASE"], "SHM_SIZE": values["SHM_IMAGE_SIZE"],
                 "SHM0_DESC_BASE": hex(desc0_base), "SHM0_DESC_SIZE": hex(desc0_size),
                 "SHM1_DESC_BASE": hex(desc1_base), "SHM1_DESC_SIZE": hex(desc1_size),
+                "SHM_DEV_NAME": linux_platform_device_name(data),
+                "SHM0_DESC_DEV_NAME": linux_platform_device_name(desc0),
+                "SHM1_DESC_DEV_NAME": linux_platform_device_name(desc1),
+                "BUS_NAME": "platform" if os == "linux_dt" else "generic" })
+    values.update({"SHM_PAYLOAD_TX_OFFSET": values["SHM_PAYLOAD_HALF_SIZE"]})
+
+    if axi_mailbox:
+        template = libmetal_cmake_axi_mailbox_template
+        values.update({
+                "MBOX_DEV_NAME": linux_platform_device_name(ipi_node),
+                "MBOX_BASE_ADDR": hex(mbox_base),
+                "MBOX_SIZE": hex(mbox_size),
+                "TIMER_CONFIG": "" if timer_node is None else
+                Template(libmetal_cmake_axi_timer_template).substitute({
+                    "TIMER_DEV_NAME": linux_platform_device_name(timer_node),
+                    "TIMER_BASE_ADDR": hex(timer_base),
+                    "TIMER_CLK_HZ": timer_hz }) })
+    else:
+        template = libmetal_cmake_template
+        suffix = "ipi" if platform == SOC_TYPE.ZYNQMP else "mailbox"
+        values.update({
                 "TTC_DEV_NAME": "%s.timer" % hex(timer_base)[2:], "TTC_NODEID": hex(ttc_node_id),
                 "TTC_BASE_ADDR": hex(timer_base),
                 "IPI_DEV_NAME": "%s.%s" % (hex(ipi_base)[2:], suffix), "IPI_BASE_ADDR": hex(ipi_base),
                 "IPI_MASK": hex(ipi_node['xlnx,ipi-bitmask'].value[0]),
-                "IPI_IRQ_VECT_ID": 0 if os == "linux_dt" else ipi_node.parent.propval("xlnx,int-id")[0],
-                "BUS_NAME": "platform" if os == "linux_dt" else "generic" })
-    values.update({"SHM_PAYLOAD_TX_OFFSET": values["SHM_PAYLOAD_HALF_SIZE"]})
-    values.update({"SHM_DEV_NAME": "%s.%s" % (data.name.split("@")[1].lower(), data.name.split("@")[0].lower())})
-    values.update({"SHM0_DESC_DEV_NAME": "%s.%s" % (desc0.name.split("@")[1].lower(), desc0.name.split("@")[0].lower())})
-    values.update({"SHM1_DESC_DEV_NAME": "%s.%s" % (desc1.name.split("@")[1].lower(), desc1.name.split("@")[0].lower())})
+                "IPI_IRQ_VECT_ID": 0 if os == "linux_dt" else ipi_node.parent.propval("xlnx,int-id")[0] })
 
     if os not in [ "linux_dt", "baremetal_dt" ]:
         _error("openamp_xlnx: libmetal output supports linux_dt and "
@@ -1082,7 +1138,7 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
 
     try:
         with open(output_file, "w") as f:
-            output = Template(libmetal_cmake_template)
+            output = Template(template)
             f.write(output.substitute(values))
     except Exception as e:
         _error(f"openamp_xlnx: cannot write libmetal output {output_file}: "
@@ -1091,7 +1147,7 @@ def xlnx_libmetal_gen_output_file(tree, output_file, carveouts, ipi_node, timer_
 
     return True
 
-def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_nodes, host_ipi, verbose = 0 ):
+def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_nodes, host_ipi, verbose = 0, cluster = None ):
     """Generate C header output for OpenAMP RPMsg channels.
 
     Args:
@@ -1100,8 +1156,11 @@ def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_node
             debugging).
         output_file (str): Destination filepath for the generated header.
         memory_region_nodes (list[LopperNode]): Carveouts associated with RPMsg.
-        host_ipi (LopperNode): IPI node connected to the host processor.
+        host_ipi (LopperNode): IPI node connected to the host processor, or
+            the remote's interface of an AXI Mailbox.
         verbose (int): Verbosity flag for diagnostic printing.
+        cluster (LopperNode | None): CPU cluster of the remote, whose address
+            map gives the addresses an AXI Mailbox remote uses.
 
     Returns:
         bool: True on successful file generation, False on failure.
@@ -1113,18 +1172,28 @@ def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_node
     """
     vrings = [n for n in memory_region_nodes if 'vring' in n.name]
     buffers = [n for n in memory_region_nodes if 'vdev0buffer' in n.name]
-    remote_ipi = host_ipi.parent
+
+    # A remote notified through an AXI Mailbox, such as a MicroBlaze V,
+    # reaches the carveouts and its mailbox through the address map of its
+    # cluster. The RPU headers use system addresses.
+    axi_mailbox = is_axi_mailbox(host_ipi)
+    if axi_mailbox and cluster is None:
+        _error("openamp_xlnx: the OpenAMP header of an AXI Mailbox remote "
+               "needs its processor")
+        return False
+    view = cluster if axi_mailbox else None
 
     try:
-        vring_regions = [_required_reg_region(node) for node in vrings]
+        vring_regions = [cpu_view_region(view, node) for node in vrings]
         if not vring_regions:
             raise ValueError("no vring carveouts were found")
         if len(buffers) != 1:
             raise ValueError(
                 "expected one vdev0buffer carveout; found %d" %
                 len(buffers))
-        shbuf_base, shbuf_size = _required_reg_region(buffers[0])
-        remote_ipi_base, _ = _required_reg_region(remote_ipi)
+        shbuf_base, shbuf_size = cpu_view_region(view, buffers[0])
+        remote_ipi_base, _ = cpu_view_region(view, host_ipi if axi_mailbox
+                                             else host_ipi.parent)
     except ValueError as exc:
         _error(f"openamp_xlnx: {exc}")
         return False
@@ -1134,35 +1203,34 @@ def xlnx_openamp_gen_outputs_only(tree, machine, output_file, memory_region_node
         _error("openamp_xlnx: vdev0buffer precedes the vring carveouts")
         return False
 
-    shm_pa = hex(shm_base)
-    shbuf_sz = hex(shbuf_size)
-    shbuf_offset = hex(shbuf_base - shm_base)
+    inputs = {
+        "RING_TX": "FW_RSC_U32_ADDR_ANY",
+        "RING_RX": "FW_RSC_U32_ADDR_ANY",
+        "SHARED_MEM_PA": hex(shm_base),
+        "SHARED_MEM_SIZE": hex(shbuf_size),
+        "SHARED_BUF_OFFSET": hex(shbuf_base - shm_base),
+    }
 
-    remote_vect_id = remote_ipi.propval('xlnx,int-id')[0]
-    ipi_irq_vect_id = hex(remote_vect_id)
-    ipi_irq_vect_id_rtos = hex(remote_vect_id-32)
-    remote_ipi_str = hex(remote_ipi_base)
-    host_bitmask = hex(host_ipi.propval('xlnx,ipi-bitmask')[0])
-
-    try:
-        inputs = {
-        "POLL_BASE_ADDR": remote_ipi_str,
+    if axi_mailbox:
+        template = platform_info_header_axi_mailbox_template
+        inputs["MBOX_BASE_ADDR"] = hex(remote_ipi_base)
+    else:
+        template = platform_info_header_r5_template
+        remote_vect_id = host_ipi.parent.propval('xlnx,int-id')[0]
+        inputs.update({
+        "POLL_BASE_ADDR": hex(remote_ipi_base),
         "SHM_DEV_NAME": "\"x.shm\"",
         "DEV_BUS_NAME": "\"generic\"",
         "IPI_DEV_NAME":  "\"y.ipi\"",
-        "IPI_IRQ_VECT_ID": ipi_irq_vect_id,
-        "IPI_IRQ_VECT_ID_FREERTOS": ipi_irq_vect_id_rtos,
-        "IPI_CHN_BITMASK": host_bitmask,
-        "RING_TX": "FW_RSC_U32_ADDR_ANY",
-        "RING_RX": "FW_RSC_U32_ADDR_ANY",
-        "SHARED_MEM_PA": shm_pa,
-        "SHARED_MEM_SIZE": shbuf_sz,
-        "SHARED_BUF_OFFSET": shbuf_offset,
+        "IPI_IRQ_VECT_ID": hex(remote_vect_id),
+        "IPI_IRQ_VECT_ID_FREERTOS": hex(remote_vect_id-32),
+        "IPI_CHN_BITMASK": hex(host_ipi.propval('xlnx,ipi-bitmask')[0]),
         "EXTRAS":"",
-        }
+        })
 
+    try:
         with open(output_file, "w") as f:
-            output = Template(platform_info_header_r5_template)
+            output = Template(template)
             f.write(output.substitute(inputs))
     except Exception as e:
         _error(f"openamp_xlnx: cannot write OpenAMP header {output_file}: "
@@ -2054,19 +2122,26 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
 
         carveouts = [ sdt.tree.pnode(phandle) for phandle in carveout_prop ]
 
+        # The remote's cluster, whose address map gives the addresses a
+        # remote notified through an AXI Mailbox uses.
+        cluster = match_cpunode.parent if match_cpunode else None
+
         if not openamp_args['libmetal_output_file']:
-            return xlnx_openamp_gen_outputs_only(sdt.tree, machine, output_file_name, carveouts, ipi_node, verbose)
+            return xlnx_openamp_gen_outputs_only(sdt.tree, machine, output_file_name, carveouts, ipi_node, verbose, cluster)
 
         if [openamp_args['compatible_string']] == relation_node.propval("compatible"):
+            # An AXI Mailbox relation, such as a MicroBlaze V one, uses no
+            # timer.
             timer_pval = node.propval("timer")
-            if timer_pval == ['']:
+            timer_node = None
+            if timer_pval != ['']:
+                timer_node = sdt.tree.pnode(timer_pval[0])
+            elif not is_axi_mailbox(ipi_node):
                 _error(f"openamp_xlnx: {node.abs_path} is missing timer "
                        "property")
                 return False
 
-            timer_node = sdt.tree.pnode(node.propval("timer")[0])
-
-            return xlnx_libmetal_gen_output_file(sdt.tree, output_file_name, carveouts, ipi_node, timer_node, os, verbose)
+            return xlnx_libmetal_gen_output_file(sdt.tree, output_file_name, carveouts, ipi_node, timer_node, os, verbose, cluster)
 
     return False
 

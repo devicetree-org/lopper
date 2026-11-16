@@ -8,7 +8,8 @@ SDT memory node, and reaches DDR through its own address map.
 # Copyright (c) 2026 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from lopper.assists import openamp_xlnx, yaml_to_dts_expansion
+from lopper.assists import openamp_xlnx, openamp_xlnx_common, \
+    yaml_to_dts_expansion
 from lopper.tree import LopperNode, LopperProp, LopperTree
 
 
@@ -318,3 +319,176 @@ def test_mbv_relations_next_to_rpu_relations():
     assert cores["RPU_1_BM"].abs_path == "/rpu_core"
     # Only the RPU ELF-load region is checked against the carveouts.
     assert validate == [tcm]
+
+
+def _mbv_cluster(tree):
+    """A MicroBlaze V cluster that reaches DDR, its mailbox and, through a
+    non-identity window, a device at 0x80000000 as 0x10000000."""
+    ddr = _node(tree, "/memory@0")
+    mbox = _node(tree, "/amba_pl/mbv_mailbox_S1@40610000",
+                 reg=[0, 0x40610000, 0, 0x10000],
+                 compatible=["xlnx,mailbox-2.1", "xlnx,mailbox"])
+    mbox["xlnx,ip-name"] = "mailbox"
+    remap = _node(tree, "/amba_pl/remapped@80000000",
+                  reg=[0, 0x80000000, 0, 0x1000])
+    cluster = _node(tree, "/cpus_microblaze_riscv@0",
+                    **{"#ranges-address-cells": [1],
+                       "#ranges-size-cells": [1]})
+    cluster["address-map"] = [
+        0x09b00000, ddr.phandle_or_create(), 0x09b00000, 0x100000,
+        0x40610000, mbox.phandle_or_create(), 0x40610000, 0x10000,
+        0x10000000, remap.phandle_or_create(), 0x80000000, 0x1000,
+    ]
+    return cluster, mbox, remap
+
+
+def test_cpu_view_region():
+    """System addresses translate through the cluster's address map."""
+    tree, _, _, _, _, carveouts = _mbv_linux_tree()
+    cluster, _, remap = _mbv_cluster(tree)
+    view = openamp_xlnx_common.cpu_view_region
+    assert view(cluster, carveouts[2]) == (0x09b08000, 0x78000)
+    assert view(cluster, remap) == (0x10000000, 0x1000)
+    assert view(None, remap) == (0x80000000, 0x1000)
+    carveouts[2]["reg"] = [0, 0x09bf0000, 0, 0x20000]
+    try:
+        view(cluster, carveouts[2])
+        assert False, "a region past the window must not translate"
+    except ValueError:
+        pass
+
+
+def test_linux_platform_device_name():
+    """Linux keeps the case of the node name."""
+    tree, _, _, _, mbox, _ = _mbv_linux_tree()
+    assert openamp_xlnx_common.linux_platform_device_name(mbox) == \
+        "b2060000.mbv_mailbox_S0"
+
+
+def test_mbv_openamp_header(tmp_path):
+    """The header has the RPU layout macros and the MicroBlaze V mailbox."""
+    tree, _, _, _, _, carveouts = _mbv_linux_tree()
+    cluster, mbox, _ = _mbv_cluster(tree)
+    out = tmp_path / "amd_platform_info.h"
+    assert openamp_xlnx.xlnx_openamp_gen_outputs_only(
+        tree, "microblaze_riscv_0", str(out), carveouts, mbox, 0, cluster)
+    text = out.read_text()
+    assert "#define SHARED_MEM_PA           0x9b00000UL" in text
+    assert "#define SHARED_MEM_SIZE         0x78000UL" in text
+    assert "#define SHARED_BUF_OFFSET       0x8000UL" in text
+    assert "#define RING_TX                 FW_RSC_U32_ADDR_ANY" in text
+    assert "#define MBOX_BASE_ADDR          0x40610000UL" in text
+    assert "IPI" not in text
+
+
+def test_mbv_openamp_header_rejects_unreachable_carveout(tmp_path):
+    """A carveout the MicroBlaze V cannot reach is an error."""
+    tree, _, _, _, _, carveouts = _mbv_linux_tree()
+    cluster, mbox, _ = _mbv_cluster(tree)
+    carveouts[2]["reg"] = [0, 0x09c00000, 0, 0x78000]
+    assert not openamp_xlnx.xlnx_openamp_gen_outputs_only(
+        tree, "microblaze_riscv_0", str(tmp_path / "h"), carveouts, mbox, 0,
+        cluster)
+
+
+def test_mbv_openamp_header_needs_cluster(tmp_path):
+    """Without the remote's cluster the MicroBlaze V view is unknown."""
+    tree, _, _, _, _, carveouts = _mbv_linux_tree()
+    _, mbox, _ = _mbv_cluster(tree)
+    assert not openamp_xlnx.xlnx_openamp_gen_outputs_only(
+        tree, "microblaze_riscv_0", str(tmp_path / "h"), carveouts, mbox)
+
+
+LIBMETAL_REGIONS = (("mbv_libmetal_desc0", 0x09b80000, 0x4000),
+                    ("mbv_libmetal_desc1", 0x09b84000, 0x4000),
+                    ("mbv_libmetal_data", 0x09b88000, 0x40000))
+
+
+def _libmetal_regions(tree):
+    _node(tree, "/axi", **{"#address-cells": [2], "#size-cells": [2]})
+    return [_node(tree, "/axi/%s@%x" % (name, base), reg=[0, base, 0, size])
+            for name, base, size in LIBMETAL_REGIONS]
+
+
+def test_mbv_libmetal_remote_cmake(tmp_path):
+    """The remote gets the layout and its mailbox, without a timer."""
+    tree, *_ = _mbv_linux_tree()
+    cluster, mbox, _ = _mbv_cluster(tree)
+    out = tmp_path / "remote.cmake"
+    assert openamp_xlnx.xlnx_libmetal_gen_output_file(
+        tree, str(out), _libmetal_regions(tree), mbox, None, "baremetal_dt",
+        0, cluster)
+    text = out.read_text()
+    assert "set(SHM0_DESC_BASE            0x9b80000)" in text
+    assert "set(SHM_PAYLOAD_SIZE          0x40000)" in text
+    assert "set(SHM_PAYLOAD_TX_OFFSET     0x20000)" in text
+    assert "set(MBOX_BASE_ADDR            0x40610000)" in text
+    assert "set(MBOX_SIZE                 0x10000)" in text
+    assert 'set(BUS_NAME                  "generic")' in text
+    assert "IPI" not in text and "TTC" not in text
+    assert "TIMER" not in text
+
+
+def _mbv_timer(tree, cluster, clock_on_timer=False):
+    """A PL AXI Timer both the APU (0xb2070000) and the MicroBlaze V
+    (0x40620000) reach: one node, with the APU address in reg."""
+    clk = _node(tree, "/amba_pl/misc_clk_1", label="misc_clk_1",
+                **{"clock-frequency": [99999001]})
+    timer = _node(tree, "/amba_pl/timer@b2070000", label="mbv_timer",
+                  reg=[0, 0xb2070000, 0, 0x10000],
+                  clocks=[clk.phandle_or_create()])
+    if clock_on_timer:
+        timer["clock-frequency"] = [100000000]
+    cluster["address-map"] = cluster.propval("address-map", list) + [
+        0x40620000, timer.phandle_or_create(), 0xb2070000, 0x10000]
+    return timer
+
+
+def test_mbv_libmetal_cmake_with_timer(tmp_path):
+    """A relation timer adds its MicroBlaze V address, Linux device name and
+    clock, for the demo's optional latency profiling."""
+    tree, _, _, _, host_mbox, _ = _mbv_linux_tree()
+    cluster, mbox, _ = _mbv_cluster(tree)
+    timer = _mbv_timer(tree, cluster)
+    regions = _libmetal_regions(tree)
+
+    remote = tmp_path / "remote.cmake"
+    assert openamp_xlnx.xlnx_libmetal_gen_output_file(
+        tree, str(remote), regions, mbox, timer, "baremetal_dt", 0, cluster)
+    text = remote.read_text()
+    assert "set(TIMER_BASE_ADDR           0x40620000)" in text
+    assert "set(TIMER_CLK_HZ              99999001)" in text
+    assert 'set(TIMER_DEV_NAME            "b2070000.timer")' in text
+
+    host = tmp_path / "host.cmake"
+    assert openamp_xlnx.xlnx_libmetal_gen_output_file(
+        tree, str(host), regions, host_mbox, timer, "linux_dt")
+    assert "set(TIMER_BASE_ADDR           0xb2070000)" in host.read_text()
+
+    timer["clock-frequency"] = [100000000]
+    assert openamp_xlnx.xlnx_libmetal_gen_output_file(
+        tree, str(remote), regions, mbox, timer, "baremetal_dt", 0, cluster)
+    assert "set(TIMER_CLK_HZ              100000000)" in remote.read_text()
+
+
+def test_mbv_libmetal_timer_without_clock_fails(tmp_path):
+    tree, *_ = _mbv_linux_tree()
+    cluster, mbox, _ = _mbv_cluster(tree)
+    timer = _mbv_timer(tree, cluster)
+    timer["clocks"] = [0xdead]
+    assert not openamp_xlnx.xlnx_libmetal_gen_output_file(
+        tree, str(tmp_path / "r.cmake"), _libmetal_regions(tree), mbox,
+        timer, "baremetal_dt", 0, cluster)
+
+
+def test_mbv_libmetal_host_cmake(tmp_path):
+    """The Linux host gets platform device names; case is preserved."""
+    tree, _, _, _, mbox, _ = _mbv_linux_tree()
+    out = tmp_path / "host.cmake"
+    assert openamp_xlnx.xlnx_libmetal_gen_output_file(
+        tree, str(out), _libmetal_regions(tree), mbox, None, "linux_dt")
+    text = out.read_text()
+    assert 'set(BUS_NAME                  "platform")' in text
+    assert 'set(SHM0_DESC_DEV_NAME        "9b80000.mbv_libmetal_desc0")' in text
+    assert 'set(SHM_DEV_NAME              "9b88000.mbv_libmetal_data")' in text
+    assert 'set(MBOX_DEV_NAME             "b2060000.mbv_mailbox_S0")' in text
