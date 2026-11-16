@@ -1873,6 +1873,33 @@ def domain_to_domain_expand(tree, tgt_node, verbose = 0 ):
 
     return True
 
+def _find_relation_reference(tree, ref):
+    """Find the nodes a relation property names, by node name or label.
+
+    Args:
+        tree (LopperTree): Device tree to search.
+        ref (str): Node name (with unit address) or label from the YAML.
+
+    Returns:
+        list[LopperNode]: Matching nodes; empty when none match.
+
+    Algorithm:
+        Reserved memory and the PS bus (/axi) are searched first, as before.
+        Other references, such as top-level TCM and SDT memory nodes or AXI
+        Mailbox interfaces below /amba_pl, resolve through LopperTree.deref().
+    """
+    for path in ("/reserved-memory", "/axi"):
+        try:
+            found = [ n for n in tree[path].subnodes(children_only=True)
+                      if ref == n.name or ref == n.label ]
+        except KeyError:
+            continue
+        if found:
+            return found
+
+    node = tree.deref(ref)
+    return [ node ] if node else []
+
 def resolve_carveouts( tree, subnode, carveout_prop_name, verbose = 0 ):
     """Resolve carveout node references within a relation.
 
@@ -1886,14 +1913,13 @@ def resolve_carveouts( tree, subnode, carveout_prop_name, verbose = 0 ):
         bool: True when all carveout names resolve to phandles, False otherwise.
 
     Algorithm:
-        Iterates relation children, searches reserved-memory and AXI subtrees for
-        matching node names or labels, ensures phandles exist, and replaces the
+        Iterates relation children, finds the node each name or label refers to
+        (see _find_relation_reference), ensures phandles exist, and replaces the
         string references with numeric phandle lists.
     """
     prop = None
     domain_node = None
 
-    subnodes_to_check = subnode.tree["/reserved-memory"].subnodes(children_only=True) + subnode.tree["/axi"].subnodes(children_only=True)
     for relation in subnode.subnodes(children_only=True):
         if relation.props(carveout_prop_name) == []:
             print("WARNING: resolve_carveouts: ", subnode, relation, "missing property", carveout_prop_name)
@@ -1902,11 +1928,7 @@ def resolve_carveouts( tree, subnode, carveout_prop_name, verbose = 0 ):
         new_prop_val = []
 
         for carveout_str in carveoutlist:
-            current_node = [ n for n in subnodes_to_check if carveout_str == n.name or carveout_str == n.label ]
-
-            # there can be tcm in / and not /axi
-            if "tcm" in carveout_str and current_node == []:
-                current_node = [ n for n in subnode.tree["/"].subnodes(children_only=True) if carveout_str == n.name or carveout_str == n.label ]
+            current_node = _find_relation_reference(subnode.tree, carveout_str)
 
             if current_node == []:
                 print("ERROR: Unable to find referenced node name: ", carveout_str, current_node, relation)
@@ -1973,9 +1995,10 @@ def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
         bool: True when mailbox references resolve successfully, False otherwise.
 
     Algorithm:
-        Validates the presence of ``mbox`` properties, searches the AXI subtree for
-        nodes whose name or label matches the mailbox string, and writes the located
-        phandle back into the relation.
+        Validates the presence of ``mbox`` properties, finds the node whose name
+        or label matches the mailbox string (PS IPIs below /axi, AXI Mailbox
+        interfaces below /amba_pl), and writes its phandle back into the
+        relation.
     """
     for relation in subnode.subnodes(children_only=True):
         if relation.props("mbox") == []:
@@ -1983,11 +2006,14 @@ def resolve_rpmsg_mbox( tree, subnode, verbose = 0 ):
             return False
 
         mbox = relation.propval("mbox")
+        if isinstance(mbox, list):
+            mbox = mbox[0]
 
         # if the node name or label matches then save it
-        node = [ n for n in subnode.tree["/axi"].subnodes(children_only=True) if n.name == mbox or n.label == mbox ]
+        node = _find_relation_reference(subnode.tree, mbox)
         if node == []:
-            print("WARNING: could not find ", mbox)
+            lopper.log._error(f"could not find mailbox {mbox} for {relation.abs_path}")
+            return False
 
         if node[0].phandle == 0:
             node[0].phandle_or_create()
@@ -2131,8 +2157,11 @@ def xlnx_timer_expand(tree, subnode, verbose = 0 ):
     """
     for relation in subnode.subnodes(children_only=True):
         timer_pval = relation.propval("timer")
+        # A timer is optional per relation: the RPU demos use a PS TTC, a
+        # MicroBlaze V remote may have none. The output that needs a timer
+        # reports when it is missing.
         if timer_pval == ['']:
-            return False
+            continue
 
         timer_ref_list = []
         if isinstance(timer_pval, str):

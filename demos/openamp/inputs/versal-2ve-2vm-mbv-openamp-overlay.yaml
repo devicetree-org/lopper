@@ -1,0 +1,93 @@
+# VEK385 Linux <-> MicroBlaze V OpenAMP (RPMsg), sharing the RPU carveouts.
+#
+# Apply after versal-2ve-2vm-mbv-multidomain-base.yaml. The MicroBlaze V
+# uses the RPU RPMsg carveouts vdev0vring0@9880000, vdev0vring1@9884000 and
+# vdev0buffer@9888000, which the EDF base DT already reserves at boot. They
+# are declared below exactly as versal-2ve-2vm-openamp-overlay.yaml
+# (meta-xilinx) declares them, same names and labels, so the generated PL
+# overlay only references the base labels and applies to the stock EDF DT.
+# Keep them identical to the EDF base: the firmware header takes its
+# addresses from here.
+#
+# Requires the MicroBlaze V DDR window to cover 0x09800000-0x09bfffff (CED
+# design). The RPU and the MicroBlaze V must not run at the same time: stop
+# the RPU remoteproc before starting the MicroBlaze V, and the reverse.
+#
+# The relations are named mbv0 so that they do not merge into the RPU
+# relations.
+reserved-memory:
+  ranges: true
+  "#size-cells": 2
+  "#address-cells": 2
+
+  vdev0vring0@9880000:
+    label: vdev0vring0
+    start: 0x9880000
+    size: 0x4000
+    no-map: 1
+  vdev0vring1@9884000:
+    label: vdev0vring1
+    start: 0x9884000
+    size: 0x4000
+    no-map: 1
+  vdev0buffer@9888000:
+    label: vdev0buffer
+    size: 0x78000
+    start: 0x9888000
+    no-map: 1
+
+domains:
+  APU_Linux:
+    compatible: openamp,domain-v1
+    # PL devices Linux needs for the MicroBlaze V: its mailbox interface
+    # (remoteproc kicks and RPMsg), the BRAM controller it loads the firmware
+    # through, and the reset GPIO.
+    access:
+      - dev: mbv_mailbox_S0@b2060000
+      - dev: mbv_host_bram_ctrl@b0000000
+      - dev: gpio@b2050000
+    reserved-memory:
+      - vdev0vring0@9880000
+      - vdev0vring1@9884000
+      - vdev0buffer@9888000
+
+    domain-to-domain:
+      compatible: openamp,domain-to-domain-v1
+      remoteproc-relation:
+        compatible: openamp,remoteproc-v2
+        mbv0:
+          remote: MBV_Remote
+          elfload: [ mbv_host_bram_ctrl ]
+          mbox: mbv_mailbox_S0
+          reset-controller: mbv_reset_gpio
+          remoteproc-compatible: xlnx,zynqmp-bram-rproc
+          firmware-name: mbv_openamp_echo.elf
+
+      rpmsg-relation:
+        compatible: openamp,rpmsg-v1
+        mbv0:
+          remote: MBV_Remote
+          carveouts: [ vdev0vring0@9880000, vdev0vring1@9884000, vdev0buffer@9888000 ]
+          mbox: mbv_mailbox_S0
+
+  MBV_Remote:
+    compatible: openamp,domain-v1
+    # Devices on the MicroBlaze V side: its mailbox interface, console,
+    # interrupt controller and local BRAM controller.
+    access:
+      - dev: mbv_mailbox_S1@40610000
+      - dev: serial@40600000
+      - dev: interrupt-controller@41200000
+      - dev: mbv_bram_ctrl@0
+    reserved-memory:
+      - vdev0vring0@9880000
+      - vdev0vring1@9884000
+      - vdev0buffer@9888000
+    domain-to-domain:
+      compatible: openamp,domain-to-domain-v1
+      rpmsg-relation:
+        compatible: openamp,rpmsg-v1
+        mbv0:
+          host: APU_Linux
+          carveouts: [ vdev0vring0@9880000, vdev0vring1@9884000, vdev0buffer@9888000 ]
+          mbox: mbv_mailbox_S1
