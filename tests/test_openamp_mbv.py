@@ -8,8 +8,8 @@ SDT memory node, and reaches DDR through its own address map.
 # Copyright (c) 2026 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from lopper.assists import yaml_to_dts_expansion
-from lopper.tree import LopperNode, LopperTree
+from lopper.assists import openamp_xlnx, yaml_to_dts_expansion
+from lopper.tree import LopperNode, LopperProp, LopperTree
 
 
 def _node(tree, path, label=None, **props):
@@ -89,3 +89,232 @@ def test_libmetal_relation_without_timer_resolves_mailbox():
     assert yaml_to_dts_expansion.xlnx_libmetal_expand(tree, relations)
     assert relation.propval("carveouts", list) == [data.phandle]
     assert relation.propval("mbox", list) == [mbox.phandle]
+
+
+D2D = "/domains/APU_Linux/domain-to-domain"
+
+
+def _mbv_linux_tree(rpmsg=True, libmetal=False):
+    """A Linux domain with relations to one MicroBlaze V, as YAML expands it."""
+    tree = LopperTree()
+    tree["/"]["compatible"] = ["xlnx,versal2"]
+    tree["/"]["#address-cells"] = [2]
+    tree["/"]["#size-cells"] = [2]
+    _node(tree, "/reserved-memory", **{"#address-cells": [2],
+                                       "#size-cells": [2]})
+    pl = _node(tree, "/amba_pl", **{"#address-cells": [2],
+                                     "#size-cells": [2]})
+    clk = _node(tree, "/amba_pl/misc_clk_0", label="misc_clk_0")
+    _node(tree, "/amba_pl/mbv_host_bram_ctrl@b0000000",
+          compatible=["xlnx,axi-bram-ctrl-4.1", "xlnx,axi-bram-ctrl"],
+          reg=[0, 0xb0000000, 0, 0x40000], clocks=[clk.phandle_or_create()])
+    gpio = _node(tree, "/amba_pl/gpio@b2050000", label="mbv_reset_gpio",
+                 reg=[0, 0xb2050000, 0, 0x10000])
+    gpio + LopperProp(name="gpio-controller")
+    mbox = _node(tree, "/amba_pl/mbv_mailbox_S0@b2060000",
+                 label="mbv_mailbox_S0", reg=[0, 0xb2060000, 0, 0x10000],
+                 compatible=["xlnx,mailbox-2.1", "xlnx,mailbox"])
+    mbox["xlnx,ip-name"] = "mailbox"
+    bram = _node(tree, "/memory@b0000000",
+                 compatible=["xlnx,axi-bram-ctrl-4.1", "xlnx,axi-bram-ctrl"],
+                 reg=[0, 0xb0000000, 0, 0x40000])
+    bram["device_type"] = "memory"
+    carveouts = [
+        _node(tree, "/reserved-memory/%s@%x" % (name, base),
+              reg=[0, base, 0, size])
+        for name, base, size in (("vdev0vring0", 0x09b00000, 0x4000),
+                                 ("vdev0vring1", 0x09b04000, 0x4000),
+                                 ("vdev0buffer", 0x09b08000, 0x78000))]
+    remote = _node(tree, "/domains/MBV_Remote")
+    linux = _node(tree, "/domains/APU_Linux")
+    linux["os,type"] = "linux"
+    _node(tree, D2D)
+    rproc = _node(tree, D2D + "/remoteproc-relation",
+                  compatible="openamp,remoteproc-v2")
+    _node(tree, rproc.abs_path + "/relation0",
+          remote=[remote.phandle_or_create()],
+          elfload=[bram.phandle_or_create()],
+          reset_controller=[gpio.phandle_or_create()],
+          firmware_name="mbv_openamp_echo.elf")
+    if rpmsg:
+        group = _node(tree, D2D + "/rpmsg-relation",
+                      compatible="openamp,rpmsg-v1")
+        _node(tree, group.abs_path + "/relation0",
+              remote=[remote.phandle], mbox=[mbox.phandle_or_create()],
+              carveouts=[c.phandle_or_create() for c in carveouts])
+    if libmetal:
+        group = _node(tree, D2D + "/libmetal-relation",
+                      compatible="libmetal,ipc-v1")
+        _node(tree, group.abs_path + "/relation0",
+              remote=[remote.phandle], mbox=[mbox.phandle_or_create()])
+    return tree, pl, clk, gpio, mbox, carveouts
+
+
+def _linux_dt(tree):
+    """Run the Linux remoteproc, RPMsg and libmetal parsers, as
+    xlnx_handle_relations does."""
+    validate = []
+    cores = openamp_xlnx.xlnx_remoteproc_parse(
+        tree, tree[D2D + "/remoteproc-relation"], validate)
+    if not cores:
+        return False
+    for name in ("rpmsg-relation", "libmetal-relation"):
+        try:
+            group = tree[D2D + "/" + name]
+        except KeyError:
+            continue
+        if name == "rpmsg-relation":
+            ok = openamp_xlnx.xlnx_rpmsg_parse(
+                tree, group, "microblaze_riscv_0", validate, cores,
+                "linux_dt")
+        else:
+            ok = openamp_xlnx.xlnx_libmetal_linux_setup_ipi(
+                tree, group, "microblaze_riscv_0")
+        if not ok:
+            return False
+    return openamp_xlnx.xlnx_validate_carveouts(tree, validate)
+
+
+def test_mbv_rpmsg_linux_nodes():
+    """The Linux tree gets the BRAM remoteproc, its mailbox and carveouts."""
+    tree, pl, clk, gpio, mbox, carveouts = _mbv_linux_tree()
+    assert _linux_dt(tree)
+
+    bus = tree["/amba_pl/rproc-bus@b0000000"]
+    assert bus.propval("compatible", list) == ["simple-pm-bus"]
+    assert bus.propval("ranges", list) == [0, 0, 0xb0000000, 0x40000]
+    core = tree[bus.abs_path + "/remoteproc@0"]
+    assert core.propval("compatible", list) == ["xlnx,zynqmp-bram-rproc"]
+    assert core.propval("reg", list) == [0, 0x40000]
+    assert core.propval("clocks", list) == [clk.phandle]
+    assert core.propval("reset-gpios", list) == [gpio.phandle, 0, 1]
+    assert core.propval("firmware-name", list) == ["mbv_openamp_echo.elf"]
+    assert core.propval("mboxes", list) == [mbox.phandle, 0, mbox.phandle, 1]
+    assert core.propval("mbox-names", list) == ["tx", "rx"]
+    assert core.propval("memory-region", list) == [
+        c.phandle for c in carveouts]
+    assert core.propval("memory-region-names", list) == [
+        "vdev0vring0", "vdev0vring1", "vdev0buffer"]
+
+    assert mbox.propval("compatible", list) == [
+        "amd,versal2-pl-mbox-2.1", "amd,zynqmp-pl-mbox-2.1"]
+    assert mbox.propval("#mbox-cells", list) == [1]
+    assert mbox.propval("clocks", list) == [clk.phandle]
+    assert carveouts[2].propval("compatible", list) == ["shared-dma-pool"]
+
+
+def test_mbv_rpmsg_carveouts_in_any_order():
+    """The relation may list the carveouts in any order."""
+    tree, _, _, _, _, carveouts = _mbv_linux_tree()
+    relation = tree[D2D + "/rpmsg-relation/relation0"]
+    relation["carveouts"] = [c.phandle for c in reversed(carveouts)]
+    assert _linux_dt(tree)
+    core = tree["/amba_pl/rproc-bus@b0000000/remoteproc@0"]
+    assert core.propval("memory-region", list) == [
+        c.phandle for c in carveouts]
+
+
+def test_mbv_rpmsg_missing_vring_fails():
+    """The BRAM remoteproc binding needs both vrings and the buffer."""
+    tree, _, _, _, _, carveouts = _mbv_linux_tree()
+    relation = tree[D2D + "/rpmsg-relation/relation0"]
+    relation["carveouts"] = [carveouts[0].phandle, carveouts[2].phandle]
+    assert not _linux_dt(tree)
+
+
+def test_mbv_libmetal_linux_nodes():
+    """libmetal mode: the mailbox goes to UIO, remoteproc has no mailbox."""
+    tree, _, _, _, mbox, _ = _mbv_linux_tree(rpmsg=False, libmetal=True)
+    assert _linux_dt(tree)
+
+    core = tree["/amba_pl/rproc-bus@b0000000/remoteproc@0"]
+    assert core.propval("mboxes", list) == ['']
+    assert core.propval("memory-region", list) == ['']
+    assert mbox.propval("compatible", list) == ["uio"]
+
+
+def test_mbv_mailbox_for_rpmsg_and_libmetal_fails():
+    """One AXI Mailbox interface cannot serve both RPMsg and libmetal."""
+    tree, *_ = _mbv_linux_tree(rpmsg=True, libmetal=True)
+    assert not _linux_dt(tree)
+
+
+def test_mbv_rpmsg_without_remoteproc_fails():
+    """An RPMsg relation to a MicroBlaze V needs its remoteproc relation."""
+    tree, *_ = _mbv_linux_tree()
+    group = tree[D2D + "/rpmsg-relation"]
+    assert not openamp_xlnx.xlnx_rpmsg_parse(
+        tree, group, "microblaze_riscv_0", [], {}, "linux_dt")
+
+
+def test_mbv_axi_mailbox_needs_linux_host():
+    """A Zephyr host cannot use an AXI Mailbox relation."""
+    tree, *_ = _mbv_linux_tree()
+    group = tree[D2D + "/rpmsg-relation"]
+    relation = tree[group.abs_path + "/relation0"]
+    relation["host"] = relation.propval("remote", list)
+    assert not openamp_xlnx.xlnx_rpmsg_parse(
+        tree, group, "microblaze_riscv_0", [], None, "zephyr_dt")
+
+
+def test_mbv_elfload_can_name_the_bram_controller():
+    """elfload may name the BRAM controller instead of the memory node."""
+    tree, _, clk, *_ = _mbv_linux_tree(rpmsg=False)
+    ctrl = tree["/amba_pl/mbv_host_bram_ctrl@b0000000"]
+    tree - tree["/memory@b0000000"]
+    relation = tree[D2D + "/remoteproc-relation/relation0"]
+    relation["elfload"] = [ctrl.phandle_or_create()]
+    assert _linux_dt(tree)
+    core = tree["/amba_pl/rproc-bus@b0000000/remoteproc@0"]
+    assert core.propval("clocks", list) == [clk.phandle]
+
+
+def test_mbv_elfload_without_bram_controller_fails():
+    """An elfload that is not a BRAM controller, or backed by one, fails."""
+    tree, *_ = _mbv_linux_tree(rpmsg=False)
+    tree - tree["/amba_pl/mbv_host_bram_ctrl@b0000000"]
+    assert not _linux_dt(tree)
+
+
+def test_mbv_reset_controller_must_be_gpio():
+    """reset-controller must reference a GPIO controller."""
+    tree, _, clk, *_ = _mbv_linux_tree(rpmsg=False)
+    relation = tree[D2D + "/remoteproc-relation/relation0"]
+    relation["reset-controller"] = [clk.phandle]
+    assert not _linux_dt(tree)
+
+
+def test_mbv_relations_next_to_rpu_relations():
+    """A group may hold RPU and MicroBlaze V relations; the MicroBlaze V
+    relation takes the BRAM path and the RPU one the RPU path."""
+    tree, *_ = _mbv_linux_tree(rpmsg=False)
+    rpu = _node(tree, "/domains/RPU_1_BM")
+    group = tree[D2D + "/remoteproc-relation"]
+    calls = []
+
+    def rpu_parse(tree, node, info, elfload, verbose=0):
+        calls.append(node.name)
+        return True
+
+    def rpu_cluster(tree, info, elfload, verbose=0):
+        return LopperNode(-1, "/rpu_core")
+
+    tcm = _node(tree, "/axi/tcm@eba00000", reg=[0, 0xeba00000, 0, 0x10000])
+    _node(tree, group.abs_path + "/relation1",
+          remote=[rpu.phandle_or_create()], elfload=[tcm.phandle_or_create()])
+    saved = (openamp_xlnx.xlnx_remoteproc_rpu_parse,
+             openamp_xlnx.xlnx_remoteproc_v2_construct_cluster)
+    openamp_xlnx.xlnx_remoteproc_rpu_parse = rpu_parse
+    openamp_xlnx.xlnx_remoteproc_v2_construct_cluster = rpu_cluster
+    try:
+        validate = []
+        cores = openamp_xlnx.xlnx_remoteproc_parse(tree, group, validate)
+    finally:
+        (openamp_xlnx.xlnx_remoteproc_rpu_parse,
+         openamp_xlnx.xlnx_remoteproc_v2_construct_cluster) = saved
+    assert calls == ["relation1"]
+    assert cores["MBV_Remote"].abs_path == \
+        "/amba_pl/rproc-bus@b0000000/remoteproc@0"
+    assert cores["RPU_1_BM"].abs_path == "/rpu_core"
+    # Only the RPU ELF-load region is checked against the carveouts.
+    assert validate == [tcm]

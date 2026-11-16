@@ -37,6 +37,7 @@ from openamp_xlnx_common import *
 from openamp_xlnx_common import (
     _openamp_domain_processor,
     _openamp_domain_selects_cpu,
+    _required_reg_region,
 )
 from baremetalconfig_xlnx import get_cpu_node
 from lopper_lib import (
@@ -65,21 +66,6 @@ REMOTEPROC_D_TO_D_v2 = "openamp,remoteproc-v2"
 RPMSG_D_TO_D = "openamp,rpmsg-v1"
 LIBMETAL_D_TO_D = "libmetal,ipc-v1"
 
-
-def _required_reg_region(node):
-    """Return the first valid ``reg`` region for ``node``.
-
-    OpenAMP consumes only the first region from each device or carveout node.
-    Decode it using the parent bus cell widths instead of assuming a fixed
-    two-address-cell/two-size-cell representation.
-    """
-    if not isinstance(node, LopperNode):
-        raise ValueError("expected a node with a reg property")
-
-    base, size = node_reg_start_size(node)
-    if base is None or size is None or size <= 0:
-        raise ValueError("%s has an invalid reg property" % node.abs_path)
-    return base, size
 
 def is_compat( node, compat_string_to_test ):
     """Identify whether this plugin handles the provided compatibility string.
@@ -430,8 +416,20 @@ def xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveout
         return False
     rpmsg_carveouts[vdev0buf[0]] + LopperProp(name="compatible", value="shared-dma-pool")
 
-    vdev0buf = rpmsg_carveouts.pop(vdev0buf[0])
-    rpmsg_carveouts.insert(0, vdev0buf)
+    region_order = OPENAMP_LINUX_RPMSG_REGIONS.get(
+        core_node.propval("compatible", list)[0])
+    if region_order:
+        # The binding fixes the order of the carveouts and names them.
+        by_name = { rc.name.split("@")[0]: rc for rc in rpmsg_carveouts }
+        if sorted(by_name) != sorted(region_order) or \
+                len(by_name) != len(rpmsg_carveouts):
+            _error(f"openamp_xlnx: {node.abs_path}: expected the carveouts "
+                   f"{', '.join(region_order)}")
+            return False
+        rpmsg_carveouts = [ by_name[name] for name in region_order ]
+    else:
+        vdev0buf = rpmsg_carveouts.pop(vdev0buf[0])
+        rpmsg_carveouts.insert(0, vdev0buf)
     new_mem_region_prop_val = [ phandle for phandle in core_node.propval("memory-region")
                                 if isinstance(phandle, int) ]
 
@@ -448,7 +446,21 @@ def xlnx_rpmsg_update_tree_linux(tree, node, ipi_node, core_node, rpmsg_carveout
         core_node["memory-region"].value = new_mem_region_prop_val
     else:
         core_node + LopperProp(name="memory-region", value = new_mem_region_prop_val)
-    core_node + LopperProp(name="mboxes", value = [ipi_node.phandle, 0, ipi_node.phandle, 1])
+    if region_order:
+        core_node + LopperProp(name="memory-region-names", value=list(region_order))
+    if is_axi_mailbox(ipi_node):
+        # Linux drives the AXI Mailbox interface with the PL Mailbox driver.
+        compat = PL_MBOX_LINUX_COMPAT.get(get_platform(tree))
+        ipi_node + LopperProp(name="compatible",
+                              value=[compat, PL_MBOX_FALLBACK_COMPAT] if compat
+                              else PL_MBOX_FALLBACK_COMPAT)
+        ipi_node + LopperProp(name="#mbox-cells", value=[1])
+        if ipi_node.propval("clocks") == ['']:
+            _warning(f"openamp_xlnx: {ipi_node.abs_path} has no clocks; using "
+                     f"the clock of {core_node.abs_path}")
+            ipi_node + LopperProp(name="clocks", value=core_node.propval("clocks", list))
+
+    core_node + LopperProp(name="mboxes", value = [ipi_node.phandle_or_create(), 0, ipi_node.phandle, 1])
     core_node + LopperProp(name="mbox-names", value = ["tx", "rx"])
     return True
 
@@ -1193,21 +1205,32 @@ def xlnx_libmetal_linux_setup_ipi(tree, relation_node, machine, verbose = 0 ):
             _error("openamp_xlnx: libmetal: cannot resolve IPI for %s" % node.abs_path)
             return False
 
-        # Linux binds an IPI agent either to the mailbox driver, as RPMsg
-        # needs, or to UIO, as libmetal needs; RPMsg relations are processed
-        # first, so their mboxes are already in the tree.
+        # Linux binds an IPI agent, or an AXI Mailbox interface, either to
+        # the mailbox driver, as RPMsg needs, or to UIO, as libmetal needs;
+        # RPMsg relations are processed first, so their mboxes are already
+        # in the tree.
+        axi_mailbox = is_axi_mailbox(ipi_node)
+        agent = ipi_node if axi_mailbox else ipi_node.parent
         for user in tree["/"].subnodes():
             mboxes = user.propval("mboxes", list)
             if mboxes == [""] or not isinstance(mboxes[0], int):
                 continue
             mbox = tree.pnode(mboxes[0])
-            if mbox is not None and mbox.parent is not None and \
-                    mbox.parent.abs_path == ipi_node.parent.abs_path:
-                _error("openamp_xlnx: libmetal: %s uses IPI %s, which %s "
-                       "already uses as a mailbox; use another IPI for "
-                       "libmetal" % (node.abs_path, ipi_node.parent.abs_path,
-                                     user.abs_path))
+            mbox_agent = mbox if axi_mailbox else \
+                (mbox.parent if mbox is not None else None)
+            if mbox_agent is not None and \
+                    mbox_agent.abs_path == agent.abs_path:
+                kind = "AXI Mailbox" if axi_mailbox else "IPI"
+                _error("openamp_xlnx: libmetal: %s uses %s %s, which %s "
+                       "already uses as a mailbox; use another %s for "
+                       "libmetal" % (node.abs_path, kind, agent.abs_path,
+                                     user.abs_path, kind))
                 return False
+
+        if axi_mailbox:
+            # The Linux side of the AXI Mailbox is exported through UIO.
+            ipi_node + LopperProp(name="compatible", value="uio")
+            continue
 
         # setup IPI mask so UIO device's corresponding DT node has the remote's bitmask set.
         ipi_node.parent + LopperProp(name="libmetal,uio-ipi-bitmask", value=ipi_node.propval("xlnx,ipi-bitmask"))
@@ -1274,6 +1297,11 @@ def xlnx_rpmsg_parse(tree, rpmsg_relation_node, machine, carveout_validation_arr
         ipi_node = tree.pnode(mbox_pval[0])
         if ipi_node is None:
             _error("openamp_xlnx: cannot resolve IPI for %s" % node.abs_path)
+            return False
+
+        if os == "zephyr_dt" and is_axi_mailbox(ipi_node):
+            _error("openamp_xlnx: %s: an AXI Mailbox relation is supported "
+                   "only for a Linux host" % node.abs_path)
             return False
 
         carveouts_node = tree[node.parent.parent.parent.abs_path + "/domain-to-domain/rpmsg-relation"]
@@ -2042,6 +2070,89 @@ def openamp_nontree_outputs_handler(sdt, output_file_name, openamp_args, verbose
 
     return False
 
+def xlnx_remoteproc_bram_construct_core(tree, relation, elfload, verbose = 0):
+    """Construct the Linux remoteproc node of a BRAM soft processor.
+
+    Args:
+        tree (LopperTree): Device tree being updated.
+        relation (LopperNode): Remoteproc relation child for the remote.
+        elfload (LopperNode): The AXI BRAM controller the host loads the
+            firmware through, or the BRAM memory node at its address.
+        verbose (int): Verbosity flag for diagnostic printing.
+
+    Returns:
+        LopperNode | None: The remoteproc node, or None on error.
+
+    Algorithm:
+        A soft processor such as a MicroBlaze V runs from a dual-port BRAM and
+        is held in reset by a GPIO. Add a simple-pm-bus for the window of the
+        BRAM controller and, below it, the remoteproc node with the
+        controller's clock, firmware-name and the active-low reset GPIO. The
+        controller is the preferred elfload: domain_access keeps it as an
+        accessed device, but can prune an unreferenced memory node.
+    """
+    _debug("openamp_xlnx: xlnx_remoteproc_bram_construct_core %s" %
+           relation.abs_path)
+
+    ctrl = None
+    if elfload.propval("device_type", list) != ["memory"] and \
+            elfload.is_compatible("axi-bram-ctrl"):
+        ctrl = elfload
+    elif elfload.address() is not None:
+        ctrl = next((n for n in tree.addr_node(hex(elfload.address())) or []
+                     if n.propval("device_type", list) != ["memory"] and
+                     n.is_compatible("axi-bram-ctrl")), None)
+    if ctrl is None:
+        _error(f"openamp_xlnx: {relation.abs_path}: elfload must be an AXI "
+               "BRAM controller or the BRAM memory node at its address")
+        return None
+
+    try:
+        base, size = _required_reg_region(ctrl)
+    except ValueError as exc:
+        _error(f"openamp_xlnx: {exc}")
+        return None
+    clocks = ctrl.propval("clocks", list)
+    if clocks == ['']:
+        _error(f"openamp_xlnx: {ctrl.abs_path} has no clocks")
+        return None
+
+    reset = tree.deref(relation.propval("reset-controller", list)[0])
+    # gpio-controller is an empty property: test for its presence.
+    if reset is None or not reset.props("gpio-controller"):
+        _error(f"openamp_xlnx: {relation.abs_path}: reset-controller must be "
+               "a GPIO controller")
+        return None
+
+    parent_cells = ctrl.parent.propval("#address-cells", list)
+    parent_cells = parent_cells[0] if parent_cells != [''] else 2
+
+    bus = LopperNode(-1, f"{ctrl.parent.abs_path}/rproc-bus@{base:x}")
+    bus_props = { "compatible": "simple-pm-bus",
+                  "#address-cells": [1],
+                  "#size-cells": [1],
+                  # child address 0 maps the controller's window
+                  "ranges": [0] + int_to_cells(base, parent_cells) + [size],
+                  "clocks": clocks }
+    [ bus + LopperProp(name=n, value=bus_props[n]) for n in bus_props ]
+    tree.add(bus)
+
+    compat = relation.propval("remoteproc-compatible", list)
+    core = LopperNode(-1, bus.abs_path + "/remoteproc@0")
+    core_props = { "compatible": compat if compat != [''] else BRAM_RPROC_COMPAT,
+                   "reg": [0, size],
+                   "clocks": clocks,
+                   # GPIO line 0, active low: the GPIO holds the processor in
+                   # reset.
+                   "reset-gpios": [reset.phandle_or_create(), 0, 1],
+                   "status": "okay" }
+    firmware = relation.propval("firmware-name", list)
+    if firmware != ['']:
+        core_props["firmware-name"] = firmware
+    [ core + LopperProp(name=n, value=core_props[n]) for n in core_props ]
+    tree.add(core)
+    return core
+
 def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_arr, verbose = 0 ):
     """Parse remoteproc relations and construct core nodes.
 
@@ -2111,6 +2222,17 @@ def xlnx_remoteproc_parse(tree, remoteproc_relation_node, carveout_validation_ar
                        f"{current_elfload!r} is not a node")
                 return False
             channel_elfload_nodes.append(elfload_node)
+
+        # A remote held in reset by a GPIO (reset-controller) is a soft
+        # processor such as a MicroBlaze V that runs from a BRAM, not an RPU.
+        if node.propval("reset-controller") != ['']:
+            core_node = xlnx_remoteproc_bram_construct_core(
+                tree, node, channel_elfload_nodes[0], verbose)
+            if not core_node:
+                return False
+            channel_to_core_dict[remote_node.name] = core_node
+            continue
+
         # validate later
         carveout_validation_arr.extend(channel_elfload_nodes)
 
