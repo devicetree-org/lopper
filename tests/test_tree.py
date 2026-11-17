@@ -1395,3 +1395,82 @@ class TestTreeContains:
 
     def test_something_that_is_neither(self):
         assert 42 not in self._tree()
+
+
+class TestSymbolsWithoutNodeLabels:
+    """/__symbols__ entries whose nodes carry no label of their own.
+
+    This is what a tree loaded from a dtb looks like before its labels are
+    restored: dtc keeps labels out of the nodes and records them here, so the
+    entries exist and node.label does not.
+
+    resolve() prunes the table rather than emptying it, precisely so that a
+    tree in this state keeps what nothing could put back. The sibling class
+    above cannot cover it -- its fixture assigns the labels itself, so it only
+    ever builds the state where a rebuild would work.
+    """
+
+    @staticmethod
+    def _tree():
+        """Symbols present, labels deliberately absent."""
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        for path in ("/__symbols__", "/cpus", "/cpus/cpu@0", "/gone"):
+            tree.add(LopperNode(-1, path))
+
+        tree["/__symbols__"] + LopperProp("pmc_0", -1, None, ["/cpus/cpu@0"])
+        tree["/__symbols__"] + LopperProp("cpus_0", -1, None, ["/cpus"])
+        tree["/__symbols__"] + LopperProp("goner", -1, None, ["/gone"])
+
+        assert not tree["/cpus/cpu@0"].label, "fixture: the label must be unset"
+        return tree
+
+    def test_the_entries_survive_a_resolve(self):
+        """The regression: emptying the table lost these for good."""
+        tree = self._tree()
+
+        tree.resolve()
+
+        symbols = tree["/__symbols__"]
+        assert symbols.propval("pmc_0") == ["/cpus/cpu@0"], \
+            "the entry was cleared and no label existed to put it back"
+        assert symbols.propval("cpus_0") == ["/cpus"]
+
+    def test_resolving_twice_is_stable(self):
+        """Idempotent: a second pass neither drops nor duplicates."""
+        tree = self._tree()
+
+        tree.resolve()
+        tree.resolve()
+
+        symbols = tree["/__symbols__"]
+        assert symbols.propval("pmc_0") == ["/cpus/cpu@0"]
+        assert len([p for p in symbols]) == 3, \
+            "the entries were duplicated or lost on the second resolve"
+
+    def test_a_deleted_node_still_loses_its_entry(self):
+        """Pruning must still do the job the emptying was there for."""
+        tree = self._tree()
+
+        tree.delete(tree["/gone"])
+        tree.resolve()
+
+        assert tree["/__symbols__"].propval("goner") == [""], \
+            "an entry survived the node it names"
+
+    def test_a_moved_unlabelled_node_does_not_leave_a_stale_entry(self):
+        """The degenerate case, stated rather than left to be discovered.
+
+        A node rewrites its own entry from node.label as it resolves, so one
+        with no label cannot. The old path is gone, so the entry is dropped
+        instead of being left naming nothing. Trees loaded from a dtb have
+        their labels restored at load and so do not reach this.
+        """
+        tree = self._tree()
+
+        tree.add(LopperNode(-1, "/dst"))
+        tree.move(tree["/cpus/cpu@0"], "/cpus/cpu@0", "/dst/cpu@0")
+        tree.resolve()
+
+        assert tree["/__symbols__"].propval("pmc_0") == [""], \
+            "the entry still names the path the node left"

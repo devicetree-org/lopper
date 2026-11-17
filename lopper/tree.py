@@ -5940,11 +5940,28 @@ class LopperTree:
         if self.__symbols__ or "/__symbols__" in self.__nodes__:
             try:
                 symbol_node = self['/__symbols__']
-                # remove all the symbol entries. the nodes will
-                # resolve their labels back into the symbol node
-                # this allows us to track renames, deletes and
-                # adds without doing anything fancy
-                symbol_node.__props__ = OrderedDict()
+
+                # Drop the entries whose node is gone, and only those. A move
+                # or a rename needs nothing here: the node rewrites its own
+                # entry to the path it now holds as it resolves. Deletion is
+                # the case that cannot be handled that way, because there is
+                # no longer a node to do the rewriting.
+                #
+                # Emptying the whole table instead would be simpler, and was
+                # what this did, but it assumes every entry can be put back.
+                # The rebuild reads node.label, and a tree whose labels live
+                # only here -- anything loaded from a dtb, where dtc records
+                # them in this node and not on the nodes -- has none to read.
+                # Those entries would be cleared with nothing able to restore
+                # them, taking the table with them.
+                for prop in list( symbol_node.__props__.values() ):
+                    try:
+                        path = prop.value[0] if isinstance( prop.value, list ) \
+                               else prop.value
+                        if isinstance( path, str ) and path not in self.__nodes__:
+                            del symbol_node.__props__[prop.name]
+                    except Exception:
+                        continue
             except:
                 pass
 
