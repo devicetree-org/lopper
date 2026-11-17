@@ -39,79 +39,6 @@ def _work_dir(sdt):
     return tempfile.mkdtemp(prefix="zephyr_board_", dir=outdir or None)
 
 
-def _fragment_overlay_to_real(overlay_tree, main_tree):
-    """Map plugin fragment __overlay__ prefixes to resolved target abs_paths."""
-    fragment_to_label = {}
-    fixups_nodes = overlay_tree.nodes("/__fixups__")
-    fixups_node = fixups_nodes[0] if fixups_nodes else None
-    if fixups_node:
-        for prop in fixups_node.__props__.values():
-            refs = prop.value if isinstance(prop.value, list) else [prop.value]
-            for ref in refs:
-                if not isinstance(ref, str) or ":target:" not in ref:
-                    continue
-                frag_path = ref.split(":")[0]
-                if frag_path.count("/") == 1:
-                    fragment_to_label[frag_path] = prop.name
-
-    mapping = {}
-    for frag_path, label in fragment_to_label.items():
-        target_nodes = main_tree.lnodes(label, exact=True)
-        if target_nodes:
-            mapping[f"{frag_path}/__overlay__"] = target_nodes[0].abs_path
-    return mapping
-
-
-def _rewrite_fragment_path(path, fragment_overlay_to_real):
-    if not isinstance(path, str) or not path:
-        return None
-    for frag_prefix, real_prefix in fragment_overlay_to_real.items():
-        if path.startswith(frag_prefix):
-            return real_prefix + path[len(frag_prefix):]
-    return path
-
-
-def _merge_root_plugin_nodes(overlay_tree, main_tree, fragment_overlay_to_real):
-    """Merge root /aliases and /chosen from a plugin-compiled overlay tree."""
-    for node_name in ("aliases", "chosen"):
-        try:
-            ov_node = overlay_tree[f"/{node_name}"]
-        except (KeyError, Exception):
-            continue
-
-        try:
-            base_node = main_tree[f"/{node_name}"]
-        except (KeyError, Exception):
-            _merge_node_into_tree(main_tree, ov_node)
-            continue
-
-        for prop_name, prop in ov_node.__props__.items():
-            if node_name == "aliases":
-                raw_values = prop.value if isinstance(prop.value, list) else [prop.value]
-                rewritten = [
-                    _rewrite_fragment_path(value, fragment_overlay_to_real)
-                    for value in raw_values
-                ]
-                if not rewritten or not all(rewritten):
-                    continue
-                try:
-                    main_tree[rewritten[0]]
-                except (KeyError, Exception):
-                    continue
-                prop_value = rewritten
-            else:
-                prop_value = prop.value
-
-            new_prop = copy.deepcopy(prop)
-            new_prop.value = prop_value
-            new_prop.node = base_node
-            base_node.__props__[prop_name] = new_prop
-            try:
-                new_prop.resolve()
-            except Exception:
-                pass
-
-
 def _merge_plugin_overlay(content, main_tree, sdt, sdt_folder, work_dir):
     """Merge &label { } board fragments via plugin compile + unwrap (optional HW safe)."""
     dtso_path = os.path.join(work_dir, "board_zephyr.dtso")
@@ -138,8 +65,9 @@ def _merge_plugin_overlay(content, main_tree, sdt, sdt_folder, work_dir):
         # Carry overlay node labels (/__symbols__) onto the merged nodes.
         _apply_overlay_symbol_labels(main_tree, symbol_labels)
 
-    fragment_map = _fragment_overlay_to_real(overlay_tree, main_tree)
-    _merge_root_plugin_nodes(overlay_tree, main_tree, fragment_map)
+    # /chosen and /aliases are top-level overlay nodes; _unwrap_overlay_tree
+    # collects them and _resolve_overlay_fixups binds their references against
+    # the base by name, so no separate root merge is needed here.
 
     labels = sorted({n.label for n in nodes if getattr(n, "label", None)})
     print(

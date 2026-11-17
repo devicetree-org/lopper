@@ -249,3 +249,56 @@ def test_merge_overlay_board_and_user_merge(tmp_path):
     assert "missing_uart" not in merged
     assert 'status = "okay"' in merged
     assert "board-plus-user" in merged
+
+
+def test_merge_overlay_chosen_resolves_base_reference(tmp_path):
+    """A board /chosen that points at an SDT node by label resolves to that
+    node, rather than merging in as the 0xffffffff placeholder dtc leaves and
+    serializing as an invalid phandle (the regression PR #873 chased).
+    """
+    sdt_folder = tmp_path / "sdt"
+    outdir = tmp_path / "out"
+    sdt_folder.mkdir()
+    outdir.mkdir()
+
+    board_content = textwrap.dedent(
+        """\
+        / {
+            chosen {
+                zephyr,entropy = <&trng_0>;
+            };
+        };
+        &existing_node {
+            status = "okay";
+        };
+        """
+    )
+    (sdt_folder / "kcu105_zephyr.dtsi").write_text(board_content, encoding="utf-8")
+    (sdt_folder / "system-top.dts").write_text('/ { board = "kcu105"; };', encoding="utf-8")
+
+    tree = _make_tree("kcu105")
+    existing = LopperNode()
+    existing.abs_path = "/existing_node"
+    existing.name = "existing_node"
+    existing.label = "existing_node"
+    tree + existing
+    # the SDT node the board's chosen entry points at, by label
+    trng = LopperNode()
+    trng.abs_path = "/soc/trng@f1240000"
+    trng.name = "trng@f1240000"
+    trng.label = "trng_0"
+    tree + trng
+    tree.resolve()
+
+    sdt = SimpleNamespace(outdir=str(outdir), tree=tree, tmpdir=str(outdir))
+    options = {"args": ["microblaze_riscv_0", str(sdt_folder)]}
+
+    assert merge_board_overlay_from_sdt(sdt, options) is True
+    sdt.tree.resolve()
+
+    trng_ph = sdt.tree["/soc/trng@f1240000"].phandle
+    assert trng_ph not in (0, None), "the referenced SDT node never got a phandle"
+    entropy = sdt.tree["/chosen"].propval("zephyr,entropy", list)
+    assert entropy == [trng_ph], \
+        f"chosen/zephyr,entropy is {entropy}, expected the trng phandle [{trng_ph}]"
+    assert 0xffffffff not in entropy, "the unresolved placeholder survived"
