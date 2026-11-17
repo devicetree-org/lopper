@@ -62,54 +62,123 @@ def _fragment_overlay_to_real(overlay_tree, main_tree):
     return mapping
 
 
-def _rewrite_fragment_path(path, fragment_overlay_to_real):
-    if not isinstance(path, str) or not path:
+def _domain_label_to_path(main_tree, label):
+    if not label:
         return None
-    for frag_prefix, real_prefix in fragment_overlay_to_real.items():
-        if path.startswith(frag_prefix):
-            return real_prefix + path[len(frag_prefix):]
-    return path
+    target_nodes = main_tree.lnodes(label, exact=True)
+    if not target_nodes:
+        target_nodes = main_tree.lnodes(label)
+    if not target_nodes:
+        return None
+    return target_nodes[0].abs_path.replace("/amba_pl/", "/soc/")
+
+
+def _rewrite_fragment_path(value, fragment_overlay_to_real, main_tree=None, fallback_label=None):
+    if main_tree is None:
+        if not isinstance(value, str) or not value:
+            return None
+        for frag_prefix, real_prefix in fragment_overlay_to_real.items():
+            if value.startswith(frag_prefix):
+                return real_prefix + value[len(frag_prefix):]
+        return value
+
+    if isinstance(value, str) and value.startswith("/"):
+        path = None
+        for frag_prefix, real_prefix in fragment_overlay_to_real.items():
+            if value.startswith(frag_prefix):
+                path = real_prefix + value[len(frag_prefix):]
+                break
+        if path is None:
+            path = value
+        path = path.replace("/amba_pl/", "/soc/")
+        try:
+            main_tree[path]
+        except (KeyError, Exception):
+            return None
+        return path
+
+    if isinstance(value, str) and value.startswith("&"):
+        path = _domain_label_to_path(main_tree, value[1:].split("#")[0])
+        if path:
+            return path
+
+    resolved = main_tree.label_to_phandle(value)
+    if isinstance(resolved, int) and resolved != 0:
+        for node in main_tree.__nodes__.values():
+            if getattr(node, "phandle", None) == resolved:
+                return node.abs_path.replace("/amba_pl/", "/soc/")
+
+    if fallback_label:
+        return _domain_label_to_path(main_tree, fallback_label)
+
+    return None
 
 
 def _merge_root_plugin_nodes(overlay_tree, main_tree, fragment_overlay_to_real):
     """Merge root /aliases and /chosen from a plugin-compiled overlay tree."""
-    for node_name in ("aliases", "chosen"):
-        try:
-            ov_node = overlay_tree[f"/{node_name}"]
-        except (KeyError, Exception):
-            continue
+    alias_paths = {}
 
-        try:
-            base_node = main_tree[f"/{node_name}"]
-        except (KeyError, Exception):
-            _merge_node_into_tree(main_tree, ov_node)
-            continue
+    try:
+        ov_aliases = overlay_tree["/aliases"]
+        base_aliases = main_tree["/aliases"]
+    except (KeyError, Exception):
+        ov_aliases = None
+        base_aliases = None
 
-        for prop_name, prop in ov_node.__props__.items():
-            if node_name == "aliases":
-                raw_values = prop.value if isinstance(prop.value, list) else [prop.value]
-                rewritten = [
-                    _rewrite_fragment_path(value, fragment_overlay_to_real)
-                    for value in raw_values
-                ]
-                if not rewritten or not all(rewritten):
-                    continue
-                try:
-                    main_tree[rewritten[0]]
-                except (KeyError, Exception):
-                    continue
-                prop_value = rewritten
-            else:
-                prop_value = prop.value
-
+    if ov_aliases is not None and base_aliases is not None:
+        for prop_name, prop in ov_aliases.__props__.items():
+            raw_values = prop.value if isinstance(prop.value, list) else [prop.value]
+            rewritten = [
+                _rewrite_fragment_path(
+                    value, fragment_overlay_to_real, main_tree, prop_name
+                )
+                for value in raw_values
+            ]
+            if not rewritten or not all(rewritten):
+                continue
+            alias_paths[prop_name] = rewritten[0]
             new_prop = copy.deepcopy(prop)
-            new_prop.value = prop_value
-            new_prop.node = base_node
-            base_node.__props__[prop_name] = new_prop
+            new_prop.value = rewritten
+            new_prop.node = base_aliases
+            base_aliases.__props__[prop_name] = new_prop
             try:
                 new_prop.resolve()
             except Exception:
                 pass
+
+    try:
+        ov_chosen = overlay_tree["/chosen"]
+        base_chosen = main_tree["/chosen"]
+    except (KeyError, Exception):
+        return
+
+    for prop_name, prop in ov_chosen.__props__.items():
+        raw_values = prop.value if isinstance(prop.value, list) else [prop.value]
+        rewritten = []
+        for value in raw_values:
+            path = _rewrite_fragment_path(
+                value, fragment_overlay_to_real, main_tree
+            )
+            if not path and isinstance(value, str) and value.startswith("&"):
+                label = value[1:].split("#")[0]
+                path = alias_paths.get(label) or _domain_label_to_path(main_tree, label)
+            if not path and isinstance(value, str) and not value.startswith("/") and not value.startswith("&"):
+                path = value
+            if not path:
+                rewritten = None
+                break
+            rewritten.append(path)
+        if not rewritten:
+            continue
+
+        new_prop = copy.deepcopy(prop)
+        new_prop.value = rewritten
+        new_prop.node = base_chosen
+        base_chosen.__props__[prop_name] = new_prop
+        try:
+            new_prop.resolve()
+        except Exception:
+            pass
 
 
 def _merge_plugin_overlay(content, main_tree, sdt, sdt_folder, work_dir):
@@ -139,6 +208,7 @@ def _merge_plugin_overlay(content, main_tree, sdt, sdt_folder, work_dir):
         _apply_overlay_symbol_labels(main_tree, symbol_labels)
 
     fragment_map = _fragment_overlay_to_real(overlay_tree, main_tree)
+    main_tree.sync()
     _merge_root_plugin_nodes(overlay_tree, main_tree, fragment_map)
 
     labels = sorted({n.label for n in nodes if getattr(n, "label", None)})
