@@ -191,10 +191,15 @@ def _resolve_overlay_fixups(tree, fixups, local_fixups=None):
             try:
                 frag_label, relative_path, prop_name, byte_offset_str = ref
                 byte_offset = int(byte_offset_str)
-                frag_nodes = tree.lnodes(frag_label, exact=True)
-                if not frag_nodes:
-                    continue
-                node_path = frag_nodes[0].abs_path + relative_path
+                if frag_label is None:
+                    # Top-level fixup (/chosen, /aliases): the holder is at this
+                    # absolute path, there is no fragment target to locate it by.
+                    node_path = relative_path
+                else:
+                    frag_nodes = tree.lnodes(frag_label, exact=True)
+                    if not frag_nodes:
+                        continue
+                    node_path = frag_nodes[0].abs_path + relative_path
                 if node_path not in tree.__nodes__:
                     continue
                 node = tree.__nodes__[node_path]

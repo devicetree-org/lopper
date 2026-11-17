@@ -266,6 +266,29 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
 
     for node in ov_tree:
         if not node.name.startswith('fragment@'):
+            # A top-level node dtc left at the overlay root rather than in a
+            # fragment -- /chosen and /aliases in practice, the config nodes
+            # referenced by path. Its place in the base is its own absolute
+            # path, so collect it to be merged there. The overlay-mechanism
+            # tables (__fixups__, __local_fixups__, __symbols__) and the root
+            # itself are consumed by this unwrap, not merged as device content.
+            if (node.parent is not None and node.parent.abs_path == '/'
+                    and node.name not in ('__fixups__', '__local_fixups__',
+                                          '__symbols__')):
+                if node.name not in ('chosen', 'aliases'):
+                    lopper.log._warning(
+                        f"overlay: merging top-level node '{node.name}'; only "
+                        f"chosen/aliases are usual at an overlay root -- "
+                        f"verify this is intended" )
+                tl_node = LopperNode(name=node.name)
+                tl_node.__dict__['abs_path'] = node.abs_path
+                for prop in node.__props__.values():
+                    tl_prop = copy.deepcopy(prop)
+                    tl_prop.node = tl_node
+                    tl_node.__props__[prop.name] = tl_prop
+                for child in node.child_nodes.values():
+                    tl_node.add(copy.deepcopy(child))
+                result_nodes.append(tl_node)
             continue
 
         frag_path = node.abs_path    # e.g. "/fragment@0"
@@ -336,6 +359,13 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
                         relative_path = node_path[len(frag_prefix):]  # "" or "/child/..."
                         rewritten.append((frag_label, relative_path, prop_name, byte_off))
                         break
+                else:
+                    # No fragment prefix: a fixup on a top-level node dtc left at
+                    # the root (e.g. "/chosen:zephyr,entropy:0"). The property
+                    # holder is at this absolute path in the merged tree, not
+                    # under a fragment target -- a None fragment label marks that
+                    # for _resolve_overlay_fixups().
+                    rewritten.append((None, node_path, prop_name, byte_off))
             except Exception:
                 pass
         if rewritten:

@@ -1368,3 +1368,85 @@ class TestLocalFixups:
 
         assert node.label == "producer"
         assert t.__lnodes__.get("producer") is node
+
+
+# ---------------------------------------------------------------------------
+# Section 9: top-level overlay nodes (/chosen, /aliases) and their fixups
+#
+# dtc leaves config nodes like /chosen and /aliases at an overlay's root
+# rather than wrapping them in a fragment, and records a reference from one
+# (e.g. chosen's zephyr,entropy = <&base_label>) by name in __fixups__. The
+# unwrap used to process fragment@N nodes only, so the node was dropped and
+# its fixup discarded -- the reference serialized as an unresolved phandle.
+# These pin that a top-level node is collected and its fixup resolved by name.
+# ---------------------------------------------------------------------------
+class TestTopLevelOverlayNodes:
+    def _make_overlay_with_toplevel_chosen(self):
+        """A dtc-compiled-overlay shape with a top-level /chosen whose property
+        references a base label, recorded in __fixups__."""
+        from lopper.tree import LopperProp, LopperNode, LopperTree
+        tree = LopperTree()
+
+        fixups = LopperNode(name='__fixups__')
+        fixups.__dict__['abs_path'] = '/__fixups__'
+        p = LopperProp(name='mydev')
+        p.__dict__['value'] = '/chosen:foo:0'
+        p.node = fixups
+        fixups.__props__['mydev'] = p
+        tree.add(fixups)
+
+        chosen = LopperNode(name='chosen')
+        chosen.__dict__['abs_path'] = '/chosen'
+        pf = LopperProp(name='foo')
+        pf.__dict__['value'] = [0xffffffff]
+        pf.node = chosen
+        chosen.__props__['foo'] = pf
+        tree.add(chosen)
+        return tree
+
+    def _make_base(self):
+        from lopper.tree import LopperNode, LopperTree
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        dev = LopperNode(-1, "/amba/dev@f0000000")
+        tree.add(LopperNode(-1, "/amba"))
+        tree.add(dev)
+        dev.label = "mydev"
+        tree.add(LopperNode(-1, "/chosen"))
+        tree.resolve()
+        return tree
+
+    def test_toplevel_node_is_collected(self):
+        """/chosen must appear in the unwrapped nodes, not be dropped."""
+        from lopper import _unwrap_overlay_tree
+        nodes, _, _, _ = _unwrap_overlay_tree(
+            self._make_overlay_with_toplevel_chosen(), self._make_base())
+        assert any(n.abs_path == "/chosen" for n in nodes), \
+            "top-level /chosen was dropped by the unwrap"
+
+    def test_toplevel_fixup_is_recorded_with_none_label(self):
+        """A top-level fixup is stored as (None, abs_path, prop, off), the None
+        marking that the holder is at an absolute path, not under a fragment."""
+        from lopper import _unwrap_overlay_tree
+        _, fixups, _, _ = _unwrap_overlay_tree(
+            self._make_overlay_with_toplevel_chosen(), self._make_base())
+        assert "mydev" in fixups, "the /chosen fixup was discarded"
+        frag_label, rel, prop, off = fixups["mydev"][0]
+        assert frag_label is None, f"expected None fragment label, got {frag_label!r}"
+        assert rel == "/chosen" and prop == "foo"
+
+    def test_toplevel_reference_resolves_by_name(self):
+        """End to end: the placeholder is replaced by the base node's phandle."""
+        from lopper import _unwrap_overlay_tree
+        from lopper.tree import _merge_node_into_tree, _resolve_overlay_fixups
+        base = self._make_base()
+        nodes, fixups, local, _ = _unwrap_overlay_tree(
+            self._make_overlay_with_toplevel_chosen(), base)
+        for n in nodes:
+            _merge_node_into_tree(base, n)
+        _resolve_overlay_fixups(base, fixups, local)
+        base.resolve()
+        mydev_ph = base["/amba/dev@f0000000"].phandle
+        assert mydev_ph not in (0, None), "base node never got a phandle"
+        assert base["/chosen"].propval("foo", list) == [mydev_ph], \
+            "chosen/foo did not resolve to the base node's phandle"
