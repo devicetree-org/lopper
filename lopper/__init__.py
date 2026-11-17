@@ -1494,6 +1494,20 @@ class LopperSDT:
                 self.tree.load( Lopper.export( self.FDT, schema = self.schema ) )
                 _deserialize_overlay_subtrees( self.tree )
 
+                # A label is a source level identifier. dtc records them in
+                # __symbols__ when asked with -@ and does not put them back on
+                # the nodes -- decompiling a dtb gives bare nodes and a
+                # __symbols__ node, never the label syntax. So a tree arriving
+                # this way has its labels in one place only, and anything that
+                # reads node.label finds nothing.
+                #
+                # Restore them before the tree is used. Here rather than in a
+                # shared routine on purpose: no node carries a label yet, so
+                # there is nothing this can overwrite. The same call later,
+                # once labels mean something, would make __symbols__
+                # authoritative over them and revert a deliberate relabel.
+                self.tree.labels_from_symbols()
+
                 # Do a check for common sanity issues here, invalid phandles, etc.
                 self.tree.resolve( check=True )
 
