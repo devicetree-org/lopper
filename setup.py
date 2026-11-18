@@ -35,9 +35,19 @@ setuptools.setup(
     packages=setuptools.find_packages(include=('lopper', 'lopper.*')),
     python_requires='>=3.10',
     include_package_data=True,
-    install_requires=[ "humanfriendly","configparser" ],
+    # yaml is a hard requirement, not an extra. Lopper learns a schema from the
+    # tree to type properties, and without it some types cannot be recovered at
+    # all -- a four-byte value that is a string is indistinguishable from a
+    # uint32 by its bytes, so a run with no schema is not merely reduced, it is
+    # wrong in ways that cannot be fixed downstream. A core install must carry
+    # the parser. (PyYAML, not "pyaml" -- the latter is a different package and
+    # does not provide `import yaml`.)
+    install_requires=[ "humanfriendly","configparser",
+                       "PyYAML","ruamel.yaml","anytree","packaging" ],
     extras_require={ "server": ["flask>=1.1.2","flask_restful>=0.3.8","pandas"],
-                     "yaml": ["pyaml","ruamel.yaml","anytree","packaging"],
+                     # Kept as a no-op alias so `pip install lopper[yaml]` still
+                     # resolves; the packages it named are now always installed.
+                     "yaml": [],
                      "dt" : ["devicetree"],
                      "pcpp" : ["pcpp"],
                      # Device tree binding schemas, for assists that prune a
