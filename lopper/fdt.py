@@ -1666,7 +1666,7 @@ class LopperFDT(lopper.base.lopper_base):
     @staticmethod
     def dt_compile( dts_file, i_files, includes, force_overwrite=False, outdir="./",
                     save_temps=False, verbose=0, enhanced = True, permissive = False,
-                    symbols=False):
+                    symbols=False, force_on_error=True):
         """Compile a dts file to a dtb
 
         This routine takes a dts input file, other dts include files,
@@ -2066,11 +2066,16 @@ class LopperFDT(lopper.base.lopper_base):
 
         result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
         if result.returncode != 0:
-            # force the dtb, we need to do processing
-            dtcargs += [ "-f" ]
-            lopper.log._info( f"dt_compile: forcing dtb generation with args {dtcargs}" )
-
-            result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
+            # force the dtb, we need to do processing. An overlay is small and
+            # has no reason to need forcing: a reference it cannot resolve
+            # standalone -- a base-tree label in an /aliases path, say -- is a
+            # real error dtc is right to raise, and forcing it would blank the
+            # value and carry on silently. Base trees keep the force; overlays
+            # let the error stand (force_on_error=False).
+            if force_on_error:
+                dtcargs += [ "-f" ]
+                lopper.log._info( f"dt_compile: forcing dtb generation with args {dtcargs}" )
+                result = subprocess.run(dtcargs, check = False, stderr=subprocess.PIPE )
             if result.returncode != 0:
                 # Before giving up: the comments. Everything else in this file is
                 # the tree that was asked for, but a comment is decoration that

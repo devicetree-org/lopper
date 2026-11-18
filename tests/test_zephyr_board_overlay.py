@@ -173,11 +173,6 @@ def test_merge_overlay_board_only(tmp_path):
 
     board_content = textwrap.dedent(
         """\
-        / {
-            aliases {
-                serial0 = &missing_uart;
-            };
-        };
         &existing_node {
             status = "okay";
         };
@@ -198,7 +193,6 @@ def test_merge_overlay_board_only(tmp_path):
 
     assert merge_board_overlay_from_sdt(sdt, options) is True
     merged = _tree_text(sdt.tree)
-    assert "missing_uart" not in merged
     assert 'status = "okay"' in merged
 
 
@@ -210,11 +204,6 @@ def test_merge_overlay_board_and_user_merge(tmp_path):
 
     board_content = textwrap.dedent(
         """\
-        / {
-            aliases {
-                serial0 = &missing_uart;
-            };
-        };
         &existing_node {
             status = "okay";
         };
@@ -246,7 +235,6 @@ def test_merge_overlay_board_and_user_merge(tmp_path):
 
     assert merge_board_overlay_from_sdt(sdt, options) is True
     merged = _tree_text(sdt.tree)
-    assert "missing_uart" not in merged
     assert 'status = "okay"' in merged
     assert "board-plus-user" in merged
 
@@ -302,3 +290,46 @@ def test_merge_overlay_chosen_resolves_base_reference(tmp_path):
     assert entropy == [trng_ph], \
         f"chosen/zephyr,entropy is {entropy}, expected the trng phandle [{trng_ph}]"
     assert 0xffffffff not in entropy, "the unresolved placeholder survived"
+
+
+def test_dangling_base_alias_fails_rather_than_blanks(tmp_path):
+    """A board overlay aliases entry that references a label present nowhere
+    cannot be resolved by dtc standalone and is a real error. The overlay
+    compile must fail visibly, not force a dtb with the alias silently blanked.
+    """
+    sdt_folder = tmp_path / "sdt"
+    outdir = tmp_path / "out"
+    sdt_folder.mkdir()
+    outdir.mkdir()
+
+    board_content = textwrap.dedent(
+        """\
+        / {
+            aliases {
+                serial0 = &nonexistent_label;
+            };
+        };
+        &existing_node {
+            status = "okay";
+        };
+        """
+    )
+    (sdt_folder / "kcu105_zephyr.dtsi").write_text(board_content, encoding="utf-8")
+    (sdt_folder / "system-top.dts").write_text('/ { board = "kcu105"; };', encoding="utf-8")
+
+    tree = _make_tree("kcu105")
+    existing = LopperNode()
+    existing.abs_path = "/existing_node"
+    existing.name = "existing_node"
+    existing.label = "existing_node"
+    tree + existing
+
+    sdt = SimpleNamespace(outdir=str(outdir), tree=tree, tmpdir=str(outdir))
+    options = {"args": ["microblaze_riscv_0", str(sdt_folder)]}
+
+    # The unresolvable alias must surface as a failure, not a silently blanked
+    # value. dt_compile exits on an overlay that will not compile, so the whole
+    # run fails rather than the merge quietly reporting success.
+    import pytest
+    with pytest.raises(SystemExit):
+        merge_board_overlay_from_sdt(sdt, options)

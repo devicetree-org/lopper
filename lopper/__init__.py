@@ -543,7 +543,12 @@ def compile_overlay_standalone(overlay_file, include_paths="", tmpdir=None, save
             # node under /__symbols__, and that is the only place they exist.
             # Without it _unwrap_overlay_tree() has no labels to collect, and
             # every node below the fragment target is emitted unlabelled.
-            permissive=True, symbols=True
+            permissive=True, symbols=True,
+            # An overlay that does not compile cleanly has a real error -- most
+            # often a reference to a base-tree label that cannot be resolved
+            # standalone. Let it fail rather than forcing a dtb with the bad
+            # value silently blanked.
+            force_on_error=False,
         )
 
         # The overlay introduces properties the input tree never had, so they
