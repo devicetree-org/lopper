@@ -908,6 +908,41 @@ Example, libmetal demo on ZynqMP RPU 1:
            timer: ttc2
            elfload: [ psu_r5_1_atcm_global, psu_r5_1_btcm_global ]
 
+Stack and heap sizes
+~~~~~~~~~~~~~~~~~~~~
+
+The ``linker`` mapping of a baremetal or FreeRTOS domain on any processor
+may set the sizes of the stack and the heap, in bytes:
+
+``stack_size``
+   Optional stack size.
+
+``heap_size``
+   Optional heap size.
+
+A mapping may hold only these keys; they do not place sections, so they
+work on processors without section placement, such as a MicroBlaze V.
+``baremetallinker_xlnx`` writes them as ``STACK_SIZE`` and ``HEAP_SIZE``
+for the linker templates. A size the domain sets takes precedence over the
+application's ``linker_constraints`` and over the assist's defaults:
+0x400 stack and 0x800 heap on MicroBlaze processors, 0x2000 and 0x2000
+on others, and a 0x4000 heap in OpenAMP mode.
+
+Example, MicroBlaze V remote:
+
+.. code-block:: YAML
+
+   MBV_Remote:
+     os,type: baremetal
+     cpus:
+       - cluster: cpus_microblaze_riscv_0
+         cluster_cpu: microblaze_riscv_0
+         cpumask: 0x1
+         mode: { secure: false }
+     linker:
+       stack_size: 0x4000
+       heap_size: 0x4000
+
 
 Flags
 -----

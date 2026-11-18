@@ -25,3 +25,9 @@ domains:
         mode:
           secure: false
     os,type: baremetal
+    # The OpenAMP and libmetal demos need more stack and heap than the
+    # MicroBlaze defaults; baremetallinker_xlnx writes these for the
+    # linker script.
+    linker:
+      stack_size: 0x4000
+      heap_size: 0x4000
