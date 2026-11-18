@@ -400,9 +400,37 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
     cfd.write("set(TOTAL_MEM_CONTROLLERS %s)\n" % to_cmakelist(memip_list))
 
     generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr,
-                           placement.memory if placement is not None else None)
+                           placement.memory if placement is not None else None,
+                           domain_linker_sizes(sdt, match_cpunode))
 
     return True
+
+
+def domain_linker_sizes(sdt, match_cpunode):
+    """
+    Return the stack and heap sizes the target's domain sets
+    Parameters:
+        sdt(obj)              : SDT
+        match_cpunode(obj)    : Target CPU node
+    Return:
+        dict with the "stack" and "heap" sizes the baremetal or FreeRTOS
+        domain that selects the CPU sets in its linker block
+        (linker: { stack_size, heap_size }); missing keys are not set.
+        Exits when more than one such domain selects the CPU.
+    """
+    try:
+        domain = find_linker_domain(sdt.tree, match_cpunode,
+                                    linker_block=False)
+    except LayoutError as exc:
+        _error(f"baremetallinker_xlnx: {exc}", also_exit=1)
+    sizes = {}
+    if domain is None:
+        return sizes
+    for name in ("stack", "heap"):
+        value = domain.propval(f"linker-{name}-size", list)
+        if value and value != [""]:
+            sizes[name] = value[0]
+    return sizes
 
 
 def rpu_tcm_memory_lines(mem_sec, tcm_memory):
@@ -425,7 +453,7 @@ def rpu_tcm_memory_lines(mem_sec, tcm_memory):
     return mem_sec
 
 
-def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr,tcm_memory=None):
+def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr,tcm_memory=None,domain_sizes=None):
     """
     To get generate the linker script
     Parameters:
@@ -444,6 +472,10 @@ def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,
         mb_reset_addr(int)         : MicroBlaze reset vector address
         tcm_memory(dict)           : RPU TCM regions of a domain linker
                                      block, or None
+        domain_sizes(dict)         : Stack and heap sizes set by the
+                                     domain, which take precedence over
+                                     every default and the app's
+                                     linker_constraints, or None
     Return:
         None
     """
@@ -559,6 +591,12 @@ def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,
                 cfd.write("set(%s %s)\n" % (openamp_entry_name, hex(openamp_elfload_start)))
 
         mem_sec += f'\n\t{lable_names[key]} : ORIGIN = {hex(start)}, LENGTH = {hex(size)}'
+
+    # The domain describes the system the firmware runs in, so its sizes
+    # win over the processor defaults and the app's linker_constraints.
+    if domain_sizes:
+        stack_size = domain_sizes.get("stack", stack_size)
+        heap_size = domain_sizes.get("heap", heap_size)
 
     cfd.write(f'set(MEMORY_SECTION "MEMORY\n{{{mem_sec}\n}}")\n')
     if stack_size is not None:

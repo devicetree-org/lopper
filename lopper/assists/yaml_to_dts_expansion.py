@@ -73,12 +73,15 @@ def _baremetal_linker_expand(tree, domain_node, linker, verbose=0):
 
     Description:
         Accepts an optional ``layout`` preset (tcm, tcm-data, ddr), an
-        optional ``linker_memories`` list and an optional ``sections``
-        mapping. Section regions are memory references, stored as phandles,
-        or the keyword ``ddr`` for the default DDR region chosen by
-        baremetallinker_xlnx, stored as a string. The checks that need the
-        processor and the TCM mode run later, in baremetallinker_xlnx, on
-        the assembled tree.
+        optional ``linker_memories`` list, an optional ``sections``
+        mapping and optional ``stack_size`` and ``heap_size`` values.
+        Section regions are memory references, stored as phandles, or the
+        keyword ``ddr`` for the default DDR region chosen by
+        baremetallinker_xlnx, stored as a string. The sizes are stored as
+        ``linker-stack-size`` and ``linker-heap-size``; a block may hold
+        only sizes, for any processor. The checks that need the processor
+        and the TCM mode run later, in baremetallinker_xlnx, on the
+        assembled tree.
 
     Args:
         tree (LopperTree): Device tree containing physical memories.
@@ -92,11 +95,27 @@ def _baremetal_linker_expand(tree, domain_node, linker, verbose=0):
     Raises:
         LayoutError: If keys, sections or references are invalid.
     """
-    unknown = set(linker.__props__) - {"layout", "linker_memories"}
+    unknown = set(linker.__props__) - {"layout", "linker_memories",
+                                       "stack_size", "heap_size"}
     if unknown:
         raise LayoutError(
             f"{linker.abs_path}: unsupported properties for os,type "
             f"'{linker_os_type(domain_node)}': " + ", ".join(sorted(unknown)))
+
+    sizes = False
+    for source_name in ("stack_size", "heap_size"):
+        values = linker.propval(source_name, list)
+        if not values or values == [""]:
+            continue
+        if len(values) != 1 or not isinstance(values[0], int) or \
+                values[0] <= 0:
+            raise LayoutError(
+                f"{linker.abs_path}: {source_name} must be one positive "
+                "number of bytes")
+        _set_domain_property(
+            domain_node, f"linker-{source_name.replace('_', '-')}",
+            [values[0]])
+        sizes = True
 
     layout = linker.propval("layout", list)
     if layout and layout != [""]:
@@ -120,9 +139,11 @@ def _baremetal_linker_expand(tree, domain_node, linker, verbose=0):
     if len(section_parents) > 1:
         raise LayoutError(
             f"{linker.abs_path}: expected at most one sections child")
-    if not section_parents and "linker-layout" not in domain_node.__props__:
+    if not section_parents and "linker-layout" not in domain_node.__props__ \
+            and not sizes:
         raise LayoutError(
-            f"{linker.abs_path}: expected a layout or a sections child")
+            f"{linker.abs_path}: expected a layout, a sections child, or a "
+            "stack_size or heap_size")
     for section in (section_parents[0].subnodes(children_only=True)
                     if section_parents else []):
         name = section.name
