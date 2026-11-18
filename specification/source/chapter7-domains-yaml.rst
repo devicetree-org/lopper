@@ -926,7 +926,9 @@ work on processors without section placement, such as a MicroBlaze V.
 for the linker templates. A size the domain sets takes precedence over the
 application's ``linker_constraints`` and over the assist's defaults:
 0x400 stack and 0x800 heap on MicroBlaze processors, 0x2000 and 0x2000
-on others, and a 0x4000 heap in OpenAMP mode.
+on others, a 0x4000 heap in OpenAMP mode, and a 0x4000 heap on a
+MicroBlaze V whose domain has an RPMsg (``openamp,rpmsg-v1``) or libmetal
+(``libmetal,ipc-v1``) relation.
 
 Example, MicroBlaze V remote:
 

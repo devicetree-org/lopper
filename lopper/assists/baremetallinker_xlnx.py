@@ -16,6 +16,8 @@ import common_utils as utils
 from baremetalconfig_xlnx import scan_reg_size, get_cpu_node, get_label
 from common_utils import to_cmakelist
 from openamp_xlnx import (
+    LIBMETAL_D_TO_D,
+    RPMSG_D_TO_D,
     xlnx_openamp_get_ddr_elf_load,
     xlnx_openamp_get_tcm_elf_load_nodes,
 )
@@ -401,9 +403,34 @@ def xlnx_generate_bm_linker(tgt_node, sdt, options):
 
     generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr,
                            placement.memory if placement is not None else None,
-                           domain_linker_sizes(sdt, match_cpunode))
+                           domain_linker_sizes(sdt, match_cpunode),
+                           domain_has_ipc_relation(sdt, match_cpunode))
 
     return True
+
+
+def domain_has_ipc_relation(sdt, match_cpunode):
+    """
+    Tell whether the target's domain has an OpenAMP or libmetal relation
+    Parameters:
+        sdt(obj)              : SDT
+        match_cpunode(obj)    : Target CPU node
+    Return:
+        True when the baremetal or FreeRTOS domain that selects the CPU
+        has an RPMsg (openamp,rpmsg-v1) or libmetal (libmetal,ipc-v1)
+        relation, otherwise False. Exits when more than one such domain
+        selects the CPU.
+    """
+    try:
+        domain = find_linker_domain(sdt.tree, match_cpunode,
+                                    linker_block=False)
+    except LayoutError as exc:
+        _error(f"baremetallinker_xlnx: {exc}", also_exit=1)
+    if domain is None:
+        return False
+    return any(node.propval("compatible", list)[0] in
+               (RPMSG_D_TO_D, LIBMETAL_D_TO_D)
+               for node in domain.subnodes())
 
 
 def domain_linker_sizes(sdt, match_cpunode):
@@ -453,7 +480,7 @@ def rpu_tcm_memory_lines(mem_sec, tcm_memory):
     return mem_sec
 
 
-def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr,tcm_memory=None,domain_sizes=None):
+def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,openamp_config,openamp_elfload_sz,openamp_elfload_start,openamp_entry_name,traverse,lable_names,mb_reset_addr,tcm_memory=None,domain_sizes=None,ipc_remote=False):
     """
     To get generate the linker script
     Parameters:
@@ -476,6 +503,8 @@ def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,
                                      domain, which take precedence over
                                      every default and the app's
                                      linker_constraints, or None
+        ipc_remote(bool)           : The domain has an OpenAMP or libmetal
+                                     relation
     Return:
         None
     """
@@ -489,6 +518,12 @@ def generate_linker_script(mem_ranges,yaml_file,appname,cfd,cpu_ip_name,machine,
         else:
             stack_size = 0x2000
             heap_size = 0x2000
+    # OpenAMP and libmetal firmware allocates its RPMsg or libmetal buffers
+    # and libc formatting from the heap. An RPU gets a 0x4000 heap in
+    # OpenAMP mode; a MicroBlaze V does not use that mode, so give it the
+    # same default when its domain has such a relation.
+    if cpu_ip_name == "microblaze_riscv" and ipc_remote:
+        heap_size = 0x4000
     if not utils.is_file(yaml_file):
         _warning(f"{appname} doesn't have yaml file")
     else:
