@@ -64,8 +64,12 @@ try:
     from ruamel.yaml import YAML
     _yaml_loader = YAML(typ="safe")
 except ImportError:
-    import yaml as _pyyaml
     _yaml_loader = None
+    try:
+        import yaml as _pyyaml
+    except ImportError:
+        # yaml is the optional "yaml" extra; only loading rule files needs it
+        _pyyaml = None
 
 
 # Map the language's phase strings to the framework's ValidationPhase enum.
@@ -181,6 +185,9 @@ class Rule:
 
 
 def _load_yaml(path: str):
+    if _yaml_loader is None and _pyyaml is None:
+        raise ModuleNotFoundError(
+            f"{path}: reading DRC rules needs yaml support (pip install lopper[yaml])")
     with open(path, "r") as f:
         if _yaml_loader:
             return _yaml_loader.load(f)

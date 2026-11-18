@@ -31,9 +31,15 @@ try:
     _yaml.preserve_quotes = True
     _use_ruamel = True
 except ImportError:
-    import yaml as pyyaml
     _yaml = None
     _use_ruamel = False
+    try:
+        import yaml as pyyaml
+    except ImportError:
+        # yaml support is the optional "yaml" extra. This module is imported
+        # whenever lopper is, so a core install must still be able to load
+        # it; without a parser, no schema file is read.
+        pyyaml = None
 
 from .types import PropertyType, TypeDefinition, DT_SCHEMA_TYPES
 from .core import (
@@ -207,6 +213,9 @@ def load_external_schema(sources) -> dict:
         for schema_file in files:
             data = _load_yaml_file(schema_file)
             if data is None:
+                if not _use_ruamel and pyyaml is None:
+                    lopper.log._error( f"schema: reading {schema_file} needs yaml support"
+                                       " (pip install lopper[yaml])", also_exit=1 )
                 lopper.log._error( f"schema: {schema_file} could not be read as yaml", also_exit=1 )
 
             kind = _external_schema_kind( data, schema_file )
@@ -395,6 +404,9 @@ def _load_yaml_file(path: str) -> Optional[dict]:
     Returns:
         Parsed YAML as dict, or None on error
     """
+    if not _use_ruamel and pyyaml is None:
+        lopper.log._debug(f"schema: no yaml parser installed, not reading {path}")
+        return None
     try:
         with open(path, 'r') as f:
             if _use_ruamel and _yaml:

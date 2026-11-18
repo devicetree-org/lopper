@@ -7,7 +7,6 @@
 # * SPDX-License-Identifier: BSD-3-Clause
 # */
 
-import yaml
 import re
 from collections import defaultdict
 from typing import Dict, Any, List, Set, Optional, Union, Tuple
@@ -1987,6 +1986,9 @@ def create_all_from_schema(schema_file=None, schema_dict=None):
         tuple: (property_resolver, type_checker, validator)
     """
     if schema_file:
+        # yaml is the optional "yaml" extra; import it only when a file
+        # has to be read, so a core install can still import this module
+        import yaml
         with open(schema_file, 'r') as f:
             schema = yaml.safe_load(f)
     elif schema_dict:
@@ -2674,6 +2676,9 @@ def create_property_resolver(schema_file=None, schema_dict=None):
         DTSPropertyTypeResolver instance
     """
     if schema_file:
+        # yaml is the optional "yaml" extra; import it only when a file
+        # has to be read, so a core install can still import this module
+        import yaml
         with open(schema_file, 'r') as f:
             schema = yaml.safe_load(f)
     elif schema_dict:

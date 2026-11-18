@@ -41,8 +41,13 @@ try:
     _yaml_loader = YAML()
     _yaml_loader.preserve_quotes = True
 except ImportError:
-    import yaml
     _yaml_loader = None
+    try:
+        import yaml
+    except ImportError:
+        # yaml is the optional "yaml" extra; without a parser no schema
+        # file is read (see _parse_schema_file)
+        yaml = None
 
 from .base import (
     ValidationPhase,
