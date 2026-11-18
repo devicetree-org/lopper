@@ -70,14 +70,15 @@ def test_empty_linker_block_is_still_rejected():
         zephyr_linker_expand(tree, domain)
 
 
-def _sizes(cpu_ip_name, domain_sizes=None, yaml_file="/nonexistent.yaml"):
+def _sizes(cpu_ip_name, domain_sizes=None, yaml_file="/nonexistent.yaml",
+           ipc_remote=False):
     """Run generate_linker_script on one DDR region and return the stack
     and heap sizes it writes."""
     out = io.StringIO()
     baremetallinker_xlnx.generate_linker_script(
         {"ddr": [0x0, 0x100000]}, yaml_file, "app", out, cpu_ip_name,
         f"{cpu_ip_name}_0", None, False, False, False, True,
-        {"ddr": "ddr_0"}, None, None, domain_sizes)
+        {"ddr": "ddr_0"}, None, None, domain_sizes, ipc_remote)
     text = out.getvalue()
     return {name: line.split()[1].rstrip(")")
             for line in text.splitlines()
@@ -130,3 +131,50 @@ def test_domain_linker_sizes_reads_the_cpu_domain():
         "stack": 0x4000}
     tree - domain
     assert baremetallinker_xlnx.domain_linker_sizes(sdt, cpu) == {}
+
+
+def test_mbv_ipc_remote_defaults_to_a_0x4000_heap(tmp_path):
+    """A MicroBlaze V with an OpenAMP or libmetal relation gets the heap an
+    RPU gets in OpenAMP mode; the app and the domain still win."""
+    assert _sizes("microblaze_riscv", ipc_remote=True) == {
+        "STACK_SIZE": "0x400", "HEAP_SIZE": "0x4000"}
+    assert _sizes("microblaze_riscv") == {
+        "STACK_SIZE": "0x400", "HEAP_SIZE": "0x800"}
+    # Only the MicroBlaze V default changes.
+    assert _sizes("microblaze", ipc_remote=True) == {
+        "STACK_SIZE": "0x400", "HEAP_SIZE": "0x800"}
+    assert _sizes("cortexr52", ipc_remote=True) == {
+        "STACK_SIZE": "0x2000", "HEAP_SIZE": "0x2000"}
+
+    app_yaml = tmp_path / "app.yaml"
+    app_yaml.write_text("linker_constraints:\n  heap: 0x1000\n")
+    assert _sizes("microblaze_riscv", yaml_file=str(app_yaml),
+                  ipc_remote=True)["HEAP_SIZE"] == "0x1000"
+    assert _sizes("microblaze_riscv", {"heap": 0x8000},
+                  ipc_remote=True)["HEAP_SIZE"] == "0x8000"
+
+
+@pytest.mark.parametrize("compatible, expected", [
+    ("openamp,rpmsg-v1", True),
+    ("libmetal,ipc-v1", True),
+    ("openamp,remoteproc-v2", False),
+])
+def test_domain_has_ipc_relation(compatible, expected):
+    tree = LopperTree()
+    cluster = _node(tree, "/cpus_microblaze_riscv_0")
+    cpu = _node(tree, "/cpus_microblaze_riscv_0/cpu@0")
+    _node(tree, "/domains/MBV", {
+        "os,type": ["baremetal"],
+        "cpus": [cluster.phandle_or_create(), 0x1, 0x0]})
+    _node(tree, "/domains/MBV/domain-to-domain",
+          {"compatible": ["openamp,domain-to-domain-v1"]})
+    _node(tree, "/domains/MBV/domain-to-domain/relation",
+          {"compatible": [compatible]})
+    tree.sync()
+
+    class _Sdt:
+        pass
+    sdt = _Sdt()
+    sdt.tree = tree
+
+    assert baremetallinker_xlnx.domain_has_ipc_relation(sdt, cpu) is expected
