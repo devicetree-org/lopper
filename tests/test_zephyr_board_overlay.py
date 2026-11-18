@@ -333,3 +333,85 @@ def test_dangling_base_alias_fails_rather_than_blanks(tmp_path):
     import pytest
     with pytest.raises(SystemExit):
         merge_board_overlay_from_sdt(sdt, options)
+
+
+def _board_with_alias_ref(sdt_folder, label):
+    board_content = textwrap.dedent(
+        f"""\
+        / {{
+            aliases {{
+                serial0 = &{label};
+            }};
+        }};
+        &existing_node {{
+            status = "okay";
+        }};
+        """
+    )
+    (sdt_folder / "kcu105_zephyr.dtsi").write_text(board_content, encoding="utf-8")
+    (sdt_folder / "system-top.dts").write_text('/ { board = "kcu105"; };', encoding="utf-8")
+
+
+def _base_tree_with_uart():
+    tree = _make_tree("kcu105")
+    existing = LopperNode()
+    existing.abs_path = "/existing_node"
+    existing.name = "existing_node"
+    existing.label = "existing_node"
+    tree + existing
+    uart = LopperNode()
+    uart.abs_path = "/soc/serial@ff000000"
+    uart.name = "serial@ff000000"
+    uart.label = "uart0"
+    tree + uart
+    tree.resolve()
+    return tree
+
+
+def test_collect_aliases_resolves_a_base_label(tmp_path):
+    """--collect-aliases rewrites `serial0 = &uart0` (uart0 in the SDT) to the
+    node's path so dtc accepts it, and it merges into the base aliases."""
+    sdt_folder = tmp_path / "sdt"; outdir = tmp_path / "out"
+    sdt_folder.mkdir(); outdir.mkdir()
+    _board_with_alias_ref(sdt_folder, "uart0")
+
+    sdt = SimpleNamespace(outdir=str(outdir), tree=_base_tree_with_uart(),
+                          tmpdir=str(outdir), collect_aliases=True)
+    options = {"args": ["microblaze_riscv_0", str(sdt_folder)]}
+
+    assert merge_board_overlay_from_sdt(sdt, options) is True
+    sdt.tree.resolve()
+    assert sdt.tree["/aliases"].propval("serial0", list) == ["/soc/serial@ff000000"], \
+        "the base-label alias was not resolved to the node's path"
+
+
+def test_base_alias_without_the_flag_still_fails(tmp_path):
+    """Opt-in: without --collect-aliases, a base-label alias is not rewritten,
+    so dtc cannot resolve it standalone and the overlay fails (not blanked)."""
+    sdt_folder = tmp_path / "sdt"; outdir = tmp_path / "out"
+    sdt_folder.mkdir(); outdir.mkdir()
+    _board_with_alias_ref(sdt_folder, "uart0")
+
+    sdt = SimpleNamespace(outdir=str(outdir), tree=_base_tree_with_uart(),
+                          tmpdir=str(outdir))  # no collect_aliases
+    options = {"args": ["microblaze_riscv_0", str(sdt_folder)]}
+
+    import pytest
+    with pytest.raises(SystemExit):
+        merge_board_overlay_from_sdt(sdt, options)
+
+
+def test_collect_aliases_leaves_an_unresolvable_label_to_fail(tmp_path):
+    """--collect-aliases does not fabricate: a label present nowhere is left as
+    written, so the overlay still fails rather than being changed on a guess."""
+    sdt_folder = tmp_path / "sdt"; outdir = tmp_path / "out"
+    sdt_folder.mkdir(); outdir.mkdir()
+    _board_with_alias_ref(sdt_folder, "nonexistent_label")
+
+    sdt = SimpleNamespace(outdir=str(outdir), tree=_base_tree_with_uart(),
+                          tmpdir=str(outdir), collect_aliases=True)
+    options = {"args": ["microblaze_riscv_0", str(sdt_folder)]}
+
+    import pytest
+    with pytest.raises(SystemExit):
+        merge_board_overlay_from_sdt(sdt, options)

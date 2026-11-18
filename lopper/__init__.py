@@ -902,6 +902,11 @@ class LopperSDT:
         self.merge = False
         self.support_files = False
         self.symbols = False
+        # opt-in: when merging an overlay, resolve an aliases entry that names a
+        # base-tree label (serial0 = &sdt_node) to that node's path, so dtc --
+        # which cannot resolve a base label in a standalone overlay -- is handed
+        # a path string it accepts rather than an error.
+        self.collect_aliases = False
         self.warnings = []
         self.werror = False
         self.tmpfiles = []

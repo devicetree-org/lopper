@@ -39,8 +39,43 @@ def _work_dir(sdt):
     return tempfile.mkdtemp(prefix="zephyr_board_", dir=outdir or None)
 
 
+_ALIASES_BLOCK_RE = re.compile(r'(aliases\s*\{)([^{}]*)(\})')
+_ALIAS_REF_RE = re.compile(r'(=\s*)&(\w+)(\s*;)')
+
+
+def _resolve_overlay_base_aliases(content, main_tree):
+    """Rewrite an aliases entry that names a base-tree label to the node's path.
+
+    An /aliases value is a path, and dtc resolves it at compile time. A label
+    that lives in the base tree is absent from a standalone overlay, so dtc
+    cannot resolve it and the entry fails. This rewrites `name = &label;` to
+    `name = "<path>";` using the label's node in the base -- a plain path string
+    dtc accepts -- so lopper emits information it already holds rather than
+    asking dtc to resolve a label it cannot see. A label that does not resolve
+    is left exactly as written, so it still fails rather than being changed on
+    the author's behalf.
+    """
+    def _block(bm):
+        head, body, tail = bm.group(1), bm.group(2), bm.group(3)
+
+        def _ref(rm):
+            label = rm.group(2)
+            nodes = main_tree.lnodes(label, exact=True)
+            if not nodes:
+                return rm.group(0)
+            path = nodes[0].abs_path.replace("/amba_pl/", "/soc/")
+            return f'{rm.group(1)}"{path}"{rm.group(3)}'
+
+        return head + _ALIAS_REF_RE.sub(_ref, body) + tail
+
+    return _ALIASES_BLOCK_RE.sub(_block, content)
+
+
 def _merge_plugin_overlay(content, main_tree, sdt, sdt_folder, work_dir):
     """Merge &label { } board fragments via plugin compile + unwrap (optional HW safe)."""
+    if getattr(sdt, "collect_aliases", False):
+        content = _resolve_overlay_base_aliases(content, main_tree)
+
     dtso_path = os.path.join(work_dir, "board_zephyr.dtso")
     with open(dtso_path, "w", encoding="utf-8") as fh:
         fh.write(content)

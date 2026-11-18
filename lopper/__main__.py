@@ -144,6 +144,7 @@ def usage():
     print('    , --cpumap        output file for CPU access map visualization (use - for stdout)' )
     print('    , --cpumap-expand expand bus nodes to show child devices in cpumap' )
     print('    , --symbols       generate (and maintain) the __symbols__ node during processing' )
+    print('    , --collect-aliases  resolve an overlay aliases entry that names a base-tree label to that node\'s path' )
     print('  -o, --output        output file')
     print('    , --overlay       Allow input files (dts or yaml) to overlay system device tree nodes' )
     print('  -x. --xlate         run automatic translations on nodes for indicated input types (yaml,dts)' )
@@ -194,6 +195,7 @@ def main():
     config_file = None
     config_vals = {}
     symbols = False
+    collect_aliases = False
     warnings = []
     usage_flag = False
     schema = []
@@ -208,7 +210,7 @@ def main():
                                    [ "debug=", "assist-paths=", "outdir", "enhanced",
                                      "schema=", "save-temps", "version", "werror","target=", "dump",
                                      "force","verbose","help","input=","output=","dryrun",
-                                     "assist=","server", "auto", "permissive", 'symbols', "xlate=",
+                                     "assist=","server", "auto", "permissive", 'symbols', "collect-aliases", "xlate=",
                                      "no-libfdt", "overlay", "cfgfile=", "cfgval=", "input-dirs",
                                      "memmap=", "cpumap=", "cpumap-expand", "drc=",
                                      "emit-overlay-sidecar", "emit-overlay-dtso",
@@ -269,6 +271,8 @@ def main():
             permissive = True
         elif o in ('--symbols' ):
             symbols = True
+        elif o in ('--collect-aliases' ):
+            collect_aliases = True
         elif o in ('--overlay' ):
             overlay = True
         elif o in ('--cfgfile' ):
@@ -514,6 +518,7 @@ def main():
     device_tree.autorun = auto_run
     device_tree.config = config
     device_tree.symbols = symbols
+    device_tree.collect_aliases = collect_aliases
     device_tree.warnings = warnings
     device_tree.schema = schema
     device_tree.memmap_file = memmap_file
