@@ -1450,3 +1450,81 @@ class TestTopLevelOverlayNodes:
         assert mydev_ph not in (0, None), "base node never got a phandle"
         assert base["/chosen"].propval("foo", list) == [mydev_ph], \
             "chosen/foo did not resolve to the base node's phandle"
+
+    def _make_overlay_with_toplevel_alias(self):
+        """A dtc-compiled-overlay shape with a top-level /aliases.  An alias to
+        an overlay-local label is resolved by dtc to the node's *fragment*
+        path; a second alias already names a real base path.  fragment@0
+        targets the base label 'axi_iic_0' and carries the eeprom node that the
+        first alias points at."""
+        from lopper.tree import LopperProp, LopperNode, LopperTree
+
+        def mknode(name, path):
+            n = LopperNode(name=name)
+            n.__dict__['abs_path'] = path
+            return n
+
+        def mkprop(node, name, value):
+            p = LopperProp(name=name)
+            p.__dict__['value'] = value
+            p.node = node
+            node.__props__[name] = p
+
+        tree = LopperTree()
+        tree.add(mknode("/", "/"))
+
+        fx = mknode("__fixups__", "/__fixups__")
+        mkprop(fx, "axi_iic_0", "/fragment@0:target:0")
+        tree.add(fx)
+
+        frag = mknode("fragment@0", "/fragment@0"); tree.add(frag)
+        ovl = mknode("__overlay__", "/fragment@0/__overlay__"); frag.add(ovl)
+        ovl.add(mknode("eeprom@50", "/fragment@0/__overlay__/eeprom@50"))
+
+        aliases = mknode("aliases", "/aliases")
+        # dtc baked the overlay-local &eeprom0 to its fragment path
+        mkprop(aliases, "eeprom-0", ["/fragment@0/__overlay__/eeprom@50"])
+        # an alias to a real base path -- must be left untouched
+        mkprop(aliases, "i2c-0", ["/amba/axi_iic_0@a0050000"])
+        tree.add(aliases)
+        return tree
+
+    def _make_iic_base(self):
+        from lopper.tree import LopperNode, LopperTree
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        tree.add(LopperNode(-1, "/amba"))
+        iic = LopperNode(-1, "/amba/axi_iic_0@a0050000"); iic.label = "axi_iic_0"
+        tree.add(iic)
+        tree.add(LopperNode(-1, "/aliases"))
+        tree.resolve()
+        return tree
+
+    def test_toplevel_alias_fragment_path_rewritten(self):
+        """An /aliases value baked to a fragment path is rewritten to the
+        node's real merged path; a value already naming a real path is left
+        alone."""
+        from lopper import _unwrap_overlay_tree
+        nodes, _, _, _ = _unwrap_overlay_tree(
+            self._make_overlay_with_toplevel_alias(), self._make_iic_base())
+        al = next(n for n in nodes if n.abs_path == "/aliases")
+        assert al.__props__["eeprom-0"].value == ["/amba/axi_iic_0@a0050000/eeprom@50"], \
+            f"fragment path not rewritten: {al.__props__['eeprom-0'].value}"
+        assert al.__props__["i2c-0"].value == ["/amba/axi_iic_0@a0050000"], \
+            "a real base path must not be rewritten"
+
+    def test_toplevel_alias_survives_merge_and_resolves(self):
+        """End to end: after merge the alias points at a node that exists in
+        the merged tree, rather than being dropped as a dangling path-ref."""
+        from lopper import _unwrap_overlay_tree
+        from lopper.tree import _merge_node_into_tree
+        base = self._make_iic_base()
+        nodes, fixups, local, _ = _unwrap_overlay_tree(
+            self._make_overlay_with_toplevel_alias(), base)
+        for n in nodes:
+            _merge_node_into_tree(base, n)
+        base.resolve()
+        target = base["/aliases"].propval("eeprom-0", list)[0]
+        assert target == "/amba/axi_iic_0@a0050000/eeprom@50"
+        assert target in base.__nodes__, \
+            "alias target does not exist in the merged tree -- would be dropped"

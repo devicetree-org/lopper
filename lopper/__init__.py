@@ -260,6 +260,10 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
 
     # --- step 2: walk fragment@N nodes, build clean result nodes ---
     result_nodes = []
+    # Top-level /chosen, /aliases nodes dtc left at the overlay root. Tracked
+    # separately so a post-pass can rewrite any fragment-layout path string in
+    # their values once fragment_overlay_to_real is complete (see step 4b).
+    toplevel_nodes = []
     # fragment_overlay_to_real: "/fragment@0/__overlay__" -> "/amba_pl"
     # Built during the walk so step 3 can rewrite child paths too.
     fragment_overlay_to_real = {}
@@ -289,6 +293,7 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
                 for child in node.child_nodes.values():
                     tl_node.add(copy.deepcopy(child))
                 result_nodes.append(tl_node)
+                toplevel_nodes.append(tl_node)
             continue
 
         frag_path = node.abs_path    # e.g. "/fragment@0"
@@ -389,6 +394,32 @@ def _unwrap_overlay_tree(ov_tree, base_tree):
             if p.startswith(prefix + '/'):
                 return real + p[len(prefix):]
         return None
+
+    # --- step 4b: rewrite fragment-layout paths in top-level node values ---
+    # An /aliases or /chosen value that references an overlay-local label is
+    # resolved by dtc at compile time to the node's *fragment* path, e.g.
+    #   aliases { eeprom-0 = &eeprom0; }
+    # becomes  eeprom-0 = "/fragment@0/__overlay__/eeprom@50";
+    # Unwrapping the fragment moves that node to its real home
+    # (/amba/axi_iic_0@.../eeprom@50), so the baked fragment path now dangles
+    # and the strict emitter drops the alias. Rewrite each such path string to
+    # the node's real merged path -- the same fragment->real mapping step 5
+    # applies to __symbols__ -- so the alias survives. A value that matches no
+    # fragment prefix (an already-real base path, or a non-path string like
+    # "serial0:115200") is left untouched.
+    for tl_node in toplevel_nodes:
+        for prop in tl_node.__props__.values():
+            val = prop.__dict__.get('value')
+            vals = val if isinstance(val, list) else [val]
+            changed = False
+            for i, v in enumerate(vals):
+                if isinstance(v, str):
+                    real = _frag_to_real(v)
+                    if real is not None and real != v:
+                        vals[i] = real
+                        changed = True
+            if changed:
+                prop.__dict__['value'] = vals if isinstance(val, list) else vals[0]
 
     local_fixups = []
     marker = '/__local_fixups__'
