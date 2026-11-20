@@ -403,6 +403,23 @@ def _layout_targets(domain, cpu_type):
             for name, target in _LAYOUT_PRESETS[layout].items()}
 
 
+def _matches_ddr_region(node, ddr_region):
+    """Return True when ``node`` spans the active DDR linker region.
+
+    Description:
+        In OpenAMP mode the effective DDR linker region is the selected
+        ELF-load carveout, not the platform's lowest DDR bank. Allow a
+        linker block to name that carveout node directly, such as
+        ``region: rproc0``, by treating a non-TCM node whose range equals
+        ``ddr_region`` as the DDR selector.
+    """
+    try:
+        start, size = _memory_range(node)
+    except LayoutError:
+        return False
+    return (start, size) == tuple(ddr_region[1:])
+
+
 def resolve_placement(tree, domain, cpu_node, machine, ddr_region,
                       region_for_node=None, sections=None):
     """Resolve and check a domain's section placement.
@@ -515,6 +532,8 @@ def resolve_placement(tree, domain, cpu_node, machine, ddr_region,
         if bank is not None:
             _check_bank(owners, node, core)
             targets[name] = (bank, node)
+        elif _matches_ddr_region(node, ddr_region):
+            targets[name] = (DDR_REGION, node)
         else:
             targets[name] = ("node", node)
 
