@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lopper", "assists"))
 
 from zephyr_board_dt import (  # noqa: E402
+    chosen_phandles_to_paths,
     discover_zephyr_board_files,
     merge_board_overlay_from_sdt,
     resolve_sdt_folder,
@@ -415,3 +416,46 @@ def test_collect_aliases_leaves_an_unresolvable_label_to_fail(tmp_path):
     import pytest
     with pytest.raises(SystemExit):
         merge_board_overlay_from_sdt(sdt, options)
+
+
+@pytest.mark.parametrize("chosen_value", ["&trng_0", "<&trng_0>"])
+def test_chosen_entropy_becomes_a_path_for_zephyr(tmp_path, chosen_value):
+    """Both overlay spellings merge, and the assist then writes the node path
+    Zephyr's DT_CHOSEN() needs. Core itself keeps the phandle."""
+    sdt_folder = tmp_path / "sdt"
+    outdir = tmp_path / "out"
+    sdt_folder.mkdir()
+    outdir.mkdir()
+    (sdt_folder / "kcu105_zephyr.dtsi").write_text(textwrap.dedent(
+        f"""\
+        / {{
+            chosen {{
+                zephyr,entropy = {chosen_value};
+            }};
+        }};
+        &existing_node {{
+            status = "okay";
+        }};
+        """
+    ), encoding="utf-8")
+    (sdt_folder / "system-top.dts").write_text('/ { board = "kcu105"; };', encoding="utf-8")
+
+    tree = _make_tree("kcu105")
+    existing = LopperNode()
+    existing.abs_path = "/existing_node"
+    existing.name = "existing_node"
+    existing.label = "existing_node"
+    tree + existing
+    trng = LopperNode()
+    trng.abs_path = "/soc/trng@f1240000"
+    trng.name = "trng@f1240000"
+    trng.label = "trng_0"
+    tree + trng
+    tree.resolve()
+
+    sdt = SimpleNamespace(outdir=str(outdir), tree=tree, tmpdir=str(outdir))
+    options = {"args": ["microblaze_riscv_0", str(sdt_folder)]}
+    assert merge_board_overlay_from_sdt(sdt, options) is True
+    chosen_phandles_to_paths(sdt.tree)
+    sdt.tree.resolve()
+    assert sdt.tree["/chosen"].propval("zephyr,entropy", list) == ["/soc/trng@f1240000"]

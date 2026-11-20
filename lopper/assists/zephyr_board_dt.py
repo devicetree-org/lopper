@@ -71,10 +71,63 @@ def _resolve_overlay_base_aliases(content, main_tree):
     return _ALIASES_BLOCK_RE.sub(_block, content)
 
 
+_CHOSEN_BLOCK_RE = re.compile(r'(chosen\s*\{)([^{}]*)(\})')
+_CHOSEN_REF_RE = re.compile(r'(=\s*)&(\w+)(\s*;)')
+
+
+def _chosen_refs_as_phandles(content, main_tree):
+    """Compile a /chosen `name = &label;` that names a base node as `<&label>`.
+
+    dtc treats a bare `&label` as a path reference and rejects it when the
+    label exists only on the domain tree. The cell form is what core records
+    in __fixups__ and resolves by name. A label that is not on the domain
+    tree is left unchanged, so the compile still fails.
+    """
+    def _block(match):
+        def _ref(ref):
+            if not main_tree.lnodes(ref.group(2), exact=True):
+                return ref.group(0)
+            return f'{ref.group(1)}<&{ref.group(2)}>{ref.group(3)}'
+
+        return match.group(1) + _CHOSEN_REF_RE.sub(_ref, match.group(2)) + match.group(3)
+
+    return _CHOSEN_BLOCK_RE.sub(_block, content)
+
+
+def chosen_phandles_to_paths(main_tree):
+    """Write each /chosen property that holds one node phandle as that node's path.
+
+    Core leaves a resolved /chosen reference as a phandle, which prints as
+    `<&label>`. Zephyr's DT_CHOSEN() accepts the path string this assist
+    already writes when it auto-fills an empty zephyr,entropy.
+    """
+    try:
+        chosen = main_tree["/chosen"]
+    except Exception:
+        return
+    main_tree.sync()
+
+    for name, prop in list(chosen.__props__.items()):
+        value = prop.value
+        if not isinstance(value, list) or len(value) != 1:
+            continue
+        phandle = value[0]
+        if not isinstance(phandle, int) or phandle in (0, 0xffffffff):
+            continue
+        node = main_tree.pnode(phandle)
+        if node is None:
+            node = next((n for n in main_tree.__nodes__.values()
+                         if getattr(n, "phandle", None) == phandle), None)
+        if node is None:
+            continue
+        chosen[name] = node.abs_path.replace("/amba_pl/", "/soc/")
+
+
 def _merge_plugin_overlay(content, main_tree, sdt, sdt_folder, work_dir):
     """Merge &label { } board fragments via plugin compile + unwrap (optional HW safe)."""
     if getattr(sdt, "collect_aliases", False):
         content = _resolve_overlay_base_aliases(content, main_tree)
+    content = _chosen_refs_as_phandles(content, main_tree)
 
     dtso_path = os.path.join(work_dir, "board_zephyr.dtso")
     with open(dtso_path, "w", encoding="utf-8") as fh:

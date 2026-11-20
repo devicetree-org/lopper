@@ -16,7 +16,11 @@ sys.path.append(os.path.dirname(__file__))
 
 from baremetalconfig_xlnx import get_cpu_node
 import common_utils as utils
-from zephyr_board_dt import merge_board_overlay_from_sdt, merge_board_overlay_content
+from zephyr_board_dt import (
+    chosen_phandles_to_paths,
+    merge_board_overlay_from_sdt,
+    merge_board_overlay_content,
+)
 from openamp_xlnx import xlnx_openamp_keep_node
 from gen_domain_dts import (
     delete_unused_props,
@@ -2512,6 +2516,7 @@ def xlnx_zephyr_domain_dts(tgt_node, sdt, options):
                     sdt=sdt,
                     sdt_folder=sdt_folder,
                 )
+            chosen_phandles_to_paths(sdt.tree)
         except Exception as e:
             print(f"[ERROR] Failed to process overlay file: {e}")
             import traceback
