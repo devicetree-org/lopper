@@ -508,12 +508,12 @@ def _construct_remoteproc_v2(monkeypatch, platform, channel_info, tcm,
         (openamp_xlnx.SOC_TYPE.ZYNQMP, 0, 15, None,
          "psu_r5_0_atcm_global@ffe00000", 0x10000, 0, 0x0, "atcm0"),
         (openamp_xlnx.SOC_TYPE.ZYNQMP, 1, 18, None,
-         "psu_r5_1_btcm_global@ffeb0000", 0x10000, 1, 0x20000, "btcm1"),
+         "psu_r5_1_btcm_global@ffeb0000", 0x10000, 1, 0x20000, "btcm0"),
         # Versal: firmware IDs, including R5 core 1.
         (openamp_xlnx.SOC_TYPE.VERSAL, 0, 0x1831800B, None,
          "psv_r5_0_atcm_global@ffe00000", 0x10000, 0, 0x0, "atcm0"),
         (openamp_xlnx.SOC_TYPE.VERSAL, 1, 0x1831800E, None,
-         "psv_r5_1_btcm_global@ffeb0000", 0x10000, 1, 0x20000, "btcm1"),
+         "psv_r5_1_btcm_global@ffeb0000", 0x10000, 1, 0x20000, "btcm0"),
         # Versal NET: TCM_A_1A is the core 1 ATCM at 0xeba40000.
         (openamp_xlnx.SOC_TYPE.VERSAL_NET, 1, 0x183180CE, None,
          "psx_r52_1a_atcm_global@eba40000", 0x10000, 1, 0x0, "atcm0"),
@@ -786,18 +786,6 @@ _REMOTEPROC_BINDING = {
 }
 
 
-def _expected_reg_name(platform, core, bank):
-    """reg-names Lopper gives a bank.
-
-    R5 core 1's banks are named atcm1 and btcm1 in split mode too; the
-    binding wants atcm0 and btcm0 (CR filed separately).
-    """
-    if platform in (openamp_xlnx.SOC_TYPE.ZYNQMP,
-                    openamp_xlnx.SOC_TYPE.VERSAL):
-        return f"{bank}{core % 2}"
-    return f"{bank}0"
-
-
 @pytest.mark.parametrize(
     "platform, cores",
     [
@@ -859,8 +847,7 @@ def test_remoteproc_v2_split_clusters(monkeypatch, platform, cores):
             cell for _, _, size, _, bank in banks
             for cell in (position, local[bank], 0, size)]
         assert node.propval("reg-names", list) == [
-            _expected_reg_name(platform, core, bank)
-            for _, _, _, _, bank in banks]
+            f"{bank}0" for _, _, _, _, bank in banks]
         expected_ranges.setdefault(cluster_path, []).extend(
             cell for _, address, size, _, bank in banks
             for cell in (position, local[bank], 0, address, 0, size))
@@ -877,6 +864,53 @@ def test_remoteproc_v2_split_clusters(monkeypatch, platform, cores):
             assert cluster.propval("xlnx,tcm-mode", list) == [0]
         else:
             assert cluster.propval("xlnx,tcm-mode", list) == [""]
+
+
+@pytest.mark.parametrize(
+    "platform, core",
+    [
+        (openamp_xlnx.SOC_TYPE.ZYNQMP, 1),
+        (openamp_xlnx.SOC_TYPE.VERSAL, 1),
+        (openamp_xlnx.SOC_TYPE.VERSAL2, 3),
+    ],
+)
+def test_remoteproc_v2_reg_names_follow_binding_order(
+        monkeypatch, platform, core):
+    """Banks listed in reverse order are written in the binding's order.
+
+    The xlnx,zynqmp-r5fss reg-names are positional: ATCM, BTCM, then CTCM
+    on R52. reg, power-domains and the cluster ranges follow the same
+    order.
+    """
+    tree = LopperTree()
+    axi = LopperNode(-1, "/axi")
+    axi["#address-cells"] = [2]
+    axi["#size-cells"] = [2]
+    tree + axi
+    monkeypatch.setattr(
+        openamp_xlnx, "get_platform", lambda tree, verbose=0: platform)
+    _, _, _, local, cluster_bases = _REMOTEPROC_BINDING[platform]
+    core_pd, banks = _SDT_RPU_CORES[platform][core]
+    info = {"remote_node": _rpu_remote(core, core_pd=core_pd)}
+    assert openamp_xlnx.xlnx_remoteproc_rpu_parse(tree, None, info, [])
+    nodes = [_tcm_node(tree, name, size, pd_id)
+             for name, _, size, pd_id, _ in reversed(banks)]
+
+    node = openamp_xlnx.xlnx_remoteproc_v2_construct_cluster(
+        tree, info, nodes)
+
+    position = core % 2
+    assert node.propval("reg-names", list) == [
+        f"{bank}0" for _, _, _, _, bank in banks]
+    assert node.propval("reg", list) == [
+        cell for _, _, size, _, bank in banks
+        for cell in (position, local[bank], 0, size)]
+    assert node.propval("power-domains", list) == [0xA5, core_pd] + [
+        cell for _, _, _, pd_id, _ in banks for cell in (0xA5, pd_id)]
+    cluster = tree[f"/remoteproc@{cluster_bases[core // 2]:x}"]
+    assert cluster.propval("ranges", list) == [
+        cell for _, address, size, _, bank in banks
+        for cell in (position, local[bank], 0, address, 0, size)]
 
 
 def test_remoteproc_v2_uses_sdt_core_local_tcm_address(monkeypatch):
