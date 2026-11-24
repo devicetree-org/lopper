@@ -639,6 +639,14 @@ class lopper_base:
                     "interrupts-extended" : [ 'phandle:#interrupt-cells' ],
                     "iommus" : [ 'phandle:#iommu-cells' ],
                     "interrupt-map" : [ '#address-cells #interrupt-cells phandle:#interrupt-cells' ],
+                    # msi-map tuples are <rid-base &msi-controller msi-base length>;
+                    # the phandle is the second cell and msi-base is an msi-specifier
+                    # sized by the controller's #msi-cells. Without this entry the
+                    # phandle cell is only recognised when a dt-schema binding that
+                    # declares it happens to be loaded, so the emitted form (symbolic
+                    # &controller vs the raw phandle value) depended on global schema
+                    # state. See Documentation/devicetree/bindings/pci/pci-msi.txt.
+                    "msi-map" : [ 'rid-base phandle:#msi-cells length' ],
                     "access" : [ 'phandle flags' ],
                     "cpus" : [ 'phandle mask mode' ],
                     "clocks" : [ 'phandle:#clock-cells' ],
