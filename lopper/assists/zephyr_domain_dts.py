@@ -714,6 +714,8 @@ def xlnx_remove_unsupported_nodes(tgt_node, sdt, machine, options=None):
                     elif "xlnx,versal-ipi-dest-mailbox" in node["compatible"].value:
                         node["compatible"].value = ["xlnx,mbox-versal-ipi-dest-mailbox"]
                         sdt.tree.rename(node, f"child@{node.propval('reg')[1]:x}")
+                        # rename() re-syncs the tree, so continue with the live node.
+                        node = sdt.tree[node.abs_path]
                     _xlnx_zephyr_convert_zynqmp_ipi_id(node)
                     if "xlnx,zynqmp-ipi-mailbox" in node["compatible"].value:
                         node + LopperProp(name="reg-names", value="host_ipi_reg")
