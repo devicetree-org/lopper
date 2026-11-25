@@ -33,6 +33,22 @@ Multiple conditions and a merge scheme may appear together in any order.
 `!` is not a legal character in DT property or node names, so it is
 unambiguous as a delimiter.
 
+**A merge scheme applies to a property only.** The schemes above describe how
+to combine a property's *value* with the one already there, and a node has no
+value to combine, so a node name takes conditions and nothing else:
+
+```yaml
+linux-only-node!linux:        # a conditional node -- supported
+  status: "okay"
+
+some-node!replace:            # NOT a subtree replacement; the scheme is ignored
+  ...
+```
+
+There is no way to replace or delete a node from YAML. A node sigil that
+carries a scheme segment has it discarded, so `partitions!replace:` adds to
+whatever is already at `partitions` rather than replacing it.
+
 ### Examples
 
 ```yaml
