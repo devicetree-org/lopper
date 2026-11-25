@@ -240,6 +240,7 @@ def test_zynqmp_libmetal_tcm_elfload_places_sections_in_tcm(tmp_path):
     values, text = _baremetal_linker_cmake(tmp_path, yaml_text)
 
     assert "LIBMETAL_DDR" not in values
+    assert "RSC_TABLE_REGION" not in values
     assert values["VECTORS"] == values["CODE"] == "psu_r5_0_atcm_MEM_0"
     for name in ("RODATA", "DATA", "BSS", "HEAP", "STACK"):
         assert values[name] == "psu_r5_0_btcm_MEM_0"
