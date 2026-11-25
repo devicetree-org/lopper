@@ -1274,6 +1274,156 @@ class TestNodeMove:
             f"the mismatch was not reported: {warned}"
 
 
+class TestRename:
+    """Tests for LopperTree.rename().
+
+    rename() changes a node's leaf name in place, re-keying the one node object
+    to the new path -- so a holder of it follows -- and rewriting path
+    references to it. The returned object is the live tree node (this is what
+    the #880 re-fetch worked around). full_sync=True selects the historical
+    whole-tree rebuild and must land the tree in the same shape.
+    """
+
+    OLD = "/axi/serial@f1920000"
+    NEW = "/axi/uart@f1920000"
+
+    @classmethod
+    def _tree(cls):
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        for path in ("/axi", cls.OLD, cls.OLD + "/kid"):
+            tree.add(LopperNode(-1, path))
+        node = tree[cls.OLD]
+        node.label = "ser"
+        node.phandle = 7
+        tree[cls.OLD + "/kid"].label = "kidlabel"
+        tree.resolve()
+        return tree
+
+    def test_rename_returns_the_live_tree_node(self):
+        """The returned object is the node now in the tree, and editing it
+        is visible through the tree -- the defect #880 re-fetched around."""
+        tree = self._tree()
+        returned = tree.rename(tree[self.OLD], "uart@f1920000")
+        assert returned is tree[self.NEW], "rename did not return the live node"
+        returned["added-after-rename"] = [1]
+        assert tree[self.NEW].propval("added-after-rename") == [1], \
+            "an edit on the returned node did not reach the tree"
+
+    def test_the_passed_node_follows_the_rename(self):
+        """A held reference to the renamed node reflects the new name/path."""
+        tree = self._tree()
+        node = tree[self.OLD]
+        tree.rename(node, "uart@f1920000")
+        assert node.abs_path == self.NEW and node.name == "uart@f1920000"
+        assert tree[self.NEW] is node, "the held node is not the tree's node"
+
+    def test_old_path_no_longer_resolves(self):
+        import pytest
+        tree = self._tree()
+        tree.rename(tree[self.OLD], "uart@f1920000")
+        with pytest.raises(KeyError):
+            _ = tree[self.OLD]
+
+    def test_descendants_follow(self):
+        """A descendant's path and a held reference to it both follow."""
+        tree = self._tree()
+        kid = tree[self.OLD + "/kid"]
+        tree.rename(tree[self.OLD], "uart@f1920000")
+        assert kid.abs_path == self.NEW + "/kid"
+        assert tree[self.NEW + "/kid"] is kid
+
+    def test_phandle_and_label_preserved(self):
+        tree = self._tree()
+        ph = tree[self.OLD].phandle
+        tree.rename(tree[self.OLD], "uart@f1920000")
+        live = tree[self.NEW]
+        assert live.phandle == ph, "phandle changed across rename"
+        assert live.label == "ser", "label changed across rename"
+        assert tree.pnode(ph) is live, "phandle index not updated to the new node"
+        assert tree.lnodes("ser", exact=True)[0] is live, "label index not updated"
+
+    def test_full_sync_matches_incremental(self):
+        """The default (incremental) and full_sync paths land the same tree."""
+        a = self._tree(); a.rename(a[self.OLD], "uart@f1920000"); a.resolve()
+        b = self._tree(); b.rename(b[self.OLD], "uart@f1920000", full_sync=True); b.resolve()
+        assert set(a.__nodes__.keys()) == set(b.__nodes__.keys()), \
+            "the two paths produced different node sets"
+        la, lb = a[self.NEW], b[self.NEW]
+        assert la.label == lb.label == "ser"
+        assert la.phandle == lb.phandle
+
+    def test_full_sync_mode_also_returns_live_and_follows(self):
+        """The opt-in full_sync path returns the live node too (not the old
+        pre-sync object the original code handed back), and the old path is
+        gone."""
+        import pytest
+        tree = self._tree()
+        returned = tree.rename(tree[self.OLD], "uart@f1920000", full_sync=True)
+        assert returned is tree[self.NEW], "full_sync did not return the live node"
+        returned["added-after-rename"] = [1]
+        assert tree[self.NEW].propval("added-after-rename") == [1]
+        with pytest.raises(KeyError):
+            _ = tree[self.OLD]
+
+    def test_a_failed_rename_restores_the_node(self, monkeypatch):
+        """If the re-key's add() fails, the node is put back at its old path and
+        no path references are rewritten for a rename that did not happen."""
+        tree = self._tree()
+        node = tree[self.OLD]
+
+        real_add = LopperTree.add
+        calls = {"n": 0}
+
+        def failing_add(self, n, dont_sync=False, merge=False):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("induced add failure")
+            return real_add(self, n, dont_sync, merge)
+
+        monkeypatch.setattr(LopperTree, "add", failing_add)
+
+        result = tree.rename(node, "uart@f1920000")
+        assert result is node, "a failed rename did not return the original node"
+        assert node.abs_path == self.OLD, \
+            f"a failed rename left the node at {node.abs_path}"
+        assert tree[self.OLD] is node, "a failed rename did not restore the node"
+
+
+class TestUnregisterNode:
+    """_unregister_node() removes a node from the four indices by value-identity
+    (delete() uses it). Value-identity matters because label_set() stores a
+    colliding label under a suffixed key, which del __lnodes__[label] misses."""
+
+    def test_delete_removes_a_collision_suffixed_label(self):
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        a = LopperNode(-1, "/a"); a.label = "dup"
+        b = LopperNode(-1, "/b"); b.label = "dup"
+        tree.add(a); tree.add(b)
+        tree.resolve()
+
+        # b's label collided with a's, so it was stored under a suffixed key.
+        tree.delete(b)
+        assert all(v is not b for v in tree.__lnodes__.values()), \
+            "a ghost __lnodes__ entry still points at the deleted node"
+        # a's label survives untouched.
+        assert tree.__lnodes__.get("dup") is a, \
+            "deleting the collided node disturbed the original label"
+
+    def test_delete_clears_all_indices(self):
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/"))
+        n = LopperNode(-1, "/thing"); n.label = "lbl"; n.phandle = 9
+        tree.add(n)
+        tree.resolve()
+
+        tree.delete(n)
+        assert "/thing" not in tree.__nodes__
+        assert all(v is not n for v in tree.__lnodes__.values())
+        assert all(v is not n for v in tree.__pnodes__.values())
+
+
 class TestSymbolsFollowPaths:
     """/__symbols__ entries are label -> path strings.
 
