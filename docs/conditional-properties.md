@@ -367,6 +367,27 @@ Rules:
     <<label: cma_pool
   ```
 
+### A property named `label` is not a label
+
+`label` is a standard binding property -- `fixed-partitions`, `leds`, `iio` and
+others define it as a human readable name -- so it is emitted as the string
+property it is:
+
+```yaml
+partition@0:
+  label: "Image Selector"     # stays a property
+```
+
+```dts
+partition@0 {
+    label = "Image Selector";
+};
+```
+
+Earlier versions promoted it to a node label, which produced
+`Image Selector: partition@0 {` and would not compile. Values that happened to
+be valid identifiers compiled but still acquired a label nobody asked for.
+
 ### `lopper-label-*`
 
 Reserved for lopper's own use. `_label_translate()` writes one when reading a

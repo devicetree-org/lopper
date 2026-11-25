@@ -247,6 +247,36 @@ class TestNodeLabels:
 
         assert tree["/lonely@0"].label == "nobody_points_here"
 
+    def test_a_bare_label_property_is_left_alone(self, tmp_path):
+        """The reported case: a flash partition's name must not become a label.
+
+        'label' is a standard binding property -- fixed-partitions, leds, iio
+        and others define it as a human readable name. Promoting it emitted
+        'Image Selector: partition@0 {', which dtc refuses.
+        """
+        tree = self._tree(tmp_path,
+            "partition@0:\n"
+            '  label: "Image Selector"\n'
+            "  compatible: x\n")
+
+        node = tree["/partition@0"]
+        assert node.propval("label") == "Image Selector"
+        assert not node.label
+
+    def test_a_valid_looking_label_property_is_also_left_alone(self, tmp_path):
+        """Not a rule about spaces.
+
+        'boot' would survive promotion and compile, which is why the old
+        behaviour went unnoticed for so long. It is still the binding's
+        property rather than a label, so it is still left alone.
+        """
+        tree = self._tree(tmp_path,
+            "partition@0:\n"
+            "  label: boot\n"
+            "  compatible: x\n")
+
+        assert not tree["/partition@0"].label
+
     def test_lopper_label_is_still_promoted(self, tmp_path):
         """lopper's own encoding of a source label, written by _label_translate
         when a dts is read and by assists that inject one deliberately. Being

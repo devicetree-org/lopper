@@ -18,7 +18,7 @@ reserved-memory:
 
   # This region is OUTSIDE domain memory - should trigger validation error
   outside_region@80000000:
-    label: outside_region
+    <<label: outside_region
     compatible: shared-dma-pool
     start: 0x80000000
     size: 0x10000000

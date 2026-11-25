@@ -9,7 +9,7 @@ reserved-memory:
   ranges: true
   
   test_reserved@10000000:
-    label: test_reserved
+    <<label: test_reserved
     compatible: shared-dma-pool
     no-map: true
     reg:
@@ -17,7 +17,7 @@ reserved-memory:
         size: 0x1000000
 
   another_reserved@20000000:
-    label: another_reserved  
+    <<label: another_reserved  
     compatible: shared-dma-pool
     no-map: true
     reg:

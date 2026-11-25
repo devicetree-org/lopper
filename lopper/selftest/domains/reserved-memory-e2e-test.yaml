@@ -14,7 +14,7 @@ reserved-memory:
 
   # This will be referenced - should survive
   referenced@10000000:
-    label: referenced_region
+    <<label: referenced_region
     compatible: shared-dma-pool
     reusable: true
     start: 0x10000000
@@ -22,7 +22,7 @@ reserved-memory:
 
   # This will also be referenced - should survive
   another@20000000:
-    label: another_referenced
+    <<label: another_referenced
     compatible: shared-dma-pool
     no-map: true
     start: 0x20000000
@@ -30,7 +30,7 @@ reserved-memory:
 
   # This will NOT be referenced - should be pruned
   unused@30000000:
-    label: unreferenced_region
+    <<label: unreferenced_region
     compatible: shared-dma-pool
     start: 0x30000000
     size: 0x1000000

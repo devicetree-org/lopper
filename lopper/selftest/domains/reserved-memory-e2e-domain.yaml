@@ -20,7 +20,7 @@ reserved-memory:
 
   # New CMA region with reusable flag - needs to be referenced by a device to survive
   yaml_cma@60000000:
-    label: yaml_cma
+    <<label: yaml_cma
     compatible: shared-dma-pool
     reusable: true
     linux,cma-default: true

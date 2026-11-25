@@ -18,7 +18,7 @@ reserved-memory:
 
   # Test no-map boolean
   nomap@10000000:
-    label: nomap_region
+    <<label: nomap_region
     compatible: shared-dma-pool
     no-map: true
     start: 0x10000000
@@ -26,7 +26,7 @@ reserved-memory:
 
   # Test reusable boolean
   cma@20000000:
-    label: cma_pool
+    <<label: cma_pool
     compatible: shared-dma-pool
     reusable: true
     start: 0x20000000
@@ -34,7 +34,7 @@ reserved-memory:
 
   # Test linux,cma-default boolean
   cma_default@30000000:
-    label: cma_default_region
+    <<label: cma_default_region
     compatible: shared-dma-pool
     reusable: true
     linux,cma-default: true
@@ -43,7 +43,7 @@ reserved-memory:
 
   # Test linux,dma-default boolean
   dma_default@40000000:
-    label: dma_default_region
+    <<label: dma_default_region
     compatible: shared-dma-pool
     linux,dma-default: true
     start: 0x40000000
@@ -51,7 +51,7 @@ reserved-memory:
 
   # Test multiple boolean flags
   multi_flags@50000000:
-    label: multi_flags_region
+    <<label: multi_flags_region
     compatible: shared-dma-pool
     reusable: true
     linux,cma-default: true

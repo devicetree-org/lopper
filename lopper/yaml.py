@@ -895,9 +895,17 @@ class LopperJSON():
                                 else:
                                     ln + lp
 
-                            # if this is a label property, bubble it up to the node
-                            # Supports both lopper-label-* (generated) and simpler 'label:' syntax
-                            if re.search(r'lopper-label.*', clean_p) or clean_p == 'label':
+                            # lopper-label-* is lopper's own encoding of a source
+                            # label, written by _label_translate() when a dts is
+                            # read (libfdt has no label concept, so it travels as
+                            # a property) and by assists that inject one
+                            # deliberately. Being in the lopper- namespace it
+                            # means a label and nothing else, so it is promoted.
+                            #
+                            # A bare "label" is NOT promoted. It is a standard
+                            # binding property carrying a human readable name.
+                            # Use <<label to declare a label.
+                            if re.search(r'lopper-label.*', clean_p):
                                 ln.label_set(lp.value[0] if isinstance(lp.value, list) else lp.value)
                 else:
                     if type(props[p]) == list:
