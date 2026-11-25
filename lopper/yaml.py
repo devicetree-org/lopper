@@ -43,6 +43,27 @@ _init( "yaml.py" )
 
 VALID_MERGE_SCHEMES = frozenset({"replace", "append", "prepend", "delete"})
 
+# Declares the label to put on the node, e.g.
+#
+#    cma@20000000:
+#      <<label: cma_pool
+#
+# dtc writes a label on the declaration line, where it has nothing to collide
+# with. YAML has no equivalent position -- the mapping key is the only thing
+# that declares a node -- so it is given as a directive inside the node.
+#
+# "<<" is lopper's directive namespace, already carrying "<<+" and "<<*". It
+# cannot be confused with device tree data because "<" is not in the DT name
+# alphabet. Bare "<<" is YAML's own merge key, so the namespace always needs
+# a suffix.
+LABEL_DIRECTIVE = "<<label"
+
+# dtc accepts a label matching [a-zA-Z_][a-zA-Z0-9_]*. Checking it here turns
+# what would be a dtc syntax error several steps later into one that names the
+# node and the value. Note this validates a label the user *asked* for; it is
+# not a rule deciding whether to make one.
+LABEL_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
 
 def _apply_scheme(new_val, existing_val, scheme):
     """Compute a merged property value at parse time.
@@ -773,6 +794,34 @@ class LopperJSON():
 
                 clean_p, prop_overrides, merge_scheme = _extract_sigils(p)
                 prop_is_conditional = bool(prop_overrides)
+
+                # "<<label" is a directive, not device tree data, so consume it
+                # here: it names the node and never becomes a property.
+                if clean_p == LABEL_DIRECTIVE:
+                    if prop_overrides or merge_scheme:
+                        _error( f"{LABEL_DIRECTIVE} on {ln.abs_path} carries sigils "
+                                f"('{p}'). A label belongs to the node, so it cannot be "
+                                f"made conditional or merged.", also_exit=1 )
+
+                    label_val = props[p]
+                    if isinstance(label_val, list) and len(label_val) == 1:
+                        label_val = label_val[0]
+
+                    if not isinstance(label_val, str) or not label_val.strip():
+                        _error( f"{LABEL_DIRECTIVE} on {ln.abs_path} needs a single name, "
+                                f"got {props[p]!r}.", also_exit=1 )
+
+                    label_val = label_val.strip()
+                    if not LABEL_RE.match(label_val):
+                        _error( f"{LABEL_DIRECTIVE} on {ln.abs_path} is '{label_val}', which "
+                                f"is not a valid device tree label. Labels match "
+                                f"[a-zA-Z_][a-zA-Z0-9_]*; this is the name dtc will emit "
+                                f"before the node.", also_exit=1 )
+
+                    # Declaring it is the whole trigger. The label goes on the node
+                    # and so into the DTS whether or not anything references it.
+                    ln.label_set( label_val )
+                    continue
 
                 if serialize_json:
                     use_json = False

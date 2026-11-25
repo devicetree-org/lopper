@@ -201,3 +201,88 @@ class TestComplexPropertyAccess:
         # Access compatible string within the referenced structure
         assert gpio_prop[0]['compatible'] == "ti,omap4-gpio", \
             f"Expected 'ti,omap4-gpio', got {gpio_prop[0].get('compatible', 'NOT FOUND')}"
+
+
+class TestNodeLabels:
+    """How a YAML node gets the label that dtc emits in front of it.
+
+    A label is declared with the '<<label' directive. dtc writes one on the
+    declaration line; YAML has no equivalent position, since the mapping key
+    is the only thing that declares a node, so it is given inside the node.
+    """
+
+    def _tree(self, tmp_path, text):
+        f = tmp_path / "t.yaml"
+        f.write_text(text)
+        return LopperYAML(str(f)).to_tree()
+
+    def test_label_directive_names_the_node(self, tmp_path):
+        tree = self._tree(tmp_path,
+            "cma@20000000:\n"
+            "  <<label: cma_pool\n"
+            "  compatible: shared-dma-pool\n")
+
+        assert tree["/cma@20000000"].label == "cma_pool"
+
+    def test_the_directive_is_not_emitted_as_a_property(self, tmp_path):
+        """It is a directive, so it names the node and leaves no trace."""
+        tree = self._tree(tmp_path,
+            "cma@20000000:\n"
+            "  <<label: cma_pool\n"
+            "  compatible: shared-dma-pool\n")
+
+        assert "<<label" not in tree["/cma@20000000"].__props__
+
+    def test_a_label_is_applied_even_when_nothing_references_it(self, tmp_path):
+        """Declaring it is the whole trigger.
+
+        The label has to reach the DTS whether or not anything in the YAML
+        points at it -- a reference is one reason to want one, not the reason
+        it exists.
+        """
+        tree = self._tree(tmp_path,
+            "lonely@0:\n"
+            "  <<label: nobody_points_here\n"
+            "  compatible: x\n")
+
+        assert tree["/lonely@0"].label == "nobody_points_here"
+
+    def test_lopper_label_is_still_promoted(self, tmp_path):
+        """lopper's own encoding of a source label, written by _label_translate
+        when a dts is read and by assists that inject one deliberately. Being
+        namespaced it means a label and nothing else.
+        """
+        tree = self._tree(tmp_path,
+            "n@0:\n"
+            "  lopper-label-1: from_dts\n"
+            "  compatible: x\n")
+
+        assert tree["/n@0"].label == "from_dts"
+
+    @pytest.mark.parametrize("value,why", [
+        ('"not an identifier"', "a space"),
+        ("0bad",                "leading digit"),
+        ("cma-pool",            "a dash"),
+        ('""',                  "empty"),
+        ("[a, b]",              "more than one name"),
+    ])
+    def test_an_unusable_label_is_refused(self, tmp_path, value, why):
+        """A label the user asked for is validated rather than silently dropped.
+
+        This checks a value that was explicitly declared as a label. It is not
+        a rule deciding *whether* to make one from arbitrary data.
+        """
+        with pytest.raises(SystemExit):
+            self._tree(tmp_path,
+                "n@0:\n"
+                f"  <<label: {value}\n"
+                "  compatible: x\n")
+
+    @pytest.mark.parametrize("key", ["<<label!linux", "<<label!append"])
+    def test_sigils_on_the_directive_are_refused(self, tmp_path, key):
+        """A label belongs to the node, so it is neither conditional nor merged."""
+        with pytest.raises(SystemExit):
+            self._tree(tmp_path,
+                "n@0:\n"
+                f"  {key}: cma_pool\n"
+                "  compatible: x\n")

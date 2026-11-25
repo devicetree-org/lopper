@@ -313,3 +313,64 @@ Running lopper with `gen_domain_dts` for the `linux-domain` will produce a
 tree with `bootargs: "earlycon clk_ignore_unused root=/dev/mmcblk0p2 rootwait rw"`.
 The `zephyr-domain` run will produce `bootargs: "zephyr.hello"`.  Neither
 run modifies the original system device tree.
+
+---
+
+## Declaring a node label: `<<label`
+
+dtc writes a label on the declaration line, where it has nothing to collide
+with:
+
+```dts
+cma_pool: cma@20000000 { ... };
+```
+
+YAML has no equivalent position -- the mapping key is the only thing that
+declares a node -- so the label is given as a directive inside the node:
+
+```yaml
+reserved-memory:
+  cma@20000000:
+    <<label: cma_pool
+    compatible: shared-dma-pool
+
+consumer@a0000000:
+  memory-region:
+    - "&cma_pool"
+```
+
+which emits:
+
+```dts
+cma_pool: cma@20000000 { ... };
+...
+memory-region = <&cma_pool>;
+```
+
+`<<` is lopper's directive namespace, shared with the `<<+` and `<<*` merge
+tokens. It cannot be confused with device tree data because `<` is not a legal
+character in a DT name. Bare `<<` is YAML's own merge key, so the namespace
+always carries a suffix.
+
+Rules:
+
+- **Nodes only.** A property cannot have a label.
+- **Declaring it is the whole trigger.** The label is applied to the node and
+  emitted in the DTS whether or not anything references it.
+- **The name must be a usable DT label**, matching `[a-zA-Z_][a-zA-Z0-9_]*`.
+  A value that cannot be one is an error naming the node, rather than DTS that
+  dtc rejects later.
+- **No sigils.** A label belongs to the node, so it is neither conditional nor
+  merged. A conditional *node* may of course carry one:
+  ```yaml
+  cma@20000000!linux:
+    <<label: cma_pool
+  ```
+
+### `lopper-label-*`
+
+Reserved for lopper's own use. `_label_translate()` writes one when reading a
+`.dts`, because libfdt has no concept of a label and it has to travel as a
+property; assists inject one when they rename a node and need the original
+name preserved. These are promoted, being unambiguously labels. Do not write
+them by hand -- use `<<label`.
