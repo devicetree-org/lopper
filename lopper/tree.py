@@ -6131,25 +6131,7 @@ class LopperTree:
                 for cn_path,cn in list(n.child_nodes.items()):
                     self.delete( cn, False, force=force )
 
-            try:
-                del self.__nodes__[n.abs_path]
-            except Exception as e:
-                pass
-
-            try:
-                del self.__pnodes__[n.phandle]
-            except Exception as e:
-                pass
-
-            try:
-                del self.__lnodes__[n.label]
-            except Exception as e:
-                pass
-
-            try:
-                del self.__nnodes__[n.number]
-            except Exception as e:
-                pass
+            self._unregister_node( n )
 
             # snip the link if we are the first call, otherwise, the
             # recursive call above, will clear the delete flag. Otherwise, we
@@ -6412,6 +6394,36 @@ class LopperTree:
             except KeyError:
                 pass
             self.__lnodes__[node.label] = node
+
+    def _unregister_node(self, node):
+        """Remove a node from all tree index dicts, symmetric to _register_node().
+
+        Removes the node from __nodes__, __nnodes__, __pnodes__ and __lnodes__.
+        The first three are keyed by attributes on the node (abs_path, number,
+        phandle) and only removed when the stored value is actually this node,
+        so a path/number/phandle that another node has since taken is left
+        alone.  __lnodes__ is cleared by value-identity: label_set() appends a
+        collision suffix (label -> label_1), so del __lnodes__[node.label] can
+        miss the suffixed key and leave a ghost entry pointing at a node that is
+        gone.  Walking for the value removes it wherever it was filed.
+
+        Args:
+            node (LopperNode): node to remove from the indices.
+        """
+        if self.__nodes__.get(node.abs_path) is node:
+            del self.__nodes__[node.abs_path]
+        try:
+            if self.__nnodes__.get(node.number) is node:
+                del self.__nnodes__[node.number]
+        except TypeError:
+            pass
+        try:
+            if self.__pnodes__.get(node.phandle) is node:
+                del self.__pnodes__[node.phandle]
+        except TypeError:
+            pass
+        for k in [k for k, v in self.__lnodes__.items() if v is node]:
+            del self.__lnodes__[k]
 
     def add( self, node, dont_sync = False, merge = False ):
         """Add a node to a tree
