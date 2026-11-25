@@ -66,9 +66,15 @@ def resolve_schema_arguments(schema_args):
     """Resolve the --schema arguments into a single setting.
 
     --schema may be given more than once to supply several schemas, which are
-    applied in the order given. The modes that are not schemas -- none, learn
-    and learn:<file> -- select what lopper does rather than add to what it
-    knows, so each has to stand alone.
+    applied in the order given.
+
+    Supplying a schema does not turn inference off. What is learned from the
+    tree is merged in underneath it, contributing the types the supplied schema
+    does not mention, so "learn" alongside a schema describes what already
+    happens and is accepted as a no-op.
+
+    none and learn:<file> do conflict with a supplied schema, so those stand
+    alone.
 
     Returns: None, "learn", ("learn_dump", path), or a list of schema sources
     """
@@ -76,11 +82,25 @@ def resolve_schema_arguments(schema_args):
         return "learn"
 
     actions = [ parse_schema_argument(arg) for arg in schema_args ]
+
+    # Naming "learn" asks for the default, so it adds nothing to a run that
+    # also supplies a schema. Dropping it here is what lets
+    # "--schema learn --schema type:foo=string" work: that used to be refused
+    # as a conflict, which told the user the two were alternatives when they
+    # are not.
+    narrowed = [ a for a in actions if a[0] != "learn" ]
+    if not narrowed:
+        return "learn"
+    actions = narrowed
+
     modes = [ action for action, _ in actions if action != "load" ]
 
     if modes and len(actions) > 1:
-        _error( f"--schema {modes[0]} cannot be combined with another --schema. It selects "
-                f"what lopper does rather than adding a schema to use.", also_exit=1 )
+        if modes[0] == "none":
+            _error( f"--schema none turns typing off, so it cannot be combined with a "
+                    f"schema or a type statement.", also_exit=1 )
+        _error( f"--schema learn:<file> writes out the schema it infers, so it cannot "
+                f"be combined with a supplied schema.", also_exit=1 )
 
     if modes:
         action, target = actions[0]
@@ -163,6 +183,8 @@ def usage():
     print('                          "learn:<file>" or "none". May be repeated to supply')
     print('                          several schemas, applied in the order given, e.g.')
     print('                          --schema type:\'xlnx,ddr-freq=uint32\'')
+    print('                          a supplied schema does not turn inference off: what is')
+    print('                          learned from the tree is merged in underneath it')
     print('  -h, --help          display this help and exit')
     print('  -O, --outdir        directory to use for output files')
     print('    , --server        after processing, start a server for ReST API calls')

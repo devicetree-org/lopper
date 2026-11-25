@@ -519,11 +519,30 @@ class TestSchemaArgumentResolution:
 
         assert resolved == [str(first), "type:b=string"]
 
-    @pytest.mark.parametrize("mode", ["none", "learn"])
+    @pytest.mark.parametrize("mode", ["none", "learn:out.yaml"])
     def test_a_mode_cannot_be_combined_with_a_schema(self, mode):
-        """Mixing them asks for two different things at once."""
+        """Mixing them asks for two different things at once.
+
+        'none' says do not type anything, which contradicts being handed a
+        type. 'learn:<file>' writes out what it inferred, and what that file
+        should contain when a schema was also supplied is undecided.
+        """
         with pytest.raises(SystemExit):
             resolve_schema_arguments([mode, "type:a=uint32"])
+
+    def test_learn_alongside_a_schema_is_a_no_op(self):
+        """Supplying a schema does not turn inference off.
+
+        What is learned from the tree is merged in underneath a supplied
+        schema, so naming 'learn' beside one describes what already happens.
+        Refusing it told the user they were choosing between the two.
+        """
+        assert resolve_schema_arguments(["learn", "type:a=uint32"]) == ["type:a=uint32"]
+        assert resolve_schema_arguments(["type:a=uint32", "learn"]) == ["type:a=uint32"]
+
+    def test_learn_on_its_own_still_learns(self):
+        assert resolve_schema_arguments(["learn"]) == "learn"
+        assert resolve_schema_arguments(["learn", "learn"]) == "learn"
 
     def test_a_missing_schema_path_is_refused(self, tmp_path):
         with pytest.raises(SystemExit):
