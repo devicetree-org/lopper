@@ -6178,6 +6178,49 @@ class LopperTree:
 
         return self
 
+    def _rename_node( self, node, new_path ):
+        """Re-key a node (and its descendants) to new_path, same object.
+
+        The identity-preserving mechanism shared by move() (reparent) and
+        rename() (leaf-name change): the one node object is unhooked from the
+        indices, its name and absolute path are set from new_path, and it is
+        re-registered -- with its descendants re-pathed -- so anything holding
+        the node follows. This is Layer-1 plumbing: the caller validates the
+        request and decides what happens to path references (move leaves them
+        dangling, rename rewrites them via update_path_refs). O(subtree): no
+        tree-wide export/load rebuild.
+
+        Args:
+           node (LopperNode): the node to re-key.
+           new_path (str): destination absolute path; its basename becomes the
+                           node's new leaf name.
+
+        Returns:
+           bool: True on success; False if the re-key failed and the node was
+           restored to its original path.
+        """
+        old_path = node.abs_path
+        self.delete( node )
+        node.name = os.path.basename( new_path )
+        node.abs_path = new_path
+        try:
+            self.add( node, dont_sync=True, merge=True )
+            # delete() left the node "deleted"; add(dont_sync) does not run the
+            # sync that would re-resolve it. Resolve the re-keyed subtree so it
+            # is "resolved" (export() skips anything else) with its string-form
+            # current for the new path. O(subtree), not O(tree).
+            node.resolve()
+        except Exception:
+            lopper.log._warning(
+                f"could not re-key node from '{old_path}' to '{new_path}', "
+                f"restoring it" )
+            node.name = os.path.basename( old_path )
+            node.abs_path = old_path
+            self.add( node, dont_sync=True )
+            node.resolve()
+            return False
+        return True
+
     def move( self, node, old_path, new_path, dont_sync = False ):
         """Move a node to a new parent, carrying the node itself across.
 
@@ -6236,21 +6279,10 @@ class LopperTree:
                 f"was asked to move." )
             return False
 
-        self.delete( node )
-
-        existing_path = node.abs_path
-        node.abs_path = new_path
-        try:
-            self.add( node, dont_sync, merge=True )
-        except Exception as e:
-            lopper.log._warning( f"could not move node {node}, re-adding to tree" )
-
-            node.abs_path = existing_path
-            self.add( node )
-
-            return False
-
-        return True
+        # The reparent is the shared identity-preserving re-key. A move does
+        # not rewrite path references (that is rename()'s job), so nothing else
+        # follows here.
+        return self._rename_node( node, new_path )
 
     @staticmethod
     def _non_path_ref_names():
@@ -6334,7 +6366,7 @@ class LopperTree:
                 p.value = [ p.value[0].replace( raw, new_raw, 1 ) ]
                 p.resolve()
 
-    def rename( self, node, new_name ):
+    def rename( self, node, new_name, full_sync = False ):
         """Rename a node in place and follow path references to it.
 
         Changes the node's leaf name (same parent) and rewrites path-bearing
@@ -6346,12 +6378,22 @@ class LopperTree:
         Reparenting is out of scope, and path-refs deliberately do not follow a
         move (use a phandle for identity references).
 
+        Returned-object semantics: the same node object is re-keyed to the new
+        path and handed back, so a holder of it follows the rename -- the same
+        way a move() carries its node across. What makes this a rename and not a
+        move is the reference rewriting: path references to the node follow it
+        here; a move's deliberately do not. The default path is O(subtree);
+        full_sync uses the historical whole-tree rebuild.
+
         Args:
            node (LopperNode): the node to rename
            new_name (str): the new leaf name (must not contain '/')
+           full_sync (bool,optional): use the historical full export->load
+                                      rebuild instead of rebuilding only the
+                                      renamed subtree. Default False.
 
         Returns:
-           LopperNode: the renamed node
+           LopperNode: the live renamed node (at the new path)
         """
         if "/" in new_name:
             raise ValueError(
@@ -6361,8 +6403,25 @@ class LopperTree:
         new_path = ( os.path.dirname( old_path ) + "/" + new_name ).replace( "//", "/" )
         if old_path == new_path:
             return node
-        node.name = new_name
-        self.sync()
+
+        if full_sync:
+            # Opt-in: the historical full export->load rebuild of the whole
+            # tree. Return the live node at the new path rather than the stale
+            # pre-sync object the old code handed back.
+            node.name = new_name
+            self.sync()
+            self.update_path_refs( old_path, new_path )
+            return self[new_path]
+
+        # Default: identity-preserving re-key of the one node object to the new
+        # path (the move() mechanism), then rewrite the path references that
+        # pointed at it. That reference-following is the whole of the difference
+        # between a rename and a move. O(subtree); the returned object is the
+        # live tree node.
+        if not self._rename_node( node, new_path ):
+            # the re-key failed and restored the node to old_path; do not rewrite
+            # references for a rename that did not happen.
+            return node
         self.update_path_refs( old_path, new_path )
         return node
 
