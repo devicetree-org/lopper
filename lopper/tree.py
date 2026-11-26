@@ -4356,6 +4356,12 @@ class LopperTree:
         self.strict = True
         self.warnings = []
         self.warnings_issued = {}
+        # Per-tree regex patterns whose matching nodes the invalid_phandle audit
+        # skips, on top of the static __phandle_exclude__ metadata list. Fed by
+        # the CLI (-W invalid_phandle=exclude:<pat>) and by phandle_exclude_add()
+        # so an assist can opt a subtree (e.g. /domains, kept for traceability)
+        # out of the check without deleting it.
+        self.phandle_excludes = []
         self.werror = []
         self.__check__ = False
 
@@ -4812,6 +4818,31 @@ class LopperTree:
         """
         # not currently supported
         pass
+
+    def phandle_exclude_add( self, *patterns ):
+        """Exclude subtree(s) from the invalid_phandle audit.
+
+        Adds one or more regex patterns to this tree's phandle_excludes. A node
+        whose abs_path matches any of them is skipped by the invalid_phandle
+        check (report_invalid_phandles / check_invalid_phandles), in addition to
+        the static __phandle_exclude__ metadata list. This lets an assist opt a
+        subtree it is deliberately leaving with dangling references -- e.g.
+        /domains, kept for traceability after a domain prune -- out of the check
+        without deleting it, the same way the CLI does with
+        -W invalid_phandle=exclude:<pattern>.
+
+        Patterns are matched with re.search against the node's abs_path, so
+        '/domains' covers /domains and everything under it.
+
+        Args:
+           *patterns (str): regex pattern(s) to add. Duplicates are ignored.
+
+        Returns:
+           Nothing
+        """
+        for p in patterns:
+            if p and p not in self.phandle_excludes:
+                self.phandle_excludes.append( p )
 
     def warn( self, warnings, context_str = "", extra_info = None ):
         """issue a warning against the tree

@@ -142,6 +142,8 @@ def usage():
     print('    , --permissive    do not enforce fully validated properties (phandles, etc)' )
     print('    , -W              enable a warning: '  )
     print('                          invalid_phandle (warn on invalid phandle references)' )
+    print('                            append =exclude:<pat>[:<pat>...] to skip matching' )
+    print('                            node paths, e.g. -W invalid_phandle=exclude:/domains' )
     print('                          duplicate_phandle (warn on duplicate phandle values)' )
     print('                          phandle_change (warn when phandle value changes)' )
     print('                          memory_cells (validate #address-cells, #size-cells)' )
@@ -219,6 +221,7 @@ def main():
     symbols = False
     collect_aliases = False
     warnings = []
+    phandle_excludes = []
     usage_flag = False
     schema = []
     memmap_file = None
@@ -304,8 +307,18 @@ def main():
         elif o in ('-x', '--xlate'):
             xlate.append(a)
         elif o in ('-W'):
-            # warning processing
-            warnings.append(a)
+            # warning processing. A value may carry an exclusion spec:
+            #   -W invalid_phandle=exclude:/domains:/bar
+            # which enables the named warning and excludes nodes whose path
+            # matches any of the ':'-separated regex patterns from it.
+            if '=' in a:
+                wname, spec = a.split('=', 1)
+                warnings.append(wname)
+                parts = spec.split(':')
+                if parts and parts[0] == 'exclude':
+                    phandle_excludes.extend( p for p in parts[1:] if p )
+            else:
+                warnings.append(a)
         elif o in ('--memmap'):
             memmap_file = a
         elif o in ('--drc'):
@@ -542,6 +555,7 @@ def main():
     device_tree.symbols = symbols
     device_tree.collect_aliases = collect_aliases
     device_tree.warnings = warnings
+    device_tree.phandle_excludes = phandle_excludes
     device_tree.schema = schema
     device_tree.memmap_file = memmap_file
     device_tree.cpumap_file = cpumap_file

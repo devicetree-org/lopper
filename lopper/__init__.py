@@ -939,6 +939,7 @@ class LopperSDT:
         # a path string it accepts rather than an error.
         self.collect_aliases = False
         self.warnings = []
+        self.phandle_excludes = []
         self.werror = False
         self.tmpfiles = []
         self.schema = None
@@ -1380,6 +1381,7 @@ class LopperSDT:
 
             self.tree = LopperTree()
             self.tree.warnings = self.warnings
+            self.tree.phandle_excludes = self.phandle_excludes
             self.tree.werror = self.werror
             self.tree.strict = not self.permissive
             self.tree.schema = self.schema
@@ -1525,6 +1527,7 @@ class LopperSDT:
                 self.FDT = None
             self.tree = lt
             self.tree.warnings = self.warnings
+            self.tree.phandle_excludes = self.phandle_excludes
             self.tree.werror = self.werror
             self.tree.strict = not self.permissive
 
@@ -1559,6 +1562,7 @@ class LopperSDT:
                 self.FDT = Lopper.dt_to_fdt(self.dtb, 'rb')
                 self.tree = LopperTree()
                 self.tree.warnings = self.warnings
+                self.tree.phandle_excludes = self.phandle_excludes
                 self.tree.werror = self.werror
                 self.tree.strict = not self.permissive
                 self.tree.schema = self.schema

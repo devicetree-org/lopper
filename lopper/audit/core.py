@@ -69,7 +69,11 @@ def check_invalid_phandles(tree, warn_only_modified=True):
 
     # Get the list of properties that can contain phandles
     phandle_props = lopper.base.lopper_base.phandle_possible_properties()
-    exclude_patterns = phandle_props.get("__phandle_exclude__", [])
+    # Static metadata excludes (lops, /__symbols__, /aliases) plus any per-tree
+    # excludes added at invocation (-W invalid_phandle=exclude:<pat>) or by an
+    # assist via tree.phandle_exclude_add().
+    exclude_patterns = ( phandle_props.get("__phandle_exclude__", [])
+                         + list(getattr(tree, "phandle_excludes", [])) )
 
     for n in tree:
         # Optimization: skip nodes that haven't been modified if requested
