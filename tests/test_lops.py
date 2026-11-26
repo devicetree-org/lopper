@@ -647,3 +647,116 @@ class TestLopDomainChosen:
         # At least one domain's bootargs should be present
         assert "bootargs" in root_chosen_content, \
             "Root /chosen should have bootargs from at least one domain"
+
+
+class TestLopsNestedRename:
+    """Renaming a node that is not at the root.
+
+    Every rename in the suite and in the shipped lops happens to act on a node
+    whose parent is "/", where a bare destination name and a rename-in-place
+    mean the same thing. Nested renames were broken in two different ways
+    because nothing exercised them.
+    """
+
+    BASE = """\
+/dts-v1/;
+/ {
+\t#address-cells = <1>;
+\t#size-cells = <1>;
+\tcompatible = "test,base";
+
+\tbus {
+\t\tholder {
+\t\t\tcompatible = "test,holder";
+
+\t\t\tincoming {
+\t\t\t\tcompatible = "test,new";
+\t\t\t};
+
+\t\t\toutgoing {
+\t\t\t\tcompatible = "test,old";
+\t\t\t};
+\t\t};
+\t};
+};
+"""
+
+    LOP = """\
+/dts-v1/;
+/ {
+\tcompatible = "system-device-tree-v1";
+\tlops {
+\t\tlop_1 {
+\t\t\tcompatible = "system-device-tree-v1,lop,modify";
+\t\t\tmodify = "%s";
+\t\t};
+\t};
+};
+"""
+
+    def _run(self, tmp_path, operand):
+        import subprocess, sys
+        repo = Path(__file__).resolve().parent.parent
+        base = tmp_path / "base.dts"
+        base.write_text(self.BASE)
+        lop = tmp_path / "lop.dts"
+        lop.write_text(self.LOP % operand)
+        out = tmp_path / "out.dts"
+
+        r = subprocess.run(
+            [sys.executable, str(repo / "lopper.py"), "-f", "--permissive",
+             "-O", str(tmp_path), "-i", str(lop), str(base), str(out)],
+            cwd=str(repo), capture_output=True, text=True)
+        assert r.returncode == 0, f"lopper failed:\n{r.stdout}\n{r.stderr}"
+        return out.read_text()
+
+    def test_rename_in_place_with_a_full_path(self, tmp_path):
+        """A path destination names where the node ends up.
+
+        Stripping '/' from it turned the whole path into one run-on node name,
+        e.g. 'busholderrenamed'.
+        """
+        content = self._run(tmp_path, "/bus/holder/incoming::/bus/holder/renamed")
+
+        assert "renamed {" in content
+        assert "incoming" not in content
+        assert "busholderrenamed" not in content, "path was flattened into a name"
+
+    def test_rename_in_place_with_a_bare_name(self, tmp_path):
+        """A bare name keeps the node where it is.
+
+        This used to raise RecursionError: the un-normalised operand was
+        assigned as abs_path, and a relative abs_path sends tree.add() into
+        infinite recursion.
+        """
+        content = self._run(tmp_path, "/bus/holder/incoming::renamed")
+
+        assert "renamed {" in content
+        assert "incoming" not in content
+        # it must not have been lifted out to the root
+        assert re.search(r"^ {8}renamed \{", content, re.M) is None, \
+            "bare name moved the node to the root instead of renaming in place"
+
+    def test_a_move_to_another_parent_still_works(self, tmp_path):
+        """The shipped imux lops rely on this form."""
+        content = self._run(tmp_path, "/bus/holder/incoming::/bus/incoming")
+
+        assert "incoming" in content
+        holder = content.split("holder")[1]
+        assert "incoming" not in holder.split("};")[0], \
+            "node should have left the holder"
+
+    def test_renaming_onto_an_occupied_name_replaces_it(self, tmp_path):
+        """What makes a replacement expressible at all: the node already at the
+        destination is removed so the rename can proceed.
+        """
+        content = self._run(tmp_path, "/bus/holder/incoming::/bus/holder/outgoing")
+
+        # the exact name, not a substring: a flattened path such as
+        # "busholderoutgoing" still contains "outgoing" and would satisfy a
+        # looser check while being entirely wrong.
+        assert re.search(r"^\s+outgoing \{", content, re.M), "no node named exactly 'outgoing'"
+        assert "busholderoutgoing" not in content
+        assert "incoming" not in content
+        assert "test,new" in content, "the surviving node should be the renamed one"
+        assert "test,old" not in content, "the displaced node should be gone"

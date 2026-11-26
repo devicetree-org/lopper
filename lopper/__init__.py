@@ -3399,10 +3399,17 @@ class LopperSDT:
 
                         modify_source_path = Path(node.abs_path)
 
-                        if modify_val.startswith( "/" ):
-                            modify_dest_path = Path( modify_val )
+                        # A destination carrying a '/' is a path and says where the
+                        # node ends up. A bare name is a rename in place, so it keeps
+                        # the source's parent -- reading it as "/<name>" instead would
+                        # silently move a nested node to the root.
+                        if "/" in modify_val:
+                            if modify_val.startswith( "/" ):
+                                modify_dest_path = Path( modify_val )
+                            else:
+                                modify_dest_path = Path( "/" + modify_val )
                         else:
-                            modify_dest_path = Path( "/" + modify_val )
+                            modify_dest_path = modify_source_path.parent / modify_val
 
                         if modify_source_path.parent != modify_dest_path.parent:
                             lopper.log._debug( f"[{tree}] node move: {modify_source_path} -> {modify_dest_path}" )
@@ -3412,16 +3419,24 @@ class LopperSDT:
 
                             # deep copy the node
                             new_dst_node = node()
-                            new_dst_node.abs_path = modify_val
+                            # the normalised path, not the raw operand: a relative
+                            # abs_path sends tree.add() into infinite recursion
+                            new_dst_node.abs_path = str(modify_dest_path)
 
                             tree + new_dst_node
 
                             tree.sync()
 
-                        if modify_source_path.name != modify_dest_path.name:
+                        # elif, not if: a move already carries the new name in the
+                        # destination path, and 'node' has been deleted by then, so
+                        # renaming here would be operating on a node that is gone.
+                        elif modify_source_path.name != modify_dest_path.name:
                             lopper.log._debug( f"[{tree}] node rename: {modify_source_path.name} -> {modify_dest_path.name}" )
 
-                            modify_val = modify_val.replace( '/', '' )
+                            # the destination's name, not the flattened operand:
+                            # stripping '/' from a full path turns it into one
+                            # run-on name.
+                            modify_val = modify_dest_path.name
                             try:
 
                                 # is there already a node at the new destination path ?
