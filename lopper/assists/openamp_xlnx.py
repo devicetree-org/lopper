@@ -1766,10 +1766,11 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
     power_domains = openamp_channel_info["rpu_core_pd_prop"].value
 
     # In R5 lockstep, core 1's ATCM and BTCM are the cluster's second ATCM
-    # and BTCM, at 0xffe10000 and 0xffe30000.
+    # and BTCM, at 0xffe10000 and 0xffe30000. In split mode each core's own
+    # banks are atcm0 and btcm0.
     r5_core_reg_names_mappings = { "ffe00000" : "atcm0", "ffe20000" : "btcm0",
                                 "ffe10000" : "atcm1", "ffe30000" : "btcm1",
-                                "ffe90000" : "atcm1", "ffeb0000" : "btcm1" }
+                                "ffe90000" : "atcm0", "ffeb0000" : "btcm0" }
     r52_core_reg_names_mappings = { "atcm" : "atcm0", "btcm" : "btcm0", "ctcm": "ctcm0" }
 
     core_reg_names_mappings = r52_core_reg_names_mappings if family.cpu_type == "cortexr52" else r5_core_reg_names_mappings
@@ -1777,8 +1778,10 @@ def xlnx_remoteproc_v2_construct_cluster(tree, openamp_channel_info, channel_elf
     tcm_bank_nodes = {}
     cluster_bases = set()
 
-    # loop through TCM nodes
-    for n in [ n for n in channel_elfload_nodes if n.propval("xlnx,ip-name") != [''] ]:
+    # loop through TCM nodes in the binding's positional reg-names order:
+    # ATCM, BTCM, CTCM, then the R5 lockstep second ATCM and BTCM
+    for n in sorted([ n for n in channel_elfload_nodes if n.propval("xlnx,ip-name") != [''] ],
+                    key=lambda n: ("lockstep" in n.name, tcm_bank_type(n.name) or "")):
         # Preserve the complete provider/specifier tuple for the generated
         # remoteproc node.
         pd = n.propval("power-domains", list)
