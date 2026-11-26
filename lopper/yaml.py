@@ -761,8 +761,23 @@ class LopperJSON():
                 #ln = LopperNode( -1, None )
                 #ln.abs_path = "/"
             else:
-                clean_node_name, node_overrides, _ = _extract_sigils(node.name)
+                clean_node_name, node_overrides, node_scheme = _extract_sigils(node.name)
                 node_is_conditional = bool(node_overrides)
+
+                # A merge scheme combines a property's value with the one already
+                # there. A node has no value, so a scheme on a node name asks for
+                # something that does not exist -- most often a subtree
+                # replacement, which YAML cannot express at all.
+                #
+                # This used to be discarded in silence, so the node merged
+                # additively and nothing said why. Refuse it instead: there is no
+                # reading of it that does what it appears to.
+                if node_scheme:
+                    _error( f"node '{node.name}' carries the merge scheme "
+                            f"'{node_scheme}'. Merge schemes combine a property's "
+                            f"value, and a node has none, so this does nothing. "
+                            f"Nodes take conditions only. To remove a node, use a "
+                            f"lop: modify = \"<path>::\".", also_exit=1 )
 
                 # rebuild abs_path using the clean name (strip sigils from each segment)
                 raw_path = self.path( node )

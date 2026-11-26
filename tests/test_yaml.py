@@ -316,3 +316,36 @@ class TestNodeLabels:
                 "n@0:\n"
                 f"  {key}: cma_pool\n"
                 "  compatible: x\n")
+
+
+class TestNodeMergeSchemes:
+    """A merge scheme combines a property's value. A node has none."""
+
+    def _tree(self, tmp_path, text):
+        f = tmp_path / "t.yaml"
+        f.write_text(text)
+        return LopperYAML(str(f)).to_tree()
+
+    @pytest.mark.parametrize("scheme", ["replace", "append", "prepend", "delete"])
+    def test_a_scheme_on_a_node_is_refused(self, tmp_path, scheme):
+        """It used to be discarded in silence, so the node merged additively
+        and nothing said why. There is no reading of it that does what it
+        appears to, so it is an error.
+        """
+        with pytest.raises(SystemExit):
+            self._tree(tmp_path,
+                f"partitions!{scheme}:\n"
+                "  compatible: fixed-partitions\n")
+
+    def test_a_condition_on_a_node_still_works(self, tmp_path):
+        """Conditions are what a node sigil is for; only schemes are refused."""
+        tree = self._tree(tmp_path,
+            "base-node:\n"
+            "  compatible: x\n"
+            "\n"
+            "linux-only!linux:\n"
+            "  status: okay\n")
+
+        assert "/linux-only" not in [n.abs_path for n in tree]
+        overlay = tree.overlay_tree("linux")
+        assert "/linux-only" in [n.abs_path for n in overlay]
