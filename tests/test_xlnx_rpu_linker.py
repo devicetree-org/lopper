@@ -108,6 +108,17 @@ def _ref(tree, label):
     return [tree.lnodes(label)[0].phandle_or_create()]
 
 
+def _relation(tree, domain, compatible):
+    names = {
+        "libmetal,ipc-v1": "libmetal-relation",
+        "openamp,rpmsg-v1": "rpmsg-relation",
+    }
+    _node(tree, f"{domain.abs_path}/domain-to-domain")
+    _node(tree, f"{domain.abs_path}/domain-to-domain/{names[compatible]}", {
+        "compatible": [compatible]})
+    tree.sync()
+
+
 def test_r5_split_tcm_layout_places_code_in_atcm_and_data_in_btcm():
     tree, cpus = _r5_tree()
     domain = _domain(tree, cpus[0], SPLIT, linker_layout=["tcm"])
@@ -357,6 +368,25 @@ def test_every_section_has_a_cmake_variable():
 
 def _nodes(tree, *labels):
     return [tree.lnodes(label)[0] for label in labels]
+
+
+def test_libmetal_tcm_elfload_omits_resource_table():
+    tree, cpus = _r5_tree()
+    domain = _domain(tree, cpus[1], SPLIT)
+    _relation(tree, domain, "libmetal,ipc-v1")
+    sections = elfload_tcm_sections(_nodes(
+        tree, "psu_r5_1_atcm_global", "psu_r5_1_btcm_global"), cpus[1])
+
+    placement = resolve_placement(
+        tree, domain, cpus[1], "psu_cortexr5_1", R5_DDR, sections=sections)
+
+    assert dict(placement.cmake_variables()) == {
+        "VECTORS": "psu_r5_0_atcm_MEM_0", "CODE": "psu_r5_0_atcm_MEM_0",
+        "RODATA": "psu_r5_0_btcm_MEM_0", "DATA": "psu_r5_0_btcm_MEM_0",
+        "BSS": "psu_r5_0_btcm_MEM_0", "HEAP": "psu_r5_0_btcm_MEM_0",
+        "STACK": "psu_r5_0_btcm_MEM_0",
+    }
+    assert "resource_table" not in placement.sections
 
 
 def test_tcm_elfload_places_r5_core_1_in_its_local_banks():

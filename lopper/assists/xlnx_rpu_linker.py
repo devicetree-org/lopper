@@ -123,7 +123,7 @@ class Placement:
 def section_cmake_variables(sections):
     """Return (CMake variable, linker region) pairs in output order."""
     return [(SECTION_CMAKE_VARIABLES[name], sections[name])
-            for name in BAREMETAL_LINKER_SECTIONS]
+            for name in BAREMETAL_LINKER_SECTIONS if name in sections]
 
 
 def linker_os_type(domain):
@@ -176,6 +176,12 @@ def has_linker_metadata(domain):
     """Return True when a domain carries an expanded linker block."""
     return any(name == "linker-layout" or name.startswith("linker-section-")
                for name in domain.__props__)
+
+
+def _domain_has_relation(domain, compatible):
+    """Return True when ``domain`` carries a relation of ``compatible``."""
+    return any(node.propval("compatible", list) == [compatible]
+               for node in domain.subnodes())
 
 
 def _is_linker_reference(name):
@@ -403,6 +409,23 @@ def _layout_targets(domain, cpu_type):
             for name, target in _LAYOUT_PRESETS[layout].items()}
 
 
+def _matches_ddr_region(node, ddr_region):
+    """Return True when ``node`` spans the active DDR linker region.
+
+    Description:
+        In OpenAMP mode the effective DDR linker region is the selected
+        ELF-load carveout, not the platform's lowest DDR bank. Allow a
+        linker block to name that carveout node directly, such as
+        ``region: rproc0``, by treating a non-TCM node whose range equals
+        ``ddr_region`` as the DDR selector.
+    """
+    try:
+        start, size = _memory_range(node)
+    except LayoutError:
+        return False
+    return (start, size) == tuple(ddr_region[1:])
+
+
 def resolve_placement(tree, domain, cpu_node, machine, ddr_region,
                       region_for_node=None, sections=None):
     """Resolve and check a domain's section placement.
@@ -489,8 +512,15 @@ def resolve_placement(tree, domain, cpu_node, machine, ddr_region,
 
     # Region of each section: a bank type, DDR_REGION or "node".
     preset = _layout_targets(domain, cpu_type)
+    omit_resource_table = (
+        _section_reference(domain, "resource_table") is None
+        and _domain_has_relation(domain, "libmetal,ipc-v1")
+        and not _domain_has_relation(domain, "openamp,rpmsg-v1")
+    )
     targets = {}
     for name in BAREMETAL_LINKER_SECTIONS:
+        if omit_resource_table and name == "resource_table":
+            continue
         if sections is not None:
             reference = sections.get(name)
         else:
@@ -515,6 +545,8 @@ def resolve_placement(tree, domain, cpu_node, machine, ddr_region,
         if bank is not None:
             _check_bank(owners, node, core)
             targets[name] = (bank, node)
+        elif _matches_ddr_region(node, ddr_region):
+            targets[name] = (DDR_REGION, node)
         else:
             targets[name] = ("node", node)
 
