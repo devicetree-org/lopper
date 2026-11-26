@@ -117,6 +117,36 @@ class TestCheckInvalidPhandles:
         assert invalid[0][0] == "/test_node"
         assert invalid[0][1] == "clocks"
 
+    def test_tree_phandle_excludes_skips_matching_nodes(self):
+        """A node whose path matches a tree.phandle_excludes pattern is skipped,
+        while a dangling ref elsewhere is still flagged. This drives
+        -W invalid_phandle=exclude:<pat> and tree.phandle_exclude_add()."""
+        tree = LopperTree()
+        tree.add(LopperNode(-1, "/domains"))
+        dom = LopperNode(-1, "/domains/d0")
+        dom + LopperProp(name='access', value=[0xdeadbeef, 0])   # dangling
+        tree.add(dom)
+        other = LopperNode(-1, "/soc")
+        other + LopperProp(name='clocks', value=[0x12345])       # dangling, not excluded
+        tree.add(other)
+        tree.sync()
+
+        before = {p for p, _ in
+                  lopper.audit.check_invalid_phandles(tree, warn_only_modified=False)}
+        assert "/domains/d0" in before and "/soc" in before
+
+        tree.phandle_exclude_add("/domains")
+        after = {p for p, _ in
+                 lopper.audit.check_invalid_phandles(tree, warn_only_modified=False)}
+        assert "/domains/d0" not in after, "excluded subtree was still flagged"
+        assert "/soc" in after, "a non-excluded dangling ref was dropped"
+
+    def test_phandle_exclude_add_dedupes(self):
+        tree = LopperTree()
+        tree.phandle_exclude_add("/domains", "/foo")
+        tree.phandle_exclude_add("/domains")
+        assert tree.phandle_excludes == ["/domains", "/foo"]
+
     def test_valid_phandle_not_flagged(self):
         """Test that valid phandle references are not flagged."""
         tree = LopperTree()
